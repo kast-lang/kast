@@ -1,0 +1,4 @@
+(executable
+ (public_name playground)
+ (name main)
+ (libraries playground))

@@ -10,12 +10,11 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.opam ];
+        packages = [ pkgs.opam pkgs.just ];
         shellHook = ''
           eval $(opam env)
         '';
       };
       formatter.${system} = pkgs.nixpkgs-fmt;
-
     };
 }
