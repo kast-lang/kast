@@ -2,3 +2,8 @@
  (public_name playground)
  (name main)
  (libraries playground))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))
