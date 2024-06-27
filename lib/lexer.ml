@@ -82,10 +82,13 @@ let parse : string -> filename -> token spanned Seq.t =
     | Some c -> (
         match !current_token_start with
         | None -> should_start_new_token ()
-        | Some _ ->
+        | Some start -> (
             let prev = String.get contents (!index - 1) in
-            Option.is_some (String.index_opt single_char_tokens prev)
-            || Option.is_some (String.index_opt single_char_tokens c))
+            match String.get contents start.index with
+            | '"' -> start.index + 1 != !index && prev = '"'
+            | _ ->
+                Option.is_some (String.index_opt single_char_tokens prev)
+                || Option.is_some (String.index_opt single_char_tokens c)))
     | None -> true
   in
   let go () =
