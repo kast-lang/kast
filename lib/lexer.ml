@@ -46,6 +46,9 @@ open Prelude
 open Span
 
 type token = Ident of string
+
+let token_value = function Ident s -> s
+
 type position_with_index = { pos : pos; index : int }
 
 let show : token spanned -> string =

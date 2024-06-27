@@ -1,4 +1,4 @@
-let fib = (n) {
+let fib = [T: num](n: T) -> T {
     if n < 2 then {
         1
     } else {
