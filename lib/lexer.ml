@@ -74,6 +74,7 @@ let parse : string -> token Seq.t =
       if is_space c || c = '(' || c = ')' then finish ();
       (if not (is_space c) then
          match !start with None -> start := Some i | _ -> ());
+      current_pos := i + 1;
       if c = '(' || c = ')' then finish ())
     s;
   current_pos := String.length s;
