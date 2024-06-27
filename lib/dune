@@ -1,2 +1,7 @@
 (library
  (name playground))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

@@ -43,70 +43,78 @@
      ░░░░░░░░▒░▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒▒░░░░░░░░    ░░░░░    ░ *)
 
 open Prelude
+open Span
 
-type token = Ident of string | OpenBracket | CloseBracket
-type state = { seq : token Seq.t; start : int Option.t }
+type token = Ident of string
+type position_with_index = { pos : pos; index : int }
 
-let show = function Ident s -> s | OpenBracket -> "(" | CloseBracket -> ")"
+let show : token spanned -> string =
+ fun spanned ->
+  let (Ident ident) = spanned.value in
+  ident
 
-let single_token = function
-  | "(" -> OpenBracket
-  | ")" -> CloseBracket
-  | s -> Ident s
-
-(* pgorley: this would make more sense if it were php *)
-let parse : string -> token Seq.t =
- fun s ->
-  let result = ref [] in
-  let start = ref None in
-  let current_pos = ref 0 in
-  let finish () =
-    match !start with
-    | Some from ->
-        result :=
-          single_token (String.sub s from (!current_pos - from)) :: !result;
-        start := None
-    | None -> ()
+let parse : string -> filename -> token spanned Seq.t =
+ fun contents file ->
+  let content_len = String.length contents in
+  let index = ref 0 in
+  let position = ref { line = 0; column = 0 } in
+  let peek : unit -> char option =
+   fun () ->
+    if !index < content_len then Some (String.get contents !index) else None
   in
-  String.iteri
-    (fun i c ->
-      current_pos := i;
-      if is_space c || c = '(' || c = ')' then finish ();
-      (if not (is_space c) then
-         match !start with None -> start := Some i | _ -> ());
-      current_pos := i + 1;
-      if c = '(' || c = ')' then finish ())
-    s;
-  current_pos := String.length s;
-  finish ();
-  List.to_seq (List.rev !result)
-
-let parse_old s =
-  let indices = Seq.take (String.length s) (Seq.ints 0) in
-  let finish (state : state) i =
-    match state.start with
-    | None -> state.seq
-    | Some start ->
-        Seq.append state.seq
-          (Seq.return (single_token (String.sub s start (i - start))))
+  let next : unit -> char option =
+   fun () ->
+    let c = peek () in
+    (match c with Some _ -> index := !index + 1 | _ -> ());
+    position := { !position with column = !position.column + 1 };
+    (match c with
+    | Some '\n' -> position := { line = !position.line + 1; column = 0 }
+    | _ -> ());
+    c
   in
-  let f (cur : state) i =
-    let c = String.get s i in
-    let finish_before = is_space c || c = '(' || c = ')' in
-    let finish_after = c = '(' || c = ')' in
-    let new_start = match is_space c with true -> None | false -> Some i in
-    let after =
-      match finish_before with
-      | true -> { seq = finish cur i; start = new_start }
-      | false -> (
-          match cur.start with
-          | Some _ -> cur
-          | None -> { seq = cur.seq; start = new_start })
+  let current_token_start : position_with_index option ref = ref None in
+  let single_char_tokens = "()[]{}+-*/,;" in
+  let should_start_new_token () =
+    match peek () with Some c -> not (is_space c) | None -> false
+  in
+  let should_split () =
+    match peek () with
+    | Some c -> (
+        match !current_token_start with
+        | None -> should_start_new_token ()
+        | Some _ ->
+            let prev = String.get contents (!index - 1) in
+            Option.is_some (String.index_opt single_char_tokens prev)
+            || Option.is_some (String.index_opt single_char_tokens c))
+    | None -> true
+  in
+  let go () =
+    (* print_endline *)
+    (*   (match peek () with *)
+    (*   | Some c -> "parsing char \"" ^ String.make 1 c ^ "\"" *)
+    (*   | None -> "parsing eof"); *)
+    let result =
+      if should_split () then (
+        let prev_token =
+          Option.map
+            (fun start ->
+              {
+                value =
+                  Ident (String.sub contents start.index (!index - start.index));
+                span = { start = start.pos; finish = !position; file };
+              })
+            !current_token_start
+        in
+        (* print_endline *)
+        (*   (match prev_token with Some _ -> "some" | None -> "none"); *)
+        current_token_start := None;
+        if should_start_new_token () then (
+          current_token_start := Some { pos = !position; index = !index };
+          Some prev_token)
+        else Option.map (fun x -> Some x) prev_token)
+      else Some None
     in
-    match finish_after with
-    | true -> { seq = finish after (i + 1); start = None }
-    | false -> after
+    let _ = next () in
+    result
   in
-  finish
-    (Seq.fold_left f { seq = Seq.empty; start = None } indices)
-    (String.length s)
+  Seq.filter_map (fun x -> x) (Seq.of_dispenser go)
