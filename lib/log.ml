@@ -1,6 +1,6 @@
 type level = Error | Warn | Info | Debug | Trace
 
-let max_level = ref Info
+let max_level = ref Trace
 let with_level level s = if level <= !max_level then print_endline s
 let error = with_level Error
 let warn = with_level Warn

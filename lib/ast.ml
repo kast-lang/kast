@@ -92,7 +92,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                 | Keyword _ :: parts_tail, values ->
                     collect_values parts_tail values
                 | Binding name :: parts_tail, value :: values_tail ->
-                    Log.trace ("collected " ^ name);
+                    Log.trace ("collected " ^ name ^ " = " ^ show value);
                     StringMap.union
                       (fun _key _a _b -> failwith "duplicate key")
                       (StringMap.singleton name value)

@@ -45,7 +45,11 @@ type keyword_parse_state = {
 
 and edges = keyword_parse_state EdgeMap.t
 
-type syntax = { keywords : StringSet.t ref; starts : edges ref }
+type syntax = {
+  keywords : StringSet.t ref;
+  join : keyword_parse_state option ref;
+  starts : edges ref;
+}
 
 let start_state (syntax : syntax) : keyword_parse_state =
   {
@@ -109,53 +113,72 @@ let ensure_edge_exists (edges : edges ref) (edge : Edge.t) (priority : priority)
   state
 
 let add_syntax (def : syntax_def) (syntax : syntax) =
-  let edges = ref syntax.starts in
-  let finish = ref (ref BoolMap.empty) in
-  let value_before = ref false in
-  let keyword_before = ref false in
-  let rec has_keyword_in list =
-    match list with
-    | Keyword _ :: _ -> true
-    | _ :: tail -> has_keyword_in tail
-    | [] -> false
-  in
-  let rec has_keyword_after index list =
-    if index < 0 then has_keyword_in list
-    else
-      match list with
-      | _ :: tail -> has_keyword_after (index - 1) tail
-      | [] -> false
-  in
-  List.iteri
-    (fun index part ->
-      let keyword_after : bool = has_keyword_after index def.parts in
-      match part with
-      | Keyword keyword ->
-          syntax.keywords := StringSet.add keyword !(syntax.keywords);
-          let state =
-            ensure_edge_exists !edges
-              { value_before_keyword = !value_before; keyword }
-              {
-                before = (if !keyword_before then Int.min_int else def.priority);
-                after = (if keyword_after then Int.min_int else def.priority);
-                assoc = def.assoc;
-              }
-          in
-          value_before := false;
-          finish := state.finish;
-          edges := state.next
-      | Binding _name ->
-          if !value_before then failwith "two bindings after eachother wtf";
-          value_before := true)
-    def.parts;
-  !finish :=
-    BoolMap.update !value_before
-      (fun prev ->
-        if Option.is_some prev then failwith "conflict";
-        Some (Complex def))
-      !(!finish)
+  match def.parts with
+  | [ Binding _; Binding _ ] ->
+      syntax.join :=
+        Some
+          {
+            priority =
+              { before = def.priority; after = def.priority; assoc = def.assoc };
+            finish = ref (BoolMap.singleton true (Complex def));
+            next = ref EdgeMap.empty;
+          }
+  | _ ->
+      let edges = ref syntax.starts in
+      let finish = ref (ref BoolMap.empty) in
+      let value_before = ref false in
+      let keyword_before = ref false in
+      let rec has_keyword_in list =
+        match list with
+        | Keyword _ :: _ -> true
+        | _ :: tail -> has_keyword_in tail
+        | [] -> false
+      in
+      let rec has_keyword_after index list =
+        if index < 0 then has_keyword_in list
+        else
+          match list with
+          | _ :: tail -> has_keyword_after (index - 1) tail
+          | [] -> false
+      in
+      List.iteri
+        (fun index part ->
+          let keyword_after : bool = has_keyword_after index def.parts in
+          match part with
+          | Keyword keyword ->
+              syntax.keywords := StringSet.add keyword !(syntax.keywords);
+              let state =
+                ensure_edge_exists !edges
+                  { value_before_keyword = !value_before; keyword }
+                  {
+                    before =
+                      (if !keyword_before then Int.min_int else def.priority);
+                    after =
+                      (if keyword_after then Int.min_int else def.priority);
+                    assoc = def.assoc;
+                  }
+              in
+              value_before := false;
+              finish := state.finish;
+              edges := state.next
+          | Binding _name ->
+              if !value_before then failwith "two bindings after eachother wtf";
+              value_before := true)
+        def.parts;
+      !finish :=
+        BoolMap.update !value_before
+          (fun prev ->
+            if Option.is_some prev then failwith "conflict";
+            Some (Complex def))
+          !(!finish)
 
 let make_syntax (defs : syntax_def list) : syntax =
-  let result = { keywords = ref StringSet.empty; starts = ref EdgeMap.empty } in
+  let result =
+    {
+      keywords = ref StringSet.empty;
+      join = ref None;
+      starts = ref EdgeMap.empty;
+    }
+  in
   List.iter (fun def -> add_syntax def result) defs;
   result

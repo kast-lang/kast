@@ -7,12 +7,6 @@ open Playground;;
 let syntax =
   Syntax.make_syntax
     [
-      (* {
-           name = "call";
-           assoc = Left;
-           priority = 50;
-           parts = [ Binding "f"; Binding "args" ];
-         }; *)
       {
         name = "add";
         assoc = Left;
@@ -48,6 +42,12 @@ let syntax =
         assoc = Right;
         priority = 60;
         parts = [ Binding "lhs"; Keyword "^"; Binding "rhs" ];
+      };
+      {
+        name = "call";
+        assoc = Left;
+        priority = 100;
+        parts = [ Binding "f"; Binding "args" ];
       };
       {
         name = "parens";
