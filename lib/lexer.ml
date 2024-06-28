@@ -76,7 +76,7 @@ let parse : string -> filename -> token spanned Seq.t =
     c
   in
   let current_token_start : position_with_index option ref = ref None in
-  let single_char_tokens = "()[]{}+-*/,;" in
+  let single_char_tokens = "()[]{}^+-*/%,;" in
   let should_start_new_token () =
     match peek () with Some c -> not (is_space c) | None -> false
   in
@@ -91,7 +91,8 @@ let parse : string -> filename -> token spanned Seq.t =
             | '"' -> start.index + 1 != !index && prev = '"'
             | _ ->
                 Option.is_some (String.index_opt single_char_tokens prev)
-                || Option.is_some (String.index_opt single_char_tokens c)))
+                || Option.is_some (String.index_opt single_char_tokens c)
+                || is_space c))
     | None -> true
   in
   let go () =

@@ -1,200 +1,154 @@
-open Prelude
 open Span
-
-type node =
-  | Leaf of string
-  | Node of { name : string; children : node spanned Map.Make(String).t }
-
-type assoc = Left | Right
-type def_part = Keyword of string | Binding of string
-
-type syntax_def = {
-  name : string;
-  assoc : assoc;
-  priority : int;
-  def : def_part list;
-}
-
-(* call: left 50 = f args *)
-(* add: left 20 = a "+" b *)
-(* negate: left 100 = "-" x *)
-(* if/then/else: left 10 = "if" cond "then" then "else" else *)
-
-let syntax : syntax_def list =
-  [
-    {
-      name = "call";
-      assoc = Left;
-      priority = 50;
-      def = [ Binding "f"; Binding "args" ];
-    };
-    {
-      name = "binary_add";
-      assoc = Left;
-      priority = 20;
-      def = [ Binding "a"; Keyword "+"; Binding "b" ];
-    };
-  ]
-
-module StateEdge = struct
-  type t = { keyword : string option; value_before_keyword : bool }
-
-  let compare a b =
-    match Option.compare String.compare a.keyword b.keyword with
-    | 0 -> Bool.compare a.value_before_keyword b.value_before_keyword
-    | other -> other
-end
-
-type state_child = Keyword of string | Value of node
-
-module EdgeMap = Map.Make (StateEdge)
-
-type edges = state EdgeMap.t
-
-and state = {
-  finish_without_value : syntax_def option;
-  finish_with_value : syntax_def option;
-  continue : edges;
-}
-
-(* When I am done with this, there will be only two people in the whole world able to maintain the code. And I am not one of them. *)
+open Lexer
+open Syntax
+module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
 
-type syntax = { keywords : StringSet.t; root : state }
+type value =
+  | Simple of token spanned
+  | Complex of { def : syntax_def; values : value StringMap.t }
 
-let part_keyword (part : def_part) : string option =
-  match part with Keyword kw -> Some kw | Binding _ -> None
+let rec show : value -> string = function
+  | Simple token -> Lexer.show token
+  | Complex { def; values } ->
+      "(" ^ def.name
+      ^ StringMap.fold
+          (fun key value prev ->
+            (if prev = "" then " " else prev ^ ", ") ^ key ^ "=" ^ show value)
+          values ""
+      ^ ")"
 
-let rec append_states (state : state) (def : syntax_def)
-    (prev_binding_name : string option) (remaining_parts : def_part list) :
-    state =
-  match remaining_parts with
-  | [] -> (
-      match prev_binding_name with
-      | Some _ -> (
-          match state.finish_with_value with
-          | Some finish ->
-              raise (Failure (finish.name ^ " conflicts with " ^ def.name))
-          | None -> { state with finish_with_value = Some def })
-      | None -> (
-          match state.finish_without_value with
-          | Some finish ->
-              raise (Failure (finish.name ^ " conflicts with " ^ def.name))
-          | None -> { state with finish_without_value = Some def }))
-  | first :: remaining_parts -> (
-      let update_with_edge edge =
-        {
-          state with
-          continue =
-            EdgeMap.update edge
-              (fun prev ->
-                let or_default =
-                  match prev with
-                  | Some prev -> prev
-                  | None ->
-                      {
-                        finish_without_value = None;
-                        finish_with_value = None;
-                        continue = EdgeMap.empty;
-                      }
-                in
-                let this_binding_name =
-                  match first with
-                  | Keyword _ -> None
-                  | Binding name -> Some name
-                in
-                Some
-                  (append_states or_default def this_binding_name
-                     remaining_parts))
-              state.continue;
-        }
-      in
-      match first with
-      | Keyword keyword ->
-          update_with_edge
-            {
-              keyword = Some keyword;
-              value_before_keyword = Option.is_some prev_binding_name;
-            }
-      | Binding this_binding_name -> (
-          match prev_binding_name with
-          | Some _ ->
-              update_with_edge { keyword = None; value_before_keyword = true }
-          | None ->
-              append_states state def (Some this_binding_name) remaining_parts))
+type 'a peekable = { head : 'a option; tail : 'a Seq.t }
 
-let construct_syntax : syntax_def list -> syntax =
- fun syntax_list ->
+let peek (q : 'a peekable ref) : 'a option =
   let result =
-    ref
-      {
-        keywords = StringSet.empty;
-        root =
-          {
-            finish_with_value = None;
-            finish_without_value = None;
-            continue = EdgeMap.empty;
-          };
-      }
+    match !q.head with
+    | Some value -> Some value
+    | None ->
+        (q :=
+           match !q.tail () with
+           | Cons (head, tail) -> { head = Some head; tail }
+           | Nil -> { head = None; tail = Seq.empty });
+        !q.head
   in
-  List.iter
-    (fun def ->
-      result :=
-        {
-          keywords =
-            StringSet.union !result.keywords
-              (StringSet.of_list (List.filter_map part_keyword def.def));
-          root = append_states !result.root def None def.def;
-        })
-    syntax_list;
-  !result
+  Log.never
+    ("peeked "
+    ^ match result with Some token -> Lexer.show token | None -> "<eof>");
+  result
 
-type kov = Keyword of string | Value of node
+let pop (q : 'a peekable ref) : 'a option =
+  let result = peek q in
+  q := { !q with head = None };
+  result
 
-let kov_edge = function Keyword kw -> Some kw | Value _ -> None
+type tokens = token spanned peekable ref
 
-type parse_state = { stack : state list; prev_value : node option }
+let maybe_join list option =
+  match option with Some value -> value :: list | None -> list
 
-(* #Clown *)
-let parse (syntax : syntax) (tokens : Lexer.token spanned Seq.t) : node spanned
-    =
-  let parse_state : parse_state ref = ref { stack = []; prev_value = None } in
-  let rec push_edge (edge : StateEdge.t) =
-    let continue =
-      List.find_mapi
-        (fun index (state : state) ->
-          match EdgeMap.find_opt edge state.continue with
-          | Some new_state -> Some (index, new_state)
-          | None -> None)
-        !
+let show_edge (edge : Edge.t) =
+  match edge.value_before_keyword with
+  | true -> "_ " ^ edge.keyword
+  | false -> edge.keyword
+
+let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
+  let tokens : tokens = ref { head = None; tail = tokens } in
+  let rec parse_until (until : priority) (state : keyword_parse_state)
+      (values : value list) (prev_value : value option) : value =
+    let should_continue_with (next : keyword_parse_state) : bool =
+      match Int.compare until.after next.priority.before with
+      | x when x < 0 -> true
+      | 0 -> (
+          if until.assoc <> next.priority.assoc then
+            failwith "same priority different associativity?";
+          match until.assoc with Left -> false | Right -> true)
+      | _ -> false
     in
-    match continue with
-    | Some (index, new_state) ->
-        for _ = 0 to index do
-          pop_apply ()
-        done;
-        stack := new_state :: !stack
-    | None -> ()
-  and push (kov : kov) =
-    match kov with Keyword keyword -> () | Value value -> ()
-  and pop_apply () =
-    (* look at this comment *)
-    match !stack with
-    | head :: tail ->
-        (match head.finish with
-        | Some name -> ()
-        | None -> raise (Failure "expression is not finished"));
-        stack := tail
-    | [] -> raise (Failure "stack is empty")
+    let consume_token () =
+      match pop tokens with
+      | Some token -> Log.never ("consumed " ^ Lexer.show token)
+      | None -> failwith "expected to have some token"
+    in
+    let finish () : value =
+      match BoolMap.find_opt (Option.is_some prev_value) !(state.finish) with
+      | Some finished -> (
+          let values = maybe_join values prev_value in
+          let values = List.rev values in
+
+          Log.trace
+            ("finishing " ^ parsed_name finished ^ " with "
+            ^ Int.to_string (List.length values)
+            ^ " values");
+          match finished with
+          | Simple -> (
+              match values with
+              | [ value ] -> value
+              | _ -> failwith "Expected a single value wtf")
+          | Complex def ->
+              let rec collect_values parts values : value StringMap.t =
+                match (parts, values) with
+                | [], [] -> StringMap.empty
+                | [], _ -> failwith "too many values"
+                | Keyword _ :: parts_tail, values ->
+                    collect_values parts_tail values
+                | Binding name :: parts_tail, value :: values_tail ->
+                    Log.trace ("collected " ^ name);
+                    StringMap.union
+                      (fun _key _a _b -> failwith "duplicate key")
+                      (StringMap.singleton name value)
+                      (collect_values parts_tail values_tail)
+                | Binding name :: _parts_tail, [] ->
+                    failwith ("not enough values (missing " ^ name ^ ")")
+              in
+              Complex { def; values = collect_values def.parts values })
+      | None -> failwith "Can't finish"
+    in
+    match peek tokens with
+    | None -> finish ()
+    | Some token -> (
+        let (Ident s) = token.value in
+        let edge : Edge.t =
+          { value_before_keyword = Option.is_some prev_value; keyword = s }
+        in
+        let next_with state = EdgeMap.find_opt edge !(state.next) in
+        match next_with state with
+        | Some next -> (
+            match should_continue_with next with
+            | true ->
+                consume_token ();
+                Log.trace ("continued " ^ show_edge edge);
+                let value =
+                  parse_until next.priority next
+                    (maybe_join values prev_value)
+                    None
+                in
+                parse_until until (start_state syntax) [] (Some value)
+            | false -> finish ())
+        | None -> (
+            match next_with (start_state syntax) with
+            | Some new_state -> (
+                match should_continue_with new_state with
+                | true ->
+                    consume_token ();
+                    Log.trace ("started " ^ show_edge edge);
+                    let value =
+                      parse_until new_state.priority new_state
+                        (Option.to_list prev_value)
+                        None
+                    in
+                    Log.trace ("parsed as " ^ show value);
+                    parse_until until state values (Some value)
+                | false -> finish ())
+            | None -> (
+                match StringSet.find_opt s !(syntax.keywords) with
+                | Some _ -> finish ()
+                | None ->
+                    if Option.is_some prev_value then
+                      failwith "consecutive simple values";
+                    consume_token ();
+                    Log.trace ("simple " ^ Lexer.show token);
+                    parse_until until state values (Some (Simple token)))))
   in
-  Seq.iter
-    (fun token ->
-      let token_value = Lexer.token_value token.value in
-      let kov =
-        match StringSet.find_opt token_value syntax.keywords with
-        | Some kw -> Keyword kw
-        | None -> Value (Leaf token_value)
-      in
-      push kov)
-    tokens;
-  raise (Failure "todo")
+
+  let start_state = start_state syntax in
+  parse_until start_state.priority start_state [] None

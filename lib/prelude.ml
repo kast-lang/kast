@@ -38,3 +38,6 @@ let split_whitespace : string -> string Seq.t =
   finish
     (Seq.fold_left f { seq = Seq.empty; start = None } indices)
     (String.length s)
+
+let head (list : 'a list) : 'a option =
+  match list with head :: _tail -> Some head | [] -> None
