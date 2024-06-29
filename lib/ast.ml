@@ -157,7 +157,8 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                             [ prev_value ] None false
                         in
                         Log.trace ("parsed as " ^ show value);
-                        parse_until until state values (Some value) false
+                        let joined = value <> prev_value in
+                        parse_until until state values (Some value) (not joined)
                     | _ -> finish ())
                 | None -> (
                     match StringSet.find_opt s !(syntax.keywords) with
