@@ -1,2 +1,2 @@
 run:
-    opam exec -- dune exec playground
+    dune exec playground

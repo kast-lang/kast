@@ -10,10 +10,17 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.opam pkgs.just ];
-        shellHook = ''
-          eval $(opam env)
-        '';
+        packages = with pkgs; with ocamlPackages; [
+          # opam
+          dune_3
+          ocaml
+          ocaml-lsp
+          ocamlformat
+          just
+        ];
+        # shellHook = ''
+        #   eval $(opam env)
+        # '';
       };
       formatter.${system} = pkgs.nixpkgs-fmt;
     };
