@@ -8,6 +8,18 @@ let syntax =
   Syntax.make_syntax
     [
       {
+        name = "uplus";
+        assoc = Left;
+        priority = 20;
+        parts = [ Keyword "+"; Binding "x" ];
+      };
+      {
+        name = "negate";
+        assoc = Left;
+        priority = 20;
+        parts = [ Keyword "-"; Binding "x" ];
+      };
+      {
         name = "add";
         assoc = Left;
         priority = 20;
