@@ -8,20 +8,27 @@ type value =
   | Simple of token spanned
   | Complex of { def : syntax_def; values : value StringMap.t }
 
-let rec show : value -> string = function
-  | Simple token -> Lexer.show token
-  | Complex { def; values } ->
-      "(" ^ def.name
-      ^ List.fold_left
-          (fun prev part ->
-            match part with
-            | Keyword _ -> prev
-            | Binding name ->
-                let value = StringMap.find name values in
-                (if prev = "" then " " else prev ^ ", ")
-                ^ name ^ "=" ^ show value)
-          "" def.parts
-      ^ ")"
+let rec show_impl (show_names : bool) (value : value) : string =
+  let rec impl = function
+    | Simple token -> Lexer.show token
+    | Complex { def; values } ->
+        "(" ^ def.name
+        ^ List.fold_left
+            (fun prev part ->
+              match part with
+              | Keyword _ -> prev
+              | Binding name ->
+                  let value = StringMap.find name values in
+                  (if prev = "" then " " else prev ^ " ")
+                  ^ (if show_names then name ^ "=" else "")
+                  ^ impl value)
+            "" def.parts
+        ^ ")"
+  in
+  impl value
+
+let show = show_impl false
+let show_verbose = show_impl true
 
 type 'a peekable = { head : 'a option; tail : 'a Seq.t }
 
