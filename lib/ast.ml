@@ -12,10 +12,15 @@ let rec show : value -> string = function
   | Simple token -> Lexer.show token
   | Complex { def; values } ->
       "(" ^ def.name
-      ^ StringMap.fold
-          (fun key value prev ->
-            (if prev = "" then " " else prev ^ ", ") ^ key ^ "=" ^ show value)
-          values ""
+      ^ List.fold_left
+          (fun prev part ->
+            match part with
+            | Keyword _ -> prev
+            | Binding name ->
+                let value = StringMap.find name values in
+                (if prev = "" then " " else prev ^ ", ")
+                ^ name ^ "=" ^ show value)
+          "" def.parts
       ^ ")"
 
 type 'a peekable = { head : 'a option; tail : 'a Seq.t }
