@@ -54,7 +54,8 @@ let show_edge (edge : Edge.t) =
 let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
   let tokens : tokens = ref { head = None; tail = tokens } in
   let rec parse_until (until : priority) (state : keyword_parse_state)
-      (values : value list) (prev_value : value option) : value =
+      (values : value list) (prev_value : value option) (joining : bool) : value
+      =
     let should_continue_with (next : keyword_parse_state) : bool =
       match Int.compare until.after next.priority.before with
       | x when x < 0 -> true
@@ -120,9 +121,9 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                 let value =
                   parse_until next.priority next
                     (maybe_join values prev_value)
-                    None
+                    None false
                 in
-                parse_until until (start_state syntax) [] (Some value)
+                parse_until until (start_state syntax) [] (Some value) false
             | false -> finish ())
         | None -> (
             match next_with (start_state syntax) with
@@ -134,21 +135,34 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                     let value =
                       parse_until new_state.priority new_state
                         (Option.to_list prev_value)
-                        None
+                        None false
                     in
                     Log.trace ("parsed as " ^ show value);
-                    parse_until until state values (Some value)
+                    parse_until until state values (Some value) false
                 | false -> finish ())
             | None -> (
-                match StringSet.find_opt s !(syntax.keywords) with
-                | Some _ -> finish ()
-                | None ->
-                    if Option.is_some prev_value then
-                      failwith "consecutive simple values";
-                    consume_token ();
-                    Log.trace ("simple " ^ Lexer.show token);
-                    parse_until until state values (Some (Simple token)))))
+                match prev_value with
+                | Some prev_value -> (
+                    match !(syntax.join) with
+                    | Some join_state
+                      when should_continue_with join_state && not joining ->
+                        Log.trace "joining";
+                        let value =
+                          parse_until join_state.priority join_state
+                            [ prev_value ] None false
+                        in
+                        Log.trace ("parsed as " ^ show value);
+                        parse_until until state values (Some value) false
+                    | _ -> finish ())
+                | None -> (
+                    match StringSet.find_opt s !(syntax.keywords) with
+                    | Some _ -> finish ()
+                    | None ->
+                        consume_token ();
+                        Log.trace ("simple " ^ Lexer.show token);
+                        parse_until until state values (Some (Simple token))
+                          false))))
   in
 
   let start_state = start_state syntax in
-  parse_until start_state.priority start_state [] None
+  parse_until start_state.priority start_state [] None false

@@ -120,7 +120,8 @@ let add_syntax (def : syntax_def) (syntax : syntax) =
           {
             priority =
               { before = def.priority; after = def.priority; assoc = def.assoc };
-            finish = ref (BoolMap.singleton true (Complex def));
+            finish =
+              ref (BoolMap.of_list [ (false, Simple); (true, Complex def) ]);
             next = ref EdgeMap.empty;
           }
   | _ ->
