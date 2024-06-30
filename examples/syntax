@@ -1,7 +1,7 @@
 syntax then < 0 = a ";" b;
 syntax ignore < 0 = stmt ";";
 
-syntax ifelse < 10 = "if" cond "then" then "else" else;
+syntax ifthenelse < 10 = "if" cond "then" then "else" else;
 syntax tern > 10 = cond "?" then ":" else;
 syntax thenelse > 10 = cond "then" then "else" else;
 
