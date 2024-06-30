@@ -1,3 +1,4 @@
+open Prelude
 open Span
 open Lexer
 open Syntax
@@ -5,11 +6,14 @@ module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
 
 type value =
+  | Nothing
   | Simple of token spanned
   | Complex of { def : syntax_def; values : value StringMap.t }
+  | Syntax of { def : syntax_def; value : value }
 
 let show_impl (show_names : bool) (value : value) : string =
   let rec impl = function
+    | Nothing -> "nothing"
     | Simple token -> Lexer.show token
     | Complex { def; values } ->
         "(" ^ def.name
@@ -24,6 +28,19 @@ let show_impl (show_names : bool) (value : value) : string =
                   ^ impl value)
             "" def.parts
         ^ ")"
+    | Syntax { def; value } ->
+        "(syntax " ^ def.name ^ " "
+        ^ (match def.assoc with Left -> "<" | Right -> ">")
+        ^ " " ^ Int.to_string def.priority ^ " ="
+        ^ List.fold_left
+            (fun s part ->
+              s ^ " "
+              ^
+              match part with
+              | Binding name -> name
+              | Keyword keyword -> "\"" ^ keyword ^ "\"")
+            "" def.parts
+        ^ "; " ^ impl value ^ ")"
   in
   impl value
 
@@ -65,9 +82,58 @@ let show_edge (edge : Edge.t) =
 
 let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
   let tokens : tokens = ref { head = None; tail = tokens } in
-  let rec parse_until (until : priority) (state : keyword_parse_state)
-      (values : value list) (prev_value : value option) (joining : bool) : value
-      =
+  let consume_token () =
+    match pop tokens with
+    | Some token -> Log.never ("consumed " ^ Lexer.show token)
+    | None -> failwith "expected to have some token"
+  in
+  let parse_syntax () =
+    match peek tokens with
+    | Some { value = Ident "syntax"; _ } ->
+        consume_token ();
+        let name =
+          match pop tokens with
+          | Some { value = Ident name; _ } -> name
+          | None -> failwith "expected name"
+        in
+        let assoc =
+          match pop tokens with
+          | Some { value = Ident "<"; _ } -> Left
+          | Some { value = Ident ">"; _ } -> Right
+          | _ -> failwith "expected associativity (< or >)"
+        in
+        let priority =
+          match pop tokens with
+          | Some { value = Ident s; _ } -> (
+              match int_of_string_opt s with
+              | Some priority -> priority
+              | None -> failwith "failed to parse priority")
+          | None -> failwith "expected priority"
+        in
+        (match pop tokens with
+        | Some { value = Ident "="; _ } -> ()
+        | _ -> failwith "expected =");
+        let rec collect_parts () =
+          match peek tokens with
+          | Some { value = Ident ";"; _ } ->
+              consume_token ();
+              []
+          | None -> []
+          | Some { value = Ident s; _ } ->
+              consume_token ();
+              let part =
+                match strip_ends ~prefix:"\"" ~suffix:"\"" s with
+                | Some keyword -> Keyword keyword
+                | None -> Binding s
+              in
+              part :: collect_parts ()
+        in
+        { name; assoc; priority; parts = collect_parts () }
+    | _ -> failwith "expected syntax"
+  in
+  let rec parse_until (syntax : syntax) (until : priority)
+      (state : keyword_parse_state) (values : value list)
+      (prev_value : value option) (joining : bool) : value =
     let should_continue_with (next : keyword_parse_state) : bool =
       match Int.compare until.after next.priority.before with
       | x when x < 0 -> true
@@ -76,11 +142,6 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
             failwith "same priority different associativity?";
           match until.assoc with Left -> false | Right -> true)
       | _ -> false
-    in
-    let consume_token () =
-      match pop tokens with
-      | Some token -> Log.never ("consumed " ^ Lexer.show token)
-      | None -> failwith "expected to have some token"
     in
     let finish () : value =
       match BoolMap.find_opt (Option.is_some prev_value) state.finish with
@@ -93,6 +154,10 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
             ^ Int.to_string (List.length values)
             ^ " values");
           match finished with
+          | Nothing -> (
+              match values with
+              | [] -> Nothing
+              | _ -> failwith "values on nothing?")
           | Simple -> (
               match values with
               | [ value ] -> value
@@ -118,6 +183,21 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
     in
     match peek tokens with
     | None -> finish ()
+    | Some { value = Ident "syntax"; _ } ->
+        if Option.is_some prev_value then failwith "syntax after value";
+        let def = parse_syntax () in
+        let new_syntax = add_syntax def syntax in
+        let start_state = start_state new_syntax in
+        let value =
+          Syntax
+            {
+              def;
+              value =
+                parse_until new_syntax start_state.priority start_state [] None
+                  false;
+            }
+        in
+        parse_until syntax until state values (Some value) false
     | Some token -> (
         let (Ident s) = token.value in
         let edge : Edge.t =
@@ -131,11 +211,12 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                 consume_token ();
                 Log.trace ("continued " ^ show_edge edge);
                 let value =
-                  parse_until next.priority next
+                  parse_until syntax next.priority next
                     (maybe_join values prev_value)
                     None false
                 in
-                parse_until until (start_state syntax) [] (Some value) false
+                parse_until syntax until (start_state syntax) [] (Some value)
+                  false
             | false -> finish ())
         | None -> (
             match next_with (start_state syntax) with
@@ -145,12 +226,12 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                     consume_token ();
                     Log.trace ("started " ^ show_edge edge);
                     let value =
-                      parse_until new_state.priority new_state
+                      parse_until syntax new_state.priority new_state
                         (Option.to_list prev_value)
                         None false
                     in
                     Log.trace ("parsed as " ^ show value);
-                    parse_until until state values (Some value) false
+                    parse_until syntax until state values (Some value) false
                 | false -> finish ())
             | None -> (
                 match prev_value with
@@ -160,12 +241,13 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                       when should_continue_with join_state && not joining ->
                         Log.trace "joining";
                         let value =
-                          parse_until join_state.priority join_state
+                          parse_until syntax join_state.priority join_state
                             [ prev_value ] None false
                         in
                         Log.trace ("parsed as " ^ show value);
                         let joined = value <> prev_value in
-                        parse_until until state values (Some value) (not joined)
+                        parse_until syntax until state values (Some value)
+                          (not joined)
                     | _ -> finish ())
                 | None -> (
                     match StringSet.find_opt s syntax.keywords with
@@ -173,9 +255,9 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                     | None ->
                         consume_token ();
                         Log.trace ("simple " ^ Lexer.show token);
-                        parse_until until state values (Some (Simple token))
-                          false))))
+                        parse_until syntax until state values
+                          (Some (Simple token)) false))))
   in
 
   let start_state = start_state syntax in
-  parse_until start_state.priority start_state [] None false
+  parse_until syntax start_state.priority start_state [] None false

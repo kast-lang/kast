@@ -22,7 +22,7 @@ let need_pop prev next =
     if prev.assoc <> next.assoc then failwith "panic";
     match prev.assoc with Left -> true | Right -> false)
 
-type parsed = Simple | Complex of syntax_def
+type parsed = Nothing | Simple | Complex of syntax_def
 
 module Edge = struct
   type t = { value_before_keyword : bool; keyword : string }
@@ -54,7 +54,7 @@ type syntax = {
 let start_state (syntax : syntax) : keyword_parse_state =
   {
     priority = { before = 0; after = Int.min_int; assoc = Left };
-    finish = BoolMap.singleton true Simple;
+    finish = BoolMap.of_list [ (false, Nothing); (true, Simple) ];
     next = syntax.starts;
   }
 
@@ -68,7 +68,10 @@ let show_priority (priority : priority) : string =
   ^ "; assoc = " ^ show_assoc priority.assoc ^ " }"
 
 let parsed_name (parsed : parsed) : string =
-  match parsed with Simple -> "simple" | Complex def -> def.name
+  match parsed with
+  | Nothing -> "nothing"
+  | Simple -> "simple"
+  | Complex def -> def.name
 
 let show (syntax : syntax) : string =
   let prefix = ref "" in

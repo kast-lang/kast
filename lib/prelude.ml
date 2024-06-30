@@ -7,8 +7,11 @@ let strip_prefix ~prefix s =
 let strip_suffix ~suffix s =
   if String.ends_with ~suffix s then
     let suffix_len = String.length suffix in
-    Some (String.sub s (String.length s - suffix_len) suffix_len)
+    Some (String.sub s 0 (String.length s - suffix_len))
   else None
+
+let strip_ends ~prefix ~suffix s =
+  Option.bind (strip_prefix ~prefix s) (strip_suffix ~suffix)
 
 (* Copypasted from std *)
 let is_space = function ' ' | '\012' | '\n' | '\r' | '\t' -> true | _ -> false
