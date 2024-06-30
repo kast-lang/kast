@@ -182,7 +182,18 @@ let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
                      remaining_parts false true))
               edges
       in
-      { syntax with starts = add_to_edges syntax.starts def.parts false false }
+      let collect_keywords =
+        List.filter_map (function
+          | Keyword keyword -> Some keyword
+          | Binding _ -> None)
+      in
+      {
+        syntax with
+        starts = add_to_edges syntax.starts def.parts false false;
+        keywords =
+          StringSet.union syntax.keywords
+            (StringSet.of_list (collect_keywords def.parts));
+      }
 
 let make_syntax (defs : syntax_def list) : syntax =
   List.fold_left

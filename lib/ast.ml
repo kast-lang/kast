@@ -135,13 +135,15 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
       (state : keyword_parse_state) (values : value list)
       (prev_value : value option) (joining : bool) : value =
     let should_continue_with (next : keyword_parse_state) : bool =
-      match Int.compare until.after next.priority.before with
-      | x when x < 0 -> true
-      | 0 -> (
-          if until.assoc <> next.priority.assoc then
-            failwith "same priority different associativity?";
-          match until.assoc with Left -> false | Right -> true)
-      | _ -> false
+      if until.after == Int.min_int then true
+      else
+        match Int.compare until.after next.priority.before with
+        | x when x < 0 -> true
+        | 0 -> (
+            if until.assoc <> next.priority.assoc then
+              failwith "same priority different associativity?";
+            match until.assoc with Left -> false | Right -> true)
+        | _ -> false
     in
     let finish () : value =
       match BoolMap.find_opt (Option.is_some prev_value) state.finish with
