@@ -1,34 +1,20 @@
 open Playground;;
 
-let syntax = ref (Syntax.make_syntax []) in
-let rec eval = function
-  | Ast.Syntax { def; value } ->
-      syntax := Syntax.add_syntax def !syntax;
-      eval value
-  | _ -> ()
-in
+let interpreter = ref (Interpreter.empty ()) in
 let rec stdin_loop () =
   print_string "> ";
   let line = read_line () in
-  let tokens = Lexer.parse line (Filename "stdin") in
-
-  (* Log.info "tokens:";
-     Log.info (String.concat " " (List.of_seq (Seq.map Lexer.show tokens))); *)
-  let ast = Ast.parse !syntax tokens in
-  eval ast;
-  Log.info "ast:";
-  prerr_endline (Ast.show ast);
+  let value = Interpreter.eval interpreter line ~filename:"stdin" in
+  print_endline (Interpreter.show value);
   stdin_loop ()
 in
-let eval_file filename =
-  let f = open_in filename in
-  let contents = really_input_string f (in_channel_length f) in
-  close_in f;
-
-  let tokens = Lexer.parse contents (Filename filename) in
-  let ast = Ast.parse !syntax tokens in
-  (* prerr_endline (Ast.show ast); *)
-  eval ast
-in
-List.iter eval_file (List.tl (Array.to_list Sys.argv));
+List.iter
+  (fun file ->
+    let value = Interpreter.eval_file interpreter file in
+    match value with
+    | Void -> ()
+    | _ ->
+        print_endline
+          ("expected void in " ^ file ^ ", got" ^ Interpreter.show value))
+  (List.tl (Array.to_list Sys.argv));
 try stdin_loop () with End_of_file -> ()

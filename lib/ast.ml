@@ -1,4 +1,3 @@
-open Prelude
 open Span
 open Lexer
 open Syntax
@@ -94,37 +93,38 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         let name =
           match pop tokens with
           | Some { value = Ident name; _ } -> name
-          | None -> failwith "expected name"
+          | _ -> failwith "expected ident name"
         in
         let assoc =
           match pop tokens with
-          | Some { value = Ident "<"; _ } -> Left
-          | Some { value = Ident ">"; _ } -> Right
+          | Some { value = Punctuation "<"; _ } -> Left
+          | Some { value = Punctuation ">"; _ } -> Right
           | _ -> failwith "expected associativity (< or >)"
         in
         let priority =
           match pop tokens with
-          | Some { value = Ident s; _ } -> (
+          | Some { value = Number s; _ } -> (
               match int_of_string_opt s with
               | Some priority -> priority
               | None -> failwith "failed to parse priority")
-          | None -> failwith "expected priority"
+          | _ -> failwith "expected priority (number)"
         in
         (match pop tokens with
-        | Some { value = Ident "="; _ } -> ()
+        | Some { value = Punctuation "="; _ } -> ()
         | _ -> failwith "expected =");
         let rec collect_parts () =
           match peek tokens with
-          | Some { value = Ident ";"; _ } ->
+          | Some { value = Punctuation ";"; _ } ->
               consume_token ();
               []
           | None -> []
-          | Some { value = Ident s; _ } ->
+          | Some { value = token; _ } ->
               consume_token ();
               let part =
-                match strip_ends ~prefix:"\"" ~suffix:"\"" s with
-                | Some keyword -> Keyword keyword
-                | None -> Binding s
+                match token with
+                | String { value = keyword; _ } -> Keyword keyword
+                | Ident name -> Binding name
+                | _ -> failwith "expected stringified keyword or binding name"
               in
               part :: collect_parts ()
         in
@@ -200,10 +200,14 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
             }
         in
         parse_until syntax until state values (Some value) false
-    | Some token -> (
-        let (Ident s) = token.value in
+    | Some spanned_token -> (
+        let token = spanned_token.value in
+        let raw_token = Lexer.raw token in
         let edge : Edge.t =
-          { value_before_keyword = Option.is_some prev_value; keyword = s }
+          {
+            value_before_keyword = Option.is_some prev_value;
+            keyword = raw_token;
+          }
         in
         let next_with state = EdgeMap.find_opt edge state.next in
         match next_with state with
@@ -252,13 +256,17 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                           (not joined)
                     | _ -> finish ())
                 | None -> (
-                    match StringSet.find_opt s syntax.keywords with
+                    match StringSet.find_opt raw_token syntax.keywords with
                     | Some _ -> finish ()
-                    | None ->
-                        consume_token ();
-                        Log.trace ("simple " ^ Lexer.show token);
-                        parse_until syntax until state values
-                          (Some (Simple token)) false))))
+                    | None -> (
+                        match token with
+                        | String _ | Ident _ | Number _ ->
+                            consume_token ();
+                            Log.trace ("simple " ^ Lexer.show spanned_token);
+                            parse_until syntax until state values
+                              (Some (Simple spanned_token)) false
+                        | Punctuation _ ->
+                            failwith "punctuation in place of value")))))
   in
 
   let start_state = start_state syntax in

@@ -15,6 +15,11 @@ let strip_ends ~prefix ~suffix s =
 
 (* Copypasted from std *)
 let is_space = function ' ' | '\012' | '\n' | '\r' | '\t' -> true | _ -> false
+let is_digit = function '0' .. '9' -> true | _ -> false
+let is_lowercase = function 'a' .. 'z' -> true | _ -> false
+let is_uppercase = function 'A' .. 'Z' -> true | _ -> false
+let is_alpha c = is_lowercase c || is_uppercase c
+let is_alphanumeric c = is_alpha c || is_digit c
 
 (* most readable ocaml code *)
 type split_whitespace_state = { seq : string Seq.t; start : int Option.t }

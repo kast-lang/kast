@@ -45,16 +45,18 @@
 open Prelude
 open Span
 
-type token = Ident of string
+type token =
+  | Ident of string
+  | String of { raw : string; value : string }
+  | Punctuation of string
+  | Number of string
 
-let token_value = function Ident s -> s
+let raw = function
+  | Ident raw | Punctuation raw | Number raw | String { raw; _ } -> raw
 
 type position_with_index = { pos : pos; index : int }
 
-let show : token spanned -> string =
- fun spanned ->
-  let (Ident ident) = spanned.value in
-  ident
+let show : token spanned -> string = fun spanned -> raw spanned.value
 
 let parse : string -> filename -> token spanned Seq.t =
  fun contents file ->
@@ -75,53 +77,52 @@ let parse : string -> filename -> token spanned Seq.t =
     | _ -> ());
     c
   in
-  let current_token_start : position_with_index option ref = ref None in
-  let single_char_tokens = "()[]{}^+-*/%,;" in
-  let should_start_new_token () =
-    match peek () with Some c -> not (is_space c) | None -> false
-  in
-  let should_split () =
-    match peek () with
-    | Some c -> (
-        match !current_token_start with
-        | None -> should_start_new_token ()
-        | Some start -> (
-            let prev = String.get contents (!index - 1) in
-            match String.get contents start.index with
-            | '"' -> start.index + 1 != !index && prev = '"'
-            | _ ->
-                Option.is_some (String.index_opt single_char_tokens prev)
-                || Option.is_some (String.index_opt single_char_tokens c)
-                || is_space c))
-    | None -> true
-  in
-  let go () =
-    (* print_endline *)
-    (*   (match peek () with *)
-    (*   | Some c -> "parsing char \"" ^ String.make 1 c ^ "\"" *)
-    (*   | None -> "parsing eof"); *)
-    let result =
-      if should_split () then (
-        let prev_token =
-          Option.map
-            (fun start ->
-              {
-                value =
-                  Ident (String.sub contents start.index (!index - start.index));
-                span = { start = start.pos; finish = !position; file };
-              })
-            !current_token_start
-        in
-        (* print_endline *)
-        (*   (match prev_token with Some _ -> "some" | None -> "none"); *)
-        current_token_start := None;
-        if should_start_new_token () then (
-          current_token_start := Some { pos = !position; index = !index };
-          Some prev_token)
-        else Option.map (fun x -> Some x) prev_token)
-      else Some None
-    in
+  let consume () =
     let _ = next () in
-    result
+    ()
   in
-  Seq.filter_map (fun x -> x) (Seq.of_dispenser go)
+  let read_while (f : char -> bool) : string =
+    let rec impl () =
+      match peek () with
+      | Some c when f c ->
+          consume ();
+          c :: impl ()
+      | _ -> []
+    in
+    String.of_seq (List.to_seq (impl ()))
+  in
+  let skip_whitespace () =
+    let _ = read_while is_space in
+    ()
+  in
+  let read_string () =
+    let start = !index in
+    if next () <> Some '"' then failwith "expected \"";
+    let value = read_while (fun c -> c <> '"') in
+    if next () <> Some '"' then failwith "expected \"";
+    String { value; raw = String.sub contents start (!index - start) }
+  in
+  let read_number () = Number (read_while is_digit) in
+  let is_ident_start c = is_alpha c || c = '_' in
+  let read_ident () =
+    Ident (read_while (fun c -> is_ident_start c || is_digit c))
+  in
+  let read_punctuation () =
+    Punctuation (String.make 1 (Option.get (next ())))
+  in
+  let next_token () : token spanned option =
+    skip_whitespace ();
+    match peek () with
+    | None -> None
+    | Some c ->
+        Some
+          (let start = !position in
+           let token =
+             if c = '"' then read_string ()
+             else if is_digit c then read_number ()
+             else if is_ident_start c then read_ident ()
+             else read_punctuation ()
+           in
+           { value = token; span = { start; finish = !position; file } })
+  in
+  Seq.of_dispenser next_token

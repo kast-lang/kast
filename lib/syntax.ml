@@ -51,6 +51,9 @@ type syntax = {
   starts : edges;
 }
 
+let empty : syntax =
+  { keywords = StringSet.empty; join = None; starts = EdgeMap.empty }
+
 let start_state (syntax : syntax) : keyword_parse_state =
   {
     priority = { before = 0; after = Int.min_int; assoc = Left };
