@@ -98,19 +98,6 @@ let show (syntax : syntax) : string =
   do_state (start_state syntax);
   !result
 
-let ensure_edge_exists (edges : edges ref) (edge : Edge.t) (priority : priority)
-    : keyword_parse_state =
-  edges :=
-    EdgeMap.update edge
-      (function
-        | Some prev -> Some prev
-        | None ->
-            Some { priority; finish = BoolMap.empty; next = EdgeMap.empty })
-      !edges;
-  let state = EdgeMap.find edge !edges in
-  if state.priority <> priority then failwith "wrong priority";
-  state
-
 let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
   match def.parts with
   | [ Binding _; Binding _ ] ->
