@@ -8,7 +8,7 @@ type value =
   | Simple of token spanned
   | Complex of { def : syntax_def; values : value StringMap.t }
 
-let rec show_impl (show_names : bool) (value : value) : string =
+let show_impl (show_names : bool) (value : value) : string =
   let rec impl = function
     | Simple token -> Lexer.show token
     | Complex { def; values } ->
@@ -83,7 +83,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
       | None -> failwith "expected to have some token"
     in
     let finish () : value =
-      match BoolMap.find_opt (Option.is_some prev_value) !(state.finish) with
+      match BoolMap.find_opt (Option.is_some prev_value) state.finish with
       | Some finished -> (
           let values = maybe_join values prev_value in
           let values = List.rev values in
@@ -123,7 +123,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         let edge : Edge.t =
           { value_before_keyword = Option.is_some prev_value; keyword = s }
         in
-        let next_with state = EdgeMap.find_opt edge !(state.next) in
+        let next_with state = EdgeMap.find_opt edge state.next in
         match next_with state with
         | Some next -> (
             match should_continue_with next with
@@ -155,7 +155,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
             | None -> (
                 match prev_value with
                 | Some prev_value -> (
-                    match !(syntax.join) with
+                    match syntax.join with
                     | Some join_state
                       when should_continue_with join_state && not joining ->
                         Log.trace "joining";
@@ -168,7 +168,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                         parse_until until state values (Some value) (not joined)
                     | _ -> finish ())
                 | None -> (
-                    match StringSet.find_opt s !(syntax.keywords) with
+                    match StringSet.find_opt s syntax.keywords with
                     | Some _ -> finish ()
                     | None ->
                         consume_token ();

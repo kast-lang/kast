@@ -39,22 +39,22 @@ module EdgeMap = Map.Make (Edge)
 
 type keyword_parse_state = {
   priority : priority;
-  finish : parsed BoolMap.t ref;
-  next : edges ref;
+  finish : parsed BoolMap.t;
+  next : edges;
 }
 
 and edges = keyword_parse_state EdgeMap.t
 
 type syntax = {
-  keywords : StringSet.t ref;
-  join : keyword_parse_state option ref;
-  starts : edges ref;
+  keywords : StringSet.t;
+  join : keyword_parse_state option;
+  starts : edges;
 }
 
 let start_state (syntax : syntax) : keyword_parse_state =
   {
     priority = { before = 0; after = Int.min_int; assoc = Left };
-    finish = ref (BoolMap.singleton true Simple);
+    finish = BoolMap.singleton true Simple;
     next = syntax.starts;
   }
 
@@ -92,8 +92,8 @@ let show (syntax : syntax) : string =
         result := !result ^ !prefix ^ "fin";
         if final_value then result := !result ^ " _";
         result := !result ^ " = " ^ parsed_name parsed ^ "\n")
-      !(state.finish);
-    do_edges !(state.next)
+      state.finish;
+    do_edges state.next
   in
   do_state (start_state syntax);
   !result
@@ -105,81 +105,97 @@ let ensure_edge_exists (edges : edges ref) (edge : Edge.t) (priority : priority)
       (function
         | Some prev -> Some prev
         | None ->
-            Some
-              { priority; finish = ref BoolMap.empty; next = ref EdgeMap.empty })
+            Some { priority; finish = BoolMap.empty; next = EdgeMap.empty })
       !edges;
   let state = EdgeMap.find edge !edges in
   if state.priority <> priority then failwith "wrong priority";
   state
 
-let add_syntax (def : syntax_def) (syntax : syntax) =
+let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
   match def.parts with
   | [ Binding _; Binding _ ] ->
-      syntax.join :=
-        Some
-          {
-            priority =
-              { before = def.priority; after = def.priority; assoc = def.assoc };
-            finish =
-              ref (BoolMap.of_list [ (false, Simple); (true, Complex def) ]);
-            next = ref EdgeMap.empty;
-          }
+      {
+        syntax with
+        join =
+          Some
+            {
+              priority =
+                {
+                  before = def.priority;
+                  after = def.priority;
+                  assoc = def.assoc;
+                };
+              finish = BoolMap.of_list [ (false, Simple); (true, Complex def) ];
+              next = EdgeMap.empty;
+            };
+      }
   | _ ->
-      let edges = ref syntax.starts in
-      let finish = ref (ref BoolMap.empty) in
-      let value_before = ref false in
-      let keyword_before = ref false in
-      let rec has_keyword_in list =
-        match list with
-        | Keyword _ :: _ -> true
-        | _ :: tail -> has_keyword_in tail
+      let rec has_keyword = function
+        | Keyword _ :: _tail -> true
+        | Binding _ :: tail -> has_keyword tail
         | [] -> false
       in
-      let rec has_keyword_after index list =
-        if index < 0 then has_keyword_in list
-        else
-          match list with
-          | _ :: tail -> has_keyword_after (index - 1) tail
-          | [] -> false
+      let rec add_to_state (state : keyword_parse_state) (parts : def_part list)
+          (prev_was_value : bool) (had_keyword_before : bool) :
+          keyword_parse_state =
+        match parts with
+        | [] ->
+            {
+              state with
+              finish =
+                BoolMap.update prev_was_value
+                  (fun prev ->
+                    if Option.is_some prev then failwith "conflict";
+                    Some (Complex def))
+                  state.finish;
+            }
+        | Binding _ :: remaining_parts ->
+            if prev_was_value then failwith "two bindings after each other";
+            add_to_state state remaining_parts true had_keyword_before
+        | _ ->
+            {
+              state with
+              next =
+                add_to_edges state.next parts prev_was_value had_keyword_before;
+            }
+      and add_to_edges (edges : edges) (parts : def_part list)
+          (prev_was_value : bool) (had_keyword_before : bool) : edges =
+        match parts with
+        | [] -> failwith "empty"
+        | Binding _ :: remaining_parts ->
+            if prev_was_value then failwith "two bindings after each other";
+            add_to_edges edges remaining_parts true had_keyword_before
+        | Keyword keyword :: remaining_parts ->
+            EdgeMap.update
+              { value_before_keyword = prev_was_value; keyword }
+              (fun prev ->
+                Some
+                  (add_to_state
+                     (match prev with
+                     | Some prev -> prev
+                     | None ->
+                         {
+                           priority =
+                             {
+                               before =
+                                 (if had_keyword_before then Int.min_int
+                                  else def.priority);
+                               after =
+                                 (if has_keyword remaining_parts then
+                                    Int.min_int
+                                  else def.priority);
+                               assoc = def.assoc;
+                             };
+                           finish = BoolMap.empty;
+                           next = EdgeMap.empty;
+                         })
+                     remaining_parts false true))
+              edges
       in
-      List.iteri
-        (fun index part ->
-          let keyword_after : bool = has_keyword_after index def.parts in
-          match part with
-          | Keyword keyword ->
-              syntax.keywords := StringSet.add keyword !(syntax.keywords);
-              let state =
-                ensure_edge_exists !edges
-                  { value_before_keyword = !value_before; keyword }
-                  {
-                    before =
-                      (if !keyword_before then Int.min_int else def.priority);
-                    after =
-                      (if keyword_after then Int.min_int else def.priority);
-                    assoc = def.assoc;
-                  }
-              in
-              value_before := false;
-              finish := state.finish;
-              edges := state.next
-          | Binding _name ->
-              if !value_before then failwith "two bindings after eachother wtf";
-              value_before := true)
-        def.parts;
-      !finish :=
-        BoolMap.update !value_before
-          (fun prev ->
-            if Option.is_some prev then failwith "conflict";
-            Some (Complex def))
-          !(!finish)
+      { syntax with starts = add_to_edges syntax.starts def.parts false false }
 
 let make_syntax (defs : syntax_def list) : syntax =
-  let result =
-    {
-      keywords = ref StringSet.empty;
-      join = ref None;
-      starts = ref EdgeMap.empty;
-    }
-  in
-  List.iter (fun def -> add_syntax def result) defs;
-  result
+  List.fold_left
+    (fun syntax def -> add_syntax def syntax)
+    { keywords = StringSet.empty; join = None; starts = EdgeMap.empty }
+    defs
