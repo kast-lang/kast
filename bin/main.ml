@@ -20,8 +20,7 @@ let rec stdin_loop () =
   prerr_endline (Ast.show ast);
   stdin_loop ()
 in
-let eval_file () =
-  let filename = Array.get Sys.argv 1 in
+let eval_file filename =
   let f = open_in filename in
   let contents = really_input_string f (in_channel_length f) in
   close_in f;
@@ -31,5 +30,5 @@ let eval_file () =
   (* prerr_endline (Ast.show ast); *)
   eval ast
 in
-if Array.length Sys.argv > 1 then eval_file ();
+List.iter eval_file (List.tl (Array.to_list Sys.argv));
 try stdin_loop () with End_of_file -> ()
