@@ -199,7 +199,7 @@ module Builtins = struct
         ("cos", BuiltinFn (float_fn cos));
         ("sqrt", BuiltinFn (float_fn sqrt));
         ("quote", BuiltinMacro quote);
-        ("parens", BuiltinFn (single_arg_fn "e" (fun x -> x)));
+        ("scope", BuiltinFn (single_arg_fn "e" (fun x -> x)));
         ("unit", BuiltinFn (fun _ -> Void));
         ("let", BuiltinMacro let');
       ]
