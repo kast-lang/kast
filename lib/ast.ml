@@ -216,7 +216,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         match next_with state with
         | Some next -> (
             match should_continue_with next with
-            | true ->
+            | true | false ->
                 consume_token ();
                 Log.trace ("continued " ^ show_edge edge);
                 let value =

@@ -1,6 +1,8 @@
 syntax then <- 0 = a ";" b;
 syntax then <- 0 = a ";";
 
+syntax let <- 5 = "let" pattern "=" value;
+
 syntax if <- 10 = "if" cond "then" then "else" else;
 syntax if -> 10 = cond "?" then ":" else;
 syntax if -> 10 = cond "then" then "else" else;
