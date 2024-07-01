@@ -222,13 +222,9 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
             | true ->
                 consume_token ();
                 Log.trace ("continued " ^ show_edge edge);
-                let value =
-                  parse_until syntax next.priority next
-                    (maybe_join values prev_value)
-                    None false
-                in
-                parse_until syntax until (start_state syntax) [] (Some value)
-                  false
+                parse_until syntax next.priority next
+                  (maybe_join values prev_value)
+                  None false
             | false ->
                 Log.trace ("should not continue with " ^ show_edge edge);
                 finish ())
@@ -279,7 +275,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                         | Punctuation _ ->
                             failwith "punctuation in place of value")))))
   in
-  let start_state = start_state syntax in
+  let start_state = { (start_state syntax) with next = EdgeMap.empty } in
   try parse_until syntax start_state.priority start_state [] None false
   with Failure f ->
     failwith
