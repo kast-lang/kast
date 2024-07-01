@@ -137,7 +137,9 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
   let rec parse_until (syntax : syntax) (until : priority)
       (state : keyword_parse_state) (values : value list)
       (prev_value : value option) (joining : bool) : value =
-    let should_continue_with (next : keyword_parse_state) : bool =
+    let should_continue_with (continuing : bool) (next : keyword_parse_state) :
+        bool =
+      Log.trace (Int.to_string until.after);
       if until.after == Int.min_int then true
       else
         match Int.compare until.after next.priority.before with
@@ -145,7 +147,8 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         | 0 -> (
             if until.assoc <> next.priority.assoc then
               failwith "same priority different associativity?";
-            match until.assoc with Left -> false | Right -> true)
+            if continuing && not state.root then true
+            else match until.assoc with Left -> false | Right -> true)
         | _ -> false
     in
     let finish () : value =
@@ -215,12 +218,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         let next_with state = EdgeMap.find_opt edge state.next in
         match next_with state with
         | Some next -> (
-            let should_continue =
-              match should_continue_with next with
-              | true -> true
-              | false -> not state.root
-            in
-            match should_continue with
+            match should_continue_with true next with
             | true ->
                 consume_token ();
                 Log.trace ("continued " ^ show_edge edge);
@@ -237,7 +235,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         | None -> (
             match next_with (start_state syntax) with
             | Some new_state -> (
-                match should_continue_with new_state with
+                match should_continue_with false new_state with
                 | true ->
                     consume_token ();
                     Log.trace ("started " ^ show_edge edge);
@@ -248,13 +246,16 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                     in
                     Log.trace ("parsed as " ^ show value);
                     parse_until syntax until state values (Some value) false
-                | false -> finish ())
+                | false ->
+                    Log.trace ("should not start with " ^ show_edge edge);
+                    finish ())
             | None -> (
                 match prev_value with
                 | Some prev_value -> (
                     match syntax.join with
                     | Some join_state
-                      when should_continue_with join_state && not joining ->
+                      when should_continue_with false join_state && not joining
+                      ->
                         Log.trace "joining";
                         let value =
                           parse_until syntax join_state.priority join_state

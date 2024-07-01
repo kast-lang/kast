@@ -1,7 +1,5 @@
-let fib = [T: num](n: T) -> T {
-    if n < 2 then {
+let fib = n => 
+    if n < 2 then
         1
-    } else {
-        fib(n - 1) + fib(n - 2)
-    }
-};
+    else
+        Self.fib (n - 1) + Self.fib (n - 2)
