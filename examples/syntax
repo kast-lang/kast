@@ -25,5 +25,10 @@ syntax quote -> 200 = "`" "(" expr ")";
 syntax unquote -> 200 = "$" expr;
 syntax unquote -> 200 = "$" "(" expr ")";
 
+syntax function_def <- 100000 = "fn" args "{" body "}";
+syntax function_def <- 100000 = "(" args ")" "{" body "}";
+syntax function_def <- 100000 = "(" ")" "{" body "}";
+syntax function_def <- 100000 = "{" body "}";
+
 syntax scope <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")"

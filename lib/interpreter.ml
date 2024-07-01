@@ -2,24 +2,27 @@ open Prelude
 
 type value =
   | Ast of Ast.value
-  | Macro
+  | Macro of fn
   | BuiltinMacro of (state -> Ast.value StringMap.t -> evaled)
   | BuiltinFn of (value -> value)
+  | Function of fn
   | Void
   | Bool of bool
   | Float of float
   | String of string
   | Dict of value StringMap.t
 
+and fn = { captured : state; args_pattern : Ast.value; body : Ast.value }
 and evaled = { value : value; new_bindings : value StringMap.t }
 and state = { locals : value StringMap.t; syntax : Syntax.syntax }
 
 let rec show = function
   | Ast ast -> Ast.show ast
   | Void -> "void"
-  | Macro -> "macro <...>"
+  | Macro _ -> "macro <...>"
   | BuiltinMacro _ -> "builtin_macro"
   | BuiltinFn _ -> "builtin"
+  | Function _ -> "function <...>"
   | Float value -> Float.to_string value
   | Bool value -> Bool.to_string value
   | String value -> "\"" ^ String.escaped value ^ "\""
@@ -32,6 +35,24 @@ let rec show = function
       ^ " }"
 
 let just_value value = { value; new_bindings = StringMap.empty }
+
+let update_locals =
+  StringMap.union (fun _name _prev new_value -> Some new_value)
+
+let pattern_match_opt (pattern : Ast.value) (value : value) :
+    value StringMap.t option =
+  match pattern with
+  | Nothing -> ( match value with Void -> Some StringMap.empty | _ -> None)
+  | Simple spanned -> (
+      match spanned.value with
+      | Ident ident -> Some (StringMap.singleton ident value)
+      | _ -> failwith "todo")
+  | _ -> failwith "todo"
+
+let pattern_match (pattern : Ast.value) (value : value) : value StringMap.t =
+  match pattern_match_opt pattern value with
+  | Some result -> result
+  | None -> failwith "match failed"
 
 let rec eval_ast (self : state) (ast : Ast.value) : evaled =
   match ast with
@@ -50,7 +71,18 @@ let rec eval_ast (self : state) (ast : Ast.value) : evaled =
   | Syntax { def; value } -> eval_ast self value
 
 and call (f : value) (args : value) : value =
-  match f with BuiltinFn f -> f args | _ -> failwith "not a function"
+  match f with
+  | BuiltinFn f -> f args
+  | Function f ->
+      (eval_ast
+         {
+           f.captured with
+           locals =
+             update_locals f.captured.locals (pattern_match f.args_pattern args);
+         }
+         f.body)
+        .value
+  | _ -> failwith "not a function"
 
 and eval_map (self : state) (values : Ast.value StringMap.t) : value =
   Dict (StringMap.map (fun ast -> (eval_ast self ast).value) values)
@@ -63,13 +95,10 @@ and eval_macro (self : state) (name : string) (values : Ast.value StringMap.t) :
       match value with
       | BuiltinFn f -> just_value (f (eval_map self values))
       | BuiltinMacro f -> f self values
-      | Macro -> failwith "todo"
+      | Macro _ -> failwith "todo"
       | _ -> failwith (name ^ " is not a macro"))
 
 let discard = function Void -> () | _ -> failwith "only void can be discarded"
-
-let update_locals =
-  StringMap.union (fun _name _prev new_value -> Some new_value)
 
 module Builtins = struct
   let call self args =
@@ -166,19 +195,20 @@ module Builtins = struct
     let expr = StringMap.find "expr" args in
     just_value (Ast (impl expr))
 
-  let pattern_match (pattern : Ast.value) value =
-    match pattern with
-    | Simple spanned -> (
-        match spanned.value with
-        | Ident ident -> StringMap.singleton ident value
-        | _ -> failwith "todo")
-    | _ -> failwith "todo"
-
   let let' self args =
     let pattern = StringMap.find "pattern" args in
     let value = StringMap.find "value" args in
     let value = (eval_ast self value).value in
     { value = Void; new_bindings = pattern_match pattern value }
+
+  let function_def self (args : Ast.value StringMap.t) =
+    let args_pattern =
+      match StringMap.find_opt "args" args with
+      | Some pat -> pat
+      | None -> Nothing
+    in
+    let body = StringMap.find "body" args in
+    just_value (Function { captured = self; args_pattern; body })
 
   let all =
     StringMap.of_list
@@ -202,6 +232,7 @@ module Builtins = struct
         ("scope", BuiltinFn (single_arg_fn "e" (fun x -> x)));
         ("unit", BuiltinFn (fun _ -> Void));
         ("let", BuiltinMacro let');
+        ("function_def", BuiltinMacro function_def);
       ]
 end
 
