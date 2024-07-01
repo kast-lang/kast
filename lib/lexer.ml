@@ -107,8 +107,18 @@ let parse : string -> filename -> token spanned Seq.t =
   let read_ident () =
     Ident (read_while (fun c -> is_ident_start c || is_digit c))
   in
+  let is_punctuation c =
+    (not (is_alphanumeric c)) && (not (is_space c)) && c <> '\'' && c <> '"'
+  in
+  let is_single_punctuation c = Option.is_some (String.index_opt "()[]{}" c) in
   let read_punctuation () =
-    Punctuation (String.make 1 (Option.get (next ())))
+    let c = Option.get (peek ()) in
+    if is_single_punctuation c then (
+      consume ();
+      Punctuation (String.make 1 c))
+    else
+      Punctuation
+        (read_while (fun c -> is_punctuation c && not (is_single_punctuation c)))
   in
   let next_token () : token spanned option =
     skip_whitespace ();
