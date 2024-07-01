@@ -13,15 +13,8 @@ type syntax_def = {
 type priority = { before : int; after : int; assoc : assoc }
 
 let merge_priority a b =
-  {
-    before = Int.min a.before b.before;
-    after = Int.min a.after b.after;
-    assoc =
-      (match (a.assoc, b.assoc) with
-      | Left, Left -> Left
-      | Right, Right -> Right
-      | _ -> failwith "associativities not matching");
-  }
+  if a <> b then failwith "different priorities";
+  a
 
 let need_pop prev next =
   let x = Int.compare prev.after next.after in
@@ -113,6 +106,12 @@ let show (syntax : syntax) : string =
   do_state (start_state syntax);
   !result
 
+let is_open_bracket s =
+  String.length s = 1 && String.contains "([{" (String.get s 0)
+
+let is_closing_bracket s =
+  String.length s = 1 && String.contains ")]}" (String.get s 0)
+
 let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
   match def.parts with
   | [ Binding _; Binding _ ] ->
@@ -176,10 +175,10 @@ let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
                      (let new_priority =
                         {
                           before =
-                            (if had_keyword_before then Int.min_int
+                            (if is_closing_bracket keyword then Int.min_int
                              else def.priority);
                           after =
-                            (if has_keyword remaining_parts then Int.min_int
+                            (if is_open_bracket keyword then Int.min_int
                              else def.priority);
                           assoc = def.assoc;
                         }

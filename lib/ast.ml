@@ -89,7 +89,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
     | Some token -> Log.never ("consumed " ^ Lexer.show token)
     | None -> failwith "expected to have some token"
   in
-  let parse_syntax () =
+  let parse_syntax () : syntax_def =
     match peek tokens with
     | Some { value = Ident "syntax"; _ } ->
         consume_token ();
