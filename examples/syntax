@@ -7,6 +7,8 @@ syntax if <- 10 = "if" cond "then" then "else" else;
 syntax if -> 10 = cond "?" then ":" else;
 syntax if -> 10 = cond "then" then "else" else;
 
+syntax function_def <- 11 = args "=>" body;
+
 syntax pipe <- 15 = args "|" f;
 
 syntax uplus <- 20 = "+" x;
@@ -37,4 +39,4 @@ syntax function_def <- 100000 = "{" body "}";
 syntax scope <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")";
 
-let pipe = macro (args) { `($args.f $args.args) }
+let pipe = macro (args => `($args.f $args.args))
