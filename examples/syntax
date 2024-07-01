@@ -7,6 +7,8 @@ syntax if <- 10 = "if" cond "then" then "else" else;
 syntax if -> 10 = cond "?" then ":" else;
 syntax if -> 10 = cond "then" then "else" else;
 
+syntax pipe <- 15 = args "|" f;
+
 syntax uplus <- 20 = "+" x;
 syntax negate <- 20 = "-" x;
 syntax add <- 20 = lhs "+" rhs;
@@ -25,10 +27,14 @@ syntax quote -> 200 = "`" "(" expr ")";
 syntax unquote -> 200 = "$" expr;
 syntax unquote -> 200 = "$" "(" expr ")";
 
+syntax field_access <- 300 = obj "." field;
+
 syntax function_def <- 100000 = "fn" args "{" body "}";
 syntax function_def <- 100000 = "(" args ")" "{" body "}";
 syntax function_def <- 100000 = "(" ")" "{" body "}";
 syntax function_def <- 100000 = "{" body "}";
 
 syntax scope <- 100000 = "(" e ")";
-syntax unit <- 100000 = "(" ")"
+syntax unit <- 100000 = "(" ")";
+
+let pipe = macro (args) { `($args.f $args.args) }

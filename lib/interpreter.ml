@@ -17,7 +17,7 @@ and evaled = { value : value; new_bindings : value StringMap.t }
 and state = { locals : value StringMap.t; syntax : Syntax.syntax }
 
 let rec show = function
-  | Ast ast -> Ast.show ast
+  | Ast ast -> "`(" ^ Ast.show ast ^ ")"
   | Void -> "void"
   | Macro _ -> "macro <...>"
   | BuiltinMacro _ -> "builtin_macro"
@@ -70,18 +70,20 @@ let rec eval_ast (self : state) (ast : Ast.value) : evaled =
   | Complex { def; values } -> eval_macro self def.name values
   | Syntax { def; value } -> eval_ast self value
 
+and call_impl (f : fn) (args : value) : value =
+  (eval_ast
+     {
+       f.captured with
+       locals =
+         update_locals f.captured.locals (pattern_match f.args_pattern args);
+     }
+     f.body)
+    .value
+
 and call (f : value) (args : value) : value =
   match f with
   | BuiltinFn f -> f args
-  | Function f ->
-      (eval_ast
-         {
-           f.captured with
-           locals =
-             update_locals f.captured.locals (pattern_match f.args_pattern args);
-         }
-         f.body)
-        .value
+  | Function f -> call_impl f args
   | _ -> failwith "not a function"
 
 and eval_map (self : state) (values : Ast.value StringMap.t) : value =
@@ -95,10 +97,24 @@ and eval_macro (self : state) (name : string) (values : Ast.value StringMap.t) :
       match value with
       | BuiltinFn f -> just_value (f (eval_map self values))
       | BuiltinMacro f -> f self values
-      | Macro _ -> failwith "todo"
+      | Macro f -> (
+          let values = Dict (StringMap.map (fun x -> Ast x) values) in
+          Log.trace ("call macro with " ^ show values);
+          match call_impl f values with
+          | Ast new_ast ->
+              Log.trace ("macro expanded to " ^ Ast.show new_ast);
+              eval_ast self new_ast
+          | _ -> failwith "macro returned not an ast")
       | _ -> failwith (name ^ " is not a macro"))
 
-let discard = function Void -> () | _ -> failwith "only void can be discarded"
+let discard = function
+  | Void -> ()
+  | that -> failwith ("only void can be discarded (discarded " ^ show that ^ ")")
+
+let get_field obj field =
+  match obj with
+  | Dict dict -> StringMap.find field dict
+  | _ -> failwith "can't get field of this thang"
 
 module Builtins = struct
   let call self args =
@@ -183,9 +199,12 @@ module Builtins = struct
     let rec impl : Ast.value -> Ast.value = function
       | Complex { def = { name = "unquote"; _ }; values; _ } -> (
           let inner = StringMap.find "expr" values in
+          Log.trace ("unquoting" ^ Ast.show inner);
           match (eval_ast self inner).value with
           | Ast inner -> inner
-          | _ -> failwith "unquoted things should be asts")
+          | other ->
+              failwith
+                ("unquoted things should be asts (was " ^ show other ^ ")"))
       | Nothing -> Nothing
       | Simple token -> Simple token
       | Complex { def; values } ->
@@ -193,6 +212,7 @@ module Builtins = struct
       | Syntax { def; value } -> Syntax { def; value = impl value }
     in
     let expr = StringMap.find "expr" args in
+    Log.trace ("quoting " ^ Ast.show expr);
     just_value (Ast (impl expr))
 
   let let' self args =
@@ -209,6 +229,18 @@ module Builtins = struct
     in
     let body = StringMap.find "body" args in
     just_value (Function { captured = self; args_pattern; body })
+
+  let field_access self args =
+    let obj = StringMap.find "obj" args in
+    let obj = (eval_ast self obj).value in
+    let field = StringMap.find "field" args in
+    match field with
+    | Simple { value = Ident ident; _ } -> just_value (get_field obj ident)
+    | _ -> failwith "field access must be using an ident"
+
+  let macro = function
+    | Function f -> Macro f
+    | _ -> failwith "expected a function"
 
   let all =
     StringMap.of_list
@@ -233,6 +265,8 @@ module Builtins = struct
         ("unit", BuiltinFn (fun _ -> Void));
         ("let", BuiltinMacro let');
         ("function_def", BuiltinMacro function_def);
+        ("field_access", BuiltinMacro field_access);
+        ("macro", BuiltinFn macro);
       ]
 end
 

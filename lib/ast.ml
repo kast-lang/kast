@@ -215,8 +215,13 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         let next_with state = EdgeMap.find_opt edge state.next in
         match next_with state with
         | Some next -> (
-            match should_continue_with next with
-            | true | false ->
+            let should_continue =
+              match should_continue_with next with
+              | true -> true
+              | false -> not state.root
+            in
+            match should_continue with
+            | true ->
                 consume_token ();
                 Log.trace ("continued " ^ show_edge edge);
                 let value =

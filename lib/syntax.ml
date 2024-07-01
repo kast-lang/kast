@@ -40,6 +40,7 @@ end
 module EdgeMap = Map.Make (Edge)
 
 type keyword_parse_state = {
+  root : bool;
   priority : priority;
   finish : parsed BoolMap.t;
   next : edges;
@@ -58,6 +59,7 @@ let empty : syntax =
 
 let start_state (syntax : syntax) : keyword_parse_state =
   {
+    root = true;
     priority = { before = 0; after = Int.min_int; assoc = Left };
     finish = BoolMap.of_list [ (false, Nothing); (true, Simple) ];
     next = syntax.starts;
@@ -120,6 +122,7 @@ let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
         join =
           Some
             {
+              root = false;
               priority =
                 {
                   before = def.priority;
@@ -191,6 +194,7 @@ let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
                           }
                       | None ->
                           {
+                            root = false;
                             priority = new_priority;
                             finish = BoolMap.empty;
                             next = EdgeMap.empty;
