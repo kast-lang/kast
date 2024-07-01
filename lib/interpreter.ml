@@ -11,16 +11,14 @@ type value =
   | Float of float
   | String of string
   | Dict of value StringMap.t
+  | Struct of struct'
   | Ref of value ref
 
 and fn = { captured : state; args_pattern : Ast.value; body : Ast.value }
 and evaled = { value : value; new_bindings : value StringMap.t }
-
-and state = {
-  self : value ref;
-  locals : value StringMap.t;
-  syntax : Syntax.syntax;
-}
+and struct' = { parent : struct' option; mutable data : state_data }
+and state = { self : struct'; data : state_data }
+and state_data = { locals : value StringMap.t; syntax : Syntax.syntax }
 
 let rec show = function
   | Ast ast -> "`(" ^ Ast.show ast ^ ")"
@@ -40,6 +38,7 @@ let rec show = function
           values ""
       ^ " }"
   | Ref value -> show !value
+  | Struct _ -> "struct <...>"
 
 let just_value value = { value; new_bindings = StringMap.empty }
 
@@ -63,7 +62,18 @@ let pattern_match (pattern : Ast.value) (value : value) : value StringMap.t =
 
 let get_local_opt (self : state) (name : string) : value option =
   let unref = function Ref value -> !value | other -> other in
-  Option.map unref (StringMap.find_opt name self.locals)
+  match StringMap.find_opt name self.data.locals with
+  | Some value -> Some (unref value)
+  | None ->
+      let rec find_in_scopes s =
+        match StringMap.find_opt name s.data.locals with
+        | Some value -> Some (unref value)
+        | None -> (
+            match s.parent with
+            | Some parent -> find_in_scopes parent
+            | None -> None)
+      in
+      find_in_scopes self.self
 
 let rec eval_ast (self : state) (ast : Ast.value) : evaled =
   match ast with
@@ -85,8 +95,13 @@ and call_impl (f : fn) (args : value) : value =
   (eval_ast
      {
        f.captured with
-       locals =
-         update_locals f.captured.locals (pattern_match f.args_pattern args);
+       data =
+         {
+           f.captured.data with
+           locals =
+             update_locals f.captured.data.locals
+               (pattern_match f.args_pattern args);
+         };
      }
      f.body)
     .value
@@ -139,7 +154,14 @@ module Builtins = struct
     in
     discard a;
     let self_with_new_bindings =
-      { self with locals = update_locals self.locals a_new_bindings }
+      {
+        self with
+        data =
+          {
+            self.data with
+            locals = update_locals self.data.locals a_new_bindings;
+          };
+      }
     in
     match StringMap.find_opt "b" args with
     | Some b ->
@@ -160,7 +182,14 @@ module Builtins = struct
   let if' self args =
     let cond = eval_ast self (StringMap.find "cond" args) in
     let self_with_new_bindings =
-      { self with locals = update_locals self.locals cond.new_bindings }
+      {
+        self with
+        data =
+          {
+            self.data with
+            locals = update_locals self.data.locals cond.new_bindings;
+          };
+      }
     in
     let cond =
       match cond.value with
@@ -251,7 +280,7 @@ module Builtins = struct
 
   let macro = function
     | Function f -> Macro f
-    | _ -> failwith "expected a function"
+    | other -> failwith ("expected a function, got " ^ show other)
 
   let cmp_fn f =
     dict_fn (fun args ->
@@ -261,10 +290,13 @@ module Builtins = struct
         | Float lhs, Float rhs -> Bool (f lhs rhs)
         | _ -> failwith "only floats")
 
+  let dbg value = String (show value)
+
   let all =
     StringMap.of_list
       [
         ("print", BuiltinFn print);
+        ("dbg", BuiltinFn dbg);
         ("call", BuiltinMacro call);
         ("then", BuiltinMacro then');
         ("if", BuiltinMacro if');
@@ -285,7 +317,7 @@ module Builtins = struct
         ("let", BuiltinMacro let');
         ("function_def", BuiltinMacro function_def);
         ("field_access", BuiltinMacro field_access);
-        ("macro", BuiltinFn macro);
+        ("macro", BuiltinFn (single_arg_fn "def" macro));
         ("less", BuiltinFn (cmp_fn ( < )));
         ("less_or_equal", BuiltinFn (cmp_fn ( <= )));
         ("equal", BuiltinFn (cmp_fn ( = )));
@@ -296,21 +328,32 @@ module Builtins = struct
 end
 
 let empty () : state =
-  let self = ref (Dict StringMap.empty) in
-  {
-    self;
-    locals =
-      StringMap.union
-        (fun _key _prev value -> Some value)
-        Builtins.all
-        (StringMap.singleton "Self" (Ref self));
-    syntax = Syntax.empty;
-  }
+  let self =
+    {
+      parent = None;
+      data = { locals = StringMap.empty; syntax = Syntax.empty };
+    }
+  in
+  let state =
+    {
+      self;
+      data =
+        {
+          locals =
+            StringMap.union
+              (fun _key _prev value -> Some value)
+              Builtins.all
+              (StringMap.singleton "Self" (Struct self));
+          syntax = Syntax.empty;
+        };
+    }
+  in
+  state
 
 let eval (self : state ref) (s : string) ~(filename : string) : value =
-  !self.self := Dict !self.locals;
+  !self.self.data <- !self.data;
   let tokens = Lexer.parse s (Filename filename) in
-  let ast = Ast.parse !self.syntax tokens in
+  let ast = Ast.parse !self.data.syntax tokens in
   let result = eval_ast !self ast in
   let rec extend_syntax syntax = function
     | Ast.Syntax { def; value } ->
@@ -320,8 +363,11 @@ let eval (self : state ref) (s : string) ~(filename : string) : value =
   self :=
     {
       !self with
-      syntax = extend_syntax !self.syntax ast;
-      locals = update_locals !self.locals result.new_bindings;
+      data =
+        {
+          syntax = extend_syntax !self.data.syntax ast;
+          locals = update_locals !self.data.locals result.new_bindings;
+        };
     };
   result.value
 
@@ -331,5 +377,5 @@ let eval_file (self : state ref) (filename : string) : value =
   close_in f;
   let value = eval self contents ~filename in
   Log.trace ("after " ^ filename ^ " syntax:");
-  Log.trace (Syntax.show !self.syntax);
+  Log.trace (Syntax.show !self.data.syntax);
   value

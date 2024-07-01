@@ -3,6 +3,7 @@ syntax then <- 0 = a ";";
 
 syntax let <- 5 = "let" pattern "=" value;
 
+syntax macro <- 6 = "macro" def;
 syntax function_def <- 7 = args "=>" body;
 
 syntax if <- 10 = "if" cond "then" then "else" else;
