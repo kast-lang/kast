@@ -1,8 +1,7 @@
+open Prelude
 open Span
 open Lexer
 open Syntax
-module StringMap = Map.Make (String)
-module StringSet = Set.Make (String)
 
 type value =
   | Nothing

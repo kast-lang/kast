@@ -1,3 +1,5 @@
+open Prelude
+
 type assoc = Left | Right
 type def_part = Keyword of string | Binding of string
 
@@ -7,10 +9,6 @@ type syntax_def = {
   priority : int;
   parts : def_part list;
 }
-
-module StringMap = Map.Make (String)
-module StringSet = Set.Make (String)
-module BoolMap = Map.Make (Bool)
 
 type priority = { before : int; after : int; assoc : assoc }
 

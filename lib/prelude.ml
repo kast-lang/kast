@@ -49,3 +49,7 @@ let split_whitespace : string -> string Seq.t =
 
 let head (list : 'a list) : 'a option =
   match list with head :: _tail -> Some head | [] -> None
+
+module StringMap = Map.Make (String)
+module StringSet = Set.Make (String)
+module BoolMap = Map.Make (Bool)

@@ -1,9 +1,9 @@
 syntax then <- 0 = a ";" b;
-syntax ignore <- 0 = stmt ";";
+syntax then <- 0 = a ";";
 
-syntax ifthenelse <- 10 = "if" cond "then" then "else" else;
-syntax tern -> 10 = cond "?" then ":" else;
-syntax thenelse -> 10 = cond "then" then "else" else;
+syntax if <- 10 = "if" cond "then" then "else" else;
+syntax if -> 10 = cond "?" then ":" else;
+syntax if -> 10 = cond "then" then "else" else;
 
 syntax uplus <- 20 = "+" x;
 syntax negate <- 20 = "-" x;
