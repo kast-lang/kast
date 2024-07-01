@@ -12,6 +12,17 @@ type syntax_def = {
 
 type priority = { before : int; after : int; assoc : assoc }
 
+let merge_priority a b =
+  {
+    before = Int.min a.before b.before;
+    after = Int.min a.after b.after;
+    assoc =
+      (match (a.assoc, b.assoc) with
+      | Left, Left -> Left
+      | Right, Right -> Right
+      | _ -> failwith "associativities not matching");
+  }
+
 let need_pop prev next =
   let x = Int.compare prev.after next.after in
   if x < 0 then false
@@ -162,24 +173,29 @@ let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
               (fun prev ->
                 Some
                   (add_to_state
-                     (match prev with
-                     | Some prev -> prev
-                     | None ->
-                         {
-                           priority =
-                             {
-                               before =
-                                 (if had_keyword_before then Int.min_int
-                                  else def.priority);
-                               after =
-                                 (if has_keyword remaining_parts then
-                                    Int.min_int
-                                  else def.priority);
-                               assoc = def.assoc;
-                             };
-                           finish = BoolMap.empty;
-                           next = EdgeMap.empty;
-                         })
+                     (let new_priority =
+                        {
+                          before =
+                            (if had_keyword_before then Int.min_int
+                             else def.priority);
+                          after =
+                            (if has_keyword remaining_parts then Int.min_int
+                             else def.priority);
+                          assoc = def.assoc;
+                        }
+                      in
+                      match prev with
+                      | Some prev ->
+                          {
+                            prev with
+                            priority = merge_priority prev.priority new_priority;
+                          }
+                      | None ->
+                          {
+                            priority = new_priority;
+                            finish = BoolMap.empty;
+                            next = EdgeMap.empty;
+                          })
                      remaining_parts false true))
               edges
       in

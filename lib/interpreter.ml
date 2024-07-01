@@ -1,7 +1,7 @@
 open Prelude
 
 type value =
-  | Todo of Ast.value
+  | Ast of Ast.value
   | Macro
   | BuiltinMacro of (state -> Ast.value StringMap.t -> value)
   | BuiltinFn of (value -> value)
@@ -14,7 +14,7 @@ type value =
 and state = { locals : value StringMap.t; syntax : Syntax.syntax }
 
 let rec show = function
-  | Todo ast -> Ast.show ast
+  | Ast ast -> Ast.show ast
   | Void -> "void"
   | Macro -> "macro <...>"
   | BuiltinMacro _ -> "builtin_macro"
@@ -127,6 +127,10 @@ module Builtins = struct
 
   let unary_op = float_macro "x"
 
+  let quote state args =
+    let expr = StringMap.find "expr" args in
+    Ast expr
+
   let all =
     StringMap.of_list
       [
@@ -145,6 +149,7 @@ module Builtins = struct
         ("sin", BuiltinFn (float_fn sin));
         ("cos", BuiltinFn (float_fn cos));
         ("sqrt", BuiltinFn (float_fn sqrt));
+        ("quote", BuiltinMacro quote);
         ("parens", BuiltinFn (single_arg_fn "e" (fun x -> x)));
         ("unit", BuiltinFn (fun _ -> Void));
       ]
@@ -168,4 +173,7 @@ let eval_file (self : state ref) (filename : string) : value =
   let f = open_in filename in
   let contents = really_input_string f (in_channel_length f) in
   close_in f;
-  eval self contents ~filename
+  let value = eval self contents ~filename in
+  Log.trace ("after " ^ filename ^ " syntax:");
+  Log.trace (Syntax.show !self.syntax);
+  value

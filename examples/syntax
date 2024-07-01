@@ -18,5 +18,8 @@ syntax pow -> 60 = lhs "^" rhs;
 
 syntax call <- 100 = f args;
 
+syntax quote -> 200 = "`" expr;
+syntax quote -> 200 = "`" "(" expr ")";
+
 syntax parens <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")"

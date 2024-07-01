@@ -3,6 +3,10 @@ open Span
 open Lexer
 open Syntax
 
+let show_spanned (token : token spanned) : string =
+  let span = token.span in
+  "at " ^ Span.show span ^ " (" ^ Lexer.show token ^ ")"
+
 type value =
   | Nothing
   | Simple of token spanned
@@ -222,7 +226,9 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                 in
                 parse_until syntax until (start_state syntax) [] (Some value)
                   false
-            | false -> finish ())
+            | false ->
+                Log.trace ("should not continue with " ^ show_edge edge);
+                finish ())
         | None -> (
             match next_with (start_state syntax) with
             | Some new_state -> (
@@ -267,6 +273,12 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
                         | Punctuation _ ->
                             failwith "punctuation in place of value")))))
   in
-
   let start_state = start_state syntax in
-  parse_until syntax start_state.priority start_state [] None false
+  try parse_until syntax start_state.priority start_state [] None false
+  with Failure f ->
+    failwith
+      ("at "
+      ^ (match peek tokens with
+        | Some token -> show_spanned token
+        | None -> "eof")
+      ^ ": " ^ f)
