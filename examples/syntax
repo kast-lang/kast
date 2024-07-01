@@ -1,22 +1,22 @@
-syntax then < 0 = a ";" b;
-syntax ignore < 0 = stmt ";";
+syntax then <- 0 = a ";" b;
+syntax ignore <- 0 = stmt ";";
 
-syntax ifthenelse < 10 = "if" cond "then" then "else" else;
-syntax tern > 10 = cond "?" then ":" else;
-syntax thenelse > 10 = cond "then" then "else" else;
+syntax ifthenelse <- 10 = "if" cond "then" then "else" else;
+syntax tern -> 10 = cond "?" then ":" else;
+syntax thenelse -> 10 = cond "then" then "else" else;
 
-syntax uplus < 20 = "+" x;
-syntax negate < 20 = "-" x;
-syntax add < 20 = lhs "+" rhs;
-syntax sub < 20 = lhs "-" rhs;
+syntax uplus <- 20 = "+" x;
+syntax negate <- 20 = "-" x;
+syntax add <- 20 = lhs "+" rhs;
+syntax sub <- 20 = lhs "-" rhs;
 
-syntax mul < 40 = lhs "*" rhs;
-syntax div < 40 = lhs "/" rhs;
-syntax mod < 40 = lhs "%" rhs;
+syntax mul <- 40 = lhs "*" rhs;
+syntax div <- 40 = lhs "/" rhs;
+syntax mod <- 40 = lhs "%" rhs;
 
-syntax pow > 60 = lhs "^" rhs;
+syntax pow -> 60 = lhs "^" rhs;
 
-syntax call < 100 = f args;
+syntax call <- 100 = f args;
 
-syntax parens < 100000 = "(" e ")";
-syntax unit < 100000 = "(" ")"
+syntax parens <- 100000 = "(" e ")";
+syntax unit <- 100000 = "(" ")"

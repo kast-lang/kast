@@ -29,7 +29,7 @@ let show_impl (show_names : bool) (value : value) : string =
         ^ ")"
     | Syntax { def; value } ->
         "(syntax " ^ def.name ^ " "
-        ^ (match def.assoc with Left -> "<" | Right -> ">")
+        ^ (match def.assoc with Left -> "<-" | Right -> "->")
         ^ " " ^ Int.to_string def.priority ^ " ="
         ^ List.fold_left
             (fun s part ->
@@ -97,9 +97,9 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) : value =
         in
         let assoc =
           match pop tokens with
-          | Some { value = Punctuation "<"; _ } -> Left
-          | Some { value = Punctuation ">"; _ } -> Right
-          | _ -> failwith "expected associativity (< or >)"
+          | Some { value = Punctuation "<-"; _ } -> Left
+          | Some { value = Punctuation "->"; _ } -> Right
+          | _ -> failwith "expected associativity (<- or ->)"
         in
         let priority =
           match pop tokens with
