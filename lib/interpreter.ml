@@ -1,9 +1,12 @@
 open Prelude
 
+type ast_data = { span : Span.span; mutable ir : Ir.t option }
+type ast = ast_data Ast.node
+
 type value =
-  | Ast of Ast.value
+  | Ast of ast
   | Macro of fn
-  | BuiltinMacro of (state -> Ast.value StringMap.t -> evaled)
+  | BuiltinMacro of (state -> ast StringMap.t -> evaled)
   | BuiltinFn of (value -> value)
   | Function of fn
   | Void
@@ -14,7 +17,7 @@ type value =
   | Struct of struct'
   | Ref of value ref
 
-and fn = { captured : state; args_pattern : Ast.value option; body : Ast.value }
+and fn = { captured : state; args_pattern : ast option; body : ast }
 and evaled = { value : value; new_bindings : value StringMap.t }
 and struct' = { parent : struct' option; mutable data : state_data }
 and state = { self : struct'; data : state_data }
@@ -45,7 +48,7 @@ let just_value value = { value; new_bindings = StringMap.empty }
 let update_locals =
   StringMap.union (fun _name _prev new_value -> Some new_value)
 
-let pattern_match_opt (pattern : Ast.value option) (value : value) :
+let pattern_match_opt (pattern : ast option) (value : value) :
     value StringMap.t option =
   match pattern with
   | None | Some (Nothing _) -> (
@@ -56,8 +59,7 @@ let pattern_match_opt (pattern : Ast.value option) (value : value) :
       | _ -> failwith "todo")
   | _ -> failwith "todo"
 
-let pattern_match (pattern : Ast.value option) (value : value) :
-    value StringMap.t =
+let pattern_match (pattern : ast option) (value : value) : value StringMap.t =
   match pattern_match_opt pattern value with
   | Some result -> result
   | None -> failwith "match failed"
@@ -77,7 +79,7 @@ let get_local_opt (self : state) (name : string) : value option =
       in
       find_in_scopes self.self
 
-let rec eval_ast (self : state) (ast : Ast.value) : evaled =
+let rec eval_ast (self : state) (ast : ast) : evaled =
   match ast with
   | Nothing _ -> just_value Void
   | Simple { token; _ } ->
@@ -114,10 +116,10 @@ and call (f : value) (args : value) : value =
   | Function f -> call_impl f args
   | _ -> failwith "not a function"
 
-and eval_map (self : state) (values : Ast.value StringMap.t) : value =
+and eval_map (self : state) (values : ast StringMap.t) : value =
   Dict (StringMap.map (fun ast -> (eval_ast self ast).value) values)
 
-and eval_macro (self : state) (name : string) (values : Ast.value StringMap.t) :
+and eval_macro (self : state) (name : string) (values : ast StringMap.t) :
     evaled =
   match get_local_opt self name with
   | None -> failwith (name ^ " not found")
@@ -238,7 +240,7 @@ module Builtins = struct
   let unary_op = float_macro "x"
 
   let quote self args =
-    let rec impl : Ast.value -> Ast.value = function
+    let rec impl : ast -> ast = function
       | Complex { def = { name = "unquote"; _ }; values; _ } -> (
           let inner = StringMap.find "expr" values in
           Log.trace ("unquoting" ^ Ast.show inner);
@@ -263,7 +265,7 @@ module Builtins = struct
     let value = (eval_ast self value).value in
     { value = Void; new_bindings = pattern_match (Some pattern) value }
 
-  let function_def self (args : Ast.value StringMap.t) =
+  let function_def self (args : ast StringMap.t) =
     let args_pattern = StringMap.find_opt "args" args in
     let body = StringMap.find "body" args in
     just_value (Function { captured = self; args_pattern; body })
@@ -353,6 +355,7 @@ let eval (self : state ref) (s : string) ~(filename : string) : value =
   !self.self.data <- !self.data;
   let tokens = Lexer.parse s filename in
   let ast = Ast.parse !self.data.syntax tokens filename in
+  let ast = Ast.map (fun span -> { span; ir = None }) ast in
   let result = eval_ast !self ast in
   let rec extend_syntax syntax = function
     | Ast.Syntax { def; value; _ } ->

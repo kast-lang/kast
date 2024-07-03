@@ -9,6 +9,18 @@ type 'a node =
   | Complex of { def : syntax_def; values : 'a node StringMap.t; data : 'a }
   | Syntax of { def : syntax_def; value : 'a node; data : 'a }
 
+let rec map : 'a 'b. ('a -> 'b) -> 'a node -> 'b node =
+ fun f node ->
+  match node with
+  | Nothing { data } -> (Nothing { data = (f data : 'b) } : 'b node)
+  | Simple { token; data } -> (Simple { token; data = (f data : 'b) } : 'b node)
+  | Complex { def; values; data } ->
+      (Complex
+         { def; values = StringMap.map (map f) values; data = (f data : 'b) }
+        : 'b node)
+  | Syntax { def; value; data } ->
+      (Syntax { def; value = map f value; data = (f data : 'b) } : 'b node)
+
 let data : 'a. 'a node -> 'a = function
   | Nothing { data }
   | Simple { data; _ }
