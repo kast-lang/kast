@@ -56,13 +56,17 @@ let raw = function
 
 type position_with_index = { pos : pos; index : int }
 
-let show : token spanned -> string = fun spanned -> raw spanned.value
+let show : token -> string = raw
+
+let show_spanned (token : token spanned) : string =
+  let span = token.span in
+  "at " ^ Span.show span ^ " (" ^ show token.value ^ ")"
 
 let parse : string -> filename -> token spanned Seq.t =
  fun contents file ->
   let content_len = String.length contents in
   let index = ref 0 in
-  let position = ref { line = 0; column = 0 } in
+  let position = ref start_pos in
   let peek : unit -> char option =
    fun () ->
     if !index < content_len then Some (String.get contents !index) else None

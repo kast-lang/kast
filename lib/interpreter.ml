@@ -14,7 +14,7 @@ type value =
   | Struct of struct'
   | Ref of value ref
 
-and fn = { captured : state; args_pattern : Ast.value; body : Ast.value }
+and fn = { captured : state; args_pattern : Ast.value option; body : Ast.value }
 and evaled = { value : value; new_bindings : value StringMap.t }
 and struct' = { parent : struct' option; mutable data : state_data }
 and state = { self : struct'; data : state_data }
@@ -45,17 +45,19 @@ let just_value value = { value; new_bindings = StringMap.empty }
 let update_locals =
   StringMap.union (fun _name _prev new_value -> Some new_value)
 
-let pattern_match_opt (pattern : Ast.value) (value : value) :
+let pattern_match_opt (pattern : Ast.value option) (value : value) :
     value StringMap.t option =
   match pattern with
-  | Nothing -> ( match value with Void -> Some StringMap.empty | _ -> None)
-  | Simple spanned -> (
-      match spanned.value with
+  | None | Some (Nothing _) -> (
+      match value with Void -> Some StringMap.empty | _ -> None)
+  | Some (Simple { token; _ }) -> (
+      match token with
       | Ident ident -> Some (StringMap.singleton ident value)
       | _ -> failwith "todo")
   | _ -> failwith "todo"
 
-let pattern_match (pattern : Ast.value) (value : value) : value StringMap.t =
+let pattern_match (pattern : Ast.value option) (value : value) :
+    value StringMap.t =
   match pattern_match_opt pattern value with
   | Some result -> result
   | None -> failwith "match failed"
@@ -77,8 +79,8 @@ let get_local_opt (self : state) (name : string) : value option =
 
 let rec eval_ast (self : state) (ast : Ast.value) : evaled =
   match ast with
-  | Nothing -> just_value Void
-  | Simple { value = token; span = _ } ->
+  | Nothing _ -> just_value Void
+  | Simple { token; _ } ->
       just_value
         (match token with
         | Ident ident -> (
@@ -88,8 +90,8 @@ let rec eval_ast (self : state) (ast : Ast.value) : evaled =
         | Number num -> Float (float_of_string num)
         | String { value; _ } -> String value
         | Punctuation _ -> failwith "punctuation")
-  | Complex { def; values } -> eval_macro self def.name values
-  | Syntax { def; value } -> eval_ast self value
+  | Complex { def; values; _ } -> eval_macro self def.name values
+  | Syntax { def; value; _ } -> eval_ast self value
 
 and call_impl (f : fn) (args : value) : value =
   (eval_ast
@@ -245,11 +247,11 @@ module Builtins = struct
           | other ->
               failwith
                 ("unquoted things should be asts (was " ^ show other ^ ")"))
-      | Nothing -> Nothing
+      | Nothing data -> Nothing data
       | Simple token -> Simple token
-      | Complex { def; values } ->
-          Complex { def; values = StringMap.map impl values }
-      | Syntax { def; value } -> Syntax { def; value = impl value }
+      | Complex { def; values; data } ->
+          Complex { def; values = StringMap.map impl values; data }
+      | Syntax { def; value; data } -> Syntax { def; value = impl value; data }
     in
     let expr = StringMap.find "expr" args in
     Log.trace ("quoting " ^ Ast.show expr);
@@ -259,14 +261,10 @@ module Builtins = struct
     let pattern = StringMap.find "pattern" args in
     let value = StringMap.find "value" args in
     let value = (eval_ast self value).value in
-    { value = Void; new_bindings = pattern_match pattern value }
+    { value = Void; new_bindings = pattern_match (Some pattern) value }
 
   let function_def self (args : Ast.value StringMap.t) =
-    let args_pattern =
-      match StringMap.find_opt "args" args with
-      | Some pat -> pat
-      | None -> Nothing
-    in
+    let args_pattern = StringMap.find_opt "args" args in
     let body = StringMap.find "body" args in
     just_value (Function { captured = self; args_pattern; body })
 
@@ -275,7 +273,7 @@ module Builtins = struct
     let obj = (eval_ast self obj).value in
     let field = StringMap.find "field" args in
     match field with
-    | Simple { value = Ident ident; _ } -> just_value (get_field obj ident)
+    | Simple { token = Ident ident; _ } -> just_value (get_field obj ident)
     | _ -> failwith "field access must be using an ident"
 
   let macro = function
@@ -351,12 +349,13 @@ let empty () : state =
   state
 
 let eval (self : state ref) (s : string) ~(filename : string) : value =
+  let filename = Span.Filename filename in
   !self.self.data <- !self.data;
-  let tokens = Lexer.parse s (Filename filename) in
-  let ast = Ast.parse !self.data.syntax tokens in
+  let tokens = Lexer.parse s filename in
+  let ast = Ast.parse !self.data.syntax tokens filename in
   let result = eval_ast !self ast in
   let rec extend_syntax syntax = function
-    | Ast.Syntax { def; value } ->
+    | Ast.Syntax { def; value; _ } ->
         extend_syntax (Syntax.add_syntax def syntax) value
     | _ -> syntax
   in

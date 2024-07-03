@@ -18,9 +18,10 @@
           ocamlformat
           just
         ];
-        # shellHook = ''
-        #   eval $(opam env)
-        # '';
+        shellHook = ''
+          # eval $(opam env)
+          export OCAMLRUNPARAM=b
+        '';
       };
       formatter.${system} = pkgs.nixpkgs-fmt;
     };
