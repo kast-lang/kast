@@ -50,4 +50,4 @@ syntax function_def <- 100000 = "{" body "}";
 syntax scope <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")";
 
-let pipe = macro (args => `($args.f $args.args))
+let pipe = macro (args => `($args.f $args.args));

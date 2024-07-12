@@ -15,6 +15,6 @@ List.iter
     | Void -> ()
     | _ ->
         print_endline
-          ("expected void in " ^ file ^ ", got" ^ Interpreter.show value))
+          ("expected void in " ^ file ^ ", got " ^ Interpreter.show value))
   (List.tl (Array.to_list Sys.argv));
 try stdin_loop () with End_of_file -> ()

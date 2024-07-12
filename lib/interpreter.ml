@@ -6,7 +6,7 @@ type ast = ast_data Ast.node
 type value =
   | Ast of ast
   | Macro of fn
-  | BuiltinMacro of (state -> ast StringMap.t -> evaled)
+  | BuiltinMacro of builtin_macro
   | BuiltinFn of (value -> value)
   | Function of fn
   | Void
@@ -17,11 +17,38 @@ type value =
   | Struct of struct'
   | Ref of value ref
 
-and fn = { captured : state; args_pattern : ast option; body : ast }
+and builtin_macro = state -> ast StringMap.t -> compiled
+
+and ir =
+  | Void
+  | Ast of { def : Syntax.syntax_def; data : ast_data; values : ir StringMap.t }
+  | FieldAccess of { obj : ir; name : string }
+  | Const of value
+  | Binding of binding
+  | Number of string
+  | String of { raw : string; value : string }
+  | Discard of ir
+  | Then of ir * ir
+  | Call of { f : ir; args : ir }
+  | If of { cond : ir; then_case : ir; else_case : ir }
+  | Let of { pattern : pattern; value : ir }
+
+and fn = {
+  captured : state;
+  args_pattern : ast option;
+  body : ast;
+  mutable compiled : compiled_fn option;
+}
+
+and compiled_fn = { captured : state; args : pattern; body : ir }
+and pattern = Void | Binding of binding
 and evaled = { value : value; new_bindings : value StringMap.t }
+and compiled = { ir : ir; new_bindings : state_local StringMap.t }
 and struct' = { parent : struct' option; mutable data : state_data }
 and state = { self : struct'; data : state_data }
-and state_data = { locals : value StringMap.t; syntax : Syntax.syntax }
+and state_data = { locals : state_local StringMap.t; syntax : Syntax.syntax }
+and state_local = Value of value | Binding of binding
+and binding = { name : string }
 
 let rec show = function
   | Ast ast -> "`(" ^ Ast.show ast ^ ")"
@@ -48,30 +75,24 @@ let just_value value = { value; new_bindings = StringMap.empty }
 let update_locals =
   StringMap.union (fun _name _prev new_value -> Some new_value)
 
-let pattern_match_opt (pattern : ast option) (value : value) :
+let pattern_match_opt (pattern : pattern) (value : value) :
     value StringMap.t option =
   match pattern with
-  | None | Some (Nothing _) -> (
-      match value with Void -> Some StringMap.empty | _ -> None)
-  | Some (Simple { token; _ }) -> (
-      match token with
-      | Ident ident -> Some (StringMap.singleton ident value)
-      | _ -> failwith "todo")
-  | _ -> failwith "todo"
+  | Void -> ( match value with Void -> Some StringMap.empty | _ -> None)
+  | Binding { name; _ } -> Some (StringMap.singleton name value)
 
-let pattern_match (pattern : ast option) (value : value) : value StringMap.t =
+let pattern_match (pattern : pattern) (value : value) : value StringMap.t =
   match pattern_match_opt pattern value with
   | Some result -> result
   | None -> failwith "match failed"
 
-let get_local_opt (self : state) (name : string) : value option =
-  let unref = function Ref value -> !value | other -> other in
+let get_local_opt (self : state) (name : string) : state_local option =
   match StringMap.find_opt name self.data.locals with
-  | Some value -> Some (unref value)
+  | Some local -> Some local
   | None ->
       let rec find_in_scopes s =
         match StringMap.find_opt name s.data.locals with
-        | Some value -> Some (unref value)
+        | Some local -> Some local
         | None -> (
             match s.parent with
             | Some parent -> find_in_scopes parent
@@ -79,24 +100,152 @@ let get_local_opt (self : state) (name : string) : value option =
       in
       find_in_scopes self.self
 
-let rec eval_ast (self : state) (ast : ast) : evaled =
-  match ast with
-  | Nothing _ -> just_value Void
-  | Simple { token; _ } ->
-      just_value
-        (match token with
-        | Ident ident -> (
-            match get_local_opt self ident with
-            | None -> failwith (ident ^ " not found")
-            | Some value -> value)
-        | Number num -> Float (float_of_string num)
-        | String { value; _ } -> String value
-        | Punctuation _ -> failwith "punctuation")
-  | Complex { def; values; _ } -> eval_macro self def.name values
-  | Syntax { def; value; _ } -> eval_ast self value
+let get_local_value_opt (self : state) (name : string) : value option =
+  Option.map
+    (function
+      | Value (Ref value) -> !value
+      | Value other -> other
+      | Binding _ -> failwith (name ^ " is a runtime value"))
+    (get_local_opt self name)
 
-and call_impl (f : fn) (args : value) : value =
-  (eval_ast
+let rec compile_ast (self : state) (ast : ast) : compiled =
+  match ast with
+  | Nothing _ -> { ir = Void; new_bindings = StringMap.empty }
+  | Simple { token; _ } ->
+      {
+        ir =
+          (match token with
+          | Ident ident -> (
+              match get_local_opt self ident with
+              | None -> failwith (ident ^ " not found")
+              | Some (Value value) -> Const value
+              | Some (Binding binding) -> Binding binding)
+          | Number num -> Number num
+          | String { value; raw } -> String { value; raw }
+          | Punctuation _ -> failwith "punctuation");
+        new_bindings = StringMap.empty;
+      }
+  | Complex { def; values; _ } -> expand_macro self def.name values
+  | Syntax { def; value; _ } -> compile_ast self value
+
+and compile_pattern (self : state) (pattern : ast option) : pattern =
+  match pattern with
+  | None -> Void
+  | Some ast -> (
+      match ast with
+      | Nothing _ -> Void
+      | Simple { token; _ } -> (
+          match token with
+          | Ident name -> Binding { name }
+          | _ -> failwith "expected an identifier")
+      | _ -> failwith "todo ")
+
+and pattern_bindings (pattern : pattern) : binding StringMap.t =
+  match pattern with
+  | Void -> StringMap.empty
+  | Binding binding -> StringMap.singleton binding.name binding
+
+and expand_macro (self : state) (name : string) (values : ast StringMap.t) :
+    compiled =
+  match get_local_opt self name with
+  | None -> failwith (name ^ " not found")
+  | Some (Binding _binding) ->
+      failwith (name ^ " is a runtime value, not a macro")
+  | Some (Value value) -> (
+      match value with
+      | BuiltinMacro f -> f self values
+      | Macro f -> (
+          let values = Dict (StringMap.map (fun x -> Ast x) values) in
+          Log.trace ("call macro with " ^ show values);
+          match compile_and_call f values with
+          | Ast new_ast ->
+              Log.trace ("macro expanded to " ^ Ast.show new_ast);
+              compile_ast self new_ast
+          | _ -> failwith "macro returned not an ast")
+      | _ -> failwith (name ^ " is not a macro"))
+
+and eval_ast (self : state) (ast : ast) : evaled =
+  let compiled = compile_ast self ast in
+  eval_ir self compiled.ir
+
+and eval_ir (self : state) (ir : ir) : evaled =
+  match ir with
+  | Void -> just_value Void
+  | Ast { def; data; values } ->
+      just_value
+        (Ast
+           (Complex
+              {
+                def;
+                data;
+                values =
+                  StringMap.map
+                    (fun value ->
+                      match (eval_ir self value).value with
+                      | Ast ast -> ast
+                      | _ -> failwith "expected an ast")
+                    values;
+              }))
+  | FieldAccess { obj; name } ->
+      let obj = (eval_ir self obj).value in
+      just_value (get_field obj name)
+  | Const value -> just_value value
+  | Binding binding -> failwith (binding.name ^ " is not available at comptime")
+  | Number s -> just_value (Float (Float.of_string s))
+  | String { value; _ } -> just_value (String value)
+  | Discard ir ->
+      discard (eval_ir self ir).value;
+      just_value Void
+  | Then (a, b) ->
+      let a = eval_ir self a in
+      discard a.value;
+      eval_ir
+        {
+          self with
+          data =
+            {
+              self.data with
+              locals =
+                update_locals self.data.locals
+                  (StringMap.map (fun value -> Value value) a.new_bindings);
+            };
+        }
+        b
+  | Call { f; args } ->
+      let f = (eval_ir self f).value in
+      let args = (eval_ir self args).value in
+      just_value (call f args)
+  | If { cond; then_case; else_case } -> (
+      let cond = eval_ir self cond in
+      let self_with_new_bindings =
+        {
+          self with
+          data =
+            {
+              self.data with
+              locals =
+                update_locals self.data.locals
+                  (StringMap.map (fun value -> Value value) cond.new_bindings);
+            };
+        }
+      in
+      match cond.value with
+      | Bool true -> eval_ir self_with_new_bindings then_case
+      | Bool false -> eval_ir self_with_new_bindings else_case
+      | _ -> failwith "condition must be a bool")
+  | Let { pattern; value } ->
+      {
+        value = Void;
+        new_bindings = pattern_match pattern (eval_ir self value).value;
+      }
+
+and compile_and_call (f : fn) (args : value) : value =
+  call_compiled (ensure_compiled f) args
+
+and ensure_compiled (f : fn) : compiled_fn = failwith "todo"
+
+and call_compiled (f : compiled_fn) (args : value) : value =
+  (eval_ir
      {
        f.captured with
        data =
@@ -104,7 +253,9 @@ and call_impl (f : fn) (args : value) : value =
            f.captured.data with
            locals =
              update_locals f.captured.data.locals
-               (pattern_match f.args_pattern args);
+               (StringMap.map
+                  (fun value -> Value value)
+                  (pattern_match f.args args));
          };
      }
      f.body)
@@ -113,68 +264,49 @@ and call_impl (f : fn) (args : value) : value =
 and call (f : value) (args : value) : value =
   match f with
   | BuiltinFn f -> f args
-  | Function f -> call_impl f args
+  | Function f -> compile_and_call f args
   | _ -> failwith "not a function"
 
 and eval_map (self : state) (values : ast StringMap.t) : value =
   Dict (StringMap.map (fun ast -> (eval_ast self ast).value) values)
 
-and eval_macro (self : state) (name : string) (values : ast StringMap.t) :
-    evaled =
-  match get_local_opt self name with
-  | None -> failwith (name ^ " not found")
-  | Some value -> (
-      match value with
-      | BuiltinFn f -> just_value (f (eval_map self values))
-      | BuiltinMacro f -> f self values
-      | Macro f -> (
-          let values = Dict (StringMap.map (fun x -> Ast x) values) in
-          Log.trace ("call macro with " ^ show values);
-          match call_impl f values with
-          | Ast new_ast ->
-              Log.trace ("macro expanded to " ^ Ast.show new_ast);
-              eval_ast self new_ast
-          | _ -> failwith "macro returned not an ast")
-      | _ -> failwith (name ^ " is not a macro"))
-
-let discard = function
+and discard : value -> unit = function
   | Void -> ()
   | that -> failwith ("only void can be discarded (discarded " ^ show that ^ ")")
 
-let get_field obj field =
+and get_field obj field =
   match obj with
   | Dict dict -> StringMap.find field dict
   | _ -> failwith "can't get field of this thang"
 
 module Builtins = struct
-  let call self args =
-    let f = eval_ast self (StringMap.find "f" args) in
-    let args = eval_ast self (StringMap.find "args" args) in
-    just_value (call f.value args.value)
+  let call : builtin_macro =
+   fun self args ->
+    let f = compile_ast self (StringMap.find "f" args) in
+    let args = compile_ast self (StringMap.find "args" args) in
+    { ir = Call { f = f.ir; args = args.ir }; new_bindings = StringMap.empty }
 
-  let then' self args =
-    let { value = a; new_bindings = a_new_bindings } =
-      eval_ast self (StringMap.find "a" args)
-    in
-    discard a;
+  let then' : builtin_macro =
+   fun self args ->
+    let a = compile_ast self (StringMap.find "a" args) in
     let self_with_new_bindings =
       {
         self with
         data =
           {
             self.data with
-            locals = update_locals self.data.locals a_new_bindings;
+            locals = update_locals self.data.locals a.new_bindings;
           };
       }
     in
     match StringMap.find_opt "b" args with
     | Some b ->
-        let result = eval_ast self_with_new_bindings b in
+        let b = compile_ast self_with_new_bindings b in
         {
-          result with
-          new_bindings = update_locals a_new_bindings result.new_bindings;
+          ir = Then (a.ir, b.ir);
+          new_bindings = update_locals a.new_bindings b.new_bindings;
         }
-    | None -> { value = Void; new_bindings = a_new_bindings }
+    | None -> { ir = Discard a.ir; new_bindings = a.new_bindings }
 
   let print (args : value) : value =
     match args with
@@ -183,8 +315,9 @@ module Builtins = struct
         Void
     | _ -> failwith "print expected a string"
 
-  let if' self args =
-    let cond = eval_ast self (StringMap.find "cond" args) in
+  let if' : builtin_macro =
+   fun self args ->
+    let cond = compile_ast self (StringMap.find "cond" args) in
     let self_with_new_bindings =
       {
         self with
@@ -195,22 +328,18 @@ module Builtins = struct
           };
       }
     in
-    let cond =
-      match cond.value with
-      | Bool value -> value
-      | _ -> failwith "condition must be a bool"
+    let then' =
+      (compile_ast self_with_new_bindings (StringMap.find "then" args)).ir
     in
-    let then' = StringMap.find "then" args in
-    let else' = StringMap.find_opt "else" args in
-    match else' with
-    | Some else' ->
-        if cond then eval_ast self_with_new_bindings then'
-        else eval_ast self_with_new_bindings else'
-    | None ->
-        (if cond then
-           let value = (eval_ast self_with_new_bindings then').value in
-           discard value);
-        just_value Void
+    let else' =
+      match StringMap.find_opt "else" args with
+      | Some branch -> (compile_ast self_with_new_bindings branch).ir
+      | None -> Void
+    in
+    {
+      ir = If { cond = cond.ir; then_case = then'; else_case = else' };
+      new_bindings = StringMap.empty;
+    }
 
   let dict_fn f = function Dict args -> f args | _ -> failwith "expected dict"
 
@@ -239,43 +368,56 @@ module Builtins = struct
 
   let unary_op = float_macro "x"
 
-  let quote self args =
-    let rec impl : ast -> ast = function
-      | Complex { def = { name = "unquote"; _ }; values; _ } -> (
+  let quote : builtin_macro =
+   fun self args ->
+    let rec impl : ast -> ir = function
+      | Complex { def = { name = "unquote"; _ }; values; _ } ->
           let inner = StringMap.find "expr" values in
           Log.trace ("unquoting" ^ Ast.show inner);
-          match (eval_ast self inner).value with
-          | Ast inner -> inner
-          | other ->
-              failwith
-                ("unquoted things should be asts (was " ^ show other ^ ")"))
-      | Nothing data -> Nothing data
-      | Simple token -> Simple token
+          (compile_ast self inner).ir
+      | Nothing data -> Const (Ast (Nothing data))
+      | Simple token -> Const (Ast (Simple token))
       | Complex { def; values; data } ->
-          Complex { def; values = StringMap.map impl values; data }
-      | Syntax { def; value; data } -> Syntax { def; value = impl value; data }
+          Ast { def; values = StringMap.map impl values; data }
+      | Syntax { value; _ } -> impl value
     in
     let expr = StringMap.find "expr" args in
     Log.trace ("quoting " ^ Ast.show expr);
-    just_value (Ast (impl expr))
+    { ir = impl expr; new_bindings = StringMap.empty }
 
-  let let' self args =
+  let let' : builtin_macro =
+   fun self args ->
     let pattern = StringMap.find "pattern" args in
+    let pattern = compile_pattern self (Some pattern) in
     let value = StringMap.find "value" args in
-    let value = (eval_ast self value).value in
-    { value = Void; new_bindings = pattern_match (Some pattern) value }
+    let value = (compile_ast self value).ir in
+    {
+      ir = Let { pattern; value };
+      new_bindings =
+        StringMap.map
+          (fun binding : state_local -> Binding binding)
+          (pattern_bindings pattern);
+    }
 
-  let function_def self (args : ast StringMap.t) =
+  let function_def : builtin_macro =
+   fun self args ->
     let args_pattern = StringMap.find_opt "args" args in
     let body = StringMap.find "body" args in
-    just_value (Function { captured = self; args_pattern; body })
+    {
+      ir =
+        Const
+          (Function { captured = self; args_pattern; body; compiled = None });
+      new_bindings = StringMap.empty;
+    }
 
-  let field_access self args =
+  let field_access : builtin_macro =
+   fun self args ->
     let obj = StringMap.find "obj" args in
-    let obj = (eval_ast self obj).value in
+    let obj = (compile_ast self obj).ir in
     let field = StringMap.find "field" args in
     match field with
-    | Simple { token = Ident ident; _ } -> just_value (get_field obj ident)
+    | Simple { token = Ident name; _ } ->
+        { ir = FieldAccess { obj; name }; new_bindings = StringMap.empty }
     | _ -> failwith "field access must be using an ident"
 
   let macro = function
@@ -340,10 +482,12 @@ let empty () : state =
       data =
         {
           locals =
-            StringMap.union
-              (fun _key _prev value -> Some value)
-              Builtins.all
-              (StringMap.singleton "Self" (Struct self));
+            StringMap.map
+              (fun value -> Value value)
+              (StringMap.union
+                 (fun _key _prev value -> Some value)
+                 Builtins.all
+                 (StringMap.singleton "Self" (Struct self)));
           syntax = Syntax.empty;
         };
     }
@@ -368,7 +512,9 @@ let eval (self : state ref) (s : string) ~(filename : string) : value =
       data =
         {
           syntax = extend_syntax !self.data.syntax ast;
-          locals = update_locals !self.data.locals result.new_bindings;
+          locals =
+            update_locals !self.data.locals
+              (StringMap.map (fun value -> Value value) result.new_bindings);
         };
     };
   result.value
