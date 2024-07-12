@@ -21,6 +21,7 @@ and builtin_macro = state -> ast StringMap.t -> compiled
 
 and ir =
   | Void
+  | Dict of ir StringMap.t
   | Ast of { def : Syntax.syntax_def; data : ast_data; values : ir StringMap.t }
   | FieldAccess of { obj : ir; name : string }
   | Const of value
@@ -30,6 +31,7 @@ and ir =
   | Discard of ir
   | Then of ir * ir
   | Call of { f : ir; args : ir }
+  | BuiltinFn of (value -> value)
   | If of { cond : ir; then_case : ir; else_case : ir }
   | Let of { pattern : pattern; value : ir }
 
@@ -153,6 +155,14 @@ and expand_macro (self : state) (name : string) (values : ast StringMap.t) :
       failwith (name ^ " is a runtime value, not a macro")
   | Some (Value value) -> (
       match value with
+      | BuiltinFn f ->
+          let args : ir =
+            Dict (StringMap.map (fun arg -> (compile_ast self arg).ir) values)
+          in
+          {
+            ir = Call { f = BuiltinFn f; args };
+            new_bindings = StringMap.empty;
+          }
       | BuiltinMacro f -> f self values
       | Macro f -> (
           let values = Dict (StringMap.map (fun x -> Ast x) values) in
@@ -171,6 +181,10 @@ and eval_ast (self : state) (ast : ast) : evaled =
 and eval_ir (self : state) (ir : ir) : evaled =
   match ir with
   | Void -> just_value Void
+  | BuiltinFn f -> just_value (BuiltinFn f)
+  | Dict values ->
+      just_value
+        (Dict (StringMap.map (fun value -> (eval_ir self value).value) values))
   | Ast { def; data; values } ->
       just_value
         (Ast
@@ -190,7 +204,10 @@ and eval_ir (self : state) (ir : ir) : evaled =
       let obj = (eval_ir self obj).value in
       just_value (get_field obj name)
   | Const value -> just_value value
-  | Binding binding -> failwith (binding.name ^ " is not available at comptime")
+  | Binding binding -> (
+      match get_local_value_opt self binding.name with
+      | None -> failwith (binding.name ^ " not found wtf, we are compiled")
+      | Some value -> just_value value)
   | Number s -> just_value (Float (Float.of_string s))
   | String { value; _ } -> just_value (String value)
   | Discard ir ->
@@ -242,7 +259,32 @@ and eval_ir (self : state) (ir : ir) : evaled =
 and compile_and_call (f : fn) (args : value) : value =
   call_compiled (ensure_compiled f) args
 
-and ensure_compiled (f : fn) : compiled_fn = failwith "todo"
+and ensure_compiled (f : fn) : compiled_fn =
+  if Option.is_none f.compiled then
+    f.compiled <-
+      (let args = compile_pattern f.captured f.args_pattern in
+       Some
+         {
+           captured = f.captured;
+           args;
+           body =
+             (compile_ast
+                {
+                  f.captured with
+                  data =
+                    {
+                      f.captured.data with
+                      locals =
+                        update_locals f.captured.data.locals
+                          (StringMap.map
+                             (fun binding : state_local -> Binding binding)
+                             (pattern_bindings args));
+                    };
+                }
+                f.body)
+               .ir;
+         });
+  Option.get f.compiled
 
 and call_compiled (f : compiled_fn) (args : value) : value =
   (eval_ir
@@ -253,8 +295,10 @@ and call_compiled (f : compiled_fn) (args : value) : value =
            f.captured.data with
            locals =
              update_locals f.captured.data.locals
-               (StringMap.map
-                  (fun value -> Value value)
+               (StringMap.mapi
+                  (fun name value ->
+                    Log.trace ("called with arg " ^ name ^ " = " ^ show value);
+                    Value value)
                   (pattern_match f.args args));
          };
      }
