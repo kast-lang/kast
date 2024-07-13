@@ -5,7 +5,9 @@ let rec stdin_loop () =
   print_string "> ";
   let line = read_line () in
   let value = Interpreter.eval interpreter line ~filename:"stdin" in
-  print_endline (Interpreter.show value);
+  print_endline
+    (Interpreter.show value ^ " : "
+    ^ Interpreter.show_type (Interpreter.type_of_value value));
   stdin_loop ()
 in
 List.iter

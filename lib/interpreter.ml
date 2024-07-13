@@ -887,7 +887,10 @@ module Builtins = struct
 
   let dbg : builtin_fn =
     {
-      impl = (fun value -> String (show value));
+      impl =
+        (fun value ->
+          Log.info (show value ^ " : " ^ show_type (type_of_value value));
+          Void);
       arg_type = Any;
       result_type = Void;
     }
