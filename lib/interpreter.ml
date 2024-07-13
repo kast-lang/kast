@@ -567,7 +567,9 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   | Let { pattern; value; _ } ->
       {
         value = Void;
-        new_bindings = pattern_match pattern (eval_ir self value None).value;
+        new_bindings =
+          pattern_match pattern
+            (eval_ir self value (pattern_type pattern)).value;
       }
 
 and compile_and_call (f : fn) (args : value) : value =
