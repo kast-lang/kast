@@ -591,18 +591,27 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   | Then { first = a; second = b; _ } ->
       let a = eval_ir self a None in
       discard a.value;
-      eval_ir
-        {
-          self with
-          data =
-            {
-              self.data with
-              locals =
-                update_locals self.data.locals
-                  (StringMap.map (fun value -> Value value) a.new_bindings);
-            };
-        }
-        b result_type
+      let result =
+        eval_ir
+          {
+            self with
+            data =
+              {
+                self.data with
+                locals =
+                  update_locals self.data.locals
+                    (StringMap.map (fun value -> Value value) a.new_bindings);
+              };
+          }
+          b result_type
+      in
+      {
+        result with
+        new_bindings =
+          StringMap.union
+            (fun _name _a b -> Some b)
+            a.new_bindings result.new_bindings;
+      }
   | Call { f; args; _ } ->
       let f = (eval_ir self f None).value in
       Log.trace ("calling " ^ show f);
@@ -750,18 +759,19 @@ module Builtins = struct
           };
       }
     in
-    match StringMap.find_opt "b" args with
-    | Some b ->
-        let b = compile_ast self_with_new_bindings b ~new_bindings in
-        {
-          ir = Then { first = a.ir; second = b.ir; data = init_ir_data () };
-          new_bindings = update_locals a.new_bindings b.new_bindings;
-        }
-    | None ->
-        {
-          ir = Discard { value = a.ir; data = init_ir_data () };
-          new_bindings = a.new_bindings;
-        }
+    let b =
+      match StringMap.find_opt "b" args with
+      | Some b -> compile_ast self_with_new_bindings b ~new_bindings
+      | None ->
+          {
+            ir = Void { data = init_ir_data () };
+            new_bindings = StringMap.empty;
+          }
+    in
+    {
+      ir = Then { first = a.ir; second = b.ir; data = init_ir_data () };
+      new_bindings = update_locals a.new_bindings b.new_bindings;
+    }
 
   let print : builtin_fn =
     {
@@ -1019,7 +1029,7 @@ module Builtins = struct
             } );
         ( "unit",
           BuiltinFn
-            { impl = (fun _ -> Void); arg_type = Void; result_type = Void } );
+            { impl = (fun _ -> Void); arg_type = Dict { fields = StringMap.empty }; result_type = Void } );
         ("let", BuiltinMacro let');
         ("function_def", BuiltinMacro function_def);
         ("field_access", BuiltinMacro field_access);
@@ -1067,6 +1077,7 @@ let eval (self : state ref) (s : string) ~(filename : string) : value =
   !self.self.data <- !self.data;
   let tokens = Lexer.parse s filename in
   let ast = Ast.parse !self.data.syntax tokens filename in
+  Log.trace (Ast.show ast);
   let ast = Ast.map (fun span -> { span; ir = None }) ast in
   let result = eval_ast !self ast None in
   let rec extend_syntax syntax = function

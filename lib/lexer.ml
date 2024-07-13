@@ -95,8 +95,13 @@ let parse : string -> filename -> token spanned Seq.t =
     in
     String.of_seq (List.to_seq (impl ()))
   in
-  let skip_whitespace () =
+  let rec skip_whitespace () =
     let _ = read_while is_space in
+    if peek () = Some '#' then (
+      while match peek () with Some '\n' | None -> false | _ -> true do
+        consume ()
+      done;
+      skip_whitespace ());
     ()
   in
   let read_string () =

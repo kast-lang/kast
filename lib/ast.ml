@@ -241,7 +241,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         if Option.is_some parse_state.prev_value then
           failwith "syntax after value";
         let def = parse_syntax () in
-        let new_syntax = add_syntax def syntax in
+        let new_syntax = add_syntax def parse_state.syntax in
         let start_state = start_state new_syntax in
         let value_after =
           parse_until
@@ -266,7 +266,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         in
         parse_until
           {
-            syntax = parse_state.syntax;
+            syntax = new_syntax;
             start = Some (data value).start;
             pos = (data value).finish;
             until = parse_state.until;
@@ -310,7 +310,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
                 Log.trace ("should not continue with " ^ show_edge edge);
                 finish ())
         | None -> (
-            match next_with (start_state syntax) with
+            match next_with (start_state parse_state.syntax) with
             | Some new_state -> (
                 match should_continue_with false new_state with
                 | true ->
@@ -350,7 +350,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
             | None -> (
                 match parse_state.prev_value with
                 | Some prev_value -> (
-                    match syntax.join with
+                    match parse_state.syntax.join with
                     | Some join_state
                       when should_continue_with false join_state
                            && not parse_state.joining ->
@@ -383,7 +383,9 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
                           }
                     | _ -> finish ())
                 | None -> (
-                    match StringSet.find_opt raw_token syntax.keywords with
+                    match
+                      StringSet.find_opt raw_token parse_state.syntax.keywords
+                    with
                     | Some _ -> finish ()
                     | None -> (
                         match token with
@@ -411,17 +413,21 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
   in
   let start_state = { (start_state syntax) with next = EdgeMap.empty } in
   try
-    parse_until
-      {
-        syntax;
-        start = None;
-        pos = Span.start_pos;
-        until = start_state.priority;
-        state = start_state;
-        values = [];
-        prev_value = None;
-        joining = false;
-      }
+    let result =
+      parse_until
+        {
+          syntax;
+          start = None;
+          pos = Span.start_pos;
+          until = start_state.priority;
+          state = start_state;
+          values = [];
+          prev_value = None;
+          joining = false;
+        }
+    in
+    if Option.is_some (peek tokens) then failwith "expected eof";
+    result
   with Failure f ->
     failwith
       ("at "
