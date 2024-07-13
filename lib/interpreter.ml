@@ -164,7 +164,7 @@ let rec type_of_value : value -> value_type = function
   | BuiltinMacro _ -> Macro
   | BuiltinFn { arg_type; result_type; _ } -> Fn { arg_type; result_type }
   | Function f ->
-      Log.info "getting type of fun";
+      Log.trace "getting type of fun";
       Fn
         {
           arg_type = Any;
@@ -402,7 +402,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option) :
             | _ -> failwith "todo")
         | Const { value = Function _; _ } -> None (* maybe Some if compiled? *)
         | Const { value; _ } ->
-            Log.info ("inferring type of " ^ show value);
+            Log.trace ("inferring type of " ^ show value);
             Some (type_of_value value)
         | Binding { binding; _ } -> binding.value_type
         | Number _ -> None
@@ -891,7 +891,7 @@ module Builtins = struct
     {
       impl =
         (fun value ->
-          Log.info (show value ^ " : " ^ show_type (type_of_value value));
+          Log.trace (show value ^ " : " ^ show_type (type_of_value value));
           Void);
       arg_type = Any;
       result_type = Void;
