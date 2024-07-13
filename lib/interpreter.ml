@@ -69,7 +69,13 @@ and 'data ir_node =
     }
   | Let of { pattern : pattern; value : 'data ir_node; data : 'data }
 
-and ir_data = { mutable result_type : value_type option }
+and inference_status = NotYet | InProgress | Done
+
+and ir_data = {
+  mutable result_type : value_type option;
+  mutable fully_inferred : inference_status;
+}
+
 and ir = ir_data ir_node
 
 and fn = {
@@ -96,9 +102,9 @@ let rec show = function
   | BuiltinMacro _ -> "builtin_macro"
   | BuiltinFn _ -> "builtin"
   | Function f ->
-      "function "
-      ^ (match f.args_pattern with Some ast -> Ast.show ast | None -> "()")
-      ^ " => " ^ Ast.show f.body
+      "function"
+      (* ^ (match f.args_pattern with Some ast -> Ast.show ast | None -> "()") *)
+      (* ^ " => " ^ Ast.show f.body *)
   | Int32 value -> Int32.to_string value
   | Int64 value -> Int64.to_string value
   | Float64 value -> Float.to_string value
@@ -138,6 +144,36 @@ and show_type : value_type -> string = function
       ^ " }"
   | Type -> "type"
 
+and show_ir : ir -> string = function
+  | Void _ -> "void"
+  | Dict { fields; _ } ->
+      "{ "
+      ^ StringMap.fold
+          (fun name field acc ->
+            (if acc = "" then "" else acc ^ ", ") ^ name ^ ": " ^ show_ir field)
+          fields ""
+      ^ " }"
+  | Number { raw; _ } -> raw
+  | Ast _ -> failwith "todo"
+  | Const { value; _ } -> "(const " ^ show value ^ ")"
+  | FieldAccess { obj; name; _ } -> "(field " ^ show_ir obj ^ " " ^ name ^ ")"
+  | BuiltinFn _ -> "builtinfn"
+  | Discard { value; _ } -> "(discard " ^ show_ir value ^ ")"
+  | Binding { binding; _ } -> "(binding " ^ binding.name ^ ")"
+  | Call { f; args; _ } -> "(call " ^ show_ir f ^ " " ^ show_ir args ^ ")"
+  | String { raw; _ } -> raw
+  | Then { first; second; _ } ->
+      "(then " ^ show_ir first ^ " " ^ show_ir second ^ ")"
+  | If { cond; then_case; else_case; _ } ->
+      "(if " ^ show_ir cond ^ " " ^ show_ir then_case ^ " " ^ show_ir else_case
+      ^ ")"
+  | Let { pattern; value; _ } ->
+      "(let " ^ show_pattern pattern ^ " " ^ show_ir value ^ ")"
+
+and show_pattern : pattern -> string = function
+  | Void -> "()"
+  | Binding binding -> binding.name
+
 and same_types (a : value_type) (b : value_type) =
   match (a, b) with
   | Any, Any -> true
@@ -165,11 +201,9 @@ let rec type_of_value : value -> value_type = function
   | BuiltinFn { arg_type; result_type; _ } -> Fn { arg_type; result_type }
   | Function f ->
       Log.trace "getting type of fun";
-      Fn
-        {
-          arg_type = Any;
-          result_type = infer_types (ensure_compiled f).body None;
-        }
+      let compiled = ensure_compiled f in
+      let result_type = fully_infer_types compiled.body None in
+      Fn { result_type; arg_type = pattern_type_sure compiled.args None }
   | Int32 _ -> Int32
   | Int64 _ -> Int64
   | Float64 _ -> Float64
@@ -197,7 +231,7 @@ and ir_data : 'data. 'data ir_node -> 'data = function
   | Let { data; _ } ->
       data
 
-and init_ir_data () : ir_data = { result_type = None }
+and init_ir_data () : ir_data = { result_type = None; fully_inferred = NotYet }
 
 and just_value value expected_type =
   (match expected_type with
@@ -305,6 +339,10 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
 and pattern_type (pattern : pattern) : value_type option =
   match pattern with Void -> Some Void | Binding binding -> binding.value_type
 
+and pattern_type_sure (pattern : pattern) (expected_type : value_type option) :
+    value_type =
+  match pattern_type pattern with Some typ -> typ | None -> failwith "todo"
+
 and pattern_bindings (pattern : pattern) : binding StringMap.t =
   match pattern with
   | Void -> StringMap.empty
@@ -368,56 +406,91 @@ and forward_expected_type (ir : ir) (expected_type : value_type option) : unit =
       | None -> ir_data.result_type <- Some expected_type)
   | None -> ()
 
-and maybe_infer_types (ir : ir) (expected_type : value_type option) :
-    value_type option =
+and maybe_infer_types (ir : ir) (expected_type : value_type option)
+    ~(full : bool) : value_type option =
   let ir_data = ir_data ir in
   forward_expected_type ir expected_type;
-  match ir_data.result_type with
-  | None ->
-      (* infering type *)
-      let actual_type : value_type option =
-        match ir with
-        | Void _ -> Some Void
-        | BuiltinFn { f = { arg_type; result_type; _ }; _ } ->
-            Some (Fn { arg_type; result_type })
-        | Dict { fields; _ } ->
-            let field_types =
-              match ir_data.result_type with
-              | Some (Dict { fields }) -> fields
-              | _ -> StringMap.empty (* todo None? *)
-            in
-            Some
-              (Dict
-                 {
-                   fields =
-                     StringMap.mapi
-                       (fun name value ->
-                         infer_types value (StringMap.find_opt name field_types))
-                       fields;
-                 })
-        | Ast _ -> Some Ast
-        | FieldAccess { obj; name; _ } -> (
-            match infer_types obj None with
-            | Dict { fields } -> Some (StringMap.find name fields)
-            | _ -> failwith "todo")
-        | Const { value = Function _; _ } -> None (* maybe Some if compiled? *)
-        | Const { value; _ } ->
-            Log.trace ("inferring type of " ^ show value);
-            Some (type_of_value value)
-        | Binding { binding; _ } -> binding.value_type
-        | Number _ -> None
-        | String _ -> Some String
-        | Discard _ -> Some Void
-        | Then { second; _ } -> maybe_infer_types second None
-        | Call { f; _ } -> (
-            match maybe_infer_types f None with
-            | Some (Fn { result_type; _ }) -> Some result_type
-            | Some _ -> failwith "not fun"
-            | None -> None)
-        | If { then_case; else_case; _ } -> (
-            let then_case = maybe_infer_types then_case None in
-            let else_case = maybe_infer_types else_case then_case in
-            match (then_case, else_case) with
+  let need_to_infer =
+    Option.is_none ir_data.result_type
+    || (full && ir_data.fully_inferred = NotYet)
+  in
+  if need_to_infer then (
+    if full then ir_data.fully_inferred <- InProgress;
+    let inferred : value_type option =
+      match ir with
+      | Void _ -> Some Void
+      | BuiltinFn { f = { arg_type; result_type; _ }; _ } ->
+          Some (Fn { arg_type; result_type })
+      | Dict { fields; _ } ->
+          let field_types =
+            match ir_data.result_type with
+            | Some (Dict { fields }) -> fields
+            | _ -> StringMap.empty (* todo None? *)
+          in
+          Some
+            (Dict
+               {
+                 fields =
+                   StringMap.mapi
+                     (fun name value ->
+                       Option.get
+                         (maybe_infer_types value
+                            (StringMap.find_opt name field_types)
+                            ~full))
+                     fields;
+               })
+      | Ast { values; _ } ->
+          if full then
+            StringMap.iter
+              (fun _name value ->
+                ignore (fully_infer_types value (Some (Ast : value_type))))
+              values;
+          Some Ast
+      | FieldAccess { obj; name; _ } -> (
+          match fully_infer_types obj None with
+          | Dict { fields } -> Some (StringMap.find name fields)
+          | _ -> failwith "todo")
+      | Const { value = Function f; _ } -> (
+          if full then ignore (ensure_compiled f);
+          match f.compiled with
+          | None -> None
+          | Some compiled ->
+              Some
+                (Fn
+                   {
+                     arg_type = pattern_type_sure compiled.args None;
+                     result_type = fully_infer_types compiled.body None;
+                   }))
+      | Const { value; _ } ->
+          Log.trace ("inferring type of " ^ show value);
+          Some (type_of_value value)
+      | Binding { binding; _ } -> (
+          match binding.value_type with
+          | Some typ -> Some typ
+          | None ->
+              binding.value_type <- expected_type;
+              expected_type)
+      | Number _ -> expected_type (* todo check? *)
+      | String _ -> Some String
+      | Discard { value; _ } ->
+          if full then ignore (fully_infer_types value None);
+          Some Void
+      | Then { first; second; _ } ->
+          if full then ignore (fully_infer_types first None);
+          maybe_infer_types second expected_type ~full
+      | Call { f; args; _ } -> (
+          match maybe_infer_types f None ~full with
+          | Some (Fn { arg_type; result_type; _ }) ->
+              if full then ignore (fully_infer_types args (Some arg_type));
+              Some result_type
+          | Some _ -> failwith "not fun"
+          | None -> None)
+      | If { cond; then_case; else_case; _ } ->
+          if full then ignore (fully_infer_types cond (Some Bool));
+          let then_type = maybe_infer_types then_case None ~full:false in
+          let else_type = maybe_infer_types else_case then_type ~full in
+          let common_type =
+            match (then_type, else_type) with
             | Some then_case, Some else_case ->
                 if not (same_types then_case else_case) then
                   failwith
@@ -425,28 +498,38 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option) :
                    ^ " and " ^ show_type else_case);
                 Some then_case
             | Some case, None | None, Some case -> Some case
-            | None, None -> None)
-        | Let _ -> Some Void
-      in
-      (match actual_type with
-      | Some actual_type -> (
-          match ir_data.result_type with
-          | None -> ir_data.result_type <- Some actual_type
-          | Some expected_type ->
-              if not (same_types actual_type expected_type) then
-                failwith
-                  ("expected " ^ show_type expected_type ^ ", got "
-                 ^ show_type actual_type))
-      | None -> ());
-      actual_type
-  | Some result_type -> Some result_type
+            | None, None -> None
+          in
+          if full then ignore (fully_infer_types then_case common_type);
+          common_type
+      | Let { pattern; value; _ } ->
+          (if full then
+             let typ = fully_infer_types value (pattern_type pattern) in
+             ignore (pattern_type_sure pattern (Some typ)));
+          Some Void
+    in
+    if full && Option.is_none inferred then
+      failwith ("failed to infer type of " ^ show_ir ir);
+    if full then ir_data.fully_inferred <- Done;
+    match inferred with
+    | Some actual_type -> (
+        match ir_data.result_type with
+        | None -> ir_data.result_type <- Some actual_type
+        | Some expected_type ->
+            if not (same_types actual_type expected_type) then
+              failwith
+                ("expected " ^ show_type expected_type ^ ", got "
+               ^ show_type actual_type))
+    | None -> ());
+  ir_data.result_type
 
-and infer_types (ir : ir) (expected_type : value_type option) : value_type =
-  Option.get (maybe_infer_types ir expected_type)
+and fully_infer_types (ir : ir) (expected_type : value_type option) : value_type
+    =
+  Option.get (maybe_infer_types ir expected_type ~full:true)
 
 and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     evaled =
-  let result_type = maybe_infer_types ir expected_type in
+  let result_type = maybe_infer_types ir expected_type ~full:false in
   (* forward_expected_type ir expected_type; *)
   (* let result_type = (ir_data ir).result_type in *)
   match ir with
@@ -775,7 +858,7 @@ module Builtins = struct
         dict_fn (fun args ->
             let value = StringMap.find name args in
             f value);
-      arg_type;
+      arg_type = Dict { fields = StringMap.singleton name arg_type };
       result_type;
     }
 
