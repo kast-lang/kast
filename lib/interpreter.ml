@@ -15,7 +15,7 @@ type value =
   | Int64 of int64
   | Float64 of float
   | String of string
-  | Dict of value StringMap.t
+  | Dict of { fields : value StringMap.t }
   | Struct of struct'
   | Ref of value ref
   | Type of value_type
@@ -30,10 +30,13 @@ and value_type =
   | Float32
   | Float64
   | String
-  | Fn of { arg_type : value_type; result_type : value_type }
-  | Macro
+  | Fn of fn_type
+  | Macro of fn_type
+  | BuiltinMacro
   | Dict of { fields : value_type StringMap.t }
   | Type
+
+and fn_type = { arg_type : value_type; result_type : value_type }
 
 and builtin_fn = {
   impl : value -> value;
@@ -86,7 +89,12 @@ and fn = {
 }
 
 and compiled_fn = { captured : state; args : pattern; body : ir }
-and pattern = Void | Binding of binding
+
+and pattern =
+  | Void
+  | Binding of binding
+  | Dict of { fields : pattern StringMap.t }
+
 and evaled = { value : value; new_bindings : value StringMap.t }
 and compiled = { ir : ir; new_bindings : state_local StringMap.t }
 and struct' = { parent : struct' option; mutable data : state_data }
@@ -110,12 +118,12 @@ let rec show = function
   | Float64 value -> Float.to_string value
   | Bool value -> Bool.to_string value
   | String value -> "\"" ^ String.escaped value ^ "\""
-  | Dict values ->
+  | Dict { fields } ->
       "{ "
       ^ StringMap.fold
-          (fun name value acc ->
-            (if acc = "" then "" else acc ^ ", ") ^ name ^ ": " ^ show value)
-          values ""
+          (fun name field acc ->
+            (if acc = "" then "" else acc ^ ", ") ^ name ^ ": " ^ show field)
+          fields ""
       ^ " }"
   | Ref value -> show !value
   | Struct _ -> "struct <...>"
@@ -133,7 +141,9 @@ and show_type : value_type -> string = function
   | String -> "string"
   | Fn { arg_type; result_type } ->
       show_type arg_type ^ " -> " ^ show_type result_type
-  | Macro -> "macro"
+  | Macro { arg_type; result_type } ->
+      "macro " ^ show_type arg_type ^ " -> " ^ show_type result_type
+  | BuiltinMacro -> "builtin_macro"
   | Dict { fields } ->
       "{ "
       ^ StringMap.fold
@@ -173,10 +183,23 @@ and show_ir : ir -> string = function
 and show_pattern : pattern -> string = function
   | Void -> "()"
   | Binding binding -> binding.name
+  | Dict { fields } ->
+      "{ "
+      ^ StringMap.fold
+          (fun name field acc ->
+            (if acc = "" then "" else acc ^ ", ")
+            ^ name ^ ": " ^ show_pattern field)
+          fields ""
+      ^ " }"
 
-and same_types (a : value_type) (b : value_type) =
-  match (a, b) with
-  | Any, Any -> true
+and type_check_fn (expected : fn_type) (actual : fn_type) : bool =
+  let { arg_type = expected_arg; result_type = expected_result } = expected in
+  let { arg_type = actual_arg; result_type = actual_result } = actual in
+  type_check expected_arg actual_arg && type_check expected_result actual_result
+
+and type_check (expected : value_type) (actual : value_type) : bool =
+  match (expected, actual) with
+  | Any, _ -> true
   | Ast, Ast -> true
   | Void, Void -> true
   | Bool, Bool -> true
@@ -185,21 +208,19 @@ and same_types (a : value_type) (b : value_type) =
   | Float32, Float32 -> true
   | Float64, Float64 -> true
   | String, String -> true
-  | ( Fn { arg_type = arg_a; result_type = result_a },
-      Fn { arg_type = arg_b; result_type = result_b } ) ->
-      same_types arg_a arg_b && same_types result_a result_b
-  | Macro, Macro -> true (* todo *)
-  | Dict { fields = a }, Dict { fields = b } -> StringMap.equal same_types a b
+  | Fn expected, Fn actual -> type_check_fn expected actual
+  | Macro expected, Macro actual -> type_check_fn expected actual
+  | Dict { fields = expected_fields }, Dict { fields = actual_fields } ->
+      StringMap.equal type_check expected_fields actual_fields
   | Type, Type -> true
   | _, _ -> false
 
 let rec type_of_value : value -> value_type = function
   | Ast _ -> Ast
   | Void -> Void
-  | Macro _ -> Macro
-  | BuiltinMacro _ -> Macro
+  | BuiltinMacro _ -> BuiltinMacro
   | BuiltinFn { arg_type; result_type; _ } -> Fn { arg_type; result_type }
-  | Function f ->
+  | Macro f | Function f ->
       Log.trace "getting type of fun";
       let compiled = ensure_compiled f in
       let result_type = fully_infer_types compiled.body None in
@@ -209,7 +230,7 @@ let rec type_of_value : value -> value_type = function
   | Float64 _ -> Float64
   | Bool _ -> Bool
   | String _ -> String
-  | Dict values -> Dict { fields = StringMap.map type_of_value values }
+  | Dict { fields } -> Dict { fields = StringMap.map type_of_value fields }
   | Ref _ -> failwith "todo"
   | Struct _ -> failwith "todo"
   | Type _ -> Type
@@ -238,7 +259,7 @@ and just_value value expected_type =
   | Some Any -> ()
   | Some expected_type ->
       let actual_type = type_of_value value in
-      if not (same_types actual_type expected_type) then
+      if not (type_check expected_type actual_type) then
         failwith
           ("value is of wrong type (expected " ^ show_type expected_type
          ^ ", got " ^ show_type actual_type ^ ")")
@@ -248,11 +269,42 @@ and just_value value expected_type =
 and update_locals =
   StringMap.union (fun _name _prev new_value -> Some new_value)
 
+(* this is lexeme val from_string : (Cparser.token, 'a) MenhirLib.Convert.traditional -> string -> 'a *)
+
 and pattern_match_opt (pattern : pattern) (value : value) :
     value StringMap.t option =
   match pattern with
   | Void -> ( match value with Void -> Some StringMap.empty | _ -> None)
   | Binding { name; _ } -> Some (StringMap.singleton name value)
+  | Dict { fields = field_patterns } -> (
+      match value with
+      | Dict { fields = field_values } ->
+          let fields =
+            StringMap.merge
+              (fun name pattern value ->
+                match (pattern, value) with
+                | Some pattern, Some value -> Some (pattern, value)
+                | Some _pattern, None ->
+                    failwith (name ^ " is not a field in value")
+                | None, Some _value ->
+                    failwith ("pattern does not specify field " ^ name)
+                | None, None -> failwith "unreachable")
+              field_patterns field_values
+          in
+          StringMap.fold
+            (fun _name (pattern, value) result ->
+              Option.bind result (fun result ->
+                  Option.map
+                    (fun field ->
+                      StringMap.union
+                        (fun name _old _new ->
+                          failwith
+                            (name
+                           ^ " is specified multiple times in the pattern"))
+                        result field)
+                    (pattern_match_opt pattern value)))
+            fields (Some StringMap.empty)
+      | _ -> None)
 
 and pattern_match (pattern : pattern) (value : value) : value StringMap.t =
   match pattern_match_opt pattern value with
@@ -315,29 +367,46 @@ and compile_ast (self : state) (ast : ast) ~(new_bindings : bool) : compiled =
 and compile_pattern (self : state) (pattern : ast option) : pattern =
   match pattern with
   | None -> Void
-  | Some ast -> (
-      let ir = (compile_ast self ast ~new_bindings:true).ir in
-      match ir with
-      | Void _ -> Void
-      | Dict _ -> failwith "todo pattern Dict"
-      | Ast _ -> failwith "todo pattern Ast"
-      | FieldAccess _ -> failwith "todo pattern FieldAccess"
-      | Const _ -> failwith "todo pattern Const"
-      | Binding { binding; _ } ->
-          (* if ascribed *)
-          binding.value_type <- (ir_data ir).result_type;
-          Binding binding
-      | Number _ -> failwith "todo pattern Number"
-      | String _ -> failwith "todo pattern String"
-      | Discard _ -> failwith "todo pattern Discard"
-      | Then _ -> failwith "todo pattern Then"
-      | Call _ -> failwith "todo pattern Call"
-      | BuiltinFn _ -> failwith "todo pattern BuiltinFn"
-      | If _ -> failwith "todo pattern If"
-      | Let _ -> failwith "todo pattern Let")
+  | Some ast ->
+      let rec ir_to_pattern (ir : ir) : pattern =
+        match ir with
+        | Void _ -> Void
+        | Dict { fields; _ } ->
+            Dict { fields = StringMap.map ir_to_pattern fields }
+        | Ast _ -> failwith "todo pattern Ast"
+        | FieldAccess _ -> failwith "todo pattern FieldAccess"
+        | Const _ -> failwith "todo pattern Const"
+        | Binding { binding; _ } ->
+            (* if ascribed *)
+            binding.value_type <- (ir_data ir).result_type;
+            Binding binding
+        | Number _ -> failwith "todo pattern Number"
+        | String _ -> failwith "todo pattern String"
+        | Discard _ -> failwith "todo pattern Discard"
+        | Then _ -> failwith "todo pattern Then"
+        | Call _ -> failwith "todo pattern Call"
+        | BuiltinFn _ -> failwith "todo pattern BuiltinFn"
+        | If _ -> failwith "todo pattern If"
+        | Let _ -> failwith "todo pattern Let"
+      in
+      ir_to_pattern (compile_ast self ast ~new_bindings:true).ir
 
 and pattern_type (pattern : pattern) : value_type option =
-  match pattern with Void -> Some Void | Binding binding -> binding.value_type
+  match pattern with
+  | Void -> Some Void
+  | Binding binding -> binding.value_type
+  | Dict { fields } ->
+      Some
+        (Dict
+           {
+             fields =
+               StringMap.map
+                 (fun field ->
+                   match pattern_type field with
+                   | Some typ -> typ
+                   | None -> failwith "todo partially inferred types")
+                 fields;
+           })
 
 and pattern_type_sure (pattern : pattern) (expected_type : value_type option) :
     value_type =
@@ -347,6 +416,14 @@ and pattern_bindings (pattern : pattern) : binding StringMap.t =
   match pattern with
   | Void -> StringMap.empty
   | Binding binding -> StringMap.singleton binding.name binding
+  | Dict { fields } ->
+      StringMap.fold
+        (fun _name field acc ->
+          StringMap.union
+            (fun name _old _new ->
+              failwith (name ^ " appears multiple times in pattern"))
+            acc (pattern_bindings field))
+        fields StringMap.empty
 
 and expand_macro (self : state) (name : string) (values : ast StringMap.t)
     ~(new_bindings : bool) : compiled =
@@ -379,7 +456,9 @@ and expand_macro (self : state) (name : string) (values : ast StringMap.t)
           }
       | BuiltinMacro f -> f self values ~new_bindings
       | Macro f -> (
-          let values = Dict (StringMap.map (fun x -> Ast x) values) in
+          let values =
+            Dict { fields = StringMap.map (fun x -> Ast x) values }
+          in
           Log.trace ("call macro with " ^ show values);
           match compile_and_call f values with
           | Ast new_ast ->
@@ -399,7 +478,7 @@ and forward_expected_type (ir : ir) (expected_type : value_type option) : unit =
   | Some expected_type -> (
       match ir_data.result_type with
       | Some actual_type ->
-          if not (same_types actual_type expected_type) then
+          if not (type_check expected_type actual_type) then
             failwith
               ("expected " ^ show_type expected_type ^ ", got "
              ^ show_type actual_type)
@@ -480,7 +559,8 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
           maybe_infer_types second expected_type ~full
       | Call { f; args; _ } -> (
           match maybe_infer_types f None ~full with
-          | Some (Fn { arg_type; result_type; _ }) ->
+          | Some (Fn f | Macro f) ->
+              let { arg_type; result_type; _ } = f in
               if full then ignore (fully_infer_types args (Some arg_type));
               Some result_type
           | Some _ -> failwith "not fun"
@@ -492,7 +572,8 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
           let common_type =
             match (then_type, else_type) with
             | Some then_case, Some else_case ->
-                if not (same_types then_case else_case) then
+                (* todo same_types instead of type_check? *)
+                if not (type_check then_case else_case) then
                   failwith
                     ("then and else diff types: " ^ show_type then_case
                    ^ " and " ^ show_type else_case);
@@ -516,7 +597,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
         match ir_data.result_type with
         | None -> ir_data.result_type <- Some actual_type
         | Some expected_type ->
-            if not (same_types actual_type expected_type) then
+            if not (type_check expected_type actual_type) then
               failwith
                 ("expected " ^ show_type expected_type ^ ", got "
                ^ show_type actual_type))
@@ -544,10 +625,14 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
       in
       just_value
         (Dict
-           (StringMap.mapi
-              (fun name value ->
-                (eval_ir self value (StringMap.find_opt name field_types)).value)
-              fields))
+           {
+             fields =
+               StringMap.mapi
+                 (fun name value ->
+                   (eval_ir self value (StringMap.find_opt name field_types))
+                     .value)
+                 fields;
+           })
         result_type
   | Ast { def; ast_data; values; _ } ->
       just_value
@@ -588,9 +673,9 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   | Discard { value = ir; _ } ->
       discard (eval_ir self ir None).value;
       just_value Void result_type
-  | Then { first = a; second = b; _ } ->
-      let a = eval_ir self a None in
-      discard a.value;
+  | Then { first; second; _ } ->
+      let first = eval_ir self first None in
+      discard first.value;
       let result =
         eval_ir
           {
@@ -600,17 +685,19 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
                 self.data with
                 locals =
                   update_locals self.data.locals
-                    (StringMap.map (fun value -> Value value) a.new_bindings);
+                    (StringMap.map
+                       (fun value -> Value value)
+                       first.new_bindings);
               };
           }
-          b result_type
+          second result_type
       in
       {
         result with
         new_bindings =
           StringMap.union
             (fun _name _a b -> Some b)
-            a.new_bindings result.new_bindings;
+            first.new_bindings result.new_bindings;
       }
   | Call { f; args; _ } ->
       let f = (eval_ir self f None).value in
@@ -720,7 +807,7 @@ and discard : value -> unit = function
 
 and get_field obj field =
   match obj with
-  | Dict dict -> StringMap.find field dict
+  | Dict { fields = dict } -> StringMap.find field dict
   | _ -> failwith "can't get field of this thang"
 
 module Builtins = struct
@@ -822,7 +909,9 @@ module Builtins = struct
       new_bindings = StringMap.empty;
     }
 
-  let dict_fn f = function Dict args -> f args | _ -> failwith "expected dict"
+  let dict_fn f = function
+    | Dict { fields = args } -> f args
+    | _ -> failwith "expected dict"
 
   let int32_binary_op_with lhs rhs f : builtin_fn =
     {
@@ -929,6 +1018,16 @@ module Builtins = struct
           (pattern_bindings pattern);
     }
 
+  let const_let : builtin_macro =
+   fun self args ~new_bindings ->
+    let ir = (let' self args ~new_bindings).ir in
+    let evaled = eval_ir self ir (Some Void) in
+    {
+      ir;
+      new_bindings =
+        StringMap.map (fun value -> Value value) evaled.new_bindings;
+    }
+
   let function_def : builtin_macro =
    fun self args ~new_bindings ->
     let args_pattern = StringMap.find_opt "args" args in
@@ -956,6 +1055,50 @@ module Builtins = struct
           new_bindings = StringMap.empty;
         }
     | _ -> failwith "field access must be using an ident"
+
+  let field : builtin_macro =
+   fun self args ~new_bindings ->
+    let name = StringMap.find "name" args in
+    let value = StringMap.find "value" args in
+    let name =
+      match name with
+      | Ast.Simple { token = Ident name; _ } -> name
+      | _ -> failwith "field name must be an ident"
+    in
+    {
+      ir =
+        Dict
+          {
+            fields =
+              StringMap.singleton name (compile_ast self value ~new_bindings).ir;
+            data = init_ir_data ();
+          };
+      new_bindings = StringMap.empty;
+    }
+
+  let tuple : builtin_macro =
+   fun self args ~new_bindings ->
+    let a = StringMap.find "a" args in
+    let b = StringMap.find "b" args in
+    let a = compile_ast self a ~new_bindings in
+    let b = compile_ast self b ~new_bindings in
+    let fields : ir -> _ = function
+      | Dict { fields; _ } -> fields
+      | _ -> failwith "expected a dict"
+    in
+    {
+      ir =
+        Dict
+          {
+            fields =
+              StringMap.union
+                (fun name _a _b ->
+                  failwith (name ^ " is specified multiple times"))
+                (fields a.ir) (fields b.ir);
+            data = init_ir_data ();
+          };
+      new_bindings = StringMap.empty;
+    }
 
   let macro = function
     | Function f -> Macro f
@@ -1029,21 +1172,28 @@ module Builtins = struct
             } );
         ( "unit",
           BuiltinFn
-            { impl = (fun _ -> Void); arg_type = Dict { fields = StringMap.empty }; result_type = Void } );
+            {
+              impl = (fun _ -> Void);
+              arg_type = Dict { fields = StringMap.empty };
+              result_type = Void;
+            } );
         ("let", BuiltinMacro let');
+        ("const_let", BuiltinMacro const_let);
         ("function_def", BuiltinMacro function_def);
         ("field_access", BuiltinMacro field_access);
         ( "macro",
           BuiltinFn
-            (single_arg_fn
-               (Fn { arg_type = Ast; result_type = Ast })
-               "def" Macro macro) );
+            (single_arg_fn Any
+               (* todo { _anyfield: ast } -> ast #  (Fn { arg_type = Ast; result_type = Ast }) *)
+               "def" Any macro) );
         ("less", BuiltinFn (cmp_fn ( < )));
         ("less_or_equal", BuiltinFn (cmp_fn ( <= )));
         ("equal", BuiltinFn (cmp_fn ( = )));
         ("not_equal", BuiltinFn (cmp_fn ( <> )));
         ("greater", BuiltinFn (cmp_fn ( > )));
         ("greater_or_equal", BuiltinFn (cmp_fn ( >= )));
+        ("field", BuiltinMacro field);
+        ("tuple", BuiltinMacro tuple);
       ]
 end
 

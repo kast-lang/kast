@@ -2,15 +2,20 @@ syntax then <- 0 = a ";" b;
 syntax then <- 0 = a ";";
 
 syntax let <- 5 = "let" pattern "=" value;
+syntax const_let <- 5 = "const" pattern "=" value;
 
 syntax macro <- 6 = "macro" def;
 syntax function_def <- 7 = args "=>" body;
 
-syntax type_ascribe <- 8 = value ":" type;
+syntax type_ascribe <- 8 = value "::" type;
 
-syntax if <- 10 = "if" cond "then" then "else" else;
-syntax if -> 10 = cond "?" then ":" else;
-syntax if -> 10 = cond "then" then "else" else;
+syntax tuple <- 9 = a "," b;
+syntax field <- 10 = name ":" value;
+syntax inline_field <- 10 = "~" name;
+
+syntax if <- 11 = "if" cond "then" then "else" else;
+syntax if -> 11 = cond "?" then ":" else;
+syntax if -> 11 = cond "then" then "else" else;
 
 syntax pipe <- 15 = args "|" f;
 
@@ -52,6 +57,7 @@ syntax function_def <- 100000 = "{" body "}";
 syntax scope <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")";
 
-# todo let pipe = macro args : any => `($args.f $args.args);
+const inline_field = macro name : name => `($name : $name);
+const pipe = macro ~f, ~args => `($f $args);
 
 ()
