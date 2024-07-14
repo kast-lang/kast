@@ -1,0 +1,17 @@
+let main = {
+    let picked = random_int32 (min : 1, max : 10);
+    print "the number has been picked";
+    print "guess:";
+    loop {
+        let guessed = input() | string_to_int32;
+        if guessed == picked then
+            false # todo break
+        else (
+            print "wrong! guess again:";
+            true
+        )
+    };
+    print "you have guessed the number! congrats!";
+};
+
+main ();

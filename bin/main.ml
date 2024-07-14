@@ -1,5 +1,7 @@
 open Playground;;
 
+Random.self_init ();
+
 let interpreter = ref (Interpreter.empty ()) in
 let rec stdin_loop () =
   print_string "> ";

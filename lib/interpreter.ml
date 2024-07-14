@@ -55,6 +55,7 @@ and 'data ir_node =
       values : 'data ir_node StringMap.t;
       data : 'data;
     }
+  | Function of { f : fn; data : 'data }
   | FieldAccess of { obj : 'data ir_node; name : string; data : 'data }
   | Const of { value : value; data : 'data }
   | Binding of { binding : binding; data : 'data }
@@ -156,6 +157,7 @@ and show_type : value_type -> string = function
 
 and show_ir : ir -> string = function
   | Void _ -> "void"
+  | Function _ -> "function"
   | Dict { fields; _ } ->
       "{ "
       ^ StringMap.fold
@@ -164,7 +166,7 @@ and show_ir : ir -> string = function
           fields ""
       ^ " }"
   | Number { raw; _ } -> raw
-  | Ast _ -> failwith "todo"
+  | Ast _ -> "ast"
   | Const { value; _ } -> "(const " ^ show value ^ ")"
   | FieldAccess { obj; name; _ } -> "(field " ^ show_ir obj ^ " " ^ name ^ ")"
   | BuiltinFn _ -> "builtinfn"
@@ -237,6 +239,7 @@ let rec type_of_value : value -> value_type = function
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | Function { data; _ }
   | Dict { data; _ }
   | Ast { data; _ }
   | FieldAccess { data; _ }
@@ -371,10 +374,12 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
       let rec ir_to_pattern (ir : ir) : pattern =
         match ir with
         | Void _ -> Void
+        | Function _ -> failwith "todo patt fun"
         | Dict { fields; _ } ->
             Dict { fields = StringMap.map ir_to_pattern fields }
         | Ast _ -> failwith "todo pattern Ast"
         | FieldAccess _ -> failwith "todo pattern FieldAccess"
+        | Const { value = Type Void; _ } -> Void
         | Const _ -> failwith "todo pattern Const"
         | Binding { binding; _ } ->
             (* if ascribed *)
@@ -391,26 +396,65 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
       in
       ir_to_pattern (compile_ast self ast ~new_bindings:true).ir
 
-and pattern_type (pattern : pattern) : value_type option =
+and pattern_type (pattern : pattern) (expected_type : value_type option) :
+    value_type option =
   match pattern with
   | Void -> Some Void
-  | Binding binding -> binding.value_type
-  | Dict { fields } ->
-      Some
-        (Dict
-           {
-             fields =
-               StringMap.map
-                 (fun field ->
-                   match pattern_type field with
-                   | Some typ -> typ
-                   | None -> failwith "todo partially inferred types")
-                 fields;
-           })
+  | Binding binding -> (
+      match (expected_type, binding.value_type) with
+      | Some expected, None ->
+          binding.value_type <- Some expected;
+          Some expected
+      | Some expected, Some specified ->
+          if not (type_check expected specified) then
+            failwith "pattern type wrong";
+          Some expected
+      | None, _ -> binding.value_type)
+  | Dict { fields } -> (
+      match expected_type with
+      | Some (Dict { fields = expected_field_types }) ->
+          Some
+            (Dict
+               {
+                 fields =
+                   StringMap.merge
+                     (fun name field expected_type ->
+                       match (field, expected_type) with
+                       | Some field, Some expected_type ->
+                           Some
+                             (Option.get
+                                (pattern_type field (Some expected_type)))
+                       | Some _field, None ->
+                           failwith
+                             ("pattern specifies field " ^ name
+                            ^ " which was not expected")
+                       | None, Some _expected_type ->
+                           failwith ("pattern does not specify field " ^ name)
+                       | None, None -> failwith "unreachable")
+                     fields expected_field_types;
+               })
+      | Some expected ->
+          failwith ("pattern is a dict,  but expected " ^ show_type expected)
+      | None ->
+          Some
+            (Dict
+               {
+                 fields =
+                   StringMap.map
+                     (fun field ->
+                       match pattern_type field None with
+                       | Some typ -> typ
+                       | None -> failwith "todo partially inferred types")
+                     fields;
+               }))
 
 and pattern_type_sure (pattern : pattern) (expected_type : value_type option) :
     value_type =
-  match pattern_type pattern with Some typ -> typ | None -> failwith "todo"
+  match pattern_type pattern expected_type with
+  | Some typ -> typ
+  | None ->
+      failwith
+        ("todo pattern type could not be figured out: " ^ show_pattern pattern)
 
 and pattern_bindings (pattern : pattern) : binding StringMap.t =
   match pattern with
@@ -500,6 +544,21 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
       | Void _ -> Some Void
       | BuiltinFn { f = { arg_type; result_type; _ }; _ } ->
           Some (Fn { arg_type; result_type })
+      | Function { f; _ } ->
+          if full then (
+            let compiled = ensure_compiled f in
+            ignore (pattern_type_sure compiled.args None);
+            ignore (fully_infer_types compiled.body None));
+          Option.map
+            (fun compiled ->
+              Fn
+                {
+                  (* todo *)
+                  arg_type = Option.get (pattern_type compiled.args None);
+                  result_type =
+                    Option.get (maybe_infer_types compiled.body None ~full);
+                })
+            f.compiled
       | Dict { fields; _ } ->
           let field_types =
             match ir_data.result_type with
@@ -585,7 +644,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
           common_type
       | Let { pattern; value; _ } ->
           (if full then
-             let typ = fully_infer_types value (pattern_type pattern) in
+             let typ = fully_infer_types value (pattern_type pattern None) in
              ignore (pattern_type_sure pattern (Some typ)));
           Some Void
     in
@@ -610,6 +669,7 @@ and fully_infer_types (ir : ir) (expected_type : value_type option) : value_type
 
 and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     evaled =
+  Log.trace ("evaluating " ^ show_ir ir);
   let result_type = maybe_infer_types ir expected_type ~full:false in
   (* forward_expected_type ir expected_type; *)
   (* let result_type = (ir_data ir).result_type in *)
@@ -634,6 +694,8 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
                  fields;
            })
         result_type
+  | Function { f; _ } ->
+      just_value (Function { f with captured = self }) result_type
   | Ast { def; ast_data; values; _ } ->
       just_value
         (Ast
@@ -685,8 +747,10 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
                 self.data with
                 locals =
                   update_locals self.data.locals
-                    (StringMap.map
-                       (fun value -> Value value)
+                    (StringMap.mapi
+                       (fun _name value ->
+                         Log.trace (_name ^ " = " ^ show value);
+                         Value value)
                        first.new_bindings);
               };
           }
@@ -707,7 +771,8 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
         | BuiltinFn f -> (f.impl, Some f.arg_type)
         | Function f ->
             let compiled = ensure_compiled f in
-            (call_compiled compiled, pattern_type compiled.args)
+            ( call_compiled compiled,
+              pattern_type compiled.args (ir_data args).result_type )
         | _ -> failwith "not a function"
       in
       Log.trace
@@ -721,7 +786,7 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   | If { cond; then_case; else_case; _ } -> (
       let common_type = result_type in
       Log.trace
-        ("evaling if, type = "
+        ("evaling if, common type = "
         ^
         match common_type with
         | Some common_type -> show_type common_type
@@ -748,7 +813,9 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
         value = Void;
         new_bindings =
           pattern_match pattern
-            (eval_ir self value (pattern_type pattern)).value;
+            (eval_ir self value
+               (pattern_type pattern (ir_data value).result_type))
+              .value;
       }
 
 and compile_and_call (f : fn) (args : value) : value =
@@ -1034,10 +1101,9 @@ module Builtins = struct
     let body = StringMap.find "body" args in
     {
       ir =
-        Const
+        Function
           {
-            value =
-              Function { captured = self; args_pattern; body; compiled = None };
+            f = { captured = self; args_pattern; body; compiled = None };
             data = init_ir_data ();
           };
       new_bindings = StringMap.empty;
@@ -1133,6 +1199,56 @@ module Builtins = struct
       result_type = Void;
     }
 
+  let get_int32 : value -> int32 = function
+    | Int32 value -> value
+    | _ -> failwith "expected int32"
+
+  let get_type : value -> value_type = function
+    | Type value_type -> value_type
+    | _ -> failwith "expected type"
+
+  let function_type : builtin_fn =
+    {
+      impl =
+        (function
+        | Dict { fields = args } ->
+            let arg_type = get_type (StringMap.find "arg" args) in
+            let result_type = get_type (StringMap.find "result" args) in
+            let result = Type (Fn { arg_type; result_type }) in
+            Log.trace (show result);
+            result
+        | _ -> failwith "expected dict");
+      arg_type =
+        Dict
+          {
+            fields =
+              StringMap.of_list
+                [ ("arg", (Type : value_type)); ("result", Type) ];
+          };
+      result_type = Type;
+    }
+
+  let random_int32 : builtin_fn =
+    {
+      impl =
+        (function
+        | Dict { fields = args } ->
+            let min = get_int32 (StringMap.find "min" args) in
+            let max = get_int32 (StringMap.find "max" args) in
+            Int32
+              (Int32.add min
+                 (Random.int32 (Int32.sub (Int32.add max (Int32.of_int 1)) min)))
+        | _ -> failwith "expected dict");
+      arg_type =
+        Dict
+          {
+            fields =
+              StringMap.of_list
+                [ ("min", (Int32 : value_type)); ("max", Int32) ];
+          };
+      result_type = Int32;
+    }
+
   let all =
     StringMap.of_list
       [
@@ -1140,6 +1256,8 @@ module Builtins = struct
         ("void", Type Void);
         ("ast", Type Ast);
         ("bool", Type Bool);
+        ("true", Bool true);
+        ("false", Bool false);
         ("int32", Type Int32);
         ("int64", Type Int64);
         ("float32", Type Float32);
@@ -1194,6 +1312,27 @@ module Builtins = struct
         ("greater_or_equal", BuiltinFn (cmp_fn ( >= )));
         ("field", BuiltinMacro field);
         ("tuple", BuiltinMacro tuple);
+        ("function_type", BuiltinFn function_type);
+        ("random_int32", BuiltinFn random_int32);
+        ( "string_to_int32",
+          BuiltinFn
+            {
+              impl =
+                (function
+                | String s -> Int32 (Int32.of_string s)
+                | _ -> failwith "expected string");
+              arg_type = String;
+              result_type = Int32;
+            } );
+        ( "input",
+          BuiltinFn
+            {
+              impl =
+                (function
+                | Void -> String (read_line ()) | _ -> failwith "expected void");
+              arg_type = Void;
+              result_type = String;
+            } );
       ]
 end
 

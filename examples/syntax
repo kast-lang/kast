@@ -9,13 +9,15 @@ syntax function_def <- 7 = args "=>" body;
 
 syntax type_ascribe <- 8 = value "::" type;
 
-syntax tuple <- 9 = a "," b;
-syntax field <- 10 = name ":" value;
-syntax inline_field <- 10 = "~" name;
+syntax function_type -> 9 = arg "->" result;
 
-syntax if <- 11 = "if" cond "then" then "else" else;
-syntax if -> 11 = cond "?" then ":" else;
-syntax if -> 11 = cond "then" then "else" else;
+syntax tuple <- 10 = a "," b;
+syntax field <- 11 = name ":" value;
+syntax inline_field <- 11 = "~" name;
+
+syntax if <- 12 = "if" cond "then" then "else" else;
+syntax if -> 12 = cond "?" then ":" else;
+syntax if -> 12 = cond "then" then "else" else;
 
 syntax pipe <- 15 = args "|" f;
 
@@ -59,5 +61,12 @@ syntax unit <- 100000 = "(" ")";
 
 const inline_field = macro name : name => `($name : $name);
 const pipe = macro ~f, ~args => `($f $args);
+
+let loop = body :: void -> bool =>
+    if body () then
+        (loop body :: void)
+    else
+        ()
+;
 
 ()
