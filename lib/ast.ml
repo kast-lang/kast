@@ -170,18 +170,28 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
   let rec parse_until (parse_state : parse_state) : span node =
     let should_continue_with (continuing : bool) (next : keyword_parse_state) :
         bool =
-      Log.trace (Int.to_string parse_state.until.after);
-      if parse_state.until.after == Int.min_int then true
-      else
-        match Int.compare parse_state.until.after next.priority.before with
-        | x when x < 0 -> true
-        | 0 -> (
-            if parse_state.until.assoc <> next.priority.assoc then
-              failwith "same priority different associativity?";
-            if continuing && not parse_state.state.root then true
-            else
-              match parse_state.until.assoc with Left -> false | Right -> true)
-        | _ -> false
+      Log.trace
+        ("checking if need to continue "
+        ^ Int.to_string parse_state.until.after
+        ^ " with " ^ Bool.to_string continuing ^ ", "
+        ^ show_priority next.priority);
+      let result =
+        if parse_state.until.after == Int.min_int then true
+        else
+          match Int.compare parse_state.until.after next.priority.before with
+          | x when x < 0 -> true
+          | 0 -> (
+              if parse_state.until.assoc <> next.priority.assoc then
+                failwith "same priority different associativity?";
+              if continuing && not parse_state.state.root then true
+              else
+                match parse_state.until.assoc with
+                | Left -> false
+                | Right -> true)
+          | _ -> false
+      in
+      Log.trace ("result " ^ Bool.to_string result);
+      result
     in
     let finish () : span node =
       match
@@ -242,7 +252,11 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
           failwith "syntax after value";
         let def = parse_syntax () in
         let new_syntax = add_syntax def parse_state.syntax in
-        let start_state = start_state new_syntax in
+        let start_state =
+          { (start_state new_syntax) with next = EdgeMap.empty }
+        in
+        Log.trace ("new syntax = " ^ Syntax.show new_syntax);
+        Log.trace ("starting until " ^ show_priority start_state.priority);
         let value_after =
           parse_until
             {
@@ -264,20 +278,12 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
               data = { span with finish = (data value_after).finish };
             }
         in
-        parse_until
-          {
-            syntax = new_syntax;
-            start = Some (data value).start;
-            pos = (data value).finish;
-            until = parse_state.until;
-            state = parse_state.state;
-            values = parse_state.values;
-            prev_value = Some value;
-            joining = false;
-          }
+        Log.trace ("parsed " ^ show value);
+        value
     | Some spanned_token -> (
         let token = spanned_token.value in
         let raw_token = Lexer.raw token in
+        Log.trace ("peek = " ^ raw_token);
         let edge : Edge.t =
           {
             value_before_keyword = Option.is_some parse_state.prev_value;
@@ -287,6 +293,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         let next_with state = EdgeMap.find_opt edge state.next in
         match next_with parse_state.state with
         | Some next -> (
+            Log.trace ("considering continuing with " ^ show_edge edge);
             match should_continue_with true next with
             | true ->
                 consume_token ();
@@ -430,7 +437,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
     result
   with Failure f ->
     failwith
-      ("at "
+      ("at " ^ Span.filename filename ^ ":"
       ^ (match peek tokens with
         | Some token -> show_spanned token
         | None -> "eof")
