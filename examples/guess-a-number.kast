@@ -1,5 +1,16 @@
+
+
+let distribution = trait (
+    gen_type : type;
+    gen : void -> gen_type;
+);
+
+let random = template distribution -> void -> dist.gen_type
+
+let random =  :: T { dist.gen() }
+
 let main = {
-    let picked = random_int32 (min : 1, max : 10);
+    let picked = random (min : 1, max : 10);
     print "the number has been picked";
     print "guess:";
     loop {
