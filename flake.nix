@@ -17,6 +17,7 @@
           ocaml-lsp
           ocamlformat
           just
+          rlwrap
         ];
         shellHook = ''
           # eval $(opam env)
