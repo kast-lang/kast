@@ -8,6 +8,7 @@ type value =
   | Macro of fn
   | BuiltinMacro of builtin_macro
   | BuiltinFn of builtin_fn
+  | Template of fn
   | Function of fn
   | Void
   | Bool of bool
@@ -32,6 +33,7 @@ and value_type =
   | String
   | Fn of fn_type
   | Macro of fn_type
+  | Template of fn
   | BuiltinMacro
   | Dict of { fields : value_type StringMap.t }
   | Type
@@ -55,6 +57,7 @@ and 'data ir_node =
       values : 'data ir_node StringMap.t;
       data : 'data;
     }
+  | Template of { f : fn; data : 'data }
   | Function of { f : fn; data : 'data }
   | FieldAccess of { obj : 'data ir_node; name : string; data : 'data }
   | Const of { value : value; data : 'data }
@@ -64,6 +67,11 @@ and 'data ir_node =
   | Discard of { value : 'data ir_node; data : 'data }
   | Then of { first : 'data ir_node; second : 'data ir_node; data : 'data }
   | Call of { f : 'data ir_node; args : 'data ir_node; data : 'data }
+  | Instantiate of {
+      template : 'data ir_node;
+      args : 'data ir_node;
+      data : 'data;
+    }
   | BuiltinFn of { f : builtin_fn; data : 'data }
   | If of {
       cond : 'data ir_node;
@@ -110,6 +118,7 @@ let rec show = function
   | Macro _ -> "macro <...>"
   | BuiltinMacro _ -> "builtin_macro"
   | BuiltinFn _ -> "builtin"
+  | Template f -> "template"
   | Function f ->
       "function"
       (* ^ (match f.args_pattern with Some ast -> Ast.show ast | None -> "()") *)
@@ -130,6 +139,10 @@ let rec show = function
   | Struct _ -> "struct <...>"
   | Type t -> "type " ^ show_type t
 
+and show_fn_type : fn_type -> string =
+ fun { arg_type; result_type } ->
+  show_type arg_type ^ " -> " ^ show_type result_type
+
 and show_type : value_type -> string = function
   | Any -> "any"
   | Ast -> "ast"
@@ -140,10 +153,9 @@ and show_type : value_type -> string = function
   | Float32 -> "float32"
   | Float64 -> "float64"
   | String -> "string"
-  | Fn { arg_type; result_type } ->
-      show_type arg_type ^ " -> " ^ show_type result_type
-  | Macro { arg_type; result_type } ->
-      "macro " ^ show_type arg_type ^ " -> " ^ show_type result_type
+  | Fn f -> show_fn_type f
+  | Macro f -> "macro " ^ show_fn_type f
+  | Template f -> "template"
   | BuiltinMacro -> "builtin_macro"
   | Dict { fields } ->
       "{ "
@@ -157,6 +169,7 @@ and show_type : value_type -> string = function
 
 and show_ir : ir -> string = function
   | Void _ -> "void"
+  | Template _ -> "template"
   | Function _ -> "function"
   | Dict { fields; _ } ->
       "{ "
@@ -173,6 +186,8 @@ and show_ir : ir -> string = function
   | Discard { value; _ } -> "(discard " ^ show_ir value ^ ")"
   | Binding { binding; _ } -> "(binding " ^ binding.name ^ ")"
   | Call { f; args; _ } -> "(call " ^ show_ir f ^ " " ^ show_ir args ^ ")"
+  | Instantiate { template; args; _ } ->
+      "(instantiate " ^ show_ir template ^ " " ^ show_ir args ^ ")"
   | String { raw; _ } -> raw
   | Then { first; second; _ } ->
       "(then " ^ show_ir first ^ " " ^ show_ir second ^ ")"
@@ -203,30 +218,62 @@ and type_check (expected : value_type) (actual : value_type) : bool =
   match (expected, actual) with
   | Any, _ -> true
   | Ast, Ast -> true
+  | Ast, _ -> false
   | Void, Void -> true
+  | Void, _ -> false
   | Bool, Bool -> true
+  | Bool, _ -> false
   | Int32, Int32 -> true
+  | Int32, _ -> false
   | Int64, Int64 -> true
+  | Int64, _ -> false
   | Float32, Float32 -> true
+  | Float32, _ -> false
   | Float64, Float64 -> true
+  | Float64, _ -> false
   | String, String -> true
+  | String, _ -> false
   | Fn expected, Fn actual -> type_check_fn expected actual
+  | Fn _, _ -> false
   | Macro expected, Macro actual -> type_check_fn expected actual
+  | Macro _, _ -> false
   | Dict { fields = expected_fields }, Dict { fields = actual_fields } ->
       StringMap.equal type_check expected_fields actual_fields
-  | Type, Type -> true
-  | _, _ -> false
+  | Dict _, _ -> false
+  | Type, _ -> true
+  | BuiltinMacro, BuiltinMacro -> true
+  | BuiltinMacro, _ -> false
+  | Template expected, Template actual -> true
+  | Template _, _ -> false
 
-let rec type_of_value : value -> value_type = function
+let rec type_of_fn : fn -> fn_type =
+ fun f ->
+  Log.trace "getting type of fun";
+  let compiled = ensure_compiled f in
+  let result_type = fully_infer_types compiled.body None in
+  { result_type; arg_type = pattern_type_sure compiled.args None }
+
+and type_of_value : value -> value_type = function
   | Ast _ -> Ast
   | Void -> Void
   | BuiltinMacro _ -> BuiltinMacro
   | BuiltinFn { arg_type; result_type; _ } -> Fn { arg_type; result_type }
-  | Macro f | Function f ->
-      Log.trace "getting type of fun";
-      let compiled = ensure_compiled f in
-      let result_type = fully_infer_types compiled.body None in
-      Fn { result_type; arg_type = pattern_type_sure compiled.args None }
+  | Template f ->
+      Any
+      (* todo *)
+      (* let compiled = ensure_compiled f in
+         let body_type = fully_infer_types compiled.body None in
+         Log.info ("template compiled as " ^ show_ir compiled.body);
+         Log.info ("type is " ^ show_type body_type);
+         Template
+           {
+             args_pattern = f.args_pattern;
+             captured = f.captured;
+             body = failwith "todo";
+             compiled = None;
+           } *)
+  | Macro f -> Macro (type_of_fn f)
+  | Function f -> Fn (type_of_fn f)
   | Int32 _ -> Int32
   | Int64 _ -> Int64
   | Float64 _ -> Float64
@@ -239,6 +286,8 @@ let rec type_of_value : value -> value_type = function
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | Instantiate { data; _ }
+  | Template { data; _ }
   | Function { data; _ }
   | Dict { data; _ }
   | Ast { data; _ }
@@ -374,6 +423,8 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
       let rec ir_to_pattern (ir : ir) : pattern =
         match ir with
         | Void _ -> Void
+        | Instantiate _ -> failwith "todo patt insta"
+        | Template _ -> failwith "todo patt templ"
         | Function _ -> failwith "todo patt fun"
         | Dict { fields; _ } ->
             Dict { fields = StringMap.map ir_to_pattern fields }
@@ -544,7 +595,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
       | Void _ -> Some Void
       | BuiltinFn { f = { arg_type; result_type; _ }; _ } ->
           Some (Fn { arg_type; result_type })
-      | Function { f; _ } ->
+      | Function { f; _ } | Template { f; _ } ->
           if full then (
             let compiled = ensure_compiled f in
             ignore (pattern_type_sure compiled.args None);
@@ -616,13 +667,23 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
       | Then { first; second; _ } ->
           if full then ignore (fully_infer_types first None);
           maybe_infer_types second expected_type ~full
+      | Instantiate { template; args; _ } -> (
+          match maybe_infer_types template None ~full with
+          | Some (Template f) ->
+              (* todo *)
+              Some Any
+          | Some Any -> Some Any
+          | Some _ -> failwith "not template"
+          | None -> None)
       | Call { f; args; _ } -> (
+          Log.info ("trying to call " ^ show_ir f);
           match maybe_infer_types f None ~full with
           | Some (Fn f | Macro f) ->
               let { arg_type; result_type; _ } = f in
               if full then ignore (fully_infer_types args (Some arg_type));
               Some result_type
-          | Some _ -> failwith "not fun"
+          | Some Any -> None
+          | Some typ -> failwith (show_type typ ^ " is not fun")
           | None -> None)
       | If { cond; then_case; else_case; _ } ->
           if full then ignore (fully_infer_types cond (Some Bool));
@@ -673,73 +734,149 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   let result_type = maybe_infer_types ir expected_type ~full:false in
   (* forward_expected_type ir expected_type; *)
   (* let result_type = (ir_data ir).result_type in *)
-  match ir with
-  | Void _ -> just_value Void result_type
-  | BuiltinFn { f; _ } -> just_value (BuiltinFn f) result_type
-  | Dict { fields; _ } ->
-      let field_types =
-        match result_type with
-        | Some (Dict { fields }) -> fields
-        | Some _ -> failwith "not a dict"
-        | None -> StringMap.empty (* todo None? *)
-      in
-      just_value
-        (Dict
-           {
-             fields =
-               StringMap.mapi
-                 (fun name value ->
-                   (eval_ir self value (StringMap.find_opt name field_types))
-                     .value)
-                 fields;
-           })
-        result_type
-  | Function { f; _ } ->
-      just_value (Function { f with captured = self }) result_type
-  | Ast { def; ast_data; values; _ } ->
-      just_value
-        (Ast
-           (Complex
-              {
-                def;
-                data = ast_data;
-                values =
-                  StringMap.map
-                    (fun value ->
-                      match (eval_ir self value (Some Ast)).value with
-                      | Ast ast -> ast
-                      | _ -> failwith "expected an ast")
-                    values;
-              }))
-        result_type
-  | FieldAccess { obj; name; _ } ->
-      let obj = (eval_ir self obj None).value in
-      just_value (get_field obj name) result_type
-  | Const { value; _ } -> just_value value result_type
-  | Binding { binding; _ } -> (
-      match get_local_value_opt self binding.name with
-      | None -> failwith (binding.name ^ " not found wtf, we are compiled")
-      | Some value -> just_value value result_type)
-  | Number { raw = s; data } ->
-      just_value
-        (match data.result_type with
-        | None -> failwith "number type unspecified"
-        | Some t -> (
-            match t with
-            | Int32 -> Int32 (Int32.of_string s)
-            | Int64 -> Int64 (Int64.of_string s)
-            | Float64 -> Float64 (Float.of_string s)
-            | _ -> failwith (show_type t ^ " is not a number")))
-        result_type
-  | String { value; _ } -> just_value (String value) result_type
-  | Discard { value = ir; _ } ->
-      discard (eval_ir self ir None).value;
-      just_value Void result_type
-  | Then { first; second; _ } ->
-      let first = eval_ir self first None in
-      discard first.value;
-      let result =
-        eval_ir
+  let result =
+    match ir with
+    | Void _ -> just_value Void result_type
+    | BuiltinFn { f; _ } -> just_value (BuiltinFn f) result_type
+    | Dict { fields; _ } ->
+        let field_types =
+          match result_type with
+          | Some (Dict { fields }) -> fields
+          | Some Type | None -> StringMap.empty (* todo None? *)
+          | Some t -> failwith (show_type t ^ " is not a dict")
+        in
+        just_value
+          (Dict
+             {
+               fields =
+                 StringMap.mapi
+                   (fun name value ->
+                     (eval_ir self value (StringMap.find_opt name field_types))
+                       .value)
+                   fields;
+             })
+          result_type
+    | Template { f; _ } ->
+        just_value (Template { f with captured = self }) result_type
+    | Function { f; _ } ->
+        just_value (Function { f with captured = self }) result_type
+    | Ast { def; ast_data; values; _ } ->
+        just_value
+          (Ast
+             (Complex
+                {
+                  def;
+                  data = ast_data;
+                  values =
+                    StringMap.map
+                      (fun value ->
+                        match (eval_ir self value (Some Ast)).value with
+                        | Ast ast -> ast
+                        | _ -> failwith "expected an ast")
+                      values;
+                }))
+          result_type
+    | FieldAccess { obj; name; _ } ->
+        let obj = (eval_ir self obj None).value in
+        just_value (get_field obj name) result_type
+    | Const { value; _ } -> just_value value result_type
+    | Binding { binding; _ } -> (
+        match get_local_value_opt self binding.name with
+        | None -> failwith (binding.name ^ " not found wtf, we are compiled")
+        | Some value -> just_value value result_type)
+    | Number { raw = s; data } ->
+        just_value
+          (match data.result_type with
+          | None -> failwith "number type unspecified"
+          | Some t -> (
+              match t with
+              | Int32 -> Int32 (Int32.of_string s)
+              | Int64 -> Int64 (Int64.of_string s)
+              | Float64 -> Float64 (Float.of_string s)
+              | _ -> failwith (show_type t ^ " is not a number")))
+          result_type
+    | String { value; _ } -> just_value (String value) result_type
+    | Discard { value = ir; _ } ->
+        discard (eval_ir self ir None).value;
+        just_value Void result_type
+    | Then { first; second; _ } ->
+        let first = eval_ir self first None in
+        discard first.value;
+        let result =
+          eval_ir
+            {
+              self with
+              data =
+                {
+                  self.data with
+                  locals =
+                    update_locals self.data.locals
+                      (StringMap.mapi
+                         (fun _name value ->
+                           Log.trace (_name ^ " = " ^ show value);
+                           Value value)
+                         first.new_bindings);
+                };
+            }
+            second result_type
+        in
+        {
+          result with
+          new_bindings =
+            StringMap.union
+              (fun _name _a b -> Some b)
+              first.new_bindings result.new_bindings;
+        }
+    | Instantiate { template; args; _ } ->
+        let template = (eval_ir self template None).value in
+        Log.trace ("instantiating " ^ show template);
+        let f, args_type =
+          match template with
+          | Template f ->
+              let compiled = ensure_compiled f in
+              ( call_compiled compiled,
+                pattern_type compiled.args (ir_data args).result_type )
+          | _ -> failwith "not a template"
+        in
+        Log.trace
+          ("args_type = "
+          ^
+          match args_type with
+          | Some args_type -> show_type args_type
+          | None -> "<unknown>");
+        let args = (eval_ir self args args_type).value in
+        (* todo memoization *)
+        just_value (f args) result_type
+    | Call { f; args; _ } ->
+        let f = (eval_ir self f None).value in
+        Log.trace ("calling " ^ show f);
+        let f, args_type =
+          match f with
+          | BuiltinFn f -> (f.impl, Some f.arg_type)
+          | Function f ->
+              let compiled = ensure_compiled f in
+              ( call_compiled compiled,
+                pattern_type compiled.args (ir_data args).result_type )
+          | _ -> failwith "not a function"
+        in
+        Log.trace
+          ("args_type = "
+          ^
+          match args_type with
+          | Some args_type -> show_type args_type
+          | None -> "<unknown>");
+        let args = (eval_ir self args args_type).value in
+        just_value (f args) result_type
+    | If { cond; then_case; else_case; _ } -> (
+        let common_type = result_type in
+        Log.trace
+          ("evaling if, common type = "
+          ^
+          match common_type with
+          | Some common_type -> show_type common_type
+          | None -> "<unknown>");
+        let cond = eval_ir self cond (Some Bool) in
+        let self_with_new_bindings =
           {
             self with
             data =
@@ -747,76 +884,33 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
                 self.data with
                 locals =
                   update_locals self.data.locals
-                    (StringMap.mapi
-                       (fun _name value ->
-                         Log.trace (_name ^ " = " ^ show value);
-                         Value value)
-                       first.new_bindings);
+                    (StringMap.map (fun value -> Value value) cond.new_bindings);
               };
           }
-          second result_type
-      in
-      {
-        result with
-        new_bindings =
-          StringMap.union
-            (fun _name _a b -> Some b)
-            first.new_bindings result.new_bindings;
-      }
-  | Call { f; args; _ } ->
-      let f = (eval_ir self f None).value in
-      Log.trace ("calling " ^ show f);
-      let f, args_type =
-        match f with
-        | BuiltinFn f -> (f.impl, Some f.arg_type)
-        | Function f ->
-            let compiled = ensure_compiled f in
-            ( call_compiled compiled,
-              pattern_type compiled.args (ir_data args).result_type )
-        | _ -> failwith "not a function"
-      in
-      Log.trace
-        ("args_type = "
-        ^
-        match args_type with
-        | Some args_type -> show_type args_type
-        | None -> "<unknown>");
-      let args = (eval_ir self args args_type).value in
-      just_value (f args) result_type
-  | If { cond; then_case; else_case; _ } -> (
-      let common_type = result_type in
-      Log.trace
-        ("evaling if, common type = "
-        ^
-        match common_type with
-        | Some common_type -> show_type common_type
-        | None -> "<unknown>");
-      let cond = eval_ir self cond (Some Bool) in
-      let self_with_new_bindings =
+        in
+        match cond.value with
+        | Bool true -> eval_ir self_with_new_bindings then_case common_type
+        | Bool false -> eval_ir self_with_new_bindings else_case common_type
+        | _ -> failwith "condition must be a bool")
+    | Let { pattern; value; _ } ->
         {
-          self with
-          data =
-            {
-              self.data with
-              locals =
-                update_locals self.data.locals
-                  (StringMap.map (fun value -> Value value) cond.new_bindings);
-            };
+          value = Void;
+          new_bindings =
+            pattern_match pattern
+              (eval_ir self value
+                 (pattern_type pattern (ir_data value).result_type))
+                .value;
         }
-      in
-      match cond.value with
-      | Bool true -> eval_ir self_with_new_bindings then_case common_type
-      | Bool false -> eval_ir self_with_new_bindings else_case common_type
-      | _ -> failwith "condition must be a bool")
-  | Let { pattern; value; _ } ->
-      {
-        value = Void;
-        new_bindings =
-          pattern_match pattern
-            (eval_ir self value
-               (pattern_type pattern (ir_data value).result_type))
-              .value;
-      }
+  in
+  match result_type with
+  | Some Type -> { result with value = Type (value_to_type result.value) }
+  | _ -> result
+
+and value_to_type : value -> value_type = function
+  | Type t -> t
+  | Dict { fields } -> Dict { fields = StringMap.map value_to_type fields }
+  | Template f -> Template f
+  | other -> failwith (show other ^ " is not a type")
 
 and compile_and_call (f : fn) (args : value) : value =
   call_compiled (ensure_compiled f) args
@@ -897,6 +991,19 @@ module Builtins = struct
     let args = compile_ast self (StringMap.find "args" args) ~new_bindings in
     {
       ir = Call { f = f.ir; args = args.ir; data = init_ir_data () };
+      new_bindings = StringMap.empty;
+    }
+
+  let instantiate_template : builtin_macro =
+   fun self args ~new_bindings ->
+    let template =
+      compile_ast self (StringMap.find "template" args) ~new_bindings
+    in
+    let args = compile_ast self (StringMap.find "args" args) ~new_bindings in
+    {
+      ir =
+        Instantiate
+          { template = template.ir; args = args.ir; data = init_ir_data () };
       new_bindings = StringMap.empty;
     }
 
@@ -1095,6 +1202,28 @@ module Builtins = struct
         StringMap.map (fun value -> Value value) evaled.new_bindings;
     }
 
+  let template_def : builtin_macro =
+   fun self args ~new_bindings ->
+    let where = StringMap.find_opt "where" args in
+    if Option.is_some where then failwith "todo where clauses";
+    let def = StringMap.find "def" args in
+    let args = StringMap.find "args" args in
+    {
+      ir =
+        Template
+          {
+            f =
+              {
+                captured = self;
+                args_pattern = Some args;
+                body = def;
+                compiled = None;
+              };
+            data = init_ir_data ();
+          };
+      new_bindings = StringMap.empty;
+    }
+
   let function_def : builtin_macro =
    fun self args ~new_bindings ->
     let args_pattern = StringMap.find_opt "args" args in
@@ -1145,26 +1274,32 @@ module Builtins = struct
   let tuple : builtin_macro =
    fun self args ~new_bindings ->
     let a = StringMap.find "a" args in
-    let b = StringMap.find "b" args in
     let a = compile_ast self a ~new_bindings in
-    let b = compile_ast self b ~new_bindings in
     let fields : ir -> _ = function
       | Dict { fields; _ } -> fields
       | _ -> failwith "expected a dict"
     in
-    {
-      ir =
-        Dict
-          {
-            fields =
-              StringMap.union
-                (fun name _a _b ->
-                  failwith (name ^ " is specified multiple times"))
-                (fields a.ir) (fields b.ir);
-            data = init_ir_data ();
-          };
-      new_bindings = StringMap.empty;
-    }
+    match StringMap.find_opt "b" args with
+    | Some b ->
+        let b = compile_ast self b ~new_bindings in
+        {
+          ir =
+            Dict
+              {
+                fields =
+                  StringMap.union
+                    (fun name _a _b ->
+                      failwith (name ^ " is specified multiple times"))
+                    (fields a.ir) (fields b.ir);
+                data = init_ir_data ();
+              };
+          new_bindings = StringMap.empty;
+        }
+    | None ->
+        {
+          ir = Dict { fields = fields a.ir; data = init_ir_data () };
+          new_bindings = StringMap.empty;
+        }
 
   let macro = function
     | Function f -> Macro f
@@ -1314,6 +1449,7 @@ module Builtins = struct
         ("tuple", BuiltinMacro tuple);
         ("function_type", BuiltinFn function_type);
         ("random_int32", BuiltinFn random_int32);
+        ("type", Type Type);
         ( "string_to_int32",
           BuiltinFn
             {
@@ -1333,6 +1469,8 @@ module Builtins = struct
               arg_type = Void;
               result_type = String;
             } );
+        ("template_def", BuiltinMacro template_def);
+        ("instantiate_template", BuiltinMacro instantiate_template);
       ]
 end
 

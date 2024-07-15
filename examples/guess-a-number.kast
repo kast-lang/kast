@@ -1,20 +1,9 @@
-
-
-let distribution = trait (
-    gen_type : type;
-    gen : void -> gen_type;
-);
-
-let random = template distribution -> void -> dist.gen_type
-
-let random =  :: T { dist.gen() }
-
 let main = {
-    let picked = random (min : 1, max : 10);
+    let picked = random (min: 1, max: 10);
     print "the number has been picked";
     print "guess:";
     loop {
-        let guessed = input() | string_to_int32;
+        let guessed = input() | parse;
         if guessed == picked then
             false # todo break
         else (

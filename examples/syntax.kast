@@ -5,19 +5,26 @@ syntax let <- 5 = "let" pattern "=" value;
 syntax const_let <- 5 = "const" pattern "=" value;
 
 syntax macro <- 6 = "macro" def;
+
 syntax function_def <- 7 = args "=>" body;
 
 syntax type_ascribe <- 8 = value "::" type;
 
-syntax function_type -> 9 = arg "->" result;
+syntax template_def <- 9 = "forall" args "." def;
+syntax template_def <- 9 = "forall" args "where" where "." def;
 
-syntax tuple <- 10 = a "," b;
-syntax field <- 11 = name ":" value;
-syntax inline_field <- 11 = "~" name;
+syntax function_type -> 10 = arg "->" result;
 
-syntax if <- 12 = "if" cond "then" then "else" else;
-syntax if -> 12 = cond "?" then ":" else;
-syntax if -> 12 = cond "then" then "else" else;
+syntax tuple <- 11 = a "," b;
+syntax tuple <- 11 = a ",";
+syntax field <- 12 = name ":" value;
+syntax inline_field <- 12 = "~" name;
+
+syntax if <- 13 = "if" cond "then" then "else" else;
+syntax if -> 13 = cond "?" then ":" else;
+syntax if -> 13 = cond "then" then "else" else;
+
+syntax implements <- 14 = type "implements" trait;
 
 syntax pipe <- 15 = args "|" f;
 
@@ -43,6 +50,8 @@ syntax mod <- 40 = lhs "%" rhs;
 syntax pow -> 60 = lhs "^" rhs;
 
 syntax call <- 100 = f args;
+
+syntax instantiate_template <- 150 = template "[" args "]";
 
 syntax quote -> 200 = "`" expr;
 syntax quote -> 200 = "`" "(" expr ")";
