@@ -1,6 +1,12 @@
 test TEST:
-    just run examples/syntax.kast examples/{{TEST}}.kast
+    just run std/lib.kast examples/{{TEST}}.kast
+
+repl:
+    just run std/lib.kast
 
 run *ARGS:
     rlwrap _build/default/bin/main.exe {{ARGS}}
     # dune exec playground -- {{ARGS}}
+
+dune:
+    dune build -w

@@ -731,7 +731,7 @@ and fully_infer_types (ir : ir) (expected_type : value_type option) : value_type
 
 and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     evaled =
-  Log.info ("evaluating " ^ show_ir ir);
+  Log.trace ("evaluating " ^ show_ir ir);
   let result_type = maybe_infer_types ir expected_type ~full:false in
   (* forward_expected_type ir expected_type; *)
   (* let result_type = (ir_data ir).result_type in *)
