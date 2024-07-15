@@ -1,17 +1,32 @@
+let random = forall (T :: type). (
+    if is_same_type (a: T, b: int32) then
+        random_int32
+    else
+        panic "wtf"
+);
+
+let parse = forall (T :: type). (
+    if is_same_type (a: T, b: int32) then
+        string_to_int32
+    else
+        panic "not implemented"
+);
+
 let main = {
-    let picked = random (min: 1, max: 10);
+    let picked = random[int32] (min: 1, max: 10);
     print "the number has been picked";
     print "guess:";
     loop {
-        let guessed = input() | parse;
+        let guessed = input() | parse[int32];
         if guessed == picked then
             false # todo break
         else (
-            print "wrong! guess again:";
+            if picked < guessed then
+                print "less! guess again:"
+            else
+                print "greater! guess again:";
             true
         )
     };
     print "you have guessed the number! congrats!";
 };
-
-main ();

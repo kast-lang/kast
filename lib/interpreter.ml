@@ -67,6 +67,7 @@ and 'data ir_node =
   | Discard of { value : 'data ir_node; data : 'data }
   | Then of { first : 'data ir_node; second : 'data ir_node; data : 'data }
   | Call of { f : 'data ir_node; args : 'data ir_node; data : 'data }
+  (* todo remove? *)
   | Instantiate of {
       template : 'data ir_node;
       args : 'data ir_node;
@@ -676,7 +677,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
           | Some _ -> failwith "not template"
           | None -> None)
       | Call { f; args; _ } -> (
-          Log.info ("trying to call " ^ show_ir f);
+          Log.trace ("trying to call " ^ show_ir f);
           match maybe_infer_types f None ~full with
           | Some (Fn f | Macro f) ->
               let { arg_type; result_type; _ } = f in
@@ -730,7 +731,7 @@ and fully_infer_types (ir : ir) (expected_type : value_type option) : value_type
 
 and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     evaled =
-  Log.trace ("evaluating " ^ show_ir ir);
+  Log.info ("evaluating " ^ show_ir ir);
   let result_type = maybe_infer_types ir expected_type ~full:false in
   (* forward_expected_type ir expected_type; *)
   (* let result_type = (ir_data ir).result_type in *)
@@ -1000,10 +1001,17 @@ module Builtins = struct
       compile_ast self (StringMap.find "template" args) ~new_bindings
     in
     let args = compile_ast self (StringMap.find "args" args) ~new_bindings in
+    let instantiate_ir =
+      Instantiate
+        { template = template.ir; args = args.ir; data = init_ir_data () }
+    in
     {
       ir =
-        Instantiate
-          { template = template.ir; args = args.ir; data = init_ir_data () };
+        Const
+          {
+            value = (eval_ir self instantiate_ir None).value;
+            data = init_ir_data ();
+          };
       new_bindings = StringMap.empty;
     }
 
@@ -1150,6 +1158,16 @@ module Builtins = struct
     let e = StringMap.find "e" args in
     {
       ir = (compile_ast self e ~new_bindings).ir;
+      new_bindings = StringMap.empty;
+    }
+
+  let comptime : builtin_macro =
+   fun self args ~new_bindings ->
+    let value = StringMap.find "value" args in
+    {
+      ir =
+        Const
+          { value = (eval_ast self value None).value; data = init_ir_data () };
       new_bindings = StringMap.empty;
     }
 
@@ -1328,7 +1346,7 @@ module Builtins = struct
     {
       impl =
         (fun value ->
-          Log.trace (show value ^ " : " ^ show_type (type_of_value value));
+          print_endline (show value ^ " : " ^ show_type (type_of_value value));
           Void);
       arg_type = Any;
       result_type = Void;
@@ -1382,6 +1400,34 @@ module Builtins = struct
                 [ ("min", (Int32 : value_type)); ("max", Int32) ];
           };
       result_type = Int32;
+    }
+
+  let panic : builtin_fn =
+    {
+      impl =
+        (function
+        | String s -> failwith s
+        | _ -> failwith "panicked with not a string kekw");
+      arg_type = String;
+      result_type = Void;
+    }
+
+  let is_same_type : builtin_fn =
+    {
+      impl =
+        (function
+        | Dict { fields } ->
+            let a = get_type (StringMap.find "a" fields) in
+            let b = get_type (StringMap.find "a" fields) in
+            Bool (a = b)
+        | _ -> failwith "expected dict");
+      arg_type =
+        Dict
+          {
+            fields =
+              StringMap.of_list [ ("a", (Type : value_type)); ("b", Type) ];
+          };
+      result_type = Bool;
     }
 
   let all =
@@ -1471,6 +1517,9 @@ module Builtins = struct
             } );
         ("template_def", BuiltinMacro template_def);
         ("instantiate_template", BuiltinMacro instantiate_template);
+        ("is_same_type", BuiltinFn is_same_type);
+        ("panic", BuiltinFn panic);
+        ("comptime", BuiltinMacro comptime);
       ]
 end
 

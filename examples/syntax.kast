@@ -5,6 +5,7 @@ syntax let <- 5 = "let" pattern "=" value;
 syntax const_let <- 5 = "const" pattern "=" value;
 
 syntax macro <- 6 = "macro" def;
+syntax comptime <- 6 = "comptime" value;
 
 syntax function_def <- 7 = args "=>" body;
 
@@ -69,7 +70,9 @@ syntax scope <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")";
 
 const inline_field = macro name : name => `($name : $name);
-const pipe = macro ~f, ~args => `($f $args);
+
+# args | f
+const pipe = macro ~f, ~args => `((let args = $args; let f = $f; f args));
 
 let loop = body :: void -> bool =>
     if body () then
