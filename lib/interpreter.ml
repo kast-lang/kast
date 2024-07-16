@@ -23,6 +23,7 @@ type value =
 
 and value_type =
   | Any
+  | Never
   | Ast
   | Void
   | Bool
@@ -41,6 +42,7 @@ and value_type =
 and fn_type = { arg_type : value_type; result_type : value_type }
 
 and builtin_fn = {
+  name : string;
   impl : value -> value;
   arg_type : value_type;
   result_type : value_type;
@@ -50,6 +52,8 @@ and builtin_macro = state -> ast StringMap.t -> new_bindings:bool -> compiled
 
 and 'data ir_node =
   | Void of { data : 'data }
+  | TypeOf of { captured : state; expr : 'data ir_node; data : 'data }
+  | TypeOfValue of { captured : state; expr : 'data ir_node; data : 'data }
   | Dict of { fields : 'data ir_node StringMap.t; data : 'data }
   | Ast of {
       def : Syntax.syntax_def;
@@ -69,6 +73,7 @@ and 'data ir_node =
   | Call of { f : 'data ir_node; args : 'data ir_node; data : 'data }
   (* todo remove? *)
   | Instantiate of {
+      captured : state;
       template : 'data ir_node;
       args : 'data ir_node;
       data : 'data;
@@ -90,15 +95,22 @@ and ir_data = {
 }
 
 and ir = ir_data ir_node
+and fn_result_type = Ast of ast | Actual of value_type
 
 and fn = {
   captured : state;
   args_pattern : ast option;
+  result_type : fn_result_type option;
   body : ast;
   mutable compiled : compiled_fn option;
 }
 
-and compiled_fn = { captured : state; args : pattern; body : ir }
+and compiled_fn = {
+  result_type : ir option;
+  captured : state;
+  args : pattern;
+  body : ir;
+}
 
 and pattern =
   | Void
@@ -118,7 +130,7 @@ let rec show = function
   | Void -> "void"
   | Macro _ -> "macro <...>"
   | BuiltinMacro _ -> "builtin_macro"
-  | BuiltinFn _ -> "builtin"
+  | BuiltinFn { name; _ } -> "builtin_fn " ^ name
   | Template f -> "template"
   | Function f ->
       "function"
@@ -146,6 +158,7 @@ and show_fn_type : fn_type -> string =
 
 and show_type : value_type -> string = function
   | Any -> "any"
+  | Never -> "!"
   | Ast -> "ast"
   | Void -> "void"
   | Bool -> "bool"
@@ -170,6 +183,8 @@ and show_type : value_type -> string = function
 
 and show_ir : ir -> string = function
   | Void _ -> "void"
+  | TypeOf { expr; _ } -> "typeof " ^ show_ir expr
+  | TypeOfValue { expr; _ } -> "typeofvalue " ^ show_ir expr
   | Template _ -> "template"
   | Function _ -> "function"
   | Dict { fields; _ } ->
@@ -183,7 +198,7 @@ and show_ir : ir -> string = function
   | Ast _ -> "ast"
   | Const { value; _ } -> "(const " ^ show value ^ ")"
   | FieldAccess { obj; name; _ } -> "(field " ^ show_ir obj ^ " " ^ name ^ ")"
-  | BuiltinFn _ -> "builtinfn"
+  | BuiltinFn { f = { name; _ }; _ } -> "builtin_fn " ^ name
   | Discard { value; _ } -> "(discard " ^ show_ir value ^ ")"
   | Binding { binding; _ } -> "(binding " ^ binding.name ^ ")"
   | Call { f; args; _ } -> "(call " ^ show_ir f ^ " " ^ show_ir args ^ ")"
@@ -218,6 +233,8 @@ and type_check_fn (expected : fn_type) (actual : fn_type) : bool =
 and type_check (expected : value_type) (actual : value_type) : bool =
   match (expected, actual) with
   | Any, _ -> true
+  | _, Never -> true
+  | Never, _ -> false
   | Ast, Ast -> true
   | Ast, _ -> false
   | Void, Void -> true
@@ -260,19 +277,26 @@ and type_of_value : value -> value_type = function
   | BuiltinMacro _ -> BuiltinMacro
   | BuiltinFn { arg_type; result_type; _ } -> Fn { arg_type; result_type }
   | Template f ->
-      Any
-      (* todo *)
-      (* let compiled = ensure_compiled f in
-         let body_type = fully_infer_types compiled.body None in
-         Log.info ("template compiled as " ^ show_ir compiled.body);
-         Log.info ("type is " ^ show_type body_type);
-         Template
-           {
-             args_pattern = f.args_pattern;
-             captured = f.captured;
-             body = failwith "todo";
-             compiled = None;
-           } *)
+      Template
+        {
+          args_pattern = f.args_pattern;
+          result_type = None;
+          captured = f.captured;
+          body =
+            Complex
+              {
+                def =
+                  {
+                    name = "typeofvalue";
+                    assoc = Left;
+                    priority = 0;
+                    parts = [];
+                  };
+                values = StringMap.singleton "expr" f.body;
+                data = Ast.data f.body;
+              };
+          compiled = None;
+        }
   | Macro f -> Macro (type_of_fn f)
   | Function f -> Fn (type_of_fn f)
   | Int32 _ -> Int32
@@ -287,6 +311,8 @@ and type_of_value : value -> value_type = function
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | TypeOf { data; _ }
+  | TypeOfValue { data; _ }
   | Instantiate { data; _ }
   | Template { data; _ }
   | Function { data; _ }
@@ -424,6 +450,8 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
       let rec ir_to_pattern (ir : ir) : pattern =
         match ir with
         | Void _ -> Void
+        | TypeOfValue _ -> failwith "todo pattern typeofvalue"
+        | TypeOf _ -> failwith "todo pattern typeof"
         | Instantiate _ -> failwith "todo patt insta"
         | Template _ -> failwith "todo patt templ"
         | Function _ -> failwith "todo patt fun"
@@ -594,6 +622,8 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
     let inferred : value_type option =
       match ir with
       | Void _ -> Some Void
+      | TypeOf { captured; expr; _ } -> Some Type
+      | TypeOfValue { captured; expr; _ } -> Some Type
       | BuiltinFn { f = { arg_type; result_type; _ }; _ } ->
           Some (Fn { arg_type; result_type })
       | Function { f; _ } | Template { f; _ } ->
@@ -668,14 +698,27 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
       | Then { first; second; _ } ->
           if full then ignore (fully_infer_types first None);
           maybe_infer_types second expected_type ~full
-      | Instantiate { template; args; _ } -> (
-          match maybe_infer_types template None ~full with
-          | Some (Template f) ->
-              (* todo *)
-              Some Any
-          | Some Any -> Some Any
-          | Some _ -> failwith "not template"
-          | None -> None)
+      | Instantiate { captured; template; args; _ } ->
+          let result =
+            match maybe_infer_types template None ~full with
+            | Some (Template f) ->
+                let compiled = ensure_compiled f in
+                let args =
+                  eval_ir captured args (pattern_type compiled.args None)
+                in
+                Log.trace
+                  ("instantiating type inf " ^ show_pattern compiled.args
+                 ^ " => " ^ show_ir compiled.body);
+                Some (value_to_type (call_compiled compiled args.value))
+            | Some Any -> Some Any
+            | Some _ -> failwith "not template"
+            | None -> None
+          in
+          Log.trace
+            ("type of instantiating " ^ show_ir template ^ " "
+           ^ Bool.to_string full ^ " = "
+            ^ match result with Some t -> show_type t | None -> "<unknown>");
+          result
       | Call { f; args; _ } -> (
           Log.trace ("trying to call " ^ show_ir f);
           match maybe_infer_types f None ~full with
@@ -683,6 +726,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
               let { arg_type; result_type; _ } = f in
               if full then ignore (fully_infer_types args (Some arg_type));
               Some result_type
+          | Some BuiltinMacro -> None
           | Some Any -> None
           | Some typ -> failwith (show_type typ ^ " is not fun")
           | None -> None)
@@ -720,7 +764,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
         | Some expected_type ->
             if not (type_check expected_type actual_type) then
               failwith
-                ("expected " ^ show_type expected_type ^ ", got "
+                (show_ir ir ^ " expected " ^ show_type expected_type ^ ", got "
                ^ show_type actual_type))
     | None -> ());
   ir_data.result_type
@@ -729,15 +773,49 @@ and fully_infer_types (ir : ir) (expected_type : value_type option) : value_type
     =
   Option.get (maybe_infer_types ir expected_type ~full:true)
 
+and log_state (self : state) : unit =
+  let log = Log.never in
+  log "locals:";
+  StringMap.iter
+    (fun name local ->
+      log
+        (name ^ " = "
+        ^
+        match local with
+        | Value value -> show value
+        | Binding binding -> "binding " ^ binding.name))
+    self.data.locals
+
+and show_or : 'a. string -> ('a -> string) -> 'a option -> string =
+ fun default f opt -> match opt with Some value -> f value | None -> default
+
+and show_local : state_local -> string = function
+  | Value value -> show value
+  | Binding binding -> "binding " ^ binding.name
+
 and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     evaled =
-  Log.trace ("evaluating " ^ show_ir ir);
+  Log.trace
+    ("evaluating " ^ show_ir ir ^ " as "
+    ^ show_or "<unknown>" show_type expected_type);
+  log_state self;
+  Log.trace
+    ("picked = " ^ show_or "<none>" show_local (get_local_opt self "picked"));
   let result_type = maybe_infer_types ir expected_type ~full:false in
+  Log.trace
+    ("result type of " ^ show_ir ir ^ " inferred as "
+    ^ show_or "<unknown>" show_type result_type);
   (* forward_expected_type ir expected_type; *)
   (* let result_type = (ir_data ir).result_type in *)
   let result =
     match ir with
     | Void _ -> just_value Void result_type
+    | TypeOf { captured; expr; _ } ->
+        just_value (Type (fully_infer_types expr (Some Type))) (Some Type)
+    | TypeOfValue { captured; expr; _ } ->
+        just_value
+          (Type (type_of_value (eval_ir self expr (Some Any)).value))
+          (Some Type)
     | BuiltinFn { f; _ } -> just_value (BuiltinFn f) result_type
     | Dict { fields; _ } ->
         let field_types =
@@ -758,9 +836,13 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
              })
           result_type
     | Template { f; _ } ->
-        just_value (Template { f with captured = self }) result_type
+        just_value
+          (Template { f with captured = self; compiled = None })
+          result_type
     | Function { f; _ } ->
-        just_value (Function { f with captured = self }) result_type
+        just_value
+          (Function { f with captured = self; compiled = None })
+          result_type
     | Ast { def; ast_data; values; _ } ->
         just_value
           (Ast
@@ -903,6 +985,9 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
                 .value;
         }
   in
+  Log.trace
+    ("evaluated " ^ show_ir ir ^ " = " ^ show result.value ^ " as "
+    ^ show_or "<unknown>" show_type result_type);
   match result_type with
   | Some Type -> { result with value = Type (value_to_type result.value) }
   | _ -> result
@@ -921,47 +1006,62 @@ and ensure_compiled (f : fn) : compiled_fn =
     Log.trace ("compiling " ^ Ast.show f.body);
     f.compiled <-
       (let args = compile_pattern f.captured f.args_pattern in
+       let captured =
+         {
+           f.captured with
+           data =
+             {
+               f.captured.data with
+               locals =
+                 update_locals f.captured.data.locals
+                   (StringMap.map
+                      (fun binding : state_local -> Binding binding)
+                      (pattern_bindings args));
+             };
+         }
+       in
        Some
          {
            captured = f.captured;
            args;
-           body =
-             (compile_ast
-                {
-                  f.captured with
-                  data =
-                    {
-                      f.captured.data with
-                      locals =
-                        update_locals f.captured.data.locals
-                          (StringMap.map
-                             (fun binding : state_local -> Binding binding)
-                             (pattern_bindings args));
-                    };
-                }
-                f.body ~new_bindings:false)
-               .ir;
+           result_type =
+             (match f.result_type with
+             | None -> None
+             | Some (Actual t) ->
+                 Some (Const { value = Type t; data = init_ir_data () })
+             | Some (Ast ast) ->
+                 Some (compile_ast captured ast ~new_bindings:false).ir);
+           body = (compile_ast captured f.body ~new_bindings:false).ir;
          }));
   Option.get f.compiled
 
 and call_compiled (f : compiled_fn) (args : value) : value =
-  (eval_ir
-     {
-       f.captured with
-       data =
-         {
-           f.captured.data with
-           locals =
-             update_locals f.captured.data.locals
-               (StringMap.mapi
-                  (fun name value ->
-                    Log.trace ("called with arg " ^ name ^ " = " ^ show value);
-                    Value value)
-                  (pattern_match f.args args));
-         };
-     }
-     f.body None)
-    .value
+  let captured =
+    {
+      f.captured with
+      data =
+        {
+          f.captured.data with
+          locals =
+            update_locals f.captured.data.locals
+              (StringMap.mapi
+                 (fun name value ->
+                   Log.trace ("called with arg " ^ name ^ " = " ^ show value);
+                   Value value)
+                 (pattern_match f.args args));
+        };
+    }
+  in
+  (* todo lazy *)
+  let expected_type =
+    Option.map
+      (fun ir -> value_to_type (eval_ir f.captured ir (Some Type)).value)
+      f.result_type
+  in
+  Log.trace
+    ("calling " ^ show_ir f.body ^ " with " ^ show args ^ " expecting "
+    ^ show_or "<unknown>" show_type expected_type);
+  (eval_ir captured f.body expected_type).value
 
 and discard : value -> unit = function
   | Void -> ()
@@ -1001,15 +1101,13 @@ module Builtins = struct
       compile_ast self (StringMap.find "template" args) ~new_bindings
     in
     let args = compile_ast self (StringMap.find "args" args) ~new_bindings in
-    let instantiate_ir =
-      Instantiate
-        { template = template.ir; args = args.ir; data = init_ir_data () }
-    in
     {
       ir =
-        Const
+        Instantiate
           {
-            value = (eval_ir self instantiate_ir None).value;
+            captured = self;
+            template = template.ir;
+            args = args.ir;
             data = init_ir_data ();
           };
       new_bindings = StringMap.empty;
@@ -1044,6 +1142,7 @@ module Builtins = struct
 
   let print : builtin_fn =
     {
+      name = "print";
       impl =
         (function
         | String value ->
@@ -1095,8 +1194,9 @@ module Builtins = struct
     | Dict { fields = args } -> f args
     | _ -> failwith "expected dict"
 
-  let int32_binary_op_with lhs rhs f : builtin_fn =
+  let int32_binary_op_with name lhs rhs f : builtin_fn =
     {
+      name = "int32 binary " ^ name;
       impl =
         dict_fn (fun args ->
             let lhs = StringMap.find lhs args in
@@ -1115,8 +1215,9 @@ module Builtins = struct
 
   let int32_binary_op = int32_binary_op_with "lhs" "rhs"
 
-  let float64_fn f : builtin_fn =
+  let float64_fn name f : builtin_fn =
     {
+      name;
       impl =
         (function
         | Float64 value -> Float64 (f value) | _ -> failwith "only floats");
@@ -1124,8 +1225,9 @@ module Builtins = struct
       result_type = Float64;
     }
 
-  let int32_fn f : builtin_fn =
+  let int32_fn name f : builtin_fn =
     {
+      name;
       impl =
         (function
         | Int32 value -> Int32 (f value) | _ -> failwith "only floats");
@@ -1133,25 +1235,26 @@ module Builtins = struct
       result_type = Int32;
     }
 
-  let single_arg_fn arg_type name result_type f : builtin_fn =
+  let single_arg_fn fn_name arg_type arg_name result_type f : builtin_fn =
     {
+      name = fn_name;
       impl =
         dict_fn (fun args ->
-            let value = StringMap.find name args in
+            let value = StringMap.find arg_name args in
             f value);
-      arg_type = Dict { fields = StringMap.singleton name arg_type };
+      arg_type = Dict { fields = StringMap.singleton arg_name arg_type };
       result_type;
     }
 
-  let float64_macro name f =
-    let f = float64_fn f in
-    single_arg_fn Float64 name Float64 f.impl
+  let float64_macro fn_name arg_name f =
+    let f = float64_fn fn_name f in
+    single_arg_fn fn_name Float64 arg_name Float64 f.impl
 
-  let int32_macro name f =
-    let f = int32_fn f in
-    single_arg_fn Int32 name Int32 f.impl
+  let int32_macro fn_name arg_name f =
+    let f = int32_fn fn_name f in
+    single_arg_fn fn_name Int32 arg_name Int32 f.impl
 
-  let int32_unary_op = int32_macro "x"
+  let int32_unary_op name = int32_macro ("int32 unary " ^ name) "x"
 
   let scope : builtin_macro =
    fun self args ~new_bindings ->
@@ -1233,6 +1336,7 @@ module Builtins = struct
             f =
               {
                 captured = self;
+                result_type = Some (Actual Any);
                 args_pattern = Some args;
                 body = def;
                 compiled = None;
@@ -1245,12 +1349,21 @@ module Builtins = struct
   let function_def : builtin_macro =
    fun self args ~new_bindings ->
     let args_pattern = StringMap.find_opt "args" args in
+    let result_type = StringMap.find_opt "result_type" args in
     let body = StringMap.find "body" args in
     {
       ir =
         Function
           {
-            f = { captured = self; args_pattern; body; compiled = None };
+            f =
+              {
+                result_type =
+                  Option.map (fun t : fn_result_type -> Ast t) result_type;
+                captured = self;
+                args_pattern;
+                body;
+                compiled = None;
+              };
             data = init_ir_data ();
           };
       new_bindings = StringMap.empty;
@@ -1284,6 +1397,34 @@ module Builtins = struct
           {
             fields =
               StringMap.singleton name (compile_ast self value ~new_bindings).ir;
+            data = init_ir_data ();
+          };
+      new_bindings = StringMap.empty;
+    }
+
+  let typeof : builtin_macro =
+   fun self args ~new_bindings ->
+    let expr = StringMap.find "expr" args in
+    {
+      ir =
+        TypeOf
+          {
+            captured = self;
+            expr = (compile_ast self expr ~new_bindings).ir;
+            data = init_ir_data ();
+          };
+      new_bindings = StringMap.empty;
+    }
+
+  let typeofvalue : builtin_macro =
+   fun self args ~new_bindings ->
+    let expr = StringMap.find "expr" args in
+    {
+      ir =
+        TypeOfValue
+          {
+            captured = self;
+            expr = (compile_ast self expr ~new_bindings).ir;
             data = init_ir_data ();
           };
       new_bindings = StringMap.empty;
@@ -1323,8 +1464,9 @@ module Builtins = struct
     | Function f -> Macro f
     | other -> failwith ("expected a function, got " ^ show other)
 
-  let cmp_fn f : builtin_fn =
+  let cmp_fn name f : builtin_fn =
     {
+      name;
       impl =
         dict_fn (fun args ->
             let lhs = StringMap.find "lhs" args in
@@ -1344,6 +1486,7 @@ module Builtins = struct
 
   let dbg : builtin_fn =
     {
+      name = "dbg";
       impl =
         (fun value ->
           print_endline (show value ^ " : " ^ show_type (type_of_value value));
@@ -1356,12 +1499,17 @@ module Builtins = struct
     | Int32 value -> value
     | _ -> failwith "expected int32"
 
+  let get_float64 : value -> float = function
+    | Float64 value -> value
+    | _ -> failwith "expected float64"
+
   let get_type : value -> value_type = function
     | Type value_type -> value_type
     | _ -> failwith "expected type"
 
   let function_type : builtin_fn =
     {
+      name = "function_type";
       impl =
         (function
         | Dict { fields = args } ->
@@ -1383,6 +1531,7 @@ module Builtins = struct
 
   let random_int32 : builtin_fn =
     {
+      name = "random_int32";
       impl =
         (function
         | Dict { fields = args } ->
@@ -1402,24 +1551,50 @@ module Builtins = struct
       result_type = Int32;
     }
 
+  let random_float64 : builtin_fn =
+    {
+      name = "random_float64";
+      impl =
+        (function
+        | Dict { fields = args } ->
+            let min = get_float64 (StringMap.find "min" args) in
+            let max = get_float64 (StringMap.find "max" args) in
+            Float64 (min +. Random.float (max -. min))
+        | _ -> failwith "expected dict");
+      arg_type =
+        Dict
+          {
+            fields =
+              StringMap.of_list
+                [ ("min", (Float64 : value_type)); ("max", Float64) ];
+          };
+      result_type = Float64;
+    }
+
   let panic : builtin_fn =
     {
+      name = "panic";
       impl =
         (function
         | String s -> failwith s
         | _ -> failwith "panicked with not a string kekw");
       arg_type = String;
-      result_type = Void;
+      result_type = Never;
     }
 
   let is_same_type : builtin_fn =
     {
+      name = "is_same_type";
       impl =
         (function
         | Dict { fields } ->
             let a = get_type (StringMap.find "a" fields) in
-            let b = get_type (StringMap.find "a" fields) in
-            Bool (a = b)
+            let b = get_type (StringMap.find "b" fields) in
+            let result = a = b in
+            Log.trace
+              ("is_same_type " ^ show_type a ^ ", " ^ show_type b ^ " = "
+             ^ Bool.to_string result);
+            Bool result
         | _ -> failwith "expected dict");
       arg_type =
         Dict
@@ -1433,6 +1608,8 @@ module Builtins = struct
   let all =
     StringMap.of_list
       [
+        ("typeof", BuiltinMacro typeof);
+        ("typeofvalue", BuiltinMacro typeofvalue);
         ("any", Type Any);
         ("void", Type Void);
         ("ast", Type Ast);
@@ -1450,21 +1627,22 @@ module Builtins = struct
         ("call", BuiltinMacro call);
         ("then", BuiltinMacro then');
         ("if", BuiltinMacro if');
-        ("uplus", BuiltinFn (int32_unary_op (fun x -> x)));
-        ("negate", BuiltinFn (int32_unary_op Int32.neg));
-        ("add", BuiltinFn (int32_binary_op Int32.add));
-        ("sub", BuiltinFn (int32_binary_op Int32.sub));
-        ("mul", BuiltinFn (int32_binary_op Int32.mul));
-        ("div", BuiltinFn (int32_binary_op Int32.div));
+        ("uplus", BuiltinFn (int32_unary_op "+" (fun x -> x)));
+        ("negate", BuiltinFn (int32_unary_op "-" Int32.neg));
+        ("add", BuiltinFn (int32_binary_op "+" Int32.add));
+        ("sub", BuiltinFn (int32_binary_op "-" Int32.sub));
+        ("mul", BuiltinFn (int32_binary_op "*" Int32.mul));
+        ("div", BuiltinFn (int32_binary_op "/" Int32.div));
         (* ("mod", BuiltinFn (binary_op ( Stdlib.rem ))); *)
-        ("sin", BuiltinFn (float64_fn sin));
-        ("cos", BuiltinFn (float64_fn cos));
-        ("sqrt", BuiltinFn (float64_fn sqrt));
+        ("sin", BuiltinFn (float64_fn "sin" sin));
+        ("cos", BuiltinFn (float64_fn "cos" cos));
+        ("sqrt", BuiltinFn (float64_fn "sqrt" sqrt));
         ("quote", BuiltinMacro quote);
         ("scope", BuiltinMacro scope);
         ( "type_of_value",
           BuiltinFn
             {
+              name = "type_of_value";
               impl = (fun x -> Type (type_of_value x));
               arg_type = Any;
               result_type = Type;
@@ -1472,6 +1650,7 @@ module Builtins = struct
         ( "unit",
           BuiltinFn
             {
+              name = "unit(void)";
               impl = (fun _ -> Void);
               arg_type = Dict { fields = StringMap.empty };
               result_type = Void;
@@ -1482,23 +1661,25 @@ module Builtins = struct
         ("field_access", BuiltinMacro field_access);
         ( "macro",
           BuiltinFn
-            (single_arg_fn Any
+            (single_arg_fn "macro" Any
                (* todo { _anyfield: ast } -> ast #  (Fn { arg_type = Ast; result_type = Ast }) *)
                "def" Any macro) );
-        ("less", BuiltinFn (cmp_fn ( < )));
-        ("less_or_equal", BuiltinFn (cmp_fn ( <= )));
-        ("equal", BuiltinFn (cmp_fn ( = )));
-        ("not_equal", BuiltinFn (cmp_fn ( <> )));
-        ("greater", BuiltinFn (cmp_fn ( > )));
-        ("greater_or_equal", BuiltinFn (cmp_fn ( >= )));
+        ("less", BuiltinFn (cmp_fn "<" ( < )));
+        ("less_or_equal", BuiltinFn (cmp_fn "<=" ( <= )));
+        ("equal", BuiltinFn (cmp_fn "==" ( = )));
+        ("not_equal", BuiltinFn (cmp_fn "!=" ( <> )));
+        ("greater", BuiltinFn (cmp_fn ">" ( > )));
+        ("greater_or_equal", BuiltinFn (cmp_fn ">=" ( >= )));
         ("field", BuiltinMacro field);
         ("tuple", BuiltinMacro tuple);
         ("function_type", BuiltinFn function_type);
         ("random_int32", BuiltinFn random_int32);
+        ("random_float64", BuiltinFn random_float64);
         ("type", Type Type);
         ( "string_to_int32",
           BuiltinFn
             {
+              name = "string_to_int32";
               impl =
                 (function
                 | String s -> Int32 (Int32.of_string s)
@@ -1509,6 +1690,7 @@ module Builtins = struct
         ( "input",
           BuiltinFn
             {
+              name = "input";
               impl =
                 (function
                 | Void -> String (read_line ()) | _ -> failwith "expected void");

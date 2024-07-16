@@ -52,6 +52,9 @@ syntax pow -> 60 = lhs "^" rhs;
 
 syntax call <- 100 = f args;
 
+syntax typeof <- 120 = "typeof" expr;
+syntax typeofvalue <- 120 = "typeofvalue" expr;
+
 syntax instantiate_template <- 150 = template "[" args "]";
 
 syntax quote -> 200 = "`" expr;
@@ -61,7 +64,7 @@ syntax unquote -> 200 = "$" "(" expr ")";
 
 syntax field_access <- 300 = obj "." field;
 
-syntax function_def <- 100000 = "fn" args "{" body "}";
+syntax function_def <- 500 = "fn" "(" args ")" "{" body "}";
 syntax function_def <- 100000 = "(" args ")" "{" body "}";
 syntax function_def <- 100000 = "(" ")" "{" body "}";
 syntax function_def <- 100000 = "{" body "}";
@@ -80,5 +83,21 @@ let loop = body :: void -> bool =>
     else
         ()
 ;
+
+let random = forall (T :: type). (
+    if is_same_type (a: T, b: int32) then
+        random_int32
+    else (if is_same_type (a: T, b: float64) then
+        random_float64
+    else
+        panic "wtf")
+);
+
+let parse = forall (T :: type). (
+    if is_same_type (a: T, b: int32) then
+        string_to_int32
+    else
+        panic "not implemented"
+);
 
 ()
