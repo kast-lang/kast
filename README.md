@@ -4,6 +4,8 @@ An experimental programming language
 
 ## Todo
 
+- Mark builtin fns with contexts (e.g. print should require io)
+- Sum types (ADT)
 - Fix the bugs
 - Unnamed tuples
 - Lists
@@ -12,6 +14,6 @@ An experimental programming language
 - Ir as value so we can write compiler (glsl)
 - Traits
 - Delimited continuations
-- Effect system
+- Effect system (half done, have contexts)
 - More examples
 - Tests

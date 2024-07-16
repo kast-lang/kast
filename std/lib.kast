@@ -1,9 +1,18 @@
+# BrainoidGames: do you have type casting yet? if not, can we name it kast()?
+
 syntax then <- 0 = a ";" b;
 syntax then <- 0 = a ";";
+
+syntax break_impl <- 3 = "break" value;
+syntax break_impl <- 3 = "break";
+syntax continue_impl <- 3 = "continue";
 
 syntax let <- 5 = "let" pattern "=" value;
 syntax const_let <- 5 = "const" pattern "=" value;
 
+syntax unwinding <- 6 = "unwinding" def;
+syntax with_context <- 6 = "with" new_context "(" expr ")";
+syntax current_context <- 6 = "current" context_type;
 syntax macro <- 6 = "macro" def;
 syntax comptime <- 6 = "comptime" value;
 
@@ -15,12 +24,14 @@ syntax template_def <- 9 = "forall" args "." def;
 syntax template_def <- 9 = "forall" args "where" where "." def;
 
 syntax function_type -> 10 = arg "->" result;
+syntax function_type -> 10 = arg "->" result "incontext" contexts;
 
 syntax tuple <- 11 = a "," b;
 syntax tuple <- 11 = a ",";
 syntax field <- 12 = name ":" value;
 syntax inline_field <- 12 = "~" name;
 
+syntax if <- 13 = "if" cond "then" then;
 syntax if <- 13 = "if" cond "then" then "else" else;
 syntax if -> 13 = cond "?" then ":" else;
 syntax if -> 13 = cond "then" then "else" else;
@@ -64,6 +75,7 @@ syntax unquote -> 200 = "$" "(" expr ")";
 
 syntax field_access <- 300 = obj "." field;
 
+syntax function_def <- 500 = "fn" "(" args ")" contexts "{" body "}";
 syntax function_def <- 500 = "fn" "(" args ")" "{" body "}";
 syntax function_def <- 100000 = "(" args ")" "{" body "}";
 syntax function_def <- 100000 = "(" ")" "{" body "}";
@@ -77,12 +89,49 @@ const inline_field = macro name : name => `($name : $name);
 # args | f
 const pipe = macro ~f, ~args => `((let args = $args; let f = $f; f args));
 
-let loop = body :: void -> bool =>
-    if body () then
-        (loop body :: void)
-    else
-        ()
-;
+let loop_context = (
+    finish_current_iteration: (bool -> never), # todo should be option[T] -> never
+);
+
+# todo
+# with = forall (arg :: type, result :: type, old_context :: type, new_context :: type).
+# fn (body :: arg -> result incontext (old_context and new_context)) old_context {
+# body arg
+# }
+
+let loop = fn (body :: (void -> void incontext loop_context)) {
+    let should_continue = unwinding (token :: unwind_token) {
+        let current_loop_context = (
+            finish_current_iteration: (x :: bool => unwind ( ~token, value: x ) ),
+        );
+        with current_loop_context (
+            body ();
+            true
+        )
+    };
+    if should_continue then (loop body);
+};
+
+let do_break = fn (value :: void) loop_context {
+    (current loop_context).finish_current_iteration false
+};
+
+let do_continue = fn (void) loop_context {
+    (current loop_context).finish_current_iteration true
+};
+
+let continue_impl = macro (args :: any) => (
+    `(do_continue ())
+);
+
+let break_impl = macro (args :: any) => (
+    let value :: ast = field_access (
+        obj: `(args),
+        field: `(value),
+        default_value: `(`(void)),
+    );
+    `(do_break $value)
+);
 
 let random = forall (T :: type). (
     if is_same_type (a: T, b: int32) then

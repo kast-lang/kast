@@ -6,14 +6,13 @@ let run_once = fn (first :: bool) {
     print "guess:";
     loop {
         let guessed = input() | parse[int32];
-        if guessed == picked then
-            false # todo break
-        else (
+        if guessed == picked then (
+            break
+        ) else (
             if picked < guessed then
                 print "less! guess again:"
             else
                 print "greater! guess again:";
-            true
         )
     };
     print "you have guessed the number! congrats!";
@@ -23,7 +22,6 @@ let main = {
     run_once true;
     loop {
         run_once false;
-        true
     }
 };
 
