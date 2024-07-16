@@ -281,242 +281,217 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
       Log.trace ("finish result = " ^ show finish_result.result);
       finish_result
     in
-    match peek tokens with
-    | None -> finish ()
-    | Some { value = Ident "syntax"; span } ->
-        if not (List.is_empty parse_state.last_unassigned_values) then
-          failwith "syntax after value";
-        let def = parse_syntax () in
-        let new_syntax = add_syntax def parse_state.syntax in
-        let start_state =
-          { (start_state new_syntax) with next = EdgeMap.empty }
-        in
-        Log.trace ("new syntax = " ^ Syntax.show new_syntax);
-        Log.trace ("starting until " ^ show_priority start_state.priority);
-        let value_after =
-          parse_until_value
+    let try_joining () =
+      match parse_state.syntax.join with
+      | Some join_state
+        when should_continue_with false join_state && not parse_state.joining ->
+          Log.trace "joining";
+          let first_unassigned, remaining_unassigned =
+            split_unassigned parse_state.last_unassigned_values
+          in
+          let first_unassigned = Option.get first_unassigned in
+          let value =
+            parse_until_value
+              {
+                syntax = parse_state.syntax;
+                start = Some (data first_unassigned).start;
+                pos = parse_state.pos;
+                until = join_state.priority;
+                state = join_state;
+                values = [ first_unassigned ];
+                last_unassigned_values = remaining_unassigned;
+                joining = false;
+                must_use_final_value = true;
+              }
+          in
+          Log.trace ("parsed as " ^ show value);
+          let joined = value <> first_unassigned in
+          parse_until
             {
-              syntax = new_syntax;
-              start = None;
-              pos = parse_state.pos;
-              until = start_state.priority;
-              state = start_state;
-              values = [];
-              last_unassigned_values = [];
-              joining = false;
+              syntax = parse_state.syntax;
+              start = parse_state.start;
+              pos = (data value).finish;
+              until = parse_state.until;
+              state = parse_state.state;
+              values = parse_state.values;
+              last_unassigned_values = [ value ];
+              joining = not joined;
               must_use_final_value = parse_state.must_use_final_value;
             }
-        in
-        let value =
-          Syntax
-            {
-              def;
-              value = value_after;
-              data = { span with finish = (data value_after).finish };
-            }
-        in
-        Log.trace ("parsed " ^ show value);
-        { result = value; unassigned_values = [] }
-    | Some spanned_token -> (
-        if List.length parse_state.last_unassigned_values >= 2 then
-          (* todo this is copypasted from below *)
-          match parse_state.syntax.join with
-          | Some join_state
-            when should_continue_with false join_state
-                 && not parse_state.joining ->
-              Log.trace "joining";
-              let first_unassigned, remaining_unassigned =
-                split_unassigned parse_state.last_unassigned_values
-              in
-              let first_unassigned = Option.get first_unassigned in
-              let value =
-                parse_until_value
-                  {
-                    syntax = parse_state.syntax;
-                    start = Some (data first_unassigned).start;
-                    pos = parse_state.pos;
-                    until = join_state.priority;
-                    state = join_state;
-                    values = [ first_unassigned ];
-                    last_unassigned_values = remaining_unassigned;
-                    joining = false;
-                    must_use_final_value = true;
-                  }
-              in
-              Log.trace ("parsed as " ^ show value);
-              let joined = value <> first_unassigned in
-              parse_until
+      | _ -> finish ()
+    in
+    let result =
+      if List.length parse_state.last_unassigned_values >= 2 then
+        (* todo this is copypasted from below *)
+        try_joining ()
+      else
+        match peek tokens with
+        | None -> finish ()
+        | Some { value = Ident "syntax"; span } ->
+            if not (List.is_empty parse_state.last_unassigned_values) then
+              failwith "syntax after value";
+            let def = parse_syntax () in
+            let new_syntax = add_syntax def parse_state.syntax in
+            let start_state =
+              { (start_state new_syntax) with next = EdgeMap.empty }
+            in
+            Log.trace ("new syntax = " ^ Syntax.show new_syntax);
+            Log.trace ("starting until " ^ show_priority start_state.priority);
+            let value_after =
+              parse_until_value
                 {
-                  syntax = parse_state.syntax;
-                  start = parse_state.start;
-                  pos = (data value).finish;
-                  until = parse_state.until;
-                  state = parse_state.state;
-                  values = parse_state.values;
-                  last_unassigned_values = [ value ];
-                  joining = not joined;
+                  syntax = new_syntax;
+                  start = None;
+                  pos = parse_state.pos;
+                  until = start_state.priority;
+                  state = start_state;
+                  values = [];
+                  last_unassigned_values = [];
+                  joining = false;
                   must_use_final_value = parse_state.must_use_final_value;
                 }
-          | _ -> finish ()
-        else
-          let token = spanned_token.value in
-          let raw_token = Lexer.raw token in
-          Log.trace ("peek = " ^ raw_token);
-          let edge : Edge.t =
-            {
-              value_before_keyword =
-                (match parse_state.last_unassigned_values with
-                | [ _ ] -> true
-                | _ -> false);
-              keyword = raw_token;
-            }
-          in
-          let next_with state = EdgeMap.find_opt edge state.next in
-          match next_with parse_state.state with
-          | Some next -> (
-              Log.trace ("considering continuing with " ^ show_edge edge);
-              match should_continue_with true next with
-              | true ->
-                  consume_token ();
-                  Log.trace ("continued " ^ show_edge edge);
-                  let first_unassigned, remaining_unassigned =
-                    split_unassigned parse_state.last_unassigned_values
-                  in
-                  parse_until
-                    {
-                      syntax = parse_state.syntax;
-                      start =
-                        (match parse_state.start with
-                        | Some start -> Some start
-                        | None -> Some spanned_token.span.start);
-                      pos = spanned_token.span.finish;
-                      until = next.priority;
-                      state = next;
-                      values = maybe_join parse_state.values first_unassigned;
-                      last_unassigned_values = remaining_unassigned;
-                      joining = false;
-                      must_use_final_value = parse_state.must_use_final_value;
-                    }
-              | false ->
-                  Log.trace ("should not continue with " ^ show_edge edge);
-                  finish ())
-          | None -> (
-              match next_with (start_state parse_state.syntax) with
-              | Some new_state -> (
-                  match should_continue_with false new_state with
-                  | true ->
-                      consume_token ();
-                      Log.trace ("started " ^ show_edge edge);
-                      let { result = value; unassigned_values } =
-                        let first_unassigned, remaining_unassigned =
-                          split_unassigned parse_state.last_unassigned_values
-                        in
-                        parse_until
-                          {
-                            syntax = parse_state.syntax;
-                            start =
-                              (match parse_state.start with
-                              | Some start -> Some start
-                              | None -> Some spanned_token.span.start);
-                            pos = spanned_token.span.finish;
-                            until = new_state.priority;
-                            state = new_state;
-                            values = Option.to_list first_unassigned;
-                            last_unassigned_values = remaining_unassigned;
-                            joining = false;
-                            must_use_final_value = false;
-                          }
-                      in
-                      Log.trace
-                        ("parsed as " ^ show value ^ " with "
-                        ^ Int.to_string (List.length unassigned_values)
-                        ^ " unassigned values");
-                      parse_until
-                        {
-                          syntax = parse_state.syntax;
-                          start = parse_state.start;
-                          pos = (data value).finish;
-                          until = parse_state.until;
-                          state = parse_state.state;
-                          values = parse_state.values;
-                          last_unassigned_values = value :: unassigned_values;
-                          joining = false;
-                          must_use_final_value =
-                            parse_state.must_use_final_value;
-                        }
-                  | false ->
-                      Log.trace ("should not start with " ^ show_edge edge);
-                      finish ())
-              | None -> (
-                  match parse_state.last_unassigned_values with
-                  | first_unassigned :: remaining_unassigned -> (
-                      match parse_state.syntax.join with
-                      | Some join_state
-                        when should_continue_with false join_state
-                             && not parse_state.joining ->
-                          Log.trace "joining";
-                          let value =
-                            parse_until_value
-                              {
-                                syntax = parse_state.syntax;
-                                start = Some (data first_unassigned).start;
-                                pos = parse_state.pos;
-                                until = join_state.priority;
-                                state = join_state;
-                                values = [ first_unassigned ];
-                                last_unassigned_values = remaining_unassigned;
-                                joining = false;
-                                must_use_final_value = true;
-                              }
+            in
+            let value =
+              Syntax
+                {
+                  def;
+                  value = value_after;
+                  data = { span with finish = (data value_after).finish };
+                }
+            in
+            Log.trace ("parsed " ^ show value);
+            { result = value; unassigned_values = [] }
+        | Some spanned_token -> (
+            let token = spanned_token.value in
+            let raw_token = Lexer.raw token in
+            Log.trace ("peek = " ^ raw_token);
+            let edge : Edge.t =
+              {
+                value_before_keyword =
+                  (match parse_state.last_unassigned_values with
+                  | [ _ ] -> true
+                  | _ -> false);
+                keyword = raw_token;
+              }
+            in
+            let next_with state = EdgeMap.find_opt edge state.next in
+            match next_with parse_state.state with
+            | Some next -> (
+                Log.trace ("considering continuing with " ^ show_edge edge);
+                match should_continue_with true next with
+                | true ->
+                    consume_token ();
+                    Log.trace ("continued " ^ show_edge edge);
+                    let first_unassigned, remaining_unassigned =
+                      split_unassigned parse_state.last_unassigned_values
+                    in
+                    parse_until
+                      {
+                        syntax = parse_state.syntax;
+                        start =
+                          (match parse_state.start with
+                          | Some start -> Some start
+                          | None -> Some spanned_token.span.start);
+                        pos = spanned_token.span.finish;
+                        until = next.priority;
+                        state = next;
+                        values = maybe_join parse_state.values first_unassigned;
+                        last_unassigned_values = remaining_unassigned;
+                        joining = false;
+                        must_use_final_value = parse_state.must_use_final_value;
+                      }
+                | false ->
+                    Log.trace ("should not continue with " ^ show_edge edge);
+                    finish ())
+            | None -> (
+                match next_with (start_state parse_state.syntax) with
+                | Some new_state -> (
+                    match should_continue_with false new_state with
+                    | true ->
+                        consume_token ();
+                        Log.trace ("started " ^ show_edge edge);
+                        let { result = value; unassigned_values } =
+                          let first_unassigned, remaining_unassigned =
+                            split_unassigned parse_state.last_unassigned_values
                           in
-                          Log.trace ("parsed as " ^ show value);
-                          let joined = value <> first_unassigned in
                           parse_until
                             {
                               syntax = parse_state.syntax;
-                              start = parse_state.start;
-                              pos = (data value).finish;
-                              until = parse_state.until;
-                              state = parse_state.state;
-                              values = parse_state.values;
-                              last_unassigned_values = [ value ];
-                              joining = not joined;
-                              must_use_final_value =
-                                parse_state.must_use_final_value;
+                              start =
+                                (match parse_state.start with
+                                | Some start -> Some start
+                                | None -> Some spanned_token.span.start);
+                              pos = spanned_token.span.finish;
+                              until = new_state.priority;
+                              state = new_state;
+                              values = Option.to_list first_unassigned;
+                              last_unassigned_values = remaining_unassigned;
+                              joining = false;
+                              must_use_final_value = false;
                             }
-                      | _ -> finish ())
-                  | [] -> (
-                      match
-                        StringSet.find_opt raw_token parse_state.syntax.keywords
-                      with
-                      | Some _ -> finish ()
-                      | None -> (
-                          match token with
-                          | String _ | Ident _ | Number _ ->
-                              consume_token ();
-                              Log.trace ("simple " ^ Lexer.show token);
-                              parse_until
-                                {
-                                  syntax = parse_state.syntax;
-                                  start =
-                                    (match parse_state.start with
-                                    | Some start -> Some start
-                                    | None -> Some spanned_token.span.start);
-                                  pos = spanned_token.span.finish;
-                                  until = parse_state.until;
-                                  state = parse_state.state;
-                                  values = parse_state.values;
-                                  last_unassigned_values =
-                                    [
-                                      Simple
-                                        { token; data = spanned_token.span };
-                                    ];
-                                  joining = false;
-                                  must_use_final_value =
-                                    parse_state.must_use_final_value;
-                                }
-                          | Punctuation _ ->
-                              failwith "punctuation in place of value")))))
+                        in
+                        Log.trace
+                          ("parsed as " ^ show value ^ " with "
+                          ^ Int.to_string (List.length unassigned_values)
+                          ^ " unassigned values");
+                        parse_until
+                          {
+                            syntax = parse_state.syntax;
+                            start = parse_state.start;
+                            pos = (data value).finish;
+                            until = parse_state.until;
+                            state = parse_state.state;
+                            values = parse_state.values;
+                            last_unassigned_values = value :: unassigned_values;
+                            joining = false;
+                            must_use_final_value =
+                              parse_state.must_use_final_value;
+                          }
+                    | false ->
+                        Log.trace ("should not start with " ^ show_edge edge);
+                        finish ())
+                | None -> (
+                    match parse_state.last_unassigned_values with
+                    | first_unassigned :: remaining_unassigned -> try_joining ()
+                    | [] -> (
+                        match
+                          StringSet.find_opt raw_token
+                            parse_state.syntax.keywords
+                        with
+                        | Some _ -> finish ()
+                        | None -> (
+                            match token with
+                            | String _ | Ident _ | Number _ ->
+                                consume_token ();
+                                Log.trace ("simple " ^ Lexer.show token);
+                                parse_until
+                                  {
+                                    syntax = parse_state.syntax;
+                                    start =
+                                      (match parse_state.start with
+                                      | Some start -> Some start
+                                      | None -> Some spanned_token.span.start);
+                                    pos = spanned_token.span.finish;
+                                    until = parse_state.until;
+                                    state = parse_state.state;
+                                    values = parse_state.values;
+                                    last_unassigned_values =
+                                      [
+                                        Simple
+                                          { token; data = spanned_token.span };
+                                      ];
+                                    joining = false;
+                                    must_use_final_value =
+                                      parse_state.must_use_final_value;
+                                  }
+                            | Punctuation _ ->
+                                failwith "punctuation in place of value")))))
+    in
+    Log.trace
+      ("parsed " ^ show result.result ^ " + "
+      ^ Int.to_string (List.length result.unassigned_values)
+      ^ " unassigned values");
+    result
   in
   let start_state = { (start_state syntax) with next = EdgeMap.empty } in
   try
