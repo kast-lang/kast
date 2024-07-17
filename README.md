@@ -5,7 +5,7 @@ An experimental programming language
 ## Todo
 
 - Mark builtin fns with contexts (e.g. print should require io)
-- Sum types (ADT)
+- Sum types should have better syntax (fix "ofnone"). I think it should be "let binding" for bindings and "variant" for variants?
 - Fix the bugs
 - Unnamed tuples
 - Lists
@@ -16,4 +16,5 @@ An experimental programming language
 - Delimited continuations
 - Effect system (half done, have contexts)
 - More examples
+- Borrow checker
 - Tests

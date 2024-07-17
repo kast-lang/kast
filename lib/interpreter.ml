@@ -23,6 +23,7 @@ type value =
   | Struct of struct'
   | Ref of value ref
   | Type of value_type
+  | Variant of { typ : value_type; name : string; value : value option }
 
 and value_type =
   | Any
@@ -41,6 +42,9 @@ and value_type =
   | Template of fn
   | BuiltinMacro
   | Dict of { fields : value_type StringMap.t }
+  | NewType of value_type
+  | OneOf of value_type option StringMap.t
+  | Union of (value_type, unit) Hashtbl.t
   | Type
 
 and fn_type = {
@@ -62,9 +66,18 @@ and builtin_macro = {
   impl : state -> ast StringMap.t -> new_bindings:bool -> expanded_macro;
 }
 
+and 'data match_branch = { pattern : pattern; body : 'data ir_node }
+
 and 'data ir_node =
   | Void of { data : 'data }
+  | Match of {
+      value : 'data ir_node;
+      branches : 'data match_branch list;
+      data : 'data;
+    }
+  | NewType of { def : pattern; data : 'data }
   | Scope of { expr : 'data ir_node; data : 'data }
+  | OneOf of { variants : 'data ir_node option StringMap.t; data : 'data }
   | TypeOf of { captured : state; expr : 'data ir_node; data : 'data }
   | TypeOfValue of { captured : state; expr : 'data ir_node; data : 'data }
   | Dict of { fields : 'data ir_node StringMap.t; data : 'data }
@@ -145,6 +158,12 @@ and 'data pattern_node =
   | Void of { data : 'data }
   | Binding of { binding : binding; data : 'data }
   | Dict of { fields : 'data pattern_node StringMap.t; data : 'data }
+  | Variant of {
+      name : string;
+      value : 'data pattern_node option;
+      data : 'data;
+    }
+  | Union of { a : 'data pattern_node; b : 'data pattern_node; data : 'data }
   | Typed of { pattern : 'data pattern_node; typ : value_type; data : 'data }
 
 and pattern_data = type_inference_data
@@ -162,8 +181,14 @@ and binding = { name : string; mutable value_type : value_type option }
 
 exception Unwind of int * value
 
+let empty_contexts : contexts = Hashtbl.create 0
+let empty_contexts_type : contexts_type = Hashtbl.create 0
+let default_contexts_type : contexts_type = empty_contexts_type
+
 let rec show = function
   | Ast ast -> "`(" ^ Ast.show ast ^ ")"
+  | Variant { name; value; _ } ->
+      name ^ show_or "" (fun value -> " " ^ show value) value
   | UnwindToken token -> "unwind token " ^ Int.to_string token
   | Void -> "void"
   | Macro _ -> "macro <...>"
@@ -230,9 +255,42 @@ and show_type : value_type -> string = function
           fields ""
       ^ " }"
   | Type -> "type"
+  | Union set ->
+      Hashtbl.fold
+        (fun t () acc -> (if acc = "" then "" else acc ^ " | ") ^ show_type t)
+        set ""
+  | OneOf variants ->
+      StringMap.fold
+        (fun name t acc ->
+          (if acc = "" then "" else acc ^ " | ")
+          ^ name
+          ^ match t with Some t -> " of " ^ show_type t | None -> "")
+        variants ""
+  | NewType inner -> "newtype " ^ show_type inner
 
 and show_ir : ir -> string = function
   | Void _ -> "void"
+  | Match { value; branches; _ } ->
+      "match " ^ show_ir value ^ " ("
+      (* why can not we just have the for? *)
+      ^ List.fold_left
+          (fun acc branch ->
+            acc ^ " | "
+            ^ show_pattern branch.pattern
+            ^ " => " ^ show_ir branch.body)
+          "" branches
+      ^ ")"
+  | OneOf { variants; _ } ->
+      StringMap.fold
+        (fun name variant acc ->
+          (if acc = "" then "" else acc ^ " | ")
+          ^ name
+          ^
+          match variant with
+          | Some variant -> " of " ^ show_ir variant
+          | None -> "")
+        variants ""
+  | NewType { def; _ } -> "newtype " ^ show_pattern def
   | Scope { expr; _ } -> "(" ^ show_ir expr ^ ")"
   | TypeOf { expr; _ } -> "typeof " ^ show_ir expr
   | TypeOfValue { expr; _ } -> "typeofvalue " ^ show_ir expr
@@ -271,8 +329,11 @@ and show_ir : ir -> string = function
 
 and show_pattern : pattern -> string = function
   | Void _ -> "()"
+  | Union { a; b; _ } -> show_pattern a ^ " | " ^ show_pattern b
   | Binding { binding; _ } -> binding.name
   | Typed { pattern; typ; _ } -> show_pattern pattern ^ " :: " ^ show_type typ
+  | Variant { name; value; _ } ->
+      name ^ show_or "" (fun value -> " " ^ show_pattern value) value
   | Dict { fields; _ } ->
       "{ "
       ^ StringMap.fold
@@ -348,12 +409,17 @@ and type_check (expected : value_type) (actual : value_type) : bool =
   | BuiltinMacro, _ -> false
   | Template expected, Template actual -> true
   | Template _, _ -> false
+  | NewType a, NewType b -> a = b (* todo should be typecheck? maybe not *)
+  | NewType _, _ -> false
+  | OneOf a, OneOf b -> StringMap.equal (Option.equal type_check) a b
+  | OneOf _, _ -> false
+  | Union a, Union b ->
+      Seq.for_all
+        (fun t -> Hashtbl.find_opt a t |> Option.is_some)
+        (Hashtbl.to_seq_keys b)
+  | Union a, t -> Hashtbl.find_opt a t |> Option.is_some
 
-let empty_contexts : contexts = Hashtbl.create 0
-let empty_contexts_type : contexts_type = Hashtbl.create 0
-let default_contexts_type : contexts_type = empty_contexts_type
-
-let rec type_of_fn : fn -> fn_type =
+and type_of_fn : fn -> fn_type =
  fun f ->
   Log.trace "getting type of fun";
   let compiled = ensure_compiled f in
@@ -368,6 +434,7 @@ and type_of_value : value -> value_type = function
   | Ast _ -> Ast
   | UnwindToken _ -> UnwindToken
   | Void -> Void
+  | Variant { typ; _ } -> typ
   | BuiltinMacro _ -> BuiltinMacro
   | BuiltinFn { arg_type; result_type; contexts; _ } ->
       Fn { arg_type; result_type; contexts }
@@ -407,6 +474,9 @@ and type_of_value : value -> value_type = function
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | Match { data; _ }
+  | NewType { data; _ }
+  | OneOf { data; _ }
   | Scope { data; _ }
   | Unwinding { data; _ }
   | WithContext { data; _ }
@@ -455,8 +525,28 @@ and update_locals =
 
 and pattern_match_opt (pattern : pattern) (value : value) :
     value StringMap.t option =
+  Log.trace
+    ("trying to pattern match " ^ show value ^ " with " ^ show_pattern pattern);
   match pattern with
   | Void _ -> ( match value with Void -> Some StringMap.empty | _ -> None)
+  | Union { a; b; _ } -> (
+      match pattern_match_opt a value with
+      | Some result -> Some result
+      | None -> pattern_match_opt b value)
+  | Variant { name = pattern_name; value = value_pattern; _ } -> (
+      match value with
+      | Variant { name; value; _ } ->
+          if name = pattern_name then
+            match (value, value_pattern) with
+            | None, None -> Some StringMap.empty
+            | Some value, Some value_pattern ->
+                pattern_match_opt value_pattern value
+            | Some _value, None ->
+                failwith "pattern did not expect a value but variant has"
+            | None, Some _value_pattern ->
+                failwith "pattern expected a value but variant has none"
+          else None
+      | _ -> failwith "trying to match variant with a non-variant value")
   | Binding { binding = { name; _ }; _ } ->
       Some (StringMap.singleton name value)
   | Typed { pattern; typ; _ } ->
@@ -574,7 +664,7 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
       | Complex { def; values; _ } -> (
           match expand_macro self def.name values ~new_bindings:true with
           | Pattern result -> result
-          | Compiled _ -> failwith "wtf")
+          | Compiled _ -> failwith @@ "wtf " ^ Ast.show ast)
       | Syntax { def; value; _ } ->
           failwith "syntax definition inlined in a pattern wtf?")
 
@@ -584,6 +674,8 @@ and forward_expected_type_to_pattern (pattern : pattern)
 
 and pattern_data (pattern : pattern) : pattern_data =
   match pattern with
+  | Variant { data; _ }
+  | Union { data; _ }
   | Void { data; _ }
   | Typed { data; _ }
   | Binding { data; _ }
@@ -605,6 +697,42 @@ and maybe_infer_pattern_type (pattern : pattern)
     let inferred : value_type option =
       match pattern with
       | Void _ -> Some Void
+      | Variant { name; value; _ } ->
+          (if full then
+             match result_type with
+             | Some result_type -> (
+                 match result_type with
+                 | OneOf variants -> (
+                     let variant = StringMap.find name variants in
+                     match (variant, value) with
+                     | Some ty, Some pat ->
+                         ignore (maybe_infer_pattern_type pat (Some ty) ~full)
+                     | Some _, None -> failwith "pattern ex none, type has some"
+                     | None, Some _ ->
+                         failwith "pattern ex some, type has none "
+                     | None, None -> ())
+                 | _ -> failwith "variant on not oneof")
+             | None -> ());
+          result_type
+      | Union { a; b; _ } -> (
+          let a = maybe_infer_pattern_type a expected_type ~full in
+          let b = maybe_infer_pattern_type b expected_type ~full in
+          let to_set (t : value_type) =
+            match t with
+            | Union set -> set
+            | _ ->
+                let set = Hashtbl.create 1 in
+                Hashtbl.add set t ();
+                set
+          in
+          let merge a b =
+            let new_set = Hashtbl.copy a in
+            Hashtbl.add_seq new_set (Hashtbl.to_seq b);
+            new_set
+          in
+          match (a, b) with
+          | Some a, Some b -> Some (Union (merge (to_set a) (to_set b)))
+          | _ -> None)
       | Typed { typ; pattern; _ } ->
           if full then
             ignore (maybe_infer_pattern_type pattern (Some typ) ~full);
@@ -693,7 +821,17 @@ and pattern_bindings (pattern : pattern) : binding StringMap.t =
   match pattern with
   | Void _ -> StringMap.empty
   | Typed { pattern; _ } -> pattern_bindings pattern
+  | Variant { value; _ } -> (
+      match value with
+      | Some value -> pattern_bindings value
+      | None -> StringMap.empty)
   | Binding { binding; _ } -> StringMap.singleton binding.name binding
+  | Union { a; b; _ } ->
+      let a = pattern_bindings a in
+      let b = pattern_bindings b in
+      if not (StringMap.equal (fun (a : binding) b -> a.name = b.name) a b) then
+        failwith "pattern variants have different bindings";
+      a
   | Dict { fields; _ } ->
       StringMap.fold
         (fun _name field acc ->
@@ -756,6 +894,7 @@ and expand_macro (self : state) (name : string) (values : ast StringMap.t)
 and eval_ast (self : state) (ast : ast) (expected_type : value_type option) :
     evaled =
   let compiled = compile_ast_to_ir self ast ~new_bindings:false in
+  Log.trace ("compiled: " ^ show_ir compiled.ir);
   eval_ir self compiled.ir expected_type
 
 and forward_expected_type_impl (data : type_inference_data)
@@ -791,6 +930,20 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
     let inferred : value_type option =
       match ir with
       | Void _ -> Some Void
+      | NewType { def; _ } ->
+          if full then ignore @@ pattern_type_sure def None;
+          Some Type
+      | OneOf { variants; _ } ->
+          if full then
+            StringMap.iter
+              (fun _name variant ->
+                match variant with
+                | Some variant ->
+                    ignore
+                    @@ fully_infer_types variant (Some (Type : value_type))
+                | None -> ())
+              variants;
+          Some Type
       | Scope { expr; _ } -> maybe_infer_types expr expected_type ~full
       | Unwinding { f; _ } -> (
           match maybe_infer_types f None ~full with
@@ -868,6 +1021,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
       | FieldAccess { obj; name; _ } -> (
           match fully_infer_types obj None with
           | Dict { fields } -> Some (StringMap.find name fields)
+          | Type -> Some Any
           | _ -> failwith "todo field access")
       | Const { value = Function f; _ } -> (
           if full then ignore (ensure_compiled f);
@@ -935,6 +1089,32 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
               failwith
                 (show_ir f ^ " is type " ^ show_type typ ^ " which is not fun")
           | None -> None)
+      | Match { value; branches; _ } ->
+          let value_type = maybe_infer_types value None ~full:false in
+          let value_type =
+            List.fold_right
+              (fun branch cur ->
+                maybe_infer_pattern_type branch.pattern cur ~full:false)
+              branches value_type
+          in
+          let result =
+            List.fold_right
+              (fun branch cur -> maybe_infer_types branch.body cur ~full:false)
+              branches expected_type
+          in
+          if full then (
+            let value_type =
+              Option.get
+                (List.fold_right
+                   (fun branch cur ->
+                     Some (pattern_type_sure branch.pattern cur))
+                   branches value_type)
+            in
+            ignore (fully_infer_types value (Some value_type));
+            List.fold_right
+              (fun branch cur -> maybe_infer_types branch.body cur ~full:false)
+              branches result)
+          else result
       | If { cond; then_case; else_case; _ } ->
           if full then ignore (fully_infer_types cond (Some Bool));
           let then_type = maybe_infer_types then_case None ~full:false in
@@ -1031,8 +1211,48 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   let result =
     match ir with
     | Void _ -> just_value Void result_type
+    | NewType { def; _ } ->
+        just_value (Type (NewType (pattern_type_sure def None))) result_type
     | Scope { expr; _ } ->
         just_value (eval_ir self expr expected_type).value result_type
+    | Match { value; branches; _ } -> (
+        let value = (eval_ir self value None).value in
+        let result : value option =
+          List.find_map
+            (fun branch ->
+              pattern_match_opt branch.pattern value
+              |> Option.map (fun new_bindings ->
+                     let self_with_new_bindings =
+                       {
+                         self with
+                         data =
+                           {
+                             self.data with
+                             locals =
+                               update_locals self.data.locals
+                               @@ StringMap.map
+                                    (fun value -> Value value)
+                                    new_bindings;
+                           };
+                       }
+                     in
+                     (eval_ir self_with_new_bindings branch.body result_type)
+                       .value))
+            branches
+        in
+        match result with
+        | Some value -> just_value value result_type
+        | None -> failwith "match failed")
+    | OneOf { variants; _ } ->
+        just_value
+          (Type
+             (OneOf
+                (StringMap.map
+                   (Option.map (fun variant ->
+                        value_to_type
+                        @@ (eval_ir self variant (Some Type)).value))
+                   variants)))
+          result_type
     | TypeOf { captured; expr; _ } ->
         just_value (Type (fully_infer_types expr (Some Type))) (Some Type)
     | TypeOfValue { captured; expr; _ } ->
@@ -1392,7 +1612,24 @@ and discard : value -> unit = function
 and get_field_opt (obj : value) (field : string) : value option =
   match obj with
   | Dict { fields = dict } -> StringMap.find_opt field dict
-  | _ -> failwith "can't get field of this thang"
+  | Type (OneOf variants as typ) ->
+      Option.map
+        (fun variant ->
+          match variant with
+          | Some variant ->
+              BuiltinFn
+                {
+                  name = "type constructor";
+                  arg_type = variant;
+                  result_type = typ;
+                  contexts = empty_contexts_type;
+                  impl =
+                    (fun value ->
+                      Variant { name = field; typ; value = Some value });
+                }
+          | None -> Variant { name = field; typ; value = None })
+        (StringMap.find_opt field variants)
+  | _ -> failwith "can't get field of this thing"
 
 module Builtins = struct
   let type_ascribe : builtin_macro =
@@ -1425,17 +1662,27 @@ module Builtins = struct
       name = "call";
       impl =
         (fun self args ~new_bindings ->
-          let f =
-            compile_ast_to_ir self (StringMap.find "f" args) ~new_bindings
-          in
-          let args =
-            compile_ast_to_ir self (StringMap.find "args" args) ~new_bindings
-          in
-          Compiled
-            {
-              ir = Call { f = f.ir; args = args.ir; data = init_ir_data () };
-              new_bindings = StringMap.empty;
-            });
+          let f = StringMap.find "f" args in
+          let args = StringMap.find "args" args in
+          match new_bindings with
+          | true ->
+              let name =
+                match f with
+                | Simple { token = Ident name; _ } -> name
+                | _ -> failwith "variant name must be simple ident"
+              in
+              let value = compile_pattern self (Some args) in
+              Pattern
+                (Variant
+                   { name; value = Some value; data = init_pattern_data () })
+          | false ->
+              let f = compile_ast_to_ir self f ~new_bindings in
+              let args = compile_ast_to_ir self args ~new_bindings in
+              Compiled
+                {
+                  ir = Call { f = f.ir; args = args.ir; data = init_ir_data () };
+                  new_bindings = StringMap.empty;
+                });
     }
 
   let instantiate_template : builtin_macro =
@@ -1514,6 +1761,53 @@ module Builtins = struct
       contexts = io_contexts;
       arg_type = String;
       result_type = Void;
+    }
+
+  let match' : builtin_macro =
+    {
+      name = "match";
+      impl =
+        (fun self args ~new_bindings ->
+          let value =
+            compile_ast_to_ir self (StringMap.find "value" args) ~new_bindings
+          in
+          let rec collect_branches (ast : ast) : ir_data match_branch list =
+            match ast with
+            | Complex { def = { name = "combine_variants"; _ }; values; _ } -> (
+                let a = StringMap.find "a" values in
+                match StringMap.find_opt "b" values with
+                | Some b ->
+                    List.append (collect_branches a) (collect_branches b)
+                | None -> collect_branches a)
+            | Complex { def = { name = "function_def"; _ }; values; _ } ->
+                let args = StringMap.find "args" values in
+                let body = StringMap.find "body" values in
+                let pattern = compile_pattern self (Some args) in
+                let body =
+                  compile_ast_to_ir
+                    {
+                      self with
+                      data =
+                        {
+                          self.data with
+                          locals =
+                            update_locals self.data.locals
+                              (pattern_bindings pattern
+                              |> StringMap.map (fun binding : state_local ->
+                                     Binding binding));
+                        };
+                    }
+                    body ~new_bindings:false
+                in
+                [ { pattern; body = body.ir } ]
+            | _ -> failwith "match syntax wrong"
+          in
+          let branches = collect_branches (StringMap.find "branches" args) in
+          Compiled
+            {
+              ir = Match { value = value.ir; branches; data = init_ir_data () };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let if' : builtin_macro =
@@ -2224,9 +2518,101 @@ module Builtins = struct
       result_type = Never;
     }
 
+  let union_variant : builtin_macro =
+    {
+      name = "union_variant";
+      impl =
+        (fun self args ~new_bindings ->
+          let get_pattern = function
+            | Pattern p -> p
+            | Compiled _ -> failwith "expected a pattern"
+          in
+          let a =
+            get_pattern
+              (expand_ast self (StringMap.find "a" args) ~new_bindings)
+          in
+          let b =
+            get_pattern
+              (expand_ast self (StringMap.find "b" args) ~new_bindings)
+          in
+          match new_bindings with
+          | true -> Pattern (Union { a; b; data = init_pattern_data () })
+          | false -> failwith "variant is only a pattern");
+    }
+
+  let single_variant : builtin_macro =
+    {
+      name = "single_variant";
+      impl =
+        (fun self args ~new_bindings ->
+          let name =
+            match StringMap.find "name" args with
+            | Simple { token = Ident name; _ } -> name
+            | _ -> failwith "name must be a simple ident"
+          in
+          if new_bindings then
+            let value =
+              Option.map
+                (fun value -> compile_pattern self (Some value))
+                (StringMap.find_opt "type" args)
+            in
+            Pattern (Variant { name; value; data = init_pattern_data () })
+          else
+            let typ =
+              Option.map
+                (fun typ -> (compile_ast_to_ir self typ ~new_bindings).ir)
+                (StringMap.find_opt "type" args)
+            in
+            Compiled
+              {
+                ir =
+                  OneOf
+                    {
+                      variants = StringMap.singleton name typ;
+                      data = init_ir_data ();
+                    };
+                new_bindings = StringMap.empty;
+              });
+    }
+
+  let combine_variants : builtin_macro =
+    {
+      name = "combine_variants";
+      impl =
+        (fun self args ~new_bindings ->
+          match new_bindings with
+          | false ->
+              let get name : ir option StringMap.t =
+                let ir =
+                  (compile_ast_to_ir self (StringMap.find name args)
+                     ~new_bindings)
+                    .ir
+                in
+                match ir with
+                | OneOf { variants; _ } -> variants
+                | _ -> failwith "expected oneof"
+              in
+              let a = get "a" in
+              let b = get "b" in
+              let variants =
+                StringMap.union
+                  (fun name _a _b ->
+                    failwith (name ^ " is specified multiple times"))
+                  a b
+              in
+              Compiled
+                {
+                  ir = OneOf { variants; data = init_ir_data () };
+                  new_bindings = StringMap.empty;
+                }
+          | true -> failwith "combine variants is only a expr");
+    }
+
   let all =
     StringMap.of_list
       [
+        ("single_variant", BuiltinMacro single_variant);
+        ("combine_variants", BuiltinMacro combine_variants);
         ("unwind", BuiltinFn unwind);
         ("unwind_token", Type UnwindToken);
         ("unwinding", BuiltinMacro unwinding);
@@ -2250,6 +2636,7 @@ module Builtins = struct
         ("call", BuiltinMacro call);
         ("then", BuiltinMacro then');
         ("if", BuiltinMacro if');
+        ("match", BuiltinMacro match');
         ("uplus", BuiltinFn (int32_unary_op "+" (fun x -> x)));
         ("negate", BuiltinFn (int32_unary_op "-" Int32.neg));
         ("add", BuiltinFn (int32_binary_op "+" Int32.add));

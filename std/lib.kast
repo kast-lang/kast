@@ -3,21 +3,26 @@
 syntax then <- 0 = a ";" b;
 syntax then <- 0 = a ";";
 
-syntax break_impl <- 3 = "break" value;
-syntax break_impl <- 3 = "break";
-syntax continue_impl <- 3 = "continue";
+syntax break_impl <- 2 = "break" value;
+syntax break_impl <- 2 = "break";
+syntax continue_impl <- 2 = "continue";
 
-syntax let <- 5 = "let" pattern "=" value;
-syntax const_let <- 5 = "const" pattern "=" value;
+syntax let <- 4 = "let" pattern "=" value;
+syntax const_let <- 4 = "const" pattern "=" value;
 
-syntax unwinding <- 6 = "unwinding" def;
-syntax with_context <- 6 = "with" new_context "(" expr ")";
-syntax current_context <- 6 = "current" context_type;
-syntax macro <- 6 = "macro" def;
-syntax comptime <- 6 = "comptime" value;
+syntax unwinding <- 5 = "unwinding" def;
+syntax with_context <- 5 = "with" new_context "(" expr ")";
+syntax current_context <- 5 = "current" context_type;
+syntax macro <- 5 = "macro" def;
+syntax comptime <- 5 = "comptime" value;
+syntax oneof <- 5 = "oneof" def;
 
+syntax combine_variants <- 6 = "|" a;
+syntax combine_variants <- 6 = a "|" b;
 syntax function_def <- 7 = args "=>" body;
 
+syntax single_variant -> 8 = name "of" type;
+syntax single_variant -> 8 = name "ofnone";
 syntax type_ascribe <- 8 = value "::" type;
 
 syntax template_def <- 9 = "forall" args "." def;
@@ -31,6 +36,7 @@ syntax tuple <- 11 = a ",";
 syntax field <- 12 = name ":" value;
 syntax inline_field <- 12 = "~" name;
 
+syntax match <- 13 = "match" value "(" branches ")";
 syntax if <- 13 = "if" cond "then" then;
 syntax if <- 13 = "if" cond "then" then "else" else;
 syntax if -> 13 = cond "?" then ":" else;
@@ -85,15 +91,15 @@ syntax function_def <- 100000 = "{" body "}";
 syntax scope <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")";
 
-# let option = Some value | None
+let Option = forall (T :: type). (Some of T | None ofnone);
+let Either = forall ((~left, ~right) :: ( left: type, right: type )). (Left of left | Right of right);
+let Result = forall ((~ok, ~error) :: ( ok: type, error: type)). (Ok of ok | Error of error);
 
 const inline_field = macro name : name => `($name : $name);
 
 # args |> f
 const pipe = macro ~f, ~args => `((
-    let args = $args;
-    let f = $f;
-    f args
+    $f $args
 ));
 
 let loop_context = (
