@@ -6,6 +6,7 @@ An experimental programming language
 
 - Mark builtin fns with contexts (e.g. print should require io)
 - Sum types should have better syntax (fix "ofnone"). I think it should be "let binding" for bindings and "variant" for variants?
+- let assert pattern
 - Fix the bugs
 - Unnamed tuples
 - Lists
