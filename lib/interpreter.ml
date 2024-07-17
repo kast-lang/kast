@@ -114,11 +114,12 @@ and 'data ir_node =
 
 and inference_status = NotYet | InProgress | Done
 
-and ir_data = {
+and type_inference_data = {
   mutable result_type : value_type option;
   mutable fully_inferred : inference_status;
 }
 
+and ir_data = type_inference_data
 and ir = ir_data ir_node
 and fn_result_type = Ast of ast | Actual of value_type
 
@@ -140,12 +141,14 @@ and compiled_fn = {
   body : ir;
 }
 
-and pattern =
-  | Void
-  | Binding of binding
-  | Dict of { fields : pattern StringMap.t }
-  | Typed of { pattern : pattern; typ : value_type }
+and 'data pattern_node =
+  | Void of { data : 'data }
+  | Binding of { binding : binding; data : 'data }
+  | Dict of { fields : 'data pattern_node StringMap.t; data : 'data }
+  | Typed of { pattern : 'data pattern_node; typ : value_type; data : 'data }
 
+and pattern_data = type_inference_data
+and pattern = pattern_data pattern_node
 and expanded_macro = Compiled of compiled | Pattern of pattern
 and evaled = { value : value; new_bindings : value StringMap.t }
 and compiled = { ir : ir; new_bindings : state_local StringMap.t }
@@ -267,10 +270,10 @@ and show_ir : ir -> string = function
       "(let " ^ show_pattern pattern ^ " " ^ show_ir value ^ ")"
 
 and show_pattern : pattern -> string = function
-  | Void -> "()"
-  | Binding binding -> binding.name
-  | Typed { pattern; typ } -> show_pattern pattern ^ " :: " ^ show_type typ
-  | Dict { fields } ->
+  | Void _ -> "()"
+  | Binding { binding; _ } -> binding.name
+  | Typed { pattern; typ; _ } -> show_pattern pattern ^ " :: " ^ show_type typ
+  | Dict { fields; _ } ->
       "{ "
       ^ StringMap.fold
           (fun name field acc ->
@@ -430,6 +433,9 @@ and ir_data : 'data. 'data ir_node -> 'data = function
 
 and init_ir_data () : ir_data = { result_type = None; fully_inferred = NotYet }
 
+and init_pattern_data () : ir_data =
+  { result_type = None; fully_inferred = NotYet }
+
 and just_value value expected_type =
   (match expected_type with
   | Some Any -> ()
@@ -450,13 +456,14 @@ and update_locals =
 and pattern_match_opt (pattern : pattern) (value : value) :
     value StringMap.t option =
   match pattern with
-  | Void -> ( match value with Void -> Some StringMap.empty | _ -> None)
-  | Binding { name; _ } -> Some (StringMap.singleton name value)
-  | Typed { pattern; typ } ->
+  | Void _ -> ( match value with Void -> Some StringMap.empty | _ -> None)
+  | Binding { binding = { name; _ }; _ } ->
+      Some (StringMap.singleton name value)
+  | Typed { pattern; typ; _ } ->
       if not (type_check typ (type_of_value value)) then
         failwith "pattern specified different type"
       else pattern_match_opt pattern value
-  | Dict { fields = field_patterns } -> (
+  | Dict { fields = field_patterns; _ } -> (
       match value with
       | Dict { fields = field_values } ->
           let fields =
@@ -549,13 +556,18 @@ and compile_ast_to_ir (self : state) (ast : ast) ~(new_bindings : bool) :
 
 and compile_pattern (self : state) (pattern : ast option) : pattern =
   match pattern with
-  | None -> Void
+  | None -> Void { data = init_pattern_data () }
   | Some ast -> (
       match ast with
-      | Nothing _ -> Void
+      | Nothing _ -> Void { data = init_pattern_data () }
       | Simple { token; _ } -> (
           match token with
-          | Ident ident -> Binding { name = ident; value_type = None }
+          | Ident ident ->
+              Binding
+                {
+                  binding = { name = ident; value_type = None };
+                  data = init_pattern_data ();
+                }
           | Number raw -> failwith "todo pattern number"
           | String { value; raw } -> failwith "todo string pattern"
           | Punctuation _ -> failwith "punctuation")
@@ -566,92 +578,112 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
       | Syntax { def; value; _ } ->
           failwith "syntax definition inlined in a pattern wtf?")
 
-and ir_to_pattern (ir : ir) : pattern =
-  match ir with
-  | Void _ | Const { value = Void; _ } -> Void
-  | Scope { expr; _ } -> ir_to_pattern expr
-  | Unwinding _ -> failwith "unwind not a pat"
-  | WithContext _ -> failwith "with context not a pat"
-  | CurrentContext _ -> failwith "current_context not a pattern"
-  | TypeOfValue _ -> failwith "todo pattern typeofvalue"
-  | TypeOf _ -> failwith "todo pattern typeof"
-  | Instantiate _ -> failwith "todo patt insta"
-  | Template _ -> failwith "todo patt templ"
-  | Function _ -> failwith "todo patt fun"
-  | Dict { fields; _ } -> Dict { fields = StringMap.map ir_to_pattern fields }
-  | Ast _ -> failwith "todo pattern Ast"
-  | FieldAccess _ -> failwith "todo pattern FieldAccess"
-  | Const { value = Type Void; _ } -> Void
-  | Const _ -> failwith ("todo pattern Const" ^ show_ir ir)
-  | Binding { binding; _ } ->
-      (* if ascribed *)
-      binding.value_type <- (ir_data ir).result_type;
-      Binding binding
-  | Number _ -> failwith "todo pattern Number"
-  | String _ -> failwith "todo pattern String"
-  | Discard _ -> failwith "todo pattern Discard"
-  | Then _ -> failwith "todo pattern Then"
-  | Call _ -> failwith "todo pattern Call"
-  | BuiltinFn _ -> failwith "todo pattern BuiltinFn"
-  | If _ -> failwith "todo pattern If"
-  | Let _ -> failwith "todo pattern Let"
+and forward_expected_type_to_pattern (pattern : pattern)
+    (expected_type : value_type option) : unit =
+  forward_expected_type_impl (pattern_data pattern) expected_type
 
-and pattern_type (pattern : pattern) (expected_type : value_type option) :
-    value_type option =
+and pattern_data (pattern : pattern) : pattern_data =
   match pattern with
-  | Void -> Some Void
-  | Typed { typ; _ } -> Some typ
-  | Binding binding -> (
-      match (expected_type, binding.value_type) with
-      | Some expected, None ->
-          binding.value_type <- Some expected;
-          Some expected
-      | Some expected, Some specified ->
-          if not (type_check expected specified) then
-            failwith "pattern type wrong";
-          Some expected
-      | None, _ -> binding.value_type)
-  | Dict { fields } -> (
-      match expected_type with
-      | Some (Dict { fields = expected_field_types }) ->
-          Some
-            (Dict
-               {
-                 fields =
-                   StringMap.merge
-                     (fun name field expected_type ->
-                       match (field, expected_type) with
-                       | Some field, Some expected_type ->
-                           Some
-                             (Option.get
-                                (pattern_type field (Some expected_type)))
-                       | Some _field, None ->
-                           failwith
-                             ("pattern specifies field " ^ name
-                            ^ " which was not expected")
-                       | None, Some _expected_type ->
-                           failwith ("pattern does not specify field " ^ name)
-                       | None, None -> failwith "unreachable")
-                     fields expected_field_types;
-               })
-      | Some expected ->
-          failwith ("pattern is a dict,  but expected " ^ show_type expected)
-      | None ->
-          Some
-            (Dict
-               {
-                 fields =
-                   StringMap.map
-                     (fun field ->
-                       match pattern_type field None with
-                       | Some typ -> typ
-                       | None -> failwith "todo partially inferred types")
-                     fields;
-               }))
+  | Void { data; _ }
+  | Typed { data; _ }
+  | Binding { data; _ }
+  | Dict { data; _ } ->
+      data
+
+(*  todo not copypaste from maybe_infer_type *)
+and maybe_infer_pattern_type (pattern : pattern)
+    (expected_type : value_type option) ~(full : bool) : value_type option =
+  forward_expected_type_to_pattern pattern expected_type;
+  let data = pattern_data pattern in
+  let result_type = (pattern_data pattern).result_type in
+  let need_to_infer =
+    Option.is_none data.result_type || (full && data.fully_inferred = NotYet)
+  in
+  if need_to_infer then (
+    Log.trace "actually need to infer";
+    if full then data.fully_inferred <- InProgress;
+    let inferred : value_type option =
+      match pattern with
+      | Void _ -> Some Void
+      | Typed { typ; pattern; _ } ->
+          if full then
+            ignore (maybe_infer_pattern_type pattern (Some typ) ~full);
+          Some typ
+      | Binding { binding; _ } -> (
+          match (expected_type, binding.value_type) with
+          | Some expected, None ->
+              binding.value_type <- Some expected;
+              Some expected
+          | Some expected, Some specified ->
+              if not (type_check expected specified) then
+                failwith "pattern type wrong";
+              Some expected
+          | None, _ -> binding.value_type)
+      | Dict { fields; _ } -> (
+          match expected_type with
+          | Some (Dict { fields = expected_field_types }) ->
+              Some
+                (Dict
+                   {
+                     fields =
+                       StringMap.merge
+                         (fun name field expected_type ->
+                           match (field, expected_type) with
+                           | Some field, Some expected_type ->
+                               Some
+                                 (Option.get
+                                    (maybe_infer_pattern_type field
+                                       (Some expected_type) ~full))
+                           | Some _field, None ->
+                               failwith
+                                 ("pattern specifies field " ^ name
+                                ^ " which was not expected")
+                           | None, Some _expected_type ->
+                               failwith
+                                 ("pattern does not specify field " ^ name)
+                           | None, None -> failwith "unreachable")
+                         fields expected_field_types;
+                   })
+          | Some expected ->
+              failwith ("pattern is a dict,  but expected " ^ show_type expected)
+          | None ->
+              Some
+                (Dict
+                   {
+                     fields =
+                       StringMap.map
+                         (fun field ->
+                           match maybe_infer_pattern_type field None ~full with
+                           | Some typ -> typ
+                           | None -> failwith "todo partially inferred types")
+                         fields;
+                   }))
+    in
+    if full && Option.is_none inferred then
+      failwith
+        ("failed to infer type of pattern " ^ show_pattern pattern
+       ^ " (expected "
+        ^ show_or "<unknown>" show_type expected_type
+        ^ ")");
+    if full then data.fully_inferred <- Done;
+    match inferred with
+    | Some actual_type -> (
+        match data.result_type with
+        | None -> data.result_type <- Some actual_type
+        | Some expected_type ->
+            if not (type_check expected_type actual_type) then
+              failwith
+                (show_pattern pattern ^ " expected " ^ show_type expected_type
+               ^ ", got " ^ show_type actual_type))
+    | None -> ());
+  Log.trace
+    ("inferred type of " ^ show_pattern pattern ^ " is "
+    ^ show_or "<unknonwn>" show_type data.result_type);
+  data.result_type
 
 and pattern_type_sure (pattern : pattern) (expected_type : value_type option) :
     value_type =
-  match pattern_type pattern expected_type with
+  match maybe_infer_pattern_type pattern expected_type ~full:true with
   | Some typ -> typ
   | None ->
       failwith
@@ -659,10 +691,10 @@ and pattern_type_sure (pattern : pattern) (expected_type : value_type option) :
 
 and pattern_bindings (pattern : pattern) : binding StringMap.t =
   match pattern with
-  | Void -> StringMap.empty
+  | Void _ -> StringMap.empty
   | Typed { pattern; _ } -> pattern_bindings pattern
-  | Binding binding -> StringMap.singleton binding.name binding
-  | Dict { fields } ->
+  | Binding { binding; _ } -> StringMap.singleton binding.name binding
+  | Dict { fields; _ } ->
       StringMap.fold
         (fun _name field acc ->
           StringMap.union
@@ -726,18 +758,21 @@ and eval_ast (self : state) (ast : ast) (expected_type : value_type option) :
   let compiled = compile_ast_to_ir self ast ~new_bindings:false in
   eval_ir self compiled.ir expected_type
 
-and forward_expected_type (ir : ir) (expected_type : value_type option) : unit =
-  let ir_data = ir_data ir in
+and forward_expected_type_impl (data : type_inference_data)
+    (expected_type : value_type option) : unit =
   match expected_type with
   | Some expected_type -> (
-      match ir_data.result_type with
+      match data.result_type with
       | Some actual_type ->
           if not (type_check expected_type actual_type) then
             failwith
               ("expected " ^ show_type expected_type ^ ", got "
              ^ show_type actual_type)
-      | None -> ir_data.result_type <- Some expected_type)
+      | None -> data.result_type <- Some expected_type)
   | None -> ()
+
+and forward_expected_type (ir : ir) (expected_type : value_type option) : unit =
+  forward_expected_type_impl (ir_data ir) expected_type
 
 and maybe_infer_types (ir : ir) (expected_type : value_type option)
     ~(full : bool) : value_type option =
@@ -785,7 +820,9 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
               Fn
                 {
                   (* todo *)
-                  arg_type = Option.get (pattern_type compiled.args None);
+                  arg_type =
+                    Option.get
+                      (maybe_infer_pattern_type compiled.args None ~full:true);
                   result_type =
                     Option.get (maybe_infer_types compiled.body None ~full);
                   contexts = compiled.contexts;
@@ -867,7 +904,8 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
             | Some (Template f) ->
                 let compiled = ensure_compiled f in
                 let args =
-                  eval_ir captured args (pattern_type compiled.args None)
+                  eval_ir captured args
+                    (maybe_infer_pattern_type compiled.args None ~full)
                 in
                 Log.trace
                   ("instantiating type inf " ^ show_pattern compiled.args
@@ -917,8 +955,18 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
           common_type
       | Let { pattern; value; _ } ->
           (if full then
-             let typ = fully_infer_types value (pattern_type pattern None) in
-             ignore (pattern_type_sure pattern (Some typ)));
+             let pattern_type =
+               maybe_infer_pattern_type pattern None ~full:false
+             in
+             let value_type =
+               maybe_infer_types value pattern_type ~full:false
+             in
+             let pattern_type =
+               maybe_infer_pattern_type pattern value_type ~full:false
+             in
+             let value_type = fully_infer_types value pattern_type in
+             let pattern_type = pattern_type_sure pattern (Some value_type) in
+             ignore ((pattern_type, value_type) : value_type * value_type));
           Some Void
     in
     if full && Option.is_none inferred then
@@ -1149,7 +1197,8 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
           | Template f ->
               let compiled = ensure_compiled f in
               ( call_compiled empty_contexts compiled,
-                pattern_type compiled.args (ir_data args).result_type )
+                maybe_infer_pattern_type compiled.args
+                  (ir_data args).result_type ~full:false )
           | _ -> failwith "not a template"
         in
         Log.trace
@@ -1170,11 +1219,13 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
           | Function f ->
               let compiled = ensure_compiled f in
               ( call_compiled self.contexts compiled,
-                pattern_type compiled.args (ir_data args).result_type )
+                maybe_infer_pattern_type compiled.args
+                  (ir_data args).result_type ~full:false )
           | Macro f ->
               let compiled = ensure_compiled f in
               ( call_compiled empty_contexts compiled,
-                pattern_type compiled.args (ir_data args).result_type )
+                maybe_infer_pattern_type compiled.args
+                  (ir_data args).result_type ~full:false )
           | BuiltinMacro { impl; _ } ->
               ( (function
                 | Dict { fields } ->
@@ -1239,7 +1290,8 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
           new_bindings =
             pattern_match pattern
               (eval_ir self value
-                 (pattern_type pattern (ir_data value).result_type))
+                 (maybe_infer_pattern_type pattern (ir_data value).result_type
+                    ~full:false))
                 .value;
         }
   in
@@ -1360,7 +1412,11 @@ module Builtins = struct
               | Compiled compiled ->
                   forward_expected_type compiled.ir (Some typ);
                   Compiled compiled
-              | Pattern pattern -> Pattern (Typed { pattern; typ }))
+              | Pattern (Binding { binding; data }) ->
+                  binding.value_type <- Some typ;
+                  Pattern (Binding { binding; data })
+              | Pattern pattern ->
+                  Pattern (Typed { pattern; typ; data = init_pattern_data () }))
           | _ -> failwith "type is not a type");
     }
 
@@ -1821,6 +1877,7 @@ module Builtins = struct
                      fields =
                        StringMap.singleton name
                          (compile_pattern self (Some value));
+                     data = init_pattern_data ();
                    })
           | false ->
               Compiled
@@ -1926,6 +1983,7 @@ module Builtins = struct
                              (fun name _a _b ->
                                failwith (name ^ " is specified multiple times"))
                              (pattern_fields a) (pattern_fields b);
+                         data = init_pattern_data ();
                        })
               | false ->
                   Compiled
@@ -1945,7 +2003,13 @@ module Builtins = struct
                     })
           | None -> (
               match new_bindings with
-              | true -> Pattern (Dict { fields = pattern_fields a })
+              | true ->
+                  Pattern
+                    (Dict
+                       {
+                         fields = pattern_fields a;
+                         data = init_pattern_data ();
+                       })
               | false ->
                   Compiled
                     {
