@@ -38,7 +38,8 @@ syntax if -> 13 = cond "then" then "else" else;
 
 syntax implements <- 14 = type "implements" trait;
 
-syntax pipe <- 15 = args "|" f;
+syntax pipe <- 15 = args "|>" f;
+syntax pipe <- 15 = f "<|" args;
 
 syntax or <- 17 = lhs "or" rhs;
 syntax and <- 18 = lhs "and" rhs;
@@ -84,10 +85,16 @@ syntax function_def <- 100000 = "{" body "}";
 syntax scope <- 100000 = "(" e ")";
 syntax unit <- 100000 = "(" ")";
 
+# let option = Some value | None
+
 const inline_field = macro name : name => `($name : $name);
 
-# args | f
-const pipe = macro ~f, ~args => `((let args = $args; let f = $f; f args));
+# args |> f
+const pipe = macro ~f, ~args => `((
+    let args = $args;
+    let f = $f;
+    f args
+));
 
 let loop_context = (
     finish_current_iteration: (bool -> never), # todo should be option[T] -> never
