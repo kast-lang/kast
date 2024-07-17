@@ -1485,7 +1485,7 @@ module Builtins = struct
       result_type = Int32;
     }
 
-  let int32_binary_op = int32_binary_op_with "lhs" "rhs"
+  let int32_binary_op name = int32_binary_op_with name "lhs" "rhs"
 
   let float64_fn name f : builtin_fn =
     {
