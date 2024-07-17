@@ -5,7 +5,7 @@ let run_once = fn (first :: bool) {
         else "a number has been picked again");
     print "guess:";
     loop {
-        let guessed = input() | parse[int32];
+        let guessed = input() |> parse[int32];
         if guessed == picked then (
             break
         ) else (
