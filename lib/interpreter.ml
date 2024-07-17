@@ -59,7 +59,7 @@ and builtin_fn = {
 
 and builtin_macro = {
   name : string;
-  impl : state -> ast StringMap.t -> new_bindings:bool -> compiled;
+  impl : state -> ast StringMap.t -> new_bindings:bool -> expanded_macro;
 }
 
 and 'data ir_node =
@@ -144,7 +144,9 @@ and pattern =
   | Void
   | Binding of binding
   | Dict of { fields : pattern StringMap.t }
+  | Typed of { pattern : pattern; typ : value_type }
 
+and expanded_macro = Compiled of compiled | Pattern of pattern
 and evaled = { value : value; new_bindings : value StringMap.t }
 and compiled = { ir : ir; new_bindings : state_local StringMap.t }
 and struct' = { parent : struct' option; mutable data : state_data }
@@ -267,6 +269,7 @@ and show_ir : ir -> string = function
 and show_pattern : pattern -> string = function
   | Void -> "()"
   | Binding binding -> binding.name
+  | Typed { pattern; typ } -> show_pattern pattern ^ " :: " ^ show_type typ
   | Dict { fields } ->
       "{ "
       ^ StringMap.fold
@@ -449,6 +452,10 @@ and pattern_match_opt (pattern : pattern) (value : value) :
   match pattern with
   | Void -> ( match value with Void -> Some StringMap.empty | _ -> None)
   | Binding { name; _ } -> Some (StringMap.singleton name value)
+  | Typed { pattern; typ } ->
+      if not (type_check typ (type_of_value value)) then
+        failwith "pattern specified different type"
+      else pattern_match_opt pattern value
   | Dict { fields = field_patterns } -> (
       match value with
       | Dict { fields = field_values } ->
@@ -506,7 +513,8 @@ and get_local_value_opt (self : state) (name : string) : value option =
       | Binding _ -> failwith (name ^ " is a runtime value"))
     (get_local_opt self name)
 
-and compile_ast (self : state) (ast : ast) ~(new_bindings : bool) : compiled =
+and compile_ast_to_ir (self : state) (ast : ast) ~(new_bindings : bool) :
+    compiled =
   match ast with
   | Nothing _ ->
       { ir = Void { data = init_ir_data () }; new_bindings = StringMap.empty }
@@ -533,51 +541,66 @@ and compile_ast (self : state) (ast : ast) ~(new_bindings : bool) : compiled =
           | Punctuation _ -> failwith "punctuation");
         new_bindings = StringMap.empty;
       }
-  | Complex { def; values; _ } ->
-      expand_macro self def.name values ~new_bindings
-  | Syntax { def; value; _ } -> compile_ast self value ~new_bindings
+  | Complex { def; values; _ } -> (
+      match expand_macro self def.name values ~new_bindings with
+      | Compiled result -> result
+      | Pattern _ -> failwith "wtf")
+  | Syntax { def; value; _ } -> compile_ast_to_ir self value ~new_bindings
 
 and compile_pattern (self : state) (pattern : ast option) : pattern =
   match pattern with
   | None -> Void
-  | Some ast ->
-      let rec ir_to_pattern (ir : ir) : pattern =
-        match ir with
-        | Void _ | Const { value = Void; _ } -> Void
-        | Scope { expr; _ } -> ir_to_pattern expr
-        | Unwinding _ -> failwith "unwind not a pat"
-        | WithContext _ -> failwith "with context not a pat"
-        | CurrentContext _ -> failwith "current_context not a pattern"
-        | TypeOfValue _ -> failwith "todo pattern typeofvalue"
-        | TypeOf _ -> failwith "todo pattern typeof"
-        | Instantiate _ -> failwith "todo patt insta"
-        | Template _ -> failwith "todo patt templ"
-        | Function _ -> failwith "todo patt fun"
-        | Dict { fields; _ } ->
-            Dict { fields = StringMap.map ir_to_pattern fields }
-        | Ast _ -> failwith "todo pattern Ast"
-        | FieldAccess _ -> failwith "todo pattern FieldAccess"
-        | Const { value = Type Void; _ } -> Void
-        | Const _ -> failwith ("todo pattern Const" ^ show_ir ir)
-        | Binding { binding; _ } ->
-            (* if ascribed *)
-            binding.value_type <- (ir_data ir).result_type;
-            Binding binding
-        | Number _ -> failwith "todo pattern Number"
-        | String _ -> failwith "todo pattern String"
-        | Discard _ -> failwith "todo pattern Discard"
-        | Then _ -> failwith "todo pattern Then"
-        | Call _ -> failwith "todo pattern Call"
-        | BuiltinFn _ -> failwith "todo pattern BuiltinFn"
-        | If _ -> failwith "todo pattern If"
-        | Let _ -> failwith "todo pattern Let"
-      in
-      ir_to_pattern (compile_ast self ast ~new_bindings:true).ir
+  | Some ast -> (
+      match ast with
+      | Nothing _ -> Void
+      | Simple { token; _ } -> (
+          match token with
+          | Ident ident -> Binding { name = ident; value_type = None }
+          | Number raw -> failwith "todo pattern number"
+          | String { value; raw } -> failwith "todo string pattern"
+          | Punctuation _ -> failwith "punctuation")
+      | Complex { def; values; _ } -> (
+          match expand_macro self def.name values ~new_bindings:true with
+          | Pattern result -> result
+          | Compiled _ -> failwith "wtf")
+      | Syntax { def; value; _ } ->
+          failwith "syntax definition inlined in a pattern wtf?")
+
+and ir_to_pattern (ir : ir) : pattern =
+  match ir with
+  | Void _ | Const { value = Void; _ } -> Void
+  | Scope { expr; _ } -> ir_to_pattern expr
+  | Unwinding _ -> failwith "unwind not a pat"
+  | WithContext _ -> failwith "with context not a pat"
+  | CurrentContext _ -> failwith "current_context not a pattern"
+  | TypeOfValue _ -> failwith "todo pattern typeofvalue"
+  | TypeOf _ -> failwith "todo pattern typeof"
+  | Instantiate _ -> failwith "todo patt insta"
+  | Template _ -> failwith "todo patt templ"
+  | Function _ -> failwith "todo patt fun"
+  | Dict { fields; _ } -> Dict { fields = StringMap.map ir_to_pattern fields }
+  | Ast _ -> failwith "todo pattern Ast"
+  | FieldAccess _ -> failwith "todo pattern FieldAccess"
+  | Const { value = Type Void; _ } -> Void
+  | Const _ -> failwith ("todo pattern Const" ^ show_ir ir)
+  | Binding { binding; _ } ->
+      (* if ascribed *)
+      binding.value_type <- (ir_data ir).result_type;
+      Binding binding
+  | Number _ -> failwith "todo pattern Number"
+  | String _ -> failwith "todo pattern String"
+  | Discard _ -> failwith "todo pattern Discard"
+  | Then _ -> failwith "todo pattern Then"
+  | Call _ -> failwith "todo pattern Call"
+  | BuiltinFn _ -> failwith "todo pattern BuiltinFn"
+  | If _ -> failwith "todo pattern If"
+  | Let _ -> failwith "todo pattern Let"
 
 and pattern_type (pattern : pattern) (expected_type : value_type option) :
     value_type option =
   match pattern with
   | Void -> Some Void
+  | Typed { typ; _ } -> Some typ
   | Binding binding -> (
       match (expected_type, binding.value_type) with
       | Some expected, None ->
@@ -637,6 +660,7 @@ and pattern_type_sure (pattern : pattern) (expected_type : value_type option) :
 and pattern_bindings (pattern : pattern) : binding StringMap.t =
   match pattern with
   | Void -> StringMap.empty
+  | Typed { pattern; _ } -> pattern_bindings pattern
   | Binding binding -> StringMap.singleton binding.name binding
   | Dict { fields } ->
       StringMap.fold
@@ -647,8 +671,14 @@ and pattern_bindings (pattern : pattern) : binding StringMap.t =
             acc (pattern_bindings field))
         fields StringMap.empty
 
+and expand_ast (self : state) (ast : ast) ~(new_bindings : bool) :
+    expanded_macro =
+  match new_bindings with
+  | true -> Pattern (compile_pattern self (Some ast))
+  | false -> Compiled (compile_ast_to_ir self ast ~new_bindings)
+
 and expand_macro (self : state) (name : string) (values : ast StringMap.t)
-    ~(new_bindings : bool) : compiled =
+    ~(new_bindings : bool) : expanded_macro =
   match get_local_opt self name with
   | None -> failwith (name ^ " not found")
   | Some (Binding _binding) ->
@@ -661,21 +691,22 @@ and expand_macro (self : state) (name : string) (values : ast StringMap.t)
               {
                 fields =
                   StringMap.map
-                    (fun arg -> (compile_ast self arg ~new_bindings).ir)
+                    (fun arg -> (compile_ast_to_ir self arg ~new_bindings).ir)
                     values;
                 data = init_ir_data ();
               }
           in
-          {
-            ir =
-              Call
-                {
-                  f = BuiltinFn { f; data = init_ir_data () };
-                  args;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          }
+          Compiled
+            {
+              ir =
+                Call
+                  {
+                    f = BuiltinFn { f; data = init_ir_data () };
+                    args;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            }
       | BuiltinMacro { impl; _ } -> impl self values ~new_bindings
       | Macro f -> (
           let values =
@@ -686,13 +717,13 @@ and expand_macro (self : state) (name : string) (values : ast StringMap.t)
           match call_compiled empty_contexts compiled values with
           | Ast new_ast ->
               Log.trace ("macro expanded to " ^ Ast.show new_ast);
-              compile_ast self new_ast ~new_bindings
+              expand_ast self new_ast ~new_bindings
           | _ -> failwith "macro returned not an ast")
       | _ -> failwith (name ^ " is not a macro"))
 
 and eval_ast (self : state) (ast : ast) (expected_type : value_type option) :
     evaled =
-  let compiled = compile_ast self ast ~new_bindings:false in
+  let compiled = compile_ast_to_ir self ast ~new_bindings:false in
   eval_ir self compiled.ir expected_type
 
 and forward_expected_type (ir : ir) (expected_type : value_type option) : unit =
@@ -1148,16 +1179,19 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
               ( (function
                 | Dict { fields } ->
                     let ir =
-                      (impl self
-                         (StringMap.map
-                            (function
-                              | Ast ast -> ast
-                              | _ ->
-                                  failwith
-                                    "builtin macro arg must be dict of asts")
-                            fields)
-                         ~new_bindings:false)
-                        .ir
+                      match
+                        impl self
+                          (StringMap.map
+                             (function
+                               | Ast ast -> ast
+                               | _ ->
+                                   failwith
+                                     "builtin macro arg must be dict of asts")
+                             fields)
+                          ~new_bindings:false
+                      with
+                      | Compiled { ir; _ } -> ir
+                      | Pattern _ -> failwith "wtf"
                     in
                     (eval_ir self ir expected_type).value
                 | _ -> failwith "builtin macro arg must be dict of asts"),
@@ -1252,8 +1286,8 @@ and ensure_compiled (f : fn) : compiled_fn =
              | Some (Actual t) ->
                  Some (Const { value = Type t; data = init_ir_data () })
              | Some (Ast ast) ->
-                 Some (compile_ast captured ast ~new_bindings:false).ir);
-           body = (compile_ast captured f.body ~new_bindings:false).ir;
+                 Some (compile_ast_to_ir captured ast ~new_bindings:false).ir);
+           body = (compile_ast_to_ir captured f.body ~new_bindings:false).ir;
            contexts =
              (* todo expecte type contexts_type *)
              (match f.contexts with
@@ -1315,18 +1349,18 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let value =
-            compile_ast self (StringMap.find "value" args) ~new_bindings
+            expand_ast self (StringMap.find "value" args) ~new_bindings
           in
           let typ =
             (eval_ast self (StringMap.find "type" args) (Some Type)).value
           in
           match typ with
-          | Type typ ->
-              let ir_data = ir_data value.ir in
-              if Option.is_some ir_data.result_type then
-                failwith "type already specified";
-              ir_data.result_type <- Some typ;
-              value
+          | Type typ -> (
+              match value with
+              | Compiled compiled ->
+                  forward_expected_type compiled.ir (Some typ);
+                  Compiled compiled
+              | Pattern pattern -> Pattern (Typed { pattern; typ }))
           | _ -> failwith "type is not a type");
     }
 
@@ -1335,14 +1369,17 @@ module Builtins = struct
       name = "call";
       impl =
         (fun self args ~new_bindings ->
-          let f = compile_ast self (StringMap.find "f" args) ~new_bindings in
-          let args =
-            compile_ast self (StringMap.find "args" args) ~new_bindings
+          let f =
+            compile_ast_to_ir self (StringMap.find "f" args) ~new_bindings
           in
-          {
-            ir = Call { f = f.ir; args = args.ir; data = init_ir_data () };
-            new_bindings = StringMap.empty;
-          });
+          let args =
+            compile_ast_to_ir self (StringMap.find "args" args) ~new_bindings
+          in
+          Compiled
+            {
+              ir = Call { f = f.ir; args = args.ir; data = init_ir_data () };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let instantiate_template : builtin_macro =
@@ -1351,22 +1388,25 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let template =
-            compile_ast self (StringMap.find "template" args) ~new_bindings
+            compile_ast_to_ir self
+              (StringMap.find "template" args)
+              ~new_bindings
           in
           let args =
-            compile_ast self (StringMap.find "args" args) ~new_bindings
+            compile_ast_to_ir self (StringMap.find "args" args) ~new_bindings
           in
-          {
-            ir =
-              Instantiate
-                {
-                  captured = self;
-                  template = template.ir;
-                  args = args.ir;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                Instantiate
+                  {
+                    captured = self;
+                    template = template.ir;
+                    args = args.ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let then' : builtin_macro =
@@ -1374,7 +1414,9 @@ module Builtins = struct
       name = "then";
       impl =
         (fun self args ~new_bindings ->
-          let a = compile_ast self (StringMap.find "a" args) ~new_bindings in
+          let a =
+            compile_ast_to_ir self (StringMap.find "a" args) ~new_bindings
+          in
           let self_with_new_bindings =
             {
               self with
@@ -1387,17 +1429,18 @@ module Builtins = struct
           in
           let b =
             match StringMap.find_opt "b" args with
-            | Some b -> compile_ast self_with_new_bindings b ~new_bindings
+            | Some b -> compile_ast_to_ir self_with_new_bindings b ~new_bindings
             | None ->
                 {
                   ir = Void { data = init_ir_data () };
                   new_bindings = StringMap.empty;
                 }
           in
-          {
-            ir = Then { first = a.ir; second = b.ir; data = init_ir_data () };
-            new_bindings = update_locals a.new_bindings b.new_bindings;
-          });
+          Compiled
+            {
+              ir = Then { first = a.ir; second = b.ir; data = init_ir_data () };
+              new_bindings = update_locals a.new_bindings b.new_bindings;
+            });
     }
 
   (*  todo *)
@@ -1423,7 +1466,7 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let cond =
-            compile_ast self (StringMap.find "cond" args) ~new_bindings
+            compile_ast_to_ir self (StringMap.find "cond" args) ~new_bindings
           in
           let self_with_new_bindings =
             {
@@ -1436,7 +1479,7 @@ module Builtins = struct
             }
           in
           let then' =
-            (compile_ast self_with_new_bindings
+            (compile_ast_to_ir self_with_new_bindings
                (StringMap.find "then" args)
                ~new_bindings)
               .ir
@@ -1444,20 +1487,22 @@ module Builtins = struct
           let else' =
             match StringMap.find_opt "else" args with
             | Some branch ->
-                (compile_ast self_with_new_bindings branch ~new_bindings).ir
+                (compile_ast_to_ir self_with_new_bindings branch ~new_bindings)
+                  .ir
             | None -> Void { data = init_ir_data () }
           in
-          {
-            ir =
-              If
-                {
-                  cond = cond.ir;
-                  then_case = then';
-                  else_case = else';
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                If
+                  {
+                    cond = cond.ir;
+                    then_case = then';
+                    else_case = else';
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let dict_fn f = function
@@ -1540,15 +1585,19 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let e = StringMap.find "e" args in
-          {
-            ir =
-              Scope
+          match new_bindings with
+          | true -> Pattern (compile_pattern self (Some e))
+          | false ->
+              Compiled
                 {
-                  expr = (compile_ast self e ~new_bindings).ir;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+                  ir =
+                    Scope
+                      {
+                        expr = (compile_ast_to_ir self e ~new_bindings).ir;
+                        data = init_ir_data ();
+                      };
+                  new_bindings = StringMap.empty;
+                });
     }
 
   let with_context : builtin_macro =
@@ -1557,21 +1606,24 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let new_context =
-            compile_ast self (StringMap.find "new_context" args) ~new_bindings
+            compile_ast_to_ir self
+              (StringMap.find "new_context" args)
+              ~new_bindings
           in
           let expr =
-            compile_ast self (StringMap.find "expr" args) ~new_bindings
+            compile_ast_to_ir self (StringMap.find "expr" args) ~new_bindings
           in
-          {
-            ir =
-              WithContext
-                {
-                  expr = expr.ir;
-                  new_context = new_context.ir;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                WithContext
+                  {
+                    expr = expr.ir;
+                    new_context = new_context.ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let comptime : builtin_macro =
@@ -1580,15 +1632,16 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let value = StringMap.find "value" args in
-          {
-            ir =
-              Const
-                {
-                  value = (eval_ast self value None).value;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                Const
+                  {
+                    value = (eval_ast self value None).value;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let quote : builtin_macro =
@@ -1600,7 +1653,7 @@ module Builtins = struct
             | Complex { def = { name = "unquote"; _ }; values; _ } ->
                 let inner = StringMap.find "expr" values in
                 Log.trace ("unquoting" ^ Ast.show inner);
-                (compile_ast self inner ~new_bindings).ir
+                (compile_ast_to_ir self inner ~new_bindings).ir
             | Nothing data ->
                 Const { value = Ast (Nothing data); data = init_ir_data () }
             | Simple token ->
@@ -1617,7 +1670,8 @@ module Builtins = struct
           in
           let expr = StringMap.find "expr" args in
           Log.trace ("quoting " ^ Ast.show expr);
-          { ir = impl expr; new_bindings = StringMap.empty });
+          (* todo *)
+          Compiled { ir = impl expr; new_bindings = StringMap.empty });
     }
 
   let let' : builtin_macro =
@@ -1628,14 +1682,15 @@ module Builtins = struct
           let pattern = StringMap.find "pattern" args in
           let pattern = compile_pattern self (Some pattern) in
           let value = StringMap.find "value" args in
-          let value = (compile_ast self value ~new_bindings).ir in
-          {
-            ir = Let { pattern; value; data = init_ir_data () };
-            new_bindings =
-              StringMap.map
-                (fun binding : state_local -> Binding binding)
-                (pattern_bindings pattern);
-          });
+          let value = (compile_ast_to_ir self value ~new_bindings).ir in
+          Compiled
+            {
+              ir = Let { pattern; value; data = init_ir_data () };
+              new_bindings =
+                StringMap.map
+                  (fun binding : state_local -> Binding binding)
+                  (pattern_bindings pattern);
+            });
     }
 
   let const_let : builtin_macro =
@@ -1643,13 +1698,18 @@ module Builtins = struct
       name = "const_let";
       impl =
         (fun self args ~new_bindings ->
-          let ir = (let'.impl self args ~new_bindings).ir in
+          let ir =
+            match let'.impl self args ~new_bindings with
+            | Compiled { ir; _ } -> ir
+            | Pattern _ -> failwith "wtf"
+          in
           let evaled = eval_ir self ir (Some Void) in
-          {
-            ir;
-            new_bindings =
-              StringMap.map (fun value -> Value value) evaled.new_bindings;
-          });
+          Compiled
+            {
+              ir;
+              new_bindings =
+                StringMap.map (fun value -> Value value) evaled.new_bindings;
+            });
     }
 
   let template_def : builtin_macro =
@@ -1661,23 +1721,24 @@ module Builtins = struct
           if Option.is_some where then failwith "todo where clauses";
           let def = StringMap.find "def" args in
           let args = StringMap.find "args" args in
-          {
-            ir =
-              Template
-                {
-                  f =
-                    {
-                      captured = self;
-                      result_type = Some (Actual Any);
-                      args_pattern = Some args;
-                      body = def;
-                      contexts = None;
-                      compiled = None;
-                    };
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                Template
+                  {
+                    f =
+                      {
+                        captured = self;
+                        result_type = Some (Actual Any);
+                        args_pattern = Some args;
+                        body = def;
+                        contexts = None;
+                        compiled = None;
+                      };
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let function_def : builtin_macro =
@@ -1689,24 +1750,27 @@ module Builtins = struct
           let result_type = StringMap.find_opt "result_type" args in
           let contexts = StringMap.find_opt "contexts" args in
           let body = StringMap.find "body" args in
-          {
-            ir =
-              Function
-                {
-                  f =
-                    {
-                      result_type =
-                        Option.map (fun t : fn_result_type -> Ast t) result_type;
-                      captured = self;
-                      args_pattern;
-                      contexts;
-                      body;
-                      compiled = None;
-                    };
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                Function
+                  {
+                    f =
+                      {
+                        result_type =
+                          Option.map
+                            (fun t : fn_result_type -> Ast t)
+                            result_type;
+                        captured = self;
+                        args_pattern;
+                        contexts;
+                        body;
+                        compiled = None;
+                      };
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let field_access : builtin_macro =
@@ -1715,24 +1779,25 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let obj = StringMap.find "obj" args in
-          let obj = (compile_ast self obj ~new_bindings).ir in
+          let obj = (compile_ast_to_ir self obj ~new_bindings).ir in
           let field = StringMap.find "field" args in
           let default_value = StringMap.find_opt "default_value" args in
           let default_value =
             Option.map
               (fun ast ->
                 Log.trace ("default = " ^ Ast.show ast);
-                (compile_ast self ast ~new_bindings).ir)
+                (compile_ast_to_ir self ast ~new_bindings).ir)
               default_value
           in
           match field with
           | Simple { token = Ident name; _ } ->
-              {
-                ir =
-                  FieldAccess
-                    { obj; name; default_value; data = init_ir_data () };
-                new_bindings = StringMap.empty;
-              }
+              Compiled
+                {
+                  ir =
+                    FieldAccess
+                      { obj; name; default_value; data = init_ir_data () };
+                  new_bindings = StringMap.empty;
+                }
           | _ -> failwith "field access must be using an ident");
     }
 
@@ -1748,17 +1813,28 @@ module Builtins = struct
             | Ast.Simple { token = Ident name; _ } -> name
             | _ -> failwith "field name must be an ident"
           in
-          {
-            ir =
-              Dict
+          match new_bindings with
+          | true ->
+              Pattern
+                (Dict
+                   {
+                     fields =
+                       StringMap.singleton name
+                         (compile_pattern self (Some value));
+                   })
+          | false ->
+              Compiled
                 {
-                  fields =
-                    StringMap.singleton name
-                      (compile_ast self value ~new_bindings).ir;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+                  ir =
+                    Dict
+                      {
+                        fields =
+                          StringMap.singleton name
+                            (compile_ast_to_ir self value ~new_bindings).ir;
+                        data = init_ir_data ();
+                      };
+                  new_bindings = StringMap.empty;
+                });
     }
 
   let current_context : builtin_macro =
@@ -1767,16 +1843,18 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let context_type = StringMap.find "context_type" args in
-          {
-            ir =
-              CurrentContext
-                {
-                  context_type =
-                    value_to_type (eval_ast self context_type (Some Type)).value;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                CurrentContext
+                  {
+                    context_type =
+                      value_to_type
+                        (eval_ast self context_type (Some Type)).value;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let typeof : builtin_macro =
@@ -1785,16 +1863,17 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let expr = StringMap.find "expr" args in
-          {
-            ir =
-              TypeOf
-                {
-                  captured = self;
-                  expr = (compile_ast self expr ~new_bindings).ir;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                TypeOf
+                  {
+                    captured = self;
+                    expr = (compile_ast_to_ir self expr ~new_bindings).ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   (*  todo fn instead of macro *)
@@ -1804,16 +1883,17 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let expr = StringMap.find "expr" args in
-          {
-            ir =
-              TypeOfValue
-                {
-                  captured = self;
-                  expr = (compile_ast self expr ~new_bindings).ir;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                TypeOfValue
+                  {
+                    captured = self;
+                    expr = (compile_ast_to_ir self expr ~new_bindings).ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let tuple : builtin_macro =
@@ -1822,32 +1902,56 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let a = StringMap.find "a" args in
-          let a = compile_ast self a ~new_bindings in
-          let fields : ir -> _ = function
-            | Dict { fields; _ } -> fields
-            | _ -> failwith "expected a dict"
+          let a = expand_ast self a ~new_bindings in
+          let pattern_fields : expanded_macro -> _ = function
+            | Pattern (Dict { fields; _ }) -> fields
+            | Pattern _ -> failwith "expected a dict"
+            | Compiled _ -> failwith "wtf"
+          in
+          let fields : expanded_macro -> _ = function
+            | Compiled { ir = Dict { fields; _ }; _ } -> fields
+            | Compiled _ -> failwith "expected a dict"
+            | Pattern _ -> failwith "wtf"
           in
           match StringMap.find_opt "b" args with
-          | Some b ->
-              let b = compile_ast self b ~new_bindings in
-              {
-                ir =
-                  Dict
+          | Some b -> (
+              let b = expand_ast self b ~new_bindings in
+              match new_bindings with
+              | true ->
+                  Pattern
+                    (Dict
+                       {
+                         fields =
+                           StringMap.union
+                             (fun name _a _b ->
+                               failwith (name ^ " is specified multiple times"))
+                             (pattern_fields a) (pattern_fields b);
+                       })
+              | false ->
+                  Compiled
                     {
-                      fields =
-                        StringMap.union
-                          (fun name _a _b ->
-                            failwith (name ^ " is specified multiple times"))
-                          (fields a.ir) (fields b.ir);
-                      data = init_ir_data ();
-                    };
-                new_bindings = StringMap.empty;
-              }
-          | None ->
-              {
-                ir = Dict { fields = fields a.ir; data = init_ir_data () };
-                new_bindings = StringMap.empty;
-              });
+                      ir =
+                        Dict
+                          {
+                            fields =
+                              StringMap.union
+                                (fun name _a _b ->
+                                  failwith
+                                    (name ^ " is specified multiple times"))
+                                (fields a) (fields b);
+                            data = init_ir_data ();
+                          };
+                      new_bindings = StringMap.empty;
+                    })
+          | None -> (
+              match new_bindings with
+              | true -> Pattern (Dict { fields = pattern_fields a })
+              | false ->
+                  Compiled
+                    {
+                      ir = Dict { fields = fields a; data = init_ir_data () };
+                      new_bindings = StringMap.empty;
+                    }));
     }
 
   let macro = function
@@ -2019,15 +2123,16 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let def = StringMap.find "def" args in
-          {
-            ir =
-              Unwinding
-                {
-                  f = (compile_ast self def ~new_bindings).ir;
-                  data = init_ir_data ();
-                };
-            new_bindings = StringMap.empty;
-          });
+          Compiled
+            {
+              ir =
+                Unwinding
+                  {
+                    f = (compile_ast_to_ir self def ~new_bindings).ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
     }
 
   let unwind : builtin_fn =
