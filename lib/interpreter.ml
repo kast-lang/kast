@@ -64,6 +64,7 @@ and builtin_macro = {
 
 and 'data ir_node =
   | Void of { data : 'data }
+  | Scope of { expr : 'data ir_node; data : 'data }
   | TypeOf of { captured : state; expr : 'data ir_node; data : 'data }
   | TypeOfValue of { captured : state; expr : 'data ir_node; data : 'data }
   | Dict of { fields : 'data ir_node StringMap.t; data : 'data }
@@ -227,6 +228,7 @@ and show_type : value_type -> string = function
 
 and show_ir : ir -> string = function
   | Void _ -> "void"
+  | Scope { expr; _ } -> "(" ^ show_ir expr ^ ")"
   | TypeOf { expr; _ } -> "typeof " ^ show_ir expr
   | TypeOfValue { expr; _ } -> "typeofvalue " ^ show_ir expr
   | Template _ -> "template"
@@ -399,6 +401,7 @@ and type_of_value : value -> value_type = function
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | Scope { data; _ }
   | Unwinding { data; _ }
   | WithContext { data; _ }
   | CurrentContext { data; _ }
@@ -541,6 +544,7 @@ and compile_pattern (self : state) (pattern : ast option) : pattern =
       let rec ir_to_pattern (ir : ir) : pattern =
         match ir with
         | Void _ | Const { value = Void; _ } -> Void
+        | Scope { expr; _ } -> ir_to_pattern expr
         | Unwinding _ -> failwith "unwind not a pat"
         | WithContext _ -> failwith "with context not a pat"
         | CurrentContext _ -> failwith "current_context not a pattern"
@@ -721,6 +725,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
     let inferred : value_type option =
       match ir with
       | Void _ -> Some Void
+      | Scope { expr; _ } -> maybe_infer_types expr expected_type ~full
       | Unwinding { f; _ } -> (
           match maybe_infer_types f None ~full with
           | Some (Fn f) ->
@@ -947,6 +952,8 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   let result =
     match ir with
     | Void _ -> just_value Void result_type
+    | Scope { expr; _ } ->
+        just_value (eval_ir self expr expected_type).value result_type
     | TypeOf { captured; expr; _ } ->
         just_value (Type (fully_infer_types expr (Some Type))) (Some Type)
     | TypeOfValue { captured; expr; _ } ->
@@ -987,7 +994,7 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
                new_contexts);
           }
         in
-        eval_ir new_state expr expected_type
+        just_value (eval_ir new_state expr expected_type).value result_type
     | CurrentContext { context_type; _ } -> (
         let all_current =
           match Hashtbl.find_opt self.contexts context_type with
@@ -1165,7 +1172,7 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
           | None -> "<unknown>");
         let args = (eval_ir self args args_type).value in
         just_value (f args) result_type
-    | If { cond; then_case; else_case; _ } -> (
+    | If { cond; then_case; else_case; _ } ->
         let common_type = result_type in
         Log.trace
           ("evaling if, common type = "
@@ -1186,10 +1193,12 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
               };
           }
         in
-        match cond.value with
-        | Bool true -> eval_ir self_with_new_bindings then_case common_type
-        | Bool false -> eval_ir self_with_new_bindings else_case common_type
-        | _ -> failwith "condition must be a bool")
+        just_value
+          (match cond.value with
+          | Bool true -> eval_ir self_with_new_bindings then_case common_type
+          | Bool false -> eval_ir self_with_new_bindings else_case common_type
+          | _ -> failwith "condition must be a bool")
+            .value result_type
     | Let { pattern; value; _ } ->
         {
           value = Void;
@@ -1532,7 +1541,12 @@ module Builtins = struct
         (fun self args ~new_bindings ->
           let e = StringMap.find "e" args in
           {
-            ir = (compile_ast self e ~new_bindings).ir;
+            ir =
+              Scope
+                {
+                  expr = (compile_ast self e ~new_bindings).ir;
+                  data = init_ir_data ();
+                };
             new_bindings = StringMap.empty;
           });
     }
