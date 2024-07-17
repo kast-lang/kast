@@ -1,16 +1,14 @@
-syntax try_impl <- 6 = "try" expr "catch" ex "::" ex_type "->" catch_block;
+let test = fn (x :: int32) {
+	print <| try[ok: string, error: int32] {
+		if x == 0 then
+			"hello"
+		else
+			throw[int32] x
+	} catch e {
+		dbg e;
+		"thrown"
+	};
+};
 
-let try_impl = macro { ~expr :: ast, ~ex :: ast, ~ex_type :: ast, ~catch_block :: ast } => (
-	`(
-		let result = unwinding (token :: unwind_token) {
-			with ( throw: (value :: $ex_type => unwind token (Error value))) (
-				Ok $expr
-			)
-		};
-		match result with
-			| Ok value -> value
-			| Error $ex -> (
-				$catch_block
-			)
-	)
-);
+test 1;
+test 0;

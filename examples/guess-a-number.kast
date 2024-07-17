@@ -1,8 +1,11 @@
 let run_once = fn (first :: bool) {
     let picked = random[int32] (min: 1, max: 10);
     print (
-        if first then "a number has been picked"
-        else "a number has been picked again");
+        if first then
+            "a number has been picked"
+        else
+            "a number has been picked again"
+    );
     print "guess:";
     loop {
         let guessed = input() |> parse[int32];

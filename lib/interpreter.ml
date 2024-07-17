@@ -1021,7 +1021,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
       | FieldAccess { obj; name; _ } -> (
           match fully_infer_types obj None with
           | Dict { fields } -> Some (StringMap.find name fields)
-          | Type -> Some Any
+          | Type | Any -> Some Any
           | _ -> failwith "todo field access")
       | Const { value = Function f; _ } -> (
           if full then ignore (ensure_compiled f);
@@ -1084,7 +1084,7 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
               if full then ignore (fully_infer_types args (Some arg_type));
               Some result_type
           | Some BuiltinMacro -> expected_type
-          | Some Any -> None
+          | Some Any -> Some Any
           | Some typ ->
               failwith
                 (show_ir f ^ " is type " ^ show_type typ ^ " which is not fun")

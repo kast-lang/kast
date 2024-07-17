@@ -35,6 +35,7 @@ syntax tuple <- 11 = a "," b;
 syntax tuple <- 11 = a ",";
 syntax field <- 12 = name ":" value;
 syntax inline_field <- 12 = "~" name;
+syntax inline_typed_field <- 12 = "~" name "::" type;
 
 syntax match <- 13 = "match" value "(" branches ")";
 syntax if <- 13 = "if" cond "then" then;
@@ -46,6 +47,8 @@ syntax implements <- 14 = type "implements" trait;
 
 syntax pipe <- 15 = args "|>" f;
 syntax pipe <- 15 = f "<|" args;
+
+syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
 
 syntax or <- 17 = lhs "or" rhs;
 syntax and <- 18 = lhs "and" rhs;
@@ -96,6 +99,10 @@ let Either = forall ((~left, ~right) :: ( left: type, right: type )). (Left of l
 let Result = forall ((~ok, ~error) :: ( ok: type, error: type)). (Ok of ok | Error of error);
 
 const inline_field = macro name : name => `($name : $name);
+const inline_typed_field = macro (~name, ~type) :: (name: ast, type: ast) => `(
+    $name: ($name :: $type)
+);
+
 
 # args |> f
 const pipe = macro ~f, ~args => `((
@@ -144,6 +151,33 @@ let break_impl = macro (args :: any) => (
         default_value: `(`(void)),
     );
     `(do_break $value)
+);
+
+let throws = forall (error :: type). (throw: (error -> never));
+let throw = forall (error :: type). (
+	fn (e :: error) {
+		(current throws[error]).throw e
+	}
+);
+
+let try = forall
+		(~ok :: type, ~error :: type). (
+	fn (body :: (void -> ok incontext throws[error])) {
+		unwinding (token :: unwind_token) {
+			const result_type = Result[~ok, ~error];
+			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error e));
+			with throw_context (
+			 	body () |> result_type.Ok
+			)
+		}
+	}
+);
+
+let catch_impl = macro ~expr :: ast, ~e :: ast, ~catch_block :: ast => `(
+	match $expr (
+		| Ok of value => value
+		| Error of $e => $catch_block
+	)
 );
 
 let random = forall (T :: type). (
