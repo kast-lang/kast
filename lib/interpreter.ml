@@ -2,11 +2,10 @@ open Prelude
 
 type ast_data = { span : Span.span }
 type ast = ast_data Ast.node
-
-let next_unwind_token = ref 0
+type id = Id.t
 
 type value =
-  | UnwindToken of int
+  | UnwindToken of id
   | Ast of ast
   | Macro of fn
   | BuiltinMacro of builtin_macro
@@ -45,7 +44,11 @@ and value_type =
   | NewType of value_type
   | OneOf of value_type option StringMap.t
   | Union of (value_type, unit) Hashtbl.t
+  | SpecificType of value_type
   | Type
+  | Var of id
+
+and type_var_map = value_type Id.Map.t
 
 and fn_type = {
   arg_type : value_type;
@@ -70,6 +73,7 @@ and 'data match_branch = { pattern : pattern; body : 'data ir_node }
 
 and 'data ir_node =
   | Void of { data : 'data }
+  | Struct of { body : 'data ir_node; data : 'data }
   | CreateImpl of {
       captured : state;
       ty : 'data ir_node;
@@ -201,18 +205,19 @@ and state_local = Value of value | Binding of binding
 and binding = { name : string; mutable value_type : value_type option }
 and impl_def = { trait : value_type; ty : value_type }
 
-exception Unwind of int * value
+exception Unwind of id * value
 
 let empty_contexts : contexts = Hashtbl.create 0
 let empty_contexts_type : contexts_type = Hashtbl.create 0
 let default_contexts_type : contexts_type = empty_contexts_type
 let trait_impls : (impl_def, value) Hashtbl.t = Hashtbl.create 0
+let empty_type_var_map () : type_var_map ref = ref Id.Map.empty
 
 let rec show = function
   | Ast ast -> "`(" ^ Ast.show ast ^ ")"
   | Variant { name; value; _ } ->
       name ^ show_or "" (fun value -> " " ^ show value) value
-  | UnwindToken token -> "unwind token " ^ Int.to_string token
+  | UnwindToken id -> "unwind token " ^ Id.show id
   | Void -> "void"
   | Macro _ -> "macro <...>"
   | BuiltinMacro _ -> "builtin_macro"
@@ -277,6 +282,7 @@ and show_type : value_type -> string = function
             ^ name ^ ": " ^ show_type field_type)
           fields ""
       ^ " }"
+  | SpecificType t -> "typeof " ^ show_type t
   | Type -> "type"
   | Union set ->
       Hashtbl.fold
@@ -290,9 +296,11 @@ and show_type : value_type -> string = function
           ^ match t with Some t -> " of " ^ show_type t | None -> "")
         variants ""
   | NewType inner -> "newtype " ^ show_type inner
+  | Var id -> "var " ^ Id.show id
 
 and show_ir : ir -> string = function
   | Void _ -> "void"
+  | Struct { body; _ } -> "struct (" ^ show_ir body ^ ")"
   | CreateImpl { trait; ty; impl; _ } ->
       "impl " ^ show_ir trait ^ " for " ^ show_ir ty ^ " as " ^ show_ir impl
   | GetImpl { trait; ty; _ } -> show_ir ty ^ " as " ^ show_ir trait
@@ -370,8 +378,8 @@ and show_pattern : pattern -> string = function
           fields ""
       ^ " }"
 
-and type_check_contexts (expected : contexts_type) (actual : contexts_type) :
-    bool =
+and type_check_contexts (expected : contexts_type) (actual : contexts_type)
+    (variables : type_var_map ref) : bool =
   Seq.for_all
     (fun ((expected_type, expected_amount) : value_type * int) ->
       let actual_amount =
@@ -382,7 +390,8 @@ and type_check_contexts (expected : contexts_type) (actual : contexts_type) :
       actual_amount <= expected_amount)
     (Hashtbl.to_seq actual)
 
-and type_check_fn (expected : fn_type) (actual : fn_type) : bool =
+and type_check_fn (expected : fn_type) (actual : fn_type)
+    (variables : type_var_map ref) : bool =
   let {
     arg_type = expected_arg;
     contexts = expected_contexts;
@@ -397,11 +406,12 @@ and type_check_fn (expected : fn_type) (actual : fn_type) : bool =
   } =
     actual
   in
-  type_check expected_arg actual_arg
-  && type_check expected_result actual_result
-  && type_check_contexts expected_contexts actual_contexts
+  type_check expected_arg actual_arg variables
+  && type_check expected_result actual_result variables
+  && type_check_contexts expected_contexts actual_contexts variables
 
-and type_check (expected : value_type) (actual : value_type) : bool =
+and type_check (expected : value_type) (actual : value_type)
+    (variables : type_var_map ref) : bool =
   match (expected, actual) with
   | Any, _ -> true
   | _, Never -> true
@@ -424,12 +434,14 @@ and type_check (expected : value_type) (actual : value_type) : bool =
   | Float64, _ -> false
   | String, String -> true
   | String, _ -> false
-  | Fn expected, Fn actual -> type_check_fn expected actual
+  | Fn expected, Fn actual -> type_check_fn expected actual variables
   | Fn _, _ -> false
-  | Macro expected, Macro actual -> type_check_fn expected actual
+  | Macro expected, Macro actual -> type_check_fn expected actual variables
   | Macro _, _ -> false
   | Dict { fields = expected_fields }, Dict { fields = actual_fields } ->
-      StringMap.equal type_check expected_fields actual_fields
+      StringMap.equal
+        (fun a b -> type_check a b variables)
+        expected_fields actual_fields
   | Dict _, _ -> false
   | Type, _ -> true
   | BuiltinMacro, BuiltinMacro -> true
@@ -438,13 +450,28 @@ and type_check (expected : value_type) (actual : value_type) : bool =
   | Template _, _ -> false
   | NewType a, NewType b -> a = b (* todo should be typecheck? maybe not *)
   | NewType _, _ -> false
-  | OneOf a, OneOf b -> StringMap.equal (Option.equal type_check) a b
+  | OneOf a, OneOf b ->
+      StringMap.equal (Option.equal (fun a b -> type_check a b variables)) a b
   | OneOf _, _ -> false
   | Union a, Union b ->
       Seq.for_all
         (fun t -> Hashtbl.find_opt a t |> Option.is_some)
         (Hashtbl.to_seq_keys b)
   | Union a, t -> Hashtbl.find_opt a t |> Option.is_some
+  | Var a, Var b -> a = b
+  | Var id, actual -> (
+      let rec unwrap_specifics = function
+        | SpecificType t -> unwrap_specifics t
+        | t -> t
+      in
+      let actual = unwrap_specifics actual in
+      match Id.Map.find_opt id !variables with
+      | None ->
+          variables := Id.Map.add id actual !variables;
+          true
+      | Some value -> value = actual)
+  | SpecificType a, SpecificType b -> a = b
+  | SpecificType _, _ -> false
 
 and type_of_fn : fn -> fn_type =
  fun f ->
@@ -497,11 +524,22 @@ and type_of_value : value -> value_type = function
   | String _ -> String
   | Dict { fields } -> Dict { fields = StringMap.map type_of_value fields }
   | Ref _ -> failwith "todo ref"
-  | Struct _ -> failwith "todo struct"
-  | Type _ -> Type
+  | Struct { data; _ } ->
+      Dict
+        {
+          fields =
+            StringMap.map
+              (fun (local : state_local) ->
+                match local with
+                | Binding _ -> failwith "binding wtf"
+                | Value value -> type_of_value value)
+              data.locals;
+        }
+  | Type t -> SpecificType t
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | Struct { data; _ }
   | CheckImpl { data; _ }
   | CreateImpl { data; _ }
   | GetImpl { data; _ }
@@ -542,7 +580,7 @@ and just_value value expected_type =
   | Some Any -> ()
   | Some expected_type ->
       let actual_type = type_of_value value in
-      if not (type_check expected_type actual_type) then
+      if not (type_check expected_type actual_type (empty_type_var_map ())) then
         failwith
           ("value " ^ show value ^ " is of wrong type (expected "
          ^ show_type expected_type ^ ", got " ^ show_type actual_type ^ ")")
@@ -581,7 +619,7 @@ and pattern_match_opt (pattern : pattern) (value : value) :
   | Binding { binding = { name; _ }; _ } ->
       Some (StringMap.singleton name value)
   | Typed { pattern; typ; _ } ->
-      if not (type_check typ (type_of_value value)) then
+      if not (type_check typ (type_of_value value) (empty_type_var_map ())) then
         failwith "pattern specified different type"
       else pattern_match_opt pattern value
   | Dict { fields = field_patterns; _ } -> (
@@ -641,6 +679,7 @@ and get_local_value_opt (self : state) (name : string) : value option =
       | Binding _ -> failwith (name ^ " is a runtime value"))
     (get_local_opt self name)
 
+(* todo remove new_bindings args? *)
 and compile_ast_to_ir (self : state) (ast : ast) ~(new_bindings : bool) :
     compiled =
   match ast with
@@ -774,8 +813,8 @@ and maybe_infer_pattern_type (pattern : pattern)
               binding.value_type <- Some expected;
               Some expected
           | Some expected, Some specified ->
-              if not (type_check expected specified) then
-                failwith "pattern type wrong";
+              if not (type_check expected specified (empty_type_var_map ()))
+              then failwith "pattern type wrong";
               Some expected
           | None, _ -> binding.value_type)
       | Dict { fields; _ } -> (
@@ -830,7 +869,9 @@ and maybe_infer_pattern_type (pattern : pattern)
         match data.result_type with
         | None -> data.result_type <- Some actual_type
         | Some expected_type ->
-            if not (type_check expected_type actual_type) then
+            if
+              not (type_check expected_type actual_type (empty_type_var_map ()))
+            then
               failwith
                 (show_pattern pattern ^ " expected " ^ show_type expected_type
                ^ ", got " ^ show_type actual_type))
@@ -934,7 +975,8 @@ and forward_expected_type_impl (data : type_inference_data)
   | Some expected_type -> (
       match data.result_type with
       | Some actual_type ->
-          if not (type_check expected_type actual_type) then
+          if not (type_check expected_type actual_type (empty_type_var_map ()))
+          then
             failwith
               ("expected " ^ show_type expected_type ^ ", got "
              ^ show_type actual_type)
@@ -961,6 +1003,9 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
     let inferred : value_type option =
       match ir with
       | Void _ -> Some Void
+      | Struct { body; _ } ->
+          (* todo *)
+          Some Any
       | NewType { def; _ } ->
           if full then ignore @@ pattern_type_sure def None;
           Some Type
@@ -1172,7 +1217,8 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
             match (then_type, else_type) with
             | Some then_case, Some else_case ->
                 (* todo same_types instead of type_check? *)
-                if not (type_check then_case else_case) then
+                if not (type_check then_case else_case (empty_type_var_map ()))
+                then
                   failwith
                     ("then and else diff types: " ^ show_type then_case
                    ^ " and " ^ show_type else_case);
@@ -1209,7 +1255,9 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
         match ir_data.result_type with
         | None -> ir_data.result_type <- Some actual_type
         | Some expected_type ->
-            if not (type_check expected_type actual_type) then
+            if
+              not (type_check expected_type actual_type (empty_type_var_map ()))
+            then
               failwith
                 (show_ir ir ^ " expected " ^ show_type expected_type ^ ", got "
                ^ show_type actual_type))
@@ -1260,6 +1308,23 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
   let result =
     match ir with
     | Void _ -> just_value Void result_type
+    | Struct { body; _ } ->
+        Log.info "evaluating struct";
+        let evaled = eval_ir self body (Some Void) in
+        just_value
+          (Struct
+             {
+               parent = Some self.self;
+               data =
+                 {
+                   syntax = Syntax.empty;
+                   locals =
+                     StringMap.map
+                       (fun value : state_local -> Value value)
+                       evaled.new_bindings;
+                 };
+             })
+          result_type
     | NewType { def; _ } ->
         just_value (Type (NewType (pattern_type_sure def None))) result_type
     | Scope { expr; _ } ->
@@ -1339,8 +1404,7 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
           (match (eval_ir self f None).value with
           | Function f -> (
               let compiled = ensure_compiled f in
-              let token = !next_unwind_token in
-              next_unwind_token := !next_unwind_token + 1;
+              let token = Id.gen () in
               try call_compiled self.contexts compiled (UnwindToken token)
               with Unwind (unwinded_token, value) ->
                 if unwinded_token = token then value
@@ -1600,6 +1664,17 @@ and value_to_type : value -> value_type = function
   | Void -> Void
   | Type t -> t
   | Dict { fields } -> Dict { fields = StringMap.map value_to_type fields }
+  | Struct { data; _ } ->
+      Dict
+        {
+          fields =
+            StringMap.map
+              (fun (local : state_local) ->
+                match local with
+                | Binding _ -> failwith "binding wtf"
+                | Value value -> value_to_type value)
+              data.locals;
+        }
   | Template f -> Template f
   | other -> failwith (show other ^ " is not a type")
 
@@ -2140,13 +2215,32 @@ module Builtins = struct
             | Compiled { ir; _ } -> ir
             | Pattern _ -> failwith "wtf"
           in
-          let evaled = eval_ir self ir (Some Void) in
-          Compiled
-            {
-              ir;
-              new_bindings =
-                StringMap.map (fun value -> Value value) evaled.new_bindings;
-            });
+          match ir with
+          | Let { pattern; value; _ } ->
+              let evaled =
+                eval_ir self value
+                  (maybe_infer_pattern_type pattern None ~full:false)
+              in
+              let let_ir =
+                Let
+                  {
+                    pattern;
+                    value =
+                      Const { value = evaled.value; data = init_ir_data () };
+                    data = init_ir_data ();
+                  }
+              in
+              let evaled =
+                eval_ir self let_ir
+                  (maybe_infer_pattern_type pattern None ~full:false)
+              in
+              Compiled
+                {
+                  ir = let_ir;
+                  new_bindings =
+                    StringMap.map (fun value -> Value value) evaled.new_bindings;
+                }
+          | _ -> failwith "let compiled into not a let wtf?");
     }
 
   let template_def : builtin_macro =
@@ -2762,9 +2856,37 @@ module Builtins = struct
             });
     }
 
+  let struct_def : builtin_macro =
+    {
+      name = "struct_def";
+      impl =
+        (fun self args ~new_bindings ->
+          let body = StringMap.find "body" args in
+          let body = (compile_ast_to_ir self body ~new_bindings).ir in
+          Compiled
+            {
+              ir = Struct { body; data = init_ir_data () };
+              new_bindings = StringMap.empty;
+            });
+    }
+
+  let new_typevar : builtin_fn =
+    {
+      name = "new_typevar";
+      contexts = empty_contexts_type;
+      arg_type = Void;
+      result_type = Type;
+      impl =
+        (fun _void ->
+          Log.info "making new type var";
+          Type (Var (Id.gen ())));
+    }
+
   let all =
     StringMap.of_list
       [
+        ("typevar", BuiltinFn new_typevar);
+        ("struct_def", BuiltinMacro struct_def);
         ("create_impl", BuiltinMacro create_impl);
         ("get_impl", BuiltinMacro get_impl);
         ("check_impl", BuiltinMacro check_impl);

@@ -9,7 +9,7 @@ syntax continue_impl <- 2 = "continue";
 
 syntax create_impl <- 3 = "impl" trait "for" type "as" impl;
 syntax get_impl <- 3 = type "as" trait;
-syntax check_impl <- 3 = type "impls" trait;
+syntax check_impl <- 3 = type "impl" trait;
 
 syntax let <- 4 = "let" pattern "=" value;
 syntax const_let <- 4 = "const" pattern "=" value;
@@ -89,6 +89,7 @@ syntax unquote -> 200 = "$" "(" expr ")";
 
 syntax field_access <- 300 = obj "." field;
 
+syntax struct_def <- 500 = "struct" "(" body ")";
 syntax function_def <- 500 = "fn" "(" args ")" contexts "{" body "}";
 syntax function_def <- 500 = "fn" "(" args ")" "->" result_type "{" body "}";
 syntax function_def <- 500 = "fn" "(" args ")" "{" body "}";
@@ -114,7 +115,7 @@ const pipe = macro ~f, ~args => `((
     $f $args
 ));
 
-let loop_context = (
+let loop_context :: type = (
     finish_current_iteration: (bool -> never), # todo should be option[T] -> never
 );
 
@@ -230,15 +231,24 @@ impl TypeName for string as (
     name: "string",
 );
 
-let type_name = forall (T :: type) where (T impls TypeName). (
+let type_name = forall (T :: type) where (T impl TypeName). (
     (T as TypeName).name
 );
 
-let parse = forall (T :: type). (
-    if is_same_type (a: T, b: int32) then
-        string_to_int32
-    else
-        panic "not implemented"
+const Parse :: type = struct (
+    let t = typevar ();
+    let parse = string -> t;
+);
+
+let int32_parse_impl = (
+    t: int32,
+    parse: string_to_int32,
+);
+
+impl Parse for int32 as int32_parse_impl;
+
+let parse = forall (T :: type) where (T impl Parse). (
+    (T as Parse).parse
 );
 
 ()
