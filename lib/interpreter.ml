@@ -83,6 +83,12 @@ and 'data ir_node =
       trait : 'data ir_node;
       data : 'data;
     }
+  | CheckImpl of {
+      captured : state;
+      ty : 'data ir_node;
+      trait : 'data ir_node;
+      data : 'data;
+    }
   | Match of {
       value : 'data ir_node;
       branches : 'data match_branch list;
@@ -150,6 +156,7 @@ and ir = ir_data ir_node
 and fn_result_type = Ast of ast | Actual of value_type
 
 and fn = {
+  where_clause : ast option;
   captured : state;
   args_pattern : ast option;
   result_type : fn_result_type option;
@@ -160,6 +167,7 @@ and fn = {
 
 and compiled_fn = {
   (* I will change this later (to value_type option i think) *)
+  where_clause : ir;
   result_type : ir option;
   contexts : contexts_type;
   captured : state;
@@ -288,6 +296,7 @@ and show_ir : ir -> string = function
   | CreateImpl { trait; ty; impl; _ } ->
       "impl " ^ show_ir trait ^ " for " ^ show_ir ty ^ " as " ^ show_ir impl
   | GetImpl { trait; ty; _ } -> show_ir ty ^ " as " ^ show_ir trait
+  | CheckImpl { trait; ty; _ } -> show_ir ty ^ " impls " ^ show_ir trait
   | Match { value; branches; _ } ->
       "match " ^ show_ir value ^ " ("
       (* why can not we just have the for? *)
@@ -460,6 +469,7 @@ and type_of_value : value -> value_type = function
       Template
         {
           args_pattern = f.args_pattern;
+          where_clause = f.where_clause;
           result_type = None;
           captured = f.captured;
           contexts = f.contexts;
@@ -492,6 +502,7 @@ and type_of_value : value -> value_type = function
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | CheckImpl { data; _ }
   | CreateImpl { data; _ }
   | GetImpl { data; _ }
   | Match { data; _ }
@@ -966,6 +977,11 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
             value_to_type (eval_ir captured trait (Some Type)).value
           in
           Some trait
+      | CheckImpl { captured; ty; trait; _ } ->
+          if full then (
+            ignore @@ value_to_type (eval_ir captured ty (Some Type)).value;
+            ignore @@ value_to_type (eval_ir captured trait (Some Type)).value);
+          Some Bool
       | OneOf { variants; _ } ->
           if full then
             StringMap.iter
@@ -1263,10 +1279,16 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
           match Hashtbl.find_opt trait_impls impl_def with
           | Some impl -> impl
           | None ->
-              failwith @@ show_type trait ^ " is not implemented for "
-              ^ show_type ty
+              failwith @@ "get_impl failed: " ^ show_type trait
+              ^ " is not implemented for " ^ show_type ty
         in
         just_value impl result_type
+    | CheckImpl { trait; ty; _ } ->
+        let trait = value_to_type (eval_ir self trait (Some Type)).value in
+        let ty = value_to_type (eval_ir self ty (Some Type)).value in
+        let impl_def : impl_def = { ty; trait } in
+        let result = Hashtbl.find_opt trait_impls impl_def |> Option.is_some in
+        just_value (Bool result) result_type
     | Match { value; branches; _ } -> (
         let value = (eval_ir self value None).value in
         let result : value option =
@@ -1603,6 +1625,11 @@ and ensure_compiled (f : fn) : compiled_fn =
        Some
          {
            captured = f.captured;
+           where_clause =
+             (match f.where_clause with
+             | None -> Const { value = Bool true; data = init_ir_data () }
+             | Some clause ->
+                 (compile_ast_to_ir captured clause ~new_bindings:false).ir);
            args;
            result_type =
              (match f.result_type with
@@ -1645,6 +1672,14 @@ and call_compiled (current_contexts : contexts) (f : compiled_fn) (args : value)
         };
     }
   in
+  (match (eval_ir captured f.where_clause (Some Bool)).value with
+  | Bool true -> ()
+  | Bool false ->
+      failwith @@ "where clause failed: " ^ show_ir f.where_clause ^ ", args = "
+      ^ show args
+  | value ->
+      failwith @@ "where clause evaluated to " ^ show value
+      ^ ", expected a bool");
   (* todo lazy *)
   let expected_type =
     Option.map
@@ -2120,7 +2155,6 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let where = StringMap.find_opt "where" args in
-          if Option.is_some where then failwith "todo where clauses";
           let def = StringMap.find "def" args in
           let args = StringMap.find "args" args in
           Compiled
@@ -2131,6 +2165,7 @@ module Builtins = struct
                     f =
                       {
                         captured = self;
+                        where_clause = where;
                         result_type = Some (Actual Any);
                         args_pattern = Some args;
                         body = def;
@@ -2149,6 +2184,7 @@ module Builtins = struct
       impl =
         (fun self args ~new_bindings ->
           let args_pattern = StringMap.find_opt "args" args in
+          let where = StringMap.find_opt "where" args in
           let result_type = StringMap.find_opt "result_type" args in
           let contexts = StringMap.find_opt "contexts" args in
           let body = StringMap.find "body" args in
@@ -2159,6 +2195,7 @@ module Builtins = struct
                   {
                     f =
                       {
+                        where_clause = where;
                         result_type =
                           Option.map
                             (fun t : fn_result_type -> Ast t)
@@ -2704,11 +2741,33 @@ module Builtins = struct
             });
     }
 
+  let check_impl : builtin_macro =
+    {
+      name = "check_impl";
+      impl =
+        (fun self args ~new_bindings ->
+          let ty = StringMap.find "type" args in
+          let trait = StringMap.find "trait" args in
+          Compiled
+            {
+              ir =
+                CheckImpl
+                  {
+                    captured = self;
+                    ty = (compile_ast_to_ir self ty ~new_bindings).ir;
+                    trait = (compile_ast_to_ir self trait ~new_bindings).ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
+    }
+
   let all =
     StringMap.of_list
       [
         ("create_impl", BuiltinMacro create_impl);
         ("get_impl", BuiltinMacro get_impl);
+        ("check_impl", BuiltinMacro check_impl);
         ("single_variant", BuiltinMacro single_variant);
         ("combine_variants", BuiltinMacro combine_variants);
         ("unwind", BuiltinFn unwind);

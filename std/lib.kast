@@ -9,6 +9,7 @@ syntax continue_impl <- 2 = "continue";
 
 syntax create_impl <- 3 = "impl" trait "for" type "as" impl;
 syntax get_impl <- 3 = type "as" trait;
+syntax check_impl <- 3 = type "impls" trait;
 
 syntax let <- 4 = "let" pattern "=" value;
 syntax const_let <- 4 = "const" pattern "=" value;
@@ -229,7 +230,7 @@ impl TypeName for string as (
     name: "string",
 );
 
-let type_name = forall (T :: type). (
+let type_name = forall (T :: type) where (T impls TypeName). (
     (T as TypeName).name
 );
 
