@@ -34,5 +34,5 @@ let test = fn (int_option :: Option[int32]) {
     dbg string_option;
 };
 
-test <| Option[int32].Some 123
-test <| Option[int32].None
+test <| Option[int32].Some 123;
+test <| Option[int32].None;
