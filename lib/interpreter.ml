@@ -71,6 +71,13 @@ and builtin_macro = {
 
 and 'data match_branch = { pattern : pattern; body : 'data ir_node }
 
+and 'data get_impl = {
+  captured : state;
+  ty : 'data ir_node;
+  trait : 'data ir_node;
+  data : 'data;
+}
+
 and 'data ir_node =
   | Void of { data : 'data }
   | Struct of { body : 'data ir_node; data : 'data }
@@ -81,18 +88,8 @@ and 'data ir_node =
       impl : 'data ir_node;
       data : 'data;
     }
-  | GetImpl of {
-      captured : state;
-      ty : 'data ir_node;
-      trait : 'data ir_node;
-      data : 'data;
-    }
-  | CheckImpl of {
-      captured : state;
-      ty : 'data ir_node;
-      trait : 'data ir_node;
-      data : 'data;
-    }
+  | GetImpl of 'data get_impl
+  | CheckImpl of 'data get_impl
   | Match of {
       value : 'data ir_node;
       branches : 'data match_branch list;
@@ -203,14 +200,16 @@ and state = { self : struct'; data : state_data; contexts : contexts }
 and state_data = { locals : state_local StringMap.t; syntax : Syntax.syntax }
 and state_local = Value of value | Binding of binding
 and binding = { name : string; mutable value_type : value_type option }
-and impl_def = { trait : value_type; ty : value_type }
 
 exception Unwind of id * value
 
 let empty_contexts : contexts = Hashtbl.create 0
 let empty_contexts_type : contexts_type = Hashtbl.create 0
 let default_contexts_type : contexts_type = empty_contexts_type
-let trait_impls : (impl_def, value) Hashtbl.t = Hashtbl.create 0
+
+let trait_impls : (value_type, (value_type, value) Hashtbl.t) Hashtbl.t =
+  Hashtbl.create 0
+
 let empty_type_var_map () : type_var_map ref = ref Id.Map.empty
 
 let rec show = function
@@ -219,14 +218,11 @@ let rec show = function
       name ^ show_or "" (fun value -> " " ^ show value) value
   | UnwindToken id -> "unwind token " ^ Id.show id
   | Void -> "void"
-  | Macro _ -> "macro <...>"
+  | Macro f -> "macro " ^ show_fn f
   | BuiltinMacro _ -> "builtin_macro"
   | BuiltinFn { name; _ } -> "builtin_fn " ^ name
-  | Template f -> "template"
-  | Function f ->
-      "function"
-      (* ^ (match f.args_pattern with Some ast -> Ast.show ast | None -> "()") *)
-      (* ^ " => " ^ Ast.show f.body *)
+  | Template f -> "template " ^ show_fn f
+  | Function f -> "function" ^ show_fn f
   | Int32 value -> Int32.to_string value
   | Int64 value -> Int64.to_string value
   | Float64 value -> Float.to_string value
@@ -242,6 +238,10 @@ let rec show = function
   | Ref value -> show !value
   | Struct _ -> "struct <...>"
   | Type t -> "type " ^ show_type t
+
+and show_fn (f : fn) : string =
+  (match f.args_pattern with Some ast -> Ast.show ast | None -> "()")
+  ^ " => " ^ Ast.show f.body
 
 and show_fn_type : fn_type -> string =
  fun { arg_type; contexts; result_type } ->
@@ -272,7 +272,7 @@ and show_type : value_type -> string = function
   | String -> "string"
   | Fn f -> show_fn_type f
   | Macro f -> "macro " ^ show_fn_type f
-  | Template f -> "template"
+  | Template f -> "template " ^ show_fn f
   | BuiltinMacro -> "builtin_macro"
   | Dict { fields } ->
       "{ "
@@ -329,7 +329,7 @@ and show_ir : ir -> string = function
   | Scope { expr; _ } -> "(" ^ show_ir expr ^ ")"
   | TypeOf { expr; _ } -> "typeof " ^ show_ir expr
   | TypeOfValue { expr; _ } -> "typeofvalue " ^ show_ir expr
-  | Template _ -> "template"
+  | Template { f; _ } -> "template " ^ show_fn f
   | Function _ -> "function"
   | Unwinding { f; _ } -> "unwinding " ^ show_ir f
   | WithContext { new_context; expr; _ } ->
@@ -410,6 +410,10 @@ and type_check_fn (expected : fn_type) (actual : fn_type)
   && type_check expected_result actual_result variables
   && type_check_contexts expected_contexts actual_contexts variables
 
+and unwrap_specifics : value_type -> value_type = function
+  | SpecificType t -> unwrap_specifics t
+  | t -> t
+
 and type_check (expected : value_type) (actual : value_type)
     (variables : type_var_map ref) : bool =
   match (expected, actual) with
@@ -460,10 +464,6 @@ and type_check (expected : value_type) (actual : value_type)
   | Union a, t -> Hashtbl.find_opt a t |> Option.is_some
   | Var a, Var b -> a = b
   | Var id, actual -> (
-      let rec unwrap_specifics = function
-        | SpecificType t -> unwrap_specifics t
-        | t -> t
-      in
       let actual = unwrap_specifics actual in
       match Id.Map.find_opt id !variables with
       | None ->
@@ -661,7 +661,7 @@ and get_local_opt (self : state) (name : string) : state_local option =
   match StringMap.find_opt name self.data.locals with
   | Some local -> Some local
   | None ->
-      let rec find_in_scopes s =
+      let rec find_in_scopes (s : struct') =
         match StringMap.find_opt name s.data.locals with
         | Some local -> Some local
         | None -> (
@@ -1015,13 +1015,8 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
             ignore @@ fully_infer_types trait (Some (Type : value_type));
             ignore @@ fully_infer_types impl (Some ty));
           Some Void
-      | GetImpl { captured; ty; trait; _ } ->
-          if full then
-            ignore @@ value_to_type (eval_ir captured ty (Some Type)).value;
-          let trait =
-            value_to_type (eval_ir captured trait (Some Type)).value
-          in
-          Some trait
+      | GetImpl ({ captured; _ } as e) ->
+          Some (type_of_value @@ get_impl captured e)
       | CheckImpl { captured; ty; trait; _ } ->
           if full then (
             ignore @@ value_to_type (eval_ir captured ty (Some Type)).value;
@@ -1113,10 +1108,27 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
               values;
           Some Ast
       | FieldAccess { obj; name; _ } -> (
-          match fully_infer_types obj None with
+          let obj_type = fully_infer_types obj None |> unwrap_specifics in
+          match obj_type with
           | Dict { fields } -> Some (StringMap.find name fields)
           | Type | Any -> Some Any
-          | _ -> failwith "todo field access")
+          | OneOf variants -> (
+              match StringMap.find_opt name variants with
+              | Some variant -> (
+                  match variant with
+                  | Some value_type ->
+                      Some
+                        (Fn
+                           {
+                             arg_type = value_type;
+                             result_type = obj_type;
+                             contexts = empty_contexts_type;
+                           })
+                  | None -> Some obj_type)
+              | None ->
+                  failwith @@ show_type obj_type ^ " does not have field "
+                  ^ name)
+          | _ -> failwith @@ "todo field access for " ^ show_type obj_type)
       | Const { value = Function f; _ } -> (
           if full then ignore (ensure_compiled f);
           match f.compiled with
@@ -1162,7 +1174,8 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
                   (value_to_type
                      (call_compiled empty_contexts compiled args.value))
             | Some Any -> Some Any
-            | Some _ -> failwith "not template"
+            | Some (SpecificType (Var _)) | Some (Var _) -> Some Any
+            | Some t -> failwith @@ show_type t ^ " is not template"
             | None -> None
           in
           Log.trace
@@ -1291,6 +1304,42 @@ and show_local : state_local -> string = function
   | Value value -> show value
   | Binding binding -> "binding " ^ binding.name
 
+and check_impl (self : state) ({ trait; ty; _ } : 'data get_impl) : bool =
+  let trait = value_to_type (eval_ir self trait (Some Type)).value in
+  let ty = value_to_type (eval_ir self ty (Some Type)).value in
+  match Hashtbl.find_opt trait_impls ty with
+  | Some impls -> (
+      match Hashtbl.find_opt impls trait with Some _ -> true | None -> false)
+  | None -> false
+
+and get_impl (self : state) ({ trait; ty; _ } : 'data get_impl) : value =
+  let trait = value_to_type (eval_ir self trait (Some Type)).value in
+  let ty = value_to_type (eval_ir self ty (Some Type)).value in
+  let show_impls (ty : value_type) (impls : (value_type, value) Hashtbl.t) =
+    Hashtbl.iter
+      (fun trait impl ->
+        Log.trace @@ "impl " ^ show_type trait ^ " for " ^ show_type ty ^ " as "
+        ^ show impl)
+      impls
+  in
+  let show_all_impls () = Hashtbl.iter show_impls trait_impls in
+  let fail s =
+    (* show_all_impls (); *)
+    (* Log.trace s; *)
+    failwith s
+  in
+  match Hashtbl.find_opt trait_impls ty with
+  | Some impls -> (
+      match Hashtbl.find_opt impls trait with
+      | Some impl -> impl
+      | None ->
+          fail @@ "get_impl failed: " ^ show_type trait
+          ^ " is not implemented for " ^ show_type ty
+          ^ " (see existing impls above)")
+  | None ->
+      fail @@ "get_impl failed: " ^ show_type trait ^ " is not implemented for "
+      ^ show_type ty ^ " (no impls found)"
+
 and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     evaled =
   Log.trace
@@ -1309,7 +1358,7 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     match ir with
     | Void _ -> just_value Void result_type
     | Struct { body; _ } ->
-        Log.info "evaluating struct";
+        Log.trace "evaluating struct";
         let evaled = eval_ir self body (Some Void) in
         just_value
           (Struct
@@ -1332,28 +1381,16 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
     | CreateImpl { trait; ty; impl; _ } ->
         let trait = value_to_type (eval_ir self trait (Some Type)).value in
         let ty = value_to_type (eval_ir self ty (Some Type)).value in
-        let impl_def : impl_def = { ty; trait } in
         let impl = (eval_ir self impl (Some trait)).value in
-        Hashtbl.add trait_impls impl_def impl;
+        if Hashtbl.find_opt trait_impls ty |> Option.is_none then
+          Hashtbl.add trait_impls ty (Hashtbl.create 0);
+        let type_impls = Hashtbl.find trait_impls ty in
+        Hashtbl.add type_impls trait impl;
+        Log.trace @@ "added impl " ^ show_type trait ^ " for " ^ show_type ty
+        ^ " as " ^ show impl;
         just_value Void result_type
-    | GetImpl { trait; ty; _ } ->
-        let trait = value_to_type (eval_ir self trait (Some Type)).value in
-        let ty = value_to_type (eval_ir self ty (Some Type)).value in
-        let impl_def : impl_def = { ty; trait } in
-        let impl =
-          match Hashtbl.find_opt trait_impls impl_def with
-          | Some impl -> impl
-          | None ->
-              failwith @@ "get_impl failed: " ^ show_type trait
-              ^ " is not implemented for " ^ show_type ty
-        in
-        just_value impl result_type
-    | CheckImpl { trait; ty; _ } ->
-        let trait = value_to_type (eval_ir self trait (Some Type)).value in
-        let ty = value_to_type (eval_ir self ty (Some Type)).value in
-        let impl_def : impl_def = { ty; trait } in
-        let result = Hashtbl.find_opt trait_impls impl_def |> Option.is_some in
-        just_value (Bool result) result_type
+    | GetImpl e -> just_value (get_impl self e) result_type
+    | CheckImpl e -> just_value (Bool (check_impl self e)) result_type
     | Match { value; branches; _ } -> (
         let value = (eval_ir self value None).value in
         let result : value option =
@@ -1557,7 +1594,7 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
               ( call_compiled empty_contexts compiled,
                 maybe_infer_pattern_type compiled.args
                   (ir_data args).result_type ~full:false )
-          | _ -> failwith "not a template"
+          | _ -> failwith @@ show template ^ " is not a template"
         in
         Log.trace
           ("args_type = "
@@ -1605,7 +1642,7 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
                     (eval_ir self ir expected_type).value
                 | _ -> failwith "builtin macro arg must be dict of asts"),
                 None (* todo *) )
-          | _ -> failwith "not a function"
+          | _ -> failwith @@ show f ^ " - not a function"
         in
         Log.trace
           ("args_type = "
@@ -2880,7 +2917,7 @@ module Builtins = struct
       result_type = Type;
       impl =
         (fun _void ->
-          Log.info "making new type var";
+          Log.trace "making new type var";
           Type (Var (Id.gen ())));
     }
 
