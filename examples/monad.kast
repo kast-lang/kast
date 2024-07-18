@@ -1,7 +1,7 @@
 # class Functor f where
 #     fmap :: (a -> b) -> f a -> f b
 #
-# instance Function Maybe where
+# instance Functor Maybe where
 #   fmap _ Nothing = Nothing
 #   fmap f (Just a) = Just (f a)
 
