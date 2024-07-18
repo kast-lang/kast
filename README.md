@@ -2,6 +2,8 @@
 
 An experimental programming language
 
+**NOT READY YET**
+
 ## Todo
 
 - Specify goals of the project
