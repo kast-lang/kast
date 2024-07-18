@@ -70,6 +70,19 @@ and 'data match_branch = { pattern : pattern; body : 'data ir_node }
 
 and 'data ir_node =
   | Void of { data : 'data }
+  | CreateImpl of {
+      captured : state;
+      ty : 'data ir_node;
+      trait : 'data ir_node;
+      impl : 'data ir_node;
+      data : 'data;
+    }
+  | GetImpl of {
+      captured : state;
+      ty : 'data ir_node;
+      trait : 'data ir_node;
+      data : 'data;
+    }
   | Match of {
       value : 'data ir_node;
       branches : 'data match_branch list;
@@ -178,12 +191,14 @@ and state = { self : struct'; data : state_data; contexts : contexts }
 and state_data = { locals : state_local StringMap.t; syntax : Syntax.syntax }
 and state_local = Value of value | Binding of binding
 and binding = { name : string; mutable value_type : value_type option }
+and impl_def = { trait : value_type; ty : value_type }
 
 exception Unwind of int * value
 
 let empty_contexts : contexts = Hashtbl.create 0
 let empty_contexts_type : contexts_type = Hashtbl.create 0
 let default_contexts_type : contexts_type = empty_contexts_type
+let trait_impls : (impl_def, value) Hashtbl.t = Hashtbl.create 0
 
 let rec show = function
   | Ast ast -> "`(" ^ Ast.show ast ^ ")"
@@ -270,6 +285,9 @@ and show_type : value_type -> string = function
 
 and show_ir : ir -> string = function
   | Void _ -> "void"
+  | CreateImpl { trait; ty; impl; _ } ->
+      "impl " ^ show_ir trait ^ " for " ^ show_ir ty ^ " as " ^ show_ir impl
+  | GetImpl { trait; ty; _ } -> show_ir ty ^ " as " ^ show_ir trait
   | Match { value; branches; _ } ->
       "match " ^ show_ir value ^ " ("
       (* why can not we just have the for? *)
@@ -474,6 +492,8 @@ and type_of_value : value -> value_type = function
 
 and ir_data : 'data. 'data ir_node -> 'data = function
   | Void { data; _ }
+  | CreateImpl { data; _ }
+  | GetImpl { data; _ }
   | Match { data; _ }
   | NewType { data; _ }
   | OneOf { data; _ }
@@ -933,6 +953,19 @@ and maybe_infer_types (ir : ir) (expected_type : value_type option)
       | NewType { def; _ } ->
           if full then ignore @@ pattern_type_sure def None;
           Some Type
+      | CreateImpl { captured; ty; trait; impl; _ } ->
+          if full then (
+            let ty = value_to_type (eval_ir captured ty (Some Type)).value in
+            ignore @@ fully_infer_types trait (Some (Type : value_type));
+            ignore @@ fully_infer_types impl (Some ty));
+          Some Void
+      | GetImpl { captured; ty; trait; _ } ->
+          if full then
+            ignore @@ value_to_type (eval_ir captured ty (Some Type)).value;
+          let trait =
+            value_to_type (eval_ir captured trait (Some Type)).value
+          in
+          Some trait
       | OneOf { variants; _ } ->
           if full then
             StringMap.iter
@@ -1215,6 +1248,25 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
         just_value (Type (NewType (pattern_type_sure def None))) result_type
     | Scope { expr; _ } ->
         just_value (eval_ir self expr expected_type).value result_type
+    | CreateImpl { trait; ty; impl; _ } ->
+        let trait = value_to_type (eval_ir self trait (Some Type)).value in
+        let ty = value_to_type (eval_ir self ty (Some Type)).value in
+        let impl_def : impl_def = { ty; trait } in
+        let impl = (eval_ir self impl (Some trait)).value in
+        Hashtbl.add trait_impls impl_def impl;
+        just_value Void result_type
+    | GetImpl { trait; ty; _ } ->
+        let trait = value_to_type (eval_ir self trait (Some Type)).value in
+        let ty = value_to_type (eval_ir self ty (Some Type)).value in
+        let impl_def : impl_def = { ty; trait } in
+        let impl =
+          match Hashtbl.find_opt trait_impls impl_def with
+          | Some impl -> impl
+          | None ->
+              failwith @@ show_type trait ^ " is not implemented for "
+              ^ show_type ty
+        in
+        just_value impl result_type
     | Match { value; branches; _ } -> (
         let value = (eval_ir self value None).value in
         let result : value option =
@@ -2608,9 +2660,55 @@ module Builtins = struct
           | true -> failwith "combine variants is only a expr");
     }
 
+  let create_impl : builtin_macro =
+    {
+      name = "create_impl";
+      impl =
+        (fun self args ~new_bindings ->
+          let ty = StringMap.find "type" args in
+          let trait = StringMap.find "trait" args in
+          let impl = StringMap.find "impl" args in
+          Compiled
+            {
+              ir =
+                CreateImpl
+                  {
+                    captured = self;
+                    ty = (compile_ast_to_ir self ty ~new_bindings).ir;
+                    trait = (compile_ast_to_ir self trait ~new_bindings).ir;
+                    impl = (compile_ast_to_ir self impl ~new_bindings).ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
+    }
+
+  let get_impl : builtin_macro =
+    {
+      name = "get_impl";
+      impl =
+        (fun self args ~new_bindings ->
+          let ty = StringMap.find "type" args in
+          let trait = StringMap.find "trait" args in
+          Compiled
+            {
+              ir =
+                GetImpl
+                  {
+                    captured = self;
+                    ty = (compile_ast_to_ir self ty ~new_bindings).ir;
+                    trait = (compile_ast_to_ir self trait ~new_bindings).ir;
+                    data = init_ir_data ();
+                  };
+              new_bindings = StringMap.empty;
+            });
+    }
+
   let all =
     StringMap.of_list
       [
+        ("create_impl", BuiltinMacro create_impl);
+        ("get_impl", BuiltinMacro get_impl);
         ("single_variant", BuiltinMacro single_variant);
         ("combine_variants", BuiltinMacro combine_variants);
         ("unwind", BuiltinFn unwind);

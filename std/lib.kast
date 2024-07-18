@@ -7,6 +7,9 @@ syntax break_impl <- 2 = "break" value;
 syntax break_impl <- 2 = "break";
 syntax continue_impl <- 2 = "continue";
 
+syntax create_impl <- 3 = "impl" trait "for" type "as" impl;
+syntax get_impl <- 3 = type "as" trait;
+
 syntax let <- 4 = "let" pattern "=" value;
 syntax const_let <- 4 = "const" pattern "=" value;
 
@@ -86,6 +89,7 @@ syntax unquote -> 200 = "$" "(" expr ")";
 syntax field_access <- 300 = obj "." field;
 
 syntax function_def <- 500 = "fn" "(" args ")" contexts "{" body "}";
+syntax function_def <- 500 = "fn" "(" args ")" "->" result_type "{" body "}";
 syntax function_def <- 500 = "fn" "(" args ")" "{" body "}";
 syntax function_def <- 100000 = "(" args ")" "{" body "}";
 syntax function_def <- 100000 = "(" ")" "{" body "}";
@@ -187,6 +191,46 @@ let random = forall (T :: type). (
         random_float64
     else
         panic "wtf")
+);
+
+const TypeName :: type = (
+    name: string
+);
+
+impl TypeName for void as (
+    name: "void",
+);
+
+impl TypeName for type as (
+    name: "type",
+);
+
+impl TypeName for bool as (
+    name: "bool",
+);
+
+impl TypeName for int32 as (
+    name: "int32",
+);
+
+impl TypeName for int64 as (
+    name: "int64",
+);
+
+impl TypeName for float32 as (
+    name: "float32",
+);
+
+impl TypeName for float64 as (
+    name: "float64",
+);
+
+impl TypeName for string as (
+    name: "string",
+);
+
+let type_name = forall (T :: type). (
+    (T as TypeName).name
 );
 
 let parse = forall (T :: type). (

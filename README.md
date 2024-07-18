@@ -13,7 +13,7 @@ An experimental programming language
 - Better error reporting (stack traces / reasons why syntax is not parsed)
 - Inference for generic function calls: `f[int32](5)` should just be able to do `f(5)`.
 - Ir as value so we can write compiler (glsl)
-- Traits
+- Traits (partially done, works for concrete types only)
 - Delimited continuations
 - Effect system (half done, have contexts)
 - More examples
