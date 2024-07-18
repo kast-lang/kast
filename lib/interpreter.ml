@@ -1643,15 +1643,20 @@ and eval_ir (self : state) (ir : ir) (expected_type : value_type option) :
           | _ -> failwith "condition must be a bool")
             .value result_type
     | Let { pattern; value; _ } ->
-        {
-          value = Void;
-          new_bindings =
-            pattern_match pattern
-              (eval_ir self value
-                 (maybe_infer_pattern_type pattern (ir_data value).result_type
-                    ~full:false))
-                .value;
-        }
+        Log.trace @@ "let " ^ show_pattern pattern ^ " = " ^ show_ir value;
+        let result =
+          {
+            value = Void;
+            new_bindings =
+              pattern_match pattern
+                (eval_ir self value
+                   (maybe_infer_pattern_type pattern (ir_data value).result_type
+                      ~full:false))
+                  .value;
+          }
+        in
+        Log.trace @@ "let value is " ^ show result.value;
+        result
   in
   Log.trace
     ("evaluated " ^ show_ir ir ^ " = " ^ show result.value ^ " as "
@@ -2217,10 +2222,10 @@ module Builtins = struct
           in
           match ir with
           | Let { pattern; value; _ } ->
-              let evaled =
-                eval_ir self value
-                  (maybe_infer_pattern_type pattern None ~full:false)
+              let value_type =
+                maybe_infer_pattern_type pattern None ~full:false
               in
+              let evaled = eval_ir self value value_type in
               let let_ir =
                 Let
                   {
@@ -2230,10 +2235,7 @@ module Builtins = struct
                     data = init_ir_data ();
                   }
               in
-              let evaled =
-                eval_ir self let_ir
-                  (maybe_infer_pattern_type pattern None ~full:false)
-              in
+              let evaled = eval_ir self let_ir (Some Void) in
               Compiled
                 {
                   ir = let_ir;
