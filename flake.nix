@@ -18,6 +18,7 @@
           ocamlformat
           just
           rlwrap
+          zola
         ];
         shellHook = ''
           # eval $(opam env)
