@@ -4,6 +4,8 @@ An experimental programming language
 
 **NOT READY YET**
 
+[See more on the website](http://kuviman.github.io/kast)
+
 ## Todo
 
 - Specify goals of the project
