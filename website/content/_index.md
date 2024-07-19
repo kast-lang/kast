@@ -234,10 +234,64 @@ with undefined_behavior_on_overflow (
 
 # Unwinding
 
+Similar to lisp's [`block`/`return-from`](http://www.ai.mit.edu/projects/iiip/doc/CommonLISP/HyperSpec/Body/speope_return-from.html)
+
+We can declare named blocks that we can return to without executing the rest of the body:
+
+```
+let f = fn (token :: unwind_token) {
+  ...
+  unwind (~token, ~value);
+  ...
+};
+unwinding_block f
+```
+
+`unwinding_block` creates the block and takes a function of type `unwind_token -> T`
+and executes it immediately with the token of that block.
+
+When `unwind :: (~token :: unwind_token, ~value :: T)` function is used from within,
+it stops executing current function and unwinds the stack until we return to the block.
+The value of the block if either the result of executing the function (if `unwind` was not called),
+or the value given to the `unwind`.
+
 # Delimited continuations
+
+TODO
 
 # Syntax
 
-dynamic
+Kast's syntax is not static, but dynamic.
+The programmer can define their own syntax easily.
 
+The default syntax is declared in std and can be not used if you wish.
 
+The only builtin syntax is the syntax for defining new syntax:
+
+```
+syntax ternary <- 10 = cond "?" then ":" else;
+```
+
+This defines left associative (`<-`) syntax for ternary operator with priority of `10`.
+When Kast sees this in the source code, its being transformed into an AST:
+
+```
+let ternary_ast :: type = (cond: ast, then: ast, else: ast);
+```
+
+When compilation happes, the compiler is trying to find
+a matching macro for the name given (`ternary` in this case),
+which is being invoked and evaluated into a new ast
+which is then processed recursively until some builtin macro converts it into IR
+
+Macros in Kast are just like normal functions:
+
+```
+let ternary = macro (~cond :: ast, ~then :: ast, ~else :: ast) =>
+  `(if $cond then $then else $else)
+```
+
+Here, we use a quote operator (`\``) to construct the resulting ast
+using already existing syntax.
+The unquote operator (`$`) is replacing the following ident with the ast
+that was passed to the macro as argument.
