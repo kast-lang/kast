@@ -76,11 +76,32 @@ let exe = build_exe(main);
 let c_source = transpile_to_c(main);
 ```
 
-# Syntax
+# Performance
 
-dynamic
+The IR should have enough information for the compiler to produce performant code.
+For example, compilation target is not required to have a garbage collector.
 
-# Memory safety without garbage collector
+Those references that can be checked at compile time, are checked.
+
+If you need recursive data structures (for example construct mutually recursive closures),
+then they must be explicitly marked as such:
+
+```rs
+let arena = rec (
+  let f = () => g();
+  let g = () => f();
+);
+
+arena.f();
+
+```
+
+In this case, both `f` and `g` are going to be freed as soon as the `arena` object itself needs to be.
+In there are still references to them when `arena` is dropped,
+the borrow checker is going to result in compilation error.
+
+In addition to compile checked borrows,
+cell types / reference counting / garbage collector are implementable as a library
 
 # Types
 
@@ -97,4 +118,9 @@ aka typeclasses
 # Unwinding
 
 # Delimited continuations
+
+# Syntax
+
+dynamic
+
 
