@@ -9,8 +9,7 @@ dbg Option[int32]; # todo instantiate the template to make sure its compiled to 
 
 const Hkt = forall (t :: type). (type);
 
-const Functor = struct (
-    let self = typevar ();
+const Functor = trait (
     let fmap = forall (~a :: type, ~b :: type).
         (f: (a -> b), this: self[a]) -> self[b];
 );

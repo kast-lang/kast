@@ -14,7 +14,7 @@ and thus being beginner friendly is not a priority for Kast.
 At the same time, if something can be made simpler without sacrificing power,
 it should be made simpler.
 
-# Reliability
+# Reliable
 
 Kast is focusing more on program's ease of maintenance
 instead of focusing on the speed of prototyping.
@@ -103,17 +103,110 @@ the borrow checker is going to result in compilation error.
 In addition to compile checked borrows,
 cell types / reference counting / garbage collector are implementable as a library
 
-# Types
+# Type system
+
+Kast is a strongly typed language.
+
+PascalCase
+camelCase
+snake_case
+SHOUTY_CASE
+kebab-case
+
+## Sum types
+
+aka discriminated union / algebraic data type:
+
+```
+let Option = forall T. (Some T | None );
+```
 
 # Traits
 
 aka typeclasses
 
-## Sum types
+we can associate values of basically any type (we call those types traits)
+with any other types:
+
+```
+kast: impl Trait for Type as ImplBlock;
+haskell: instance Trait Type where ImplBlock;
+```
+
+what the compiler (interpreter) does when it sees this declaration is:
+
+```
+trait_impls :: Map[Type, Map[trait: Type, Value: trait]];
+trait_impls[Type][Trait] = ImplBlock;
+
+impl int32 for MyType as 0
+```
+
+The only distinction about the special `trait` types
+is that they are aware of the type they are implemented for
+(you can refer to them as `Self`):
+
+```
+let Parse :: type = trait {
+  parse: string -> Self
+};
+impl Parse for int32 as {
+  parse: parse_string_to_int32
+}
+```
+
+In order to get the value of trait type back, you can use `as` operator:
+
+```
+(int32 as Parse) :: Parse
+
+(int32 as Parse).parse :: string -> int32
+```
+
+## Tuples
+
+Tuples in Kast can have both named and unnamed fields:
+
+```
+let tuple :: (int32, int64, float32, four: int32, five: int32) =
+  (1, 2, 3, four: 4, five: 5);
+```
+
+Variadic length tuples:
+
+```
+let variadic_int :: (*int32) = (1, 2, 3, 4)
+```
+
+Variadic tuples allow for variadic generics easily:
+
+```
+forall (*fields :: type). (
+  impl Trait for (*fields)
+)
+```
 
 ## Type inference
 
+Kast implements an inference algorithm based on the Hindley–Milner approach,
+which allows most of types in the program to be inferred.
+
 # Function contexts
+
+## overflows
+
+```
+add_int32 :: (a :: int32, b :: int32) -> int32 potentially_overflows;
+
+with saturating (
+  a + with overflowing (b + c)
+)
+
+# for compiler to optimize the checks away
+with undefined_behavior_on_overflow (
+  a + b
+)
+```
 
 # Unwinding
 
