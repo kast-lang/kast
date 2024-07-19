@@ -112,12 +112,6 @@ cell types / reference counting / garbage collector are implementable as a libra
 
 Kast is a strongly typed language.
 
-PascalCase
-camelCase
-snake_case
-SHOUTY_CASE
-kebab-case
-
 ## Sum types
 
 aka discriminated union / algebraic data type:

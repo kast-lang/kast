@@ -1,0 +1,21 @@
+on:
+    push:
+    pull_request:
+    workflow_dispatch:
+  
+jobs:
+    pages:
+        name: Pages
+        permissions:
+            contents: write
+        if: github.ref == 'refs/heads/main' && github.repository_owner == 'kuviman'
+        runs-on: ubuntu-latest
+        steps:
+        - name: Checkout
+          uses: actions/checkout@v2
+
+        - name: Deploy GitHub Pages
+          uses: shalzz/zola-deploy-action@v0.19.1
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            BUILD_DIR: website
