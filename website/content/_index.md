@@ -59,6 +59,11 @@ which also needs delimited continuations in addition to the above
 
 Kast is an interpreter with compiler implemented as a library.
 
+The interpreter still has the "compilation" process,
+which is "compiling" the code into IR.
+During that "compilation" interpreting might still be triggered
+if something needs to be known at "comptime".
+
 By having first-class IR (intermetiate representation as value)
 you can write a function that coverts it into the desired target:
 
@@ -192,6 +197,25 @@ Kast implements an inference algorithm based on the Hindley–Milner approach,
 which allows most of types in the program to be inferred.
 
 # Function contexts
+
+Not every function in Kast can just be called whenever.
+Functions can specify contexts that must be in scope when calling them.
+Contexts can be of any type:
+
+```
+fn function_that_allocates_a_lot() allocator { ... }
+```
+
+This function specifies that a allocator must exist.
+In a way, function contexts act like implicit arguments (but implemented differently).
+
+In order to bring a context into scope, use `with`:
+
+```
+with ArenaAllocator.new() (
+  function_that_allocates_a_lot()
+)
+```
 
 ## overflows
 
