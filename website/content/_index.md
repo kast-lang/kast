@@ -3,6 +3,24 @@ title = "Juice"
 sort_by = "weight"
 +++
 
+# Powerful
+
+While a language being easy to learn is a nice thing to have,
+it should not be done at the cost of missing features.
+
+Being a beginner is only temporary,
+and thus being beginner friendly is not a priority for Kast.
+
+At the same time, if something can be made simpler without sacrificing power,
+it should be made simpler.
+
+# Reliability
+
+Kast is focusing more on program's ease of maintenance
+instead of focusing on the speed of prototyping.
+
+The goal is to eliminate as many classes of bugs at compile-time as possible.
+
 # Minimal but General
 
 Kast is designed to have a very simple minimal set of core features,
@@ -34,34 +52,14 @@ This works as a combination of core features like:
 - sum types
 - unwinding
 
-For example, async await is a combination of these features:
-
-- function contexts
-- delimited continuations
-
-# Powerful
-
-While a language being easy to learn is a nice thing to have,
-it should not be done at the cost of missing features.
-
-Being a beginner is only temporary,
-and thus being beginner friendly is not a priority for Kast.
-
-At the same time, if something can be made simpler without sacrificing power,
-it should be made simpler.
-
-# Reliability
-
-The the the the thte 
-most of the code is 
-
-eliminate as many classes of bugs at compile-time as possible
+Another example of composable feature is async/await,
+which also needs delimited continuations in addition to the above
 
 # Compiled or interpreted?
 
-Kast is an interpreter with compiler as a library.
+Kast is an interpreter with compiler implemented as a library.
 
-By having IR (intermetiate representation) as a value
+By having first-class IR (intermetiate representation as value)
 you can write a function that coverts it into the desired target:
 
 ```rs
@@ -71,7 +69,7 @@ fn vertex_shader(vertex_data :: (pos: vec3)) -> vertex_shader_output {
 
 fn main() io {
   const vertex_shader_glsl :: string = transpile_to_glsl(vertex_shader);
-  print "Hello World!"
+  ...
 }
 
 let exe = build_exe(main);
