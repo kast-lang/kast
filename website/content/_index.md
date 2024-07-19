@@ -3,6 +3,14 @@ title = "Juice"
 sort_by = "weight"
 +++
 
+# Current State
+
+This page describes the design of the language.
+
+The current work is focused on getting a proof of concept implementation of the described features.
+
+**The language is not usable yet**.
+
 # Powerful
 
 While a language being easy to learn is a nice thing to have,
