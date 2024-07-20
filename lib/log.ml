@@ -1,4 +1,4 @@
-type level = Error | Warn | Info | Debug | Trace
+type level = Error | Warn | Info | Debug | Trace | Never
 
 let max_level = ref Info
 let with_level level s = if level <= !max_level then print_endline s
@@ -7,4 +7,4 @@ let warn = with_level Warn
 let info = with_level Info
 let debug = with_level Debug
 let trace = with_level Trace
-let never (_ : string) = ()
+let never = with_level Never

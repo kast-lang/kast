@@ -50,6 +50,20 @@ let split_whitespace : string -> string Seq.t =
 let head (list : 'a list) : 'a option =
   match list with head :: _tail -> Some head | [] -> None
 
-module StringMap = Map.Make (String)
+module StringMap = struct
+  include Map.Make (String)
+
+  let match_map f a b =
+    a
+    |> iter (fun name_in_a _ ->
+           if find_opt name_in_a b |> Option.is_none then
+             failwith @@ name_in_a ^ " was only in a");
+    b
+    |> iter (fun name_in_b _ ->
+           if find_opt name_in_b a |> Option.is_none then
+             failwith @@ name_in_b ^ " was only in b");
+    union (fun name a b -> Some (f name a b)) a b
+end
+
 module StringSet = Set.Make (String)
 module BoolMap = Map.Make (Bool)
