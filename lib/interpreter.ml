@@ -41,7 +41,6 @@ module rec Impl : Interpreter = struct
     | Variant of { typ : value_type; name : string; value : value option }
 
   and value_type =
-    | Any
     | UnwindToken
     | Never
     | Ast
@@ -56,6 +55,7 @@ module rec Impl : Interpreter = struct
     | Macro of fn_type
     | Template of fn
     | BuiltinMacro
+    | BuiltinFn
     | Dict of { fields : value_type StringMap.t }
     | NewType of value_type
     | OneOf of value_type option StringMap.t
@@ -81,13 +81,7 @@ module rec Impl : Interpreter = struct
     result_type : inference_var;
   }
 
-  and builtin_fn = {
-    name : string;
-    impl : value -> value;
-    arg_type : value_type;
-    result_type : value_type;
-    contexts : contexts_type;
-  }
+  and builtin_fn = { name : string; impl : value -> value }
 
   and builtin_macro = {
     name : string;
@@ -215,10 +209,7 @@ module rec Impl : Interpreter = struct
     Hashtbl.create 0
 
   let empty_type_var_map () : type_var_map ref = ref Id.Map.empty
-
-  exception FailedUnite of string
-
-  let failinfer () = raise @@ FailedUnite "inference union failed"
+  let failinfer () = raise @@ Inference.FailedUnite "inference union failed"
 
   let rec _rec_block_start () =
     failwith "this is here to easier finding functions by 'and name' KEKW"
@@ -242,8 +233,6 @@ module rec Impl : Interpreter = struct
         a
     | Void, Void -> Void
     | Void, _ -> failinfer ()
-    | Any, Any -> Any
-    | Any, _ -> failinfer ()
     | UnwindToken, UnwindToken -> UnwindToken
     | UnwindToken, _ -> failinfer ()
     | Never, Never -> Never
@@ -282,6 +271,7 @@ module rec Impl : Interpreter = struct
             contexts = inference_unite_contexts a.contexts b.contexts;
           }
     | Macro _, _ -> failinfer ()
+    | BuiltinFn, _ -> failwith "todo inferred builtinfn"
     | Template _, _ -> failwith "todo inferred template type?"
     | NewType _, _ -> failwith "todo newtype was inferred"
     | Dict a, Dict b ->
@@ -503,15 +493,8 @@ module rec Impl : Interpreter = struct
     | BuiltinFn { data = NoData; f } ->
         BuiltinFn
           {
-            data =
-              known_type
-              @@ Fn
-                   {
-                     arg_type = f.arg_type;
-                     result_type = f.result_type;
-                     contexts = f.contexts;
-                   };
-            (* TODO because multitarget? data = unknown (); *)
+            (* because multitarget *)
+            data = known_type @@ Fn (new_fn_type_vars () |> fn_type_vars_to_type);
             f;
           }
     | Instantiate { data = NoData; captured; template; args } ->
@@ -592,7 +575,6 @@ module rec Impl : Interpreter = struct
       contexts ""
 
   and show_type : value_type -> string = function
-    | Any -> "any"
     | UnwindToken -> "unwind_token"
     | Never -> "!"
     | Ast -> "ast"
@@ -607,6 +589,7 @@ module rec Impl : Interpreter = struct
     | Macro f -> "macro " ^ show_fn_type f
     | Template f -> "template " ^ show_fn f
     | BuiltinMacro -> "builtin_macro"
+    | BuiltinFn -> "builtin_fn"
     | Dict { fields } ->
         "{ "
         ^ StringMap.fold
@@ -785,8 +768,7 @@ module rec Impl : Interpreter = struct
     | Void -> Void
     | Variant { typ; _ } -> typ
     | BuiltinMacro _ -> BuiltinMacro
-    | BuiltinFn { arg_type; result_type; contexts; _ } ->
-        Fn { arg_type; result_type; contexts }
+    | BuiltinFn _ -> BuiltinFn
     | Template f -> Template (template_to_template_type f)
     | Macro f -> Macro (type_of_fn ~ensure f)
     | Function f -> Fn (type_of_fn ~ensure f)
@@ -1383,13 +1365,7 @@ module rec Impl : Interpreter = struct
           Log.trace ("calling " ^ show f);
           let (make_f, vars) : (unit -> value -> value) * fn_type_vars =
             match f with
-            | BuiltinFn f ->
-                ( (fun () -> f.impl),
-                  {
-                    arg_type = type_into_var f.arg_type;
-                    result_type = type_into_var f.result_type;
-                    contexts = contexts_type_into_var f.contexts;
-                  } )
+            | BuiltinFn f -> ((fun () -> f.impl), new_fn_type_vars ())
             | Function f | Macro f ->
                 ( (fun () -> call_compiled self.contexts @@ ensure_compiled f),
                   f.vars )
@@ -1584,12 +1560,10 @@ module rec Impl : Interpreter = struct
           (fun (variant : value_type option) : value ->
             match variant with
             | Some variant ->
+                (* TODO Type constructor type? *)
                 BuiltinFn
                   {
                     name = "type constructor";
-                    arg_type = variant;
-                    result_type = typ;
-                    contexts = empty_contexts_type;
                     impl =
                       (fun value ->
                         Variant { name = field; typ; value = Some value });
@@ -1725,9 +1699,6 @@ module rec Impl : Interpreter = struct
               print_endline value;
               Void
           | _ -> failwith "print expected a string");
-        contexts = io_contexts;
-        arg_type = String;
-        result_type = Void;
       }
 
     let match' : builtin_macro =
@@ -1839,15 +1810,6 @@ module rec Impl : Interpreter = struct
               match (lhs, rhs) with
               | Int32 lhs, Int32 rhs -> Int32 (f lhs rhs)
               | _ -> failwith "only floats");
-        arg_type =
-          Dict
-            {
-              fields =
-                StringMap.of_list [ (lhs, (Int32 : value_type)); (rhs, Int32) ];
-            };
-        (* todo overflows? *)
-        contexts = default_contexts_type;
-        result_type = Int32;
       }
 
     let int32_binary_op name = int32_binary_op_with name "lhs" "rhs"
@@ -1858,10 +1820,6 @@ module rec Impl : Interpreter = struct
         impl =
           (function
           | Float64 value -> Float64 (f value) | _ -> failwith "only floats");
-        arg_type = Float64;
-        result_type = Float64;
-        (* todo? *)
-        contexts = default_contexts_type;
       }
 
     let int32_fn name f : builtin_fn =
@@ -1870,32 +1828,24 @@ module rec Impl : Interpreter = struct
         impl =
           (function
           | Int32 value -> Int32 (f value) | _ -> failwith "only floats");
-        arg_type = Int32;
-        result_type = Int32;
-        (* todo ? *)
-        contexts = default_contexts_type;
       }
 
-    let single_arg_fn fn_name arg_type arg_name result_type f : builtin_fn =
+    let single_arg_fn fn_name arg_name f : builtin_fn =
       {
         name = fn_name;
         impl =
           dict_fn (fun args ->
               let value = StringMap.find arg_name args in
               f value);
-        arg_type = Dict { fields = StringMap.singleton arg_name arg_type };
-        (* todo ? *)
-        contexts = default_contexts_type;
-        result_type;
       }
 
     let float64_macro fn_name arg_name f =
       let f = float64_fn fn_name f in
-      single_arg_fn fn_name Float64 arg_name Float64 f.impl
+      single_arg_fn fn_name arg_name f.impl
 
     let int32_macro fn_name arg_name f =
       let f = int32_fn fn_name f in
-      single_arg_fn fn_name Int32 arg_name Int32 f.impl
+      single_arg_fn fn_name arg_name f.impl
 
     let int32_unary_op name = int32_macro ("int32 unary " ^ name) "x"
 
@@ -2066,7 +2016,7 @@ module rec Impl : Interpreter = struct
                           vars = new_fn_type_vars ();
                           captured = self;
                           where_clause = where;
-                          result_type = Some (Actual Any);
+                          result_type = None;
                           args_pattern = Some args;
                           body = def;
                           contexts = None;
@@ -2322,16 +2272,6 @@ module rec Impl : Interpreter = struct
               match (lhs, rhs) with
               | Int32 lhs, Int32 rhs -> Bool (f lhs rhs)
               | _ -> failwith "only int32 is supported for comparisons");
-        arg_type =
-          Dict
-            {
-              fields =
-                StringMap.of_list
-                  [ ("lhs", (Int32 : value_type)); ("rhs", Int32) ];
-            };
-        (* todo ? *)
-        contexts = default_contexts_type;
-        result_type = Bool;
       }
 
     let dbg : builtin_fn =
@@ -2343,10 +2283,6 @@ module rec Impl : Interpreter = struct
               (show value ^ " : "
               ^ show_type (type_of_value ~ensure:false value));
             Void);
-        arg_type = Any;
-        (* todo ? *)
-        contexts = default_contexts_type;
-        result_type = Void;
       }
 
     let get_int32 : value -> int32 = function
@@ -2380,16 +2316,6 @@ module rec Impl : Interpreter = struct
               Log.trace (show result);
               result
           | _ -> failwith "expected dict");
-        arg_type = Any;
-        (* todo *)
-        (* Dict *)
-        (* { *)
-        (* fields = *)
-        (* StringMap.of_list *)
-        (* [ ("arg", (Type : value_type)); ("result", Type) ]; *)
-        (* }; *)
-        contexts = empty_contexts_type;
-        result_type = Type;
       }
 
     let random_int32 : builtin_fn =
@@ -2405,16 +2331,6 @@ module rec Impl : Interpreter = struct
                    (Random.int32
                       (Int32.sub (Int32.add max (Int32.of_int 1)) min)))
           | _ -> failwith "expected dict");
-        arg_type =
-          Dict
-            {
-              fields =
-                StringMap.of_list
-                  [ ("min", (Int32 : value_type)); ("max", Int32) ];
-            };
-        (* todo rng *)
-        contexts = default_contexts_type;
-        result_type = Int32;
       }
 
     let random_float64 : builtin_fn =
@@ -2427,16 +2343,6 @@ module rec Impl : Interpreter = struct
               let max = get_float64 (StringMap.find "max" args) in
               Float64 (min +. Random.float (max -. min))
           | _ -> failwith "expected dict");
-        arg_type =
-          Dict
-            {
-              fields =
-                StringMap.of_list
-                  [ ("min", (Float64 : value_type)); ("max", Float64) ];
-            };
-        result_type = Float64;
-        (* todo rng *)
-        contexts = default_contexts_type;
       }
 
     let panic : builtin_fn =
@@ -2446,10 +2352,6 @@ module rec Impl : Interpreter = struct
           (function
           | String s -> failwith s
           | _ -> failwith "panicked with not a string kekw");
-        arg_type = String;
-        result_type = Never;
-        (* todo ? *)
-        contexts = default_contexts_type;
       }
 
     let is_same_type : builtin_fn =
@@ -2466,14 +2368,6 @@ module rec Impl : Interpreter = struct
                ^ Bool.to_string result);
               Bool result
           | _ -> failwith "expected dict");
-        arg_type =
-          Dict
-            {
-              fields =
-                StringMap.of_list [ ("a", (Type : value_type)); ("b", Type) ];
-            };
-        contexts = empty_contexts_type;
-        result_type = Bool;
       }
 
     let unwinding : builtin_macro =
@@ -2509,15 +2403,6 @@ module rec Impl : Interpreter = struct
               let value = StringMap.find "value" fields in
               raise (Unwind (token, value))
           | _ -> failwith "expected a dict in unwing args");
-        arg_type =
-          Dict
-            {
-              fields =
-                StringMap.of_list
-                  [ ("token", (UnwindToken : value_type)); ("value", Any) ];
-            };
-        contexts = empty_contexts_type;
-        result_type = Never;
       }
 
     let union_variant : builtin_macro =
@@ -2693,9 +2578,6 @@ module rec Impl : Interpreter = struct
     let new_typevar : builtin_fn =
       {
         name = "new_typevar";
-        contexts = empty_contexts_type;
-        arg_type = Void;
-        result_type = Type;
         impl =
           (fun _void ->
             Log.trace "making new type var";
@@ -2717,7 +2599,6 @@ module rec Impl : Interpreter = struct
         ("current_context", BuiltinMacro current_context);
         ("typeof", BuiltinMacro typeof);
         ("typeofvalue", BuiltinMacro typeofvalue);
-        ("any", Type Any);
         ("void", Void);
         ("ast", Type Ast);
         ("bool", Type Bool);
@@ -2752,28 +2633,17 @@ module rec Impl : Interpreter = struct
             {
               name = "type_of_value";
               impl = (fun x -> Type (type_of_value ~ensure:true x));
-              arg_type = Any;
-              contexts = empty_contexts_type;
-              result_type = Type;
             } );
-        ( "unit",
-          BuiltinFn
-            {
-              name = "unit(void)";
-              impl = (fun _ -> Void);
-              arg_type = Dict { fields = StringMap.empty };
-              contexts = empty_contexts_type;
-              result_type = Void;
-            } );
+        ("unit", BuiltinFn { name = "unit(void)"; impl = (fun _ -> Void) });
         ("let", BuiltinMacro let');
         ("const_let", BuiltinMacro const_let);
         ("function_def", BuiltinMacro function_def);
         ("field_access", BuiltinMacro field_access);
         ( "macro",
           BuiltinFn
-            (single_arg_fn "macro" Any
+            (single_arg_fn "macro"
                (* todo { _anyfield: ast } -> ast #  (Fn { arg_type = Ast; result_type = Ast }) *)
-               "def" Any macro) );
+               "def" macro) );
         ("less", BuiltinFn (cmp_fn "<" ( < )));
         ("less_or_equal", BuiltinFn (cmp_fn "<=" ( <= )));
         ("equal", BuiltinFn (cmp_fn "==" ( = )));
@@ -2794,10 +2664,6 @@ module rec Impl : Interpreter = struct
                 (function
                 | String s -> Int32 (Int32.of_string s)
                 | _ -> failwith "expected string");
-              arg_type = String;
-              (* todo *)
-              contexts = default_contexts_type;
-              result_type = Int32;
             } );
         ( "input",
           BuiltinFn
@@ -2806,9 +2672,6 @@ module rec Impl : Interpreter = struct
               impl =
                 (function
                 | Void -> String (read_line ()) | _ -> failwith "expected void");
-              arg_type = Void;
-              contexts = io_contexts;
-              result_type = String;
             } );
         ("template_def", BuiltinMacro template_def);
         ("instantiate_template", BuiltinMacro instantiate_template);
@@ -2889,6 +2752,7 @@ and Checker : Inference.Checker = struct
   type t = Impl.value
 
   let unite = Impl.inference_unite
+  let show = Impl.show
 end
 
 and MyInference : (Inference.T with type inferred := Impl.value) =

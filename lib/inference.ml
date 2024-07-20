@@ -1,7 +1,10 @@
+exception FailedUnite of string
+
 module type Checker = sig
   type t
 
   val unite : t -> t -> t
+  val show : t -> string
 end
 
 module type T = sig
@@ -42,6 +45,12 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
     let data = get_root_data root in
     data.inferred
 
+  let unite a b =
+    try Checker.unite a b
+    with FailedUnite s ->
+      failwith @@ "inference unite failure: " ^ s ^ "\na = " ^ Checker.show a
+      ^ "\nb = " ^ Checker.show b
+
   let make_same a b =
     let a = get_root_var a in
     let b = get_root_var b in
@@ -51,8 +60,7 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
       match (a_data.inferred, b_data.inferred) with
       | Some inferred, None | None, Some inferred -> Some inferred
       | None, None -> None
-      | Some inferred_a, Some inferred_b ->
-          Some (Checker.unite inferred_a inferred_b)
+      | Some inferred_a, Some inferred_b -> Some (unite inferred_a inferred_b)
     in
     if Random.bool () then (
       a_data.inferred <- inferred_value;
@@ -66,6 +74,5 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
     let data = get_root_data root in
     match data.inferred with
     | None -> data.inferred <- Some value
-    | Some current_value ->
-        data.inferred <- Some (Checker.unite current_value value)
+    | Some current_value -> data.inferred <- Some (unite current_value value)
 end
