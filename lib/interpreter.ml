@@ -543,7 +543,7 @@ module rec Impl : Interpreter = struct
     | BuiltinMacro _ -> "builtin_macro"
     | BuiltinFn { name; _ } -> "builtin_fn " ^ name
     | Template f -> "template " ^ show_fn f
-    | Function f -> "function" ^ show_fn f
+    | Function f -> "function " ^ show_fn f
     | Int32 value -> Int32.to_string value
     | Int64 value -> Int64.to_string value
     | Float64 value -> Float.to_string value
@@ -1034,7 +1034,7 @@ module rec Impl : Interpreter = struct
         failwith (name ^ " is a runtime value, not a macro")
     | Some (Value value) -> (
         match value with
-        | BuiltinFn f ->
+        | Function _ | BuiltinFn _ ->
             let args : ir =
               Dict
                 {
@@ -1051,7 +1051,7 @@ module rec Impl : Interpreter = struct
                 ir =
                   Call
                     {
-                      f = BuiltinFn { f; data = NoData } |> init_ir;
+                      f = Const { value; data = NoData } |> init_ir;
                       args;
                       data = NoData;
                     }
@@ -1366,8 +1366,7 @@ module rec Impl : Interpreter = struct
           just_value (f args)
       | Call { f; args; _ } ->
           let f = (eval_ir self f).value in
-          Log.trace ("calling " ^ show f);
-          let (make_f, vars) : (unit -> value -> value) * fn_type_vars =
+          let (get_f_impl, vars) : (unit -> value -> value) * fn_type_vars =
             match f with
             | BuiltinFn f -> ((fun () -> f.impl), new_fn_type_vars ())
             | Function f | Macro f ->
@@ -1404,9 +1403,13 @@ module rec Impl : Interpreter = struct
                   } )
             | _ -> failwith @@ show f ^ " - not a function"
           in
+          let f_impl = get_f_impl () in
           let args = (eval_ir self args).value in
-          let f = make_f () in
-          just_value (f args)
+          Log.trace ("calling " ^ show f);
+          Log.trace @@ "args = " ^ show args;
+          let result = f_impl args in
+          Log.trace @@ "result = " ^ show result;
+          just_value result
       | If { cond; then_case; else_case; _ } ->
           let cond = eval_ir self cond in
           let self_with_new_bindings =
@@ -1802,7 +1805,7 @@ module rec Impl : Interpreter = struct
 
     let dict_fn f : value -> value = function
       | Dict { fields = args } -> f args
-      | _ -> failwith "expected dict"
+      | _ -> failwith "expected dict (dict_fn)"
 
     let int32_binary_op_with name lhs rhs f : builtin_fn =
       {
@@ -2320,7 +2323,7 @@ module rec Impl : Interpreter = struct
               in
               Log.trace (show result);
               result
-          | _ -> failwith "expected dict");
+          | _ -> failwith "expected dict (function_type)");
       }
 
     let random_int32 : builtin_fn =
@@ -2335,7 +2338,7 @@ module rec Impl : Interpreter = struct
                 (Int32.add min
                    (Random.int32
                       (Int32.sub (Int32.add max (Int32.of_int 1)) min)))
-          | _ -> failwith "expected dict");
+          | _ -> failwith "expected dict (random_int32)");
       }
 
     let random_float64 : builtin_fn =
@@ -2347,7 +2350,7 @@ module rec Impl : Interpreter = struct
               let min = get_float64 (StringMap.find "min" args) in
               let max = get_float64 (StringMap.find "max" args) in
               Float64 (min +. Random.float (max -. min))
-          | _ -> failwith "expected dict");
+          | _ -> failwith "expected dict (random_float64)");
       }
 
     let panic : builtin_fn =
@@ -2372,7 +2375,7 @@ module rec Impl : Interpreter = struct
                 ("is_same_type " ^ show_type a ^ ", " ^ show_type b ^ " = "
                ^ Bool.to_string result);
               Bool result
-          | _ -> failwith "expected dict");
+          | _ -> failwith "expected dict (is_same_type)");
       }
 
     let unwinding : builtin_macro =

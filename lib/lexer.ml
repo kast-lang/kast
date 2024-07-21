@@ -138,6 +138,11 @@ let parse : string -> filename -> token spanned Seq.t =
           (let start = !position in
            let token =
              if c = '"' then read_string ()
+             else if c = '@' then (
+               consume ();
+               match read_string () with
+               | String { value; _ } -> Ident value
+               | _ -> failwith "read not a string?")
              else if is_digit c then read_number ()
              else if is_ident_start c then read_ident ()
              else read_punctuation ()

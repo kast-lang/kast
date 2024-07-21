@@ -54,26 +54,26 @@ syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
 syntax builtin_fn_or <- 17 = lhs "or" rhs;
 syntax builtin_fn_and <- 18 = lhs "and" rhs;
 
-syntax "builtin_fn_<" <- 19 = lhs "<" rhs;
-syntax "builtin_fn_<=" <- 19 = lhs "<=" rhs;
-syntax "builtin_fn_==" <- 19 = lhs "==" rhs;
-syntax "builtin_fn_!=" <- 19 = lhs "!=" rhs;
-syntax "builtin_fn_>=" <- 19 = lhs ">=" rhs;
-syntax "builtin_fn_>" <- 19 = lhs ">" rhs;
+syntax @"op binary <" <- 19 = lhs "<" rhs;
+syntax @"op binary <=" <- 19 = lhs "<=" rhs;
+syntax @"op binary ==" <- 19 = lhs "==" rhs;
+syntax @"op binary !=" <- 19 = lhs "!=" rhs;
+syntax @"op binary >=" <- 19 = lhs ">=" rhs;
+syntax @"op binary >" <- 19 = lhs ">" rhs;
 
 syntax builtin_macro_get_impl <- 20 = value "as" trait;
 syntax builtin_macro_check_impl <- 20 = value "impl" trait;
 
-syntax "builtin_fn_unary +" <- 25 = "+" x;
-syntax "builtin_fn_unary -" <- 25 = "-" x;
-syntax "builtin_fn_binary +" <- 25 = lhs "+" rhs;
-syntax "builtin_fn_binary -" <- 25 = lhs "-" rhs;
+syntax @"op unary +" <- 25 = "+" x;
+syntax @"op unary -" <- 25 = "-" x;
+syntax @"op binary +" <- 25 = lhs "+" rhs;
+syntax @"op binary -" <- 25 = lhs "-" rhs;
 
-syntax "builtin_fn_binary *" <- 40 = lhs "*" rhs;
-syntax "builtin_fn_binary /" <- 40 = lhs "/" rhs;
-syntax "builtin_fn_binary %" <- 40 = lhs "%" rhs;
+syntax @"op binary *" <- 40 = lhs "*" rhs;
+syntax @"op binary /" <- 40 = lhs "/" rhs;
+syntax @"op binary %" <- 40 = lhs "%" rhs;
 
-syntax "builtin_fn_binary ^" -> 60 = lhs "^" rhs;
+syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
 syntax builtin_macro_call <- 100 = f args;
 
@@ -236,6 +236,11 @@ impl TypeName for string as (
 let type_name = forall (T :: type) where (T impl TypeName). (
     (T as TypeName).name
 );
+
+let @"op binary +" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary +" args;
+let @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary -" args;
+
+let @"op binary <" :: (lhs: int32, rhs: int32) -> bool = args => @"builtin_fn_<" args;
 
 # const Parse = forall (Self :: type). (
 #     struct (
