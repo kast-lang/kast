@@ -55,12 +55,10 @@ module rec Impl : Interpreter = struct
     | Macro of fn_type
     | Template of fn
     | BuiltinMacro
-    | BuiltinFn
     | Dict of { fields : value_type StringMap.t }
     | NewType of value_type
     | OneOf of value_type option StringMap.t
     | Union of (value_type, unit) Hashtbl.t
-    | SpecificType of value_type
     | Type
     | Var of id
     | InferVar of MyInference.var
@@ -89,14 +87,20 @@ module rec Impl : Interpreter = struct
   }
 
   and 'data match_branch = { pattern : pattern; body : ir }
-  and 'data get_impl = { captured : state; ty : ir; trait : ir; data : 'data }
+
+  and 'data get_impl = {
+    captured : state;
+    value : ir;
+    trait : ir;
+    data : 'data;
+  }
 
   and 'data ir_node =
     | Void of { data : 'data }
     | Struct of { body : ir; data : 'data }
     | CreateImpl of {
         captured : state;
-        ty : ir;
+        value : ir;
         trait : ir;
         impl : ir;
         data : 'data;
@@ -216,7 +220,8 @@ module rec Impl : Interpreter = struct
 
   and inference_unite_contexts (a : contexts_type) (b : contexts_type) :
       contexts_type =
-    if a = b then a else failinfer ()
+    a
+  (* TODO if a = b then a else raise @@ Inference.FailedUnite "contexts dont match" *)
 
   and inference_unite_types (a : value_type) (b : value_type) : value_type =
     match (a, b) with
@@ -254,7 +259,6 @@ module rec Impl : Interpreter = struct
     | BuiltinMacro, _ -> failwith "inferred builtin macro type?"
     | Type, Type -> Type
     | Type, _ -> failinfer ()
-    | SpecificType _, _ -> failwith "inferred specific type"
     | Fn a, Fn b ->
         Fn
           {
@@ -271,7 +275,6 @@ module rec Impl : Interpreter = struct
             contexts = inference_unite_contexts a.contexts b.contexts;
           }
     | Macro _, _ -> failinfer ()
-    | BuiltinFn, _ -> failwith "todo inferred builtinfn"
     | Template _, _ -> failwith "todo inferred template type?"
     | NewType _, _ -> failwith "todo newtype was inferred"
     | Dict a, Dict b ->
@@ -379,6 +382,7 @@ module rec Impl : Interpreter = struct
     | None -> InferVar var
 
   and init_ir (ir : no_data ir_node) : ir =
+    Log.trace @@ "initializing ir: " ^ show_ir ir;
     let known value =
       let var = MyInference.new_var () in
       MyInference.set var value;
@@ -392,25 +396,26 @@ module rec Impl : Interpreter = struct
     | Const { value; data = NoData } ->
         Const { value; data = known_type @@ type_of_value ~ensure:false value }
     | Struct { body; data = NoData } -> Struct { body; data = same_as body }
-    | CreateImpl { captured; ty; trait = trait_ir; impl; data = NoData } ->
+    | CreateImpl { captured; value; trait = trait_ir; impl; data = NoData } ->
         let trait = eval_ir captured trait_ir in
-        set_ir_type ty Type;
+        (* set_ir_type ty Type; *)
         set_ir_type impl @@ value_to_type trait.value;
         CreateImpl
-          { captured; ty; trait = trait_ir; impl; data = known_type Void }
-    | GetImpl { captured; ty; trait = trait_ir; data = NoData } ->
+          { captured; value; trait = trait_ir; impl; data = known_type Void }
+    | GetImpl { captured; value; trait = trait_ir; data = NoData } ->
         let trait = eval_ir captured trait_ir in
-        set_ir_type ty Type;
+        Log.trace @@ "trait = " ^ show trait.value;
+        (* set_ir_type ty Type; *)
         GetImpl
           {
             captured;
-            ty;
+            value;
             trait = trait_ir;
             data = known_type @@ value_to_type trait.value;
           }
-    | CheckImpl { captured; ty; trait; data = NoData } ->
-        set_ir_type ty Type;
-        CheckImpl { captured; ty; trait; data = known_type Bool }
+    | CheckImpl { captured; value; trait; data = NoData } ->
+        (* set_ir_type ty Type; *)
+        CheckImpl { captured; value; trait; data = known_type Bool }
     | Match { value; branches; data = NoData } ->
         let value_var = (ir_data value).var in
         let var = MyInference.new_var () in
@@ -589,7 +594,6 @@ module rec Impl : Interpreter = struct
     | Macro f -> "macro " ^ show_fn_type f
     | Template f -> "template " ^ show_fn f
     | BuiltinMacro -> "builtin_macro"
-    | BuiltinFn -> "builtin_fn"
     | Dict { fields } ->
         "{ "
         ^ StringMap.fold
@@ -598,7 +602,6 @@ module rec Impl : Interpreter = struct
               ^ name ^ ": " ^ show_type field_type)
             fields ""
         ^ " }"
-    | SpecificType t -> "typeof " ^ show_type t
     | Type -> "type"
     | Union set ->
         Hashtbl.fold
@@ -620,13 +623,14 @@ module rec Impl : Interpreter = struct
         | None -> "<not inferred>")
     | MultiSet _ -> failwith "todo show multiset"
 
-  and show_ir : ir -> string = function
+  and show_ir : 'a. 'a ir_node -> string = function
     | Void _ -> "void"
     | Struct { body; _ } -> "struct (" ^ show_ir body ^ ")"
-    | CreateImpl { trait; ty; impl; _ } ->
-        "impl " ^ show_ir trait ^ " for " ^ show_ir ty ^ " as " ^ show_ir impl
-    | GetImpl { trait; ty; _ } -> show_ir ty ^ " as " ^ show_ir trait
-    | CheckImpl { trait; ty; _ } -> show_ir ty ^ " impls " ^ show_ir trait
+    | CreateImpl { trait; value; impl; _ } ->
+        "impl " ^ show_ir trait ^ " for " ^ show_ir value ^ " as "
+        ^ show_ir impl
+    | GetImpl { trait; value; _ } -> show_ir value ^ " as " ^ show_ir trait
+    | CheckImpl { trait; value; _ } -> show_ir value ^ " impls " ^ show_ir trait
     | Match { value; branches; _ } ->
         "match " ^ show_ir value ^ " ("
         (* why can not we just have the for? *)
@@ -712,13 +716,9 @@ module rec Impl : Interpreter = struct
         actual_amount <= expected_amount)
       (Hashtbl.to_seq actual)
 
-  and unwrap_specifics : value_type -> value_type = function
-    | SpecificType t -> unwrap_specifics t
-    | t -> t
-
   and type_of_fn (f : fn) ~(ensure : bool) : fn_type =
     if ensure then (
-      Log.info "getting type of fun";
+      Log.trace "getting type of fun";
       ignore @@ ensure_compiled f);
     match f.compiled with
     | None ->
@@ -768,7 +768,7 @@ module rec Impl : Interpreter = struct
     | Void -> Void
     | Variant { typ; _ } -> typ
     | BuiltinMacro _ -> BuiltinMacro
-    | BuiltinFn _ -> BuiltinFn
+    | BuiltinFn _ -> Fn (fn_type_vars_to_type @@ new_fn_type_vars ())
     | Template f -> Template (template_to_template_type f)
     | Macro f -> Macro (type_of_fn ~ensure f)
     | Function f -> Fn (type_of_fn ~ensure f)
@@ -791,7 +791,7 @@ module rec Impl : Interpreter = struct
                   | Value value -> type_of_value ~ensure value)
                 data.locals;
           }
-    | Type t -> SpecificType t
+    | Type t -> Type
 
   and ir_data : 'data. 'data ir_node -> 'data = function
     | Void { data; _ }
@@ -1097,41 +1097,45 @@ module rec Impl : Interpreter = struct
     | Value value -> show value
     | Binding binding -> "binding " ^ binding.name
 
-  and check_impl (self : state) ({ trait; ty; _ } : 'data get_impl) : bool =
+  and check_impl (self : state) ({ trait; value; _ } : 'data get_impl) : bool =
     let trait = value_to_type (eval_ir self trait).value in
-    let ty = value_to_type (eval_ir self ty).value in
+    let ty = value_to_type (eval_ir self value).value in
     match Hashtbl.find_opt trait_impls ty with
     | Some impls -> (
         match Hashtbl.find_opt impls trait with Some _ -> true | None -> false)
     | None -> false
 
-  and get_impl (self : state) ({ trait; ty; _ } : 'data get_impl) : value =
-    let trait = value_to_type (eval_ir self trait).value in
-    let ty = value_to_type (eval_ir self ty).value in
-    let show_impls (ty : value_type) (impls : (value_type, value) Hashtbl.t) =
-      Hashtbl.iter
-        (fun trait impl ->
-          Log.trace @@ "impl " ^ show_type trait ^ " for " ^ show_type ty
-          ^ " as " ^ show impl)
-        impls
-    in
-    let show_all_impls () = Hashtbl.iter show_impls trait_impls in
-    let fail s =
-      (* show_all_impls (); *)
-      (* Log.trace s; *)
-      failwith s
-    in
-    match Hashtbl.find_opt trait_impls ty with
-    | Some impls -> (
-        match Hashtbl.find_opt impls trait with
-        | Some impl -> impl
+  and get_impl (self : state) ({ trait; value; _ } : 'data get_impl) : value =
+    let value = (eval_ir self value).value in
+    match value_to_type (eval_ir self trait).value with
+    | Type -> Type (value_to_type value)
+    | trait -> (
+        let ty = value_to_type value in
+        let show_impls (ty : value_type) (impls : (value_type, value) Hashtbl.t)
+            =
+          Hashtbl.iter
+            (fun trait impl ->
+              Log.trace @@ "impl " ^ show_type trait ^ " for " ^ show_type ty
+              ^ " as " ^ show impl)
+            impls
+        in
+        let show_all_impls () = Hashtbl.iter show_impls trait_impls in
+        let fail s =
+          (* show_all_impls (); *)
+          (* Log.trace s; *)
+          failwith s
+        in
+        match Hashtbl.find_opt trait_impls ty with
+        | Some impls -> (
+            match Hashtbl.find_opt impls trait with
+            | Some impl -> impl
+            | None ->
+                fail @@ "get_impl failed: " ^ show_type trait
+                ^ " is not implemented for " ^ show_type ty
+                ^ " (see existing impls above)")
         | None ->
             fail @@ "get_impl failed: " ^ show_type trait
-            ^ " is not implemented for " ^ show_type ty
-            ^ " (see existing impls above)")
-    | None ->
-        fail @@ "get_impl failed: " ^ show_type trait
-        ^ " is not implemented for " ^ show_type ty ^ " (no impls found)"
+            ^ " is not implemented for " ^ show_type ty ^ " (no impls found)")
 
   and eval_ir (self : state) (ir : ir) : evaled =
     log_state Log.Never self;
@@ -1162,9 +1166,9 @@ module rec Impl : Interpreter = struct
       | NewType { def; _ } ->
           just_value (Type (NewType (inferred_type (pattern_data def).var)))
       | Scope { expr; _ } -> just_value (eval_ir self expr).value
-      | CreateImpl { trait; ty; impl; _ } ->
+      | CreateImpl { trait; value; impl; _ } ->
           let trait = value_to_type (eval_ir self trait).value in
-          let ty = value_to_type (eval_ir self ty).value in
+          let ty = value_to_type (eval_ir self value).value in
           let impl = (eval_ir self impl).value in
           if Hashtbl.find_opt trait_impls ty |> Option.is_none then
             Hashtbl.add trait_impls ty (Hashtbl.create 0);
@@ -1802,7 +1806,7 @@ module rec Impl : Interpreter = struct
 
     let int32_binary_op_with name lhs rhs f : builtin_fn =
       {
-        name = "int32 binary " ^ name;
+        name = "binary " ^ name;
         impl =
           dict_fn (fun args ->
               let lhs = StringMap.find lhs args in
@@ -1847,7 +1851,7 @@ module rec Impl : Interpreter = struct
       let f = int32_fn fn_name f in
       single_arg_fn fn_name arg_name f.impl
 
-    let int32_unary_op name = int32_macro ("int32 unary " ^ name) "x"
+    let int32_unary_op name = int32_macro ("unary " ^ name) "x"
 
     let scope : builtin_macro =
       {
@@ -1919,7 +1923,8 @@ module rec Impl : Interpreter = struct
         impl =
           (fun self args ~new_bindings ->
             let rec impl : ast -> ir = function
-              | Complex { def = { name = "unquote"; _ }; values; _ } ->
+              | Complex
+                  { def = { name = "builtin_macro_unquote"; _ }; values; _ } ->
                   let inner = StringMap.find "expr" values in
                   Log.trace ("unquoting" ^ Ast.show inner);
                   (compile_ast_to_ir self inner ~new_bindings).ir
@@ -2498,7 +2503,7 @@ module rec Impl : Interpreter = struct
         name = "create_impl";
         impl =
           (fun self args ~new_bindings ->
-            let ty = StringMap.find "type" args in
+            let value = StringMap.find "value" args in
             let trait = StringMap.find "trait" args in
             let impl = StringMap.find "impl" args in
             Compiled
@@ -2507,7 +2512,7 @@ module rec Impl : Interpreter = struct
                   CreateImpl
                     {
                       captured = self;
-                      ty = (compile_ast_to_ir self ty ~new_bindings).ir;
+                      value = (compile_ast_to_ir self value ~new_bindings).ir;
                       trait = (compile_ast_to_ir self trait ~new_bindings).ir;
                       impl = (compile_ast_to_ir self impl ~new_bindings).ir;
                       data = NoData;
@@ -2522,7 +2527,7 @@ module rec Impl : Interpreter = struct
         name = "get_impl";
         impl =
           (fun self args ~new_bindings ->
-            let ty = StringMap.find "type" args in
+            let value = StringMap.find "value" args in
             let trait = StringMap.find "trait" args in
             Compiled
               {
@@ -2530,7 +2535,7 @@ module rec Impl : Interpreter = struct
                   GetImpl
                     {
                       captured = self;
-                      ty = (compile_ast_to_ir self ty ~new_bindings).ir;
+                      value = (compile_ast_to_ir self value ~new_bindings).ir;
                       trait = (compile_ast_to_ir self trait ~new_bindings).ir;
                       data = NoData;
                     }
@@ -2544,7 +2549,7 @@ module rec Impl : Interpreter = struct
         name = "check_impl";
         impl =
           (fun self args ~new_bindings ->
-            let ty = StringMap.find "type" args in
+            let value = StringMap.find "value" args in
             let trait = StringMap.find "trait" args in
             Compiled
               {
@@ -2552,7 +2557,7 @@ module rec Impl : Interpreter = struct
                   CheckImpl
                     {
                       captured = self;
-                      ty = (compile_ast_to_ir self ty ~new_bindings).ir;
+                      value = (compile_ast_to_ir self value ~new_bindings).ir;
                       trait = (compile_ast_to_ir self trait ~new_bindings).ir;
                       data = NoData;
                     }
@@ -2584,21 +2589,90 @@ module rec Impl : Interpreter = struct
             Type (Var (Id.gen ())));
       }
 
-    let all_list : (string * value) list =
+    let builtin_macros : builtin_macro list =
       [
-        ("typevar", BuiltinFn new_typevar);
-        ("struct_def", BuiltinMacro struct_def);
-        ("create_impl", BuiltinMacro create_impl);
-        ("get_impl", BuiltinMacro get_impl);
-        ("check_impl", BuiltinMacro check_impl);
-        ("single_variant", BuiltinMacro single_variant);
-        ("combine_variants", BuiltinMacro combine_variants);
-        ("unwind", BuiltinFn unwind);
+        struct_def;
+        create_impl;
+        get_impl;
+        check_impl;
+        single_variant;
+        combine_variants;
+        unwinding;
+        current_context;
+        typeof;
+        typeofvalue;
+        type_ascribe;
+        call;
+        then';
+        if';
+        match';
+        quote;
+        scope;
+        let';
+        const_let;
+        function_def;
+        field_access;
+        field;
+        tuple;
+        template_def;
+        instantiate_template;
+        comptime;
+        with_context;
+      ]
+
+    let builtin_fns : builtin_fn list =
+      [
+        function_type;
+        random_int32;
+        random_float64;
+        new_typevar;
+        unwind;
+        print;
+        dbg;
+        int32_unary_op "+" (fun x -> x);
+        int32_unary_op "-" Int32.neg;
+        int32_binary_op "+" Int32.add;
+        int32_binary_op "-" Int32.sub;
+        int32_binary_op "*" Int32.mul;
+        int32_binary_op "/" Int32.div;
+        (* ( (binary_op ( Stdlib.rem ))); *)
+        float64_fn "sin" sin;
+        float64_fn "cos" cos;
+        float64_fn "sqrt" sqrt;
+        {
+          name = "type_of_value";
+          impl = (fun x -> Type (type_of_value ~ensure:true x));
+        };
+        { name = "unit"; impl = (fun _ -> Void) };
+        single_arg_fn "macro"
+          (* todo { _anyfield: ast } -> ast #  (Fn { arg_type = Ast; result_type = Ast }) *)
+          "def" macro;
+        cmp_fn "<" ( < );
+        cmp_fn "<=" ( <= );
+        cmp_fn "==" ( = );
+        cmp_fn "!=" ( <> );
+        cmp_fn ">" ( > );
+        cmp_fn ">=" ( >= );
+        is_same_type;
+        panic;
+        {
+          name = "input";
+          impl =
+            (function
+            | Void -> String (read_line ()) | _ -> failwith "expected void");
+        };
+        {
+          name = "string_to_int32";
+          impl =
+            (function
+            | String s -> Int32 (Int32.of_string s)
+            | _ -> failwith "expected string");
+        };
+      ]
+
+    let builtin_values : (string * value) List.t =
+      [
         ("unwind_token", Type UnwindToken);
-        ("unwinding", BuiltinMacro unwinding);
-        ("current_context", BuiltinMacro current_context);
-        ("typeof", BuiltinMacro typeof);
-        ("typeofvalue", BuiltinMacro typeofvalue);
         ("void", Void);
         ("ast", Type Ast);
         ("bool", Type Bool);
@@ -2609,80 +2683,19 @@ module rec Impl : Interpreter = struct
         ("float32", Type Float32);
         ("float64", Type Float64);
         ("string", Type String);
-        ("type_ascribe", BuiltinMacro type_ascribe);
-        ("print", BuiltinFn print);
-        ("dbg", BuiltinFn dbg);
-        ("call", BuiltinMacro call);
-        ("then", BuiltinMacro then');
-        ("if", BuiltinMacro if');
-        ("match", BuiltinMacro match');
-        ("uplus", BuiltinFn (int32_unary_op "+" (fun x -> x)));
-        ("negate", BuiltinFn (int32_unary_op "-" Int32.neg));
-        ("add", BuiltinFn (int32_binary_op "+" Int32.add));
-        ("sub", BuiltinFn (int32_binary_op "-" Int32.sub));
-        ("mul", BuiltinFn (int32_binary_op "*" Int32.mul));
-        ("div", BuiltinFn (int32_binary_op "/" Int32.div));
-        (* ("mod", BuiltinFn (binary_op ( Stdlib.rem ))); *)
-        ("sin", BuiltinFn (float64_fn "sin" sin));
-        ("cos", BuiltinFn (float64_fn "cos" cos));
-        ("sqrt", BuiltinFn (float64_fn "sqrt" sqrt));
-        ("quote", BuiltinMacro quote);
-        ("scope", BuiltinMacro scope);
-        ( "type_of_value",
-          BuiltinFn
-            {
-              name = "type_of_value";
-              impl = (fun x -> Type (type_of_value ~ensure:true x));
-            } );
-        ("unit", BuiltinFn { name = "unit(void)"; impl = (fun _ -> Void) });
-        ("let", BuiltinMacro let');
-        ("const_let", BuiltinMacro const_let);
-        ("function_def", BuiltinMacro function_def);
-        ("field_access", BuiltinMacro field_access);
-        ( "macro",
-          BuiltinFn
-            (single_arg_fn "macro"
-               (* todo { _anyfield: ast } -> ast #  (Fn { arg_type = Ast; result_type = Ast }) *)
-               "def" macro) );
-        ("less", BuiltinFn (cmp_fn "<" ( < )));
-        ("less_or_equal", BuiltinFn (cmp_fn "<=" ( <= )));
-        ("equal", BuiltinFn (cmp_fn "==" ( = )));
-        ("not_equal", BuiltinFn (cmp_fn "!=" ( <> )));
-        ("greater", BuiltinFn (cmp_fn ">" ( > )));
-        ("greater_or_equal", BuiltinFn (cmp_fn ">=" ( >= )));
-        ("field", BuiltinMacro field);
-        ("tuple", BuiltinMacro tuple);
-        ("function_type", BuiltinFn function_type);
-        ("random_int32", BuiltinFn random_int32);
-        ("random_float64", BuiltinFn random_float64);
-        ("type", Type Type);
-        ( "string_to_int32",
-          BuiltinFn
-            {
-              name = "string_to_int32";
-              impl =
-                (function
-                | String s -> Int32 (Int32.of_string s)
-                | _ -> failwith "expected string");
-            } );
-        ( "input",
-          BuiltinFn
-            {
-              name = "input";
-              impl =
-                (function
-                | Void -> String (read_line ()) | _ -> failwith "expected void");
-            } );
-        ("template_def", BuiltinMacro template_def);
-        ("instantiate_template", BuiltinMacro instantiate_template);
-        ("is_same_type", BuiltinFn is_same_type);
-        ("panic", BuiltinFn panic);
-        ("comptime", BuiltinMacro comptime);
         ("never", Type Never);
-        ("with_context", BuiltinMacro with_context);
+        ("type", Type Type);
       ]
 
-    let all : value StringMap.t = StringMap.of_list all_list
+    let all : value StringMap.t =
+      StringMap.of_list
+        ((builtin_macros
+         |> List.map (fun (m : builtin_macro) ->
+                ("builtin_macro_" ^ m.name, (BuiltinMacro m : value))))
+        @ (builtin_fns
+          |> List.map (fun (f : builtin_fn) ->
+                 ("builtin_fn_" ^ f.name, (BuiltinFn f : value))))
+        @ builtin_values)
   end
 
   let empty () : state =

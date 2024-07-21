@@ -136,6 +136,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         let name =
           match pop tokens with
           | Some { value = Ident name; _ } -> name
+          | Some { value = String { value; _ }; _ } -> value
           | _ -> failwith "expected ident name"
         in
         let assoc =

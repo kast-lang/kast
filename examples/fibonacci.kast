@@ -1,5 +1,5 @@
-let fib = n =>
-    if n < 2 then
-        1
+let fib :: int32 -> int32 = n =>
+    if n < (2 :: int32) then
+        (1 :: int32)
     else
-        fib (n - 1) + fib (n - 2);
+        fib (n - (1 :: int32)) + fib (n - (2 :: int32));
