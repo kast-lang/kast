@@ -318,6 +318,7 @@ module rec Impl : Interpreter = struct
            let bindings_a = pattern_bindings compiled_a.args in
            let bindings_b = pattern_bindings compiled_b.args in
            let vars_args : value =
+             (* TODO pattern -> value with vars in place of bindings *)
              Dict
                {
                  fields =
@@ -629,11 +630,38 @@ module rec Impl : Interpreter = struct
                 known_type @@ Fn (new_fn_type_vars () |> fn_type_vars_to_type);
               f;
             }
-      | Instantiate { data = NoData; captured; template; args } ->
-          Instantiate { (* TODO *) data = unknown (); captured; template; args }
+      | Instantiate { data = NoData; captured; template; args } -> (
+          match (eval_ir captured template).value with
+          | Template t ->
+              let tt = template_to_template_type t in
+              let compiled = ensure_compiled tt in
+              let result_type =
+                call_compiled empty_contexts compiled
+                  (pattern_to_infer_value compiled.args)
+                |> value_to_type
+              in
+              Instantiate
+                { data = known_type result_type; captured; template; args }
+          | other -> failwith @@ show other ^ " is not a template")
     in
     Log.trace @@ "initialized ir: " ^ show_ir result;
     result
+
+  and pattern_to_infer_value (p : pattern) : value =
+    match p with
+    | Void { data = _ } -> Void
+    | Placeholder { data } -> InferVar data.var
+    | Binding { data; binding = _ } -> InferVar data.var
+    | Dict { fields; data = _ } ->
+        Dict { fields = fields |> StringMap.map pattern_to_infer_value }
+    | Variant { data; name; value } ->
+        Variant
+          {
+            typ = InferVar data.var;
+            name;
+            value = Option.map pattern_to_infer_value value;
+          }
+    | Union { data = _; a; b = _ } -> pattern_to_infer_value a
 
   and init_pattern (p : no_data pattern_node) : pattern =
     let known value =
