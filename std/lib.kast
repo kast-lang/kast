@@ -100,6 +100,7 @@ syntax builtin_macro_function_def <- 100000 = "{" body "}";
 
 syntax builtin_macro_scope <- 100000 = "(" e ")";
 syntax builtin_fn_unit <- 100000 = "(" ")";
+syntax builtin_macro_placeholder <- 100000 = "_";
 
 let Option = forall (T :: type). (Some of T | None ofnone);
 let Either = forall ((~left, ~right) :: ( left: type, right: type )). (Left of left | Right of right);

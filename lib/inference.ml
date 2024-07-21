@@ -12,19 +12,33 @@ module type T = sig
   type inferred
 
   val get_inferred : var -> inferred option
+  val get_type : var -> var
   val new_var : unit -> var
   val make_same : var -> var -> unit
   val set : var -> inferred -> unit
+  val add_check : var -> (inferred -> bool) -> unit
+  val show_id : var -> string
 end
 
 module Make (Checker : Checker) : T with type inferred := Checker.t = struct
   type inferred = Checker.t
-  type inference_data = { mutable inferred : Checker.t option }
 
-  type var_data = Root of inference_data | SameAs of var
+  type inference_data = {
+    mutable inferred : Checker.t option;
+    mutable checks : (inferred -> bool) list;
+    mutable type_var : var option;
+  }
+
+  and var_data = Root of inference_data | SameAs of var
   and var = { mutable data : var_data; id : Id.t }
 
-  let new_var () = { data = Root { inferred = None }; id = Id.gen () }
+  let show_id var = Id.show var.id
+
+  let new_var () =
+    {
+      data = Root { inferred = None; type_var = None; checks = [] };
+      id = Id.gen ();
+    }
 
   let rec get_root_var : var -> var =
    fun var ->
@@ -45,11 +59,28 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
     let data = get_root_data root in
     data.inferred
 
+  let get_type var =
+    let root = get_root_var var in
+    let data = get_root_data root in
+    match data.type_var with
+    | Some t -> t
+    | None ->
+        let t = new_var () in
+        data.type_var <- Some t;
+        t
+
   let unite a b =
     try Checker.unite a b
     with FailedUnite s ->
       failwith @@ "inference unite failure: " ^ s ^ "\na = " ^ Checker.show a
       ^ "\nb = " ^ Checker.show b
+
+  let check_again (data : inference_data) : unit =
+    match data.inferred with
+    | Some value ->
+        data.checks
+        |> List.iter (fun f -> if not (f value) then failwith "check failed")
+    | None -> ()
 
   let make_same a b =
     let a = get_root_var a in
@@ -76,4 +107,10 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
     match data.inferred with
     | None -> data.inferred <- Some value
     | Some current_value -> data.inferred <- Some (unite current_value value)
+
+  let add_check var f =
+    let root = get_root_var var in
+    let data = get_root_data root in
+    data.checks <- f :: data.checks;
+    check_again data
 end
