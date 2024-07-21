@@ -214,11 +214,36 @@ module rec Impl : Interpreter = struct
   let empty_contexts_type : contexts_type = Hashtbl.create 0
   let default_contexts_type : contexts_type = empty_contexts_type
 
-  let trait_impls : (value_type, (value_type, value) Hashtbl.t) Hashtbl.t =
-    Hashtbl.create 0
-
+  (* type -> trait -> value *)
+  let trait_impls : (id, (id, value) Hashtbl.t) Hashtbl.t = Hashtbl.create 0
   let empty_type_var_map () : type_var_map ref = ref Id.Map.empty
   let failinfer () = raise @@ Inference.FailedUnite "inference union failed"
+
+  module TypeIds = struct
+    let unwind_token = Id.gen ()
+    let never = Id.gen ()
+    let ast = Id.gen ()
+    let void = Id.gen ()
+    let bool = Id.gen ()
+    let int32 = Id.gen ()
+    let int64 = Id.gen ()
+    let float32 = Id.gen ()
+    let float64 = Id.gen ()
+    let string = Id.gen ()
+    let ty = Id.gen ()
+
+    type dict_key = { fields : id StringMap.t }
+
+    let dict_map = Hashtbl.create 0
+
+    let dict (d : dict_key) =
+      match Hashtbl.find_opt dict_map d with
+      | Some id -> id
+      | None ->
+          let id = Id.gen () in
+          Hashtbl.add dict_map d id;
+          id
+  end
 
   let rec _rec_block_start () =
     failwith "this is here to easier finding functions by 'and name' KEKW"
@@ -581,7 +606,7 @@ module rec Impl : Interpreter = struct
       | FieldAccess { data = NoData; obj; name; default_value } ->
           let field_type_var = MyInference.new_var () in
           MyInference.add_check (ir_data obj).var (fun value ->
-              Log.info @@ "checking field " ^ name ^ " of " ^ show value;
+              Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
               match get_field_opt value name with
               | None -> failwith @@ "inferred type doesnt have field " ^ name
               | Some field ->
@@ -607,7 +632,7 @@ module rec Impl : Interpreter = struct
       | Instantiate { data = NoData; captured; template; args } ->
           Instantiate { (* TODO *) data = unknown (); captured; template; args }
     in
-    Log.info @@ "initialized ir: " ^ show_ir result;
+    Log.trace @@ "initialized ir: " ^ show_ir result;
     result
 
   and init_pattern (p : no_data pattern_node) : pattern =
@@ -1267,13 +1292,49 @@ module rec Impl : Interpreter = struct
     | Value value -> show value
     | Binding binding -> "binding " ^ binding.name
 
+  and type_id : value_type -> id = function
+    | UnwindToken -> TypeIds.unwind_token
+    | Never -> TypeIds.never
+    | Ast -> TypeIds.ast
+    | Void -> TypeIds.void
+    | Bool -> TypeIds.bool
+    | Int32 -> TypeIds.int32
+    | Int64 -> TypeIds.int64
+    | Float32 -> TypeIds.float32
+    | Float64 -> TypeIds.float64
+    | String -> TypeIds.string
+    | Fn f -> failwith "todo typeid fn"
+    | Macro f -> failwith "todo typeid macro"
+    | Template f -> failwith "todo typeid template"
+    | BuiltinMacro -> failwith "todo typeid builtin_macro"
+    | Dict { fields } ->
+        TypeIds.dict { fields = fields |> StringMap.map type_id }
+    | Type -> TypeIds.ty
+    | Union _ -> failwith "todo typeid union"
+    | OneOf variants -> failwith "todo typeid oneof"
+    | NewType inner -> failwith "todo typeid newtype"
+    | Var { id } -> id
+    | InferVar var -> (
+        match (MyInference.get_inferred var : value option) with
+        | Some (Type inferred) -> type_id inferred
+        | Some _ -> failwith "type was inferred as not a type wtf"
+        | None -> failwith "can't get id for not inferred types")
+    | MultiSet _ -> failwith "todo typeid multiset"
+
+  and find_trait_id (trait : value) : id =
+    match trait with
+    | Template trait -> trait.id
+    | Type trait -> type_id trait
+    | _ -> failwith @@ "this value can not be a trait: " ^ show trait
+
   and check_impl (self : state) ({ trait; value; _ } : 'data get_impl) : bool =
-    let trait = value_to_type (eval_ir self trait).value in
+    let trait = (eval_ir self trait).value in
+    let trait_id = find_trait_id trait in
     let value = (eval_ir self value).value in
     let check (value : value) =
-      match Hashtbl.find_opt trait_impls (value_to_type value) with
+      match Hashtbl.find_opt trait_impls (type_id @@ value_to_type value) with
       | Some impls -> (
-          match Hashtbl.find_opt impls trait with
+          match Hashtbl.find_opt impls trait_id with
           | Some _ -> true
           | None -> false)
       | None -> false
@@ -1286,38 +1347,37 @@ module rec Impl : Interpreter = struct
 
   and get_impl (self : state) ({ trait; value; _ } : 'data get_impl) : value =
     let value = (eval_ir self value).value in
-    match (eval_ir self trait).value with
+    let trait = (eval_ir self trait).value in
+    match trait with
     | Type Type -> Type (value_to_type value)
-    | Type trait -> (
+    | _ -> (
         let ty = value_to_type value in
-        let show_impls (ty : value_type) (impls : (value_type, value) Hashtbl.t)
-            =
+        let show_impls (ty : value_type) (tid : id)
+            (impls : (id, value) Hashtbl.t) =
           Hashtbl.iter
             (fun trait impl ->
-              Log.trace @@ "impl " ^ show_type trait ^ " for " ^ show_type ty
-              ^ " as " ^ show impl)
+              Log.trace @@ "impl " ^ "trait (id=" ^ Id.show trait ^ ") for "
+              ^ show_type ty ^ " as " ^ show impl)
             impls
         in
-        let show_all_impls () = Hashtbl.iter show_impls trait_impls in
         let fail s =
           (* show_all_impls (); *)
           (* Log.trace s; *)
           failwith s
         in
-        match Hashtbl.find_opt trait_impls ty with
+        match Hashtbl.find_opt trait_impls (type_id ty) with
         | Some impls -> (
-            match Hashtbl.find_opt impls trait with
+            match Hashtbl.find_opt impls (find_trait_id trait) with
             | Some impl -> impl
             | None ->
-                Log.error @@ "get_impl failed: " ^ show_type trait
+                Log.error @@ "get_impl failed: " ^ show trait
                 ^ " is not implemented for " ^ show_type ty
                 ^ " (see existing impls above)";
                 failwith "get_impl")
         | None ->
-            Log.error @@ "get_impl failed: " ^ show_type trait
+            Log.error @@ "get_impl failed: " ^ show trait
             ^ " is not implemented for " ^ show_type ty ^ " (no impls found)";
             failwith "get_impl")
-    | value -> failwith @@ "get impl for not a trait: " ^ show value
 
   and eval_ir (self : state) (ir : ir) : evaled =
     log_state Log.Never self;
@@ -1351,17 +1411,15 @@ module rec Impl : Interpreter = struct
       | CreateImpl { trait; value; impl; _ } ->
           let ty = value_to_type (eval_ir self value).value in
           let trait = (eval_ir self trait).value in
-          (match trait with
-          | Template trait -> failwith "todo"
-          | Type trait ->
-              let impl = (eval_ir self impl).value in
-              if Hashtbl.find_opt trait_impls ty |> Option.is_none then
-                Hashtbl.add trait_impls ty (Hashtbl.create 0);
-              let type_impls = Hashtbl.find trait_impls ty in
-              Hashtbl.add type_impls trait impl;
-              Log.trace @@ "added impl " ^ show_type trait ^ " for "
-              ^ show_type ty ^ " as " ^ show impl
-          | _ -> failwith @@ "this value can not be a trait: " ^ show trait);
+          let trait_id : Id.t = find_trait_id trait in
+          let impl = (eval_ir self impl).value in
+          let type_id = type_id ty in
+          if Hashtbl.find_opt trait_impls type_id |> Option.is_none then
+            Hashtbl.add trait_impls type_id (Hashtbl.create 0);
+          let type_impls = Hashtbl.find trait_impls type_id in
+          Hashtbl.add type_impls trait_id impl;
+          Log.trace @@ "added impl " ^ show trait ^ " for " ^ show_type ty
+          ^ " as " ^ show impl;
           just_value Void
       | GetImpl e -> just_value (get_impl self e)
       | CheckImpl e -> just_value (Bool (check_impl self e))
