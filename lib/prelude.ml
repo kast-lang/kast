@@ -53,7 +53,8 @@ let head (list : 'a list) : 'a option =
 module StringMap = struct
   include Map.Make (String)
 
-  let match_map f a b =
+  let match_map : 'a 'b 'c. (string -> 'a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t =
+   fun f a b ->
     a
     |> iter (fun name_in_a _ ->
            if find_opt name_in_a b |> Option.is_none then
@@ -62,7 +63,14 @@ module StringMap = struct
     |> iter (fun name_in_b _ ->
            if find_opt name_in_b a |> Option.is_none then
              failwith @@ name_in_b ^ " was only in b");
-    union (fun name a b -> Some (f name a b)) a b
+    merge
+      (fun name a b ->
+        match (a, b) with
+        | Some a, Some b -> Some (f name a b)
+        | None, None -> None
+        | Some _, None -> failwith @@ name ^ " is only in a"
+        | None, Some _ -> failwith @@ name ^ " is only in b")
+      a b
 end
 
 module StringSet = Set.Make (String)

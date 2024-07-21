@@ -21,6 +21,7 @@ module rec Impl : Interpreter = struct
   type id = Id.t
 
   type value =
+    | Var of { id : id; typ : value_type }
     | UnwindToken of id
     | Ast of ast
     | Macro of fn
@@ -41,6 +42,7 @@ module rec Impl : Interpreter = struct
     | Variant of { typ : value_type; name : string; value : value option }
 
   and value_type =
+    | Var of { id : id }
     | UnwindToken
     | Never
     | Ast
@@ -60,7 +62,6 @@ module rec Impl : Interpreter = struct
     | OneOf of value_type option StringMap.t
     | Union of (value_type, unit) Hashtbl.t
     | Type
-    | Var of id
     | InferVar of MyInference.var
     | MultiSet of (value_type, int) Hashtbl.t
 
@@ -275,7 +276,34 @@ module rec Impl : Interpreter = struct
             contexts = inference_unite_contexts a.contexts b.contexts;
           }
     | Macro _, _ -> failinfer ()
-    | Template _, _ -> failwith "todo inferred template type?"
+    | Template a, Template b ->
+        (if a != b then
+           let compiled_a = ensure_compiled a in
+           let compiled_b = ensure_compiled b in
+           let bindings_a = pattern_bindings compiled_a.args in
+           let bindings_b = pattern_bindings compiled_b.args in
+           let vars_args : value =
+             Dict
+               {
+                 fields =
+                   StringMap.match_map
+                     (fun _name a b : value ->
+                       let var = MyInference.new_var () in
+                       MyInference.make_same var a.value_type;
+                       MyInference.make_same var b.value_type;
+                       Var { id = Id.gen (); typ = InferVar var })
+                     bindings_a bindings_b;
+               }
+           in
+           let var_inst_a =
+             call_compiled empty_contexts (ensure_compiled a) vars_args
+           in
+           let var_inst_b =
+             call_compiled empty_contexts (ensure_compiled b) vars_args
+           in
+           ignore @@ inference_unite var_inst_a var_inst_b);
+        Template a
+    | Template _, _ -> failinfer ()
     | NewType _, _ -> failwith "todo newtype was inferred"
     | Dict a, Dict b ->
         Dict
@@ -297,12 +325,14 @@ module rec Impl : Interpreter = struct
              a b)
     | OneOf _, _ -> failinfer ()
     | Union _, _ -> failwith "todo union"
-    | Var a, Var b -> if a = b then Var a else failinfer ()
+    | Var a, Var b -> if a.id = b.id then Var a else failinfer ()
     | Var _, _ -> failinfer ()
     | MultiSet _, _ -> failwith "todo inferred multiset"
 
   and inference_unite (a : value) (b : value) : value =
     match (a, b) with
+    | Var a, Var b when a.id = b.id -> Var a
+    | Var _, _ -> failinfer ()
     | Void, Void -> Void
     | Void, _ -> failinfer ()
     | UnwindToken a, UnwindToken b ->
@@ -396,12 +426,29 @@ module rec Impl : Interpreter = struct
     | Const { value; data = NoData } ->
         Const { value; data = known_type @@ type_of_value ~ensure:false value }
     | Struct { body; data = NoData } -> Struct { body; data = same_as body }
-    | CreateImpl { captured; value; trait = trait_ir; impl; data = NoData } ->
-        let trait = eval_ir captured trait_ir in
-        (* set_ir_type ty Type; *)
-        set_ir_type impl @@ value_to_type trait.value;
+    | CreateImpl
+        { captured; value = value_ir; trait = trait_ir; impl; data = NoData } ->
+        let trait = (eval_ir captured trait_ir).value in
+        let value = (eval_ir captured value_ir).value in
+        (match trait with
+        | Type t -> set_ir_type impl @@ t
+        | Template t ->
+            let result =
+              call_compiled empty_contexts (ensure_compiled t) value
+              |> value_to_type
+            in
+            set_ir_type impl result
+        | _ ->
+            Log.error @@ show trait ^ " can not be treated as trait";
+            failwith "not a trait");
         CreateImpl
-          { captured; value; trait = trait_ir; impl; data = known_type Void }
+          {
+            captured;
+            value = value_ir;
+            trait = trait_ir;
+            impl;
+            data = known_type Void;
+          }
     | GetImpl { captured; value; trait = trait_ir; data = NoData } ->
         let trait = eval_ir captured trait_ir in
         Log.trace @@ "trait = " ^ show trait.value;
@@ -534,6 +581,7 @@ module rec Impl : Interpreter = struct
         Union { data = same_as a; a; b }
 
   and show : value -> string = function
+    | Var { id; typ } -> "var " ^ Id.show id ^ " :: " ^ show_type typ
     | Ast ast -> "`(" ^ Ast.show ast ^ ")"
     | Variant { name; value; _ } ->
         name ^ show_or "" (fun value -> " " ^ show value) value
@@ -615,7 +663,7 @@ module rec Impl : Interpreter = struct
             ^ match t with Some t -> " of " ^ show_type t | None -> "")
           variants ""
     | NewType inner -> "newtype " ^ show_type inner
-    | Var id -> "var " ^ Id.show id
+    | Var { id } -> "var " ^ Id.show id
     | InferVar var -> (
         match (MyInference.get_inferred var : value option) with
         | Some (Type inferred) -> show_type inferred
@@ -754,7 +802,12 @@ module rec Impl : Interpreter = struct
         Complex
           {
             def =
-              { name = "typeofvalue"; assoc = Left; priority = 0; parts = [] };
+              {
+                name = "builtin_macro_typeofvalue";
+                assoc = Left;
+                priority = 0.0;
+                parts = [];
+              };
             values = StringMap.singleton "expr" f.body;
             data = Ast.data f.body;
           };
@@ -763,6 +816,7 @@ module rec Impl : Interpreter = struct
 
   and type_of_value (value : value) ~(ensure : bool) : value_type =
     match value with
+    | Var { typ; _ } -> typ
     | Ast _ -> Ast
     | UnwindToken _ -> UnwindToken
     | Void -> Void
@@ -959,7 +1013,9 @@ module rec Impl : Interpreter = struct
     | Complex { def; values; _ } -> (
         match expand_macro self def.name values ~new_bindings with
         | Compiled result -> result
-        | Pattern _ -> failwith "wtf")
+        | Pattern _ ->
+            Log.error @@ Ast.show ast;
+            failwith "wtf ast was compiled to a pattern but expected compiled")
     | Syntax { def; value; _ } -> compile_ast_to_ir self value ~new_bindings
 
   and compile_pattern (self : state) (pattern : ast option) : pattern =
@@ -1389,7 +1445,10 @@ module rec Impl : Interpreter = struct
                             ~new_bindings:false
                         with
                         | Compiled { ir; _ } -> ir
-                        | Pattern _ -> failwith "wtf"
+                        | Pattern _ ->
+                            failwith
+                              "wtf builtin macro became pattern, expected \
+                               compiled"
                       in
                       (eval_ir self ir).value
                   | _ -> failwith "builtin macro arg must be dict of asts"
@@ -1471,6 +1530,9 @@ module rec Impl : Interpreter = struct
                 data.locals;
           }
     | Template f -> Template f
+    | Var { id; typ } ->
+        ignore @@ inference_unite_types typ Type;
+        Var { id }
     | other -> failwith (show other ^ " is not a type")
 
   and ensure_compiled (f : fn) : compiled_fn =
@@ -1979,7 +2041,7 @@ module rec Impl : Interpreter = struct
             let ir =
               match let'.impl self args ~new_bindings with
               | Compiled { ir; _ } -> ir
-              | Pattern _ -> failwith "wtf"
+              | Pattern _ -> failwith "wtf const_let"
             in
             match ir with
             | Let { pattern; value; _ } ->
@@ -2210,13 +2272,13 @@ module rec Impl : Interpreter = struct
             let a = expand_ast self a ~new_bindings in
             let pattern_fields : expanded_macro -> _ = function
               | Pattern (Dict { fields; _ }) -> fields
-              | Pattern _ -> failwith "expected a dict"
-              | Compiled _ -> failwith "wtf"
+              | Pattern _ -> failwith "expected a dict (pattern fields)"
+              | Compiled _ -> failwith "wtf tuple pattern fields"
             in
             let fields : expanded_macro -> _ = function
               | Compiled { ir = Dict { fields; _ }; _ } -> fields
-              | Compiled _ -> failwith "expected a dict"
-              | Pattern _ -> failwith "wtf"
+              | Compiled _ -> failwith "expected a dict (fields)"
+              | Pattern _ -> failwith "wtf tuple fields"
             in
             match StringMap.find_opt "b" args with
             | Some b -> (
@@ -2589,7 +2651,7 @@ module rec Impl : Interpreter = struct
         impl =
           (fun _void ->
             Log.trace "making new type var";
-            Type (Var (Id.gen ())));
+            Type (Var { id = Id.gen () }));
       }
 
     let builtin_macros : builtin_macro list =

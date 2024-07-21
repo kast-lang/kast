@@ -22,15 +22,16 @@ syntax builtin_macro_combine_variants <- 6 = "|" a;
 syntax builtin_macro_combine_variants <- 6 = a "|" b;
 syntax builtin_macro_function_def <- 7 = args "=>" body;
 
+syntax builtin_macro_type_ascribe <- 7.1 = value "::" type;
+
+syntax builtin_fn_function_type -> 7.5 = arg "->" result;
+syntax builtin_fn_function_type -> 7.5 = arg "->" result "incontext" contexts;
+
 syntax builtin_macro_single_variant -> 8 = name "of" type;
 syntax builtin_macro_single_variant -> 8 = name "ofnone";
-syntax builtin_macro_type_ascribe <- 8 = value "::" type;
 
 syntax builtin_macro_template_def <- 9 = "forall" args "." def;
 syntax builtin_macro_template_def <- 9 = "forall" args "where" where "." def;
-
-syntax builtin_fn_function_type -> 10 = arg "->" result;
-syntax builtin_fn_function_type -> 10 = arg "->" result "incontext" contexts;
 
 syntax builtin_macro_tuple <- 11 = a "," b;
 syntax builtin_macro_tuple <- 11 = a ",";
@@ -115,7 +116,7 @@ const pipe = macro ~f, ~args => `((
     $f $args
 ));
 
-let print :: string -> void = builtin_fn_print;
+let print :: string -> void = s => builtin_fn_print s;
 
 let loop_context :: type = (
     finish_current_iteration: (bool -> never), # todo should be option[T] -> never
@@ -242,22 +243,18 @@ let @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_b
 
 let @"op binary <" :: (lhs: int32, rhs: int32) -> bool = args => @"builtin_fn_<" args;
 
-# const Parse = forall (Self :: type). (
-#     struct (
-#         let t = Self;
-#         let parse = string -> Self;
-#     )
-# );
-# 
-# let int32_parse_impl = (
-#     t: int32,
-#     parse: string_to_int32,
-# );
-# 
-# impl Parse for int32 as int32_parse_impl;
-# 
-# let parse = forall (T :: type) where (T impl Parse). (
-#     (T as Parse).parse
-# );
+const Parse = forall (Self :: type). (
+    parse: (string -> Self),
+);
+
+let int32_parse_impl = (
+    parse: (s => builtin_fn_string_to_int32 s),
+);
+
+impl Parse for int32 as int32_parse_impl;
+
+let parse = forall (T :: type) where (T impl Parse). (
+    (T as Parse).parse
+);
 
 ()

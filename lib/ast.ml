@@ -51,7 +51,9 @@ let show_impl : 'a. bool -> 'a node -> string =
     | Syntax { def; value; _ } ->
         "(syntax " ^ def.name ^ " "
         ^ (match def.assoc with Left -> "<-" | Right -> "->")
-        ^ " " ^ Int.to_string def.priority ^ " ="
+        ^ " "
+        ^ Float.to_string def.priority
+        ^ " ="
         ^ List.fold_left
             (fun s part ->
               s ^ " "
@@ -148,7 +150,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         let priority =
           match pop tokens with
           | Some { value = Number s; _ } -> (
-              match int_of_string_opt s with
+              match float_of_string_opt s with
               | Some priority -> priority
               | None -> failwith "failed to parse priority")
           | _ -> failwith "expected priority (number)"
@@ -185,13 +187,13 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         bool =
       Log.trace
         ("checking if need to continue "
-        ^ Int.to_string parse_state.until.after
+        ^ Float.to_string parse_state.until.after
         ^ " with " ^ Bool.to_string continuing ^ ", "
         ^ show_priority next.priority);
       let result =
-        if parse_state.until.after == Int.min_int then true
+        if parse_state.until.after == Float.min_float then true
         else
-          match Int.compare parse_state.until.after next.priority.before with
+          match Float.compare parse_state.until.after next.priority.before with
           | x when x < 0 -> true
           | 0 -> (
               if parse_state.until.assoc <> next.priority.assoc then

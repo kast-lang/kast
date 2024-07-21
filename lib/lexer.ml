@@ -111,7 +111,9 @@ let parse : string -> filename -> token spanned Seq.t =
     if next () <> Some '"' then failwith "expected \"";
     String { value; raw = String.sub contents start (!index - start) }
   in
-  let read_number () = Number (read_while is_digit) in
+  let read_number () =
+    Number (read_while (fun c -> is_digit c || c = '.' || c = '_'))
+  in
   let is_ident_start c = is_alpha c || c = '_' in
   let read_ident () =
     Ident (read_while (fun c -> is_ident_start c || is_digit c))

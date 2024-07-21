@@ -6,18 +6,18 @@ type def_part = Keyword of string | Binding of string
 type syntax_def = {
   name : string;
   assoc : assoc;
-  priority : int;
+  priority : float;
   parts : def_part list;
 }
 
-type priority = { before : int; after : int; assoc : assoc }
+type priority = { before : float; after : float; assoc : assoc }
 
 let merge_priority a b =
   if a <> b then failwith "different priorities";
   a
 
 let need_pop prev next =
-  let x = Int.compare prev.after next.after in
+  let x = Float.compare prev.after next.after in
   if x < 0 then false
   else if x > 0 then true
   else (
@@ -60,7 +60,7 @@ let empty : syntax =
 let start_state (syntax : syntax) : keyword_parse_state =
   {
     root = true;
-    priority = { before = 0; after = Int.min_int; assoc = Left };
+    priority = { before = 0.0; after = Float.min_float; assoc = Left };
     finish = BoolMap.of_list [ (false, Nothing); (true, Simple) ];
     next = syntax.starts;
   }
@@ -69,9 +69,9 @@ let show_assoc = function Left -> "left" | Right -> "right"
 
 let show_priority (priority : priority) : string =
   "{ before = "
-  ^ Int.to_string priority.before
+  ^ Float.to_string priority.before
   ^ "; after = "
-  ^ Int.to_string priority.after
+  ^ Float.to_string priority.after
   ^ "; assoc = " ^ show_assoc priority.assoc ^ " }"
 
 let parsed_name (parsed : parsed) : string =
@@ -178,10 +178,10 @@ let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
                      (let new_priority =
                         {
                           before =
-                            (if is_closing_bracket keyword then Int.min_int
+                            (if is_closing_bracket keyword then Float.min_float
                              else def.priority);
                           after =
-                            (if is_open_bracket keyword then Int.min_int
+                            (if is_open_bracket keyword then Float.min_float
                              else def.priority);
                           assoc = def.assoc;
                         }
