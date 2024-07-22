@@ -1072,60 +1072,66 @@ module rec Impl : Interpreter = struct
 
   and pattern_match_opt (pattern : pattern) (value : value) :
       value StringMap.t option =
-    Log.trace
-      ("trying to pattern match " ^ show value ^ " with " ^ show_pattern pattern);
-    match pattern with
-    | Placeholder _ -> Some StringMap.empty
-    | Void _ -> ( match value with Void -> Some StringMap.empty | _ -> None)
-    | Union { a; b; _ } -> (
-        match pattern_match_opt a value with
-        | Some result -> Some result
-        | None -> pattern_match_opt b value)
-    | Variant { name = pattern_name; value = value_pattern; _ } -> (
-        match value with
-        | Variant { name; value; _ } ->
-            if name = pattern_name then
-              match (value, value_pattern) with
-              | None, None -> Some StringMap.empty
-              | Some value, Some value_pattern ->
-                  pattern_match_opt value_pattern value
-              | Some _value, None ->
-                  failwith "pattern did not expect a value but variant has"
-              | None, Some _value_pattern ->
-                  failwith "pattern expected a value but variant has none"
-            else None
-        | _ -> failwith "trying to match variant with a non-variant value")
-    | Binding { binding = { name; _ }; _ } ->
-        Some (StringMap.singleton name value)
-    | Dict { fields = field_patterns; _ } -> (
-        match value with
-        | Dict { fields = field_values } ->
-            let fields =
-              StringMap.merge
-                (fun name pattern value ->
-                  match (pattern, value) with
-                  | Some pattern, Some value -> Some (pattern, value)
-                  | Some _pattern, None ->
-                      failwith (name ^ " is not a field in value")
-                  | None, Some _value ->
-                      failwith ("pattern does not specify field " ^ name)
-                  | None, None -> failwith "unreachable")
-                field_patterns field_values
-            in
-            StringMap.fold
-              (fun _name (pattern, value) result ->
-                Option.bind result (fun result ->
-                    Option.map
-                      (fun field ->
-                        StringMap.union
-                          (fun name _old _new ->
-                            failwith
-                              (name
-                             ^ " is specified multiple times in the pattern"))
-                          result field)
-                      (pattern_match_opt pattern value)))
-              fields (Some StringMap.empty)
-        | _ -> None)
+    try
+      Log.trace
+        ("trying to pattern match " ^ show value ^ " with "
+       ^ show_pattern pattern);
+      match pattern with
+      | Placeholder _ -> Some StringMap.empty
+      | Void _ -> ( match value with Void -> Some StringMap.empty | _ -> None)
+      | Union { a; b; _ } -> (
+          match pattern_match_opt a value with
+          | Some result -> Some result
+          | None -> pattern_match_opt b value)
+      | Variant { name = pattern_name; value = value_pattern; _ } -> (
+          match value with
+          | Variant { name; value; _ } ->
+              if name = pattern_name then
+                match (value, value_pattern) with
+                | None, None -> Some StringMap.empty
+                | Some value, Some value_pattern ->
+                    pattern_match_opt value_pattern value
+                | Some _value, None ->
+                    failwith "pattern did not expect a value but variant has"
+                | None, Some _value_pattern ->
+                    failwith "pattern expected a value but variant has none"
+              else None
+          | _ -> failwith "trying to match variant with a non-variant value")
+      | Binding { binding = { name; _ }; _ } ->
+          Some (StringMap.singleton name value)
+      | Dict { fields = field_patterns; _ } -> (
+          match value with
+          | Dict { fields = field_values } ->
+              let fields =
+                StringMap.merge
+                  (fun name pattern field_value ->
+                    match (pattern, field_value) with
+                    | Some pattern, Some value -> Some (pattern, value)
+                    | Some _pattern, None ->
+                        failwith (name ^ " is not a field in " ^ show value)
+                    | None, Some _value ->
+                        failwith ("pattern does not specify field " ^ name)
+                    | None, None -> failwith "unreachable")
+                  field_patterns field_values
+              in
+              StringMap.fold
+                (fun _name (pattern, value) result ->
+                  Option.bind result (fun result ->
+                      Option.map
+                        (fun field ->
+                          StringMap.union
+                            (fun name _old _new ->
+                              failwith
+                                (name
+                               ^ " is specified multiple times in the pattern"))
+                            result field)
+                        (pattern_match_opt pattern value)))
+                fields (Some StringMap.empty)
+          | _ -> None)
+    with Failure _ as failure ->
+      Log.error @@ "while pattern matching " ^ show value ^ " with "
+      ^ show_pattern pattern;
+      raise failure
 
   and pattern_match (pattern : pattern) (value : value) : value StringMap.t =
     match pattern_match_opt pattern value with
@@ -1470,308 +1476,314 @@ module rec Impl : Interpreter = struct
             failwith "get_impl")
 
   and eval_ir (self : state) (ir : ir) : evaled =
-    log_state Log.Never self;
-    let result_type = inferred_type (ir_data ir).var in
-    Log.trace
-      ("evaluating " ^ show_ir ir ^ " inferred as " ^ show_type @@ result_type);
-    (* forward_expected_type ir expected_type; *)
-    (* let result_type = (ir_data ir).result_type in *)
-    let result =
-      match ir with
-      | Void _ -> just_value Void
-      | Struct { body; _ } ->
-          Log.trace "evaluating struct";
-          let evaled = eval_ir self body in
-          just_value
-            (Struct
-               {
-                 parent = Some self.self;
-                 data = { syntax = Syntax.empty; locals = evaled.new_bindings };
-               })
-      | NewType { def; _ } ->
-          just_value (Type (NewType (inferred_type (pattern_data def).var)))
-      | Scope { expr; _ } -> just_value (eval_ir self expr).value
-      | CreateImpl { trait; value; impl; _ } ->
-          let ty = value_to_type (eval_ir self value).value in
-          let trait = (eval_ir self trait).value in
-          let trait_id : Id.t = find_trait_id trait in
-          let impl = (eval_ir self impl).value in
-          let type_id = type_id ty in
-          if Hashtbl.find_opt trait_impls type_id |> Option.is_none then
-            Hashtbl.add trait_impls type_id (Hashtbl.create 0);
-          let type_impls = Hashtbl.find trait_impls type_id in
-          Hashtbl.add type_impls trait_id impl;
-          Log.trace @@ "added impl " ^ show trait ^ " for " ^ show_type ty
-          ^ " as " ^ show impl;
-          just_value Void
-      | GetImpl e -> just_value (get_impl self e)
-      | CheckImpl e -> just_value (Bool (check_impl self e))
-      | Match { value; branches; _ } -> (
-          let value = (eval_ir self value).value in
-          let result : value option =
-            List.find_map
-              (fun (branch : ir_data match_branch) ->
-                pattern_match_opt branch.pattern value
-                |> Option.map (fun new_bindings ->
-                       let self_with_new_bindings =
-                         {
-                           self with
-                           data =
-                             {
-                               self.data with
-                               locals =
-                                 update_locals self.data.locals new_bindings;
-                             };
-                         }
-                       in
-                       (eval_ir self_with_new_bindings branch.body).value))
-              branches
-          in
-          match result with
-          | Some value -> just_value value
-          | None -> failwith "match failed")
-      | OneOf { variants; _ } ->
-          just_value
-            (Type
-               (OneOf
-                  (StringMap.map
-                     (Option.map (fun variant ->
-                          value_to_type @@ (eval_ir self variant).value))
-                     variants)))
-      | TypeOf { expr; _ } ->
-          just_value (Type (inferred_type (ir_data expr).var))
-      | TypeOfValue { expr; _ } ->
-          just_value
-            (Type (type_of_value ~ensure:true (eval_ir self expr).value))
-      | BuiltinFn { f; _ } -> just_value (BuiltinFn f)
-      | Unwinding { f; _ } ->
-          just_value
-            (match (eval_ir self f).value with
-            | Function f -> (
-                let compiled = ensure_compiled f in
-                let token = Id.gen () in
-                try call_compiled self.contexts compiled (UnwindToken token)
-                with Unwind (unwinded_token, value) ->
-                  if unwinded_token = token then value
-                  else raise (Unwind (unwinded_token, value)))
-            | _ -> failwith "unwinding must take a function")
-      | WithContext { new_context; expr; _ } ->
-          let new_context = (eval_ir self new_context).value in
-          let new_state =
+    try
+      log_state Log.Never self;
+      let result_type = inferred_type (ir_data ir).var in
+      Log.trace
+        ("evaluating " ^ show_ir ir ^ " inferred as " ^ show_type @@ result_type);
+      (* forward_expected_type ir expected_type; *)
+      (* let result_type = (ir_data ir).result_type in *)
+      let result =
+        match ir with
+        | Void _ -> just_value Void
+        | Struct { body; _ } ->
+            Log.trace "evaluating struct";
+            let evaled = eval_ir self body in
+            just_value
+              (Struct
+                 {
+                   parent = Some self.self;
+                   data =
+                     { syntax = Syntax.empty; locals = evaled.new_bindings };
+                 })
+        | NewType { def; _ } ->
+            just_value (Type (NewType (inferred_type (pattern_data def).var)))
+        | Scope { expr; _ } -> just_value (eval_ir self expr).value
+        | CreateImpl { trait; value; impl; _ } ->
+            let ty = value_to_type (eval_ir self value).value in
+            let trait = (eval_ir self trait).value in
+            let trait_id : Id.t = find_trait_id trait in
+            let impl = (eval_ir self impl).value in
+            let type_id = type_id ty in
+            if Hashtbl.find_opt trait_impls type_id |> Option.is_none then
+              Hashtbl.add trait_impls type_id (Hashtbl.create 0);
+            let type_impls = Hashtbl.find trait_impls type_id in
+            Hashtbl.add type_impls trait_id impl;
+            Log.trace @@ "added impl " ^ show trait ^ " for " ^ show_type ty
+            ^ " as " ^ show impl;
+            just_value Void
+        | GetImpl e -> just_value (get_impl self e)
+        | CheckImpl e -> just_value (Bool (check_impl self e))
+        | Match { value; branches; _ } -> (
+            let value = (eval_ir self value).value in
+            let result : value option =
+              List.find_map
+                (fun (branch : ir_data match_branch) ->
+                  pattern_match_opt branch.pattern value
+                  |> Option.map (fun new_bindings ->
+                         let self_with_new_bindings =
+                           {
+                             self with
+                             data =
+                               {
+                                 self.data with
+                                 locals =
+                                   update_locals self.data.locals new_bindings;
+                               };
+                           }
+                         in
+                         (eval_ir self_with_new_bindings branch.body).value))
+                branches
+            in
+            match result with
+            | Some value -> just_value value
+            | None -> failwith "match failed")
+        | OneOf { variants; _ } ->
+            just_value
+              (Type
+                 (OneOf
+                    (StringMap.map
+                       (Option.map (fun variant ->
+                            value_to_type @@ (eval_ir self variant).value))
+                       variants)))
+        | TypeOf { expr; _ } ->
+            just_value (Type (inferred_type (ir_data expr).var))
+        | TypeOfValue { expr; _ } ->
+            just_value
+              (Type (type_of_value ~ensure:true (eval_ir self expr).value))
+        | BuiltinFn { f; _ } -> just_value (BuiltinFn f)
+        | Unwinding { f; _ } ->
+            just_value
+              (match (eval_ir self f).value with
+              | Function f -> (
+                  let compiled = ensure_compiled f in
+                  let token = Id.gen () in
+                  try call_compiled self.contexts compiled (UnwindToken token)
+                  with Unwind (unwinded_token, value) ->
+                    if unwinded_token = token then value
+                    else raise (Unwind (unwinded_token, value)))
+              | _ -> failwith "unwinding must take a function")
+        | WithContext { new_context; expr; _ } ->
+            let new_context = (eval_ir self new_context).value in
+            let new_state =
+              {
+                self with
+                contexts =
+                  (let new_contexts = Hashtbl.copy self.contexts in
+                   let context_type = type_of_value ~ensure:true new_context in
+                   (* todo assert fully inferred *)
+                   let new_list_of_this_context_type =
+                     new_context
+                     ::
+                     (match Hashtbl.find_opt new_contexts context_type with
+                     | Some list -> list
+                     | None -> [])
+                   in
+                   Hashtbl.add new_contexts context_type
+                     new_list_of_this_context_type;
+                   new_contexts);
+              }
+            in
+            just_value (eval_ir new_state expr).value
+        | CurrentContext { context_type; _ } -> (
+            let all_current =
+              match Hashtbl.find_opt self.contexts context_type with
+              | Some current -> current
+              | None -> []
+            in
+            match head all_current with
+            | Some top -> just_value top
+            | None ->
+                failwith
+                  ("context not available: " ^ show_type context_type
+                 ^ ", current contexts: "
+                  ^ show_contexts self.contexts))
+        | Dict { fields; _ } ->
+            just_value
+              (Dict
+                 {
+                   fields =
+                     StringMap.map
+                       (fun value -> (eval_ir self value).value)
+                       fields;
+                 })
+        | Template { f; _ } ->
+            just_value (Template { f with captured = self; compiled = None })
+        | Function { f; _ } ->
+            just_value (Function { f with captured = self; compiled = None })
+        | Ast { def; ast_data; values; _ } ->
+            just_value
+              (Ast
+                 (Complex
+                    {
+                      def;
+                      data = ast_data;
+                      values =
+                        StringMap.map
+                          (fun value ->
+                            match (eval_ir self value).value with
+                            | Ast ast -> ast
+                            | _ -> failwith "expected an ast")
+                          values;
+                    }))
+        | FieldAccess { obj; name; default_value; _ } ->
+            let obj = (eval_ir self obj).value in
+            let value =
+              match get_field_opt obj name with
+              | Some value -> value
+              | None -> (
+                  match default_value with
+                  | Some default -> (eval_ir self default).value
+                  | None ->
+                      failwith
+                        ("field " ^ name ^ " does not exist in " ^ show obj))
+            in
+            just_value value
+        | Const { value; _ } -> just_value value
+        | Binding { binding; _ } -> (
+            match get_local_opt self binding.name with
+            | None -> failwith (binding.name ^ " not found wtf, we are compiled")
+            | Some value -> just_value value)
+        | Number { raw = s; data } ->
+            just_value
+              (match inferred_type data.var with
+              | Int32 -> Int32 (Int32.of_string s)
+              | Int64 -> Int64 (Int64.of_string s)
+              | Float64 -> Float64 (Float.of_string s)
+              | t -> failwith (show_type t ^ " is not a number"))
+        | String { value; _ } -> just_value (String value)
+        | Discard { value = ir; _ } ->
+            discard (eval_ir self ir).value;
+            just_value Void
+        | Then { first; second; _ } ->
+            let first = eval_ir self first in
+            discard first.value;
+            let result =
+              eval_ir
+                {
+                  self with
+                  data =
+                    {
+                      self.data with
+                      locals = update_locals self.data.locals first.new_bindings;
+                    };
+                }
+                second
+            in
             {
-              self with
-              contexts =
-                (let new_contexts = Hashtbl.copy self.contexts in
-                 let context_type = type_of_value ~ensure:true new_context in
-                 (* todo assert fully inferred *)
-                 let new_list_of_this_context_type =
-                   new_context
-                   ::
-                   (match Hashtbl.find_opt new_contexts context_type with
-                   | Some list -> list
-                   | None -> [])
-                 in
-                 Hashtbl.add new_contexts context_type
-                   new_list_of_this_context_type;
-                 new_contexts);
+              result with
+              new_bindings =
+                StringMap.union
+                  (fun _name _a b -> Some b)
+                  first.new_bindings result.new_bindings;
             }
-          in
-          just_value (eval_ir new_state expr).value
-      | CurrentContext { context_type; _ } -> (
-          let all_current =
-            match Hashtbl.find_opt self.contexts context_type with
-            | Some current -> current
-            | None -> []
-          in
-          match head all_current with
-          | Some top -> just_value top
-          | None ->
-              failwith
-                ("context not available: " ^ show_type context_type
-               ^ ", current contexts: "
-                ^ show_contexts self.contexts))
-      | Dict { fields; _ } ->
-          just_value
-            (Dict
-               {
-                 fields =
-                   StringMap.map
-                     (fun value -> (eval_ir self value).value)
-                     fields;
-               })
-      | Template { f; _ } ->
-          just_value (Template { f with captured = self; compiled = None })
-      | Function { f; _ } ->
-          just_value (Function { f with captured = self; compiled = None })
-      | Ast { def; ast_data; values; _ } ->
-          just_value
-            (Ast
-               (Complex
-                  {
-                    def;
-                    data = ast_data;
-                    values =
-                      StringMap.map
-                        (fun value ->
-                          match (eval_ir self value).value with
-                          | Ast ast -> ast
-                          | _ -> failwith "expected an ast")
-                        values;
-                  }))
-      | FieldAccess { obj; name; default_value; _ } ->
-          let obj = (eval_ir self obj).value in
-          let value =
-            match get_field_opt obj name with
-            | Some value -> value
-            | None -> (
-                match default_value with
-                | Some default -> (eval_ir self default).value
-                | None ->
-                    failwith ("field " ^ name ^ " does not exist in " ^ show obj)
-                )
-          in
-          just_value value
-      | Const { value; _ } -> just_value value
-      | Binding { binding; _ } -> (
-          match get_local_opt self binding.name with
-          | None -> failwith (binding.name ^ " not found wtf, we are compiled")
-          | Some value -> just_value value)
-      | Number { raw = s; data } ->
-          just_value
-            (match inferred_type data.var with
-            | Int32 -> Int32 (Int32.of_string s)
-            | Int64 -> Int64 (Int64.of_string s)
-            | Float64 -> Float64 (Float.of_string s)
-            | t -> failwith (show_type t ^ " is not a number"))
-      | String { value; _ } -> just_value (String value)
-      | Discard { value = ir; _ } ->
-          discard (eval_ir self ir).value;
-          just_value Void
-      | Then { first; second; _ } ->
-          let first = eval_ir self first in
-          discard first.value;
-          let result =
-            eval_ir
+        | Instantiate { template; args; _ } ->
+            let template = (eval_ir self template).value in
+            Log.trace ("instantiating " ^ show template);
+            let f =
+              match template with
+              | Template f ->
+                  let compiled = ensure_compiled f in
+                  call_compiled empty_contexts compiled
+              | _ -> failwith @@ show template ^ " is not a template"
+            in
+            let args = (eval_ir self args).value in
+            Log.info @@ "instantiating with " ^ show args;
+            (* todo memoization *)
+            just_value (f args)
+        | Call { f; args; _ } ->
+            let f = (eval_ir self f).value in
+            let (get_f_impl, vars) : (unit -> value -> value) * fn_type_vars =
+              match f with
+              | BuiltinFn f -> ((fun () -> f.impl), new_fn_type_vars ())
+              | Function f | Macro f ->
+                  ( (fun () -> call_compiled self.contexts @@ ensure_compiled f),
+                    f.vars )
+              | BuiltinMacro { impl; _ } ->
+                  let f : value -> value = function
+                    | Dict { fields } ->
+                        let ir =
+                          match
+                            impl self
+                              (StringMap.map
+                                 (fun (value : value) : ast ->
+                                   match value with
+                                   | Ast ast -> ast
+                                   | _ ->
+                                       failwith
+                                         "builtin macro arg must be dict of \
+                                          asts")
+                                 fields)
+                              ~new_bindings:false
+                          with
+                          | Compiled { ir; _ } -> ir
+                          | Pattern _ ->
+                              failwith
+                                "wtf builtin macro became pattern, expected \
+                                 compiled"
+                        in
+                        (eval_ir self ir).value
+                    | _ -> failwith "builtin macro arg must be dict of asts"
+                  in
+                  ( (fun () -> f),
+                    (* todo actually infer, dont create new vars here *)
+                    {
+                      result_type = MyInference.new_var ();
+                      contexts = MyInference.new_var ();
+                      arg_type = MyInference.new_var ();
+                    } )
+              | _ -> failwith @@ show f ^ " - not a function"
+            in
+            let f_impl = get_f_impl () in
+            let args = (eval_ir self args).value in
+            Log.trace ("calling " ^ show f);
+            Log.trace @@ "args = " ^ show args;
+            let result = f_impl args in
+            Log.trace @@ "result = " ^ show result;
+            just_value result
+        | If { cond; then_case; else_case; _ } ->
+            let cond = eval_ir self cond in
+            let self_with_new_bindings =
               {
                 self with
                 data =
                   {
                     self.data with
-                    locals = update_locals self.data.locals first.new_bindings;
+                    locals = update_locals self.data.locals cond.new_bindings;
                   };
               }
-              second
-          in
-          {
-            result with
-            new_bindings =
-              StringMap.union
-                (fun _name _a b -> Some b)
-                first.new_bindings result.new_bindings;
-          }
-      | Instantiate { template; args; _ } ->
-          let template = (eval_ir self template).value in
-          Log.trace ("instantiating " ^ show template);
-          let f =
-            match template with
-            | Template f ->
-                let compiled = ensure_compiled f in
-                call_compiled empty_contexts compiled
-            | _ -> failwith @@ show template ^ " is not a template"
-          in
-          let args = (eval_ir self args).value in
-          Log.info @@ "instantiating with " ^ show args;
-          (* todo memoization *)
-          just_value (f args)
-      | Call { f; args; _ } ->
-          let f = (eval_ir self f).value in
-          let (get_f_impl, vars) : (unit -> value -> value) * fn_type_vars =
-            match f with
-            | BuiltinFn f -> ((fun () -> f.impl), new_fn_type_vars ())
-            | Function f | Macro f ->
-                ( (fun () -> call_compiled self.contexts @@ ensure_compiled f),
-                  f.vars )
-            | BuiltinMacro { impl; _ } ->
-                let f : value -> value = function
-                  | Dict { fields } ->
-                      let ir =
-                        match
-                          impl self
-                            (StringMap.map
-                               (fun (value : value) : ast ->
-                                 match value with
-                                 | Ast ast -> ast
-                                 | _ ->
-                                     failwith
-                                       "builtin macro arg must be dict of asts")
-                               fields)
-                            ~new_bindings:false
-                        with
-                        | Compiled { ir; _ } -> ir
-                        | Pattern _ ->
-                            failwith
-                              "wtf builtin macro became pattern, expected \
-                               compiled"
-                      in
-                      (eval_ir self ir).value
-                  | _ -> failwith "builtin macro arg must be dict of asts"
-                in
-                ( (fun () -> f),
-                  (* todo actually infer, dont create new vars here *)
-                  {
-                    result_type = MyInference.new_var ();
-                    contexts = MyInference.new_var ();
-                    arg_type = MyInference.new_var ();
-                  } )
-            | _ -> failwith @@ show f ^ " - not a function"
-          in
-          let f_impl = get_f_impl () in
-          let args = (eval_ir self args).value in
-          Log.trace ("calling " ^ show f);
-          Log.trace @@ "args = " ^ show args;
-          let result = f_impl args in
-          Log.trace @@ "result = " ^ show result;
-          just_value result
-      | If { cond; then_case; else_case; _ } ->
-          let cond = eval_ir self cond in
-          let self_with_new_bindings =
-            {
-              self with
-              data =
-                {
-                  self.data with
-                  locals = update_locals self.data.locals cond.new_bindings;
-                };
-            }
-          in
-          just_value
-            (match cond.value with
-            | Bool true -> eval_ir self_with_new_bindings then_case
-            | Bool false -> eval_ir self_with_new_bindings else_case
-            | _ -> failwith "condition must be a bool")
-              .value
-      | Let { pattern; value; _ } ->
-          let value = (eval_ir self value).value in
-          let result =
-            { value = Void; new_bindings = pattern_match pattern value }
-          in
-          (let log = Log.trace in
-           log "new bindings after let:";
-           StringMap.iter
-             (fun name value -> log @@ "  " ^ name ^ " = " ^ show value)
-             result.new_bindings);
-          result
-    in
-    let result =
-      match result_type with
-      | Type -> { result with value = Type (value_to_type result.value) }
-      | _ -> result
-    in
-    Log.trace
-      ("evaluated " ^ show_ir ir ^ " = " ^ show result.value ^ " as "
-      ^ show_type (type_of_value ~ensure:false result.value)
-      ^ "(expected " ^ show_type result_type ^ ")");
-    result
+            in
+            just_value
+              (match cond.value with
+              | Bool true -> eval_ir self_with_new_bindings then_case
+              | Bool false -> eval_ir self_with_new_bindings else_case
+              | _ -> failwith "condition must be a bool")
+                .value
+        | Let { pattern; value; _ } ->
+            let value = (eval_ir self value).value in
+            let result =
+              { value = Void; new_bindings = pattern_match pattern value }
+            in
+            (let log = Log.trace in
+             log "new bindings after let:";
+             StringMap.iter
+               (fun name value -> log @@ "  " ^ name ^ " = " ^ show value)
+               result.new_bindings);
+            result
+      in
+      let result =
+        match result_type with
+        | Type -> { result with value = Type (value_to_type result.value) }
+        | _ -> result
+      in
+      Log.trace
+        ("evaluated " ^ show_ir ir ^ " = " ^ show result.value ^ " as "
+        ^ show_type (type_of_value ~ensure:false result.value)
+        ^ "(expected " ^ show_type result_type ^ ")");
+      result
+    with Failure _ as failure ->
+      Log.error @@ "  while evaluating " ^ show_ir ir;
+      raise failure
 
   and value_to_type : value -> value_type = function
     | InferVar var -> (
@@ -1795,47 +1807,61 @@ module rec Impl : Interpreter = struct
 
   and ensure_compiled (f : fn) : compiled_fn =
     if Option.is_none f.compiled then (
-      Log.debug ("compiling " ^ Ast.show f.body);
-      f.compiled <-
-        (let args = compile_pattern f.captured f.args_pattern in
-         let captured =
-           {
-             f.captured with
-             data =
-               {
-                 f.captured.data with
-                 locals =
-                   update_locals f.captured.data.locals
-                     (StringMap.map
-                        (fun binding : value -> Binding binding)
-                        (pattern_bindings args));
-               };
-           }
-         in
-         Some
-           {
-             captured = f.captured;
-             where_clause =
-               (match f.where_clause with
-               | None -> Const { value = Bool true; data = NoData } |> init_ir
-               | Some clause ->
-                   (compile_ast_to_ir captured clause ~new_bindings:false).ir);
-             args;
-             result_type = InferVar f.vars.result_type;
-             result_type_ir =
-               (match f.result_type with
-               | None -> None
-               | Some (Actual t) ->
-                   Some (Const { value = Type t; data = NoData } |> init_ir)
-               | Some (Ast ast) ->
-                   Some (compile_ast_to_ir captured ast ~new_bindings:false).ir);
-             body = (compile_ast_to_ir captured f.body ~new_bindings:false).ir;
-             contexts =
-               (match f.contexts with
-               | Some contexts ->
-                   value_to_contexts_type (eval_ast f.captured contexts).value
-               | None -> default_contexts_type);
-           }));
+      Log.trace
+        ("compiling "
+        ^ show_or "()" Ast.show f.args_pattern
+        ^ " => " ^ Ast.show f.body);
+      (try
+         f.compiled <-
+           (let args = compile_pattern f.captured f.args_pattern in
+            let captured =
+              {
+                f.captured with
+                data =
+                  {
+                    f.captured.data with
+                    locals =
+                      update_locals f.captured.data.locals
+                        (StringMap.map
+                           (fun binding : value -> Binding binding)
+                           (pattern_bindings args));
+                  };
+              }
+            in
+            Some
+              {
+                captured = f.captured;
+                where_clause =
+                  (match f.where_clause with
+                  | None ->
+                      Const { value = Bool true; data = NoData } |> init_ir
+                  | Some clause ->
+                      (compile_ast_to_ir captured clause ~new_bindings:false).ir);
+                args;
+                result_type = InferVar f.vars.result_type;
+                result_type_ir =
+                  (match f.result_type with
+                  | None -> None
+                  | Some (Actual t) ->
+                      Some (Const { value = Type t; data = NoData } |> init_ir)
+                  | Some (Ast ast) ->
+                      Some
+                        (compile_ast_to_ir captured ast ~new_bindings:false).ir);
+                body =
+                  (compile_ast_to_ir captured f.body ~new_bindings:false).ir;
+                contexts =
+                  (match f.contexts with
+                  | Some contexts ->
+                      value_to_contexts_type
+                        (eval_ast f.captured contexts).value
+                  | None -> default_contexts_type);
+              })
+       with Failure _ as failure ->
+         Log.error @@ "while compiling"
+         ^ show_or "()" Ast.show f.args_pattern
+         ^ " => " ^ Ast.show f.body;
+         raise failure);
+      Log.trace @@ "compiled");
     Option.get f.compiled
 
   and value_to_contexts_type (value : value) : contexts_type =

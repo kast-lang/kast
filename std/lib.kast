@@ -132,7 +132,7 @@ let loop_context :: type = (
 let loop = fn (body :: (void -> void incontext loop_context)) {
     let should_continue = unwinding (token :: unwind_token) {
         let current_loop_context = (
-            finish_current_iteration: (x :: bool => unwind ( ~token, value: x ) ),
+            finish_current_iteration: (x :: bool => builtin_fn_unwind ( ~token, value123: x ) ),
         );
         with current_loop_context (
             body ();
@@ -154,12 +154,7 @@ let continue_impl = macro (args :: any) => (
     `(do_continue ())
 );
 
-let break_impl = macro (args :: any) => (
-    let value :: ast = field_access (
-        obj: `(args),
-        field: `(value),
-        default_value: `(`(void)),
-    );
+let break_impl = macro (~value :: ast) => (
     `(do_break $value)
 );
 
@@ -248,11 +243,9 @@ const Parse = forall (Self :: type). (
     parse: (string -> Self),
 );
 
-let int32_parse_impl = (
+impl Parse for int32 as (
     parse: (s => builtin_fn_string_to_int32 s),
 );
-
-impl Parse for int32 as int32_parse_impl;
 
 let parse = forall (T :: type) where (T impl Parse). (
     (T as Parse).parse
