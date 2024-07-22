@@ -21,6 +21,7 @@ module rec Impl : Interpreter = struct
   type id = Id.t
 
   type value =
+    | Binding of binding
     | Var of { id : id; typ : value_type }
     | InferVar of inference_var
     | UnwindToken of id
@@ -44,6 +45,7 @@ module rec Impl : Interpreter = struct
 
   and value_type =
     | Var of { id : id }
+    | Binding of binding
     | UnwindToken
     | Never
     | Ast
@@ -199,14 +201,13 @@ module rec Impl : Interpreter = struct
   (* todo GADT? *)
   and expanded_macro = Compiled of compiled | Pattern of pattern
   and evaled = { value : value; new_bindings : value StringMap.t }
-  and compiled = { ir : ir; new_bindings : state_local StringMap.t }
+  and compiled = { ir : ir; new_bindings : value StringMap.t }
   and struct' = { parent : struct' option; mutable data : state_data }
   and contexts = (value_type, value list) Hashtbl.t
   and contexts_type = (value_type, int) Hashtbl.t
   and state = { self : struct'; data : state_data; contexts : contexts }
-  and state_data = { locals : state_local StringMap.t; syntax : Syntax.syntax }
-  and state_local = Value of value | Binding of binding
-  and binding = { name : string; value_type : inference_var }
+  and state_data = { locals : value StringMap.t; syntax : Syntax.syntax }
+  and binding = { id : id; name : string; value_type : inference_var }
 
   exception Unwind of id * value
 
@@ -261,6 +262,7 @@ module rec Impl : Interpreter = struct
 
   and inference_unite_types (a : value_type) (b : value_type) : value_type =
     match (a, b) with
+    (* InferVars patterns must be at the top here *)
     | InferVar a, InferVar b ->
         MyInference.make_same a b;
         InferVar a
@@ -272,6 +274,8 @@ module rec Impl : Interpreter = struct
         MyInference.set var (Type a : value);
         (* TODO here something can be united? should result in that union? *)
         a
+    | Binding a, Binding b when a.id = b.id -> Binding a
+    | Binding _, _ -> failinfer ()
     | Void, Void -> Void
     | Void, _ -> failinfer ()
     | UnwindToken, UnwindToken -> UnwindToken
@@ -367,6 +371,8 @@ module rec Impl : Interpreter = struct
 
   and inference_unite (a : value) (b : value) : value =
     match (a, b) with
+    | Binding a, Binding b when a.id = b.id -> Binding a
+    | Binding _, _ -> failinfer ()
     | InferVar a, InferVar b ->
         MyInference.make_same a b;
         InferVar a
@@ -635,13 +641,26 @@ module rec Impl : Interpreter = struct
           | Template t ->
               let tt = template_to_template_type t in
               let compiled = ensure_compiled tt in
+              let infer_args = pattern_to_infer_value compiled.args in
+              MyInference.set (ir_data args).var infer_args;
               let result_type =
-                call_compiled empty_contexts compiled
-                  (pattern_to_infer_value compiled.args)
-                |> value_to_type
+                call_compiled empty_contexts compiled infer_args
               in
+              let sub =
+                pattern_bindings compiled.args
+                |> StringMap.map (fun _ : value ->
+                       InferVar (MyInference.new_var ()))
+              in
+              Log.info @@ "subbing: " ^ show result_type;
+              let result_type = result_type |> substitute_bindings sub in
+              Log.info @@ "sub result = " ^ show result_type;
               Instantiate
-                { data = known_type result_type; captured; template; args }
+                {
+                  data = known_type @@ value_to_type result_type;
+                  captured;
+                  template;
+                  args;
+                }
           | other -> failwith @@ show other ^ " is not a template")
     in
     Log.trace @@ "initialized ir: " ^ show_ir result;
@@ -693,6 +712,7 @@ module rec Impl : Interpreter = struct
         Union { data = same_as a; a; b }
 
   and show : value -> string = function
+    | Binding { name; _ } -> name
     | Var { id; typ } -> "var " ^ Id.show id ^ " :: " ^ show_type typ
     | Ast ast -> "`(" ^ Ast.show ast ^ ")"
     | Variant { name; value; _ } ->
@@ -744,6 +764,7 @@ module rec Impl : Interpreter = struct
       contexts ""
 
   and show_type : value_type -> string = function
+    | Binding { name; _ } -> name
     | UnwindToken -> "unwind_token"
     | Never -> "!"
     | Ast -> "ast"
@@ -784,12 +805,12 @@ module rec Impl : Interpreter = struct
         match (MyInference.get_inferred var : value option) with
         | Some (Type inferred) -> show_type inferred
         | Some _ -> failwith "type was inferred as not a type wtf"
-        | None -> "<not inferred>")
+        | None -> "<not inferred " ^ MyInference.show_id var ^ ">")
     | MultiSet _ -> failwith "todo show multiset"
 
   and show_ir_with_data : ('a -> string option) -> 'a ir_node -> string =
    fun show_data ->
-    let rec show_rec_pat : 'a pattern_node -> string =
+    let show_rec_pat : 'a pattern_node -> string =
      fun p -> show_pattern_with_data show_data p
     in
     let rec show_rec : 'a ir_node -> string =
@@ -960,7 +981,7 @@ module rec Impl : Interpreter = struct
                 {
                   def =
                     {
-                      name = "builtin_macro_typeofvalue";
+                      name = "builtin_macro_typeof";
                       assoc = Left;
                       priority = 0.0;
                       parts = [];
@@ -976,6 +997,7 @@ module rec Impl : Interpreter = struct
 
   and type_of_value (value : value) ~(ensure : bool) : value_type =
     match value with
+    | Binding { value_type; _ } -> InferVar value_type
     | InferVar var -> (
         match MyInference.get_inferred var with
         | Some value -> type_of_value value ~ensure
@@ -1003,10 +1025,7 @@ module rec Impl : Interpreter = struct
           {
             fields =
               StringMap.map
-                (fun (local : state_local) ->
-                  match local with
-                  | Binding _ -> failwith "binding wtf"
-                  | Value value -> type_of_value ~ensure value)
+                (fun (value : value) -> type_of_value ~ensure value)
                 data.locals;
           }
     | Type t -> Type
@@ -1113,8 +1132,9 @@ module rec Impl : Interpreter = struct
     | Some result -> result
     | None -> failwith "match failed"
 
-  and get_local_opt (self : state) (name : string) : state_local option =
+  and get_local_opt (self : state) (name : string) : value option =
     match StringMap.find_opt name self.data.locals with
+    | Some (Ref value) -> Some !value
     | Some local -> Some local
     | None ->
         let rec find_in_scopes (s : struct') =
@@ -1126,14 +1146,6 @@ module rec Impl : Interpreter = struct
               | None -> None)
         in
         find_in_scopes self.self
-
-  and get_local_value_opt (self : state) (name : string) : value option =
-    Option.map
-      (function
-        | Value (Ref value) -> !value
-        | Value other -> other
-        | Binding _ -> failwith (name ^ " is a runtime value"))
-      (get_local_opt self name)
 
   (* todo remove new_bindings args? *)
   and compile_ast_to_ir (self : state) (ast : ast) ~(new_bindings : bool) :
@@ -1151,24 +1163,11 @@ module rec Impl : Interpreter = struct
             | Ident ident -> (
                 match get_local_opt self ident with
                 | None ->
-                    if new_bindings then
-                      Binding
-                        {
-                          binding =
-                            {
-                              name = ident;
-                              value_type = MyInference.new_var ();
-                            };
-                          data = NoData;
-                        }
-                      |> init_ir
-                    else (
-                      log_state Log.Debug self;
-                      failwith (ident ^ " not found in current scope"))
-                | Some (Value value) ->
-                    Const { value; data = NoData } |> init_ir
+                    log_state Log.Debug self;
+                    failwith (ident ^ " not found in current scope")
                 | Some (Binding binding) ->
-                    Binding { binding; data = NoData } |> init_ir)
+                    Binding { binding; data = NoData } |> init_ir
+                | Some value -> Const { value; data = NoData } |> init_ir)
             | Number raw -> Number { raw; data = NoData } |> init_ir
             | String { value; raw } ->
                 String { value; raw; data = NoData } |> init_ir
@@ -1195,7 +1194,11 @@ module rec Impl : Interpreter = struct
                 Binding
                   {
                     binding =
-                      { name = ident; value_type = MyInference.new_var () };
+                      {
+                        id = Id.gen ();
+                        name = ident;
+                        value_type = MyInference.new_var ();
+                      };
                     data = NoData;
                   }
                 |> init_pattern
@@ -1218,6 +1221,76 @@ module rec Impl : Interpreter = struct
     | Binding { data; _ }
     | Dict { data; _ } ->
         data
+
+  and substitute_type_bindings (sub : value StringMap.t) (t : value_type) :
+      value_type =
+    match t with
+    | Binding { name; _ } -> (
+        match sub |> StringMap.find_opt name with
+        | Some sub -> sub |> value_to_type
+        | None -> t)
+    | Var _ -> t
+    | UnwindToken -> t
+    | Never -> t
+    | Ast -> t
+    | Void -> t
+    | Bool -> t
+    | Int32 -> t
+    | Int64 -> t
+    | Float32 -> t
+    | Float64 -> t
+    | String -> t
+    | Fn { arg_type; contexts; result_type } ->
+        (* todo contexts *)
+        Fn
+          {
+            arg_type = arg_type |> substitute_type_bindings sub;
+            result_type = result_type |> substitute_type_bindings sub;
+            contexts;
+          }
+    | Macro _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | Template _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | BuiltinMacro -> failwith @@ "todo substitute_type " ^ show_type t
+    | Dict _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | NewType _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | OneOf _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | Union _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | Type -> failwith @@ "todo substitute_type " ^ show_type t
+    | InferVar _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | MultiSet _ -> failwith @@ "todo substitute_type " ^ show_type t
+
+  and substitute_bindings (sub : value StringMap.t) (value : value) : value =
+    match value with
+    | Binding { name; _ } -> (
+        match sub |> StringMap.find_opt name with
+        | Some sub -> sub
+        | None -> value)
+    | Var _ -> value
+    | InferVar var -> (
+        match MyInference.get_inferred var with
+        | None -> value
+        | Some inferred -> inferred |> substitute_bindings sub)
+    | UnwindToken _ -> value
+    | Ast _ -> value
+    | Macro _ -> value
+    | BuiltinMacro _ -> value
+    | BuiltinFn _ -> value
+    | Template _ -> value
+    | Function _ -> value
+    | Void -> value
+    | Bool _ -> value
+    | Int32 _ -> value
+    | Int64 _ -> value
+    | Float64 _ -> value
+    | String _ -> value
+    | Dict { fields } ->
+        Dict { fields = fields |> StringMap.map (substitute_bindings sub) }
+    | Struct _ -> value
+    | Ref _ -> value
+    | Type t -> Type (substitute_type_bindings sub t)
+    | Variant { value; typ; name } ->
+        Variant
+          { typ; name; value = value |> Option.map (substitute_bindings sub) }
 
   and pattern_bindings (pattern : pattern) : binding StringMap.t =
     match pattern with
@@ -1253,9 +1326,7 @@ module rec Impl : Interpreter = struct
       ~(new_bindings : bool) : expanded_macro =
     match get_local_opt self name with
     | None -> failwith (name ^ " not found")
-    | Some (Binding _binding) ->
-        failwith (name ^ " is a runtime value, not a macro")
-    | Some (Value value) -> (
+    | Some value -> (
         match value with
         | Function _ | BuiltinFn _ ->
             let args : ir =
@@ -1304,23 +1375,14 @@ module rec Impl : Interpreter = struct
     let log = Log.with_level level in
     log "locals:";
     StringMap.iter
-      (fun name local ->
-        log
-          ("  " ^ name ^ " = "
-          ^
-          match local with
-          | Value value -> show value
-          | Binding binding -> "binding " ^ binding.name))
+      (fun name value -> log ("  " ^ name ^ " = " ^ show value))
       self.data.locals
 
   and show_or : 'a. string -> ('a -> string) -> 'a option -> string =
    fun default f opt -> match opt with Some value -> f value | None -> default
 
-  and show_local : state_local -> string = function
-    | Value value -> show value
-    | Binding binding -> "binding " ^ binding.name
-
   and type_id : value_type -> id = function
+    | Binding { id; _ } -> id
     | UnwindToken -> TypeIds.unwind_token
     | Never -> TypeIds.never
     | Ast -> TypeIds.ast
@@ -1424,14 +1486,7 @@ module rec Impl : Interpreter = struct
             (Struct
                {
                  parent = Some self.self;
-                 data =
-                   {
-                     syntax = Syntax.empty;
-                     locals =
-                       StringMap.map
-                         (fun value : state_local -> Value value)
-                         evaled.new_bindings;
-                   };
+                 data = { syntax = Syntax.empty; locals = evaled.new_bindings };
                })
       | NewType { def; _ } ->
           just_value (Type (NewType (inferred_type (pattern_data def).var)))
@@ -1465,10 +1520,7 @@ module rec Impl : Interpreter = struct
                              {
                                self.data with
                                locals =
-                                 update_locals self.data.locals
-                                 @@ StringMap.map
-                                      (fun value -> Value value)
-                                      new_bindings;
+                                 update_locals self.data.locals new_bindings;
                              };
                          }
                        in
@@ -1581,7 +1633,7 @@ module rec Impl : Interpreter = struct
           just_value value
       | Const { value; _ } -> just_value value
       | Binding { binding; _ } -> (
-          match get_local_value_opt self binding.name with
+          match get_local_opt self binding.name with
           | None -> failwith (binding.name ^ " not found wtf, we are compiled")
           | Some value -> just_value value)
       | Number { raw = s; data } ->
@@ -1605,13 +1657,7 @@ module rec Impl : Interpreter = struct
                 data =
                   {
                     self.data with
-                    locals =
-                      update_locals self.data.locals
-                        (StringMap.mapi
-                           (fun _name value ->
-                             Log.trace (_name ^ " = " ^ show value);
-                             Value value)
-                           first.new_bindings);
+                    locals = update_locals self.data.locals first.new_bindings;
                   };
               }
               second
@@ -1634,6 +1680,7 @@ module rec Impl : Interpreter = struct
             | _ -> failwith @@ show template ^ " is not a template"
           in
           let args = (eval_ir self args).value in
+          Log.info @@ "instantiating with " ^ show args;
           (* todo memoization *)
           just_value (f args)
       | Call { f; args; _ } ->
@@ -1693,11 +1740,7 @@ module rec Impl : Interpreter = struct
               data =
                 {
                   self.data with
-                  locals =
-                    update_locals self.data.locals
-                      (StringMap.map
-                         (fun value -> Value value)
-                         cond.new_bindings);
+                  locals = update_locals self.data.locals cond.new_bindings;
                 };
             }
           in
@@ -1742,20 +1785,12 @@ module rec Impl : Interpreter = struct
     | Type t -> t
     | Dict { fields } -> Dict { fields = StringMap.map value_to_type fields }
     | Struct { data; _ } ->
-        Dict
-          {
-            fields =
-              StringMap.map
-                (fun (local : state_local) ->
-                  match local with
-                  | Binding _ -> failwith "binding wtf"
-                  | Value value -> value_to_type value)
-                data.locals;
-          }
+        Dict { fields = StringMap.map value_to_type data.locals }
     | Template f -> Template f
     | Var { id; typ } ->
         ignore @@ inference_unite_types typ Type;
         Var { id }
+    | Binding binding -> Binding binding
     | other -> failwith (show other ^ " is not a type")
 
   and ensure_compiled (f : fn) : compiled_fn =
@@ -1772,7 +1807,7 @@ module rec Impl : Interpreter = struct
                  locals =
                    update_locals f.captured.data.locals
                      (StringMap.map
-                        (fun binding : state_local -> Binding binding)
+                        (fun binding : value -> Binding binding)
                         (pattern_bindings args));
                };
            }
@@ -1821,20 +1856,22 @@ module rec Impl : Interpreter = struct
                 (StringMap.mapi
                    (fun name value ->
                      Log.trace ("called with arg " ^ name ^ " = " ^ show value);
-                     Value value)
+                     value)
                    (pattern_match f.args args));
           };
       }
     in
-    (match (eval_ir captured f.where_clause).value with
-    | Bool true -> ()
-    | Bool false ->
-        Log.error @@ "where clause failed: " ^ show_ir f.where_clause
-        ^ ", args = " ^ show args;
-        failwith "where clause failed"
-    | value ->
-        failwith @@ "where clause evaluated to " ^ show value
-        ^ ", expected a bool");
+    (* TODO reenable
+       (match (eval_ir captured f.where_clause).value with
+       | Bool true -> ()
+       | Bool false ->
+           Log.error @@ "where clause failed: " ^ show_ir f.where_clause
+           ^ ", args = " ^ show args;
+           failwith "where clause failed"
+       | value ->
+           failwith @@ "where clause evaluated to " ^ show value
+           ^ ", expected a bool");
+    *)
     Log.trace
       ("calling " ^ show_ir f.body ^ " with " ^ show args ^ " expecting "
      ^ show_type f.result_type);
@@ -2027,7 +2064,7 @@ module rec Impl : Interpreter = struct
                             locals =
                               update_locals self.data.locals
                                 (pattern_bindings pattern
-                                |> StringMap.map (fun binding : state_local ->
+                                |> StringMap.map (fun binding : value ->
                                        Binding binding));
                           };
                       }
@@ -2254,9 +2291,8 @@ module rec Impl : Interpreter = struct
               {
                 ir = Let { pattern; value; data = NoData } |> init_ir;
                 new_bindings =
-                  StringMap.map
-                    (fun binding : state_local -> Binding binding)
-                    (pattern_bindings pattern);
+                  pattern_bindings pattern
+                  |> StringMap.map (fun binding : value -> Binding binding);
               });
       }
 
@@ -2284,14 +2320,7 @@ module rec Impl : Interpreter = struct
                   |> init_ir
                 in
                 let evaled : evaled = eval_ir self let_ir in
-                Compiled
-                  {
-                    ir = let_ir;
-                    new_bindings =
-                      StringMap.map
-                        (fun value -> Value value)
-                        evaled.new_bindings;
-                  }
+                Compiled { ir = let_ir; new_bindings = evaled.new_bindings }
             | _ -> failwith "let compiled into not a let wtf?");
       }
 
@@ -3042,13 +3071,11 @@ module rec Impl : Interpreter = struct
         data =
           {
             locals =
-              StringMap.map
-                (fun value -> Value value)
-                (StringMap.union
-                   (fun _key _prev value -> Some value)
-                   Builtins.all
-                   (StringMap.singleton "Self" (Struct self : value)
-                     : value StringMap.t));
+              StringMap.union
+                (fun _key _prev value -> Some value)
+                Builtins.all
+                (StringMap.singleton "Self" (Struct self : value)
+                  : value StringMap.t);
             syntax = Syntax.empty;
           };
         contexts = Hashtbl.create 0;
@@ -3075,9 +3102,7 @@ module rec Impl : Interpreter = struct
         data =
           {
             syntax = extend_syntax !self.data.syntax ast;
-            locals =
-              update_locals !self.data.locals
-                (StringMap.map (fun value -> Value value) result.new_bindings);
+            locals = update_locals !self.data.locals result.new_bindings;
           };
       };
     result.value

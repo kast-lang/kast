@@ -32,8 +32,6 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
   and var_data = Root of inference_data | SameAs of var
   and var = { mutable data : var_data; id : Id.t }
 
-  let show_id var = Id.show var.id
-
   let new_var () =
     {
       data = Root { inferred = None; type_var = None; checks = [] };
@@ -48,6 +46,8 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
         let root = get_root_var closer_to_root in
         var.data <- SameAs root;
         root
+
+  let show_id var = Id.show (get_root_var var).id
 
   let get_root_data var =
     match var.data with
