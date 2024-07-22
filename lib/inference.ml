@@ -14,6 +14,7 @@ module type T = sig
   val get_inferred : var -> inferred option
   val get_type : var -> var
   val new_var : unit -> var
+  val new_set_var : inferred -> var
   val make_same : var -> var -> unit
   val set : var -> inferred -> unit
   val add_check : var -> (inferred -> bool) -> unit
@@ -113,4 +114,9 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
     let data = get_root_data root in
     data.checks <- f :: data.checks;
     check_again data
+
+  let new_set_var value =
+    let var = new_var () in
+    set var value;
+    var
 end
