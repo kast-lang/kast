@@ -162,18 +162,21 @@ module rec Impl : Interpreter = struct
   and no_data = NoData
   and ir_data = type_inference_data
   and ir = ir_data ir_node
-  and fn_result_type = Ast of ast | Actual of value_type
+
+  and fn_ast = {
+    where : ast option;
+    args : ast option;
+    returns : ast option;
+    contexts : ast option;
+    body : ast;
+  }
 
   and fn = {
     id : Id.t;
     mutable cached_template_type : fn option;
-    where_clause : ast option;
     captured : state;
-    args_pattern : ast option;
-    result_type : fn_result_type option;
-    contexts : ast option;
+    ast : fn_ast;
     vars : fn_type_vars;
-    body : ast;
     mutable compiled : compiled_fn option;
   }
 
@@ -685,9 +688,11 @@ module rec Impl : Interpreter = struct
                   call_compiled empty_contexts compiled args_type
                 in
                 Log.trace @@ "subbing: " ^ show result_type;
+                (* todo is subbing needed here? *)
                 let result_type = result_type |> substitute_bindings sub in
                 Log.trace @@ "sub result = " ^ show result_type;
                 let args_value = (eval_ir t.captured args).value in
+                (* todo is subbing needed here? *)
                 ignore
                 @@ inference_unite args_value
                      (pattern_to_value_with_binding_values compiled.args
@@ -704,39 +709,7 @@ module rec Impl : Interpreter = struct
       Log.trace @@ "initialized ir: " ^ show_ir result;
       result
     with Failure _ as failure ->
-      (Log.error @@ "  while initializing ir "
-      ^
-      match ir with
-      | Void _ -> "void"
-      | Struct _ -> "struct"
-      | CreateImpl _ -> "create_impl"
-      | GetImpl _ -> "get_impl"
-      | CheckImpl _ -> "check_impl"
-      | Match _ -> "match"
-      | NewType _ -> "new_type"
-      | Scope _ -> "scope"
-      | OneOf _ -> "one_of"
-      | TypeOf _ -> "type_of"
-      | TypeOfValue _ -> "type_of_value"
-      | Dict _ -> "dict"
-      | Unwinding _ -> "unwinding"
-      | WithContext _ -> "with_context"
-      | CurrentContext _ -> "current_context"
-      | Ast _ -> "ast"
-      | Template _ -> "template"
-      | Function _ -> "function"
-      | FieldAccess _ -> "field_access"
-      | Const _ -> "const"
-      | Binding _ -> "binding"
-      | Number _ -> "number"
-      | String _ -> "string"
-      | Discard _ -> "discard"
-      | Then _ -> "then"
-      | Call _ -> "call"
-      | Instantiate _ -> "instantiate"
-      | BuiltinFn _ -> "builtinfn"
-      | If _ -> "if"
-      | Let _ -> "let");
+      Log.error @@ "  while initializing ir " ^ ir_name ir;
       raise failure
 
   and pattern_to_value_with_binding_values (p : pattern) : value =
@@ -826,11 +799,13 @@ module rec Impl : Interpreter = struct
         | Some inferred -> show inferred
         | None -> "<not inferred " ^ MyInference.show_id var ^ ">")
 
-  and show_fn (f : fn) : string =
-    if true then "<...>"
-    else
-      (match f.args_pattern with Some ast -> Ast.show ast | None -> "()")
-      ^ " => " ^ Ast.show f.body
+  and show_fn_ast (f : fn_ast) : string =
+    (match f.args with Some ast -> Ast.show ast | None -> "()")
+    ^ (match f.returns with Some ast -> " -> " ^ Ast.show ast | None -> "")
+    ^ (match f.contexts with Some ast -> " with " ^ Ast.show ast | None -> "")
+    ^ " => " ^ Ast.show f.body
+
+  and show_fn (f : fn) : string = if true then "<...>" else show_fn_ast f.ast
 
   and show_fn_type : fn_type -> string =
    fun { arg_type; contexts; result_type } ->
@@ -891,6 +866,38 @@ module rec Impl : Interpreter = struct
         | Some _ -> failwith "type was inferred as not a type wtf"
         | None -> "<not inferred " ^ MyInference.show_id var ^ ">")
     | MultiSet _ -> failwith "todo show multiset"
+
+  and ir_name : 'a. 'a ir_node -> string = function
+    | Void _ -> "void"
+    | Struct _ -> "struct"
+    | CreateImpl _ -> "create_impl"
+    | GetImpl _ -> "get_impl"
+    | CheckImpl _ -> "check_impl"
+    | Match _ -> "match"
+    | NewType _ -> "new_type"
+    | Scope _ -> "scope"
+    | OneOf _ -> "one_of"
+    | TypeOf _ -> "type_of"
+    | TypeOfValue _ -> "type_of_value"
+    | Dict _ -> "dict"
+    | Unwinding _ -> "unwinding"
+    | WithContext _ -> "with_context"
+    | CurrentContext _ -> "current_context"
+    | Ast _ -> "ast"
+    | Template _ -> "template"
+    | Function _ -> "function"
+    | FieldAccess _ -> "field_access"
+    | Const _ -> "const"
+    | Binding _ -> "binding"
+    | Number _ -> "number"
+    | String _ -> "string"
+    | Discard _ -> "discard"
+    | Then _ -> "then"
+    | Call _ -> "call"
+    | Instantiate _ -> "instantiate"
+    | BuiltinFn _ -> "builtinfn"
+    | If _ -> "if"
+    | Let _ -> "let"
 
   and show_ir_with_data : ('a -> string option) -> 'a ir_node -> string =
    fun show_data ->
@@ -1047,32 +1054,32 @@ module rec Impl : Interpreter = struct
     | None ->
         let t =
           {
-            cached_template_type = None;
             id = Id.gen ();
+            cached_template_type = None;
             vars =
               {
                 arg_type = f.vars.arg_type;
                 contexts = f.vars.contexts;
                 result_type = MyInference.new_var ();
               };
-            args_pattern = f.args_pattern;
-            where_clause = f.where_clause;
-            result_type = None;
-            captured = f.captured;
-            contexts = f.contexts;
-            body =
-              Complex
-                {
-                  def =
+            ast =
+              {
+                f.ast with
+                body =
+                  Complex
                     {
-                      name = "builtin_macro_typeof";
-                      assoc = Left;
-                      priority = 0.0;
-                      parts = [];
+                      def =
+                        {
+                          name = "builtin_macro_typeof";
+                          assoc = Left;
+                          priority = 0.0;
+                          parts = [];
+                        };
+                      values = StringMap.singleton "expr" f.ast.body;
+                      data = Ast.data f.ast.body;
                     };
-                  values = StringMap.singleton "expr" f.body;
-                  data = Ast.data f.body;
-                };
+              };
+            captured = f.captured;
             compiled = None;
           }
         in
@@ -1213,7 +1220,7 @@ module rec Impl : Interpreter = struct
                 fields (Some StringMap.empty)
           | _ -> None)
     with Failure _ as failure ->
-      Log.error @@ "while pattern matching " ^ show value ^ " with "
+      Log.error @@ "  while pattern matching " ^ show value ^ " with "
       ^ show_pattern pattern;
       raise failure
 
@@ -1237,40 +1244,43 @@ module rec Impl : Interpreter = struct
         in
         find_in_scopes self.self
 
-  (* todo remove new_bindings args? *)
-  and compile_ast_to_ir (self : state) (ast : ast) ~(new_bindings : bool) :
-      compiled =
-    match ast with
-    | Nothing _ ->
-        {
-          ir = Void { data = NoData } |> init_ir;
-          new_bindings = StringMap.empty;
-        }
-    | Simple { token; _ } ->
-        {
-          ir =
-            (match token with
-            | Ident ident -> (
-                match get_local_opt self ident with
-                | None ->
-                    log_state Log.Debug self;
-                    failwith (ident ^ " not found in current scope")
-                | Some (Binding binding) ->
-                    Binding { binding; data = NoData } |> init_ir
-                | Some value -> Const { value; data = NoData } |> init_ir)
-            | Number raw -> Number { raw; data = NoData } |> init_ir
-            | String { value; raw } ->
-                String { value; raw; data = NoData } |> init_ir
-            | Punctuation _ -> failwith "punctuation");
-          new_bindings = StringMap.empty;
-        }
-    | Complex { def; values; _ } -> (
-        match expand_macro self def.name values ~new_bindings with
-        | Compiled result -> result
-        | Pattern _ ->
-            Log.error @@ Ast.show ast;
-            failwith "wtf ast was compiled to a pattern but expected compiled")
-    | Syntax { def; value; _ } -> compile_ast_to_ir self value ~new_bindings
+  and compile_ast_to_ir (self : state) (ast : ast) : compiled =
+    try
+      match ast with
+      | Nothing _ ->
+          {
+            ir = Void { data = NoData } |> init_ir;
+            new_bindings = StringMap.empty;
+          }
+      | Simple { token; _ } ->
+          {
+            ir =
+              (match token with
+              | Ident ident -> (
+                  match get_local_opt self ident with
+                  | None ->
+                      log_state Log.Info self;
+                      failwith (ident ^ " not found in current scope")
+                  | Some (Binding binding) ->
+                      Binding { binding; data = NoData } |> init_ir
+                  | Some value -> Const { value; data = NoData } |> init_ir)
+              | Number raw -> Number { raw; data = NoData } |> init_ir
+              | String { value; raw } ->
+                  String { value; raw; data = NoData } |> init_ir
+              | Punctuation _ -> failwith "punctuation");
+            new_bindings = StringMap.empty;
+          }
+      | Complex { def; values; _ } -> (
+          match expand_macro self def.name values ~new_bindings:false with
+          | Compiled result -> result
+          | Pattern _ ->
+              Log.error @@ Ast.show ast;
+              failwith "wtf ast was compiled to a pattern but expected compiled"
+          )
+      | Syntax { def; value; _ } -> compile_ast_to_ir self value
+    with Failure _ as failure ->
+      Log.error @@ "  while compiling to ir: " ^ Ast.name ast;
+      raise failure
 
   and compile_pattern (self : state) (pattern : ast option) : pattern =
     match pattern with
@@ -1311,6 +1321,20 @@ module rec Impl : Interpreter = struct
     | Binding { data; _ }
     | Dict { data; _ } ->
         data
+
+  and substitute_fn_vars (vars : fn_type_vars) (state : state) : fn_type_vars =
+    let sub var =
+      InferVar var
+      (* todo only locals? maybe should check in parents too? *)
+      |> substitute_type_bindings state.data.locals
+      |> (fun t : value -> Type t)
+      |> MyInference.new_set_var
+    in
+    {
+      arg_type = sub vars.arg_type;
+      result_type = sub vars.result_type;
+      contexts = sub vars.contexts;
+    }
 
   and substitute_type_bindings (sub : value StringMap.t) (t : value_type) :
       value_type =
@@ -1415,7 +1439,7 @@ module rec Impl : Interpreter = struct
       expanded_macro =
     match new_bindings with
     | true -> Pattern (compile_pattern self (Some ast))
-    | false -> Compiled (compile_ast_to_ir self ast ~new_bindings)
+    | false -> Compiled (compile_ast_to_ir self ast)
 
   and expand_macro (self : state) (name : string) (values : ast StringMap.t)
       ~(new_bindings : bool) : expanded_macro =
@@ -1429,7 +1453,7 @@ module rec Impl : Interpreter = struct
                 {
                   fields =
                     StringMap.map
-                      (fun arg -> (compile_ast_to_ir self arg ~new_bindings).ir)
+                      (fun arg -> (compile_ast_to_ir self arg).ir)
                       values;
                   data = NoData;
                 }
@@ -1462,7 +1486,7 @@ module rec Impl : Interpreter = struct
         | _ -> failwith (name ^ " is not a macro"))
 
   and eval_ast (self : state) (ast : ast) : evaled =
-    let compiled = compile_ast_to_ir self ast ~new_bindings:false in
+    let compiled = compile_ast_to_ir self ast in
     Log.trace ("compiled: " ^ show_ir compiled.ir);
     eval_ir self compiled.ir
 
@@ -1698,9 +1722,27 @@ module rec Impl : Interpreter = struct
                        fields;
                  })
         | Template { f; _ } ->
-            just_value (Template { f with captured = self; compiled = None })
+            just_value
+              (Template
+                 {
+                   id = Id.gen ();
+                   cached_template_type = None;
+                   ast = f.ast;
+                   vars = substitute_fn_vars f.vars self;
+                   captured = self;
+                   compiled = None;
+                 })
         | Function { f; _ } ->
-            just_value (Function { f with captured = self; compiled = None })
+            just_value
+              (Function
+                 {
+                   id = Id.gen ();
+                   cached_template_type = None;
+                   ast = f.ast;
+                   vars = substitute_fn_vars f.vars self;
+                   captured = self;
+                   compiled = None;
+                 })
         | Ast { def; ast_data; values; _ } ->
             just_value
               (Ast
@@ -1872,7 +1914,7 @@ module rec Impl : Interpreter = struct
         ^ "(expected " ^ show_type result_type ^ ")");
       result
     with Failure _ as failure ->
-      Log.error @@ "  while evaluating " ^ show_ir ir;
+      Log.error @@ "  while evaluating " ^ ir_name ir;
       raise failure
 
   and value_to_type : value -> value_type = function
@@ -1897,13 +1939,10 @@ module rec Impl : Interpreter = struct
 
   and ensure_compiled (f : fn) : compiled_fn =
     if Option.is_none f.compiled then (
-      Log.trace
-        ("compiling "
-        ^ show_or "()" Ast.show f.args_pattern
-        ^ " => " ^ Ast.show f.body);
+      Log.trace ("compiling " ^ show_fn_ast f.ast);
       (try
          f.compiled <-
-           (let args = compile_pattern f.captured f.args_pattern in
+           (let args = compile_pattern f.captured f.ast.args in
             let captured =
               {
                 f.captured with
@@ -1922,34 +1961,26 @@ module rec Impl : Interpreter = struct
               {
                 captured = f.captured;
                 where_clause =
-                  (match f.where_clause with
+                  (match f.ast.where with
                   | None ->
                       Const { value = Bool true; data = NoData } |> init_ir
-                  | Some clause ->
-                      (compile_ast_to_ir captured clause ~new_bindings:false).ir);
+                  | Some clause -> (compile_ast_to_ir captured clause).ir);
                 args;
                 result_type = InferVar f.vars.result_type;
                 result_type_ir =
-                  (match f.result_type with
+                  (match f.ast.returns with
                   | None -> None
-                  | Some (Actual t) ->
-                      Some (Const { value = Type t; data = NoData } |> init_ir)
-                  | Some (Ast ast) ->
-                      Some
-                        (compile_ast_to_ir captured ast ~new_bindings:false).ir);
-                body =
-                  (compile_ast_to_ir captured f.body ~new_bindings:false).ir;
+                  | Some ast -> Some (compile_ast_to_ir captured ast).ir);
+                body = (compile_ast_to_ir captured f.ast.body).ir;
                 contexts =
-                  (match f.contexts with
+                  (match f.ast.contexts with
                   | Some contexts ->
                       value_to_contexts_type
                         (eval_ast f.captured contexts).value
                   | None -> default_contexts_type);
               })
        with Failure _ as failure ->
-         Log.error @@ "while compiling"
-         ^ show_or "()" Ast.show f.args_pattern
-         ^ " => " ^ Ast.show f.body;
+         Log.error @@ "  while compiling " ^ show_fn_ast f.ast;
          raise failure);
       Log.trace @@ "compiled");
     Option.get f.compiled
@@ -2060,8 +2091,8 @@ module rec Impl : Interpreter = struct
                   (Variant { name; value = Some value; data = NoData }
                   |> init_pattern)
             | false ->
-                let f = compile_ast_to_ir self f ~new_bindings in
-                let args = compile_ast_to_ir self args ~new_bindings in
+                let f = compile_ast_to_ir self f in
+                let args = compile_ast_to_ir self args in
                 Compiled
                   {
                     ir =
@@ -2077,13 +2108,9 @@ module rec Impl : Interpreter = struct
         impl =
           (fun self args ~new_bindings ->
             let template =
-              compile_ast_to_ir self
-                (StringMap.find "template" args)
-                ~new_bindings
+              compile_ast_to_ir self (StringMap.find "template" args)
             in
-            let args =
-              compile_ast_to_ir self (StringMap.find "args" args) ~new_bindings
-            in
+            let args = compile_ast_to_ir self (StringMap.find "args" args) in
             Compiled
               {
                 ir =
@@ -2104,9 +2131,7 @@ module rec Impl : Interpreter = struct
         name = "then";
         impl =
           (fun self args ~new_bindings ->
-            let a =
-              compile_ast_to_ir self (StringMap.find "a" args) ~new_bindings
-            in
+            let a = compile_ast_to_ir self (StringMap.find "a" args) in
             let self_with_new_bindings =
               {
                 self with
@@ -2119,8 +2144,7 @@ module rec Impl : Interpreter = struct
             in
             let b =
               match StringMap.find_opt "b" args with
-              | Some b ->
-                  compile_ast_to_ir self_with_new_bindings b ~new_bindings
+              | Some b -> compile_ast_to_ir self_with_new_bindings b
               | None ->
                   {
                     ir = Void { data = NoData } |> init_ir;
@@ -2154,9 +2178,7 @@ module rec Impl : Interpreter = struct
         name = "match";
         impl =
           (fun self args ~new_bindings ->
-            let value =
-              compile_ast_to_ir self (StringMap.find "value" args) ~new_bindings
-            in
+            let value = compile_ast_to_ir self (StringMap.find "value" args) in
             let rec collect_branches (ast : ast) : ir_data match_branch list =
               match ast with
               | Complex { def = { name = "combine_variants"; _ }; values; _ }
@@ -2184,7 +2206,7 @@ module rec Impl : Interpreter = struct
                                        Binding binding));
                           };
                       }
-                      body ~new_bindings:false
+                      body
                   in
                   [ { pattern; body = body.ir } ]
               | _ -> failwith "match syntax wrong"
@@ -2203,9 +2225,7 @@ module rec Impl : Interpreter = struct
         name = "if";
         impl =
           (fun self args ~new_bindings ->
-            let cond =
-              compile_ast_to_ir self (StringMap.find "cond" args) ~new_bindings
-            in
+            let cond = compile_ast_to_ir self (StringMap.find "cond" args) in
             let self_with_new_bindings =
               {
                 self with
@@ -2218,15 +2238,13 @@ module rec Impl : Interpreter = struct
             in
             let then' =
               (compile_ast_to_ir self_with_new_bindings
-                 (StringMap.find "then" args)
-                 ~new_bindings)
+                 (StringMap.find "then" args))
                 .ir
             in
             let else' =
               match StringMap.find_opt "else" args with
               | Some branch ->
-                  (compile_ast_to_ir self_with_new_bindings branch ~new_bindings)
-                    .ir
+                  (compile_ast_to_ir self_with_new_bindings branch).ir
               | None -> Void { data = NoData } |> init_ir
             in
             Compiled
@@ -2310,10 +2328,7 @@ module rec Impl : Interpreter = struct
                   {
                     ir =
                       Scope
-                        {
-                          expr = (compile_ast_to_ir self e ~new_bindings).ir;
-                          data = NoData;
-                        }
+                        { expr = (compile_ast_to_ir self e).ir; data = NoData }
                       |> init_ir;
                     new_bindings = StringMap.empty;
                   });
@@ -2324,14 +2339,11 @@ module rec Impl : Interpreter = struct
         name = "with_context";
         impl =
           (fun self args ~new_bindings ->
+            assert (not new_bindings);
             let new_context =
-              compile_ast_to_ir self
-                (StringMap.find "new_context" args)
-                ~new_bindings
+              compile_ast_to_ir self (StringMap.find "new_context" args)
             in
-            let expr =
-              compile_ast_to_ir self (StringMap.find "expr" args) ~new_bindings
-            in
+            let expr = compile_ast_to_ir self (StringMap.find "expr" args) in
             Compiled
               {
                 ir =
@@ -2351,6 +2363,7 @@ module rec Impl : Interpreter = struct
         name = "comptime";
         impl =
           (fun self args ~new_bindings ->
+            assert (not new_bindings);
             let value = StringMap.find "value" args in
             Compiled
               {
@@ -2366,12 +2379,13 @@ module rec Impl : Interpreter = struct
         name = "quote";
         impl =
           (fun self args ~new_bindings ->
+            (* todo compile into pattern too *)
             let rec impl : ast -> ir = function
               | Complex
                   { def = { name = "builtin_macro_unquote"; _ }; values; _ } ->
                   let inner = StringMap.find "expr" values in
                   Log.trace ("unquoting" ^ Ast.show inner);
-                  (compile_ast_to_ir self inner ~new_bindings).ir
+                  (compile_ast_to_ir self inner).ir
               | Nothing data ->
                   Const { value = Ast (Nothing data); data = NoData } |> init_ir
               | Simple token ->
@@ -2402,7 +2416,7 @@ module rec Impl : Interpreter = struct
             let pattern = StringMap.find "pattern" args in
             let pattern = compile_pattern self (Some pattern) in
             let value = StringMap.find "value" args in
-            let value = (compile_ast_to_ir self value ~new_bindings).ir in
+            let value = (compile_ast_to_ir self value).ir in
             Compiled
               {
                 ir = Let { pattern; value; data = NoData } |> init_ir;
@@ -2445,9 +2459,16 @@ module rec Impl : Interpreter = struct
         name = "template_def";
         impl =
           (fun self args ~new_bindings ->
-            let where = StringMap.find_opt "where" args in
-            let def = StringMap.find "def" args in
-            let args = StringMap.find "args" args in
+            assert (not new_bindings);
+            let fn_ast : fn_ast =
+              {
+                args = Some (StringMap.find "args" args);
+                returns = StringMap.find_opt "returns" args;
+                where = StringMap.find_opt "where" args;
+                body = StringMap.find "body" args;
+                contexts = None;
+              }
+            in
             Compiled
               {
                 ir =
@@ -2455,15 +2476,11 @@ module rec Impl : Interpreter = struct
                     {
                       f =
                         {
+                          captured = self;
+                          ast = fn_ast;
                           cached_template_type = None;
                           id = Id.gen ();
                           vars = new_fn_type_vars ();
-                          captured = self;
-                          where_clause = where;
-                          result_type = None;
-                          args_pattern = Some args;
-                          body = def;
-                          contexts = None;
                           compiled = None;
                         };
                       data = NoData;
@@ -2478,11 +2495,15 @@ module rec Impl : Interpreter = struct
         name = "function_def";
         impl =
           (fun self args ~new_bindings ->
-            let args_pattern = StringMap.find_opt "args" args in
-            let where = StringMap.find_opt "where" args in
-            let result_type = StringMap.find_opt "result_type" args in
-            let contexts = StringMap.find_opt "contexts" args in
-            let body = StringMap.find "body" args in
+            let fn_ast : fn_ast =
+              {
+                args = StringMap.find_opt "args" args;
+                returns = StringMap.find_opt "returns" args;
+                where = StringMap.find_opt "where" args;
+                body = StringMap.find "body" args;
+                contexts = StringMap.find_opt "contexts" args;
+              }
+            in
             Compiled
               {
                 ir =
@@ -2490,18 +2511,11 @@ module rec Impl : Interpreter = struct
                     {
                       f =
                         {
+                          ast = fn_ast;
                           id = Id.gen ();
                           cached_template_type = None;
                           vars = new_fn_type_vars ();
-                          where_clause = where;
-                          result_type =
-                            Option.map
-                              (fun t : fn_result_type -> Ast t)
-                              result_type;
                           captured = self;
-                          args_pattern;
-                          contexts;
-                          body;
                           compiled = None;
                         };
                       data = NoData;
@@ -2516,15 +2530,16 @@ module rec Impl : Interpreter = struct
         name = "field_access";
         impl =
           (fun self args ~new_bindings ->
+            (* todo compile to pattern *)
             let obj = StringMap.find "obj" args in
-            let obj = (compile_ast_to_ir self obj ~new_bindings).ir in
+            let obj = (compile_ast_to_ir self obj).ir in
             let field = StringMap.find "field" args in
             let default_value = StringMap.find_opt "default_value" args in
             let default_value =
               Option.map
                 (fun ast ->
                   Log.trace ("default = " ^ Ast.show ast);
-                  (compile_ast_to_ir self ast ~new_bindings).ir)
+                  (compile_ast_to_ir self ast).ir)
                 default_value
             in
             match field with
@@ -2570,9 +2585,7 @@ module rec Impl : Interpreter = struct
                          {
                            fields =
                              StringMap.singleton name
-                               (compile_ast_to_ir self value ~new_bindings
-                                 : compiled)
-                                 .ir;
+                               (compile_ast_to_ir self value : compiled).ir;
                            data = NoData;
                          }
                         : _ ir_node)
@@ -2606,6 +2619,7 @@ module rec Impl : Interpreter = struct
         name = "typeof";
         impl =
           (fun self args ~new_bindings ->
+            (* todo compile to pattern? maybe? *)
             let expr = StringMap.find "expr" args in
             Compiled
               {
@@ -2613,7 +2627,7 @@ module rec Impl : Interpreter = struct
                   TypeOf
                     {
                       captured = self;
-                      expr = (compile_ast_to_ir self expr ~new_bindings).ir;
+                      expr = (compile_ast_to_ir self expr).ir;
                       data = NoData;
                     }
                   |> init_ir;
@@ -2627,6 +2641,7 @@ module rec Impl : Interpreter = struct
         name = "typeofvalue";
         impl =
           (fun self args ~new_bindings ->
+            (* todo pattern? *)
             let expr = StringMap.find "expr" args in
             Compiled
               {
@@ -2634,7 +2649,7 @@ module rec Impl : Interpreter = struct
                   TypeOfValue
                     {
                       captured = self;
-                      expr = (compile_ast_to_ir self expr ~new_bindings).ir;
+                      expr = (compile_ast_to_ir self expr).ir;
                       data = NoData;
                     }
                   |> init_ir;
@@ -2814,7 +2829,7 @@ module rec Impl : Interpreter = struct
           | Dict { fields } ->
               let a = get_type (StringMap.find "a" fields) in
               let b = get_type (StringMap.find "b" fields) in
-              let result = a = b in
+              let result = type_id a = type_id b in
               Log.trace
                 ("is_same_type " ^ show_type a ^ ", " ^ show_type b ^ " = "
                ^ Bool.to_string result);
@@ -2827,15 +2842,13 @@ module rec Impl : Interpreter = struct
         name = "unwinding";
         impl =
           (fun self args ~new_bindings ->
+            assert (not new_bindings);
             let def = StringMap.find "def" args in
             Compiled
               {
                 ir =
                   Unwinding
-                    {
-                      f = (compile_ast_to_ir self def ~new_bindings).ir;
-                      data = NoData;
-                    }
+                    { f = (compile_ast_to_ir self def).ir; data = NoData }
                   |> init_ir;
                 new_bindings = StringMap.empty;
               });
@@ -2899,7 +2912,7 @@ module rec Impl : Interpreter = struct
             else
               let typ =
                 Option.map
-                  (fun typ -> (compile_ast_to_ir self typ ~new_bindings).ir)
+                  (fun typ -> (compile_ast_to_ir self typ).ir)
                   (StringMap.find_opt "type" args)
               in
               Compiled
@@ -2921,9 +2934,7 @@ module rec Impl : Interpreter = struct
             | false ->
                 let get name : ir option StringMap.t =
                   let ir =
-                    (compile_ast_to_ir self (StringMap.find name args)
-                       ~new_bindings)
-                      .ir
+                    (compile_ast_to_ir self (StringMap.find name args)).ir
                   in
                   match ir with
                   | OneOf { variants; _ } -> variants
@@ -2950,6 +2961,7 @@ module rec Impl : Interpreter = struct
         name = "create_impl";
         impl =
           (fun self args ~new_bindings ->
+            assert (not new_bindings);
             let value = StringMap.find "value" args in
             let trait = StringMap.find "trait" args in
             let impl = StringMap.find "impl" args in
@@ -2959,9 +2971,9 @@ module rec Impl : Interpreter = struct
                   CreateImpl
                     {
                       captured = self;
-                      value = (compile_ast_to_ir self value ~new_bindings).ir;
-                      trait = (compile_ast_to_ir self trait ~new_bindings).ir;
-                      impl = (compile_ast_to_ir self impl ~new_bindings).ir;
+                      value = (compile_ast_to_ir self value).ir;
+                      trait = (compile_ast_to_ir self trait).ir;
+                      impl = (compile_ast_to_ir self impl).ir;
                       data = NoData;
                     }
                   |> init_ir;
@@ -2982,8 +2994,8 @@ module rec Impl : Interpreter = struct
                   GetImpl
                     {
                       captured = self;
-                      value = (compile_ast_to_ir self value ~new_bindings).ir;
-                      trait = (compile_ast_to_ir self trait ~new_bindings).ir;
+                      value = (compile_ast_to_ir self value).ir;
+                      trait = (compile_ast_to_ir self trait).ir;
                       data = NoData;
                     }
                   |> init_ir;
@@ -2996,6 +3008,7 @@ module rec Impl : Interpreter = struct
         name = "check_impl";
         impl =
           (fun self args ~new_bindings ->
+            assert (not new_bindings);
             let value = StringMap.find "value" args in
             let trait = StringMap.find "trait" args in
             Compiled
@@ -3004,8 +3017,8 @@ module rec Impl : Interpreter = struct
                   CheckImpl
                     {
                       captured = self;
-                      value = (compile_ast_to_ir self value ~new_bindings).ir;
-                      trait = (compile_ast_to_ir self trait ~new_bindings).ir;
+                      value = (compile_ast_to_ir self value).ir;
+                      trait = (compile_ast_to_ir self trait).ir;
                       data = NoData;
                     }
                   |> init_ir;
@@ -3013,13 +3026,29 @@ module rec Impl : Interpreter = struct
               });
       }
 
+    let make_void : builtin_macro =
+      {
+        name = "make_void";
+        impl =
+          (fun _self _args ~new_bindings ->
+            match new_bindings with
+            | true -> Pattern (Void { data = NoData } |> init_pattern)
+            | false ->
+                Compiled
+                  {
+                    ir = Void { data = NoData } |> init_ir;
+                    new_bindings = StringMap.empty;
+                  });
+      }
+
     let struct_def : builtin_macro =
       {
         name = "struct_def";
         impl =
           (fun self args ~new_bindings ->
+            assert (not new_bindings);
             let body = StringMap.find "body" args in
-            let body = (compile_ast_to_ir self body ~new_bindings).ir in
+            let body = (compile_ast_to_ir self body).ir in
             Compiled
               {
                 ir = Struct { body; data = NoData } |> init_ir;
@@ -3065,6 +3094,7 @@ module rec Impl : Interpreter = struct
 
     let builtin_macros : builtin_macro list =
       [
+        make_void;
         struct_def;
         create_impl;
         get_impl;
@@ -3119,7 +3149,6 @@ module rec Impl : Interpreter = struct
           name = "type_of_value";
           impl = (fun x -> Type (type_of_value ~ensure:true x));
         };
-        { name = "unit"; impl = (fun _ -> Void) };
         single_arg_fn "macro"
           (* todo { _anyfield: ast } -> ast #  (Fn { arg_type = Ast; result_type = Ast }) *)
           "def" macro;

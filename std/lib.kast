@@ -3,8 +3,8 @@
 syntax builtin_macro_then <- 0 = a ";" b;
 syntax builtin_macro_then <- 0 = a ";";
 
-syntax break_impl <- 2 = "break" value;
-syntax break_impl <- 2 = "break";
+syntax break_with_value <- 2 = "break" value;
+syntax break_without_value <- 2 = "break";
 syntax continue_impl <- 2 = "continue";
 
 syntax builtin_macro_create_impl <- 3 = "impl" trait "for" value "as" impl;
@@ -30,8 +30,8 @@ syntax builtin_fn_function_type -> 7.5 = arg "->" result "incontext" contexts;
 syntax builtin_macro_single_variant -> 8 = name "of" type;
 syntax builtin_macro_single_variant -> 8 = name "ofnone";
 
-syntax builtin_macro_template_def <- 9 = "forall" args "." def;
-syntax builtin_macro_template_def <- 9 = "forall" args "where" where "." def;
+syntax builtin_macro_template_def <- 9 = "forall" args "." body;
+syntax builtin_macro_template_def <- 9 = "forall" args "where" where "." body;
 
 syntax builtin_macro_tuple <- 11 = a "," b;
 syntax builtin_macro_tuple <- 11 = a ",";
@@ -99,7 +99,7 @@ syntax builtin_macro_function_def <- 100000 = "(" ")" "{" body "}";
 syntax builtin_macro_function_def <- 100000 = "{" body "}";
 
 syntax builtin_macro_scope <- 100000 = "(" e ")";
-syntax builtin_fn_unit <- 100000 = "(" ")";
+syntax builtin_macro_make_void <- 100000 = "(" ")";
 syntax builtin_macro_placeholder <- 100000 = "_";
 
 let Option = forall (T :: type). (Some of T | None ofnone);
@@ -117,6 +117,7 @@ const pipe = macro ~f, ~args => `((
     $f $args
 ));
 
+let input :: void -> string = () => builtin_fn_input ();
 let print :: string -> void = s => builtin_fn_print s;
 
 let loop_context :: type = (
@@ -154,9 +155,8 @@ let continue_impl = macro (args :: any) => (
     `(do_continue ())
 );
 
-let break_impl = macro (~value :: ast) => (
-    `(do_break $value)
-);
+let break_without_value = macro _ => `(do_break void);
+let break_with_value = macro ~value => `(do_break $value);
 
 let throws = forall (error :: type). (throw: (error -> never));
 let throw = forall (error :: type). (
@@ -235,6 +235,8 @@ impl TypeName for string as (
 let type_name = forall (T :: type) where (T impl TypeName). (
     (T as TypeName).name
 );
+
+let @"op binary ==" :: (lhs: int32, rhs: int32) -> bool = args => @"builtin_fn_==" args;
 
 let @"op binary +" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary +" args;
 let @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary -" args;

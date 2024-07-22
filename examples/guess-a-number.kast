@@ -1,5 +1,5 @@
-let run_once = fn (first :: bool) {
-    let picked = random[int32] (min: 1, max: 10);
+let run_once = fn (first) {
+    let picked :: int32 = random (min: 1, max: 10);
     print (
         if first then
             "a number has been picked"
@@ -8,7 +8,7 @@ let run_once = fn (first :: bool) {
     );
     print "guess:";
     loop {
-        let guessed = input() |> parse[int32];
+        let guessed = input() |> parse;
         if guessed == picked then (
             break
         ) else (

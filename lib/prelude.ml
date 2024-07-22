@@ -53,6 +53,11 @@ let head (list : 'a list) : 'a option =
 module StringMap = struct
   include Map.Make (String)
 
+  let find s map =
+    match find_opt s map with
+    | Some value -> value
+    | None -> failwith @@ s ^ " not found in map"
+
   let match_map : 'a 'b 'c. (string -> 'a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t =
    fun f a b ->
     a

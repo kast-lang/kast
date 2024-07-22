@@ -9,6 +9,11 @@ type 'a node =
   | Complex of { def : syntax_def; values : 'a node StringMap.t; data : 'a }
   | Syntax of { def : syntax_def; value : 'a node; data : 'a }
 
+let name : 'a. 'a node -> string = function
+  | Nothing _ -> "<nothin>"
+  | Simple { token; _ } -> "token " ^ Lexer.show token
+  | Complex { def; _ } | Syntax { def; _ } -> def.name
+
 let rec map : 'a 'b. ('a -> 'b) -> 'a node -> 'b node =
  fun f node ->
   match node with
