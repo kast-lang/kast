@@ -8,5 +8,8 @@ run *ARGS:
     rlwrap _build/default/bin/main.exe {{ARGS}}
     # dune exec playground -- {{ARGS}}
 
+serve:
+    cd website && zola serve
+
 dune:
     dune build -w
