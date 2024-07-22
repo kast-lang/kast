@@ -146,8 +146,8 @@ module rec Impl : Interpreter = struct
     | Discard of { value : ir; data : 'data }
     | Then of { first : ir; second : ir; data : 'data }
     | Call of { f : ir; args : ir; data : 'data }
-    (* todo remove? *)
     | Instantiate of {
+        (* todo remove? *)
         captured : state;
         template : ir;
         args : ir;
@@ -466,216 +466,278 @@ module rec Impl : Interpreter = struct
 
   and init_ir (ir : no_data ir_node) : ir =
     (* Log.trace @@ "initializing ir: " ^ show_ir_with_data (fun _ -> None) ir; *)
-    let known value =
-      let type_var = MyInference.new_var () in
-      MyInference.set type_var value;
-      { type_var }
-    in
-    let known_type t = known (Type t : value) in
-    let unknown () = { type_var = MyInference.new_var () } in
-    let same_as other = { type_var = (ir_data other).type_var } in
-    let result : ir =
-      match ir with
-      | Void { data = NoData } -> Void { data = known_type Void }
-      | Const { value; data = NoData } ->
-          Const
-            { value; data = known_type @@ type_of_value ~ensure:false value }
-      | Struct { body; data = NoData } -> Struct { body; data = same_as body }
-      | CreateImpl
-          { captured; value = value_ir; trait = trait_ir; impl; data = NoData }
-        ->
-          let trait = (eval_ir captured trait_ir).value in
-          let value = (eval_ir captured value_ir).value in
-          (match trait with
-          | Type t -> set_ir_type impl @@ t
-          | Template t ->
-              let result =
-                call_compiled empty_contexts (ensure_compiled t) value
-                |> value_to_type
-              in
-              set_ir_type impl result
-          | _ ->
-              Log.error @@ show trait ^ " can not be treated as trait";
-              failwith "not a trait");
-          CreateImpl
+    try
+      let known value =
+        let type_var = MyInference.new_var () in
+        MyInference.set type_var value;
+        { type_var }
+      in
+      let known_type t = known (Type t : value) in
+      let unknown () = { type_var = MyInference.new_var () } in
+      let same_as other = { type_var = (ir_data other).type_var } in
+      let result : ir =
+        match ir with
+        | Void { data = NoData } -> Void { data = known_type Void }
+        | Const { value; data = NoData } ->
+            Const
+              { value; data = known_type @@ type_of_value ~ensure:false value }
+        | Struct { body; data = NoData } -> Struct { body; data = same_as body }
+        | CreateImpl
             {
               captured;
               value = value_ir;
               trait = trait_ir;
               impl;
-              data = known_type Void;
-            }
-      | GetImpl { captured; value = value_ir; trait = trait_ir; data = NoData }
-        -> (
-          let trait = (eval_ir captured trait_ir).value in
-          Log.trace @@ "trait = " ^ show trait;
-          match trait with
-          | Type t ->
-              GetImpl
-                {
-                  captured;
-                  value = value_ir;
-                  trait = trait_ir;
-                  data = known_type t;
-                }
-          | Template t ->
-              let value = (eval_ir captured value_ir).value in
-              let t =
-                call_compiled empty_contexts (ensure_compiled t) value
-                |> value_to_type
-              in
-              Log.trace @@ show_type t;
-              GetImpl
-                {
-                  captured;
-                  value = value_ir;
-                  trait = trait_ir;
-                  data = known_type t;
-                }
-          | _ ->
-              Log.error @@ show trait ^ " can not be treated as trait";
-              failwith "not a trait"
-          (* set_ir_type ty Type; *))
-      | CheckImpl { captured; value; trait = trait_ir; data = NoData } ->
-          (* let trait = eval_ir captured trait_ir in *)
-          CheckImpl
-            { captured; value; trait = trait_ir; data = known_type Bool }
-      | Match { value; branches; data = NoData } ->
-          let value_var = (ir_data value).type_var in
-          let result_type_var = MyInference.new_var () in
-          List.iter
-            (fun { pattern; body } ->
-              MyInference.make_same result_type_var (ir_data body).type_var;
-              MyInference.make_same value_var (pattern_data pattern).type_var)
-            branches;
-          Match { value; branches; data = { type_var = result_type_var } }
-      | NewType { def; data = NoData } ->
-          set_pattern_type def Type;
-          NewType { def; data = known_type Type }
-      | Scope { expr; data = NoData } -> Scope { expr; data = same_as expr }
-      | Number { raw; data = NoData } -> Number { raw; data = unknown () }
-      | String { data = NoData; raw; value } ->
-          String { raw; value; data = known_type String }
-      | TypeOf { data = NoData; captured; expr } ->
-          TypeOf { data = known_type Type; captured; expr }
-      | TypeOfValue { data = NoData; captured; expr } ->
-          TypeOfValue { data = known_type Type; captured; expr }
-      | OneOf { data = NoData; variants } ->
-          OneOf { data = known_type Type; variants }
-      | Let { data = NoData; pattern; value } ->
-          MyInference.make_same (pattern_data pattern).type_var
-            (ir_data value).type_var;
-          Let { data = known_type Void; pattern; value }
-      | Discard { data = NoData; value } ->
-          Discard { data = known_type Void; value }
-      | If { data = NoData; cond; then_case; else_case } ->
-          set_ir_type cond Bool;
-          MyInference.make_same (ir_data then_case).type_var
-            (ir_data else_case).type_var;
-          If { data = same_as else_case; cond; then_case; else_case }
-      | Ast { data = NoData; def; ast_data; values } ->
-          values |> StringMap.iter (fun _name value -> set_ir_type value Ast);
-          Ast { data = known_type Ast; def; ast_data; values }
-      | Dict { data = NoData; fields } ->
-          Dict
-            {
-              data =
-                known_type
-                @@ Dict
-                     {
-                       fields =
-                         fields |> StringMap.map (fun field -> ir_type field);
-                     };
-              fields;
-            }
-      | Unwinding { data = NoData; f } ->
-          let f_type = new_fn_type_vars () in
-          MyInference.set f_type.arg_type (Type UnwindToken : value);
-          set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-          Unwinding { data = { type_var = f_type.result_type }; f }
-      | Call { data = NoData; f; args } ->
-          let f_type = new_fn_type_vars () in
-          MyInference.make_same f_type.arg_type (ir_data args).type_var;
-          set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-          Call { data = { type_var = f_type.result_type }; f; args }
-      | Then { data = NoData; first; second } ->
-          set_ir_type first Void;
-          Then { data = same_as second; first; second }
-      | Binding { data = NoData; binding } ->
-          Binding { data = { type_var = binding.value_type }; binding }
-      | Function { data = NoData; f } ->
-          Function { data = known_type @@ Fn (fn_type_vars_to_type f.vars); f }
-      | Template { data = NoData; f } ->
-          Template
-            { data = known_type @@ Template (template_to_template_type f); f }
-      | WithContext { data = NoData; new_context; expr } ->
-          WithContext { data = same_as expr; new_context; expr }
-      | CurrentContext { data = NoData; context_type } ->
-          CurrentContext { data = known_type context_type; context_type }
-      | FieldAccess { data = NoData; obj; name; default_value } ->
-          let field_type_var = MyInference.new_var () in
-          MyInference.add_check (ir_data obj).type_var (fun value ->
-              Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
-              match get_field_opt value name with
-              | None -> failwith @@ "inferred type doesnt have field " ^ name
-              | Some field ->
-                  MyInference.set field_type_var field;
-                  true);
-          (* todo
-             Inference.expand_dict obj.var name?
-          *)
-          (match default_value with
-          | Some default ->
-              MyInference.make_same field_type_var (ir_data default).type_var
-          | None -> ());
-          FieldAccess
-            { data = { type_var = field_type_var }; obj; name; default_value }
-      | BuiltinFn { data = NoData; f } ->
-          BuiltinFn
-            {
-              (* because multitarget *)
-              data =
-                known_type @@ Fn (new_fn_type_vars () |> fn_type_vars_to_type);
-              f;
-            }
-      | Instantiate { data = NoData; captured; template; args } -> (
-          match (eval_ir captured template).value with
-          | Template t ->
-              let tt = template_to_template_type t in
-              let compiled = ensure_compiled tt in
-              let sub =
-                pattern_bindings compiled.args
-                |> StringMap.map (fun _ : value ->
-                       InferVar (MyInference.new_var ()))
-              in
-              let args_type : value =
-                InferVar (pattern_data compiled.args).type_var
-              in
-              Log.trace @@ show_pattern compiled.args ^ " initialized as "
-              ^ show args_type;
-              MyInference.set (ir_data args).type_var args_type;
-              let result_type =
-                call_compiled empty_contexts compiled args_type
-              in
-              Log.trace @@ "subbing: " ^ show result_type;
-              let result_type = result_type |> substitute_bindings sub in
-              Log.trace @@ "sub result = " ^ show result_type;
-              let args_value = (eval_ir captured args).value in
-              ignore
-              @@ inference_unite args_value
-                   (pattern_to_value_with_binding_values compiled.args
-                   |> substitute_bindings sub);
-              Instantiate
-                {
-                  data = known_type @@ value_to_type result_type;
-                  captured;
-                  template;
-                  args;
-                }
-          | other -> failwith @@ show other ^ " is not a template")
-    in
-    Log.trace @@ "initialized ir: " ^ show_ir result;
-    result
+              data = NoData;
+            } ->
+            let trait = (eval_ir captured trait_ir).value in
+            let value = (eval_ir captured value_ir).value in
+            (match trait with
+            | Type t -> set_ir_type impl @@ t
+            | Template t ->
+                let result =
+                  call_compiled empty_contexts (ensure_compiled t) value
+                  |> value_to_type
+                in
+                set_ir_type impl result
+            | _ ->
+                Log.error @@ show trait ^ " can not be treated as trait";
+                failwith "not a trait");
+            CreateImpl
+              {
+                captured;
+                value = value_ir;
+                trait = trait_ir;
+                impl;
+                data = known_type Void;
+              }
+        | GetImpl
+            { captured; value = value_ir; trait = trait_ir; data = NoData } -> (
+            let trait = (eval_ir captured trait_ir).value in
+            Log.trace @@ "trait = " ^ show trait;
+            match trait with
+            | Type t ->
+                GetImpl
+                  {
+                    captured;
+                    value = value_ir;
+                    trait = trait_ir;
+                    data = known_type t;
+                  }
+            | Template t ->
+                let value = (eval_ir captured value_ir).value in
+                let t =
+                  call_compiled empty_contexts (ensure_compiled t) value
+                  |> value_to_type
+                in
+                Log.trace @@ show_type t;
+                GetImpl
+                  {
+                    captured;
+                    value = value_ir;
+                    trait = trait_ir;
+                    data = known_type t;
+                  }
+            | _ ->
+                Log.error @@ show trait ^ " can not be treated as trait";
+                failwith "not a trait"
+            (* set_ir_type ty Type; *))
+        | CheckImpl { captured; value; trait = trait_ir; data = NoData } ->
+            (* let trait = eval_ir captured trait_ir in *)
+            CheckImpl
+              { captured; value; trait = trait_ir; data = known_type Bool }
+        | Match { value; branches; data = NoData } ->
+            let value_var = (ir_data value).type_var in
+            let result_type_var = MyInference.new_var () in
+            List.iter
+              (fun { pattern; body } ->
+                MyInference.make_same result_type_var (ir_data body).type_var;
+                MyInference.make_same value_var (pattern_data pattern).type_var)
+              branches;
+            Match { value; branches; data = { type_var = result_type_var } }
+        | NewType { def; data = NoData } ->
+            set_pattern_type def Type;
+            NewType { def; data = known_type Type }
+        | Scope { expr; data = NoData } -> Scope { expr; data = same_as expr }
+        | Number { raw; data = NoData } -> Number { raw; data = unknown () }
+        | String { data = NoData; raw; value } ->
+            String { raw; value; data = known_type String }
+        | TypeOf { data = NoData; captured; expr } ->
+            TypeOf { data = known_type Type; captured; expr }
+        | TypeOfValue { data = NoData; captured; expr } ->
+            TypeOfValue { data = known_type Type; captured; expr }
+        | OneOf { data = NoData; variants } ->
+            OneOf { data = known_type Type; variants }
+        | Let { data = NoData; pattern; value } ->
+            MyInference.make_same (pattern_data pattern).type_var
+              (ir_data value).type_var;
+            Let { data = known_type Void; pattern; value }
+        | Discard { data = NoData; value } ->
+            Discard { data = known_type Void; value }
+        | If { data = NoData; cond; then_case; else_case } ->
+            set_ir_type cond Bool;
+            MyInference.make_same (ir_data then_case).type_var
+              (ir_data else_case).type_var;
+            If { data = same_as else_case; cond; then_case; else_case }
+        | Ast { data = NoData; def; ast_data; values } ->
+            values |> StringMap.iter (fun _name value -> set_ir_type value Ast);
+            Ast { data = known_type Ast; def; ast_data; values }
+        | Dict { data = NoData; fields } ->
+            Dict
+              {
+                data =
+                  known_type
+                  @@ Dict
+                       {
+                         fields =
+                           fields |> StringMap.map (fun field -> ir_type field);
+                       };
+                fields;
+              }
+        | Unwinding { data = NoData; f } ->
+            let f_type = new_fn_type_vars () in
+            MyInference.set f_type.arg_type (Type UnwindToken : value);
+            set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
+            Unwinding { data = { type_var = f_type.result_type }; f }
+        | Call { data = NoData; f; args } -> (
+            match (ir_data f).type_var |> MyInference.get_inferred with
+            | Some (Type (Template t) : value) ->
+                let instantiated =
+                  Instantiate
+                    {
+                      data = NoData;
+                      captured = t.captured;
+                      template = f;
+                      args =
+                        Const
+                          {
+                            data = NoData;
+                            value = InferVar (MyInference.new_var ());
+                          }
+                        |> init_ir;
+                    }
+                  |> init_ir
+                in
+                Call { data = NoData; f = instantiated; args } |> init_ir
+            | _ ->
+                let f_type = new_fn_type_vars () in
+                MyInference.make_same f_type.arg_type (ir_data args).type_var;
+                set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
+                Call { data = { type_var = f_type.result_type }; f; args })
+        | Then { data = NoData; first; second } ->
+            set_ir_type first Void;
+            Then { data = same_as second; first; second }
+        | Binding { data = NoData; binding } ->
+            Binding { data = { type_var = binding.value_type }; binding }
+        | Function { data = NoData; f } ->
+            Function
+              { data = known_type @@ Fn (fn_type_vars_to_type f.vars); f }
+        | Template { data = NoData; f } ->
+            Template
+              { data = known_type @@ Template (template_to_template_type f); f }
+        | WithContext { data = NoData; new_context; expr } ->
+            WithContext { data = same_as expr; new_context; expr }
+        | CurrentContext { data = NoData; context_type } ->
+            CurrentContext { data = known_type context_type; context_type }
+        | FieldAccess { data = NoData; obj; name; default_value } ->
+            let field_type_var = MyInference.new_var () in
+            MyInference.add_check (ir_data obj).type_var (fun value ->
+                Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
+                match get_field_opt value name with
+                | None -> failwith @@ "inferred type doesnt have field " ^ name
+                | Some field ->
+                    MyInference.set field_type_var field;
+                    true);
+            (* todo
+               Inference.expand_dict obj.var name?
+            *)
+            (match default_value with
+            | Some default ->
+                MyInference.make_same field_type_var (ir_data default).type_var
+            | None -> ());
+            FieldAccess
+              { data = { type_var = field_type_var }; obj; name; default_value }
+        | BuiltinFn { data = NoData; f } ->
+            BuiltinFn
+              {
+                (* because multitarget *)
+                data =
+                  known_type @@ Fn (new_fn_type_vars () |> fn_type_vars_to_type);
+                f;
+              }
+        | Instantiate { data = NoData; captured; template; args } -> (
+            match (eval_ir captured template).value with
+            | Template t ->
+                let tt = template_to_template_type t in
+                let compiled = ensure_compiled tt in
+                let sub =
+                  pattern_bindings compiled.args
+                  |> StringMap.map (fun _ : value ->
+                         InferVar (MyInference.new_var ()))
+                in
+                let args_type : value =
+                  InferVar (pattern_data compiled.args).type_var
+                in
+                Log.trace @@ show_pattern compiled.args ^ " initialized as "
+                ^ show args_type;
+                MyInference.set (ir_data args).type_var args_type;
+                let result_type =
+                  call_compiled empty_contexts compiled args_type
+                in
+                Log.trace @@ "subbing: " ^ show result_type;
+                let result_type = result_type |> substitute_bindings sub in
+                Log.trace @@ "sub result = " ^ show result_type;
+                let args_value = (eval_ir t.captured args).value in
+                ignore
+                @@ inference_unite args_value
+                     (pattern_to_value_with_binding_values compiled.args
+                     |> substitute_bindings sub);
+                Instantiate
+                  {
+                    data = known_type @@ value_to_type result_type;
+                    captured = t.captured;
+                    template;
+                    args;
+                  }
+            | other -> failwith @@ show other ^ " is not a template")
+      in
+      Log.trace @@ "initialized ir: " ^ show_ir result;
+      result
+    with Failure _ as failure ->
+      (Log.error @@ "  while initializing ir "
+      ^
+      match ir with
+      | Void _ -> "void"
+      | Struct _ -> "struct"
+      | CreateImpl _ -> "create_impl"
+      | GetImpl _ -> "get_impl"
+      | CheckImpl _ -> "check_impl"
+      | Match _ -> "match"
+      | NewType _ -> "new_type"
+      | Scope _ -> "scope"
+      | OneOf _ -> "one_of"
+      | TypeOf _ -> "type_of"
+      | TypeOfValue _ -> "type_of_value"
+      | Dict _ -> "dict"
+      | Unwinding _ -> "unwinding"
+      | WithContext _ -> "with_context"
+      | CurrentContext _ -> "current_context"
+      | Ast _ -> "ast"
+      | Template _ -> "template"
+      | Function _ -> "function"
+      | FieldAccess _ -> "field_access"
+      | Const _ -> "const"
+      | Binding _ -> "binding"
+      | Number _ -> "number"
+      | String _ -> "string"
+      | Discard _ -> "discard"
+      | Then _ -> "then"
+      | Call _ -> "call"
+      | Instantiate _ -> "instantiate"
+      | BuiltinFn _ -> "builtinfn"
+      | If _ -> "if"
+      | Let _ -> "let");
+      raise failure
 
   and pattern_to_value_with_binding_values (p : pattern) : value =
     match p with
@@ -1276,16 +1338,21 @@ module rec Impl : Interpreter = struct
             result_type = result_type |> substitute_type_bindings sub;
             contexts;
           }
-    | Macro _ -> failwith @@ "todo substitute_type " ^ show_type t
-    | Template _ -> failwith @@ "todo substitute_type " ^ show_type t
-    | BuiltinMacro -> failwith @@ "todo substitute_type " ^ show_type t
-    | Dict _ -> failwith @@ "todo substitute_type " ^ show_type t
-    | NewType _ -> failwith @@ "todo substitute_type " ^ show_type t
-    | OneOf _ -> failwith @@ "todo substitute_type " ^ show_type t
-    | Union _ -> failwith @@ "todo substitute_type " ^ show_type t
-    | Type -> failwith @@ "todo substitute_type " ^ show_type t
-    | InferVar _ -> failwith @@ "todo substitute_type " ^ show_type t
-    | MultiSet _ -> failwith @@ "todo substitute_type " ^ show_type t
+    | Macro _ -> failwith @@ "todo Macro " ^ show_type t
+    | Template _ -> failwith @@ "todo Template " ^ show_type t
+    | BuiltinMacro -> failwith @@ "todo BuiltinMacro " ^ show_type t
+    | Dict { fields } ->
+        Dict { fields = fields |> StringMap.map (substitute_type_bindings sub) }
+    | NewType _ -> failwith @@ "todo NewType " ^ show_type t
+    | OneOf _ -> failwith @@ "todo OneOf " ^ show_type t
+    | Union _ -> failwith @@ "todo Union " ^ show_type t
+    | Type -> failwith @@ "todo Type " ^ show_type t
+    | InferVar var -> (
+        match MyInference.get_inferred var with
+        | Some (Type t : value) -> t |> substitute_type_bindings sub
+        | Some _ -> failwith "inferred as not type wtf"
+        | None -> t)
+    | MultiSet _ -> failwith @@ "todo MultiSet " ^ show_type t
 
   and substitute_bindings (sub : value StringMap.t) (value : value) : value =
     match value with
@@ -3075,6 +3142,13 @@ module rec Impl : Interpreter = struct
           impl =
             (function
             | String s -> Int32 (Int32.of_string s)
+            | _ -> failwith "expected string");
+        };
+        {
+          name = "string_to_float64";
+          impl =
+            (function
+            | String s -> Float64 (Float.of_string s)
             | _ -> failwith "expected string");
         };
       ]

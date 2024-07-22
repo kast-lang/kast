@@ -186,12 +186,14 @@ let catch_impl = macro ~expr :: ast, ~e :: ast, ~catch_block :: ast => `(
 );
 
 let random = forall (T :: type). (
-    if is_same_type (a: T, b: int32) then
-        random_int32
-    else (if is_same_type (a: T, b: float64) then
-        random_float64
+    (
+    if builtin_fn_is_same_type (a: T, b: int32) then
+        (args => builtin_fn_random_int32 args)
+    else (if builtin_fn_is_same_type (a: T, b: float64) then
+        (args => builtin_fn_random_float64 args)
     else
-        panic "wtf")
+        builtin_fn_panic "wtf")
+    ) :: (min: T, max: T) -> T
 );
 
 const TypeName :: type = (
@@ -247,8 +249,14 @@ impl Parse for int32 as (
     parse: (s => builtin_fn_string_to_int32 s),
 );
 
+impl Parse for float64 as (
+    parse: (s => builtin_fn_string_to_float64 s),
+);
+
 let parse = forall (T :: type) where (T impl Parse). (
     (T as Parse).parse
 );
+
+let sin :: float64 -> float64 = x => builtin_fn_sin x;
 
 ()
