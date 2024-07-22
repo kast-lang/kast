@@ -643,19 +643,28 @@ module rec Impl : Interpreter = struct
           | Template t ->
               let tt = template_to_template_type t in
               let compiled = ensure_compiled tt in
-              let infer_args = pattern_to_infer_value compiled.args in
-              MyInference.set (ir_data args).type_var infer_args;
-              let result_type =
-                call_compiled empty_contexts compiled infer_args
-              in
               let sub =
                 pattern_bindings compiled.args
                 |> StringMap.map (fun _ : value ->
                        InferVar (MyInference.new_var ()))
               in
-              Log.info @@ "subbing: " ^ show result_type;
+              let args_type : value =
+                InferVar (pattern_data compiled.args).type_var
+              in
+              Log.trace @@ show_pattern compiled.args ^ " initialized as "
+              ^ show args_type;
+              MyInference.set (ir_data args).type_var args_type;
+              let result_type =
+                call_compiled empty_contexts compiled args_type
+              in
+              Log.trace @@ "subbing: " ^ show result_type;
               let result_type = result_type |> substitute_bindings sub in
-              Log.info @@ "sub result = " ^ show result_type;
+              Log.trace @@ "sub result = " ^ show result_type;
+              let args_value = (eval_ir captured args).value in
+              ignore
+              @@ inference_unite args_value
+                   (pattern_to_value_with_binding_values compiled.args
+                   |> substitute_bindings sub);
               Instantiate
                 {
                   data = known_type @@ value_to_type result_type;
@@ -665,24 +674,32 @@ module rec Impl : Interpreter = struct
                 }
           | other -> failwith @@ show other ^ " is not a template")
     in
-    Log.info @@ "initialized ir: " ^ show_ir result;
+    Log.trace @@ "initialized ir: " ^ show_ir result;
     result
 
-  and pattern_to_infer_value (p : pattern) : value =
+  and pattern_to_value_with_binding_values (p : pattern) : value =
     match p with
     | Void { data = _ } -> Void
-    | Placeholder { data } -> InferVar data.type_var
-    | Binding { data; binding = _ } -> InferVar data.type_var
+    | Placeholder { data } ->
+        InferVar
+          (let var = MyInference.new_var () in
+           MyInference.make_same (MyInference.get_type var) data.type_var;
+           var)
+    | Binding { data = _; binding } -> Binding binding
     | Dict { fields; data = _ } ->
-        Dict { fields = fields |> StringMap.map pattern_to_infer_value }
+        Dict
+          {
+            fields =
+              fields |> StringMap.map pattern_to_value_with_binding_values;
+          }
     | Variant { data; name; value } ->
         Variant
           {
             typ = InferVar data.type_var;
             name;
-            value = Option.map pattern_to_infer_value value;
+            value = Option.map pattern_to_value_with_binding_values value;
           }
-    | Union { data = _; a; b = _ } -> pattern_to_infer_value a
+    | Union { data = _; a; b = _ } -> pattern_to_value_with_binding_values a
 
   and init_pattern (p : no_data pattern_node) : pattern =
     let known value =
@@ -1694,7 +1711,7 @@ module rec Impl : Interpreter = struct
               | _ -> failwith @@ show template ^ " is not a template"
             in
             let args = (eval_ir self args).value in
-            Log.info @@ "instantiating with " ^ show args;
+            Log.trace @@ "instantiating with " ^ show args;
             (* todo memoization *)
             just_value (f args)
         | Call { f; args; _ } ->
