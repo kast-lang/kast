@@ -158,7 +158,7 @@ module rec Impl : Interpreter = struct
     | Let of { pattern : pattern; value : ir; data : 'data }
 
   and inference_status = NotYet | InProgress | Done
-  and type_inference_data = { var : inference_var }
+  and type_inference_data = { type_var : inference_var }
   and no_data = NoData
   and ir_data = type_inference_data
   and ir = ir_data ir_node
@@ -417,7 +417,7 @@ module rec Impl : Interpreter = struct
     | Type _, _ -> failinfer ()
 
   and set_ir_type (ir : ir) (t : value_type) =
-    MyInference.set (ir_data ir).var (Type t : value)
+    MyInference.set (ir_data ir).type_var (Type t : value)
 
   and new_fn_type_vars () : fn_type_vars =
     {
@@ -441,12 +441,12 @@ module rec Impl : Interpreter = struct
     | None -> InferVar var
 
   and pattern_type (pattern : pattern) : value_type =
-    var_type (pattern_data pattern).var
+    var_type (pattern_data pattern).type_var
 
-  and ir_type (ir : ir) : value_type = var_type (ir_data ir).var
+  and ir_type (ir : ir) : value_type = var_type (ir_data ir).type_var
 
   and set_pattern_type (pattern : pattern) (t : value_type) =
-    MyInference.set (pattern_data pattern).var (Type t : value)
+    MyInference.set (pattern_data pattern).type_var (Type t : value)
 
   and type_into_var t : MyInference.var =
     let var = MyInference.new_var () in
@@ -467,13 +467,13 @@ module rec Impl : Interpreter = struct
   and init_ir (ir : no_data ir_node) : ir =
     (* Log.trace @@ "initializing ir: " ^ show_ir_with_data (fun _ -> None) ir; *)
     let known value =
-      let var = MyInference.new_var () in
-      MyInference.set var value;
-      { var }
+      let type_var = MyInference.new_var () in
+      MyInference.set type_var value;
+      { type_var }
     in
     let known_type t = known (Type t : value) in
-    let unknown () = { var = MyInference.new_var () } in
-    let same_as other = { var = (ir_data other).var } in
+    let unknown () = { type_var = MyInference.new_var () } in
+    let same_as other = { type_var = (ir_data other).type_var } in
     let result : ir =
       match ir with
       | Void { data = NoData } -> Void { data = known_type Void }
@@ -541,14 +541,14 @@ module rec Impl : Interpreter = struct
           CheckImpl
             { captured; value; trait = trait_ir; data = known_type Bool }
       | Match { value; branches; data = NoData } ->
-          let value_var = (ir_data value).var in
-          let var = MyInference.new_var () in
+          let value_var = (ir_data value).type_var in
+          let result_type_var = MyInference.new_var () in
           List.iter
             (fun { pattern; body } ->
-              MyInference.make_same var (ir_data body).var;
-              MyInference.make_same value_var (pattern_data pattern).var)
+              MyInference.make_same result_type_var (ir_data body).type_var;
+              MyInference.make_same value_var (pattern_data pattern).type_var)
             branches;
-          Match { value; branches; data = { var } }
+          Match { value; branches; data = { type_var = result_type_var } }
       | NewType { def; data = NoData } ->
           set_pattern_type def Type;
           NewType { def; data = known_type Type }
@@ -563,13 +563,15 @@ module rec Impl : Interpreter = struct
       | OneOf { data = NoData; variants } ->
           OneOf { data = known_type Type; variants }
       | Let { data = NoData; pattern; value } ->
-          MyInference.make_same (pattern_data pattern).var (ir_data value).var;
+          MyInference.make_same (pattern_data pattern).type_var
+            (ir_data value).type_var;
           Let { data = known_type Void; pattern; value }
       | Discard { data = NoData; value } ->
           Discard { data = known_type Void; value }
       | If { data = NoData; cond; then_case; else_case } ->
           set_ir_type cond Bool;
-          MyInference.make_same (ir_data then_case).var (ir_data else_case).var;
+          MyInference.make_same (ir_data then_case).type_var
+            (ir_data else_case).type_var;
           If { data = same_as else_case; cond; then_case; else_case }
       | Ast { data = NoData; def; ast_data; values } ->
           values |> StringMap.iter (fun _name value -> set_ir_type value Ast);
@@ -590,17 +592,17 @@ module rec Impl : Interpreter = struct
           let f_type = new_fn_type_vars () in
           MyInference.set f_type.arg_type (Type UnwindToken : value);
           set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-          Unwinding { data = { var = f_type.result_type }; f }
+          Unwinding { data = { type_var = f_type.result_type }; f }
       | Call { data = NoData; f; args } ->
           let f_type = new_fn_type_vars () in
-          MyInference.make_same f_type.arg_type (ir_data args).var;
+          MyInference.make_same f_type.arg_type (ir_data args).type_var;
           set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-          Call { data = { var = f_type.result_type }; f; args }
+          Call { data = { type_var = f_type.result_type }; f; args }
       | Then { data = NoData; first; second } ->
           set_ir_type first Void;
           Then { data = same_as second; first; second }
       | Binding { data = NoData; binding } ->
-          Binding { data = { var = binding.value_type }; binding }
+          Binding { data = { type_var = binding.value_type }; binding }
       | Function { data = NoData; f } ->
           Function { data = known_type @@ Fn (fn_type_vars_to_type f.vars); f }
       | Template { data = NoData; f } ->
@@ -612,7 +614,7 @@ module rec Impl : Interpreter = struct
           CurrentContext { data = known_type context_type; context_type }
       | FieldAccess { data = NoData; obj; name; default_value } ->
           let field_type_var = MyInference.new_var () in
-          MyInference.add_check (ir_data obj).var (fun value ->
+          MyInference.add_check (ir_data obj).type_var (fun value ->
               Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
               match get_field_opt value name with
               | None -> failwith @@ "inferred type doesnt have field " ^ name
@@ -624,10 +626,10 @@ module rec Impl : Interpreter = struct
           *)
           (match default_value with
           | Some default ->
-              MyInference.make_same field_type_var (ir_data default).var
+              MyInference.make_same field_type_var (ir_data default).type_var
           | None -> ());
           FieldAccess
-            { data = { var = field_type_var }; obj; name; default_value }
+            { data = { type_var = field_type_var }; obj; name; default_value }
       | BuiltinFn { data = NoData; f } ->
           BuiltinFn
             {
@@ -642,7 +644,7 @@ module rec Impl : Interpreter = struct
               let tt = template_to_template_type t in
               let compiled = ensure_compiled tt in
               let infer_args = pattern_to_infer_value compiled.args in
-              MyInference.set (ir_data args).var infer_args;
+              MyInference.set (ir_data args).type_var infer_args;
               let result_type =
                 call_compiled empty_contexts compiled infer_args
               in
@@ -663,20 +665,20 @@ module rec Impl : Interpreter = struct
                 }
           | other -> failwith @@ show other ^ " is not a template")
     in
-    Log.trace @@ "initialized ir: " ^ show_ir result;
+    Log.info @@ "initialized ir: " ^ show_ir result;
     result
 
   and pattern_to_infer_value (p : pattern) : value =
     match p with
     | Void { data = _ } -> Void
-    | Placeholder { data } -> InferVar data.var
-    | Binding { data; binding = _ } -> InferVar data.var
+    | Placeholder { data } -> InferVar data.type_var
+    | Binding { data; binding = _ } -> InferVar data.type_var
     | Dict { fields; data = _ } ->
         Dict { fields = fields |> StringMap.map pattern_to_infer_value }
     | Variant { data; name; value } ->
         Variant
           {
-            typ = InferVar data.var;
+            typ = InferVar data.type_var;
             name;
             value = Option.map pattern_to_infer_value value;
           }
@@ -684,18 +686,18 @@ module rec Impl : Interpreter = struct
 
   and init_pattern (p : no_data pattern_node) : pattern =
     let known value =
-      let var = MyInference.new_var () in
-      MyInference.set var value;
-      { var }
+      let type_var = MyInference.new_var () in
+      MyInference.set type_var value;
+      { type_var }
     in
     let known_type t = known (Type t : value) in
-    let unknown () = { var = MyInference.new_var () } in
-    let same_as other = { var = (pattern_data other).var } in
+    let unknown () = { type_var = MyInference.new_var () } in
+    let same_as other = { type_var = (pattern_data other).type_var } in
     match p with
     | Placeholder { data = NoData } -> Placeholder { data = unknown () }
     | Void { data = NoData } -> Void { data = known_type Void }
     | Binding { data = NoData; binding } ->
-        Binding { data = { var = binding.value_type }; binding }
+        Binding { data = { type_var = binding.value_type }; binding }
     | Dict { data = NoData; fields } ->
         Dict
           {
@@ -708,7 +710,8 @@ module rec Impl : Interpreter = struct
         (* TODO Inference.expand_sum_type with variant name *)
         Variant { data = unknown (); name; value }
     | Union { data = NoData; a; b } ->
-        MyInference.make_same (pattern_data a).var (pattern_data b).var;
+        MyInference.make_same (pattern_data a).type_var
+          (pattern_data b).type_var;
         Union { data = same_as a; a; b }
 
   and show : value -> string = function
@@ -745,8 +748,10 @@ module rec Impl : Interpreter = struct
         | None -> "<not inferred " ^ MyInference.show_id var ^ ">")
 
   and show_fn (f : fn) : string =
-    (match f.args_pattern with Some ast -> Ast.show ast | None -> "()")
-    ^ " => " ^ Ast.show f.body
+    if true then "<...>"
+    else
+      (match f.args_pattern with Some ast -> Ast.show ast | None -> "()")
+      ^ " => " ^ Ast.show f.body
 
   and show_fn_type : fn_type -> string =
    fun { arg_type; contexts; result_type } ->
@@ -895,7 +900,7 @@ module rec Impl : Interpreter = struct
    fun ir ->
     show_ir_with_data
       (fun data ->
-        match MyInference.get_inferred data.var with
+        match MyInference.get_inferred data.type_var with
         | None -> None
         | Some inferred -> Some (" :: " ^ show inferred))
       ir
@@ -953,7 +958,7 @@ module rec Impl : Interpreter = struct
     | Some compiled ->
         {
           result_type = compiled.result_type;
-          arg_type = inferred_type (pattern_data compiled.args).var;
+          arg_type = inferred_type (pattern_data compiled.args).type_var;
           contexts = compiled.contexts;
         }
 
@@ -1478,7 +1483,7 @@ module rec Impl : Interpreter = struct
   and eval_ir (self : state) (ir : ir) : evaled =
     try
       log_state Log.Never self;
-      let result_type = inferred_type (ir_data ir).var in
+      let result_type = inferred_type (ir_data ir).type_var in
       Log.trace
         ("evaluating " ^ show_ir ir ^ " inferred as " ^ show_type @@ result_type);
       (* forward_expected_type ir expected_type; *)
@@ -1497,7 +1502,8 @@ module rec Impl : Interpreter = struct
                      { syntax = Syntax.empty; locals = evaled.new_bindings };
                  })
         | NewType { def; _ } ->
-            just_value (Type (NewType (inferred_type (pattern_data def).var)))
+            just_value
+              (Type (NewType (inferred_type (pattern_data def).type_var)))
         | Scope { expr; _ } -> just_value (eval_ir self expr).value
         | CreateImpl { trait; value; impl; _ } ->
             let ty = value_to_type (eval_ir self value).value in
@@ -1547,7 +1553,7 @@ module rec Impl : Interpreter = struct
                             value_to_type @@ (eval_ir self variant).value))
                        variants)))
         | TypeOf { expr; _ } ->
-            just_value (Type (inferred_type (ir_data expr).var))
+            just_value (Type (inferred_type (ir_data expr).type_var))
         | TypeOfValue { expr; _ } ->
             just_value
               (Type (type_of_value ~ensure:true (eval_ir self expr).value))
@@ -1646,7 +1652,7 @@ module rec Impl : Interpreter = struct
             | Some value -> just_value value)
         | Number { raw = s; data } ->
             just_value
-              (match inferred_type data.var with
+              (match inferred_type data.type_var with
               | Int32 -> Int32 (Int32.of_string s)
               | Int64 -> Int64 (Int64.of_string s)
               | Float64 -> Float64 (Float.of_string s)
@@ -1944,8 +1950,8 @@ module rec Impl : Interpreter = struct
             in
             let var =
               match value with
-              | Compiled compiled -> (ir_data compiled.ir).var
-              | Pattern pattern -> (pattern_data pattern).var
+              | Compiled compiled -> (ir_data compiled.ir).type_var
+              | Pattern pattern -> (pattern_data pattern).type_var
             in
             MyInference.set var (Type typ : value);
             value);
