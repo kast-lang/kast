@@ -4,7 +4,7 @@ An experimental programming language
 
 **NOT READY YET**
 
-[See more on the website](http://kuviman.github.io/kast)
+[See more on the website](https://kast-lang.org)
 
 ## Todo
 

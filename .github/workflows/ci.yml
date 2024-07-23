@@ -8,7 +8,7 @@ jobs:
         name: Pages
         permissions:
             contents: write
-        if: github.ref == 'refs/heads/main' && github.repository_owner == 'kuviman'
+        if: github.ref == 'refs/heads/main' && github.repository_owner == 'kast-lang'
         runs-on: ubuntu-latest
         steps:
         - name: Checkout

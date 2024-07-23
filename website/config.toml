@@ -1,5 +1,5 @@
 # The URL the site will be built for
-base_url = "https://kuviman.github.io/kast/"
+base_url = "https://kast-lang.org"
 
 # Whether to automatically compile all Sass files in the sass directory
 compile_sass = true
@@ -19,7 +19,7 @@ highlight_code = true
 juice_logo_name = "Kast"
 juice_logo_path = "logo.png"
 juice_extra_menu = [
-    { title = "Github", link = "https://github.com/kuviman/kast" },
+    { title = "Github", link = "https://github.com/kast-lang/kast" },
 ]
 juice_exclude_menu = ["exclude_from_nav"]
-repository_url = "https://github.com/kuviman/kast"
+repository_url = "https://github.com/kast-lang/kast"
