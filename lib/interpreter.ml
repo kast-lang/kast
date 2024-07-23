@@ -1940,49 +1940,49 @@ module rec Impl : Interpreter = struct
   and ensure_compiled (f : fn) : compiled_fn =
     if Option.is_none f.compiled then (
       Log.trace ("compiling " ^ show_fn_ast f.ast);
-      (try
-         f.compiled <-
-           (let args = compile_pattern f.captured f.ast.args in
-            let captured =
-              {
-                f.captured with
-                data =
-                  {
-                    f.captured.data with
-                    locals =
-                      update_locals f.captured.data.locals
-                        (StringMap.map
-                           (fun binding : value -> Binding binding)
-                           (pattern_bindings args));
-                  };
-              }
-            in
-            Some
-              {
-                captured = f.captured;
-                where_clause =
-                  (match f.ast.where with
-                  | None ->
-                      Const { value = Bool true; data = NoData } |> init_ir
-                  | Some clause -> (compile_ast_to_ir captured clause).ir);
-                args;
-                result_type = InferVar f.vars.result_type;
-                result_type_ir =
-                  (match f.ast.returns with
-                  | None -> None
-                  | Some ast -> Some (compile_ast_to_ir captured ast).ir);
-                body = (compile_ast_to_ir captured f.ast.body).ir;
-                contexts =
-                  (match f.ast.contexts with
-                  | Some contexts ->
-                      value_to_contexts_type
-                        (eval_ast f.captured contexts).value
-                  | None -> default_contexts_type);
-              })
-       with Failure _ as failure ->
-         Log.error @@ "  while compiling " ^ show_fn_ast f.ast;
-         raise failure);
-      Log.trace @@ "compiled");
+      let compiled =
+        try
+          let args = compile_pattern f.captured f.ast.args in
+          MyInference.make_same (pattern_data args).type_var f.vars.arg_type;
+          let captured =
+            {
+              f.captured with
+              data =
+                {
+                  f.captured.data with
+                  locals =
+                    update_locals f.captured.data.locals
+                      (StringMap.map
+                         (fun binding : value -> Binding binding)
+                         (pattern_bindings args));
+                };
+            }
+          in
+          {
+            captured = f.captured;
+            where_clause =
+              (match f.ast.where with
+              | None -> Const { value = Bool true; data = NoData } |> init_ir
+              | Some clause -> (compile_ast_to_ir captured clause).ir);
+            args;
+            result_type = InferVar f.vars.result_type;
+            result_type_ir =
+              (match f.ast.returns with
+              | None -> None
+              | Some ast -> Some (compile_ast_to_ir captured ast).ir);
+            body = (compile_ast_to_ir captured f.ast.body).ir;
+            contexts =
+              (match f.ast.contexts with
+              | Some contexts ->
+                  value_to_contexts_type (eval_ast f.captured contexts).value
+              | None -> default_contexts_type);
+          }
+        with Failure _ as failure ->
+          Log.error @@ "  while compiling " ^ show_fn_ast f.ast;
+          raise failure
+      in
+      f.compiled <- Some compiled;
+      Log.trace @@ "compiled as " ^ show_fn_type (type_of_fn ~ensure:false f));
     Option.get f.compiled
 
   and value_to_contexts_type (value : value) : contexts_type =
