@@ -63,10 +63,10 @@ module rec Impl : Interpreter = struct
     | Dict of { fields : value_type StringMap.t }
     | NewType of value_type
     | OneOf of value_type option StringMap.t
-    | Union of (value_type, unit) Hashtbl.t
+    | Union of Id.Set.t
     | Type
     | InferVar of MyInference.var
-    | MultiSet of (value_type, int) Hashtbl.t
+    | MultiSet of int Id.Map.t
 
   and inference_var = MyInference.var
   and type_var_map = value_type Id.Map.t
@@ -206,16 +206,16 @@ module rec Impl : Interpreter = struct
   and evaled = { value : value; new_bindings : value StringMap.t }
   and compiled = { ir : ir; new_bindings : value StringMap.t }
   and struct' = { parent : struct' option; mutable data : state_data }
-  and contexts = (value_type, value list) Hashtbl.t
-  and contexts_type = (value_type, int) Hashtbl.t
+  and contexts = value list Id.Map.t
+  and contexts_type = int Id.Map.t
   and state = { self : struct'; data : state_data; contexts : contexts }
   and state_data = { locals : value StringMap.t; syntax : Syntax.syntax }
   and binding = { id : id; name : string; value_type : inference_var }
 
   exception Unwind of id * value
 
-  let empty_contexts : contexts = Hashtbl.create 0
-  let empty_contexts_type : contexts_type = Hashtbl.create 0
+  let empty_contexts : contexts = Id.Map.empty
+  let empty_contexts_type : contexts_type = Id.Map.empty
   let default_contexts_type : contexts_type = empty_contexts_type
 
   (* type -> trait -> value *)
@@ -223,7 +223,7 @@ module rec Impl : Interpreter = struct
   let empty_type_var_map () : type_var_map ref = ref Id.Map.empty
   let failinfer () = raise @@ Inference.FailedUnite "inference union failed"
 
-  module TypeIds = struct
+  module TypeId = struct
     let unwind_token = Id.gen ()
     let never = Id.gen ()
     let ast = Id.gen ()
@@ -235,18 +235,85 @@ module rec Impl : Interpreter = struct
     let float64 = Id.gen ()
     let string = Id.gen ()
     let ty = Id.gen ()
+    let id_to_type : (id, value_type) Hashtbl.t = Hashtbl.create 0
+
+    module type MapKey = sig
+      type t
+    end
+
+    module MakeMap (Key : MapKey) = struct
+      type key = Key.t
+
+      let key_to_id = Hashtbl.create 0
+
+      let get_id (key : key) =
+        match Hashtbl.find_opt key_to_id key with
+        | Some id -> id
+        | None ->
+            let id = Id.gen () in
+            Hashtbl.add key_to_id key id;
+            id
+    end
 
     type dict_key = { fields : id StringMap.t }
 
-    let dict_map = Hashtbl.create 0
+    module Dict = MakeMap (struct
+      type t = dict_key
+    end)
 
-    let dict (d : dict_key) =
-      match Hashtbl.find_opt dict_map d with
-      | Some id -> id
-      | None ->
-          let id = Id.gen () in
-          Hashtbl.add dict_map d id;
-          id
+    type fn_key = { args : id; result : id; contexts : id }
+
+    module Fn = MakeMap (struct
+      type t = fn_key
+    end)
+
+    (* Most of the good programmers do programming not because they expect to get paid or get adulation by the public,
+       but because it is fun to program.
+       - Linus Torvalds *)
+
+    let rec type_id : value_type -> id =
+     fun t ->
+      let id =
+        match t with
+        | Binding { id; _ } -> id
+        | UnwindToken -> unwind_token
+        | Never -> never
+        | Ast -> ast
+        | Void -> void
+        | Bool -> bool
+        | Int32 -> int32
+        | Int64 -> int64
+        | Float32 -> float32
+        | Float64 -> float64
+        | String -> string
+        | Fn f ->
+            Fn.get_id
+              {
+                args = type_id f.arg_type;
+                result = type_id f.result_type;
+                contexts = void (* TODO type_id f.contexts *);
+              }
+        | Macro f -> failwith "todo typeid macro"
+        | Template f -> failwith "todo typeid template"
+        | BuiltinMacro -> failwith "todo typeid builtin_macro"
+        | Dict { fields } ->
+            Dict.get_id { fields = fields |> StringMap.map type_id }
+        | Type -> ty
+        | Union _ -> failwith "todo typeid union"
+        | OneOf variants -> failwith "todo typeid oneof"
+        | NewType inner -> failwith "todo typeid newtype"
+        | Var { id } -> id
+        | InferVar var -> (
+            match (MyInference.get_inferred var : value option) with
+            | Some (Type inferred) -> type_id inferred
+            | Some _ -> failwith "type was inferred as not a type wtf"
+            | None -> failwith "can't get id for not inferred types")
+        | MultiSet _ -> failwith "todo typeid multiset"
+      in
+      Hashtbl.add id_to_type id t;
+      id
+
+    let to_type (id : id) : value_type = Hashtbl.find id_to_type id
   end
 
   let rec _rec_block_start () =
@@ -810,16 +877,21 @@ module rec Impl : Interpreter = struct
   and show_fn_type : fn_type -> string =
    fun { arg_type; contexts; result_type } ->
     show_type arg_type ^ " -> " ^ show_type result_type
-    ^ Hashtbl.fold
+    ^ Id.Map.fold
         (fun value_type amount acc ->
           (if acc = "" then " with " else ", ")
-          ^ Int.to_string amount ^ " of " ^ show_type value_type)
+          ^ Int.to_string amount ^ " of "
+          ^ show_type (TypeId.to_type value_type))
         contexts ""
 
   and show_contexts : contexts -> string =
    fun contexts ->
-    Hashtbl.fold
-      (fun typ values acc -> (if acc = "" then "" else ", ") ^ show_type typ)
+    Id.Map.fold
+      (fun typ values acc ->
+        (if acc = "" then "" else ", ")
+        ^ (List.length values |> Int.to_string)
+        ^ " of "
+        ^ show_type (TypeId.to_type typ))
       contexts ""
 
   and show_type : value_type -> string = function
@@ -848,8 +920,10 @@ module rec Impl : Interpreter = struct
         ^ " }"
     | Type -> "type"
     | Union set ->
-        Hashtbl.fold
-          (fun t () acc -> (if acc = "" then "" else acc ^ " | ") ^ show_type t)
+        Id.Set.fold
+          (fun t acc ->
+            (if acc = "" then "" else acc ^ " | ")
+            ^ show_type (TypeId.to_type t))
           set ""
     | OneOf variants ->
         StringMap.fold
@@ -1018,14 +1092,14 @@ module rec Impl : Interpreter = struct
   and type_check_contexts (expected : contexts_type) (actual : contexts_type)
       (variables : type_var_map ref) : bool =
     Seq.for_all
-      (fun ((expected_type, expected_amount) : value_type * int) ->
+      (fun ((expected_type_id, expected_amount) : id * int) ->
         let actual_amount =
-          match Hashtbl.find_opt expected expected_type with
+          match Id.Map.find_opt expected_type_id expected with
           | Some amount -> amount
           | None -> 0
         in
         actual_amount <= expected_amount)
-      (Hashtbl.to_seq actual)
+      (Id.Map.to_seq actual)
 
   and type_of_fn (f : fn) ~(ensure : bool) : fn_type =
     if ensure then (
@@ -1037,9 +1111,8 @@ module rec Impl : Interpreter = struct
           result_type = InferVar f.vars.result_type;
           arg_type = InferVar f.vars.arg_type;
           contexts =
-            (let tbl = Hashtbl.create 1 in
-             Hashtbl.add tbl (InferVar f.vars.contexts) 1;
-             tbl);
+            empty_contexts_type
+            (* TODO value_to_contexts_type (InferVar f.vars.contexts) *);
         }
     | Some compiled ->
         {
@@ -1227,7 +1300,10 @@ module rec Impl : Interpreter = struct
   and pattern_match (pattern : pattern) (value : value) : value StringMap.t =
     match pattern_match_opt pattern value with
     | Some result -> result
-    | None -> failwith "match failed"
+    | None ->
+        Log.error @@ " while pattern matching " ^ show value ^ " with "
+        ^ show_pattern pattern;
+        failwith "match failed"
 
   and get_local_opt (self : state) (name : string) : value option =
     match StringMap.find_opt name self.data.locals with
@@ -1500,35 +1576,7 @@ module rec Impl : Interpreter = struct
   and show_or : 'a. string -> ('a -> string) -> 'a option -> string =
    fun default f opt -> match opt with Some value -> f value | None -> default
 
-  and type_id : value_type -> id = function
-    | Binding { id; _ } -> id
-    | UnwindToken -> TypeIds.unwind_token
-    | Never -> TypeIds.never
-    | Ast -> TypeIds.ast
-    | Void -> TypeIds.void
-    | Bool -> TypeIds.bool
-    | Int32 -> TypeIds.int32
-    | Int64 -> TypeIds.int64
-    | Float32 -> TypeIds.float32
-    | Float64 -> TypeIds.float64
-    | String -> TypeIds.string
-    | Fn f -> failwith "todo typeid fn"
-    | Macro f -> failwith "todo typeid macro"
-    | Template f -> failwith "todo typeid template"
-    | BuiltinMacro -> failwith "todo typeid builtin_macro"
-    | Dict { fields } ->
-        TypeIds.dict { fields = fields |> StringMap.map type_id }
-    | Type -> TypeIds.ty
-    | Union _ -> failwith "todo typeid union"
-    | OneOf variants -> failwith "todo typeid oneof"
-    | NewType inner -> failwith "todo typeid newtype"
-    | Var { id } -> id
-    | InferVar var -> (
-        match (MyInference.get_inferred var : value option) with
-        | Some (Type inferred) -> type_id inferred
-        | Some _ -> failwith "type was inferred as not a type wtf"
-        | None -> failwith "can't get id for not inferred types")
-    | MultiSet _ -> failwith "todo typeid multiset"
+  and type_id = TypeId.type_id
 
   and find_trait_id (trait : value) : id =
     match trait with
@@ -1683,25 +1731,19 @@ module rec Impl : Interpreter = struct
               {
                 self with
                 contexts =
-                  (let new_contexts = Hashtbl.copy self.contexts in
-                   let context_type = type_of_value ~ensure:true new_context in
-                   (* todo assert fully inferred *)
-                   let new_list_of_this_context_type =
-                     new_context
-                     ::
-                     (match Hashtbl.find_opt new_contexts context_type with
-                     | Some list -> list
-                     | None -> [])
-                   in
-                   Hashtbl.add new_contexts context_type
-                     new_list_of_this_context_type;
-                   new_contexts);
+                  (let context_type = type_of_value ~ensure:true new_context in
+                   Id.Map.update (type_id context_type)
+                     (fun prev ->
+                       Some
+                         (new_context
+                         :: (match prev with Some prev -> prev | None -> [])))
+                     self.contexts);
               }
             in
             just_value (eval_ir new_state expr).value
         | CurrentContext { context_type; _ } -> (
             let all_current =
-              match Hashtbl.find_opt self.contexts context_type with
+              match Id.Map.find_opt (type_id context_type) self.contexts with
               | Some current -> current
               | None -> []
             in
@@ -1827,7 +1869,13 @@ module rec Impl : Interpreter = struct
             let f = (eval_ir self f).value in
             let (get_f_impl, vars) : (unit -> value -> value) * fn_type_vars =
               match f with
-              | BuiltinFn f -> ((fun () -> f.impl), new_fn_type_vars ())
+              | BuiltinFn f ->
+                  ( (fun () args ->
+                      try f.impl args
+                      with Failure _ as failure ->
+                        Log.error @@ "while calling builtin fn " ^ f.name;
+                        raise failure),
+                    new_fn_type_vars () )
               | Function f | Macro f ->
                   ( (fun () -> call_compiled self.contexts @@ ensure_compiled f),
                     f.vars )
@@ -1943,8 +1991,12 @@ module rec Impl : Interpreter = struct
       let compiled =
         try
           let args = compile_pattern f.captured f.ast.args in
+          (match f.ast.returns with
+          | Some ast ->
+              MyInference.set f.vars.result_type (eval_ast f.captured ast).value
+          | None -> ());
           MyInference.make_same (pattern_data args).type_var f.vars.arg_type;
-          let captured =
+          let captured_with_args_bindings =
             {
               f.captured with
               data =
@@ -1963,14 +2015,16 @@ module rec Impl : Interpreter = struct
             where_clause =
               (match f.ast.where with
               | None -> Const { value = Bool true; data = NoData } |> init_ir
-              | Some clause -> (compile_ast_to_ir captured clause).ir);
+              | Some clause ->
+                  (compile_ast_to_ir captured_with_args_bindings clause).ir);
             args;
             result_type = InferVar f.vars.result_type;
             result_type_ir =
               (match f.ast.returns with
               | None -> None
-              | Some ast -> Some (compile_ast_to_ir captured ast).ir);
-            body = (compile_ast_to_ir captured f.ast.body).ir;
+              | Some ast ->
+                  Some (compile_ast_to_ir captured_with_args_bindings ast).ir);
+            body = (compile_ast_to_ir captured_with_args_bindings f.ast.body).ir;
             contexts =
               (match f.ast.contexts with
               | Some contexts ->
@@ -1985,26 +2039,27 @@ module rec Impl : Interpreter = struct
       Log.trace @@ "compiled as " ^ show_fn_type (type_of_fn ~ensure:false f));
     Option.get f.compiled
 
-  and value_to_contexts_type (value : value) : contexts_type =
-    let result = Hashtbl.create 1 in
-    Hashtbl.add result (value_to_type value) 1;
-    result
+  and value_to_contexts_type : value -> contexts_type =
+   fun value ->
+    let context_type = value_to_type value in
+    Id.Map.singleton (type_id context_type) 1
 
   and call_compiled (current_contexts : contexts) (f : compiled_fn)
       (args : value) : value =
+    let args_matches =
+      StringMap.mapi
+        (fun name value ->
+          Log.trace ("called with arg " ^ name ^ " = " ^ show value);
+          value)
+        (pattern_match f.args args)
+    in
     let captured =
       {
         f.captured with
         data =
           {
             f.captured.data with
-            locals =
-              update_locals f.captured.data.locals
-                (StringMap.mapi
-                   (fun name value ->
-                     Log.trace ("called with arg " ^ name ^ " = " ^ show value);
-                     value)
-                   (pattern_match f.args args));
+            locals = update_locals f.captured.data.locals args_matches;
           };
       }
     in
@@ -2022,7 +2077,10 @@ module rec Impl : Interpreter = struct
     Log.trace
       ("calling " ^ show_ir f.body ^ " with " ^ show args ^ " expecting "
      ^ show_type f.result_type);
-    (eval_ir { captured with contexts = current_contexts } f.body).value
+    try (eval_ir { captured with contexts = current_contexts } f.body).value
+    with Failure _ as failure ->
+      Log.error @@ "  while calling with args = " ^ show args;
+      raise failure
 
   and discard : value -> unit = function
     | Void -> ()
@@ -3230,7 +3288,7 @@ module rec Impl : Interpreter = struct
                   : value StringMap.t);
             syntax = Syntax.empty;
           };
-        contexts = Hashtbl.create 0;
+        contexts = Id.Map.empty;
       }
     in
     state

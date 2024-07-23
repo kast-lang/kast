@@ -11,6 +11,13 @@ syntax builtin_macro_create_impl <- 3 = "impl" trait "for" value "as" impl;
 syntax builtin_macro_let <- 4 = "let" pattern "=" value;
 syntax builtin_macro_const_let <- 4 = "const" pattern "=" value;
 
+syntax builtin_macro_tuple <- 4.5 = a "," b;
+syntax builtin_macro_tuple <- 4.5 = a ",";
+
+syntax builtin_macro_field <- 4.75 = name ":" value;
+syntax inline_field <- 4.75 = "~" name;
+syntax inline_typed_field <- 4.75 = "~" name "::" type;
+
 syntax builtin_macro_unwinding <- 5 = "unwinding" def;
 syntax builtin_macro_with_context <- 5 = "with" new_context "(" expr ")";
 syntax builtin_macro_current_context <- 5 = "current" context_type;
@@ -20,24 +27,19 @@ syntax builtin_macro_oneof <- 5 = "oneof" def;
 
 syntax builtin_macro_combine_variants <- 6 = "|" a;
 syntax builtin_macro_combine_variants <- 6 = a "|" b;
-syntax builtin_macro_function_def <- 7 = args "=>" body;
+syntax builtin_macro_function_def -> 7 = args "=>" body;
 
 syntax builtin_macro_type_ascribe <- 7.1 = value "::" type;
 
 syntax builtin_fn_function_type -> 7.5 = arg "->" result;
 syntax builtin_fn_function_type -> 7.5 = arg "->" result "incontext" contexts;
+syntax builtin_macro_function_def -> 7.5 = args "->" returns "=>" body;
 
 syntax builtin_macro_single_variant -> 8 = name "of" type;
 syntax builtin_macro_single_variant -> 8 = name "ofnone";
 
 syntax builtin_macro_template_def <- 9 = "forall" args "." body;
 syntax builtin_macro_template_def <- 9 = "forall" args "where" where "." body;
-
-syntax builtin_macro_tuple <- 11 = a "," b;
-syntax builtin_macro_tuple <- 11 = a ",";
-syntax builtin_macro_field <- 12 = name ":" value;
-syntax inline_field <- 12 = "~" name;
-syntax inline_typed_field <- 12 = "~" name "::" type;
 
 syntax builtin_macro_match <- 13 = "match" value "(" branches ")";
 syntax builtin_macro_if <- 13 = "if" cond "then" then;
@@ -106,14 +108,14 @@ let Option = forall (T :: type). (Some of T | None ofnone);
 let Either = forall ((~left, ~right) :: ( left: type, right: type )). (Left of left | Right of right);
 let Result = forall ((~ok, ~error) :: ( ok: type, error: type)). (Ok of ok | Error of error);
 
-const inline_field = macro name : name => `($name : $name);
+const inline_field = macro (name : name) => `($name : $name);
 const inline_typed_field = macro (~name, ~type) :: (name: ast, type: ast) => `(
     $name: ($name :: $type)
 );
 
 
 # args |> f
-const pipe = macro ~f, ~args => `((
+const pipe = macro (~f, ~args) => `((
     $f $args
 ));
 
@@ -130,10 +132,16 @@ let loop_context :: type = (
 # body arg
 # }
 
+let dbg = forall (T :: type). ((x :: T) -> void => builtin_fn_dbg x);
+
+let unwind = forall (T :: type). (
+    (args => builtin_fn_unwind args) :: (token: unwind_token, value: T) -> never
+);
+
 let loop = fn (body :: (void -> void incontext loop_context)) {
     let should_continue = unwinding (token :: unwind_token) {
         let current_loop_context = (
-            finish_current_iteration: (x :: bool => builtin_fn_unwind ( ~token, value123: x ) ),
+            finish_current_iteration: (x :: bool) -> never => unwind ( ~token, value: x ),
         );
         with current_loop_context (
             body ();
@@ -156,7 +164,7 @@ let continue_impl = macro (args :: any) => (
 );
 
 let break_without_value = macro _ => `(do_break void);
-let break_with_value = macro ~value => `(do_break $value);
+let break_with_value = macro (~value) => `(do_break $value);
 
 let throws = forall (error :: type). (throw: (error -> never));
 let throw = forall (error :: type). (
@@ -178,7 +186,7 @@ let try = forall
 	}
 );
 
-let catch_impl = macro ~expr :: ast, ~e :: ast, ~catch_block :: ast => `(
+let catch_impl = macro (~expr :: ast, ~e :: ast, ~catch_block :: ast) => `(
 	match $expr (
 		| Ok of value => value
 		| Error of $e => $catch_block
@@ -262,3 +270,4 @@ let parse = forall (T :: type) where (T impl Parse). (
 let sin :: float64 -> float64 = x => builtin_fn_sin x;
 
 ()
+

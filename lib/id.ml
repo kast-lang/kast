@@ -17,3 +17,4 @@ module MapImpl = struct
 end
 
 module Map = Map.Make (MapImpl)
+module Set = Set.Make (MapImpl)

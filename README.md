@@ -25,3 +25,15 @@ An experimental programming language
 - More examples
 - Borrow checker
 - Tests
+
+## Look into:
+
+- rankNtypes (check)
+- user-defined rewrite rules
+- GADT
+- differentiable
+- software transational memory
+- dependent types
+- refinement types
+- oncapture callback for closures?
+

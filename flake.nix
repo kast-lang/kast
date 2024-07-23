@@ -22,7 +22,7 @@
         ];
         shellHook = ''
           # eval $(opam env)
-          export OCAMLRUNPARAM=b
+          # export OCAMLRUNPARAM=b
         '';
       };
       formatter.${system} = pkgs.nixpkgs-fmt;

@@ -12,8 +12,19 @@ type syntax_def = {
 
 type priority = { before : float; after : float; assoc : assoc }
 
-let merge_priority a b =
-  if a <> b then failwith "different priorities";
+let show_assoc = function Left -> "left" | Right -> "right"
+
+let show_priority (priority : priority) : string =
+  "{ before = "
+  ^ Float.to_string priority.before
+  ^ "; after = "
+  ^ Float.to_string priority.after
+  ^ "; assoc = " ^ show_assoc priority.assoc ^ " }"
+
+let merge_priority (a : priority) (b : priority) =
+  if a <> b then
+    failwith @@ "different priorities: " ^ show_priority a ^ " and "
+    ^ show_priority b;
   a
 
 let need_pop prev next =
@@ -65,15 +76,6 @@ let start_state (syntax : syntax) : keyword_parse_state =
     next = syntax.starts;
   }
 
-let show_assoc = function Left -> "left" | Right -> "right"
-
-let show_priority (priority : priority) : string =
-  "{ before = "
-  ^ Float.to_string priority.before
-  ^ "; after = "
-  ^ Float.to_string priority.after
-  ^ "; assoc = " ^ show_assoc priority.assoc ^ " }"
-
 let parsed_name (parsed : parsed) : string =
   match parsed with
   | Nothing -> "nothing"
@@ -115,105 +117,113 @@ let is_closing_bracket s =
   String.length s = 1 && String.contains ")]}" (String.get s 0)
 
 let add_syntax (def : syntax_def) (syntax : syntax) : syntax =
-  match def.parts with
-  | [ Binding _; Binding _ ] ->
-      {
-        syntax with
-        join =
-          Some
-            {
-              root = false;
-              priority =
-                {
-                  before = def.priority;
-                  after = def.priority;
-                  assoc = def.assoc;
-                };
-              finish = BoolMap.of_list [ (false, Simple); (true, Complex def) ];
-              next = EdgeMap.empty;
-            };
-      }
-  | _ ->
-      let rec has_keyword = function
-        | Keyword _ :: _tail -> true
-        | Binding _ :: tail -> has_keyword tail
-        | [] -> false
-      in
-      let rec add_to_state (state : keyword_parse_state) (parts : def_part list)
-          (prev_was_value : bool) (had_keyword_before : bool) :
-          keyword_parse_state =
-        match parts with
-        | [] ->
-            {
-              state with
-              finish =
-                BoolMap.update prev_was_value
-                  (fun prev ->
-                    if Option.is_some prev then failwith "conflict";
-                    Some (Complex def))
-                  state.finish;
-            }
-        | Binding _ :: remaining_parts ->
-            if prev_was_value then failwith "two bindings after each other";
-            add_to_state state remaining_parts true had_keyword_before
-        | _ ->
-            {
-              state with
-              next =
-                add_to_edges state.next parts prev_was_value had_keyword_before;
-            }
-      and add_to_edges (edges : edges) (parts : def_part list)
-          (prev_was_value : bool) (had_keyword_before : bool) : edges =
-        match parts with
-        | [] -> failwith "empty"
-        | Binding _ :: remaining_parts ->
-            if prev_was_value then failwith "two bindings after each other";
-            add_to_edges edges remaining_parts true had_keyword_before
-        | Keyword keyword :: remaining_parts ->
-            EdgeMap.update
-              { value_before_keyword = prev_was_value; keyword }
-              (fun prev ->
-                Some
-                  (add_to_state
-                     (let new_priority =
-                        {
-                          before =
-                            (if is_closing_bracket keyword then Float.min_float
-                             else def.priority);
-                          after =
-                            (if is_open_bracket keyword then Float.min_float
-                             else def.priority);
-                          assoc = def.assoc;
-                        }
-                      in
-                      match prev with
-                      | Some prev ->
+  try
+    match def.parts with
+    | [ Binding _; Binding _ ] ->
+        {
+          syntax with
+          join =
+            Some
+              {
+                root = false;
+                priority =
+                  {
+                    before = def.priority;
+                    after = def.priority;
+                    assoc = def.assoc;
+                  };
+                finish =
+                  BoolMap.of_list [ (false, Simple); (true, Complex def) ];
+                next = EdgeMap.empty;
+              };
+        }
+    | _ ->
+        let rec has_keyword = function
+          | Keyword _ :: _tail -> true
+          | Binding _ :: tail -> has_keyword tail
+          | [] -> false
+        in
+        let rec add_to_state (state : keyword_parse_state)
+            (parts : def_part list) (prev_was_value : bool)
+            (had_keyword_before : bool) : keyword_parse_state =
+          match parts with
+          | [] ->
+              {
+                state with
+                finish =
+                  BoolMap.update prev_was_value
+                    (fun prev ->
+                      if Option.is_some prev then failwith "conflict";
+                      Some (Complex def))
+                    state.finish;
+              }
+          | Binding _ :: remaining_parts ->
+              if prev_was_value then failwith "two bindings after each other";
+              add_to_state state remaining_parts true had_keyword_before
+          | _ ->
+              {
+                state with
+                next =
+                  add_to_edges state.next parts prev_was_value
+                    had_keyword_before;
+              }
+        and add_to_edges (edges : edges) (parts : def_part list)
+            (prev_was_value : bool) (had_keyword_before : bool) : edges =
+          match parts with
+          | [] -> failwith "empty"
+          | Binding _ :: remaining_parts ->
+              if prev_was_value then failwith "two bindings after each other";
+              add_to_edges edges remaining_parts true had_keyword_before
+          | Keyword keyword :: remaining_parts ->
+              EdgeMap.update
+                { value_before_keyword = prev_was_value; keyword }
+                (fun prev ->
+                  Some
+                    (add_to_state
+                       (let new_priority =
                           {
-                            prev with
-                            priority = merge_priority prev.priority new_priority;
+                            before =
+                              (if is_closing_bracket keyword then
+                                 Float.min_float
+                               else def.priority);
+                            after =
+                              (if is_open_bracket keyword then Float.min_float
+                               else def.priority);
+                            assoc = def.assoc;
                           }
-                      | None ->
-                          {
-                            root = false;
-                            priority = new_priority;
-                            finish = BoolMap.empty;
-                            next = EdgeMap.empty;
-                          })
-                     remaining_parts false true))
-              edges
-      in
-      let collect_keywords =
-        List.filter_map (function
-          | Keyword keyword -> Some keyword
-          | Binding _ -> None)
-      in
-      {
-        syntax with
-        starts = add_to_edges syntax.starts def.parts false false;
-        keywords =
-          StringSet.union syntax.keywords
-            (StringSet.of_list (collect_keywords def.parts));
-      }
+                        in
+                        match prev with
+                        | Some prev ->
+                            {
+                              prev with
+                              priority =
+                                merge_priority prev.priority new_priority;
+                            }
+                        | None ->
+                            {
+                              root = false;
+                              priority = new_priority;
+                              finish = BoolMap.empty;
+                              next = EdgeMap.empty;
+                            })
+                       remaining_parts false true))
+                edges
+        in
+        let collect_keywords =
+          List.filter_map (function
+            | Keyword keyword -> Some keyword
+            | Binding _ -> None)
+        in
+        {
+          syntax with
+          starts = add_to_edges syntax.starts def.parts false false;
+          keywords =
+            StringSet.union syntax.keywords
+              (StringSet.of_list (collect_keywords def.parts));
+        }
+  with Failure _ as failure ->
+    Log.error @@ "while adding syntax " ^ def.name;
+    raise failure
 
 let make_syntax (defs : syntax_def list) : syntax =
   List.fold_left
