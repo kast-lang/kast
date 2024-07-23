@@ -244,7 +244,21 @@ let type_name = forall (T :: type) where (T impl TypeName). (
     (T as TypeName).name
 );
 
-let @"op binary ==" :: (lhs: int32, rhs: int32) -> bool = args => @"builtin_fn_==" args;
+const Eq = forall (T :: type). (
+    eq: (lhs: T, rhs: T) -> bool
+);
+
+impl Eq for int32 as (
+    eq: args => @"builtin_fn_==" args
+);
+
+impl Eq for string as (
+    eq: args => @"builtin_fn_==" args
+);
+
+let @"op binary ==" = macro (~lhs, ~rhs) => `(
+    (_ as Eq).eq(lhs: $lhs, rhs: $rhs)
+);
 
 let @"op binary +" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary +" args;
 let @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary -" args;

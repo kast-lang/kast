@@ -1,4 +1,4 @@
-let run_once = fn (first) {
+let run_once = fn (~quit, ~first) {
     let picked :: int32 = random (min: 1, max: 10);
     print (
         if first then
@@ -8,7 +8,11 @@ let run_once = fn (first) {
     );
     print "guess:";
     loop {
-        let guessed = input() |> parse;
+        let s = input();
+        if s == "exit" then (
+            let _ = unwind (token: quit, value: "quitted");
+        );
+        let guessed = s |> parse;
         if guessed == picked then (
             break
         ) else (
@@ -22,10 +26,14 @@ let run_once = fn (first) {
 };
 
 let main = {
-    run_once true;
-    loop {
-        run_once false;
-    }
+    let result = unwinding (quit) {
+        run_once (~quit, first: true);
+        loop {
+            run_once (~quit, first: false);
+        };
+        "not quitted"
+    };
+    print result;
 };
 
 main ();

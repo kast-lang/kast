@@ -478,7 +478,12 @@ module rec Impl : Interpreter = struct
     | Float64 _, _ -> failinfer ()
     | String a, String b -> if a = b then String a else failinfer ()
     | String _, _ -> failinfer ()
-    | Dict a, Dict b -> failwith "todo check inferred dicts"
+    | Dict { fields = a }, Dict { fields = b } ->
+        Dict
+          {
+            fields =
+              StringMap.match_map (fun _name a b -> inference_unite a b) a b;
+          }
     | Dict _, _ -> failinfer ()
     | Struct _, _ -> failwith "inferred struct?"
     | Variant _, _ -> failwith "inferred variant?"
@@ -739,31 +744,48 @@ module rec Impl : Interpreter = struct
             match (eval_ir captured template).value with
             | Template t ->
                 let tt = template_to_template_type t in
-                let compiled = ensure_compiled tt in
+                let compiled_tt = ensure_compiled tt in
                 let sub =
-                  pattern_bindings compiled.args
+                  pattern_bindings compiled_tt.args
                   |> StringMap.map (fun _ : value ->
                          InferVar (MyInference.new_var ()))
                 in
-                let args_type : value =
-                  InferVar (pattern_data compiled.args).type_var
+                let args_type = pattern_type compiled_tt.args in
+                MyInference.set (ir_data args).type_var (Type args_type : value);
+                let args_to_determine_result_type =
+                  pattern_to_value_with
+                    (fun _ : value -> InferVar (MyInference.new_var ()))
+                    compiled_tt.args
                 in
-                Log.trace @@ show_pattern compiled.args ^ " initialized as "
-                ^ show args_type;
-                MyInference.set (ir_data args).type_var args_type;
+                Log.trace
+                @@ show_pattern compiled_tt.args
+                ^ " initialized as "
+                ^ show args_to_determine_result_type;
+                Log.trace @@ "args type (ir) = "
+                ^ show (InferVar (ir_data args).type_var);
+                Log.trace @@ "args type (inferred) = " ^ show (Type args_type);
+                MyInference.set (ir_data args).type_var (Type args_type : value);
+                Log.trace @@ "var set success";
                 let result_type =
-                  call_compiled empty_contexts compiled args_type
+                  call_compiled empty_contexts compiled_tt
+                    args_to_determine_result_type
                 in
                 Log.trace @@ "subbing: " ^ show result_type;
                 (* todo is subbing needed here? *)
                 let result_type = result_type |> substitute_bindings sub in
                 Log.trace @@ "sub result = " ^ show result_type;
+                Log.trace @@ "args to determine result type is "
+                ^ show args_to_determine_result_type;
                 let args_value = (eval_ir t.captured args).value in
                 (* todo is subbing needed here? *)
+                (* because args to type template are same as args to actual template *)
                 ignore
                 @@ inference_unite args_value
-                     (pattern_to_value_with_binding_values compiled.args
+                     (pattern_to_value_with
+                        (fun binding : value -> Binding binding)
+                        compiled_tt.args
                      |> substitute_bindings sub);
+                Log.trace @@ "united";
                 Instantiate
                   {
                     data = known_type @@ value_to_type result_type;
@@ -779,29 +801,25 @@ module rec Impl : Interpreter = struct
       Log.error @@ "  while initializing ir " ^ ir_name ir;
       raise failure
 
-  and pattern_to_value_with_binding_values (p : pattern) : value =
+  and pattern_to_value_with (f : binding -> value) (p : pattern) : value =
     match p with
+    | Binding { data = _; binding } -> f binding
     | Void { data = _ } -> Void
     | Placeholder { data } ->
         InferVar
           (let var = MyInference.new_var () in
            MyInference.make_same (MyInference.get_type var) data.type_var;
            var)
-    | Binding { data = _; binding } -> Binding binding
     | Dict { fields; data = _ } ->
-        Dict
-          {
-            fields =
-              fields |> StringMap.map pattern_to_value_with_binding_values;
-          }
+        Dict { fields = fields |> StringMap.map (pattern_to_value_with f) }
     | Variant { data; name; value } ->
         Variant
           {
             typ = InferVar data.type_var;
             name;
-            value = Option.map pattern_to_value_with_binding_values value;
+            value = Option.map (pattern_to_value_with f) value;
           }
-    | Union { data = _; a; b = _ } -> pattern_to_value_with_binding_values a
+    | Union { data = _; a; b = _ } -> pattern_to_value_with f a
 
   and init_pattern (p : no_data pattern_node) : pattern =
     let known value =
@@ -1075,7 +1093,8 @@ module rec Impl : Interpreter = struct
       | Placeholder _ -> "_"
       | Void _ -> "()"
       | Union { a; b; _ } -> show_rec a ^ " | " ^ show_rec b
-      | Binding { binding; _ } -> binding.name
+      | Binding { binding; _ } ->
+          "<" ^ binding.name ^ " " ^ Id.show binding.id ^ ">"
       | Variant { name; value; _ } ->
           name ^ show_or "" (fun value -> " " ^ show_rec value) value
       | Dict { fields; _ } ->
@@ -1124,40 +1143,44 @@ module rec Impl : Interpreter = struct
   and template_to_template_type (f : fn) : fn =
     match f.cached_template_type with
     | Some t -> t
-    | None ->
-        let t =
-          {
-            id = Id.gen ();
-            cached_template_type = None;
-            vars =
-              {
-                arg_type = f.vars.arg_type;
-                contexts = f.vars.contexts;
-                result_type = MyInference.new_var ();
-              };
-            ast =
-              {
-                f.ast with
-                body =
-                  Complex
-                    {
-                      def =
-                        {
-                          name = "builtin_macro_typeof";
-                          assoc = Left;
-                          priority = 0.0;
-                          parts = [];
-                        };
-                      values = StringMap.singleton "expr" f.ast.body;
-                      data = Ast.data f.ast.body;
-                    };
-              };
-            captured = f.captured;
-            compiled = None;
-          }
-        in
-        f.cached_template_type <- Some t;
-        t
+    | None -> (
+        try
+          let t =
+            {
+              id = Id.gen ();
+              cached_template_type = None;
+              vars =
+                {
+                  arg_type = f.vars.arg_type;
+                  contexts = f.vars.contexts;
+                  result_type = MyInference.new_var ();
+                };
+              ast =
+                {
+                  f.ast with
+                  body =
+                    Complex
+                      {
+                        def =
+                          {
+                            name = "builtin_macro_typeof";
+                            assoc = Left;
+                            priority = 0.0;
+                            parts = [];
+                          };
+                        values = StringMap.singleton "expr" f.ast.body;
+                        data = Ast.data f.ast.body;
+                      };
+                };
+              captured = f.captured;
+              compiled = None;
+            }
+          in
+          f.cached_template_type <- Some t;
+          t
+        with Failure _ as failure ->
+          Log.error @@ "  while template_to_template_type";
+          raise failure)
 
   and type_of_value (value : value) ~(ensure : bool) : value_type =
     match value with
@@ -1265,6 +1288,19 @@ module rec Impl : Interpreter = struct
           Some (StringMap.singleton name value)
       | Dict { fields = field_patterns; _ } -> (
           match value with
+          | InferVar var ->
+              let dict =
+                (Dict
+                   {
+                     fields =
+                       field_patterns
+                       |> StringMap.map (fun _ : value ->
+                              InferVar (MyInference.new_var ()));
+                   }
+                  : value)
+              in
+              MyInference.set var dict;
+              pattern_match_opt pattern dict
           | Dict { fields = field_values } ->
               let fields =
                 StringMap.merge
@@ -1523,7 +1559,7 @@ module rec Impl : Interpreter = struct
     | None -> failwith (name ^ " not found")
     | Some value -> (
         match value with
-        | Function _ | BuiltinFn _ ->
+        | Function _ | BuiltinFn _ | Template _ ->
             let args : ir =
               Dict
                 {
@@ -1566,7 +1602,8 @@ module rec Impl : Interpreter = struct
     Log.trace ("compiled: " ^ show_ir compiled.ir);
     eval_ir self compiled.ir
 
-  and log_state (level : Log.level) (self : state) : unit =
+  and log_state : Log.level -> state -> unit =
+   fun (level : Log.level) (self : state) : unit ->
     let log = Log.with_level level in
     log "locals:";
     StringMap.iter
@@ -3183,6 +3220,26 @@ module rec Impl : Interpreter = struct
         placeholder_macro;
       ]
 
+    let eq : builtin_fn =
+      {
+        name = "==";
+        impl =
+          dict_fn (fun args ->
+              let a = StringMap.find "lhs" args in
+              let b = StringMap.find "rhs" args in
+              Bool
+                (match (a, b) with
+                | Void, Void -> true
+                | Bool a, Bool b -> a = b
+                | Int32 a, Int32 b -> a = b
+                | Int64 a, Int64 b -> a = b
+                | Float64 a, Float64 b -> a = b
+                | String a, String b -> a = b
+                | _ ->
+                    failwith @@ "== doesnt work for " ^ show a ^ " and "
+                    ^ show b));
+      }
+
     let builtin_fns : builtin_fn list =
       [
         placeholder_fn;
@@ -3212,7 +3269,7 @@ module rec Impl : Interpreter = struct
           "def" macro;
         cmp_fn "<" ( < );
         cmp_fn "<=" ( <= );
-        cmp_fn "==" ( = );
+        eq;
         cmp_fn "!=" ( <> );
         cmp_fn ">" ( > );
         cmp_fn ">=" ( >= );
