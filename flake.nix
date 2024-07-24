@@ -12,27 +12,33 @@
       pkgs = import nixpkgs { inherit system; };
     in
     {
-      packages.${system}.default = with pkgs; ocamlPackages.buildDunePackage {
-        pname = "kast";
-        version = "0.1.0";
-        duneVersion = "3";
-        src = nix-filter.lib {
-          root = ./.;
-          include = [
-            ".ocamlformat"
-            "dune-project"
-            (nix-filter.lib.inDirectory "bin")
-            (nix-filter.lib.inDirectory "lib")
-            (nix-filter.lib.inDirectory "test")
+      packages.${system} = {
+        default = with pkgs; ocamlPackages.buildDunePackage {
+          pname = "kast";
+          version = "0.1.0";
+          duneVersion = "3";
+          src = nix-filter.lib {
+            root = ./.;
+            include = [
+              ".ocamlformat"
+              "dune-project"
+              (nix-filter.lib.inDirectory "bin")
+              (nix-filter.lib.inDirectory "lib")
+              (nix-filter.lib.inDirectory "test")
+            ];
+          };
+          buildInputs = [
+            # Ocaml package dependencies needed to build go here.
+            makeWrapper
           ];
+          strictDeps = true;
+          preBuild = ''
+            dune build kast.opam
+          '';
+          postFixup = ''
+            wrapProgram $out/bin/kast --set KAST_STD ${./std}
+          '';
         };
-        buildInputs = [
-          # Ocaml package dependencies needed to build go here.
-        ];
-        strictDeps = true;
-        preBuild = ''
-          dune build kast.opam
-        '';
       };
       devShells.${system} = {
         default = pkgs.mkShell {
@@ -69,5 +75,21 @@
         };
       };
       formatter.${system} = pkgs.nixpkgs-fmt;
+      checks.${system} = builtins.mapAttrs
+        (name: _entry:
+          let test = import ./tests/${name} { inherit pkgs; };
+          in
+          pkgs.stdenv.mkDerivation {
+            name = "kast-check-${name}";
+            nativeBuildInputs = [ self.packages.${system}.default ];
+            dontUnpack = true;
+            # doCheck = true;
+            buildPhase = ''
+              kast ${test.source} < ${test.input or "/dev/null"} > $out
+              cmp $out ${test.expected_output}
+            '';
+          }
+        )
+        (builtins.readDir ./tests);
     };
 }

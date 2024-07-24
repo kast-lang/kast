@@ -16,12 +16,14 @@ let rec stdin_loop () =
   stdin_loop ()
 in
 
+let std_path = Sys.getenv_opt "KAST_STD" |> Option.value ~default:"std" in
+
 let eval_files files =
   List.iter
     (fun file ->
       let value = Interpreter.eval_file interpreter file in
       Interpreter.discard value)
-    ("std/lib.ks" :: files)
+    ((std_path ^ "/lib.ks") :: files)
 in
 
 let run_repl () = try stdin_loop () with End_of_file -> () in
