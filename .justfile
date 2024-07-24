@@ -12,4 +12,4 @@ serve:
     cd website && zola serve
 
 dune:
-    dune build -w
+    dune build --watch
