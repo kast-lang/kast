@@ -1,2 +1,2 @@
 (test
- (name test_playground))
+ (name test_kast))

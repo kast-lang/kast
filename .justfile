@@ -1,12 +1,12 @@
 test TEST:
-    just run std/lib.kast examples/{{TEST}}.kast
+    just run examples/{{TEST}}.ks
 
 repl:
-    just run std/lib.kast
+    just run --repl
 
 run *ARGS:
     rlwrap _build/default/bin/main.exe {{ARGS}}
-    # dune exec playground -- {{ARGS}}
+    # dune exec kast -- {{ARGS}}
 
 serve:
     cd website && zola serve

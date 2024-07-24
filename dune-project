@@ -1,6 +1,6 @@
 (lang dune 3.16)
 
-(name playground)
+(name kast)
 
 (generate_opam_files true)
 
@@ -16,7 +16,7 @@
 (documentation https://url/to/documentation)
 
 (package
- (name playground)
+ (name kast)
  (synopsis "A short synopsis")
  (description "A longer description")
  (depends ocaml dune)

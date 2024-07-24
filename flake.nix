@@ -1,15 +1,39 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+
+    # Precisely filter files copied to the nix store
+    nix-filter.url = "github:numtide/nix-filter";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, nix-filter }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
     in
     {
-      packages.${system}.devenv-up = self.devShells.${system}.default.config.procfileScript;
+      packages.${system}.default = with pkgs; ocamlPackages.buildDunePackage {
+        pname = "kast";
+        version = "0.1.0";
+        duneVersion = "3";
+        src = nix-filter.lib {
+          root = ./.;
+          include = [
+            ".ocamlformat"
+            "dune-project"
+            (nix-filter.lib.inDirectory "bin")
+            (nix-filter.lib.inDirectory "lib")
+            (nix-filter.lib.inDirectory "test")
+          ];
+        };
+        buildInputs = [
+          # Ocaml package dependencies needed to build go here.
+        ];
+        strictDeps = true;
+        preBuild = ''
+          dune build kast.opam
+        '';
+      };
       devShells.${system} = {
         default = pkgs.mkShell {
           packages = with pkgs; with ocamlPackages; [

@@ -1,7 +1,7 @@
 (executable
- (public_name playground)
+ (public_name kast)
  (name main)
- (libraries playground))
+ (libraries kast))
 
 (env
  (dev
