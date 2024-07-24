@@ -62,9 +62,6 @@
                   unset TEMP;
                   unset TEMPDIR;
                   unset NIX_BUILD_TOP;
-                  pwd;
-                  set > vars;
-                  echo \$TMP;
                   dune build -w;
                 "
           '';
