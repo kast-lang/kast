@@ -50,10 +50,11 @@
           shellHook = ''
             echo Hello from Kast devshell
             mkdir -p .flock
-            screen -S zola -dm \
+            mkdir -p .logs
+            screen -L -Logfile .logs/zola -S zola -dm \
               flock --conflict-exit-code 0 --nonblock .flock/zola \
                 bash -c "cd website && zola serve"
-            screen -S dune -dm \
+            screen -L -Logfile .logs/dune -S dune -dm \
               flock --conflict-exit-code 0 --nonblock .flock/dune \
                 bash -c \
                 "
