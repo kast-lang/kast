@@ -1861,6 +1861,9 @@ module rec Impl : Interpreter = struct
             in
             just_value (eval_ir new_state expr).value
         | CurrentContext { context_type; _ } -> (
+            let context_type =
+              substitute_type_bindings self.data.locals context_type
+            in
             let all_current =
               match Id.Map.find_opt (type_id context_type) self.contexts with
               | Some current -> current
