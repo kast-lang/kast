@@ -1917,9 +1917,9 @@ module rec Impl : Interpreter = struct
             (* todo memoization *)
             just_value (f args)
         | Call { f; args; _ } ->
-            just_value
-            @@ eval_call (eval_ir self f).value (eval_ir self args).value
-                 self.contexts
+            let f = (eval_ir self f).value in
+            let args = (eval_ir self args).value in
+            just_value @@ eval_call f args self.contexts
         | If { cond; then_case; else_case; _ } ->
             let cond = eval_ir self cond in
             let self_with_new_bindings =
@@ -2063,6 +2063,10 @@ module rec Impl : Interpreter = struct
                 };
             }
           in
+          let body =
+            (compile_ast_to_ir captured_with_args_bindings f.ast.body).ir
+          in
+          MyInference.make_same (ir_data body).type_var f.vars.result_type;
           {
             captured = f.captured;
             where_clause =
@@ -2077,7 +2081,7 @@ module rec Impl : Interpreter = struct
               | None -> None
               | Some ast ->
                   Some (compile_ast_to_ir captured_with_args_bindings ast).ir);
-            body = (compile_ast_to_ir captured_with_args_bindings f.ast.body).ir;
+            body;
             contexts =
               (match f.ast.contexts with
               | Some contexts ->
