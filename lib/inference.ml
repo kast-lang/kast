@@ -86,11 +86,9 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
     | None -> ()
 
   let make_same a b =
-    Log.info "make_same 1";
     let a = get_root_var a in
     let b = get_root_var b in
-    Log.info "make_same 2";
-    if a != b then (
+    if a != b then
       let a_data = get_root_data a in
       let b_data = get_root_data b in
       let inferred_value =
@@ -104,8 +102,7 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
         b.data <- SameAs a)
       else (
         b_data.inferred <- inferred_value;
-        a.data <- SameAs b);
-      Log.info "make_same 3")
+        a.data <- SameAs b)
 
   let set var value =
     let root = get_root_var var in

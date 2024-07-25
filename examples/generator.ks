@@ -45,7 +45,7 @@ const yield = forall (~T :: type, ~Resume :: type). (
 
 let generator = fn(void) {
 	print "yielding 1";
-	yield[T: _, Resume: void] "1";
+	yield[T: string, Resume: void] "1";
 	print "yielding 2";
 	yield "2";
 };

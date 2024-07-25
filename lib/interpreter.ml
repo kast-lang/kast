@@ -779,8 +779,8 @@ module rec Impl : Interpreter = struct
                   }
             | other -> failwith @@ show other ^ " is not a template")
       in
-      (* Log.info @@ "almost: " ^ ir_name result; *)
-      Log.info @@ "initialized ir: " ^ show_ir result;
+      (* Log.trace @@ "almost: " ^ ir_name result; *)
+      Log.trace @@ "initialized ir: " ^ show_ir result;
       result
     with Failure _ as failure ->
       Log.error @@ "  while initializing ir " ^ ir_name ir;
@@ -839,7 +839,7 @@ module rec Impl : Interpreter = struct
   and show : value -> string =
    fun value ->
     (if false then
-       Log.info @@ "in "
+       Log.trace @@ "in "
        ^
        match value with
        | Binding _ -> "binding"
@@ -932,7 +932,7 @@ module rec Impl : Interpreter = struct
   and show_type : value_type -> string =
    fun t ->
     (if false then
-       Log.info @@ "in"
+       Log.trace @@ "in"
        ^
        match t with
        | Binding _ -> "binding"
@@ -2073,10 +2073,10 @@ module rec Impl : Interpreter = struct
       | Function f | Macro f -> call_compiled contexts @@ ensure_compiled f
       | _ -> failwith @@ show f ^ " - not a function"
     in
-    Log.info ("calling " ^ show f);
+    Log.trace ("calling " ^ show f);
     Log.trace @@ "args = " ^ show args;
     let result = f_impl args in
-    Log.info @@ "result = " ^ show result;
+    Log.trace @@ "result = " ^ show result;
     result
 
   and ensure_compiled (f : fn) : compiled_fn =

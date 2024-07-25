@@ -134,7 +134,6 @@ let dbg = forall (T :: type). (
     fn (x :: T) -> void {
         builtin_fn_dbg x
     }
-    # (x :: T) -> void => builtin_fn_dbg x
 );
 
 let unwind = forall (T :: type). (
