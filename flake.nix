@@ -74,6 +74,7 @@
                   dune build -w;
                 "
             echo "  dune: build --watch"
+            export OCAMLRUNPARAM=b
           '';
         };
       };

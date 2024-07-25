@@ -2,12 +2,9 @@
 
 syntax for_loop <- 2 = "for" value_pattern "in" generator "{" body "}";
 
-const generator_context = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+const generator_context = forall (~Yield :: type, ~Resume :: type). (
 	yield: Yield -> Resume,
-	finish: Finish -> never,
 );
-
-dbg generator_context[Yield: void, Resume: void, Finish: void];
 
 const delimited_block = forall (~YieldH :: type, ~Resume :: type, ~Finish :: type). (
 	const Args = (
@@ -20,14 +17,15 @@ const delimited_block = forall (~YieldH :: type, ~Resume :: type, ~Finish :: typ
 );
 
 const for_loop = macro (~value_pattern, ~generator, ~body) => `(
+	const value_type = string; # todo infer
 	delimited_block (
-		handler: (value : $value_pattern, ~resume) => (
+		handler: (value : $value_pattern :: value_type, ~resume) => (
 			$body;
 			let _ :: void = resume(void);
 		),
 		body: (token :: delimited_token) => (
-			let context :: generator_context[Yield: _, Resume: void, Finish: void] = (
-				(yield: value => delimited_switch (~token, ~value))
+			let context :: generator_context[Yield: value_type, Resume: void] = (
+				(yield: value => builtin_fn_delimited_yield (~token, ~value))
 			);
 			with context (
 				let _ :: void = $generator;
@@ -36,12 +34,19 @@ const for_loop = macro (~value_pattern, ~generator, ~body) => `(
 	);
 );
 
-# actual example
+const yield = forall (~T :: type, ~Resume :: type). (
+	fn (value :: T) {
+		(current generator_context[Yield: T, ~Resume]).yield(value)
+	}
+);
 
-# TODO mark generator with yielding[string]
+# actual example
+# TODO mark generator with 
 
 let generator = fn(void) {
-	yield "1";
+	print "yielding 1";
+	yield[T: _, Resume: void] "1";
+	print "yielding 2";
 	yield "2";
 };
 

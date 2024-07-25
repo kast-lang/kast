@@ -19,6 +19,7 @@ module type T = sig
   val set : var -> inferred -> unit
   val add_check : var -> (inferred -> bool) -> unit
   val show_id : var -> string
+  val get_id : var -> Id.t
 end
 
 module Make (Checker : Checker) : T with type inferred := Checker.t = struct
@@ -49,6 +50,7 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
         root
 
   let show_id var = Id.show (get_root_var var).id
+  let get_id var = (get_root_var var).id
 
   let get_root_data var =
     match var.data with
@@ -84,9 +86,11 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
     | None -> ()
 
   let make_same a b =
+    Log.info "make_same 1";
     let a = get_root_var a in
     let b = get_root_var b in
-    if a != b then
+    Log.info "make_same 2";
+    if a != b then (
       let a_data = get_root_data a in
       let b_data = get_root_data b in
       let inferred_value =
@@ -100,7 +104,8 @@ module Make (Checker : Checker) : T with type inferred := Checker.t = struct
         b.data <- SameAs a)
       else (
         b_data.inferred <- inferred_value;
-        a.data <- SameAs b)
+        a.data <- SameAs b);
+      Log.info "make_same 3")
 
   let set var value =
     let root = get_root_var var in

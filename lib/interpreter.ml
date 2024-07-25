@@ -559,6 +559,7 @@ module rec Impl : Interpreter = struct
 
   and init_ir (ir : no_data ir_node) : ir =
     (* Log.trace @@ "initializing ir: " ^ show_ir_with_data (fun _ -> None) ir; *)
+    Log.trace @@ "initializing " ^ ir_name ir;
     try
       let known value =
         let type_var = MyInference.new_var () in
@@ -695,6 +696,7 @@ module rec Impl : Interpreter = struct
         | Call { data = NoData; f; args } -> (
             match (ir_data f).type_var |> MyInference.get_inferred with
             | Some (Type (Template t) : value) ->
+                Log.trace "auto instantiating template";
                 let instantiated =
                   Instantiate
                     {
@@ -713,6 +715,7 @@ module rec Impl : Interpreter = struct
                 in
                 Call { data = NoData; f = instantiated; args } |> init_ir
             | _ ->
+                Log.trace "calling an actual fn";
                 let f_type = new_fn_type_vars () in
                 MyInference.make_same f_type.arg_type (ir_data args).type_var;
                 set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
@@ -776,7 +779,8 @@ module rec Impl : Interpreter = struct
                   }
             | other -> failwith @@ show other ^ " is not a template")
       in
-      Log.trace @@ "initialized ir: " ^ show_ir result;
+      (* Log.info @@ "almost: " ^ ir_name result; *)
+      Log.info @@ "initialized ir: " ^ show_ir result;
       result
     with Failure _ as failure ->
       Log.error @@ "  while initializing ir " ^ ir_name ir;
@@ -832,7 +836,38 @@ module rec Impl : Interpreter = struct
           (pattern_data b).type_var;
         Union { data = same_as a; a; b }
 
-  and show : value -> string = function
+  and show : value -> string =
+   fun value ->
+    (if false then
+       Log.info @@ "in "
+       ^
+       match value with
+       | Binding _ -> "binding"
+       | Var _ -> "var"
+       | Ast _ -> "ast"
+       | Variant _ -> "variant"
+       | UnwindToken _ -> "unwind token"
+       | DelimitedToken _ -> "delimited token"
+       | Void -> "void"
+       | Macro _ -> "macro"
+       | BuiltinMacro _ -> "builtin_macro"
+       | BuiltinFn _ -> "builtin_fn"
+       | Template _ -> "template"
+       | Function _ -> "fn"
+       | Int32 _ -> "int32"
+       | Int64 _ -> "int64"
+       | Float64 _ -> "float64"
+       | Bool _ -> "bool"
+       | String _ -> "string"
+       | Dict _ -> "dict"
+       | Ref _ -> "ref"
+       | Struct _ -> "struct"
+       | Type _ -> "type"
+       | InferVar _ -> "infervar");
+    let result = show2 value in
+    result
+
+  and show2 : value -> string = function
     | Binding { name; id; _ } -> "<binding " ^ name ^ " " ^ Id.show id ^ ">"
     | Var { id; typ } -> "var " ^ Id.show id ^ " :: " ^ show_type typ
     | Ast ast -> "`(" ^ Ast.show ast ^ ")"
@@ -872,7 +907,7 @@ module rec Impl : Interpreter = struct
     ^ (match f.contexts with Some ast -> " with " ^ Ast.show ast | None -> "")
     ^ " => " ^ Ast.show f.body
 
-  and show_fn (f : fn) : string = if true then "<...>" else show_fn_ast f.ast
+  and show_fn (f : fn) : string = if false then "<...>" else show_fn_ast f.ast
 
   and show_fn_type : fn_type -> string =
    fun { arg_type; contexts; result_type } ->
@@ -894,7 +929,40 @@ module rec Impl : Interpreter = struct
         ^ show_type (TypeId.to_type typ))
       contexts ""
 
-  and show_type : value_type -> string = function
+  and show_type : value_type -> string =
+   fun t ->
+    (if false then
+       Log.info @@ "in"
+       ^
+       match t with
+       | Binding _ -> "binding"
+       | UnwindToken -> "unwind_token"
+       | DelimitedToken -> "delimited token"
+       | Never -> "!"
+       | Ast -> "ast"
+       | Void -> "void"
+       | Bool -> "bool"
+       | Int32 -> "int32"
+       | Int64 -> "int64"
+       | Float32 -> "float32"
+       | Float64 -> "float64"
+       | String -> "string"
+       | Fn _ -> "fn"
+       | Macro _ -> "macro"
+       | Template _ -> "template"
+       | BuiltinMacro -> "builtin_macro"
+       | Dict _ -> "dict"
+       | Type -> "type"
+       | Union _ -> "union"
+       | OneOf _ -> "oneof"
+       | NewType _ -> "newtype"
+       | Var _ -> "var"
+       | InferVar _ -> "infervar"
+       | MultiSet _ -> "multiset");
+    let result = show_type2 t in
+    result
+
+  and show_type2 : value_type -> string = function
     | Binding { name; id; _ } -> "<binding " ^ name ^ " " ^ Id.show id ^ ">"
     | UnwindToken -> "unwind_token"
     | DelimitedToken -> "delimited token"
@@ -937,6 +1005,9 @@ module rec Impl : Interpreter = struct
     | Var { id } -> "var " ^ Id.show id
     | InferVar var -> (
         match (MyInference.get_inferred var : value option) with
+        | Some (Type (InferVar inner))
+          when MyInference.get_id inner = MyInference.get_id var ->
+            "<not inferred " ^ MyInference.show_id var ^ ">"
         | Some (Type inferred) -> show_type inferred
         | Some _ -> failwith "type was inferred as not a type wtf"
         | None -> "<not inferred " ^ MyInference.show_id var ^ ">")
@@ -1061,9 +1132,12 @@ module rec Impl : Interpreter = struct
    fun ir ->
     show_ir_with_data
       (fun data ->
-        match MyInference.get_inferred data.type_var with
-        | None -> None
-        | Some inferred -> Some (" :: " ^ show inferred))
+        let result =
+          match MyInference.get_inferred data.type_var with
+          | None -> None
+          | Some inferred -> Some (" :: " ^ show inferred)
+        in
+        result)
       ir
 
   and show_pattern : pattern -> string =
@@ -1173,10 +1247,16 @@ module rec Impl : Interpreter = struct
   and type_of_value (value : value) ~(ensure : bool) : value_type =
     match value with
     | Binding { value_type; _ } -> InferVar value_type
-    | InferVar var -> (
-        match MyInference.get_inferred var with
-        | Some value -> type_of_value value ~ensure
-        | None -> infer_var_type var)
+    | InferVar var ->
+        let result =
+          match MyInference.get_inferred var with
+          | Some (InferVar inner : value)
+            when MyInference.get_id inner = MyInference.get_id var ->
+              failwith "wtf var = var"
+          | Some value -> type_of_value value ~ensure
+          | None -> infer_var_type var
+        in
+        result
     | Var { typ; _ } -> typ
     | Ast _ -> Ast
     | UnwindToken _ -> UnwindToken
@@ -1346,42 +1426,47 @@ module rec Impl : Interpreter = struct
         find_in_scopes self.self
 
   and compile_ast_to_ir (self : state) (ast : ast) : compiled =
-    try
-      match ast with
-      | Nothing _ ->
-          {
-            ir = Void { data = NoData } |> init_ir;
-            new_bindings = StringMap.empty;
-          }
-      | Simple { token; _ } ->
-          {
-            ir =
-              (match token with
-              | Ident ident -> (
-                  match get_local_opt self ident with
-                  | None ->
-                      log_state Log.Info self;
-                      failwith (ident ^ " not found in current scope")
-                  | Some (Binding binding) ->
-                      Binding { binding; data = NoData } |> init_ir
-                  | Some value -> Const { value; data = NoData } |> init_ir)
-              | Number raw -> Number { raw; data = NoData } |> init_ir
-              | String { value; raw } ->
-                  String { value; raw; data = NoData } |> init_ir
-              | Punctuation _ -> failwith "punctuation");
-            new_bindings = StringMap.empty;
-          }
-      | Complex { def; values; _ } -> (
-          match expand_macro self def.name values ~new_bindings:false with
-          | Compiled result -> result
-          | Pattern _ ->
-              Log.error @@ Ast.show ast;
-              failwith "wtf ast was compiled to a pattern but expected compiled"
-          )
-      | Syntax { def; value; _ } -> compile_ast_to_ir self value
-    with Failure _ as failure ->
-      Log.error @@ "  while compiling to ir: " ^ Ast.name ast;
-      raise failure
+    (* Log.trace @@ "compiling ast to ir: " ^ Ast.show ast; *)
+    let result =
+      try
+        match ast with
+        | Nothing _ ->
+            {
+              ir = Void { data = NoData } |> init_ir;
+              new_bindings = StringMap.empty;
+            }
+        | Simple { token; _ } ->
+            {
+              ir =
+                (match token with
+                | Ident ident -> (
+                    match get_local_opt self ident with
+                    | None ->
+                        log_state Log.Info self;
+                        failwith (ident ^ " not found in current scope")
+                    | Some (Binding binding) ->
+                        Binding { binding; data = NoData } |> init_ir
+                    | Some value -> Const { value; data = NoData } |> init_ir)
+                | Number raw -> Number { raw; data = NoData } |> init_ir
+                | String { value; raw } ->
+                    String { value; raw; data = NoData } |> init_ir
+                | Punctuation _ -> failwith "punctuation");
+              new_bindings = StringMap.empty;
+            }
+        | Complex { def; values; _ } -> (
+            match expand_macro self def.name values ~new_bindings:false with
+            | Compiled result -> result
+            | Pattern _ ->
+                Log.error @@ Ast.show ast;
+                failwith
+                  "wtf ast was compiled to a pattern but expected compiled")
+        | Syntax { def; value; _ } -> compile_ast_to_ir self value
+      with Failure _ as failure ->
+        Log.error @@ "  while compiling to ir: " ^ Ast.name ast;
+        raise failure
+    in
+    (* Log.trace @@ "compiled ast: " ^ Ast.show ast ^ " as " ^ show_ir result.ir; *)
+    result
 
   and compile_pattern (self : state) (pattern : ast option) : pattern =
     match pattern with
@@ -1973,57 +2058,22 @@ module rec Impl : Interpreter = struct
     | other -> failwith (show other ^ " is not a type")
 
   and eval_call (f : value) (args : value) (contexts : contexts) : value =
-    let (get_f_impl, vars) : (unit -> value -> value) * fn_type_vars =
+    Log.trace @@ "calling " ^ show f ^ " (" ^ show args ^ ")";
+    let f_impl : value -> value =
       match f with
-      | BuiltinFn f ->
-          ( (fun () args ->
-              try f.impl args
-              with Failure _ as failure ->
-                Log.error @@ "while calling builtin fn " ^ f.name;
-                raise failure),
-            new_fn_type_vars () )
-      | Function f | Macro f ->
-          ((fun () -> call_compiled contexts @@ ensure_compiled f), f.vars)
-          (* | BuiltinMacro { impl; _ } -> *)
-          (* let f : value -> value = function *)
-          (* | Dict { fields } -> *)
-          (* let ir = *)
-          (* match *)
-          (* impl self *)
-          (* (StringMap.map *)
-          (* (fun (value : value) : ast -> *)
-          (* match value with *)
-          (* | Ast ast -> ast *)
-          (* | _ -> *)
-          (* failwith *)
-          (* "builtin macro arg must be dict of \ *)
-             (* asts") *)
-          (* fields) *)
-          (* ~new_bindings:false *)
-          (* with *)
-          (* | Compiled { ir; _ } -> ir *)
-          (* | Pattern _ -> *)
-          (* failwith *)
-          (* "wtf builtin macro became pattern, expected \ *)
-             (* compiled" *)
-          (* in *)
-          (* (eval_ir self ir).value *)
-          (* | _ -> failwith "builtin macro arg must be dict of asts" *)
-          (* in *)
-          (* ( (fun () -> f), *)
-          (* todo actually infer, dont create new vars here *)
-          (* { *)
-          (* result_type = MyInference.new_var (); *)
-          (* contexts = MyInference.new_var (); *)
-          (* arg_type = MyInference.new_var (); *)
-          (* } ) *)
+      | BuiltinFn f -> (
+          fun args ->
+            try f.impl args
+            with Failure _ as failure ->
+              Log.error @@ "while calling builtin fn " ^ f.name;
+              raise failure)
+      | Function f | Macro f -> call_compiled contexts @@ ensure_compiled f
       | _ -> failwith @@ show f ^ " - not a function"
     in
-    let f_impl = get_f_impl () in
-    Log.trace ("calling " ^ show f);
+    Log.info ("calling " ^ show f);
     Log.trace @@ "args = " ^ show args;
     let result = f_impl args in
-    Log.trace @@ "result = " ^ show result;
+    Log.info @@ "result = " ^ show result;
     result
 
   and ensure_compiled (f : fn) : compiled_fn =
