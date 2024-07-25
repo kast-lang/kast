@@ -96,8 +96,6 @@ syntax builtin_macro_struct_def <- 500 = "struct" "(" body ")";
 syntax builtin_macro_function_def <- 500 = "fn" "(" args ")" contexts "{" body "}";
 syntax builtin_macro_function_def <- 500 = "fn" "(" args ")" "->" result_type "{" body "}";
 syntax builtin_macro_function_def <- 500 = "fn" "(" args ")" "{" body "}";
-syntax builtin_macro_function_def <- 100000 = "(" args ")" "{" body "}";
-syntax builtin_macro_function_def <- 100000 = "(" ")" "{" body "}";
 syntax builtin_macro_function_def <- 100000 = "{" body "}";
 
 syntax builtin_macro_scope <- 100000 = "(" e ")";
@@ -132,14 +130,19 @@ let loop_context :: type = (
 # body arg
 # }
 
-let dbg = forall (T :: type). ((x :: T) -> void => builtin_fn_dbg x);
+let dbg = forall (T :: type). (
+    fn (x :: T) -> void {
+        builtin_fn_dbg x
+    }
+    # (x :: T) -> void => builtin_fn_dbg x
+);
 
 let unwind = forall (T :: type). (
     (args => builtin_fn_unwind args) :: (token: unwind_token, value: T) -> never
 );
 
 let loop = fn (body :: (void -> void incontext loop_context)) {
-    let should_continue = unwindable_block (token :: unwind_token) {
+    let should_continue = unwindable_block fn(token :: unwind_token) {
         let current_loop_context = (
             finish_current_iteration: (x :: bool) -> never => unwind ( ~token, value: x ),
         );
@@ -176,7 +179,7 @@ let throw = forall (error :: type). (
 let try = forall
 		(~ok :: type, ~error :: type). (
 	fn (body :: (void -> ok incontext throws[error])) {
-		unwindable_block (token :: unwind_token) {
+		unwindable_block fn(token :: unwind_token) {
 			const result_type = Result[~ok, ~error];
 			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error e));
 			with throw_context (

@@ -25,6 +25,7 @@ module rec Impl : Interpreter = struct
     | Var of { id : id; typ : value_type }
     | InferVar of inference_var
     | UnwindToken of id
+    | DelimitedToken of id
     | Ast of ast
     | Macro of fn
     | BuiltinMacro of builtin_macro
@@ -47,6 +48,7 @@ module rec Impl : Interpreter = struct
     | Var of { id : id }
     | Binding of binding
     | UnwindToken
+    | DelimitedToken
     | Never
     | Ast
     | Void
@@ -225,6 +227,7 @@ module rec Impl : Interpreter = struct
 
   module TypeId = struct
     let unwind_token = Id.gen ()
+    let delimited_token = Id.gen ()
     let never = Id.gen ()
     let ast = Id.gen ()
     let void = Id.gen ()
@@ -277,6 +280,7 @@ module rec Impl : Interpreter = struct
         match t with
         | Binding { id; _ } -> id
         | UnwindToken -> unwind_token
+        | DelimitedToken -> delimited_token
         | Never -> never
         | Ast -> ast
         | Void -> void
@@ -350,6 +354,8 @@ module rec Impl : Interpreter = struct
     | Void, _ -> failinfer ()
     | UnwindToken, UnwindToken -> UnwindToken
     | UnwindToken, _ -> failinfer ()
+    | DelimitedToken, DelimitedToken -> DelimitedToken
+    | DelimitedToken, _ -> failinfer ()
     | Never, Never -> Never
     | Never, _ -> failinfer ()
     | Ast, Ast -> Ast
@@ -461,6 +467,9 @@ module rec Impl : Interpreter = struct
     | UnwindToken a, UnwindToken b ->
         if a = b then UnwindToken a else failinfer ()
     | UnwindToken _, _ -> failinfer ()
+    | DelimitedToken a, DelimitedToken b ->
+        if a = b then DelimitedToken a else failinfer ()
+    | DelimitedToken _, _ -> failinfer ()
     | Ast a, Ast b -> if a = b then Ast a else failinfer ()
     | Ast _, _ -> failinfer ()
     | Macro _, _ -> failwith "inferred macro?"
@@ -858,6 +867,7 @@ module rec Impl : Interpreter = struct
     | Variant { name; value; _ } ->
         name ^ show_or "" (fun value -> " " ^ show value) value
     | UnwindToken id -> "unwind token " ^ Id.show id
+    | DelimitedToken id -> "delimited token " ^ Id.show id
     | Void -> "void"
     | Macro f -> "macro " ^ show_fn f
     | BuiltinMacro _ -> "builtin_macro"
@@ -915,6 +925,7 @@ module rec Impl : Interpreter = struct
   and show_type : value_type -> string = function
     | Binding { name; _ } -> name
     | UnwindToken -> "unwind_token"
+    | DelimitedToken -> "delimited token"
     | Never -> "!"
     | Ast -> "ast"
     | Void -> "void"
@@ -1192,6 +1203,7 @@ module rec Impl : Interpreter = struct
     | Var { typ; _ } -> typ
     | Ast _ -> Ast
     | UnwindToken _ -> UnwindToken
+    | DelimitedToken _ -> DelimitedToken
     | Void -> Void
     | Variant { typ; _ } -> typ
     | BuiltinMacro _ -> BuiltinMacro
@@ -1457,6 +1469,7 @@ module rec Impl : Interpreter = struct
         | None -> t)
     | Var _ -> t
     | UnwindToken -> t
+    | DelimitedToken -> t
     | Never -> t
     | Ast -> t
     | Void -> t
@@ -1482,7 +1495,7 @@ module rec Impl : Interpreter = struct
     | NewType _ -> failwith @@ "todo NewType " ^ show_type t
     | OneOf _ -> failwith @@ "todo OneOf " ^ show_type t
     | Union _ -> failwith @@ "todo Union " ^ show_type t
-    | Type -> failwith @@ "todo Type " ^ show_type t
+    | Type -> t
     | InferVar var -> (
         match MyInference.get_inferred var with
         | Some (Type t : value) -> t |> substitute_type_bindings sub
@@ -1502,6 +1515,7 @@ module rec Impl : Interpreter = struct
         | None -> value
         | Some inferred -> inferred |> substitute_bindings sub)
     | UnwindToken _ -> value
+    | DelimitedToken _ -> value
     | Ast _ -> value
     | Macro _ -> value
     | BuiltinMacro _ -> value
@@ -1903,61 +1917,9 @@ module rec Impl : Interpreter = struct
             (* todo memoization *)
             just_value (f args)
         | Call { f; args; _ } ->
-            let f = (eval_ir self f).value in
-            let (get_f_impl, vars) : (unit -> value -> value) * fn_type_vars =
-              match f with
-              | BuiltinFn f ->
-                  ( (fun () args ->
-                      try f.impl args
-                      with Failure _ as failure ->
-                        Log.error @@ "while calling builtin fn " ^ f.name;
-                        raise failure),
-                    new_fn_type_vars () )
-              | Function f | Macro f ->
-                  ( (fun () -> call_compiled self.contexts @@ ensure_compiled f),
-                    f.vars )
-              | BuiltinMacro { impl; _ } ->
-                  let f : value -> value = function
-                    | Dict { fields } ->
-                        let ir =
-                          match
-                            impl self
-                              (StringMap.map
-                                 (fun (value : value) : ast ->
-                                   match value with
-                                   | Ast ast -> ast
-                                   | _ ->
-                                       failwith
-                                         "builtin macro arg must be dict of \
-                                          asts")
-                                 fields)
-                              ~new_bindings:false
-                          with
-                          | Compiled { ir; _ } -> ir
-                          | Pattern _ ->
-                              failwith
-                                "wtf builtin macro became pattern, expected \
-                                 compiled"
-                        in
-                        (eval_ir self ir).value
-                    | _ -> failwith "builtin macro arg must be dict of asts"
-                  in
-                  ( (fun () -> f),
-                    (* todo actually infer, dont create new vars here *)
-                    {
-                      result_type = MyInference.new_var ();
-                      contexts = MyInference.new_var ();
-                      arg_type = MyInference.new_var ();
-                    } )
-              | _ -> failwith @@ show f ^ " - not a function"
-            in
-            let f_impl = get_f_impl () in
-            let args = (eval_ir self args).value in
-            Log.trace ("calling " ^ show f);
-            Log.trace @@ "args = " ^ show args;
-            let result = f_impl args in
-            Log.trace @@ "result = " ^ show result;
-            just_value result
+            just_value
+            @@ eval_call (eval_ir self f).value (eval_ir self args).value
+                 self.contexts
         | If { cond; then_case; else_case; _ } ->
             let cond = eval_ir self cond in
             let self_with_new_bindings =
@@ -2021,6 +1983,60 @@ module rec Impl : Interpreter = struct
         Var { id }
     | Binding binding -> Binding binding
     | other -> failwith (show other ^ " is not a type")
+
+  and eval_call (f : value) (args : value) (contexts : contexts) : value =
+    let (get_f_impl, vars) : (unit -> value -> value) * fn_type_vars =
+      match f with
+      | BuiltinFn f ->
+          ( (fun () args ->
+              try f.impl args
+              with Failure _ as failure ->
+                Log.error @@ "while calling builtin fn " ^ f.name;
+                raise failure),
+            new_fn_type_vars () )
+      | Function f | Macro f ->
+          ((fun () -> call_compiled contexts @@ ensure_compiled f), f.vars)
+          (* | BuiltinMacro { impl; _ } -> *)
+          (* let f : value -> value = function *)
+          (* | Dict { fields } -> *)
+          (* let ir = *)
+          (* match *)
+          (* impl self *)
+          (* (StringMap.map *)
+          (* (fun (value : value) : ast -> *)
+          (* match value with *)
+          (* | Ast ast -> ast *)
+          (* | _ -> *)
+          (* failwith *)
+          (* "builtin macro arg must be dict of \ *)
+             (* asts") *)
+          (* fields) *)
+          (* ~new_bindings:false *)
+          (* with *)
+          (* | Compiled { ir; _ } -> ir *)
+          (* | Pattern _ -> *)
+          (* failwith *)
+          (* "wtf builtin macro became pattern, expected \ *)
+             (* compiled" *)
+          (* in *)
+          (* (eval_ir self ir).value *)
+          (* | _ -> failwith "builtin macro arg must be dict of asts" *)
+          (* in *)
+          (* ( (fun () -> f), *)
+          (* todo actually infer, dont create new vars here *)
+          (* { *)
+          (* result_type = MyInference.new_var (); *)
+          (* contexts = MyInference.new_var (); *)
+          (* arg_type = MyInference.new_var (); *)
+          (* } ) *)
+      | _ -> failwith @@ show f ^ " - not a function"
+    in
+    let f_impl = get_f_impl () in
+    Log.trace ("calling " ^ show f);
+    Log.trace @@ "args = " ^ show args;
+    let result = f_impl args in
+    Log.trace @@ "result = " ^ show result;
+    result
 
   and ensure_compiled (f : fn) : compiled_fn =
     if Option.is_none f.compiled then (
@@ -2965,6 +2981,74 @@ module rec Impl : Interpreter = struct
           | _ -> failwith "expected a dict in unwing args");
       }
 
+    type _ Effect.t += DelimitedYield : (id * value) -> value Effect.t
+
+    let delimited_block : builtin_fn =
+      {
+        name = "delimited_block";
+        impl =
+          (function
+          | Dict { fields } ->
+              let handler = StringMap.find "handler" fields in
+              let body = StringMap.find "body" fields in
+              let this_token_id = Id.gen () in
+              let body () =
+                eval_call body
+                  (DelimitedToken this_token_id : value)
+                  empty_contexts
+              in
+              Effect.Deep.try_with body ()
+                {
+                  effc =
+                    (fun (type a) (eff : a Effect.t) ->
+                      match eff with
+                      | DelimitedYield (token_id, value)
+                        when token_id = this_token_id ->
+                          Some
+                            (fun (k : (a, _) Effect.Deep.continuation) ->
+                              let handler_args : value =
+                                Dict
+                                  {
+                                    fields =
+                                      StringMap.of_list
+                                        [
+                                          ("value", value);
+                                          ( "resume",
+                                            BuiltinFn
+                                              {
+                                                name =
+                                                  "resume "
+                                                  ^ Id.show this_token_id;
+                                                impl =
+                                                  (fun resume_arg ->
+                                                    Effect.Deep.continue k
+                                                      resume_arg);
+                                              } );
+                                        ];
+                                  }
+                              in
+                              eval_call handler handler_args empty_contexts)
+                      | _ -> None);
+                }
+          | _ -> failwith "expected a dict with delimited block args");
+      }
+
+    let delimited_yield : builtin_fn =
+      {
+        name = "delimited_yield";
+        impl =
+          (function
+          | Dict { fields } ->
+              let token_id =
+                match StringMap.find "token" fields with
+                | DelimitedToken token -> token
+                | _ -> failwith "expected an delimit token"
+              in
+              let value = StringMap.find "value" fields in
+              Effect.perform (DelimitedYield (token_id, value))
+          | _ -> failwith "expected a dict in unwing args");
+      }
+
     let union_variant : builtin_macro =
       {
         name = "union_variant";
@@ -3242,6 +3326,8 @@ module rec Impl : Interpreter = struct
 
     let builtin_fns : builtin_fn list =
       [
+        delimited_block;
+        delimited_yield;
         placeholder_fn;
         function_type;
         random_int32;
@@ -3300,6 +3386,7 @@ module rec Impl : Interpreter = struct
     let builtin_values : (string * value) List.t =
       [
         ("unwind_token", Type UnwindToken);
+        ("delimited_token", Type DelimitedToken);
         ("void", Void);
         ("ast", Type Ast);
         ("bool", Type Bool);
