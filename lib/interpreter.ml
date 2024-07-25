@@ -83,7 +83,7 @@ module rec Impl : Interpreter = struct
     result_type : inference_var;
   }
 
-  and builtin_fn = { name : string; impl : value -> value }
+  and builtin_fn = { name : string; (* TODO contexts *) impl : value -> value }
 
   and builtin_macro = {
     name : string;
@@ -122,7 +122,7 @@ module rec Impl : Interpreter = struct
     | TypeOf of { captured : state; expr : ir; data : 'data }
     | TypeOfValue of { captured : state; expr : ir; data : 'data }
     | Dict of { fields : ir StringMap.t; data : 'data }
-    | Unwinding of { f : ir; data : 'data }
+    | UnwindableBlock of { f : ir; data : 'data }
     | WithContext of { new_context : ir; expr : ir; data : 'data }
     | CurrentContext of { context_type : value_type; data : 'data }
     | Ast of {
@@ -669,11 +669,11 @@ module rec Impl : Interpreter = struct
                        };
                 fields;
               }
-        | Unwinding { data = NoData; f } ->
+        | UnwindableBlock { data = NoData; f } ->
             let f_type = new_fn_type_vars () in
             MyInference.set f_type.arg_type (Type UnwindToken : value);
             set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-            Unwinding { data = { type_var = f_type.result_type }; f }
+            UnwindableBlock { data = { type_var = f_type.result_type }; f }
         | Call { data = NoData; f; args } -> (
             match (ir_data f).type_var |> MyInference.get_inferred with
             | Some (Type (Template t) : value) ->
@@ -972,7 +972,7 @@ module rec Impl : Interpreter = struct
     | TypeOf _ -> "type_of"
     | TypeOfValue _ -> "type_of_value"
     | Dict _ -> "dict"
-    | Unwinding _ -> "unwinding"
+    | UnwindableBlock _ -> "unwindable_block"
     | WithContext _ -> "with_context"
     | CurrentContext _ -> "current_context"
     | Ast _ -> "ast"
@@ -1036,7 +1036,7 @@ module rec Impl : Interpreter = struct
         | TypeOfValue { expr; _ } -> "typeofvalue " ^ show_rec expr
         | Template { f; _ } -> "template " ^ show_fn f
         | Function _ -> "function"
-        | Unwinding { f; _ } -> "unwinding " ^ show_rec f
+        | UnwindableBlock { f; _ } -> "unwindable_block " ^ show_rec f
         | WithContext { new_context; expr; _ } ->
             "with " ^ show_rec new_context ^ " (" ^ show_rec expr ^ ")"
         | CurrentContext { context_type; _ } ->
@@ -1227,7 +1227,7 @@ module rec Impl : Interpreter = struct
     | NewType { data; _ }
     | OneOf { data; _ }
     | Scope { data; _ }
-    | Unwinding { data; _ }
+    | UnwindableBlock { data; _ }
     | WithContext { data; _ }
     | CurrentContext { data; _ }
     | TypeOf { data; _ }
@@ -1751,7 +1751,7 @@ module rec Impl : Interpreter = struct
             just_value
               (Type (type_of_value ~ensure:true (eval_ir self expr).value))
         | BuiltinFn { f; _ } -> just_value (BuiltinFn f)
-        | Unwinding { f; _ } ->
+        | UnwindableBlock { f; _ } ->
             just_value
               (match (eval_ir self f).value with
               | Function f -> (
@@ -1761,7 +1761,7 @@ module rec Impl : Interpreter = struct
                   with Unwind (unwinded_token, value) ->
                     if unwinded_token = token then value
                     else raise (Unwind (unwinded_token, value)))
-              | _ -> failwith "unwinding must take a function")
+              | _ -> failwith "unwindable_block must take a function")
         | WithContext { new_context; expr; _ } ->
             let new_context = (eval_ir self new_context).value in
             let new_state =
@@ -2932,9 +2932,9 @@ module rec Impl : Interpreter = struct
           | _ -> failwith "expected dict (is_same_type)");
       }
 
-    let unwinding : builtin_macro =
+    let unwindable_block : builtin_macro =
       {
-        name = "unwinding";
+        name = "unwindable_block";
         impl =
           (fun self args ~new_bindings ->
             assert (not new_bindings);
@@ -2942,7 +2942,7 @@ module rec Impl : Interpreter = struct
             Compiled
               {
                 ir =
-                  Unwinding
+                  UnwindableBlock
                     { f = (compile_ast_to_ir self def).ir; data = NoData }
                   |> init_ir;
                 new_bindings = StringMap.empty;
@@ -3196,7 +3196,7 @@ module rec Impl : Interpreter = struct
         check_impl;
         single_variant;
         combine_variants;
-        unwinding;
+        unwindable_block;
         current_context;
         typeof;
         typeofvalue;

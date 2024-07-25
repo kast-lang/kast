@@ -18,7 +18,7 @@ syntax builtin_macro_field <- 4.75 = name ":" value;
 syntax inline_field <- 4.75 = "~" name;
 syntax inline_typed_field <- 4.75 = "~" name "::" type;
 
-syntax builtin_macro_unwinding <- 5 = "unwinding" def;
+syntax builtin_macro_unwindable_block <- 5 = "unwindable_block" def;
 syntax builtin_macro_with_context <- 5 = "with" new_context "(" expr ")";
 syntax builtin_macro_current_context <- 5 = "current" context_type;
 syntax builtin_fn_macro <- 5 = "macro" def;
@@ -139,7 +139,7 @@ let unwind = forall (T :: type). (
 );
 
 let loop = fn (body :: (void -> void incontext loop_context)) {
-    let should_continue = unwinding (token :: unwind_token) {
+    let should_continue = unwindable_block (token :: unwind_token) {
         let current_loop_context = (
             finish_current_iteration: (x :: bool) -> never => unwind ( ~token, value: x ),
         );
@@ -176,7 +176,7 @@ let throw = forall (error :: type). (
 let try = forall
 		(~ok :: type, ~error :: type). (
 	fn (body :: (void -> ok incontext throws[error])) {
-		unwinding (token :: unwind_token) {
+		unwindable_block (token :: unwind_token) {
 			const result_type = Result[~ok, ~error];
 			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error e));
 			with throw_context (

@@ -246,10 +246,10 @@ let f = fn (token :: unwind_token) {
   unwind (~token, ~value);
   ...
 };
-unwinding_block f
+unwindable_block f
 ```
 
-`unwinding_block` creates the block and takes a function of type `unwind_token -> T`
+`unwindable_block` creates the block and takes a function of type `unwind_token -> T`
 and executes it immediately with the token of that block.
 
 When `unwind :: (~token :: unwind_token, ~value :: T)` function is used from within,

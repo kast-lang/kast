@@ -26,7 +26,7 @@ let run_once = fn (~quit, ~first) {
 };
 
 let main = {
-    let result = unwinding (quit) {
+    let result = unwindable_block (quit) {
         run_once (~quit, first: true);
         loop {
             run_once (~quit, first: false);
