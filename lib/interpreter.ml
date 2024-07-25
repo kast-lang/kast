@@ -179,6 +179,7 @@ module rec Impl : Interpreter = struct
     captured : state;
     ast : fn_ast;
     vars : fn_type_vars;
+    shared_compiled_args : pattern option ref;
     mutable compiled : compiled_fn option;
   }
 
@@ -757,58 +758,21 @@ module rec Impl : Interpreter = struct
                   known_type @@ Fn (new_fn_type_vars () |> fn_type_vars_to_type);
                 f;
               }
-        | Instantiate { data = NoData; captured; template; args } -> (
+        | Instantiate { data = NoData; captured; template; args = args_ir } -> (
             match (eval_ir captured template).value with
             | Template t ->
                 let tt = template_to_template_type t in
                 let compiled_tt = ensure_compiled tt in
-                let sub =
-                  pattern_bindings compiled_tt.args
-                  |> StringMap.map (fun _ : value ->
-                         InferVar (MyInference.new_var ()))
-                in
-                let args_type = pattern_type compiled_tt.args in
-                MyInference.set (ir_data args).type_var (Type args_type : value);
-                let args_to_determine_result_type =
-                  pattern_to_value_with
-                    (fun _ : value -> InferVar (MyInference.new_var ()))
-                    compiled_tt.args
-                in
-                Log.trace
-                @@ show_pattern compiled_tt.args
-                ^ " initialized as "
-                ^ show args_to_determine_result_type;
-                Log.trace @@ "args type (ir) = "
-                ^ show (InferVar (ir_data args).type_var);
-                Log.trace @@ "args type (inferred) = " ^ show (Type args_type);
-                MyInference.set (ir_data args).type_var (Type args_type : value);
-                Log.trace @@ "var set success";
+                let args = (eval_ir captured args_ir).value in
                 let result_type =
-                  call_compiled empty_contexts compiled_tt
-                    args_to_determine_result_type
+                  call_compiled empty_contexts compiled_tt args
                 in
-                Log.trace @@ "subbing: " ^ show result_type;
-                (* todo is subbing needed here? *)
-                let result_type = result_type |> substitute_bindings sub in
-                Log.trace @@ "sub result = " ^ show result_type;
-                Log.trace @@ "args to determine result type is "
-                ^ show args_to_determine_result_type;
-                let args_value = (eval_ir t.captured args).value in
-                (* todo is subbing needed here? *)
-                (* because args to type template are same as args to actual template *)
-                ignore
-                @@ inference_unite args_value
-                     (pattern_to_value_with
-                        (fun binding : value -> Binding binding)
-                        compiled_tt.args
-                     |> substitute_bindings sub);
-                Log.trace @@ "united";
                 Instantiate
                   {
                     data = known_type @@ value_to_type result_type;
                     captured = t.captured;
                     template;
-                    args;
+                    args = args_ir;
                   }
             | other -> failwith @@ show other ^ " is not a template")
       in
@@ -1174,18 +1138,23 @@ module rec Impl : Interpreter = struct
                   contexts = f.vars.contexts;
                   result_type = MyInference.new_var ();
                 };
+              shared_compiled_args = f.shared_compiled_args;
               ast =
                 {
-                  f.ast with
+                  args = f.ast.args;
+                  contexts = f.ast.contexts;
+                  where = f.ast.where;
+                  returns = f.ast.returns;
                   body =
                     Complex
                       {
                         def =
                           {
+                            (* TODO how to not hardcode this here? *)
                             name = "builtin_macro_typeof";
                             assoc = Left;
                             priority = 0.0;
-                            parts = [];
+                            parts = [ Keyword "typeof"; Binding "expr" ];
                           };
                         values = StringMap.singleton "expr" f.ast.body;
                         data = Ast.data f.ast.body;
@@ -1418,6 +1387,7 @@ module rec Impl : Interpreter = struct
     match pattern with
     | None -> Void { data = NoData } |> init_pattern
     | Some ast -> (
+        Log.trace @@ "compiling pattern " ^ Ast.show ast;
         match ast with
         | Nothing _ -> Void { data = NoData } |> init_pattern
         | Simple { token; _ } -> (
@@ -1768,7 +1738,12 @@ module rec Impl : Interpreter = struct
                             value_to_type @@ (eval_ir self variant).value))
                        variants)))
         | TypeOf { expr; _ } ->
-            just_value (Type (inferred_type (ir_data expr).type_var))
+            (* todo not only locals, parent structs? *)
+            let inferred_type =
+              inferred_type (ir_data expr).type_var
+              |> substitute_type_bindings self.data.locals
+            in
+            just_value (Type inferred_type)
         | TypeOfValue { expr; _ } ->
             just_value
               (Type (type_of_value ~ensure:true (eval_ir self expr).value))
@@ -1827,6 +1802,7 @@ module rec Impl : Interpreter = struct
               (Template
                  {
                    id = Id.gen ();
+                   shared_compiled_args = ref None;
                    cached_template_type = None;
                    ast = f.ast;
                    vars = substitute_fn_vars f.vars self;
@@ -1838,6 +1814,7 @@ module rec Impl : Interpreter = struct
               (Function
                  {
                    id = Id.gen ();
+                   shared_compiled_args = ref None;
                    cached_template_type = None;
                    ast = f.ast;
                    vars = substitute_fn_vars f.vars self;
@@ -1926,6 +1903,9 @@ module rec Impl : Interpreter = struct
             just_value (f args)
         | Call { f; args; _ } ->
             let f = (eval_ir self f).value in
+            (match f with
+            | Function f | Macro f -> ensure_compiled f |> ignore
+            | _ -> ());
             let args = (eval_ir self args).value in
             just_value @@ eval_call f args self.contexts
         | If { cond; then_case; else_case; _ } ->
@@ -2051,7 +2031,14 @@ module rec Impl : Interpreter = struct
       Log.trace ("compiling " ^ show_fn_ast f.ast);
       let compiled =
         try
-          let args = compile_pattern f.captured f.ast.args in
+          let args =
+            match !(f.shared_compiled_args) with
+            | Some args -> args
+            | None ->
+                let args = compile_pattern f.captured f.ast.args in
+                f.shared_compiled_args := Some args;
+                args
+          in
           (match f.ast.returns with
           | Some ast ->
               MyInference.set f.vars.result_type (eval_ast f.captured ast).value
@@ -2600,6 +2587,7 @@ module rec Impl : Interpreter = struct
                       f =
                         {
                           captured = self;
+                          shared_compiled_args = ref None;
                           ast = fn_ast;
                           cached_template_type = None;
                           id = Id.gen ();
@@ -2635,6 +2623,7 @@ module rec Impl : Interpreter = struct
                       f =
                         {
                           ast = fn_ast;
+                          shared_compiled_args = ref None;
                           id = Id.gen ();
                           cached_template_type = None;
                           vars = new_fn_type_vars ();
