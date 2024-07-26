@@ -21,7 +21,32 @@
             aria-label="Star Kast on GitHub">Star</a>
     </div>
 </section>
-<img class="hero-image" style="width: 50%" src="{{ get_url(path="hello-world.png") }}">
+
+<section id="showcase" class="hero-image">
+    <link rel="stylesheet" href="{{ get_url(path="tabs.css") }}"/>
+    <script defer src="{{ get_url(path="showcase.js") }}"></script>
+
+    <div id="tab-bar">
+        <a class="nav-item subtitle-text" selected onclick="raise(0)" style="">Hello World</a>
+        <a class="nav-item subtitle-text" onclick="raise(1)" style="">Fibonacci</a>
+        <a class="nav-item subtitle-text" onclick="raise(2)" style="">Exceptions</a>
+    </div>
+
+    <div id="tabs">
+        <div class="tab" selected>
+            {% set example = load_data(path="static/examples/hello.md") %}
+            {{ example | markdown | safe }}
+        </div>
+        <div class="tab">
+            {% set example = load_data(path="static/examples/fibonacci.md") %}
+            {{ example | markdown | safe }}
+        </div>
+        <div class="tab">
+            {% set example = load_data(path="static/examples/exceptions.md") %}
+            {{ example | markdown | safe }}
+        </div>
+    </div>
+</section>
 
 <div class="explore-more text" onclick="document.getElementById('features').scrollIntoView({behavior: 'smooth'})">
     Read More ⇩
@@ -37,7 +62,7 @@
         }
 
         .hero-image {
-            display: none
+            display: none !important;
         }
     }
 </style>
