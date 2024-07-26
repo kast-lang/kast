@@ -104,6 +104,7 @@ module rec Impl : Interpreter = struct
   and 'data ir_node =
     | Void of { data : 'data }
     | Struct of { body : ir; data : 'data }
+    | Assign of { pattern : pattern; value : ir; data : 'data }
     | CreateImpl of {
         captured : state;
         value : ir;
@@ -120,6 +121,12 @@ module rec Impl : Interpreter = struct
       }
     | NewType of { def : pattern; data : 'data }
     | Scope of { expr : ir; data : 'data }
+    | ConstructVariant of {
+        ty : value_type;
+        variant : string;
+        value : ir option;
+        data : 'data;
+      }
     | OneOf of { variants : ir option StringMap.t; data : 'data }
     | TypeOf of { captured : state; expr : ir; data : 'data }
     | TypeOfValue of { captured : state; expr : ir; data : 'data }
@@ -213,7 +220,13 @@ module rec Impl : Interpreter = struct
   and contexts_type = int Id.Map.t
   and state = { self : struct'; data : state_data; contexts : contexts }
   and state_data = { locals : value StringMap.t; syntax : Syntax.syntax }
-  and binding = { id : id; name : string; value_type : inference_var }
+
+  and binding = {
+    id : id;
+    name : string;
+    value_type : inference_var;
+    mut : bool;
+  }
 
   exception Unwind of id * value
 
@@ -576,6 +589,10 @@ module rec Impl : Interpreter = struct
             Const
               { value; data = known_type @@ type_of_value ~ensure:false value }
         | Struct { body; data = NoData } -> Struct { body; data = same_as body }
+        | Assign { pattern; value; data = NoData } ->
+            MyInference.make_same (pattern_data pattern).type_var
+              (ir_data value).type_var;
+            Assign { pattern; value; data = known_type Void }
         | CreateImpl
             {
               captured;
@@ -660,6 +677,21 @@ module rec Impl : Interpreter = struct
             TypeOf { data = known_type Type; captured; expr }
         | TypeOfValue { data = NoData; captured; expr } ->
             TypeOfValue { data = known_type Type; captured; expr }
+        | ConstructVariant { data = NoData; ty; variant; value } ->
+            (match ty with
+            | OneOf variants -> (
+                let variant = StringMap.find variant variants in
+                match (variant, value) with
+                | Some value_ty, Some value ->
+                    Log.trace @@ "setting type of " ^ show_ir value ^ " = "
+                    ^ show_type value_ty;
+                    set_ir_type value value_ty
+                | Some _, None ->
+                    failwith "variant expected a value, but value not provided"
+                | None, Some _ -> failwith "variant didnt expect a value"
+                | None, None -> ())
+            | _ -> failwith @@ show_type ty ^ " is not a oneof");
+            ConstructVariant { data = known_type @@ ty; ty; variant; value }
         | OneOf { data = NoData; variants } ->
             OneOf { data = known_type Type; variants }
         | Let { data = NoData; pattern; value } ->
@@ -739,11 +771,15 @@ module rec Impl : Interpreter = struct
             let field_type_var = MyInference.new_var () in
             MyInference.add_check (ir_data obj).type_var (fun value ->
                 Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
-                match get_field_opt value name with
-                | None -> failwith @@ "inferred type doesnt have field " ^ name
-                | Some field ->
-                    MyInference.set field_type_var field;
-                    true);
+                match value with
+                | Type Type -> failwith "todo"
+                | _ -> (
+                    match get_field_opt value name with
+                    | None ->
+                        failwith @@ "inferred type doesnt have field " ^ name
+                    | Some field ->
+                        MyInference.set field_type_var field;
+                        true));
             (* todo
                Inference.expand_dict obj.var name?
             *)
@@ -764,12 +800,20 @@ module rec Impl : Interpreter = struct
         | Instantiate { data = NoData; captured; template; args = args_ir } -> (
             match (eval_ir captured template).value with
             | Template t ->
+                (*
+                let compiled = ensure_compiled t in
+                Log.info @@ "template :: "
+                ^ show_fn_type (fn_type_vars_to_type t.vars);
+                Log.info @@ "compiled result type = "
+                ^ show_type compiled.result_type; *)
+                (* TODO without template_to_template_type ?? *)
                 let tt = template_to_template_type t in
                 let compiled_tt = ensure_compiled tt in
                 let args = (eval_ir captured args_ir).value in
                 let result_type =
                   call_compiled empty_contexts compiled_tt args
                 in
+                Log.trace @@ "instantiate result type = " ^ show result_type;
                 Instantiate
                   {
                     data = known_type @@ value_to_type result_type;
@@ -1015,6 +1059,8 @@ module rec Impl : Interpreter = struct
 
   and ir_name : 'a. 'a ir_node -> string = function
     | Void _ -> "void"
+    | Assign _ -> "assign"
+    | ConstructVariant _ -> "construct_variant"
     | Struct _ -> "struct"
     | CreateImpl _ -> "create_impl"
     | GetImpl _ -> "get_impl"
@@ -1056,6 +1102,8 @@ module rec Impl : Interpreter = struct
         match ir with
         | Void _ -> "void"
         | Struct { body; _ } -> "struct (" ^ show_rec body ^ ")"
+        | Assign { pattern; value; _ } ->
+            show_pattern pattern ^ " = " ^ show_rec value
         | CreateImpl { trait; value; impl; _ } ->
             "impl " ^ show_rec trait ^ " for " ^ show_rec value ^ " as "
             ^ show_rec impl
@@ -1074,6 +1122,10 @@ module rec Impl : Interpreter = struct
             (* why can not we just have the for? *)
             ^ List.fold_left show_branch "" branches
             ^ ")"
+        | ConstructVariant { ty; variant; value; _ } -> (
+            show_type ty ^ "." ^ variant
+            ^
+            match value with Some value -> " of" ^ show_rec value | None -> "")
         | OneOf { variants; _ } ->
             StringMap.fold
               (fun name variant acc ->
@@ -1287,6 +1339,8 @@ module rec Impl : Interpreter = struct
     | Type t -> Type
 
   and ir_data : 'data. 'data ir_node -> 'data = function
+    | ConstructVariant { data; _ }
+    | Assign { data; _ }
     | Void { data; _ }
     | Struct { data; _ }
     | CheckImpl { data; _ }
@@ -1462,42 +1516,49 @@ module rec Impl : Interpreter = struct
                   "wtf ast was compiled to a pattern but expected compiled")
         | Syntax { def; value; _ } -> compile_ast_to_ir self value
       with Failure _ as failure ->
-        Log.error @@ "  while compiling to ir: " ^ Ast.name ast;
+        Log.error @@ "  while compiling to ir: " ^ Ast.name ast ^ " at "
+        ^ Span.show (Ast.data ast).span;
         raise failure
     in
     (* Log.trace @@ "compiled ast: " ^ Ast.show ast ^ " as " ^ show_ir result.ir; *)
     result
 
   and compile_pattern (self : state) (pattern : ast option) : pattern =
-    match pattern with
-    | None -> Void { data = NoData } |> init_pattern
-    | Some ast -> (
-        Log.trace @@ "compiling pattern " ^ Ast.show ast;
-        match ast with
-        | Nothing _ -> Void { data = NoData } |> init_pattern
-        | Simple { token; _ } -> (
-            match token with
-            | Ident ident ->
-                Binding
-                  {
-                    binding =
-                      {
-                        id = Id.gen ();
-                        name = ident;
-                        value_type = MyInference.new_var ();
-                      };
-                    data = NoData;
-                  }
-                |> init_pattern
-            | Number raw -> failwith "todo pattern number"
-            | String { value; raw } -> failwith "todo string pattern"
-            | Punctuation _ -> failwith "punctuation")
-        | Complex { def; values; _ } -> (
-            match expand_macro self def.name values ~new_bindings:true with
-            | Pattern result -> result
-            | Compiled _ -> failwith @@ "wtf " ^ Ast.show ast)
-        | Syntax { def; value; _ } ->
-            failwith "syntax definition inlined in a pattern wtf?")
+    try
+      match pattern with
+      | None -> Void { data = NoData } |> init_pattern
+      | Some ast -> (
+          Log.trace @@ "compiling pattern " ^ Ast.show ast;
+          match ast with
+          | Nothing _ -> Void { data = NoData } |> init_pattern
+          | Simple { token; _ } -> (
+              match token with
+              | Ident ident ->
+                  Binding
+                    {
+                      binding =
+                        {
+                          id = Id.gen ();
+                          name = ident;
+                          value_type = MyInference.new_var ();
+                          mut = false;
+                        };
+                      data = NoData;
+                    }
+                  |> init_pattern
+              | Number raw -> failwith "todo pattern number"
+              | String { value; raw } -> failwith "todo string pattern"
+              | Punctuation _ -> failwith "punctuation")
+          | Complex { def; values; _ } -> (
+              match expand_macro self def.name values ~new_bindings:true with
+              | Pattern result -> result
+              | Compiled _ -> failwith @@ "wtf " ^ Ast.show ast)
+          | Syntax { def; value; _ } ->
+              failwith "syntax definition inlined in a pattern wtf?")
+    with Failure _ as failure ->
+      Log.error @@ "  while compiling pattern "
+      ^ show_or "<empty>" Ast.show pattern;
+      raise failure
 
   and pattern_data (pattern : pattern) : pattern_data =
     match pattern with
@@ -1556,7 +1617,10 @@ module rec Impl : Interpreter = struct
     | Dict { fields } ->
         Dict { fields = fields |> StringMap.map (substitute_type_bindings sub) }
     | NewType _ -> failwith @@ "todo NewType " ^ show_type t
-    | OneOf _ -> failwith @@ "todo OneOf " ^ show_type t
+    | OneOf variants ->
+        OneOf
+          (variants
+          |> StringMap.map (Option.map @@ substitute_type_bindings sub))
     | Union _ -> failwith @@ "todo Union " ^ show_type t
     | Type -> t
     | InferVar var -> (
@@ -1775,6 +1839,9 @@ module rec Impl : Interpreter = struct
             just_value
               (Type (NewType (inferred_type (pattern_data def).type_var)))
         | Scope { expr; _ } -> just_value (eval_ir self expr).value
+        | Assign { pattern; value; _ } ->
+            let value = (eval_ir self value).value in
+            { value = Void; new_bindings = pattern_match pattern value }
         | CreateImpl { trait; value; impl; _ } ->
             let ty = value_to_type (eval_ir self value).value in
             let trait = (eval_ir self trait).value in
@@ -1814,6 +1881,16 @@ module rec Impl : Interpreter = struct
             match result with
             | Some value -> just_value value
             | None -> failwith "match failed")
+        | ConstructVariant { ty; variant; value; _ } ->
+            just_value
+            @@ Variant
+                 {
+                   typ = ty;
+                   name = variant;
+                   value =
+                     value
+                     |> Option.map (fun value -> (eval_ir self value).value);
+                 }
         | OneOf { variants; _ } ->
             just_value
               (Type
@@ -2092,11 +2169,21 @@ module rec Impl : Interpreter = struct
                 f.shared_compiled_args := Some args;
                 args
           in
-          (match f.ast.returns with
-          | Some ast ->
-              MyInference.set f.vars.result_type (eval_ast f.captured ast).value
-          | None -> ());
-          MyInference.make_same (pattern_data args).type_var f.vars.arg_type;
+
+          (try
+             match f.ast.returns with
+             | Some ast ->
+                 MyInference.set f.vars.result_type
+                   (eval_ast f.captured ast).value
+             | None -> ()
+           with Failure _ as failure ->
+             Log.error @@ "  while result type inference";
+             raise failure);
+          (try
+             MyInference.make_same (pattern_data args).type_var f.vars.arg_type
+           with Failure _ as failure ->
+             Log.error @@ "  while args inference";
+             raise failure);
           let captured_with_args_bindings =
             {
               f.captured with
@@ -2344,14 +2431,23 @@ module rec Impl : Interpreter = struct
             let value = compile_ast_to_ir self (StringMap.find "value" args) in
             let rec collect_branches (ast : ast) : ir_data match_branch list =
               match ast with
-              | Complex { def = { name = "combine_variants"; _ }; values; _ }
-                -> (
+              | Complex
+                  {
+                    def = { name = "builtin_macro_combine_variants"; _ };
+                    values;
+                    _;
+                  } -> (
                   let a = StringMap.find "a" values in
                   match StringMap.find_opt "b" values with
                   | Some b ->
                       List.append (collect_branches a) (collect_branches b)
                   | None -> collect_branches a)
-              | Complex { def = { name = "function_def"; _ }; values; _ } ->
+              | Complex
+                  {
+                    def = { name = "builtin_macro_function_def"; _ };
+                    values;
+                    _;
+                  } ->
                   let args = StringMap.find "args" values in
                   let body = StringMap.find "body" values in
                   let pattern = compile_pattern self (Some args) in
@@ -2372,7 +2468,7 @@ module rec Impl : Interpreter = struct
                       body
                   in
                   [ { pattern; body = body.ir } ]
-              | _ -> failwith "match syntax wrong"
+              | _ -> failwith @@ "match syntax wrong: " ^ Ast.show ast
             in
             let branches = collect_branches (StringMap.find "branches" args) in
             Compiled
@@ -2912,8 +3008,7 @@ module rec Impl : Interpreter = struct
         impl =
           (fun value ->
             print_endline
-              (show value ^ " : "
-              ^ show_type (type_of_value ~ensure:false value));
+              (show value ^ " : " ^ show_type (type_of_value ~ensure:true value));
             Void);
       }
 
@@ -3125,6 +3220,35 @@ module rec Impl : Interpreter = struct
             | false -> failwith "variant is only a pattern");
       }
 
+    let construct_variant : builtin_macro =
+      {
+        name = "construct_variant";
+        impl =
+          (fun self args ~new_bindings ->
+            assert (not new_bindings);
+            Compiled
+              {
+                ir =
+                  ConstructVariant
+                    {
+                      ty =
+                        value_to_type
+                          (eval_ast self (StringMap.find "type" args)).value;
+                      variant =
+                        (match StringMap.find "variant" args with
+                        | Simple { token = Ident name; _ } -> name
+                        | _ -> failwith "variant name must be simple ident");
+                      value =
+                        StringMap.find_opt "value" args
+                        |> Option.map (fun ast ->
+                               (compile_ast_to_ir self ast).ir);
+                      data = NoData;
+                    }
+                  |> init_ir;
+                new_bindings = StringMap.empty;
+              });
+      }
+
     let single_variant : builtin_macro =
       {
         name = "single_variant";
@@ -3133,7 +3257,9 @@ module rec Impl : Interpreter = struct
             let name =
               match StringMap.find "name" args with
               | Simple { token = Ident name; _ } -> name
-              | _ -> failwith "name must be a simple ident"
+              | other ->
+                  failwith @@ "name must be a simple ident, got "
+                  ^ Ast.show other
             in
             if new_bindings then
               let value =
@@ -3166,12 +3292,13 @@ module rec Impl : Interpreter = struct
             match new_bindings with
             | false ->
                 let get name : ir option StringMap.t =
-                  let ir =
-                    (compile_ast_to_ir self (StringMap.find name args)).ir
-                  in
-                  match ir with
-                  | OneOf { variants; _ } -> variants
-                  | _ -> failwith "expected oneof"
+                  match StringMap.find_opt name args with
+                  | Some ast -> (
+                      let ir = (compile_ast_to_ir self ast).ir in
+                      match ir with
+                      | OneOf { variants; _ } -> variants
+                      | _ -> failwith @@ "expected oneof, got " ^ show_ir ir)
+                  | None -> StringMap.empty
                 in
                 let a = get "a" in
                 let b = get "b" in
@@ -3325,8 +3452,92 @@ module rec Impl : Interpreter = struct
                   });
       }
 
+    let rec make_pattern_mutable (type a) (pattern : a pattern_node) :
+        a pattern_node =
+      match pattern with
+      | Void data -> Void data
+      | Binding { binding; data } ->
+          Binding { binding = { binding with mut = true }; data }
+      | Placeholder data -> Placeholder data
+      | Dict { fields; data } ->
+          Dict { fields = fields |> StringMap.map make_pattern_mutable; data }
+      | Variant { name; value; data } ->
+          Variant
+            { name; value = value |> Option.map make_pattern_mutable; data }
+      | Union { a; b; data } ->
+          Union { a = make_pattern_mutable a; b = make_pattern_mutable b; data }
+
+    let mutable_pattern : builtin_macro =
+      {
+        name = "mutable_pattern";
+        impl =
+          (fun self args ~new_bindings ->
+            assert new_bindings;
+            let pattern = StringMap.find "pattern" args in
+            let pattern = compile_pattern self (Some pattern) in
+            Pattern (make_pattern_mutable pattern));
+      }
+
+    let rec pattern_with_existing_bindings (self : state) (pattern : pattern) :
+        pattern =
+      match pattern with
+      | Void data -> Void data
+      | Binding { binding; data } ->
+          let existing =
+            match get_local_opt self binding.name with
+            | Some (Binding existing) -> existing
+            | Some _ -> (* TODO FIX this is a hack *) binding
+            | None -> failwith @@ binding.name ^ " not found in current scope"
+          in
+          Binding { binding = existing; data }
+      | Placeholder data -> Placeholder data
+      | Dict { fields; data } ->
+          Dict
+            {
+              fields =
+                fields |> StringMap.map (pattern_with_existing_bindings self);
+              data;
+            }
+      | Variant { name; value; data } ->
+          Variant
+            {
+              name;
+              value = value |> Option.map (pattern_with_existing_bindings self);
+              data;
+            }
+      | Union { a; b; data } ->
+          Union
+            {
+              a = pattern_with_existing_bindings self a;
+              b = pattern_with_existing_bindings self b;
+              data;
+            }
+
+    let assign : builtin_macro =
+      {
+        name = "assign";
+        impl =
+          (fun self args ~new_bindings ->
+            assert (not new_bindings);
+            let pattern =
+              compile_pattern self (Some (StringMap.find "pattern" args))
+            in
+            let pattern = pattern_with_existing_bindings self pattern in
+            let value =
+              (compile_ast_to_ir self @@ StringMap.find "value" args).ir
+            in
+            Compiled
+              {
+                ir = Assign { pattern; value; data = NoData } |> init_ir;
+                new_bindings = StringMap.empty;
+              });
+      }
+
     let builtin_macros : builtin_macro list =
       [
+        assign;
+        construct_variant;
+        mutable_pattern;
         make_void;
         struct_def;
         create_impl;

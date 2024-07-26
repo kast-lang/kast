@@ -7,9 +7,11 @@ syntax break_with_value <- 2 = "break" value;
 syntax break_without_value <- 2 = "break";
 syntax continue_impl <- 2 = "continue";
 
+syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
 syntax builtin_macro_create_impl <- 3 = "impl" trait "for" value "as" impl;
 syntax builtin_macro_let <- 4 = "let" pattern "=" value;
 syntax builtin_macro_const_let <- 4 = "const" pattern "=" value;
+syntax builtin_macro_assign <- 4 = pattern "=" value;
 
 syntax builtin_macro_tuple <- 4.5 = a "," b;
 syntax builtin_macro_tuple <- 4.5 = a ",";
@@ -31,8 +33,10 @@ syntax builtin_macro_function_def -> 7 = args "=>" body;
 
 syntax builtin_macro_type_ascribe <- 7.1 = value "::" type;
 
+syntax builtin_macro_mutable_pattern <- 7.25 = "mut" pattern;
+
 syntax builtin_fn_function_type -> 7.5 = arg "->" result;
-syntax builtin_fn_function_type -> 7.5 = arg "->" result "incontext" contexts;
+syntax builtin_fn_function_type -> 7.5 = arg "->" result "with" contexts;
 syntax builtin_macro_function_def -> 7.5 = args "->" returns "=>" body;
 
 syntax builtin_macro_single_variant -> 8 = name "of" type;
@@ -42,10 +46,15 @@ syntax builtin_macro_template_def <- 9 = "forall" args "." body;
 syntax builtin_macro_template_def <- 9 = "forall" args "where" where "." body;
 
 syntax builtin_macro_match <- 13 = "match" value "(" branches ")";
+syntax builtin_macro_match <- 13 = "match" value "{" branches "}";
 syntax builtin_macro_if <- 13 = "if" cond "then" then;
 syntax builtin_macro_if <- 13 = "if" cond "then" then "else" else;
 syntax builtin_macro_if -> 13 = cond "?" then ":" else;
 syntax builtin_macro_if -> 13 = cond "then" then "else" else;
+
+syntax builtin_macro_function_def <- 13.5 = "fn" "(" args ")" contexts "{" body "}";
+syntax builtin_macro_function_def <- 13.5 = "fn" "(" args ")" "->" result_type "{" body "}";
+syntax builtin_macro_function_def <- 13.5 = "fn" "(" args ")" "{" body "}";
 
 syntax implements <- 14 = type "implements" trait;
 
@@ -91,12 +100,13 @@ syntax builtin_macro_unquote -> 200 = "$" expr;
 syntax builtin_macro_unquote -> 200 = "$" "(" expr ")";
 
 syntax builtin_macro_field_access <- 300 = obj "." field;
+syntax builtin_macro_construct_variant <- 300 = type "." variant "of" value;
+syntax builtin_macro_construct_variant <- 300 = type "." variant "ofnone";
 
 syntax builtin_macro_struct_def <- 500 = "struct" "(" body ")";
-syntax builtin_macro_function_def <- 500 = "fn" "(" args ")" contexts "{" body "}";
-syntax builtin_macro_function_def <- 500 = "fn" "(" args ")" "->" result_type "{" body "}";
-syntax builtin_macro_function_def <- 500 = "fn" "(" args ")" "{" body "}";
-syntax builtin_macro_function_def <- 100000 = "{" body "}";
+syntax builtin_macro_struct_def <- 500 = "struct" "{" body "}";
+
+# syntax builtin_macro_function_def <- 100000 = "{" body "}";
 
 syntax builtin_macro_scope <- 100000 = "(" e ")";
 syntax builtin_macro_make_void <- 100000 = "(" ")";
@@ -130,10 +140,10 @@ let loop_context :: type = (
 # body arg
 # }
 
-let dbg = forall (T :: type). (
-    fn (x :: T) -> void {
+const dbg = forall (T :: type). (
+    fn (x) {
         builtin_fn_dbg x
-    }
+    } :: T -> void
 );
 
 let unwind = forall (T :: type). (
@@ -284,6 +294,87 @@ let parse = forall (T :: type) where (T impl Parse). (
 );
 
 let sin :: float64 -> float64 = x => builtin_fn_sin x;
+
+const yields = forall (~Yield :: type, ~Resume :: type). (
+	yield: Yield -> Resume,
+);
+
+const delimited_block = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+	const Args = (
+		handler: (value: Yield, resume: Resume -> Finish) -> Finish,
+		body: delimited_token -> Finish,
+	);
+	fn (args) {
+		builtin_fn_delimited_block args
+	} :: Args -> Finish
+);
+
+const for_loop = macro (~value_pattern, ~generator, ~body) => `(
+	const value_type = string; # todo infer
+    let context :: yields[Yield: value_type, Resume: void] = (
+		(yield: fn ($value_pattern) {
+            $body
+        })
+    );
+    with context (
+        $generator
+    )
+);
+
+let GeneratorNext = forall (~Yield :: type, ~Finish :: type). (
+    | Yielded of Yield | Finished of Finish
+);
+
+let Generator = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+    next: Resume -> GeneratorNext[~Yield, ~Finish],
+);
+
+let GeneratorState = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+    | NotStarted of (() -> Finish with yields[~Yield, ~Resume])
+    | Suspended of (Resume -> GeneratorNext[~Yield, ~Finish] with yields[~Yield, ~Resume])
+    | Finished ofnone
+);
+
+let generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+    fn (generator :: () -> Finish with yields[~Yield, ~Resume]) -> Generator[~Yield, ~Resume, ~Finish] {
+        let mut state = GeneratorState[~Yield, ~Resume, ~Finish].NotStarted of generator;
+        next: fn(resume_value :: Resume) -> GeneratorNext[~Yield, ~Finish] {
+            match state {
+                # if none then resume_value is silently ignored?
+                | NotStarted of generator => (
+                    let handler = fn(~value :: Yield, ~resume :: Resume -> GeneratorNext[~Yield, ~Finish]) -> GeneratorNext[~Yield, ~Finish] {
+                        state = GeneratorState[~Yield, ~Resume, ~Finish].Suspended of resume;
+                        GeneratorNext[~Yield, ~Finish].Yielded of value
+                    };
+                    delimited_block (
+                        ~handler,
+                        body: fn(token :: delimited_token) -> GeneratorNext[~Yield, ~Finish] {
+                            let context :: yields[~Yield, ~Resume] = (
+                                yield: fn(value :: Yield) -> Resume {
+                                    builtin_fn_delimited_yield (~token, ~value)
+                                }
+                            );
+                            let final_value :: Finish = with context (
+                                generator()
+                            );
+                            state = GeneratorState[~Yield, ~Resume, ~Finish].Finished ofnone;
+                            GeneratorNext[~Yield, ~Finish].Finished of final_value
+                        },
+                    )
+                )
+                | Some of resume => (
+                    resume(resume_value)
+                )
+            }
+        }
+    }
+);
+
+const yield = forall (~T :: type, ~Resume :: type). (
+	fn (value) {
+		(current yields[Yield: T, ~Resume]).yield(value)
+	} :: T -> Resume
+);
 
 ()
 
