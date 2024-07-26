@@ -205,6 +205,10 @@ let catch_impl = macro (~expr :: ast, ~e :: ast, ~catch_block :: ast) => `(
 	)
 );
 
+let panic = fn (s :: string) -> never {
+    builtin_fn_panic s
+};
+
 let random = forall (T :: type). (
     (
     if builtin_fn_is_same_type (a: T, b: int32) then
@@ -362,8 +366,11 @@ let generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type).
                         },
                     )
                 )
-                | Some of resume => (
+                | Suspended of resume => (
                     resume(resume_value)
+                )
+                | Finished ofnone => (
+                    panic "generator is finished"
                 )
             }
         }

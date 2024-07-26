@@ -213,13 +213,14 @@ module rec Impl : Interpreter = struct
 
   (* todo GADT? *)
   and expanded_macro = Compiled of compiled | Pattern of pattern
-  and evaled = { value : value; new_bindings : value StringMap.t }
-  and compiled = { ir : ir; new_bindings : value StringMap.t }
+  and evaled = { value : value; new_bindings : local StringMap.t }
+  and compiled = { ir : ir; new_bindings : local StringMap.t }
   and struct' = { parent : struct' option; mutable data : state_data }
   and contexts = value list Id.Map.t
   and contexts_type = int Id.Map.t
   and state = { self : struct'; data : state_data; contexts : contexts }
-  and state_data = { locals : value StringMap.t; syntax : Syntax.syntax }
+  and state_data = { locals : local StringMap.t; syntax : Syntax.syntax }
+  and local = { mutable value : value; binding : binding }
 
   and binding = {
     id : id;
@@ -1333,7 +1334,7 @@ module rec Impl : Interpreter = struct
           {
             fields =
               StringMap.map
-                (fun (value : value) -> type_of_value ~ensure value)
+                (fun ({ value; _ } : local) -> type_of_value ~ensure value)
                 data.locals;
           }
     | Type t -> Type
@@ -1381,7 +1382,7 @@ module rec Impl : Interpreter = struct
   (* this is lexeme val from_string : (Cparser.token, 'a) MenhirLib.Convert.traditional -> string -> 'a *)
 
   and pattern_match_opt (pattern : pattern) (value : value) :
-      value StringMap.t option =
+      local StringMap.t option =
     try
       Log.trace
         ("trying to pattern match " ^ show value ^ " with "
@@ -1407,8 +1408,8 @@ module rec Impl : Interpreter = struct
                     failwith "pattern expected a value but variant has none"
               else None
           | _ -> failwith "trying to match variant with a non-variant value")
-      | Binding { binding = { name; _ }; _ } ->
-          Some (StringMap.singleton name value)
+      | Binding { binding; _ } ->
+          Some (StringMap.singleton binding.name { value; binding })
       | Dict { fields = field_patterns; _ } -> (
           match value with
           | InferVar var ->
@@ -1456,7 +1457,7 @@ module rec Impl : Interpreter = struct
       ^ show_pattern pattern;
       raise failure
 
-  and pattern_match (pattern : pattern) (value : value) : value StringMap.t =
+  and pattern_match (pattern : pattern) (value : value) : local StringMap.t =
     match pattern_match_opt pattern value with
     | Some result -> result
     | None ->
@@ -1464,9 +1465,9 @@ module rec Impl : Interpreter = struct
         ^ show_pattern pattern;
         failwith "match failed"
 
-  and get_local_opt (self : state) (name : string) : value option =
+  and get_local_opt (self : state) (name : string) : local option =
+    (* Log.info @@ "getting local " ^ name; *)
     match StringMap.find_opt name self.data.locals with
-    | Some (Ref value) -> Some !value
     | Some local -> Some local
     | None ->
         let rec find_in_scopes (s : struct') =
@@ -1478,6 +1479,12 @@ module rec Impl : Interpreter = struct
               | None -> None)
         in
         find_in_scopes self.self
+
+  and get_local_value_opt (self : state) (name : string) : value option =
+    match get_local_opt self name with
+    | Some { value = Ref value; _ } -> Some !value
+    | Some { value; _ } -> Some value
+    | None -> None
 
   and compile_ast_to_ir (self : state) (ast : ast) : compiled =
     (* Log.trace @@ "compiling ast to ir: " ^ Ast.show ast; *)
@@ -1498,9 +1505,9 @@ module rec Impl : Interpreter = struct
                     | None ->
                         log_state Log.Info self;
                         failwith (ident ^ " not found in current scope")
-                    | Some (Binding binding) ->
-                        Binding { binding; data = NoData } |> init_ir
-                    | Some value -> Const { value; data = NoData } |> init_ir)
+                    | Some local ->
+                        Binding { binding = local.binding; data = NoData }
+                        |> init_ir)
                 | Number raw -> Number { raw; data = NoData } |> init_ir
                 | String { value; raw } ->
                     String { value; raw; data = NoData } |> init_ir
@@ -1520,7 +1527,7 @@ module rec Impl : Interpreter = struct
         ^ Span.show (Ast.data ast).span;
         raise failure
     in
-    (* Log.trace @@ "compiled ast: " ^ Ast.show ast ^ " as " ^ show_ir result.ir; *)
+    (* Log.info @@ "compiled ast: " ^ Ast.show ast ^ " as " ^ show_ir result.ir; *)
     result
 
   and compile_pattern (self : state) (pattern : ast option) : pattern =
@@ -1573,8 +1580,7 @@ module rec Impl : Interpreter = struct
   and substitute_fn_vars (vars : fn_type_vars) (state : state) : fn_type_vars =
     let sub var =
       InferVar var
-      (* todo only locals? maybe should check in parents too? *)
-      |> substitute_type_bindings state.data.locals
+      |> substitute_type_bindings (get_local_value_opt state)
       |> (fun t : value -> Type t)
       |> MyInference.new_set_var
     in
@@ -1584,13 +1590,12 @@ module rec Impl : Interpreter = struct
       contexts = sub vars.contexts;
     }
 
-  and substitute_type_bindings (sub : value StringMap.t) (t : value_type) :
-      value_type =
+  and substitute_type_bindings :
+      (string -> value option) -> value_type -> value_type =
+   fun sub t ->
     match t with
     | Binding { name; _ } -> (
-        match sub |> StringMap.find_opt name with
-        | Some sub -> sub |> value_to_type
-        | None -> t)
+        match sub name with Some sub -> sub |> value_to_type | None -> t)
     | Var _ -> t
     | UnwindToken -> t
     | DelimitedToken -> t
@@ -1630,12 +1635,11 @@ module rec Impl : Interpreter = struct
         | None -> t)
     | MultiSet _ -> failwith @@ "todo MultiSet " ^ show_type t
 
-  and substitute_bindings (sub : value StringMap.t) (value : value) : value =
+  and substitute_bindings (sub : string -> value option) (value : value) : value
+      =
     match value with
     | Binding { name; _ } -> (
-        match sub |> StringMap.find_opt name with
-        | Some sub -> sub
-        | None -> value)
+        match sub name with Some sub -> sub | None -> value)
     | Var _ -> value
     | InferVar var -> (
         match MyInference.get_inferred var with
@@ -1696,7 +1700,7 @@ module rec Impl : Interpreter = struct
 
   and expand_macro (self : state) (name : string) (values : ast StringMap.t)
       ~(new_bindings : bool) : expanded_macro =
-    match get_local_opt self name with
+    match get_local_value_opt self name with
     | None -> failwith (name ^ " not found")
     | Some value -> (
         match value with
@@ -1748,7 +1752,7 @@ module rec Impl : Interpreter = struct
     let log = Log.with_level level in
     log "locals:";
     StringMap.iter
-      (fun name value -> log ("  " ^ name ^ " = " ^ show value))
+      (fun name { value; _ } -> log ("  " ^ name ^ " = " ^ show value))
       self.data.locals
 
   and show_or : 'a. string -> ('a -> string) -> 'a option -> string =
@@ -1841,7 +1845,17 @@ module rec Impl : Interpreter = struct
         | Scope { expr; _ } -> just_value (eval_ir self expr).value
         | Assign { pattern; value; _ } ->
             let value = (eval_ir self value).value in
-            { value = Void; new_bindings = pattern_match pattern value }
+            pattern_match pattern value
+            |> StringMap.iter (fun name { value; _ } ->
+                   let local =
+                     match get_local_opt self name with
+                     | Some local -> local
+                     | None -> failwith @@ name ^ " not found"
+                   in
+                   if not local.binding.mut then
+                     failwith @@ name ^ " is not mut";
+                   local.value <- value);
+            { value = Void; new_bindings = StringMap.empty }
         | CreateImpl { trait; value; impl; _ } ->
             let ty = value_to_type (eval_ir self value).value in
             let trait = (eval_ir self trait).value in
@@ -1900,10 +1914,9 @@ module rec Impl : Interpreter = struct
                             value_to_type @@ (eval_ir self variant).value))
                        variants)))
         | TypeOf { expr; _ } ->
-            (* todo not only locals, parent structs? *)
             let inferred_type =
               inferred_type (ir_data expr).type_var
-              |> substitute_type_bindings self.data.locals
+              |> substitute_type_bindings (get_local_value_opt self)
             in
             just_value (Type inferred_type)
         | TypeOfValue { expr; _ } ->
@@ -1939,7 +1952,7 @@ module rec Impl : Interpreter = struct
             just_value (eval_ir new_state expr).value
         | CurrentContext { context_type; _ } -> (
             let context_type =
-              substitute_type_bindings self.data.locals context_type
+              substitute_type_bindings (get_local_value_opt self) context_type
             in
             let all_current =
               match Id.Map.find_opt (type_id context_type) self.contexts with
@@ -2016,7 +2029,7 @@ module rec Impl : Interpreter = struct
             just_value value
         | Const { value; _ } -> just_value value
         | Binding { binding; _ } -> (
-            match get_local_opt self binding.name with
+            match get_local_value_opt self binding.name with
             | None -> failwith (binding.name ^ " not found wtf, we are compiled")
             | Some value -> just_value value)
         | Number { raw = s; data } ->
@@ -2099,7 +2112,10 @@ module rec Impl : Interpreter = struct
             (let log = Log.trace in
              log "new bindings after let:";
              StringMap.iter
-               (fun name value -> log @@ "  " ^ name ^ " = " ^ show value)
+               (fun name { value; binding } ->
+                 log
+                 @@ (if binding.mut then " mut " else " ")
+                 ^ name ^ " = " ^ show value)
                result.new_bindings);
             result
       in
@@ -2129,7 +2145,12 @@ module rec Impl : Interpreter = struct
     | Type t -> t
     | Dict { fields } -> Dict { fields = StringMap.map value_to_type fields }
     | Struct { data; _ } ->
-        Dict { fields = StringMap.map value_to_type data.locals }
+        Dict
+          {
+            fields =
+              data.locals
+              |> StringMap.map (fun { value; _ } -> value_to_type value);
+          }
     | Template f -> Template f
     | Var { id; typ } ->
         ignore @@ inference_unite_types typ Type;
@@ -2193,7 +2214,8 @@ module rec Impl : Interpreter = struct
                   locals =
                     update_locals f.captured.data.locals
                       (StringMap.map
-                         (fun binding : value -> Binding binding)
+                         (fun binding : local ->
+                           { value = Binding binding; binding })
                          (pattern_bindings args));
                 };
             }
@@ -2240,9 +2262,9 @@ module rec Impl : Interpreter = struct
       (args : value) : value =
     let args_matches =
       StringMap.mapi
-        (fun name value ->
-          Log.trace ("called with arg " ^ name ^ " = " ^ show value);
-          value)
+        (fun name local ->
+          Log.trace ("called with arg " ^ name ^ " = " ^ show local.value);
+          local)
         (pattern_match f.args args)
     in
     let captured =
@@ -2461,8 +2483,8 @@ module rec Impl : Interpreter = struct
                             locals =
                               update_locals self.data.locals
                                 (pattern_bindings pattern
-                                |> StringMap.map (fun binding : value ->
-                                       Binding binding));
+                                |> StringMap.map (fun binding : local ->
+                                       { value = Binding binding; binding }));
                           };
                       }
                       body
@@ -2681,7 +2703,8 @@ module rec Impl : Interpreter = struct
                 ir = Let { pattern; value; data = NoData } |> init_ir;
                 new_bindings =
                   pattern_bindings pattern
-                  |> StringMap.map (fun binding : value -> Binding binding);
+                  |> StringMap.map (fun binding : local ->
+                         { value = Binding binding; binding });
               });
       }
 
@@ -3484,7 +3507,7 @@ module rec Impl : Interpreter = struct
       | Void data -> Void data
       | Binding { binding; data } ->
           let existing =
-            match get_local_opt self binding.name with
+            match get_local_value_opt self binding.name with
             | Some (Binding existing) -> existing
             | Some _ -> (* TODO FIX this is a hack *) binding
             | None -> failwith @@ binding.name ^ " not found in current scope"
@@ -3694,7 +3717,18 @@ module rec Impl : Interpreter = struct
                 (fun _key _prev value -> Some value)
                 Builtins.all
                 (StringMap.singleton "Self" (Struct self : value)
-                  : value StringMap.t);
+                  : value StringMap.t)
+              |> StringMap.mapi (fun name value : local ->
+                     {
+                       value;
+                       binding =
+                         {
+                           id = Id.gen ();
+                           name;
+                           mut = false;
+                           value_type = MyInference.new_var ();
+                         };
+                     });
             syntax = Syntax.empty;
           };
         contexts = Id.Map.empty;

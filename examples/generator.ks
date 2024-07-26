@@ -1,4 +1,5 @@
 # TODO mark generator with yielding effect
+
 let generator = fn(void) {
 	print "yielding 1";
 	yield "1";
@@ -8,4 +9,14 @@ let generator = fn(void) {
 
 for value in generator () {
 	print value;
-}
+};
+
+print "now using generator as value";
+
+# TODO types should be inferred
+
+let g = generator_value[Yield: string, Resume: void, Finish: void] generator;
+dbg <| g.next();
+dbg <| g.next();
+dbg <| g.next();
+dbg <| g.next(); # this one panics since generator is finished
