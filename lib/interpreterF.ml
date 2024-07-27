@@ -107,7 +107,7 @@ struct
         failwith "match failed"
 
   and get_local_opt (self : state) (name : string) : local option =
-    (* Log.info @@ "getting local " ^ name; *)
+    (* Log.trace @@ "getting local " ^ name; *)
     match StringMap.find_opt name self.data.locals with
     | Some local -> Some local
     | None ->
@@ -125,7 +125,12 @@ struct
     match get_local_opt self name with
     | Some { value = Ref value; _ } -> Some !value
     | Some { value; _ } -> Some value
-    | None -> None
+    | None -> (
+        match strip_prefix ~prefix:"builtin " name with
+        | Some builtin_name ->
+            (* TODO builtins should not even be looked up here *)
+            StringMap.find_opt builtin_name self.builtins
+        | None -> None)
 
   and call_compiled (current_contexts : contexts) (f : compiled_fn)
       (args : value) : value =
@@ -180,13 +185,22 @@ struct
           (fun (variant : value_type option) : value ->
             match variant with
             | Some variant ->
-                (* TODO Type constructor type? *)
                 BuiltinFn
                   {
-                    name = "type constructor";
-                    impl =
-                      (fun value ->
-                        Variant { name = field; typ; value = Some value });
+                    f =
+                      {
+                        name = "type constructor";
+                        impl =
+                          (fun _fn_type value ->
+                            Variant { name = field; typ; value = Some value });
+                      };
+                    ty =
+                      Some
+                        {
+                          arg_type = variant;
+                          result_type = typ;
+                          contexts = empty_contexts_type;
+                        };
                   }
             | None -> Variant { name = field; typ; value = None })
           (StringMap.find_opt field variants)
@@ -202,55 +216,40 @@ struct
     let state =
       {
         self;
-        data =
-          {
-            locals =
-              StringMap.union
-                (fun _key _prev value -> Some value)
-                (Builtins.all ())
-                (StringMap.singleton "Self" (Struct self : value)
-                  : value StringMap.t)
-              |> StringMap.mapi (fun name value : local ->
-                     {
-                       value;
-                       binding =
-                         {
-                           id = Id.gen ();
-                           name;
-                           mut = false;
-                           value_type = Inference.new_var ();
-                         };
-                     });
-            syntax = Syntax.empty;
-          };
+        data = { locals = StringMap.empty; syntax = Syntax.empty };
+        builtins = Builtins.all ();
         contexts = Id.Map.empty;
       }
     in
     state
 
   and eval (self : state ref) (s : string) ~(filename : string) : value =
-    let filename = Span.Filename filename in
-    !self.self.data <- !self.data;
-    let tokens = Lexer.parse s filename in
-    let ast = Ast.parse !self.data.syntax tokens filename in
-    Log.trace (Ast.show ast);
-    let ast = Ast.map (fun span -> { span }) ast in
-    let result : evaled = eval_ast !self ast in
-    let rec extend_syntax syntax = function
-      | Ast.Syntax { def; value; _ } ->
-          extend_syntax (Syntax.add_syntax def syntax) value
-      | _ -> syntax
-    in
-    self :=
-      {
-        !self with
-        data =
-          {
-            syntax = extend_syntax !self.data.syntax ast;
-            locals = update_locals !self.data.locals result.new_bindings;
-          };
-      };
-    result.value
+    try
+      let filename = Span.Filename filename in
+      !self.self.data <- !self.data;
+      let tokens = Lexer.parse s filename in
+      let ast = Ast.parse !self.data.syntax tokens filename in
+      Log.trace (Ast.show ast);
+      let ast = Ast.map (fun span -> { span }) ast in
+      let result : evaled = eval_ast !self ast in
+      let rec extend_syntax syntax = function
+        | Ast.Syntax { def; value; _ } ->
+            extend_syntax (Syntax.add_syntax def syntax) value
+        | _ -> syntax
+      in
+      self :=
+        {
+          !self with
+          data =
+            {
+              syntax = extend_syntax !self.data.syntax ast;
+              locals = update_locals !self.data.locals result.new_bindings;
+            };
+        };
+      result.value
+    with Failure _ as failure ->
+      Log.error @@ "  while evaluating file " ^ filename;
+      raise failure
 
   and eval_file (self : state ref) ~(filename : string) : value =
     let f = open_in filename in
@@ -267,9 +266,14 @@ struct
       match f with
       | BuiltinFn f -> (
           fun args ->
-            try f.impl args
+            try
+              f.f.impl
+                (match f.ty with
+                | Some t -> t
+                | None -> new_fn_type_vars () |> fn_type_vars_to_type)
+                args
             with Failure _ as failure ->
-              Log.error @@ "while calling builtin fn " ^ f.name;
+              Log.error @@ "while calling builtin fn " ^ f.f.name;
               raise failure)
       | Function f | Macro f -> call_compiled contexts @@ ensure_compiled f
       | _ -> failwith @@ show f ^ " - not a function"
@@ -296,7 +300,7 @@ struct
   and eval_ir (self : state) (ir : ir) : evaled =
     try
       log_state Log.Never self;
-      let result_type = Inference.get_type (ir_data ir).type_var in
+      let result_type = Inference.get_inferred_as_type (ir_data ir).type_var in
       Log.trace
         ("evaluating " ^ show_ir ir ^ " inferred as " ^ show_type @@ result_type);
       (* forward_expected_type ir expected_type; *)
@@ -316,7 +320,9 @@ struct
                  })
         | NewType { def; _ } ->
             just_value
-              (Type (NewType (Inference.get_type (pattern_data def).type_var)))
+              (Type
+                 (NewType
+                    (Inference.get_inferred_as_type (pattern_data def).type_var)))
         | Scope { expr; _ } -> just_value (eval_ir self expr).value
         | Assign { pattern; value; _ } ->
             let value = (eval_ir self value).value in
@@ -389,14 +395,48 @@ struct
                        variants)))
         | TypeOf { expr; _ } ->
             let inferred_type =
-              Inference.get_type (ir_data expr).type_var
+              Inference.get_inferred_as_type (ir_data expr).type_var
               |> substitute_type_bindings (get_local_value_opt self)
             in
             just_value (Type inferred_type)
         | TypeOfValue { expr; _ } ->
             just_value
               (Type (type_of_value ~ensure:true (eval_ir self expr).value))
-        | BuiltinFn { f; _ } -> just_value (BuiltinFn f)
+            (* Is there anything that works? *)
+        | Builtin { name; data } ->
+            let inferred_type = Inference.get_inferred_as_type data.type_var in
+            Log.trace @@ "builtin " ^ name ^ " inferred as "
+            ^ show_type inferred_type;
+            let value =
+              match StringMap.find name self.builtins with
+              | BuiltinFn { f; ty = _ } ->
+                  (BuiltinFn
+                     {
+                       f;
+                       ty =
+                         (match inferred_type with
+                         | Fn f -> Some f
+                         | _ ->
+                             failwith
+                               "builtin fn was inferred to be not a fn ???");
+                     }
+                    : value)
+              | ( Binding _ | Var _ | InferVar _ | UnwindToken _
+                | DelimitedToken _ | Ast _ | Macro _ | BuiltinMacro _
+                | Template _ | Function _ | Void | Bool _ | Int32 _ | Int64 _
+                | Float64 _ | String _ | Dict _ | Struct _ | Ref _ | Type _
+                | Variant _ ) as other ->
+                  other
+            in
+            Log.trace @@ "builtin " ^ name ^ " = " ^ show value ^ " :: "
+            ^ show_type (type_of_value ~ensure:false value);
+            just_value value
+        | BuiltinFn { f; _ } ->
+            just_value
+              (* TODO setup type properly
+                 although this ir is to be deleted?
+              *)
+              (BuiltinFn { f; ty = None })
         | UnwindableBlock { f; _ } ->
             just_value
               (match (eval_ir self f).value with
@@ -481,11 +521,13 @@ struct
                       def;
                       data = ast_data;
                       values =
-                        StringMap.map
-                          (fun value ->
+                        StringMap.mapi
+                          (fun name value ->
                             match (eval_ir self value).value with
                             | Ast ast -> ast
-                            | _ -> failwith "expected an ast")
+                            | other ->
+                                failwith @@ name
+                                ^ " expected to be an ast, got " ^ show other)
                           values;
                     }))
         | FieldAccess { obj; name; default_value; _ } ->
@@ -508,7 +550,7 @@ struct
             | Some value -> just_value value)
         | Number { raw = s; data } ->
             just_value
-              (match Inference.get_type data.type_var with
+              (match Inference.get_inferred_as_type data.type_var with
               | Int32 -> Int32 (Int32.of_string s)
               | Int64 -> Int64 (Int64.of_string s)
               | Float64 -> Float64 (Float.of_string s)
@@ -605,6 +647,7 @@ struct
       result
     with Failure _ as failure ->
       Log.error @@ "  while evaluating " ^ ir_name ir;
+      Log.error @@ "  while evaluating " ^ show_ir ir;
       raise failure
 
   and substitute_fn_vars (vars : fn_type_vars) (state : state) : fn_type_vars =

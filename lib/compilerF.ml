@@ -21,7 +21,7 @@ module Make
             when Inference.get_id inner = Inference.get_id var ->
               failwith "wtf var = var"
           | Some value -> type_of_value value ~ensure
-          | None -> Inference.get_type var
+          | None -> Inference.get_type_of_var var
         in
         result
     | Var { typ; _ } -> typ
@@ -31,7 +31,11 @@ module Make
     | Void -> Void
     | Variant { typ; _ } -> typ
     | BuiltinMacro _ -> BuiltinMacro
-    | BuiltinFn _ -> Fn (fn_type_vars_to_type @@ new_fn_type_vars ())
+    | BuiltinFn { f = _; ty } ->
+        Fn
+          (match ty with
+          | Some ty -> ty
+          | None -> new_fn_type_vars () |> fn_type_vars_to_type)
     | Template f -> Template (template_to_template_type f)
     | Macro f -> Macro (type_of_fn ~ensure f)
     | Function f -> Fn (type_of_fn ~ensure f)
@@ -112,7 +116,14 @@ module Make
       in
       let known_type t = known (Type t : value) in
       let unknown () = { type_var = Inference.new_var () } in
-      let same_as (other : ir) = { type_var = (ir_data other).type_var } in
+      let same_as (other : ir) =
+        {
+          type_var =
+            (let var = Inference.new_var () in
+             Inference.make_same var (ir_data other).type_var;
+             var);
+        }
+      in
       let result : ir =
         match ir with
         | Void { data = NoData } -> Void { data = known_type Void }
@@ -201,7 +212,11 @@ module Make
             set_pattern_type def Type;
             NewType { def; data = known_type Type }
         | Scope { expr; data = NoData } -> Scope { expr; data = same_as expr }
-        | Number { raw; data = NoData } -> Number { raw; data = unknown () }
+        | Number { raw; data = NoData } ->
+            let result = Number { raw; data = unknown () } in
+            Log.trace @@ "inited number with "
+            ^ Inference.show_id (ir_data result).type_var;
+            result
         | String { data = NoData; raw; value } ->
             String { raw; value; data = known_type String }
         | TypeOf { data = NoData; captured; expr } ->
@@ -233,9 +248,10 @@ module Make
             Discard { data = known_type Void; value }
         | If { data = NoData; cond; then_case; else_case } ->
             set_ir_type cond Bool;
-            Inference.make_same (ir_data then_case).type_var
-              (ir_data else_case).type_var;
-            If { data = same_as else_case; cond; then_case; else_case }
+            let var = Inference.new_var () in
+            Inference.make_same var (ir_data then_case).type_var;
+            Inference.make_same var (ir_data else_case).type_var;
+            If { data = { type_var = var }; cond; then_case; else_case }
         | Ast { data = NoData; def; ast_data; values } ->
             values |> StringMap.iter (fun _name value -> set_ir_type value Ast);
             Ast { data = known_type Ast; def; ast_data; values }
@@ -320,6 +336,7 @@ module Make
             | None -> ());
             FieldAccess
               { data = { type_var = field_type_var }; obj; name; default_value }
+        | Builtin { data = NoData; name } -> Builtin { data = unknown (); name }
         | BuiltinFn { data = NoData; f } ->
             BuiltinFn
               {
@@ -333,9 +350,9 @@ module Make
             | Template t ->
                 (*
                 let compiled = ensure_compiled t in
-                Log.info @@ "template :: "
+                Log.trace @@ "template :: "
                 ^ show_fn_type (fn_type_vars_to_type t.vars);
-                Log.info @@ "compiled result type = "
+                Log.trace @@ "compiled result type = "
                 ^ show_type compiled.result_type; *)
                 (* TODO without template_to_template_type ?? *)
                 let tt = template_to_template_type t in
@@ -438,7 +455,7 @@ module Make
                         def =
                           {
                             (* TODO how to not hardcode this here? *)
-                            name = "builtin_macro_typeof";
+                            name = "builtin macro typeof";
                             assoc = Left;
                             priority = 0.0;
                             parts = [ Keyword "typeof"; Binding "expr" ];
@@ -458,7 +475,7 @@ module Make
           raise failure)
 
   and compile_ast_to_ir (self : state) (ast : ast) : compiled =
-    (* Log.trace @@ "compiling ast to ir: " ^ Ast.show ast; *)
+    Log.trace @@ "compiling ast to ir: " ^ Ast.show ast;
     let result =
       try
         match ast with
@@ -498,7 +515,7 @@ module Make
         ^ Span.show (Ast.data ast).span;
         raise failure
     in
-    (* Log.info @@ "compiled ast: " ^ Ast.show ast ^ " as " ^ show_ir result.ir; *)
+    (* Log.trace @@ "compiled ast: " ^ Ast.show ast ^ " as " ^ show_ir result.ir; *)
     result
 
   and compile_pattern (self : state) (pattern : ast option) : pattern =
@@ -603,13 +620,16 @@ module Make
             let values : value =
               Dict { fields = StringMap.map (fun x : value -> Ast x) values }
             in
-            Log.trace ("call macro with " ^ show values);
             let compiled = ensure_compiled f in
-            match call_compiled empty_contexts compiled values with
-            | Ast new_ast ->
-                Log.trace ("macro expanded to " ^ Ast.show new_ast);
-                expand_ast self new_ast ~new_bindings
-            | _ -> failwith "macro returned not an ast")
+            try
+              match call_compiled empty_contexts compiled values with
+              | Ast new_ast ->
+                  Log.trace ("macro expanded to " ^ Ast.show new_ast);
+                  expand_ast self new_ast ~new_bindings
+              | _ -> failwith "macro returned not an ast"
+            with Failure _ as failure ->
+              Log.error @@ "  while calling macro with " ^ show values;
+              raise failure)
         | _ -> failwith (name ^ " is not a macro"))
 
   and ensure_compiled (f : fn) : compiled_fn =

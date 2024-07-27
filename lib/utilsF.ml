@@ -17,7 +17,7 @@ module Make (Inference : Modules.Inference) (Show : Modules.Show) = struct
     | Placeholder { data } ->
         InferVar
           (let var = Inference.new_var () in
-           Inference.set data.type_var (Type (Inference.get_type var));
+           Inference.set data.type_var (Type (Inference.get_type_of_var var));
            var)
     | Dict { fields; data = _ } ->
         Dict { fields = fields |> StringMap.map (pattern_to_value_with f) }

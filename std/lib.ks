@@ -1,7 +1,7 @@
 # BrainoidGames: do you have type casting yet? if not, can we name it kast()?
 
-syntax builtin_macro_then <- 0 = a ";" b;
-syntax builtin_macro_then <- 0 = a ";";
+syntax @"builtin macro then" <- 0 = a ";" b;
+syntax @"builtin macro then" <- 0 = a ";";
 
 syntax break_with_value <- 2 = "break" value;
 syntax break_without_value <- 2 = "break";
@@ -9,53 +9,53 @@ syntax continue_impl <- 2 = "continue";
 
 syntax loop_impl <- 3 = "loop" "{" body "}";
 syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
-syntax builtin_macro_create_impl <- 3 = "impl" trait "for" value "as" impl;
-syntax builtin_macro_let <- 4 = "let" pattern "=" value;
-syntax builtin_macro_const_let <- 4 = "const" pattern "=" value;
-syntax builtin_macro_assign <- 4 = pattern "=" value;
+syntax @"builtin macro create_impl" <- 3 = "impl" trait "for" value "as" impl;
+syntax @"builtin macro let" <- 4 = "let" pattern "=" value;
+syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
+syntax @"builtin macro assign" <- 4 = pattern "=" value;
 
-syntax builtin_macro_tuple <- 4.5 = a "," b;
-syntax builtin_macro_tuple <- 4.5 = a ",";
+syntax @"builtin macro tuple" <- 4.5 = a "," b;
+syntax @"builtin macro tuple" <- 4.5 = a ",";
 
-syntax builtin_macro_field <- 4.75 = name ":" value;
+syntax @"builtin macro field" <- 4.75 = name ":" value;
 syntax inline_field <- 4.75 = "~" name;
 syntax inline_typed_field <- 4.75 = "~" name "::" type;
 
-syntax builtin_macro_unwindable_block <- 5 = "unwindable_block" def;
-syntax builtin_macro_with_context <- 5 = "with" new_context "(" expr ")";
-syntax builtin_macro_current_context <- 5 = "current" context_type;
-syntax builtin_fn_macro <- 5 = "macro" def;
+syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
+syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
+syntax @"builtin macro current_context" <- 5 = "current" context_type;
+syntax @"builtin fn macro" <- 5 = "macro" def;
 syntax comptime <- 5 = "comptime" value;
-syntax builtin_macro_oneof <- 5 = "oneof" def;
+syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
-syntax builtin_macro_combine_variants <- 6 = "|" a;
-syntax builtin_macro_combine_variants <- 6 = a "|" b;
-syntax builtin_macro_function_def -> 7 = args "=>" body;
+syntax @"builtin macro combine_variants" <- 6 = "|" a;
+syntax @"builtin macro combine_variants" <- 6 = a "|" b;
+syntax @"builtin macro function_def" -> 7 = args "=>" body;
 
-syntax builtin_macro_type_ascribe <- 7.1 = value "::" type;
+syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
 
-syntax builtin_macro_mutable_pattern <- 7.25 = "mut" pattern;
+syntax @"builtin macro mutable_pattern" <- 7.25 = "mut" pattern;
 
-syntax builtin_fn_function_type -> 7.5 = arg "->" result;
-syntax builtin_fn_function_type -> 7.5 = arg "->" result "with" contexts;
-syntax builtin_macro_function_def -> 7.5 = args "->" returns "=>" body;
+syntax @"builtin fn function_type" -> 7.5 = arg "->" result;
+syntax @"builtin fn function_type" -> 7.5 = arg "->" result "with" contexts;
+syntax @"builtin macro function_def" -> 7.5 = args "->" returns "=>" body;
 
-syntax builtin_macro_single_variant -> 8 = name "of" type;
-syntax builtin_macro_single_variant -> 8 = name "ofnone";
+syntax @"builtin macro single_variant" -> 8 = name "of" type;
+syntax @"builtin macro single_variant" -> 8 = name "ofnone";
 
-syntax builtin_macro_template_def <- 9 = "forall" args "." body;
-syntax builtin_macro_template_def <- 9 = "forall" args "where" where "." body;
+syntax @"builtin macro template_def" <- 9 = "forall" args "." body;
+syntax @"builtin macro template_def" <- 9 = "forall" args "where" where "." body;
 
-syntax builtin_macro_match <- 13 = "match" value "(" branches ")";
-syntax builtin_macro_match <- 13 = "match" value "{" branches "}";
-syntax builtin_macro_if <- 13 = "if" cond "then" then;
-syntax builtin_macro_if <- 13 = "if" cond "then" then "else" else;
-syntax builtin_macro_if -> 13 = cond "?" then ":" else;
-syntax builtin_macro_if -> 13 = cond "then" then "else" else;
+syntax @"builtin macro match" <- 13 = "match" value "(" branches ")";
+syntax @"builtin macro match" <- 13 = "match" value "{" branches "}";
+syntax @"builtin macro if" <- 13 = "if" cond "then" then;
+syntax @"builtin macro if" <- 13 = "if" cond "then" then "else" else;
+syntax @"builtin macro if" -> 13 = cond "?" then ":" else;
+syntax @"builtin macro if" -> 13 = cond "then" then "else" else;
 
-syntax builtin_macro_function_def <- 13.5 = "fn" "(" args ")" contexts "{" body "}";
-syntax builtin_macro_function_def <- 13.5 = "fn" "(" args ")" "->" result_type "{" body "}";
-syntax builtin_macro_function_def <- 13.5 = "fn" "(" args ")" "{" body "}";
+syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" contexts "{" body "}";
+syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" "->" result_type "{" body "}";
+syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" "{" body "}";
 
 syntax implements <- 14 = type "implements" trait;
 
@@ -64,8 +64,8 @@ syntax pipe <- 15 = f "<|" args;
 
 syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
 
-syntax builtin_fn_or <- 17 = lhs "or" rhs;
-syntax builtin_fn_and <- 18 = lhs "and" rhs;
+syntax @"builtin fn or" <- 17 = lhs "or" rhs;
+syntax @"builtin fn and" <- 18 = lhs "and" rhs;
 
 syntax @"op binary <" <- 19 = lhs "<" rhs;
 syntax @"op binary <=" <- 19 = lhs "<=" rhs;
@@ -74,8 +74,8 @@ syntax @"op binary !=" <- 19 = lhs "!=" rhs;
 syntax @"op binary >=" <- 19 = lhs ">=" rhs;
 syntax @"op binary >" <- 19 = lhs ">" rhs;
 
-syntax builtin_macro_get_impl <- 20 = value "as" trait;
-syntax builtin_macro_check_impl <- 20 = value "impl" trait;
+syntax @"builtin macro get_impl" <- 20 = value "as" trait;
+syntax @"builtin macro check_impl" <- 20 = value "impl" trait;
 
 syntax @"op unary +" <- 25 = "+" x;
 syntax @"op unary -" <- 25 = "-" x;
@@ -88,30 +88,46 @@ syntax @"op binary %" <- 40 = lhs "%" rhs;
 
 syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
-syntax builtin_macro_call <- 100 = f args;
+syntax @"builtin macro call" <- 100 = f args;
 
-syntax builtin_macro_typeof <- 120 = "typeof" expr;
-syntax builtin_macro_typeofvalue <- 120 = "typeofvalue" expr;
+syntax @"builtin macro typeof" <- 120 = "typeof" expr;
+syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
 
-syntax builtin_macro_instantiate_template <- 150 = template "[" args "]";
+syntax @"builtin macro instantiate_template" <- 150 = template "[" args "]";
 
-syntax builtin_macro_quote -> 200 = "`" expr;
-syntax builtin_macro_quote -> 200 = "`" "(" expr ")";
-syntax builtin_macro_unquote -> 200 = "$" expr;
-syntax builtin_macro_unquote -> 200 = "$" "(" expr ")";
+syntax @"builtin macro quote" -> 200 = "`" expr;
+syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
+syntax @"builtin macro unquote" -> 200 = "$" expr;
+syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
 
-syntax builtin_macro_field_access <- 300 = obj "." field;
-syntax builtin_macro_construct_variant <- 300 = type "." variant "of" value;
-syntax builtin_macro_construct_variant <- 300 = type "." variant "ofnone";
+syntax @"builtin macro field_access" <- 300 = obj "." field;
+syntax @"builtin macro construct_variant" <- 300 = type "." variant "of" value;
+syntax @"builtin macro construct_variant" <- 300 = type "." variant "ofnone";
 
-syntax builtin_macro_struct_def <- 500 = "struct" "(" body ")";
-syntax builtin_macro_struct_def <- 500 = "struct" "{" body "}";
+syntax @"builtin macro struct_def" <- 500 = "struct" "(" body ")";
+syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
+syntax @"builtin macro builtin" <- 500 = "builtin" name;
 
-# syntax builtin_macro_function_def <- 100000 = "{" body "}";
+# syntax @"builtin macro function_def" <- 100000 = "{" body "}";
 
-syntax builtin_macro_scope <- 100000 = "(" e ")";
-syntax builtin_macro_make_void <- 100000 = "(" ")";
-syntax builtin_macro_placeholder <- 100000 = "_";
+syntax @"builtin macro scope" <- 100000 = "(" e ")";
+syntax @"builtin macro make_void" <- 100000 = "(" ")";
+syntax @"builtin macro placeholder" <- 100000 = "_";
+
+const unwind_token = builtin "unwind_token";
+const delimited_token = builtin "delimited_token";
+const void = builtin "void";
+const ast = builtin "ast";
+const bool = builtin "bool";
+const true = builtin "true";
+const false = builtin "false";
+const int32 = builtin "int32";
+const int64 = builtin "int64";
+const float32 = builtin "float32";
+const float64 = builtin "float64";
+const string = builtin "string";
+const never = builtin "never";
+const type = builtin "type";
 
 let Option = forall (T :: type). (Some of T | None ofnone);
 let Either = forall ((~left, ~right) :: ( left: type, right: type )). (Left of left | Right of right);
@@ -128,8 +144,8 @@ const pipe = macro (~f, ~args) => `((
     $f $args
 ));
 
-let input :: void -> string = () => builtin_fn_input ();
-let print :: string -> void = s => builtin_fn_print s;
+let input :: void -> string = builtin "fn input";
+let print :: string -> void = builtin "fn print";
 
 let loop_context :: type = (
     finish_current_iteration: (bool -> never), # todo should be option[T] -> never
@@ -142,13 +158,11 @@ let loop_context :: type = (
 # }
 
 const dbg = forall (T :: type). (
-    fn (x) {
-        builtin_fn_dbg x
-    } :: T -> void
+    builtin "fn dbg" :: T -> void
 );
 
 let unwind = forall (T :: type). (
-    (args => builtin_fn_unwind args) :: (token: unwind_token, value: T) -> never
+    builtin "fn unwind" :: (token: unwind_token, value: T) -> never
 );
 
 let loop_fn = fn (body :: (void -> void with loop_context)) {
@@ -206,18 +220,18 @@ let catch_impl = macro (~expr :: ast, ~e :: ast, ~catch_block :: ast) => `(
 	)
 );
 
-let panic = fn (s :: string) -> never {
-    builtin_fn_panic s
-};
+let is_same_type :: (a: type, b: type) -> bool = builtin "fn is_same_type";
+
+let panic :: string -> never = builtin "fn panic";
 
 let random = forall (T :: type). (
     (
-    if builtin_fn_is_same_type (a: T, b: int32) then
-        (args => builtin_fn_random_int32 args)
-    else (if builtin_fn_is_same_type (a: T, b: float64) then
-        (args => builtin_fn_random_float64 args)
+    if is_same_type (a: T, b: int32) then
+        builtin "fn random_int32"
+    else (if is_same_type (a: T, b: float64) then
+        builtin "fn random_float64"
     else
-        builtin_fn_panic "wtf")
+        panic "wtf")
     ) :: (min: T, max: T) -> T
 );
 
@@ -266,39 +280,39 @@ const Eq = forall (T :: type). (
 );
 
 impl Eq for int32 as (
-    eq: @"builtin_fn_=="
+    eq: builtin "fn =="
 );
 
 impl Eq for string as (
-    eq: @"builtin_fn_=="
+    eq: builtin "fn =="
 );
 
 let @"op binary ==" = macro (~lhs, ~rhs) => `(
     (_ as Eq).eq(lhs: $lhs, rhs: $rhs)
 );
 
-let @"op binary +" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary +" args;
-let @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = args => @"builtin_fn_binary -" args;
+let @"op binary +" :: (lhs: int32, rhs: int32) -> int32 = builtin "fn binary +";
+let @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = builtin "fn binary -";
 
-let @"op binary <" :: (lhs: int32, rhs: int32) -> bool = args => @"builtin_fn_<" args;
+let @"op binary <" :: (lhs: int32, rhs: int32) -> bool = builtin "fn <";
 
 const Parse = forall (Self :: type). (
     parse: (string -> Self),
 );
 
 impl Parse for int32 as (
-    parse: (s => builtin_fn_string_to_int32 s),
+    parse: builtin "fn string_to_int32",
 );
 
 impl Parse for float64 as (
-    parse: (s => builtin_fn_string_to_float64 s),
+    parse: builtin "fn string_to_float64",
 );
 
 let parse = forall (T :: type) where (T impl Parse). (
     (T as Parse).parse
 );
 
-let sin :: float64 -> float64 = x => builtin_fn_sin x;
+let sin :: float64 -> float64 = builtin "fn sin";
 
 const yields = forall (~Yield :: type, ~Resume :: type). (
 	yield: Yield -> Resume,
@@ -309,9 +323,7 @@ const delimited_block = forall (~Yield :: type, ~Resume :: type, ~Finish :: type
 		handler: (value: Yield, resume: Resume -> Finish) -> Finish,
 		body: delimited_token -> Finish,
 	);
-	fn (args) {
-		builtin_fn_delimited_block args
-	} :: Args -> Finish
+	builtin "fn delimited_block" :: Args -> Finish
 );
 
 const loop_impl = macro (~body) => `(
@@ -359,9 +371,7 @@ let generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type).
                         ~handler,
                         body: fn(token :: delimited_token) -> GeneratorNext[~Yield, ~Finish] {
                             let context :: yields[~Yield, ~Resume] = (
-                                yield: fn(value :: Yield) -> Resume {
-                                    builtin_fn_delimited_yield (~token, ~value)
-                                }
+                                yield: builtin "fn delimited_yield" :: Yield -> Resume,
                             );
                             let final_value :: Finish = with context (
                                 generator()

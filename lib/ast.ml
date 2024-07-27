@@ -12,7 +12,8 @@ type 'a node =
 let name : 'a. 'a node -> string = function
   | Nothing _ -> "<nothin>"
   | Simple { token; _ } -> "token " ^ Lexer.show token
-  | Complex { def; _ } | Syntax { def; _ } -> def.name
+  | Complex { def; _ } -> def.name
+  | Syntax { def; _ } -> "syntax " ^ def.name
 
 let rec map : 'a 'b. ('a -> 'b) -> 'a node -> 'b node =
  fun f node ->

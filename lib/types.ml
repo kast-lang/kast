@@ -13,7 +13,7 @@ type value =
   | Ast of ast
   | Macro of fn
   | BuiltinMacro of builtin_macro
-  | BuiltinFn of builtin_fn
+  | BuiltinFn of { f : builtin_fn; ty : fn_type option }
   | Template of fn
   | Function of fn
   | Void
@@ -68,7 +68,7 @@ and fn_type_vars = {
   result_type : inference_var;
 }
 
-and builtin_fn = { name : string; (* TODO contexts *) impl : value -> value }
+and builtin_fn = { name : string; impl : fn_type -> value -> value }
 
 and builtin_macro = {
   name : string;
@@ -135,6 +135,7 @@ and 'data ir_node =
       args : ir;
       data : 'data;
     }
+  | Builtin of { name : string; data : 'data } (* TODO remove BuiltinFn *)
   | BuiltinFn of { f : builtin_fn; data : 'data }
   | If of { cond : ir; then_case : ir; else_case : ir; data : 'data }
   | Let of { pattern : pattern; value : ir; data : 'data }
@@ -191,7 +192,14 @@ and compiled = { ir : ir; new_bindings : local StringMap.t }
 and struct' = { parent : struct' option; mutable data : state_data }
 and contexts = value list Id.Map.t
 and contexts_type = int Id.Map.t
-and state = { self : struct'; data : state_data; contexts : contexts }
+
+and state = {
+  self : struct';
+  data : state_data;
+  contexts : contexts;
+  builtins : value StringMap.t;
+}
+
 and state_data = { locals : local StringMap.t; syntax : Syntax.syntax }
 and local = { mutable value : value; binding : binding }
 and binding = { id : id; name : string; value_type : inference_var; mut : bool }
@@ -207,6 +215,7 @@ and inference_var = { mutable data : inference_var_data; id : Id.t }
 
 let ir_data : 'data. 'data ir_node -> 'data = function
   | ConstructVariant { data; _ }
+  | Builtin { data; _ }
   | Assign { data; _ }
   | Void { data; _ }
   | Struct { data; _ }

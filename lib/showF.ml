@@ -48,7 +48,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Void -> "void"
     | Macro f -> "macro " ^ show_fn f
     | BuiltinMacro _ -> "builtin_macro"
-    | BuiltinFn { name; _ } -> "builtin_fn " ^ name
+    | BuiltinFn { f = { name; _ }; _ } -> "builtin_fn " ^ name
     | Template f -> "template " ^ show_fn f
     | Function f -> "function " ^ show_fn f
     | Int32 value -> Int32.to_string value
@@ -185,6 +185,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
 
   and ir_name : 'a. 'a ir_node -> string = function
     | Void _ -> "void"
+    | Builtin _ -> "builtin"
     | Assign _ -> "assign"
     | ConstructVariant _ -> "construct_variant"
     | Struct _ -> "struct"
@@ -286,6 +287,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
         | Const { value; _ } -> "(const " ^ show value ^ ")"
         | FieldAccess { obj; name; _ } ->
             "(field " ^ show_rec obj ^ " " ^ name ^ ")"
+        | Builtin { name; _ } -> "builtin " ^ String.escaped name
         | BuiltinFn { f = { name; _ }; _ } -> "builtin_fn " ^ name
         | Discard { value; _ } -> "(discard " ^ show_rec value ^ ")"
         | Binding { binding; _ } -> "(binding " ^ binding.name ^ ")"

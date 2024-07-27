@@ -30,6 +30,8 @@ struct
             | Compiled compiled -> (ir_data compiled.ir).type_var
             | Pattern pattern -> (pattern_data pattern).type_var
           in
+          Log.trace @@ "ascribed " ^ Inference.show_id var ^ " with "
+          ^ show_type typ;
           Inference.set var (Type typ : value);
           value);
     }
@@ -124,11 +126,12 @@ struct
     {
       name = "print";
       impl =
-        (function
-        | String value ->
-            print_endline value;
-            Void
-        | _ -> failwith "print expected a string");
+        (fun _fn_type s ->
+          match s with
+          | String value ->
+              print_endline value;
+              Void
+          | _ -> failwith "print expected a string");
     }
 
   let match' : builtin_macro =
@@ -141,7 +144,7 @@ struct
             match ast with
             | Complex
                 {
-                  def = { name = "builtin_macro_combine_variants"; _ };
+                  def = { name = "builtin macro combine_variants"; _ };
                   values;
                   _;
                 } -> (
@@ -151,7 +154,7 @@ struct
                     List.append (collect_branches a) (collect_branches b)
                 | None -> collect_branches a)
             | Complex
-                { def = { name = "builtin_macro_function_def"; _ }; values; _ }
+                { def = { name = "builtin macro function_def"; _ }; values; _ }
               ->
                 let args = StringMap.find "args" values in
                 let body = StringMap.find "body" values in
@@ -226,7 +229,9 @@ struct
             });
     }
 
-  let dict_fn f : value -> value = function
+  let dict_fn f : fn_type -> value -> value =
+   fun _fn_type args ->
+    match args with
     | Dict { fields = args } -> f args
     | _ -> failwith "expected dict (dict_fn)"
 
@@ -248,25 +253,31 @@ struct
     {
       name;
       impl =
-        (function
-        | Float64 value -> Float64 (f value) | _ -> failwith "only floats");
+        (fun _fn_type args ->
+          match args with
+          | Float64 value -> Float64 (f value)
+          | _ -> failwith "only floats");
     }
 
   let int32_fn name f : builtin_fn =
     {
       name;
       impl =
-        (function
-        | Int32 value -> Int32 (f value) | _ -> failwith "only floats");
+        (fun _fn_type -> function
+          | Int32 value -> Int32 (f value)
+          | _ -> failwith "only floats");
     }
 
   let single_arg_fn fn_name arg_name f : builtin_fn =
     {
       name = fn_name;
       impl =
-        dict_fn (fun args ->
-            let value = StringMap.find arg_name args in
-            f value);
+        (fun fn_type ->
+          dict_fn
+            (fun args ->
+              let value = StringMap.find arg_name args in
+              f fn_type value)
+            fn_type);
     }
 
   let float64_macro fn_name arg_name f =
@@ -345,7 +356,7 @@ struct
         (fun self args ~new_bindings ->
           (* todo compile into pattern too *)
           let rec impl : ast -> ir = function
-            | Complex { def = { name = "builtin_macro_unquote"; _ }; values; _ }
+            | Complex { def = { name = "builtin macro unquote"; _ }; values; _ }
               ->
                 let inner = StringMap.find "expr" values in
                 Log.trace ("unquoting" ^ Ast.show inner);
@@ -711,9 +722,9 @@ struct
     {
       name = "dbg";
       impl =
-        (fun value ->
+        (fun _fn_type value ->
           print_endline
-            (show value ^ " : " ^ show_type (type_of_value ~ensure:true value));
+            (show value ^ " :: " ^ show_type (type_of_value ~ensure:true value));
           Void);
     }
 
@@ -733,72 +744,73 @@ struct
     {
       name = "function_type";
       impl =
-        (function
-        | Dict { fields = args } ->
-            let arg_type = value_to_type (StringMap.find "arg" args) in
-            let result_type = value_to_type (StringMap.find "result" args) in
-            let contexts =
-              match StringMap.find_opt "contexts" args with
-              | Some contexts -> value_to_contexts_type contexts
-              | None -> default_contexts_type
-            in
-            let result : value =
-              Type (Fn { arg_type; result_type; contexts })
-            in
-            Log.trace (show result);
-            result
-        | _ -> failwith "expected dict (function_type)");
+        (fun _fn_type -> function
+          | Dict { fields = args } ->
+              let arg_type = value_to_type (StringMap.find "arg" args) in
+              let result_type = value_to_type (StringMap.find "result" args) in
+              let contexts =
+                match StringMap.find_opt "contexts" args with
+                | Some contexts -> value_to_contexts_type contexts
+                | None -> default_contexts_type
+              in
+              let result : value =
+                Type (Fn { arg_type; result_type; contexts })
+              in
+              Log.trace (show result);
+              result
+          | _ -> failwith "expected dict (function_type)");
     }
 
   let random_int32 : builtin_fn =
     {
       name = "random_int32";
       impl =
-        (function
-        | Dict { fields = args } ->
-            let min = get_int32 (StringMap.find "min" args) in
-            let max = get_int32 (StringMap.find "max" args) in
-            Int32
-              (Int32.add min
-                 (Random.int32 (Int32.sub (Int32.add max (Int32.of_int 1)) min)))
-        | _ -> failwith "expected dict (random_int32)");
+        (fun _fn_type -> function
+          | Dict { fields = args } ->
+              let min = get_int32 (StringMap.find "min" args) in
+              let max = get_int32 (StringMap.find "max" args) in
+              Int32
+                (Int32.add min
+                   (Random.int32
+                      (Int32.sub (Int32.add max (Int32.of_int 1)) min)))
+          | _ -> failwith "expected dict (random_int32)");
     }
 
   let random_float64 : builtin_fn =
     {
       name = "random_float64";
       impl =
-        (function
-        | Dict { fields = args } ->
-            let min = get_float64 (StringMap.find "min" args) in
-            let max = get_float64 (StringMap.find "max" args) in
-            Float64 (min +. Random.float (max -. min))
-        | _ -> failwith "expected dict (random_float64)");
+        (fun _fn_type -> function
+          | Dict { fields = args } ->
+              let min = get_float64 (StringMap.find "min" args) in
+              let max = get_float64 (StringMap.find "max" args) in
+              Float64 (min +. Random.float (max -. min))
+          | _ -> failwith "expected dict (random_float64)");
     }
 
   let panic : builtin_fn =
     {
       name = "panic";
       impl =
-        (function
-        | String s -> failwith s
-        | _ -> failwith "panicked with not a string kekw");
+        (fun _fn_type -> function
+          | String s -> failwith s
+          | _ -> failwith "panicked with not a string kekw");
     }
 
   let is_same_type : builtin_fn =
     {
       name = "is_same_type";
       impl =
-        (function
-        | Dict { fields } ->
-            let a = get_type (StringMap.find "a" fields) in
-            let b = get_type (StringMap.find "b" fields) in
-            let result = TypeId.get a = TypeId.get b in
-            Log.trace
-              ("is_same_type " ^ show_type a ^ ", " ^ show_type b ^ " = "
-             ^ Bool.to_string result);
-            Bool result
-        | _ -> failwith "expected dict (is_same_type)");
+        (fun _fn_type -> function
+          | Dict { fields } ->
+              let a = get_type (StringMap.find "a" fields) in
+              let b = get_type (StringMap.find "b" fields) in
+              let result = TypeId.get a = TypeId.get b in
+              Log.trace
+                ("is_same_type " ^ show_type a ^ ", " ^ show_type b ^ " = "
+               ^ Bool.to_string result);
+              Bool result
+          | _ -> failwith "expected dict (is_same_type)");
     }
 
   let unwindable_block : builtin_macro =
@@ -822,16 +834,16 @@ struct
     {
       name = "unwind";
       impl =
-        (function
-        | Dict { fields } ->
-            let token =
-              match StringMap.find "token" fields with
-              | UnwindToken token -> token
-              | _ -> failwith "expected an unwind token"
-            in
-            let value = StringMap.find "value" fields in
-            raise (Unwind (token, value))
-        | _ -> failwith "expected a dict in unwing args");
+        (fun _fn_type -> function
+          | Dict { fields } ->
+              let token =
+                match StringMap.find "token" fields with
+                | UnwindToken token -> token
+                | _ -> failwith "expected an unwind token"
+              in
+              let value = StringMap.find "value" fields in
+              raise (Unwind (token, value))
+          | _ -> failwith "expected a dict in unwing args");
     }
 
   type _ Effect.t += DelimitedYield : (id * value) -> value Effect.t
@@ -840,66 +852,71 @@ struct
     {
       name = "delimited_block";
       impl =
-        (function
-        | Dict { fields } ->
-            let handler = StringMap.find "handler" fields in
-            let body = StringMap.find "body" fields in
-            let this_token_id = Id.gen () in
-            let body () =
-              eval_call body
-                (DelimitedToken this_token_id : value)
-                empty_contexts
-            in
-            Effect.Deep.try_with body ()
-              {
-                effc =
-                  (fun (type a) (eff : a Effect.t) ->
-                    match eff with
-                    | DelimitedYield (token_id, value)
-                      when token_id = this_token_id ->
-                        Some
-                          (fun (k : (a, _) Effect.Deep.continuation) ->
-                            let handler_args : value =
-                              Dict
-                                {
-                                  fields =
-                                    StringMap.of_list
-                                      [
-                                        ("value", value);
-                                        ( "resume",
-                                          BuiltinFn
-                                            {
-                                              name =
-                                                "resume "
-                                                ^ Id.show this_token_id;
-                                              impl =
-                                                (fun resume_arg ->
-                                                  Effect.Deep.continue k
-                                                    resume_arg);
-                                            } );
-                                      ];
-                                }
-                            in
-                            eval_call handler handler_args empty_contexts)
-                    | _ -> None);
-              }
-        | _ -> failwith "expected a dict with delimited block args");
+        (fun fn_type -> function
+          | Dict { fields } ->
+              let handler = StringMap.find "handler" fields in
+              let body = StringMap.find "body" fields in
+              let this_token_id = Id.gen () in
+              let body () =
+                eval_call body
+                  (DelimitedToken this_token_id : value)
+                  empty_contexts
+              in
+              Effect.Deep.try_with body ()
+                {
+                  effc =
+                    (fun (type a) (eff : a Effect.t) ->
+                      match eff with
+                      | DelimitedYield (token_id, value)
+                        when token_id = this_token_id ->
+                          Some
+                            (fun (k : (a, _) Effect.Deep.continuation) ->
+                              let handler_args : value =
+                                Dict
+                                  {
+                                    fields =
+                                      StringMap.of_list
+                                        [
+                                          ("value", value);
+                                          ( "resume",
+                                            BuiltinFn
+                                              {
+                                                f =
+                                                  {
+                                                    name =
+                                                      "resume "
+                                                      ^ Id.show this_token_id;
+                                                    impl =
+                                                      (fun _fn_type resume_arg ->
+                                                        Effect.Deep.continue k
+                                                          resume_arg);
+                                                  };
+                                                (* TODO actually set correctly *)
+                                                ty = None;
+                                              } );
+                                        ];
+                                  }
+                              in
+                              eval_call handler handler_args empty_contexts)
+                      | _ -> None);
+                }
+          | _ -> failwith "expected a dict with delimited block args");
     }
 
   let delimited_yield : builtin_fn =
     {
       name = "delimited_yield";
       impl =
-        (function
-        | Dict { fields } ->
-            let token_id =
-              match StringMap.find "token" fields with
-              | DelimitedToken token -> token
-              | _ -> failwith "expected an delimit token"
-            in
-            let value = StringMap.find "value" fields in
-            Effect.perform (DelimitedYield (token_id, value))
-        | _ -> failwith "expected a dict in unwing args");
+        (fun _fn_type -> function
+          | Dict { fields } ->
+              let token_id =
+                match StringMap.find "token" fields with
+                | DelimitedToken token -> token
+                | _ -> failwith "expected an delimit token"
+              in
+              let value = StringMap.find "value" fields in
+              Effect.perform (DelimitedYield (token_id, value))
+          | _ -> failwith "expected a dict in unwing args");
     }
 
   let union_variant : builtin_macro =
@@ -1122,13 +1139,16 @@ struct
     {
       name = "new_typevar";
       impl =
-        (fun _void ->
+        (fun _fn_type _void ->
           Log.trace "making new type var";
           Type (Var { id = Id.gen () }));
     }
 
   let placeholder_fn : builtin_fn =
-    { name = "placeholder"; impl = (fun _ -> InferVar (Inference.new_var ())) }
+    {
+      name = "placeholder";
+      impl = (fun _ _ -> InferVar (Inference.new_var ()));
+    }
 
   let placeholder_macro : builtin_macro =
     {
@@ -1228,8 +1248,29 @@ struct
             });
     }
 
+  let builtin : builtin_macro =
+    {
+      name = "builtin";
+      impl =
+        (fun self args ~new_bindings ->
+          assert (not new_bindings);
+          let name =
+            match (eval_ast self (StringMap.find "name" args)).value with
+            | String s -> s
+            | value ->
+                failwith @@ "builtin name supposed to be a string: "
+                ^ show value
+          in
+          Compiled
+            {
+              ir = Builtin { name; data = NoData } |> init_ir;
+              new_bindings = StringMap.empty;
+            });
+    }
+
   let builtin_macros : builtin_macro list =
     [
+      builtin;
       assign;
       construct_variant;
       mutable_pattern;
@@ -1307,11 +1348,11 @@ struct
       float64_fn "sqrt" sqrt;
       {
         name = "type_of_value";
-        impl = (fun x -> Type (type_of_value ~ensure:true x));
+        impl = (fun _ x -> Type (type_of_value ~ensure:true x));
       };
       single_arg_fn "macro"
         (* todo { _anyfield: ast } -> ast #  (Fn { arg_type = Ast; result_type = Ast }) *)
-        "def" macro;
+        "def" (fun _ -> macro);
       cmp_fn "<" ( < );
       cmp_fn "<=" ( <= );
       eq;
@@ -1323,22 +1364,23 @@ struct
       {
         name = "input";
         impl =
-          (function
-          | Void -> String (read_line ()) | _ -> failwith "expected void");
+          (fun _fn_type -> function
+            | Void -> String (read_line ())
+            | _ -> failwith "expected void");
       };
       {
         name = "string_to_int32";
         impl =
-          (function
-          | String s -> Int32 (Int32.of_string s)
-          | _ -> failwith "expected string");
+          (fun _fn_type -> function
+            | String s -> Int32 (Int32.of_string s)
+            | _ -> failwith "expected string");
       };
       {
         name = "string_to_float64";
         impl =
-          (function
-          | String s -> Float64 (Float.of_string s)
-          | _ -> failwith "expected string");
+          (fun _fn_type -> function
+            | String s -> Float64 (Float.of_string s)
+            | _ -> failwith "expected string");
       };
     ]
 
@@ -1364,9 +1406,9 @@ struct
     StringMap.of_list
       ((builtin_macros
        |> List.map (fun (m : builtin_macro) ->
-              ("builtin_macro_" ^ m.name, (BuiltinMacro m : value))))
+              ("macro " ^ m.name, (BuiltinMacro m : value))))
       @ (builtin_fns
         |> List.map (fun (f : builtin_fn) ->
-               ("builtin_fn_" ^ f.name, (BuiltinFn f : value))))
+               ("fn " ^ f.name, (BuiltinFn { f; ty = None } : value))))
       @ builtin_values)
 end

@@ -19,7 +19,8 @@ end
 
 module type Inference = sig
   val get_inferred : inference_var -> value option
-  val get_type : inference_var -> value_type
+  val get_inferred_as_type : inference_var -> value_type
+  val get_type_of_var : inference_var -> value_type
   val new_var : unit -> inference_var
   val new_set_var : value -> inference_var
   val make_same : inference_var -> inference_var -> unit
@@ -71,6 +72,7 @@ module type Compiler = sig
   val init_ir : no_data ir_node -> ir
   val pattern_bindings : pattern -> binding StringMap.t
   val new_fn_type_vars : unit -> fn_type_vars
+  val fn_type_vars_to_type : fn_type_vars -> fn_type
   val value_to_contexts_type : value -> contexts_type
   val ensure_compiled : fn -> compiled_fn
 end

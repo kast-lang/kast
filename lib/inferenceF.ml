@@ -8,16 +8,16 @@ type var = inference_var
 module Make
     (Show : Modules.Show)
     (Compiler : Modules.Compiler)
-    (Interpreter : Modules.Interpreter) : Modules.Inference = struct
+    (Interpreter : Modules.Interpreter)
+    (Utils : Modules.Utils) : Modules.Inference = struct
   open Show
   open Compiler
   open Interpreter
 
   let new_var () =
-    {
-      data = Root { inferred = None; type_var = None; checks = [] };
-      id = Id.gen ();
-    }
+    let id = Id.gen () in
+    Log.trace @@ "making new inference var: " ^ Id.show id;
+    { data = Root { inferred = None; type_var = None; checks = [] }; id }
 
   let rec get_root_var : var -> var =
    fun var ->
@@ -41,7 +41,12 @@ module Make
     let data = get_root_data root in
     data.inferred
 
-  and get_type var =
+  and get_inferred_as_type var =
+    match get_inferred var with
+    | Some t -> Utils.value_to_type t
+    | None -> InferVar var
+
+  and get_type_of_var var =
     let root = get_root_var var in
     let data = get_root_data root in
     InferVar
@@ -71,18 +76,22 @@ module Make
         | None, None -> None
         | Some inferred_a, Some inferred_b -> Some (unite inferred_a inferred_b)
       in
-      if Random.bool () then (
-        a_data.inferred <- inferred_value;
-        b.data <- SameAs a)
-      else (
-        b_data.inferred <- inferred_value;
-        a.data <- SameAs b)
+      match (get_inferred a, get_inferred b) with
+      | Some (Type Never), _ | _, Some (Type Never) -> ()
+      | _ ->
+          if Random.bool () then (
+            a_data.inferred <- inferred_value;
+            b.data <- SameAs a)
+          else (
+            b_data.inferred <- inferred_value;
+            a.data <- SameAs b)
 
   and set var value =
     let root = get_root_var var in
     let data = get_root_data root in
-    match data.inferred with
+    match get_inferred root with
     | None -> data.inferred <- Some value
+    | Some (Type Never as current_value) -> ignore @@ unite current_value value
     | Some current_value -> data.inferred <- Some (unite current_value value)
 
   and add_check var f =
@@ -102,6 +111,10 @@ module Make
   and failinfer : 'a. unit -> 'a =
    fun () -> raise @@ FailedUnite "inference union failed"
 
+  and unite (a : value) (b : value) : value =
+    try unite_value a b
+    with FailedUnite s -> failwith @@ "Inference failed: " ^ s
+
   and unite_types (a : value_type) (b : value_type) : value_type =
     try
       match (a, b) with
@@ -117,6 +130,8 @@ module Make
           set var (Type a : value);
           (* TODO here something can be united? should result in that union? *)
           a
+      | Never, Never -> Never
+      | Never, other | other, Never -> other
       | Binding a, Binding b when a.id = b.id -> Binding a
       | Binding _, _ -> failinfer ()
       | Void, Void -> Void
@@ -125,8 +140,6 @@ module Make
       | UnwindToken, _ -> failinfer ()
       | DelimitedToken, DelimitedToken -> DelimitedToken
       | DelimitedToken, _ -> failinfer ()
-      | Never, Never -> Never
-      | Never, _ -> failinfer ()
       | Ast, Ast -> Ast
       | Ast, _ -> failinfer ()
       | Bool, Bool -> Bool
@@ -186,7 +199,7 @@ module Make
              let var_inst_b =
                call_compiled empty_contexts (ensure_compiled b) vars_args
              in
-             ignore @@ unite var_inst_a var_inst_b);
+             ignore @@ unite_value var_inst_a var_inst_b);
           Template a
       | Template _, _ -> failinfer ()
       | NewType _, _ -> failwith "todo newtype was inferred"
@@ -215,7 +228,7 @@ module Make
       Log.error @@ "  while uniting " ^ show_type a ^ " and " ^ show_type b;
       raise failure
 
-  and unite (a : value) (b : value) : value =
+  and unite_value (a : value) (b : value) : value =
     try
       match (a, b) with
       | Binding a, Binding b when a.id = b.id -> Binding a
@@ -259,7 +272,11 @@ module Make
       | String a, String b -> if a = b then String a else failinfer ()
       | String _, _ -> failinfer ()
       | Dict { fields = a }, Dict { fields = b } ->
-          Dict { fields = StringMap.match_map (fun _name a b -> unite a b) a b }
+          Dict
+            {
+              fields =
+                StringMap.match_map (fun _name a b -> unite_value a b) a b;
+            }
       | Dict _, _ -> failinfer ()
       | Struct _, _ -> failwith "inferred struct?"
       | Variant _, _ -> failwith "inferred variant?"
