@@ -2,7 +2,7 @@ open Kast;;
 
 Random.self_init ()
 
-module Interpreter = Interpreter.Impl;;
+module Interpreter = Interpreter_old.Impl;;
 
 let interpreter = ref (Interpreter.empty ()) in
 
