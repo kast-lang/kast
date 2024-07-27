@@ -7,6 +7,7 @@ syntax break_with_value <- 2 = "break" value;
 syntax break_without_value <- 2 = "break";
 syntax continue_impl <- 2 = "continue";
 
+syntax loop_impl <- 3 = "loop" "{" body "}";
 syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
 syntax builtin_macro_create_impl <- 3 = "impl" trait "for" value "as" impl;
 syntax builtin_macro_let <- 4 = "let" pattern "=" value;
@@ -136,7 +137,7 @@ let loop_context :: type = (
 
 # todo
 # with = forall (arg :: type, result :: type, old_context :: type, new_context :: type).
-# fn (body :: arg -> result incontext (old_context and new_context)) old_context {
+# fn (body :: arg -> result with (old_context and new_context)) old_context {
 # body arg
 # }
 
@@ -150,7 +151,7 @@ let unwind = forall (T :: type). (
     (args => builtin_fn_unwind args) :: (token: unwind_token, value: T) -> never
 );
 
-let loop = fn (body :: (void -> void incontext loop_context)) {
+let loop_fn = fn (body :: (void -> void with loop_context)) {
     let should_continue = unwindable_block fn(token :: unwind_token) {
         let current_loop_context = (
             finish_current_iteration: (x :: bool) -> never => unwind ( ~token, value: x ),
@@ -160,7 +161,7 @@ let loop = fn (body :: (void -> void incontext loop_context)) {
             true
         )
     };
-    if should_continue then (loop body);
+    if should_continue then (loop_fn body);
 };
 
 let do_break = fn (value :: void) loop_context {
@@ -187,7 +188,7 @@ let throw = forall (error :: type). (
 
 let try = forall
 		(~ok :: type, ~error :: type). (
-	fn (body :: (void -> ok incontext throws[error])) {
+	fn (body :: (void -> ok with throws[error])) {
 		unwindable_block fn(token :: unwind_token) {
 			const result_type = Result[~ok, ~error];
 			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error e));
@@ -265,11 +266,11 @@ const Eq = forall (T :: type). (
 );
 
 impl Eq for int32 as (
-    eq: args => @"builtin_fn_==" args
+    eq: @"builtin_fn_=="
 );
 
 impl Eq for string as (
-    eq: args => @"builtin_fn_==" args
+    eq: @"builtin_fn_=="
 );
 
 let @"op binary ==" = macro (~lhs, ~rhs) => `(
@@ -311,6 +312,10 @@ const delimited_block = forall (~Yield :: type, ~Resume :: type, ~Finish :: type
 	fn (args) {
 		builtin_fn_delimited_block args
 	} :: Args -> Finish
+);
+
+const loop_impl = macro (~body) => `(
+    loop_fn (fn (void) { $body })
 );
 
 const for_loop = macro (~value_pattern, ~generator, ~body) => `(

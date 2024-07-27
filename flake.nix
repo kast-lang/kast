@@ -89,8 +89,8 @@
             dontUnpack = true;
             # doCheck = true;
             buildPhase = ''
-              kast ${test.source} < ${test.input or "/dev/null"} > $out
-              cmp $out ${test.expected_output}
+              kast ${test.import or ""} ${test.source} < ${test.input or "/dev/null"} > $out
+              diff $out ${test.expected_output}
             '';
           }
         )

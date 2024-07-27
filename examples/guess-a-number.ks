@@ -25,7 +25,7 @@ let run_once = fn (~quit, ~first) {
     print "you have guessed the number! congrats!";
 };
 
-let main = {
+let main = fn (void) {
     let result = unwindable_block fn(quit) {
         run_once (~quit, first: true);
         loop {

@@ -11,7 +11,7 @@ let rec stdin_loop () =
   let line = read_line () in
   let value = Interpreter.eval interpreter line ~filename:"stdin" in
   print_endline
-    (Interpreter.show value ^ " : "
+    (Interpreter.show value ^ " :: "
     ^ Interpreter.show_type (Interpreter.type_of_value ~ensure:true value));
   stdin_loop ()
 in
