@@ -1,18 +1,18 @@
-open Kast;;
+open Kast
+open Show
+open Interpreter
+open Compiler;;
 
-Random.self_init ()
+Random.self_init ();
 
-module Interpreter = Interpreter_old.Impl;;
-
-let interpreter = ref (Interpreter.empty ()) in
+let interpreter = ref (Interpreter.empty_state ()) in
 
 let rec stdin_loop () =
   print_string "> ";
   let line = read_line () in
   let value = Interpreter.eval interpreter line ~filename:"stdin" in
   print_endline
-    (Interpreter.show value ^ " :: "
-    ^ Interpreter.show_type (Interpreter.type_of_value ~ensure:true value));
+    (show value ^ " :: " ^ show_type (type_of_value ~ensure:true value));
   stdin_loop ()
 in
 
@@ -21,7 +21,7 @@ let std_path = Sys.getenv_opt "KAST_STD" |> Option.value ~default:"std" in
 let eval_files files =
   List.iter
     (fun file ->
-      let value = Interpreter.eval_file interpreter file in
+      let value = eval_file interpreter ~filename:file in
       Interpreter.discard value)
     ((std_path ^ "/lib.ks") :: files)
 in
