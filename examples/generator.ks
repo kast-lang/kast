@@ -16,7 +16,10 @@ print "now using generator as value";
 # TODO types should be inferred
 
 let g = generator_value[Yield: string, Resume: void, Finish: void] generator;
+print "calling .next()";
 dbg <| g.next();
+print "calling .next()";
 dbg <| g.next();
+print "calling .next()";
 dbg <| g.next();
-dbg <| g.next(); # this one panics since generator is finished
+# dbg <| g.next(); # this one panics since generator is finished

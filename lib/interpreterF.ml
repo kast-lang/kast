@@ -273,7 +273,7 @@ struct
                 | None -> new_fn_type_vars () |> fn_type_vars_to_type)
                 args
             with Failure _ as failure ->
-              Log.error @@ "while calling builtin fn " ^ f.f.name;
+              Log.error @@ "  while calling builtin fn " ^ f.f.name;
               raise failure)
       | Function f | Macro f -> call_compiled contexts @@ ensure_compiled f
       | _ -> failwith @@ show f ^ " - not a function"
@@ -647,7 +647,7 @@ struct
       result
     with Failure _ as failure ->
       Log.error @@ "  while evaluating " ^ ir_name ir;
-      Log.error @@ "  while evaluating " ^ show_ir ir;
+      (* Log.error @@ "  while evaluating " ^ show_ir ir; *)
       raise failure
 
   and substitute_fn_vars (vars : fn_type_vars) (state : state) : fn_type_vars =

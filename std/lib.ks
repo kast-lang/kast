@@ -371,7 +371,9 @@ let generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type).
                         ~handler,
                         body: fn(token :: delimited_token) -> GeneratorNext[~Yield, ~Finish] {
                             let context :: yields[~Yield, ~Resume] = (
-                                yield: builtin "fn delimited_yield" :: Yield -> Resume,
+                                yield: fn (value :: Yield) -> Resume {
+                                    builtin "fn delimited_yield" (~token, ~value)
+                                },
                             );
                             let final_value :: Finish = with context (
                                 generator()
