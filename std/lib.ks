@@ -62,7 +62,10 @@ syntax implements <- 14 = type "implements" trait;
 syntax pipe <- 15 = args "|>" f;
 syntax pipe <- 15 = f "<|" args;
 
+syntax try_explicit <- 16 = "try" "[" targs "]" expr;
+syntax try_implicit <- 16 = "try" expr;
 syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
+syntax catch_impl <- 16 = expr "catch" e "(" catch_block ")";
 
 syntax @"builtin fn or" <- 17 = lhs "or" rhs;
 syntax @"builtin fn and" <- 18 = lhs "and" rhs;
@@ -200,18 +203,27 @@ let throw = forall (error :: type). (
 	}
 );
 
-let try = forall
+let do_try = forall
 		(~ok :: type, ~error :: type). (
 	fn (body :: (void -> ok with throws[error])) {
 		unwindable_block fn(token :: unwind_token) {
 			const result_type = Result[~ok, ~error];
-			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error e));
+			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error of e));
 			with throw_context (
-			 	body () |> result_type.Ok
+			 	result_type.Ok of (body ())
 			)
 		}
 	}
 );
+
+let try_explicit = macro (~targs, ~expr) => `(
+    do_try[$targs] (() => $expr)
+);
+
+let try_implicit = macro (~expr) => `(
+    do_try[_] (() => $expr)
+);
+
 
 let catch_impl = macro (~expr :: ast, ~e :: ast, ~catch_block :: ast) => `(
 	match $expr (
