@@ -74,14 +74,16 @@
                   dune build -w;
                 "
             echo "  dune: build --watch"
-            export OCAMLRUNPARAM=b
+            # export OCAMLRUNPARAM=b
           '';
         };
       };
       formatter.${system} = pkgs.nixpkgs-fmt;
       checks.${system} = builtins.mapAttrs
         (name: _entry:
-          let test = import ./tests/${name} { inherit pkgs; };
+          let
+            test = import ./tests/${name} { inherit pkgs; };
+            expected_exit_code = builtins.toString (test.expected_exit_code or 0);
           in
           pkgs.stdenv.mkDerivation {
             name = "kast-check-${name}";
@@ -89,7 +91,14 @@
             dontUnpack = true;
             # doCheck = true;
             buildPhase = ''
+              set +e
               kast ${test.import or ""} ${test.source} < ${test.input or "/dev/null"} > $out
+              EXIT_CODE=''$?
+              set -e
+              if [ "''$EXIT_CODE" -ne ${expected_exit_code} ]; then
+                echo "Expected exit code ${expected_exit_code}, got ''$EXIT_CODE"
+                exit 1
+              fi
               diff $out ${test.expected_output}
             '';
           }
