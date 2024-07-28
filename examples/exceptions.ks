@@ -1,3 +1,5 @@
+use std;
+
 let test = fn (x :: int32) {
 	let result :: Result[ok: string, error: int32] =
 		try[ok: string, error: int32] (

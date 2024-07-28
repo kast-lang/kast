@@ -1,3 +1,5 @@
+use std;
+
 let fib = n =>
     if n < 2 then
         1

@@ -184,6 +184,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | MultiSet _ -> failwith "todo show multiset"
 
   and ir_name : 'a. 'a ir_node -> string = function
+    | Use _ -> "use"
     | Void _ -> "void"
     | Builtin _ -> "builtin"
     | Assign _ -> "assign"
@@ -227,6 +228,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
      fun ir ->
       let ir_itself =
         match ir with
+        | Use { namespace; _ } -> "use " ^ show namespace
         | Void _ -> "void"
         | Struct { body; _ } -> "struct (" ^ show_rec body ^ ")"
         | Assign { pattern; value; _ } ->

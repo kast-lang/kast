@@ -5,7 +5,12 @@ open Compiler;;
 
 Random.self_init ();
 
-let interpreter = ref (Interpreter.empty_state ()) in
+let interpreter = ref (Interpreter.only_std_syntax ()) in
+
+discard
+@@ eval interpreter
+     ("const std = import \"" ^ std_path () ^ "/lib.ks\"")
+     ~filename:"prelude";
 
 let rec stdin_loop () =
   print_string "> ";
@@ -16,14 +21,12 @@ let rec stdin_loop () =
   stdin_loop ()
 in
 
-let std_path = Sys.getenv_opt "KAST_STD" |> Option.value ~default:"std" in
-
 let eval_files files =
   List.iter
     (fun file ->
       let value = eval_file interpreter ~filename:file in
       Interpreter.discard value)
-    ((std_path ^ "/lib.ks") :: files)
+    files
 in
 
 let run_repl () = try stdin_loop () with End_of_file -> () in

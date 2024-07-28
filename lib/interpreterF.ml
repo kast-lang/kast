@@ -178,6 +178,9 @@ struct
   and get_field_opt (obj : value) (field : string) : value option =
     match obj with
     | Dict { fields = dict } -> StringMap.find_opt field dict
+    | Struct s ->
+        StringMap.find_opt field s.data.locals
+        |> Option.map (fun local -> local.value)
     | Type (Dict { fields }) ->
         StringMap.find_opt field fields |> Option.map (fun t : value -> Type t)
     | Type (OneOf variants as typ) ->
@@ -222,6 +225,14 @@ struct
       }
     in
     state
+
+  and std_path () : string =
+    Sys.getenv_opt "KAST_STD" |> Option.value ~default:"std"
+
+  and only_std_syntax () : state =
+    let s = ref (empty_state ()) in
+    ignore @@ eval_file s ~filename:(std_path () ^ "/syntax.ks");
+    !s
 
   and eval (self : state ref) (s : string) ~(filename : string) : value =
     try
@@ -297,6 +308,26 @@ struct
       (fun name { value; _ } -> log ("  " ^ name ^ " = " ^ show value))
       self.data.locals
 
+  and namespace_locals (namespace : value) : local StringMap.t =
+    match namespace with
+    | Struct s -> s.data.locals
+    | Dict { fields } ->
+        fields
+        |> StringMap.mapi (fun name value : local ->
+               {
+                 value;
+                 binding =
+                   {
+                     id = Id.gen ();
+                     name;
+                     value_type =
+                       Inference.new_set_var
+                         (Type (type_of_value ~ensure:false value));
+                     mut = false;
+                   };
+               })
+    | _ -> failwith @@ "this is not a namespace: " ^ show namespace
+
   and eval_ir (self : state) (ir : ir) : evaled =
     try
       log_state Log.Never self;
@@ -308,16 +339,30 @@ struct
       let result =
         match ir with
         | Void _ -> just_value Void
+        | Use { namespace; _ } ->
+            { value = Void; new_bindings = namespace_locals namespace }
         | Struct { body; _ } ->
             Log.trace "evaluating struct";
-            let evaled = eval_ir self body in
-            just_value
-              (Struct
-                 {
-                   parent = Some self.self;
-                   data =
-                     { syntax = Syntax.empty; locals = evaled.new_bindings };
-                 })
+            let struct' : struct' =
+              {
+                parent = Some self.self;
+                data = { syntax = Syntax.empty; locals = StringMap.empty };
+              }
+            in
+            let evaled =
+              eval_ir
+                {
+                  self = struct';
+                  data = self.data;
+                  contexts = self.contexts;
+                  builtins = self.builtins;
+                }
+                body
+            in
+            (* needs refactored *)
+            (* feels refactored *)
+            struct'.data <- { struct'.data with locals = evaled.new_bindings };
+            just_value (Struct struct')
         | NewType { def; _ } ->
             just_value
               (Type
@@ -546,7 +591,9 @@ struct
         | Const { value; _ } -> just_value value
         | Binding { binding; _ } -> (
             match get_local_value_opt self binding.name with
-            | None -> failwith (binding.name ^ " not found wtf, we are compiled")
+            | None ->
+                log_state Log.Error self;
+                failwith (binding.name ^ " not found wtf, we are compiled")
             | Some value -> just_value value)
         | Number { raw = s; data } ->
             just_value

@@ -155,7 +155,8 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         in
         let priority =
           match pop tokens with
-          | Some { value = Number s; _ } -> (
+          | Some { value = Number s | Ident s | String { value = s; _ }; _ }
+            -> (
               match float_of_string_opt s with
               | Some priority -> priority
               | None -> failwith "failed to parse priority")
@@ -226,7 +227,16 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
         match finished with
         | Nothing -> (
             match values with
-            | [] -> Nothing { data = failwith "todo nothing" }
+            | [] ->
+                Nothing
+                  {
+                    data =
+                      {
+                        start = parse_state.pos;
+                        finish = parse_state.pos;
+                        file = filename;
+                      };
+                  }
             | _ -> failwith "values on nothing?")
         | Simple -> (
             match values with

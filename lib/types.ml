@@ -80,6 +80,7 @@ and 'data get_impl = { captured : state; value : ir; trait : ir; data : 'data }
 
 and 'data ir_node =
   | Void of { data : 'data }
+  | Use of { namespace : value; data : 'data }
   | Struct of { body : ir; data : 'data }
   | Assign of { pattern : pattern; value : ir; data : 'data }
   | CreateImpl of {
@@ -214,6 +215,7 @@ and inference_var_data = Root of inference_data | SameAs of inference_var
 and inference_var = { mutable data : inference_var_data; id : Id.t }
 
 let ir_data : 'data. 'data ir_node -> 'data = function
+  | Use { data; _ }
   | ConstructVariant { data; _ }
   | Builtin { data; _ }
   | Assign { data; _ }

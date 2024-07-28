@@ -105,7 +105,7 @@ module Make
     | Some _ -> failwith "inferred value expected to be a type"
     | None -> InferVar var
 
-  and init_ir (ir : no_data ir_node) : ir =
+  and init_ir (self : state) (ir : no_data ir_node) : ir =
     (* Log.trace @@ "initializing ir: " ^ show_ir_with_data (fun _ -> None) ir; *)
     Log.trace @@ "initializing " ^ ir_name ir;
     try
@@ -127,6 +127,8 @@ module Make
       let result : ir =
         match ir with
         | Void { data = NoData } -> Void { data = known_type Void }
+        | Use { namespace; data = NoData } ->
+            Use { namespace; data = known_type Void }
         | Const { value; data = NoData } ->
             Const
               { value; data = known_type @@ type_of_value ~ensure:false value }
@@ -288,11 +290,11 @@ module Make
                             data = NoData;
                             value = InferVar (Inference.new_var ());
                           }
-                        |> init_ir;
+                        |> init_ir self;
                     }
-                  |> init_ir
+                  |> init_ir self
                 in
-                Call { data = NoData; f = instantiated; args } |> init_ir
+                Call { data = NoData; f = instantiated; args } |> init_ir self
             | _ ->
                 Log.trace "calling an actual fn";
                 let f_type = new_fn_type_vars () in
@@ -346,7 +348,7 @@ module Make
                 f;
               }
         | Instantiate { data = NoData; captured; template; args = args_ir } -> (
-            match (eval_ir captured template).value with
+            match (eval_ir self template).value with
             | Template t ->
                 (*
                 let compiled = ensure_compiled t in
@@ -481,7 +483,7 @@ module Make
         match ast with
         | Nothing _ ->
             {
-              ir = Void { data = NoData } |> init_ir;
+              ir = Void { data = NoData } |> init_ir self;
               new_bindings = StringMap.empty;
             }
         | Simple { token; _ } ->
@@ -495,10 +497,10 @@ module Make
                         failwith (ident ^ " not found in current scope")
                     | Some local ->
                         Binding { binding = local.binding; data = NoData }
-                        |> init_ir)
-                | Number raw -> Number { raw; data = NoData } |> init_ir
+                        |> init_ir self)
+                | Number raw -> Number { raw; data = NoData } |> init_ir self
                 | String { value; raw } ->
-                    String { value; raw; data = NoData } |> init_ir
+                    String { value; raw; data = NoData } |> init_ir self
                 | Punctuation _ -> failwith "punctuation");
               new_bindings = StringMap.empty;
             }
@@ -601,18 +603,18 @@ module Make
                       values;
                   data = NoData;
                 }
-              |> init_ir
+              |> init_ir self
             in
             Compiled
               {
                 ir =
                   Call
                     {
-                      f = Const { value; data = NoData } |> init_ir;
+                      f = Const { value; data = NoData } |> init_ir self;
                       args;
                       data = NoData;
                     }
-                  |> init_ir;
+                  |> init_ir self;
                 new_bindings = StringMap.empty;
               }
         | BuiltinMacro { impl; _ } -> impl self values ~new_bindings
@@ -682,7 +684,9 @@ module Make
             captured = f.captured;
             where_clause =
               (match f.ast.where with
-              | None -> Const { value = Bool true; data = NoData } |> init_ir
+              | None ->
+                  Const { value = Bool true; data = NoData }
+                  |> init_ir f.captured
               | Some clause ->
                   (compile_ast_to_ir captured_with_args_bindings clause).ir);
             args;

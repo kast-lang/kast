@@ -47,6 +47,7 @@ module type Interpreter = sig
   exception Unwind of id * value
 
   val empty_state : unit -> state
+  val only_std_syntax : unit -> state
   val eval : state ref -> string -> filename:string -> value
   val eval_file : state ref -> filename:string -> value
   val eval_ast : state -> ast -> evaled
@@ -61,6 +62,8 @@ module type Interpreter = sig
   val discard : value -> unit
   val get_field_opt : value -> string -> value option
   val log_state : Log.level -> state -> unit
+  val namespace_locals : value -> local StringMap.t
+  val std_path : unit -> string
 end
 
 module type Compiler = sig
@@ -69,7 +72,7 @@ module type Compiler = sig
   val compile_pattern : state -> ast option -> pattern
   val compile_ast_to_ir : state -> ast -> compiled
   val init_pattern : no_data pattern_node -> pattern
-  val init_ir : no_data ir_node -> ir
+  val init_ir : state -> no_data ir_node -> ir
   val pattern_bindings : pattern -> binding StringMap.t
   val new_fn_type_vars : unit -> fn_type_vars
   val fn_type_vars_to_type : fn_type_vars -> fn_type

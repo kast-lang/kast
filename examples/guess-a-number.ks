@@ -1,3 +1,5 @@
+use std;
+
 let run_once = fn (~quit, ~first) {
     let picked :: int32 = random (min: 1, max: 10);
     print (

@@ -1,3 +1,5 @@
+use std;
+
 let show_current_context = fn (void) {
 	print (current string)
 };

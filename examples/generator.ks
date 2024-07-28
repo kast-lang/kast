@@ -1,3 +1,5 @@
+use std;
+
 # TODO mark generator with yielding effect
 
 let generator = fn(void) {

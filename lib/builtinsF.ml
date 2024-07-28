@@ -60,7 +60,8 @@ struct
               Compiled
                 {
                   ir =
-                    Call { f = f.ir; args = args.ir; data = NoData } |> init_ir;
+                    Call { f = f.ir; args = args.ir; data = NoData }
+                    |> init_ir self;
                   new_bindings = StringMap.empty;
                 });
     }
@@ -84,7 +85,7 @@ struct
                     args = args.ir;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -110,14 +111,15 @@ struct
             | Some b -> compile_ast_to_ir self_with_new_bindings b
             | None ->
                 {
-                  ir = Void { data = NoData } |> init_ir;
+                  ir = Void { data = NoData } |> init_ir self;
                   new_bindings = StringMap.empty;
                 }
           in
           Compiled
             {
               ir =
-                Then { first = a.ir; second = b.ir; data = NoData } |> init_ir;
+                Then { first = a.ir; second = b.ir; data = NoData }
+                |> init_ir self;
               new_bindings = update_locals a.new_bindings b.new_bindings;
             });
     }
@@ -182,7 +184,8 @@ struct
           Compiled
             {
               ir =
-                Match { value = value.ir; branches; data = NoData } |> init_ir;
+                Match { value = value.ir; branches; data = NoData }
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -212,7 +215,7 @@ struct
             match StringMap.find_opt "else" args with
             | Some branch ->
                 (compile_ast_to_ir self_with_new_bindings branch).ir
-            | None -> Void { data = NoData } |> init_ir
+            | None -> Void { data = NoData } |> init_ir self
           in
           Compiled
             {
@@ -224,7 +227,7 @@ struct
                     else_case = else';
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -304,7 +307,7 @@ struct
                   ir =
                     Scope
                       { expr = (compile_ast_to_ir self e).ir; data = NoData }
-                    |> init_ir;
+                    |> init_ir self;
                   new_bindings = StringMap.empty;
                 });
     }
@@ -328,7 +331,7 @@ struct
                     new_context = new_context.ir;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -344,7 +347,7 @@ struct
             {
               ir =
                 Const { value = (eval_ast self value).value; data = NoData }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -362,9 +365,11 @@ struct
                 Log.trace ("unquoting" ^ Ast.show inner);
                 (compile_ast_to_ir self inner).ir
             | Nothing data ->
-                Const { value = Ast (Nothing data); data = NoData } |> init_ir
+                Const { value = Ast (Nothing data); data = NoData }
+                |> init_ir self
             | Simple token ->
-                Const { value = Ast (Simple token); data = NoData } |> init_ir
+                Const { value = Ast (Simple token); data = NoData }
+                |> init_ir self
             | Complex { def; values; data = ast_data } ->
                 (Ast
                    {
@@ -374,7 +379,7 @@ struct
                      data = NoData;
                    }
                   : no_data ir_node)
-                |> init_ir
+                |> init_ir self
             | Syntax { value; _ } -> impl value
           in
           let expr = StringMap.find "expr" args in
@@ -394,7 +399,7 @@ struct
           let value = (compile_ast_to_ir self value).ir in
           Compiled
             {
-              ir = Let { pattern; value; data = NoData } |> init_ir;
+              ir = Let { pattern; value; data = NoData } |> init_ir self;
               new_bindings =
                 pattern_bindings pattern
                 |> StringMap.map (fun binding : local ->
@@ -420,10 +425,11 @@ struct
                   {
                     pattern;
                     value =
-                      Const { value = evaled.value; data = NoData } |> init_ir;
+                      Const { value = evaled.value; data = NoData }
+                      |> init_ir self;
                     data = NoData;
                   }
-                |> init_ir
+                |> init_ir self
               in
               let evaled : evaled = eval_ir self let_ir in
               Compiled { ir = let_ir; new_bindings = evaled.new_bindings }
@@ -462,7 +468,7 @@ struct
                       };
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -498,7 +504,7 @@ struct
                       };
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -526,7 +532,7 @@ struct
                 {
                   ir =
                     FieldAccess { obj; name; default_value; data = NoData }
-                    |> init_ir;
+                    |> init_ir self;
                   new_bindings = StringMap.empty;
                 }
           | _ -> failwith "field access must be using an ident");
@@ -567,7 +573,7 @@ struct
                          data = NoData;
                        }
                       : _ ir_node)
-                    |> init_ir;
+                    |> init_ir self;
                   new_bindings = StringMap.empty;
                 });
     }
@@ -587,7 +593,7 @@ struct
                       value_to_type (eval_ast self context_type).value;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -608,7 +614,7 @@ struct
                     expr = (compile_ast_to_ir self expr).ir;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -630,7 +636,7 @@ struct
                     expr = (compile_ast_to_ir self expr).ir;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -683,7 +689,7 @@ struct
                              data = NoData;
                            }
                           : _ ir_node)
-                        |> init_ir;
+                        |> init_ir self;
                       new_bindings = StringMap.empty;
                     })
           | None -> (
@@ -697,7 +703,7 @@ struct
                     {
                       ir =
                         (Dict { fields = fields a; data = NoData } : _ ir_node)
-                        |> init_ir;
+                        |> init_ir self;
                       new_bindings = StringMap.empty;
                     }));
     }
@@ -825,7 +831,7 @@ struct
               ir =
                 UnwindableBlock
                   { f = (compile_ast_to_ir self def).ir; data = NoData }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -964,7 +970,7 @@ struct
                       |> Option.map (fun ast -> (compile_ast_to_ir self ast).ir);
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -998,7 +1004,7 @@ struct
                 ir =
                   OneOf
                     { variants = StringMap.singleton name typ; data = NoData }
-                  |> init_ir;
+                  |> init_ir self;
                 new_bindings = StringMap.empty;
               });
     }
@@ -1029,7 +1035,7 @@ struct
               in
               Compiled
                 {
-                  ir = OneOf { variants; data = NoData } |> init_ir;
+                  ir = OneOf { variants; data = NoData } |> init_ir self;
                   new_bindings = StringMap.empty;
                 }
           | true -> failwith "combine variants is only a expr");
@@ -1055,7 +1061,7 @@ struct
                     impl = (compile_ast_to_ir self impl).ir;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -1077,7 +1083,7 @@ struct
                     trait = (compile_ast_to_ir self trait).ir;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -1100,7 +1106,7 @@ struct
                     trait = (compile_ast_to_ir self trait).ir;
                     data = NoData;
                   }
-                |> init_ir;
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -1109,13 +1115,13 @@ struct
     {
       name = "make_void";
       impl =
-        (fun _self _args ~new_bindings ->
+        (fun self _args ~new_bindings ->
           match new_bindings with
           | true -> Pattern (Void { data = NoData } |> init_pattern)
           | false ->
               Compiled
                 {
-                  ir = Void { data = NoData } |> init_ir;
+                  ir = Void { data = NoData } |> init_ir self;
                   new_bindings = StringMap.empty;
                 });
     }
@@ -1127,10 +1133,21 @@ struct
         (fun self args ~new_bindings ->
           assert (not new_bindings);
           let body = StringMap.find "body" args in
-          let body = (compile_ast_to_ir self body).ir in
+          let struct_data : state_data =
+            { locals = StringMap.empty; syntax = Syntax.empty }
+          in
+          let struct_state : state =
+            {
+              builtins = self.builtins;
+              contexts = self.contexts;
+              data = struct_data;
+              self = { parent = Some self.self; data = struct_data };
+            }
+          in
+          let body = (compile_ast_to_ir struct_state body).ir in
           Compiled
             {
-              ir = Struct { body; data = NoData } |> init_ir;
+              ir = Struct { body; data = NoData } |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -1163,7 +1180,7 @@ struct
                   ir =
                     Const
                       { value = InferVar (Inference.new_var ()); data = NoData }
-                    |> init_ir;
+                    |> init_ir self;
                   new_bindings = StringMap.empty;
                 });
     }
@@ -1243,7 +1260,7 @@ struct
           in
           Compiled
             {
-              ir = Assign { pattern; value; data = NoData } |> init_ir;
+              ir = Assign { pattern; value; data = NoData } |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }
@@ -1263,13 +1280,65 @@ struct
           in
           Compiled
             {
-              ir = Builtin { name; data = NoData } |> init_ir;
+              ir = Builtin { name; data = NoData } |> init_ir self;
               new_bindings = StringMap.empty;
+            });
+    }
+
+  let import_cache : value StringMap.t ref = ref StringMap.empty
+
+  let import : builtin_macro =
+    {
+      name = "import";
+      impl =
+        (fun self args ~new_bindings ->
+          assert (not new_bindings);
+          let path = (eval_ast self (StringMap.find "path" args)).value in
+          let path =
+            match path with
+            | String path -> path
+            | _ -> failwith @@ "imprort path not a string: " ^ show path
+          in
+          let value =
+            match StringMap.find_opt path !import_cache with
+            | Some cached -> cached
+            | None ->
+                let value =
+                  eval_file (only_std_syntax () |> ref) ~filename:path
+                in
+                Log.trace @@ "evaluated for import: " ^ path;
+                import_cache := StringMap.add path value !import_cache;
+                value
+          in
+          Compiled
+            {
+              ir = Const { data = NoData; value } |> init_ir self;
+              new_bindings = StringMap.empty;
+            });
+    }
+
+  let use : builtin_macro =
+    {
+      name = "use";
+      impl =
+        (fun self args ~new_bindings ->
+          assert (not new_bindings);
+          let namespace =
+            (eval_ast self (StringMap.find "namespace" args)).value
+          in
+          (* TODO work with not fully initialized namespaces *)
+          let new_bindings = namespace_locals namespace in
+          Compiled
+            {
+              ir = Use { namespace; data = NoData } |> init_ir self;
+              new_bindings;
             });
     }
 
   let builtin_macros : builtin_macro list =
     [
+      use;
+      import;
       builtin;
       assign;
       construct_variant;

@@ -2,6 +2,7 @@
 
 {
   source = builtins.toFile "test.ks" ''
+        use std;
     		const id = forall (T :: type). ((x => x) :: T -> T);
     		dbg <| id[int32] 123
     	'';

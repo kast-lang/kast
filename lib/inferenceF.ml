@@ -19,6 +19,8 @@ module Make
     Log.trace @@ "making new inference var: " ^ Id.show id;
     { data = Root { inferred = None; type_var = None; checks = [] }; id }
 
+  let currently_being_set = ref Id.Map.empty
+
   let rec get_root_var : var -> var =
    fun var ->
     match var.data with
@@ -87,12 +89,23 @@ module Make
             a.data <- SameAs b)
 
   and set var value =
-    let root = get_root_var var in
-    let data = get_root_data root in
-    match get_inferred root with
-    | None -> data.inferred <- Some value
-    | Some (Type Never as current_value) -> ignore @@ unite current_value value
-    | Some current_value -> data.inferred <- Some (unite current_value value)
+    (* TODO currently_being_set feels like a hack *)
+    let prev_being_set = !currently_being_set in
+    match Id.Map.find_opt var.id prev_being_set with
+    | Some _ -> ()
+    | None ->
+        currently_being_set := Id.Map.add var.id () !currently_being_set;
+        let root = get_root_var var in
+        let data = get_root_data root in
+        (match get_inferred root with
+        | None -> data.inferred <- Some value
+        | Some (Type Never as current_value) ->
+            ignore @@ unite current_value value
+        | Some current_value ->
+            Log.trace @@ "set uniting " ^ show current_value ^ " + "
+            ^ show value;
+            data.inferred <- Some (unite current_value value));
+        currently_being_set := prev_being_set
 
   and add_check var f =
     let root = get_root_var var in

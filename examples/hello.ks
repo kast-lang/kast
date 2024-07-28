@@ -1,2 +1,3 @@
-print "Hello";
+std.print "Hello";
+use std;
 "World" |> print;
