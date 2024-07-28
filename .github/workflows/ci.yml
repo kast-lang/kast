@@ -34,4 +34,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-${{ matrix.ocaml-compiler }}-kast.exe
-          path: _build/default/main.exe
+          path: _build/default/bin/main.exe

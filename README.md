@@ -4,6 +4,8 @@ An experimental programming language
 
 **NOT READY YET**
 
+But you can download current builds from [GitHub Actions](https://github.com/kast-lang/kast/actions/workflows/ci.yml)
+
 [See more on the website](https://kast-lang.org)
 
 ## Todo
