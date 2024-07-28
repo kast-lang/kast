@@ -1303,18 +1303,25 @@ struct
       impl =
         (fun self args ~new_bindings ->
           assert (not new_bindings);
-          let path = (eval_ast self (StringMap.find "path" args)).value in
+          let args_ast = StringMap.find "path" args in
+          let path = (eval_ast self args_ast).value in
           let path =
             match path with
             | String path -> path
-            | _ -> failwith @@ "imprort path not a string: " ^ show path
+            | _ -> failwith @@ "import path not a string: " ^ show path
+          in
+          let path =
+            if String.starts_with ~prefix:"/" path then path
+            else
+              let (Filename current_filename) = (Ast.data args_ast).span.file in
+              Filename.concat (Filename.dirname current_filename) path
           in
           let value =
             match StringMap.find_opt path !import_cache with
             | Some cached -> cached
             | None ->
                 let value =
-                  eval_file (only_std_syntax () |> ref) ~filename:path
+                  eval_file (default_state () |> ref) ~filename:path
                 in
                 Log.trace @@ "evaluated for import: " ^ path;
                 import_cache := StringMap.add path value !import_cache;

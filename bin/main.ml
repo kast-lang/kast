@@ -5,12 +5,7 @@ open Compiler;;
 
 Random.self_init ();
 
-let interpreter = ref (Interpreter.only_std_syntax ()) in
-
-discard
-@@ eval interpreter
-     ("const std = import \"" ^ std_path () ^ "/lib.ks\"")
-     ~filename:"prelude";
+let interpreter = ref (Interpreter.default_state ()) in
 
 let rec stdin_loop () =
   print_string "> ";

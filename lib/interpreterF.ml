@@ -229,6 +229,36 @@ struct
   and std_path () : string =
     Sys.getenv_opt "KAST_STD" |> Option.value ~default:"std"
 
+  and default_state () : state =
+    let std =
+      eval_file (only_std_syntax () |> ref) ~filename:(std_path () ^ "/lib.ks")
+    in
+    let state = only_std_syntax () |> ref in
+    state :=
+      {
+        !state with
+        data =
+          {
+            !state.data with
+            locals =
+              update_locals !state.data.locals
+                (StringMap.singleton "std"
+                   {
+                     value = std;
+                     binding =
+                       {
+                         id = Id.gen ();
+                         name = "std";
+                         mut = false;
+                         value_type =
+                           Inference.new_set_var
+                           @@ Type (type_of_value ~ensure:false std);
+                       };
+                   });
+          };
+      };
+    !state
+
   and only_std_syntax () : state =
     let s = ref (empty_state ()) in
     ignore @@ eval_file s ~filename:(std_path () ^ "/syntax.ks");
