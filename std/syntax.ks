@@ -109,6 +109,8 @@ syntax @"builtin macro field_access" <- 300 = obj "." field;
 syntax @"builtin macro construct_variant" <- 300 = type "." variant "of" value;
 syntax @"builtin macro construct_variant" <- 300 = type "." variant "ofnone";
 
+syntax @"builtin macro struct_def" <- 500 = "rec" "(" body ")";
+syntax @"builtin macro struct_def" <- 500 = "rec" "{" body "}";
 syntax @"builtin macro struct_def" <- 500 = "struct" "(" body ")";
 syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
 syntax @"builtin macro builtin" <- 500 = "builtin" name;

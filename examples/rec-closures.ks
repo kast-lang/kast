@@ -1,10 +1,21 @@
-let f = void => (
-    print "calling f";
-    f()
-);
-let g = void => (
-    print "calling g";
-    f()
-);
+use std;
 
-# f()
+let fg = rec {
+    let f = depth => (
+        dbg depth;
+        if depth > 0 then (
+            print "calling g";
+            g (depth - 1);
+        );
+    );
+    let g = depth => (
+        dbg depth;
+        if depth > 0 then (
+            print "calling f";
+            f (depth - 1);
+        );
+    );
+};
+
+print "going in";
+fg.f(5 :: int32);

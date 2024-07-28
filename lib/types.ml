@@ -81,7 +81,7 @@ and 'data get_impl = { captured : state; value : ir; trait : ir; data : 'data }
 and 'data ir_node =
   | Void of { data : 'data }
   | Use of { namespace : value; data : 'data }
-  | Struct of { body : ir; data : 'data }
+  | Struct of { body : ir; field_types : value_type StringMap.t; data : 'data }
   | Assign of { pattern : pattern; value : ir; data : 'data }
   | CreateImpl of {
       captured : state;

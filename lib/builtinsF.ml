@@ -1144,10 +1144,20 @@ struct
               self = { parent = Some self.self; data = struct_data };
             }
           in
-          let body = (compile_ast_to_ir struct_state body).ir in
+          let body = compile_ast_to_ir struct_state body in
           Compiled
             {
-              ir = Struct { body; data = NoData } |> init_ir self;
+              ir =
+                Struct
+                  {
+                    body = body.ir;
+                    field_types =
+                      body.new_bindings
+                      |> StringMap.map (fun local ->
+                             InferVar local.binding.value_type);
+                    data = NoData;
+                  }
+                |> init_ir self;
               new_bindings = StringMap.empty;
             });
     }

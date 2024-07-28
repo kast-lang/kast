@@ -188,6 +188,7 @@ const @"op binary +" :: (lhs: int32, rhs: int32) -> int32 = builtin "fn binary +
 const @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = builtin "fn binary -";
 
 const @"op binary <" :: (lhs: int32, rhs: int32) -> bool = builtin "fn <";
+const @"op binary >" :: (lhs: int32, rhs: int32) -> bool = builtin "fn >";
 
 const Parse = forall (Self :: type). (
     parse: (string -> Self),

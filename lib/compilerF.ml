@@ -132,7 +132,13 @@ module Make
         | Const { value; data = NoData } ->
             Const
               { value; data = known_type @@ type_of_value ~ensure:false value }
-        | Struct { body; data = NoData } -> Struct { body; data = same_as body }
+        | Struct { body; field_types; data = NoData } ->
+            Struct
+              {
+                body;
+                field_types;
+                data = known_type @@ Dict { fields = field_types };
+              }
         | Assign { pattern; value; data = NoData } ->
             Inference.make_same (pattern_data pattern).type_var
               (ir_data value).type_var;
