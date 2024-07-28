@@ -217,7 +217,9 @@ let do_try = forall
 );
 
 let try_explicit = macro (~targs, ~expr) => `(
-    do_try[$targs] (() => $expr)
+    let (~ok, ~error) = $targs;
+    let f :: void -> ok with throws[error] = () => $expr;
+    do_try[$targs] f
 );
 
 let try_implicit = macro (~expr) => `(

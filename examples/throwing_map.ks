@@ -20,6 +20,14 @@ let generator = fn(void) yields[Yield: int32, Resume: void] {
 	yield (2 :: int32);
 };
 
-for value in (generator()) .map ((s :: int32) -> string => throw "haha") {
-	print value;
+let map_fn :: int32 -> string = fn (s) {
+	print "throwing";
+	throw "haha"
 };
+
+let result = try[ok: void, error: string] (
+	for value in (generator()) .map map_fn {
+		print value;
+	};
+);
+dbg result;
