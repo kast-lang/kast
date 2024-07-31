@@ -294,4 +294,6 @@ const yield = forall (~T :: type, ~Resume :: type). (
 	} :: T -> Resume
 );
 
-const compile_to_js :: (void -> void) -> string = builtin "fn compile_to_js";
+const compile_to_js = forall (T :: type). (
+    builtin "fn compile_to_js" :: T -> string
+);

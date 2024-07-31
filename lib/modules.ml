@@ -87,3 +87,7 @@ module type Utils = sig
   val update_locals :
     local StringMap.t -> local StringMap.t -> local StringMap.t
 end
+
+module type Javascript = sig
+  val compile_value : value -> string
+end

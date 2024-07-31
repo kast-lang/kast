@@ -7,7 +7,8 @@ module Make
     (Inference : Modules.Inference)
     (Utils : Modules.Utils)
     (Show : Modules.Show)
-    (TypeId : Modules.TypeId) =
+    (TypeId : Modules.TypeId)
+    (Javascript : Modules.Javascript) =
 struct
   open Utils
   open Interpreter
@@ -1413,13 +1414,7 @@ struct
   let compile_to_js : builtin_fn =
     {
       name = "compile_to_js";
-      impl =
-        (fun _fn_type -> function
-          | Function f ->
-              let compiled = ensure_compiled f in
-              String (Javascript.compile f.captured compiled.body).code
-          | value ->
-              failwith @@ "compiling to js not supported for " ^ show value);
+      impl = (fun _fn_type value -> String (Javascript.compile_value value));
     }
 
   let builtin_fns : builtin_fn list =

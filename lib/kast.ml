@@ -1,5 +1,5 @@
 module rec Builtins : Modules.Builtins =
-  BuiltinsF.Make (Interpreter) (Compiler) (Inference) (Utils) (Show) (TypeId)
+  BuiltinsF.Make (Interpreter) (Compiler) (Inference) (Utils) (Show) (TypeId) (Javascript)
 
 and Interpreter : Modules.Interpreter =
   InterpreterF.Make (Compiler) (Show) (Utils) (Inference) (Builtins) (TypeId)
@@ -19,3 +19,6 @@ and TypeId : Modules.TypeId = TypeIdF.Make (Inference)
 
 and Compiler : Modules.Compiler =
   CompilerF.Make (Interpreter) (Inference) (Show) (Utils) (TypeId)
+
+and Javascript : Modules.Javascript =
+  JavascriptF.Make (Show) (Interpreter) (Compiler) (Utils)
