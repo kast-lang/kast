@@ -1410,8 +1410,21 @@ struct
                   failwith @@ "== doesnt work for " ^ show a ^ " and " ^ show b));
     }
 
+  let compile_to_js : builtin_fn =
+    {
+      name = "compile_to_js";
+      impl =
+        (fun _fn_type -> function
+          | Function f ->
+              let compiled = ensure_compiled f in
+              String (Javascript.compile f.captured compiled.body).code
+          | value ->
+              failwith @@ "compiling to js not supported for " ^ show value);
+    }
+
   let builtin_fns : builtin_fn list =
     [
+      compile_to_js;
       delimited_block;
       delimited_yield;
       placeholder_fn;

@@ -293,3 +293,5 @@ const yield = forall (~T :: type, ~Resume :: type). (
 		(current yields[Yield: T, ~Resume]).yield(value)
 	} :: T -> Resume
 );
+
+const compile_to_js :: (void -> void) -> string = builtin "fn compile_to_js";
