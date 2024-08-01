@@ -89,5 +89,11 @@ module type Utils = sig
 end
 
 module type Javascript = sig
-  val compile_value : value -> string
+  type var = { id : id }
+  type js = { code : string; var : var }
+  type compiler_state
+
+  val var_name : var -> string
+  val init_compiler : unit -> compiler_state
+  val compile_value : value -> js
 end

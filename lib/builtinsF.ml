@@ -1414,7 +1414,10 @@ struct
   let compile_to_js : builtin_fn =
     {
       name = "compile_to_js";
-      impl = (fun _fn_type value -> String (Javascript.compile_value value));
+      impl =
+        (fun _fn_type value ->
+          let js = Javascript.compile_value value in
+          String (js.code ^ " /* " ^ Javascript.var_name js.var ^ " */"));
     }
 
   let builtin_fns : builtin_fn list =
