@@ -5,7 +5,7 @@ sort_by = "weight"
 
 # Current State
 
-This page describes the design of the language.
+This page briefly describes some ideas of the language.
 
 The current work is focused on getting a proof of concept implementation of the described features.
 
@@ -31,10 +31,10 @@ The goal is to eliminate as many classes of bugs at compile-time as possible.
 
 # Minimal but General
 
-Kast is designed to have a very simple minimal set of core features,
+Kast is designed to have a minimal set of core features,
 which can be composed into more complex ones easily.
 
-If a feature can be broken down into simpler one, it should not be in the core.
+If a feature can be broken down into simpler ones, it should not be in the core.
 
 For example, while the core of the language is purely functional,
 we can still have familiar `for` loops, `return`s from functions,
@@ -63,7 +63,7 @@ This works as a combination of core features like:
 Another example of composable feature is async/await,
 which also needs delimited continuations in addition to the above
 
-# Compiled or interpreted?
+# Compiled or interpreted
 
 Kast is an interpreter with compiler implemented as a library.
 
@@ -80,13 +80,13 @@ fn vertex_shader(vertex_data :: (pos: vec3)) -> vertex_shader_output {
   ...
 }
 
-fn main() io {
+fn my_game() io {
   const vertex_shader_glsl :: string = transpile_to_glsl(vertex_shader);
   ...
 }
 
-let exe = build_exe(main);
-let c_source = transpile_to_c(main);
+let exe = build_exe(my_game);
+let c_source = transpile_to_c(my_game);
 ```
 
 # Performance
@@ -124,50 +124,50 @@ Kast is a strongly typed language.
 
 aka discriminated union / algebraic data type:
 
+```rs
+let Option = forall T. (Some T | None);
 ```
-let Option = forall T. (Some T | None );
+
+# Casting
+
+In Kast you can define casting rules:
+
+```rs
+impl (123 :: int32) as string = "123";
+print (123 :: int32 as string) # prints 123
 ```
 
-# Traits
+By defining casting rules for types we can get trait/typeclass/interfaces:
 
-aka typeclasses
-
-we can associate values of basically any type (we call those types traits)
-with any other types:
-
-```
-kast: impl Trait for Type as ImplBlock;
+```rs
+kast: impl Type as Trait = ImplBlock;
+rust: impl Trait for Type { ImplBlock };
 haskell: instance Trait Type where ImplBlock;
 ```
 
-what the compiler (interpreter) does when it sees this declaration is:
+Here, trait can either be a concrete type, or a template.
+In the latter case, the value for which casting is being defined becomes the argument of the template.
+This allows you to refer to `Self` in trait definition, or implement traits for a pair of types
+(multi-parameter typeclasses) easily.
 
-```
-trait_impls :: Map[Type, Map[trait: Type, Value: trait]];
-trait_impls[Type][Trait] = ImplBlock;
-
-impl int32 for MyType as 0
-```
-
-The only distinction about the special `trait` types
-is that they are aware of the type they are implemented for
-(you can refer to them as `Self`):
-
-```
-let Parse :: type = trait {
+```rs
+let Parse = forall Self. (
   parse: string -> Self
-};
-impl Parse for int32 as {
+);
+impl int32 as Parse = (
   parse: parse_string_to_int32
-}
-```
+);
 
-In order to get the value of trait type back, you can use `as` operator:
-
-```
-(int32 as Parse) :: Parse
-
-(int32 as Parse).parse :: string -> int32
+let Add = forall (Lhs, Rhs). rec@this (
+  output: type,
+  add: (Lhs, Rhs) -> this.output,
+);
+impl (int32, int64) as Add = (
+  output: int64,
+  add: fn (lhs :: int32, rhs :: int64) -> int64 {
+    (lhs as int64) + rhs
+  },
+);
 ```
 
 ## Tuples
@@ -187,9 +187,9 @@ let variadic_int :: (*int32) = (1, 2, 3, 4)
 
 Variadic tuples allow for variadic generics easily:
 
-```
+```rs
 forall (*fields :: type). (
-  impl Trait for (*fields)
+  impl (*fields) as Trait = ...
 )
 ```
 
@@ -204,16 +204,16 @@ Not every function in Kast can just be called whenever.
 Functions can specify contexts that must be in scope when calling them.
 Contexts can be of any type:
 
-```
-fn function_that_allocates_a_lot() allocator { ... }
+```rs
+fn function_that_allocates_a_lot() with allocator { ... }
 ```
 
-This function specifies that a allocator must exist.
+This function specifies that a allocator must be present when calling it.
 In a way, function contexts act like implicit arguments (but implemented differently).
 
 In order to bring a context into scope, use `with`:
 
-```
+```rs
 with ArenaAllocator.new() (
   function_that_allocates_a_lot()
 )
@@ -221,8 +221,8 @@ with ArenaAllocator.new() (
 
 ## overflows
 
-```
-add_int32 :: (a :: int32, b :: int32) -> int32 potentially_overflows;
+```rs
+add_int32 :: (a :: int32, b :: int32) -> int32 with potentially_overflows;
 
 with saturating (
   a + with overflowing (b + c)
@@ -236,11 +236,9 @@ with undefined_behavior_on_overflow (
 
 # Unwinding
 
-Similar to lisp's [`block`/`return-from`](http://www.ai.mit.edu/projects/iiip/doc/CommonLISP/HyperSpec/Body/speope_return-from.html)
-
 We can declare named blocks that we can return to without executing the rest of the body:
 
-```
+```rs
 let f = fn (token :: unwind_token) {
   ...
   unwind (~token, ~value);
@@ -259,7 +257,7 @@ or the value given to the `unwind`.
 
 # Delimited continuations
 
-TODO
+Similar to unwind, but allow you to resume execution after unwinding by creating the continuation object
 
 # Syntax
 
@@ -270,14 +268,14 @@ The default syntax is declared in std and can be not used if you wish.
 
 The only builtin syntax is the syntax for defining new syntax:
 
-```
+```rs
 syntax ternary <- 10 = cond "?" then ":" else;
 ```
 
 This defines left associative (`<-`) syntax for ternary operator with priority of `10`.
 When Kast sees this in the source code, its being transformed into an AST:
 
-```
+```rs
 let ternary_ast :: type = (cond: ast, then: ast, else: ast);
 ```
 
@@ -288,12 +286,12 @@ which is then processed recursively until some builtin macro converts it into IR
 
 Macros in Kast are just like normal functions:
 
-```
+```rs
 let ternary = macro (~cond :: ast, ~then :: ast, ~else :: ast) =>
   `(if $cond then $then else $else)
 ```
 
-Here, we use a quote operator (`\``) to construct the resulting ast
+Here, we use a quote operator (`` ` ``) to construct the resulting ast
 using already existing syntax.
 The unquote operator (`$`) is replacing the following ident with the ast
 that was passed to the macro as argument.
