@@ -340,9 +340,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
       | _ -> finish ()
     in
     let result =
-      if List.length parse_state.last_unassigned_values >= 2 then
-        (* todo this is copypasted from below *)
-        try_joining ()
+      if List.length parse_state.last_unassigned_values >= 2 then try_joining ()
       else
         match peek tokens with
         | None -> finish ()
@@ -436,10 +434,7 @@ let parse (syntax : syntax) (tokens : token spanned Seq.t) (filename : filename)
                           parse_until
                             {
                               syntax = parse_state.syntax;
-                              start =
-                                (match parse_state.start with
-                                | Some start -> Some start
-                                | None -> Some spanned_token.span.start);
+                              start = Some spanned_token.span.start;
                               pos = spanned_token.span.finish;
                               until = new_state.priority;
                               state = new_state;
