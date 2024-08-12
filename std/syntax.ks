@@ -43,8 +43,8 @@ syntax @"builtin fn function_type" -> 7.5 = arg "->" result;
 syntax @"builtin fn function_type" -> 7.5 = arg "->" result "with" contexts;
 syntax @"builtin macro function_def" -> 7.5 = args "->" returns "=>" body;
 
-syntax @"builtin macro template_def" <- 9 = "forall" args "." body;
-syntax @"builtin macro template_def" <- 9 = "forall" args "where" where "." body;
+syntax @"builtin macro template_def" <- 9 = "forall" "[" args "]" "{" body "}";
+syntax @"builtin macro template_def" <- 9 = "forall" "[" args "]" "where" where "{" body "}";
 
 syntax @"builtin macro match" <- 13 = "match" value "(" branches ")";
 syntax @"builtin macro match" <- 13 = "match" value "{" branches "}";

@@ -17,9 +17,15 @@ const string = builtin "string";
 const never = builtin "never";
 const type = builtin "type";
 
-const Option = forall (T :: type). (newtype .Some T | .None);
-const Either = forall ((~left, ~right) :: ( left: type, right: type )). (newtype .Left left | .Right right);
-const Result = forall ((~ok, ~error) :: ( ok: type, error: type)). (newtype .Ok ok | .Error error);
+const Option = forall[T :: type] {
+    newtype .Some T | .None
+};
+const Either = forall[(~left, ~right) :: ( left: type, right: type )] {
+    newtype .Left left | .Right right
+};
+const Result = forall[(~ok, ~error) :: ( ok: type, error: type)] {
+    newtype .Ok ok | .Error error
+};
 
 # args |> f
 const pipe = macro (~f, ~args) => `((
@@ -39,13 +45,13 @@ const loop_context :: type = (
 # body arg
 # }
 
-const dbg = forall (T :: type). (
+const dbg = forall[T :: type] {
     builtin "fn dbg" :: T -> void
-);
+};
 
-const unwind = forall (T :: type). (
+const unwind = forall[T :: type] {
     builtin "fn unwind" :: (token: unwind_token, value: T) -> never
-);
+};
 
 let loop_fn = fn (body :: (void -> void with loop_context)) {
     let should_continue = unwindable_block fn(token :: unwind_token) {
@@ -75,15 +81,16 @@ const continue_impl = macro _ => (
 const break_without_value = macro _ => `(do_break void);
 const break_with_value = macro (~value) => `(do_break $value);
 
-const throws = forall (error :: type). (throw: (error -> never));
-const throw = forall (error :: type). (
+const throws = forall[error :: type] {
+    throw: (error -> never)
+};
+const throw = forall[error :: type] {
 	fn (e :: error) {
 		(current throws[error]).throw e
 	}
-);
+};
 
-const do_try = forall
-		(~ok :: type, ~error :: type). (
+const do_try = forall[~ok :: type, ~error :: type] {
 	fn (body :: (void -> ok with throws[error])) {
 		unwindable_block fn(token :: unwind_token) {
 			const result_type = Result[~ok, ~error];
@@ -93,7 +100,7 @@ const do_try = forall
 			)
 		}
 	}
-);
+};
 
 const try_explicit = macro (~targs, ~expr) => `(
     let (~ok, ~error) = $targs;
@@ -117,7 +124,7 @@ const is_same_type :: (a: type, b: type) -> bool = builtin "fn is_same_type";
 
 const panic :: string -> never = builtin "fn panic";
 
-const random = forall (T :: type). (
+const random = forall[T :: type] {
     (
     if is_same_type (a: T, b: int32) then
         builtin "fn random_int32"
@@ -126,7 +133,7 @@ const random = forall (T :: type). (
     else
         panic "wtf")
     ) :: (min: T, max: T) -> T
-);
+};
 
 const TypeName :: type = (
     name: string
@@ -164,13 +171,13 @@ impl TypeName for string as (
     name: "string",
 );
 
-const type_name = forall (T :: type) where (T impl TypeName). (
+const type_name = forall[T :: type] where (T impl TypeName) {
     (T as TypeName).name
-);
+};
 
-const Eq = forall (T :: type). (
+const Eq = forall[T :: type] {
     eq: (lhs: T, rhs: T) -> bool
-);
+};
 
 impl Eq for int32 as (
     eq: builtin "fn =="
@@ -190,9 +197,9 @@ const @"op binary -" :: (lhs: int32, rhs: int32) -> int32 = builtin "fn binary -
 const @"op binary <" :: (lhs: int32, rhs: int32) -> bool = builtin "fn <";
 const @"op binary >" :: (lhs: int32, rhs: int32) -> bool = builtin "fn >";
 
-const Parse = forall (Self :: type). (
+const Parse = forall[Self :: type] {
     parse: (string -> Self),
-);
+};
 
 impl Parse for int32 as (
     parse: builtin "fn string_to_int32",
@@ -202,23 +209,23 @@ impl Parse for float64 as (
     parse: builtin "fn string_to_float64",
 );
 
-const parse = forall (T :: type) where (T impl Parse). (
+const parse = forall[T :: type] where (T impl Parse) {
     (T as Parse).parse
-);
+};
 
 const sin :: float64 -> float64 = builtin "fn sin";
 
-const yields = forall (~Yield :: type, ~Resume :: type). (
+const yields = forall[~Yield :: type, ~Resume :: type] {
 	yield: Yield -> Resume,
-);
+};
 
-const delimited_block = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+const delimited_block = forall[~Yield :: type, ~Resume :: type, ~Finish :: type] {
 	const Args = (
 		handler: (value: Yield, resume: Resume -> Finish) -> Finish,
 		body: delimited_token -> Finish,
 	);
 	builtin "fn delimited_block" :: Args -> Finish
-);
+};
 
 const loop_impl = macro (~body) => `(
     loop_fn (fn (void) { $body })
@@ -236,24 +243,24 @@ const for_loop = macro (~value_pattern, ~generator, ~body) => `(
     )
 );
 
-const GeneratorNext = forall (~Yield :: type, ~Finish :: type). (
+const GeneratorNext = forall[~Yield :: type, ~Finish :: type] {
     newtype
     | .Yielded Yield
     | .Finished Finish
-);
+};
 
-const Generator = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+const Generator = forall[~Yield :: type, ~Resume :: type, ~Finish :: type] {
     next: Resume -> GeneratorNext[~Yield, ~Finish],
-);
+};
 
-const GeneratorState = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+const GeneratorState = forall[~Yield :: type, ~Resume :: type, ~Finish :: type] {
     newtype
     | .NotStarted (() -> Finish with yields[~Yield, ~Resume])
     | .Suspended (Resume -> GeneratorNext[~Yield, ~Finish] with yields[~Yield, ~Resume])
     | .Finished
-);
+};
 
-const generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
+const generator_value = forall[~Yield :: type, ~Resume :: type, ~Finish :: type] {
     fn (generator :: () -> Finish with yields[~Yield, ~Resume]) -> Generator[~Yield, ~Resume, ~Finish] {
         let mut state = GeneratorState[~Yield, ~Resume, ~Finish].NotStarted generator;
         next: fn(resume_value :: Resume) -> GeneratorNext[~Yield, ~Finish] {
@@ -289,14 +296,14 @@ const generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type
             }
         }
     }
-);
+};
 
-const yield = forall (~T :: type, ~Resume :: type). (
+const yield = forall[~T :: type, ~Resume :: type] {
 	fn (value) {
 		(current yields[Yield: T, ~Resume]).yield(value)
 	} :: T -> Resume
-);
+};
 
-const compile_to_js = forall (T :: type). (
+const compile_to_js = forall[T :: type] {
     builtin "fn compile_to_js" :: T -> string
-);
+};
