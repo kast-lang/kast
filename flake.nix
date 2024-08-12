@@ -84,10 +84,18 @@
           let
             test = import ./tests/${name} { inherit pkgs; };
             expected_exit_code = builtins.toString (test.expected_exit_code or 0);
+            compile-to-js = src: builtins.toFile "src.ks" ''
+              let js = std.compile_to_js (() => (
+                ${builtins.readFile src}
+              ));
+              std.print js.code;
+              std.print js.var;
+              std.print "()";
+            '';
           in
           pkgs.stdenv.mkDerivation {
             name = "kast-check-${name}";
-            nativeBuildInputs = [ self.packages.${system}.default ];
+            nativeBuildInputs = [ self.packages.${system}.default pkgs.nodejs ];
             dontUnpack = true;
             # doCheck = true;
             buildPhase = ''
@@ -100,6 +108,19 @@
                 exit 1
               fi
               diff $out ${test.expected_output}
+
+              if ${if test.test-js or false then "true" else "false"}; then
+                kast ${compile-to-js test.source} > compiled.js
+                set +e
+                node compiled.js < ${test.input or "/dev/null"} > $out
+                EXIT_CODE=''$?
+                set -e
+                if [ "''$EXIT_CODE" -ne ${expected_exit_code} ]; then
+                  echo "Expected exit code ${expected_exit_code}, got ''$EXIT_CODE"
+                  exit 1
+                fi
+                diff $out ${test.expected_output}
+              fi
             '';
           }
         )

@@ -19,6 +19,11 @@ struct
   let assign : var -> string -> string =
    fun var value -> var_name var ^ " = " ^ value ^ "; "
 
+  let get_binding_value data binding =
+    match Interpreter.get_local_opt data.state binding.name with
+    | Some { value = Binding _; _ } | None -> None
+    | Some { value; binding } -> Some value
+
   let rec compile_ir : compiler_state -> state -> ir -> js =
    fun self state ir ->
     let var = { id = Id.gen () } in
@@ -26,7 +31,7 @@ struct
     let code =
       match ir with
       | Void _ -> void ()
-      | Use _ -> failwith @@ "todo Use"
+      | Use _ -> void ()
       | Struct _ -> failwith @@ "todo Struct"
       | Assign _ -> failwith @@ "todo Assign"
       | CreateImpl _ -> failwith @@ "todo CreateImpl"
@@ -34,7 +39,9 @@ struct
       | CheckImpl _ -> failwith @@ "todo CheckImpl"
       | Match _ -> failwith @@ "todo Match"
       | NewType _ -> failwith @@ "todo NewType"
-      | Scope _ -> failwith @@ "todo Scope"
+      | Scope { expr; data = _ } ->
+          let expr = compile_ir self state expr in
+          expr.code ^ assign var (var_name expr.var)
       | ConstructVariant _ -> failwith @@ "todo ConstructVariant"
       | OneOf _ -> failwith @@ "todo OneOf"
       | TypeOf _ -> failwith @@ "todo TypeOf"
@@ -46,27 +53,47 @@ struct
       | Ast _ -> failwith @@ "todo Ast"
       | Template _ -> failwith @@ "todo Template"
       | Function _ -> failwith @@ "todo Function"
-      | FieldAccess { obj; name; default_value; data = _ } ->
-          let obj = compile_ir self state obj in
-          assert (default_value |> Option.is_none);
-          obj.code ^ assign var (var_name obj.var ^ "." ^ name)
+      | FieldAccess { obj; name; default_value; data = _ } -> (
+          let obj_value =
+            match obj with
+            | Binding { binding; data } -> get_binding_value data binding
+            | _ -> None
+          in
+          match obj_value with
+          | Some value -> (
+              match Interpreter.get_field_opt value name with
+              | Some value ->
+                  let value = compile_value value in
+                  value.code ^ assign var (var_name value.var)
+              | None ->
+                  let default = Option.get default_value in
+                  let value = compile_ir self state default in
+                  value.code ^ assign var (var_name value.var))
+          | None ->
+              let obj = compile_ir self state obj in
+              assert (default_value |> Option.is_none);
+              obj.code ^ assign var (var_name obj.var ^ "." ^ name))
       | Const _ -> failwith @@ "todo Const"
-      | Binding { binding; data = _ } ->
-          (match Interpreter.get_local_opt state binding.name with
-          | Some { value = Binding _; _ } | None -> ()
-          | Some { value; binding } ->
+      | Binding { binding; data } ->
+          (match get_binding_value data binding with
+          | None -> ()
+          | Some value ->
               if
                 Id.Map.find_opt binding.id self.compiled_bindings
                 |> Option.is_none
-              then
+              then (
+                Log.trace @@ "used " ^ binding.name;
                 self.compiled_bindings <-
-                  Id.Map.add binding.id value self.compiled_bindings);
+                  Id.Map.add binding.id value self.compiled_bindings));
           assign var (var_name { id = binding.id })
       | Number _ -> failwith @@ "todo Number"
       | String { data = _; value; raw = _ } ->
           assign var ("\"" ^ String.escaped value ^ "\"")
       | Discard _ -> failwith @@ "todo Discard"
-      | Then _ -> failwith @@ "todo Then"
+      | Then { first; second; data = _ } ->
+          let first = compile_ir self state first in
+          let second = compile_ir self state second in
+          first.code ^ second.code ^ assign var (var_name second.var)
       | Call { f; args; data = _ } ->
           let f = compile_ir self state f in
           let args = compile_ir self state args in

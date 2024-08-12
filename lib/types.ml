@@ -147,7 +147,7 @@ and 'data ir_node =
 and inference_status = NotYet | InProgress | Done
 and type_inference_data = { type_var : inference_var }
 and no_data = NoData
-and ir_data = type_inference_data
+and ir_data = { inference : type_inference_data; state : state }
 and ir = ir_data ir_node
 
 and fn_ast = {

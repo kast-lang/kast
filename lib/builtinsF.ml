@@ -31,7 +31,7 @@ struct
             | Compiled compiled ->
                 Log.trace @@ "ascribing ir " ^ show_ir compiled.ir ^ " with "
                 ^ show_type typ;
-                (ir_data compiled.ir).type_var
+                (ir_data compiled.ir).inference.type_var
             | Pattern pattern -> (pattern_data pattern).type_var
           in
           Log.trace @@ "ascribed " ^ Inference.show_id var ^ " with "
@@ -1468,7 +1468,15 @@ struct
       impl =
         (fun _fn_type value ->
           let js = Javascript.compile_value value in
-          String (js.code ^ " /* " ^ Javascript.var_name js.var ^ " */"));
+          Dict
+            {
+              fields =
+                StringMap.of_list
+                  [
+                    ("code", (String js.code : value));
+                    ("var", String (Javascript.var_name js.var));
+                  ];
+            });
     }
 
   let builtin_fns : builtin_fn list =

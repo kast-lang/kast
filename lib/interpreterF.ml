@@ -361,7 +361,9 @@ struct
   and eval_ir (self : state) (ir : ir) : evaled =
     try
       log_state Log.Never self;
-      let result_type = Inference.get_inferred_as_type (ir_data ir).type_var in
+      let result_type =
+        Inference.get_inferred_as_type (ir_data ir).inference.type_var
+      in
       Log.trace
         ("evaluating " ^ show_ir ir ^ " inferred as " ^ show_type @@ result_type);
       (* forward_expected_type ir expected_type; *)
@@ -495,7 +497,7 @@ struct
                        variants)))
         | TypeOf { expr; _ } ->
             let inferred_type =
-              Inference.get_inferred_as_type (ir_data expr).type_var
+              Inference.get_inferred_as_type (ir_data expr).inference.type_var
               |> substitute_type_bindings (get_local_value_opt self)
             in
             just_value (Type inferred_type)
@@ -504,7 +506,9 @@ struct
               (Type (type_of_value ~ensure:true (eval_ir self expr).value))
             (* Is there anything that works? *)
         | Builtin { name; data } ->
-            let inferred_type = Inference.get_inferred_as_type data.type_var in
+            let inferred_type =
+              Inference.get_inferred_as_type data.inference.type_var
+            in
             Log.trace @@ "builtin " ^ name ^ " inferred as "
             ^ show_type inferred_type;
             let value =
@@ -652,7 +656,7 @@ struct
             | Some value -> just_value value)
         | Number { raw = s; data } ->
             just_value
-              (match Inference.get_inferred_as_type data.type_var with
+              (match Inference.get_inferred_as_type data.inference.type_var with
               | Int32 -> Int32 (Int32.of_string s)
               | Int64 -> Int64 (Int64.of_string s)
               | Float64 -> Float64 (Float.of_string s)

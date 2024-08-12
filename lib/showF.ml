@@ -225,10 +225,14 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Let _ -> "let"
     | MultiSet _ -> "multiset"
 
-  and show_ir_with_data : ('a -> string option) -> 'a ir_node -> string =
-   fun show_data ->
-    let show_rec_pat : 'a pattern_node -> string =
-     fun p -> show_pattern_with_data show_data p
+  and show_ir_with_inference_data :
+      (pattern_data -> string option) ->
+      ('a -> string option) ->
+      'a ir_node ->
+      string =
+   fun show_pattern_data show_data ->
+    let show_rec_pat : pattern -> string =
+     fun p -> show_pattern_with_data show_pattern_data p
     in
     let rec show_rec : 'a ir_node -> string =
      fun ir ->
@@ -319,14 +323,16 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
 
   and show_ir : ir -> string =
    fun ir ->
-    show_ir_with_data
-      (fun data ->
-        let result =
-          match Inference.get_inferred data.type_var with
-          | None -> None
-          | Some inferred -> Some (" :: " ^ show inferred)
-        in
-        result)
+    let show_inference_data (data : type_inference_data) =
+      let result =
+        match Inference.get_inferred data.type_var with
+        | None -> None
+        | Some inferred -> Some (" :: " ^ show inferred)
+      in
+      result
+    in
+    show_ir_with_inference_data show_inference_data
+      (fun ir_data -> show_inference_data ir_data.inference)
       ir
 
   and show_pattern : pattern -> string =

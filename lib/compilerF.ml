@@ -59,7 +59,7 @@ module Make
     | MultiSet values -> MultiSet (type_of_value (List.hd values) ~ensure)
 
   and set_ir_type (ir : ir) (t : value_type) =
-    Inference.set (ir_data ir).type_var (Type t : value)
+    Inference.set (ir_data ir).inference.type_var (Type t : value)
 
   and new_fn_type_vars () : fn_type_vars =
     {
@@ -85,7 +85,7 @@ module Make
   and pattern_type (pattern : pattern) : value_type =
     var_type (pattern_data pattern).type_var
 
-  and ir_type (ir : ir) : value_type = var_type (ir_data ir).type_var
+  and ir_type (ir : ir) : value_type = var_type (ir_data ir).inference.type_var
 
   and set_pattern_type (pattern : pattern) (t : value_type) =
     Inference.set (pattern_data pattern).type_var (Type t : value)
@@ -107,7 +107,7 @@ module Make
     | None -> InferVar var
 
   and auto_instantiate (self : state) (obj : ir) : ir =
-    match (ir_data obj).type_var |> Inference.get_inferred with
+    match (ir_data obj).inference.type_var |> Inference.get_inferred with
     | Some (Type (Template t) : value) ->
         Log.trace "auto instantiating template";
         Instantiate
@@ -126,19 +126,24 @@ module Make
     (* Log.trace @@ "initializing ir: " ^ show_ir_with_data (fun _ -> None) ir; *)
     Log.trace @@ "initializing " ^ ir_name ir;
     try
+      let with_type_var type_var = { inference = { type_var }; state = self } in
       let known value =
         let type_var = Inference.new_var () in
         Inference.set type_var value;
-        { type_var }
+        with_type_var type_var
       in
       let known_type t = known (Type t : value) in
-      let unknown () = { type_var = Inference.new_var () } in
+      let unknown () = with_type_var @@ Inference.new_var () in
       let same_as (other : ir) =
         {
-          type_var =
-            (let var = Inference.new_var () in
-             Inference.make_same var (ir_data other).type_var;
-             var);
+          inference =
+            {
+              type_var =
+                (let var = Inference.new_var () in
+                 Inference.make_same var (ir_data other).inference.type_var;
+                 var);
+            };
+          state = self;
         }
       in
       let result : ir =
@@ -165,7 +170,7 @@ module Make
               }
         | Assign { pattern; value; data = NoData } ->
             Inference.make_same (pattern_data pattern).type_var
-              (ir_data value).type_var;
+              (ir_data value).inference.type_var;
             Assign { pattern; value; data = known_type Void }
         | CreateImpl
             {
@@ -232,21 +237,22 @@ module Make
             CheckImpl
               { captured; value; trait = trait_ir; data = known_type Bool }
         | Match { value; branches; data = NoData } ->
-            let value_var = (ir_data value).type_var in
+            let value_var = (ir_data value).inference.type_var in
             let result_type_var = Inference.new_var () in
             List.iter
               (fun { pattern; body } ->
-                Inference.make_same result_type_var (ir_data body).type_var;
+                Inference.make_same result_type_var
+                  (ir_data body).inference.type_var;
                 Inference.make_same value_var (pattern_data pattern).type_var)
               branches;
-            Match { value; branches; data = { type_var = result_type_var } }
+            Match { value; branches; data = with_type_var result_type_var }
         | NewType { def; data = NoData } ->
             NewType { def; data = known_type Type }
         | Scope { expr; data = NoData } -> Scope { expr; data = same_as expr }
         | Number { raw; data = NoData } ->
             let result = Number { raw; data = unknown () } in
             Log.trace @@ "inited number with "
-            ^ Inference.show_id (ir_data result).type_var;
+            ^ Inference.show_id (ir_data result).inference.type_var;
             result
         | String { data = NoData; raw; value } ->
             String { raw; value; data = known_type String }
@@ -280,21 +286,21 @@ module Make
             (match ty with
             | Some ty -> Inference.set var (Type ty)
             | None -> ());
-            ConstructVariant { data = { type_var = var }; ty; variant; value }
+            ConstructVariant { data = with_type_var var; ty; variant; value }
         | OneOf { data = NoData; variants } ->
             OneOf { data = known_type Type; variants }
         | Let { data = NoData; pattern; value } ->
             Inference.make_same (pattern_data pattern).type_var
-              (ir_data value).type_var;
+              (ir_data value).inference.type_var;
             Let { data = known_type Void; pattern; value }
         | Discard { data = NoData; value } ->
             Discard { data = known_type Void; value }
         | If { data = NoData; cond; then_case; else_case } ->
             set_ir_type cond Bool;
             let var = Inference.new_var () in
-            Inference.make_same var (ir_data then_case).type_var;
-            Inference.make_same var (ir_data else_case).type_var;
-            If { data = { type_var = var }; cond; then_case; else_case }
+            Inference.make_same var (ir_data then_case).inference.type_var;
+            Inference.make_same var (ir_data else_case).inference.type_var;
+            If { data = with_type_var var; cond; then_case; else_case }
         | Ast { data = NoData; def; ast_data; values } ->
             values |> StringMap.iter (fun _name value -> set_ir_type value Ast);
             Ast { data = known_type Ast; def; ast_data; values }
@@ -314,7 +320,7 @@ module Make
             let f_type = new_fn_type_vars () in
             Inference.set f_type.arg_type (Type UnwindToken : value);
             set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-            UnwindableBlock { data = { type_var = f_type.result_type }; f }
+            UnwindableBlock { data = with_type_var f_type.result_type; f }
         | Call { data = NoData; f; args } -> (
             match f with
             | ConstructVariant { ty; variant; value = None; data = _ } ->
@@ -327,14 +333,15 @@ module Make
                 let f = auto_instantiate self f in
                 Log.trace "calling an actual fn";
                 let f_type = new_fn_type_vars () in
-                Inference.make_same f_type.arg_type (ir_data args).type_var;
+                Inference.make_same f_type.arg_type
+                  (ir_data args).inference.type_var;
                 set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-                Call { data = { type_var = f_type.result_type }; f; args })
+                Call { data = with_type_var f_type.result_type; f; args })
         | Then { data = NoData; first; second } ->
             set_ir_type first Void;
             Then { data = same_as second; first; second }
         | Binding { data = NoData; binding } ->
-            Binding { data = { type_var = binding.value_type }; binding }
+            Binding { data = with_type_var binding.value_type; binding }
         | Function { data = NoData; f } ->
             Function
               { data = known_type @@ Fn (fn_type_vars_to_type f.vars); f }
@@ -348,7 +355,7 @@ module Make
         | FieldAccess { data = NoData; obj; name; default_value } ->
             let obj = auto_instantiate self obj in
             let field_type_var = Inference.new_var () in
-            Inference.add_check (ir_data obj).type_var (fun value ->
+            Inference.add_check (ir_data obj).inference.type_var (fun value ->
                 Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
                 match value with
                 | Type Type -> (
@@ -372,10 +379,11 @@ module Make
             *)
             (match default_value with
             | Some default ->
-                Inference.make_same field_type_var (ir_data default).type_var
+                Inference.make_same field_type_var
+                  (ir_data default).inference.type_var
             | None -> ());
             FieldAccess
-              { data = { type_var = field_type_var }; obj; name; default_value }
+              { data = with_type_var field_type_var; obj; name; default_value }
         | Builtin { data = NoData; name } -> Builtin { data = unknown (); name }
         | BuiltinFn { data = NoData; f } ->
             BuiltinFn
@@ -717,7 +725,8 @@ module Make
           let body =
             (compile_ast_to_ir captured_with_args_bindings f.ast.body).ir
           in
-          Inference.make_same (ir_data body).type_var f.vars.result_type;
+          Inference.make_same (ir_data body).inference.type_var
+            f.vars.result_type;
           {
             captured = f.captured;
             where_clause =
