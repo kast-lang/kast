@@ -106,6 +106,22 @@ module Make
     | Some _ -> failwith "inferred value expected to be a type"
     | None -> InferVar var
 
+  and auto_instantiate (self : state) (obj : ir) : ir =
+    match (ir_data obj).type_var |> Inference.get_inferred with
+    | Some (Type (Template t) : value) ->
+        Log.trace "auto instantiating template";
+        Instantiate
+          {
+            data = NoData;
+            captured = t.captured;
+            template = obj;
+            args =
+              Const { data = NoData; value = InferVar (Inference.new_var ()) }
+              |> init_ir self;
+          }
+        |> init_ir self
+    | _ -> obj
+
   and init_ir (self : state) (ir : no_data ir_node) : ir =
     (* Log.trace @@ "initializing ir: " ^ show_ir_with_data (fun _ -> None) ir; *)
     Log.trace @@ "initializing " ^ ir_name ir;
@@ -307,34 +323,13 @@ module Make
                 ConstructVariant
                   { ty; variant; value = Some args; data = NoData }
                 |> init_ir self
-            | _ -> (
-                match (ir_data f).type_var |> Inference.get_inferred with
-                | Some (Type (Template t) : value) ->
-                    Log.trace "auto instantiating template";
-                    let instantiated =
-                      Instantiate
-                        {
-                          data = NoData;
-                          captured = t.captured;
-                          template = f;
-                          args =
-                            Const
-                              {
-                                data = NoData;
-                                value = InferVar (Inference.new_var ());
-                              }
-                            |> init_ir self;
-                        }
-                      |> init_ir self
-                    in
-                    Call { data = NoData; f = instantiated; args }
-                    |> init_ir self
-                | _ ->
-                    Log.trace "calling an actual fn";
-                    let f_type = new_fn_type_vars () in
-                    Inference.make_same f_type.arg_type (ir_data args).type_var;
-                    set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-                    Call { data = { type_var = f_type.result_type }; f; args }))
+            | _ ->
+                let f = auto_instantiate self f in
+                Log.trace "calling an actual fn";
+                let f_type = new_fn_type_vars () in
+                Inference.make_same f_type.arg_type (ir_data args).type_var;
+                set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
+                Call { data = { type_var = f_type.result_type }; f; args })
         | Then { data = NoData; first; second } ->
             set_ir_type first Void;
             Then { data = same_as second; first; second }
@@ -351,6 +346,7 @@ module Make
         | CurrentContext { data = NoData; context_type } ->
             CurrentContext { data = known_type context_type; context_type }
         | FieldAccess { data = NoData; obj; name; default_value } ->
+            let obj = auto_instantiate self obj in
             let field_type_var = Inference.new_var () in
             Inference.add_check (ir_data obj).type_var (fun value ->
                 Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
