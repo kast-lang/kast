@@ -158,6 +158,8 @@ module Make
       | DelimitedToken, _ -> failinfer ()
       | Ast, Ast -> Ast
       | Ast, _ -> failinfer ()
+      | Ir, Ir -> Ir
+      | Ir, _ -> failinfer ()
       | Bool, Bool -> Bool
       | Bool, _ -> failinfer ()
       | Int32, Int32 -> Int32
@@ -273,6 +275,8 @@ module Make
       | DelimitedToken _, _ -> failinfer ()
       | Ast a, Ast b -> if a = b then Ast a else failinfer ()
       | Ast _, _ -> failinfer ()
+      | Ir a, Ir b -> if a = b then Ir a else failinfer ()
+      | Ir _, _ -> failinfer ()
       | Macro _, _ -> failwith "inferred macro?"
       | Function _, _ -> failwith "inferred function?"
       | Template _, _ -> failwith "inferred template?"

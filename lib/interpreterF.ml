@@ -264,15 +264,33 @@ struct
     ignore @@ eval_file s ~filename:(std_path () ^ "/syntax.ks");
     !s
 
+  and get_ast (self : state ref) (s : string) ~(filename : string) : ast =
+    let filename = Span.Filename filename in
+    !self.self.data <- !self.data;
+    let tokens = Lexer.parse s filename in
+    let ast = Ast.parse !self.data.syntax tokens filename in
+    Log.trace (Ast.show ast);
+    Ast.map (fun span -> { span }) ast
+
+  and compile (self : state ref) (s : string) ~(filename : string) : compiled =
+    try
+      let ast = get_ast self s ~filename in
+      compile_ast_to_ir !self ast
+    with Failure _ as failure ->
+      Log.error @@ "  while compiling " ^ filename;
+      raise failure
+
+  and compile_file (self : state ref) ~(filename : string) : compiled =
+    let f = open_in filename in
+    let contents = really_input_string f (in_channel_length f) in
+    close_in f;
+    compile self contents ~filename
+
   and eval (self : state ref) (s : string) ~(filename : string) : value =
     try
-      let filename = Span.Filename filename in
-      !self.self.data <- !self.data;
-      let tokens = Lexer.parse s filename in
-      let ast = Ast.parse !self.data.syntax tokens filename in
-      Log.trace (Ast.show ast);
-      let ast = Ast.map (fun span -> { span }) ast in
-      let result : evaled = eval_ast !self ast in
+      let ast = get_ast self s ~filename in
+      let compiled = compile_ast_to_ir !self ast in
+      let result : evaled = eval_ir !self compiled.ir in
       let rec extend_syntax syntax = function
         | Ast.Syntax { def; value; _ } ->
             extend_syntax (Syntax.add_syntax def syntax) value
@@ -525,7 +543,7 @@ struct
                                "builtin fn was inferred to be not a fn ???");
                      }
                     : value)
-              | ( Binding _ | Var _ | InferVar _ | UnwindToken _
+              | ( Ir _ | Binding _ | Var _ | InferVar _ | UnwindToken _
                 | DelimitedToken _ | Ast _ | Macro _ | BuiltinMacro _
                 | Template _ | Function _ | Void | Bool _ | Int32 _ | Int64 _
                 | Float64 _ | String _ | Dict _ | Struct _ | Ref _ | Type _
@@ -780,6 +798,7 @@ struct
     | DelimitedToken -> t
     | Never -> t
     | Ast -> t
+    | Ir -> t
     | Void -> t
     | Bool -> t
     | Int32 -> t
@@ -828,6 +847,7 @@ struct
     | UnwindToken _ -> value
     | DelimitedToken _ -> value
     | Ast _ -> value
+    | Ir _ -> value
     | Macro _ -> value
     | BuiltinMacro _ -> value
     | BuiltinFn _ -> value

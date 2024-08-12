@@ -32,6 +32,11 @@ match cli_args with
 | [] ->
     eval_files [];
     run_repl ()
+| [ "--to-js"; file ] ->
+    print_endline
+    @@ (Javascript.compile_value
+      @@ Ir (compile_file interpreter ~filename:file).ir)
+         .code
 | "--repl" :: files ->
     eval_files files;
     run_repl ()

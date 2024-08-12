@@ -6,6 +6,7 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
   let delimited_token = Id.gen ()
   let never = Id.gen ()
   let ast = Id.gen ()
+  let ir = Id.gen ()
   let void = Id.gen ()
   let bool = Id.gen ()
   let int32 = Id.gen ()
@@ -59,6 +60,7 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
       | DelimitedToken -> delimited_token
       | Never -> never
       | Ast -> ast
+      | Ir -> ir
       | Void -> void
       | Bool -> bool
       | Int32 -> int32

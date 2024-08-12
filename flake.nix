@@ -84,14 +84,6 @@
           let
             test = import ./tests/${name} { inherit pkgs; };
             expected_exit_code = builtins.toString (test.expected_exit_code or 0);
-            compile-to-js = src: builtins.toFile "src.ks" ''
-              let js = std.compile_to_js (() => (
-                ${builtins.readFile src}
-              ));
-              std.print js.code;
-              std.print js.var;
-              std.print "()";
-            '';
           in
           pkgs.stdenv.mkDerivation {
             name = "kast-check-${name}";
@@ -110,7 +102,7 @@
               diff $out ${test.expected_output}
 
               if ${if test.test-js or false then "true" else "false"}; then
-                kast ${compile-to-js test.source} > compiled.js
+                kast --to-js ${test.source} > compiled.js
                 set +e
                 node compiled.js < ${test.input or "/dev/null"} > $out
                 EXIT_CODE=''$?

@@ -26,6 +26,7 @@ module Make
         result
     | Var { typ; _ } -> typ
     | Ast _ -> Ast
+    | Ir _ -> Ir
     | UnwindToken _ -> UnwindToken
     | DelimitedToken _ -> DelimitedToken
     | Void -> Void

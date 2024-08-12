@@ -15,6 +15,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Binding _ -> "binding"
        | Var _ -> "var"
        | Ast _ -> "ast"
+       | Ir _ -> "ir"
        | Variant _ -> "variant"
        | UnwindToken _ -> "unwind token"
        | DelimitedToken _ -> "delimited token"
@@ -42,6 +43,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Binding { name; id; _ } -> "<binding " ^ name ^ " " ^ Id.show id ^ ">"
     | Var { id; typ } -> "var " ^ Id.show id ^ " :: " ^ show_type typ
     | Ast ast -> "`(" ^ Ast.show ast ^ ")"
+    | Ir ir -> "ir " ^ show_ir ir
     | Variant { name; value; _ } ->
         "." ^ name ^ show_or "" (fun value -> " " ^ show value) value
     | UnwindToken id -> "unwind token " ^ Id.show id
@@ -113,6 +115,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | DelimitedToken -> "delimited token"
        | Never -> "!"
        | Ast -> "ast"
+       | Ir -> "ir"
        | Void -> "void"
        | Bool -> "bool"
        | Int32 -> "int32"
@@ -142,6 +145,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | DelimitedToken -> "delimited token"
     | Never -> "!"
     | Ast -> "ast"
+    | Ir -> "ir"
     | Void -> "void"
     | Bool -> "bool"
     | Int32 -> "int32"

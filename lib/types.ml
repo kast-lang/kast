@@ -11,6 +11,7 @@ type value =
   | UnwindToken of id
   | DelimitedToken of id
   | Ast of ast
+  | Ir of ir
   | Macro of fn
   | BuiltinMacro of builtin_macro
   | BuiltinFn of { f : builtin_fn; ty : fn_type option }
@@ -36,6 +37,7 @@ and value_type =
   | DelimitedToken
   | Never
   | Ast
+  | Ir
   | Void
   | Bool
   | Int32

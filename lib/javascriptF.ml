@@ -24,8 +24,8 @@ struct
     | Some { value = Binding _; _ } | None -> None
     | Some { value; binding } -> Some value
 
-  let rec compile_ir : compiler_state -> state -> ir -> js =
-   fun self state ir ->
+  let rec compile_ir : compiler_state -> ir -> js =
+   fun self ir ->
     let var = { id = Id.gen () } in
     let void () = assign var "undefined" in
     let code =
@@ -40,7 +40,7 @@ struct
       | Match _ -> failwith @@ "todo Match"
       | NewType _ -> failwith @@ "todo NewType"
       | Scope { expr; data = _ } ->
-          let expr = compile_ir self state expr in
+          let expr = compile_ir self expr in
           expr.code ^ assign var (var_name expr.var)
       | ConstructVariant _ -> failwith @@ "todo ConstructVariant"
       | OneOf _ -> failwith @@ "todo OneOf"
@@ -67,10 +67,10 @@ struct
                   value.code ^ assign var (var_name value.var)
               | None ->
                   let default = Option.get default_value in
-                  let value = compile_ir self state default in
+                  let value = compile_ir self default in
                   value.code ^ assign var (var_name value.var))
           | None ->
-              let obj = compile_ir self state obj in
+              let obj = compile_ir self obj in
               assert (default_value |> Option.is_none);
               obj.code ^ assign var (var_name obj.var ^ "." ^ name))
       | Const _ -> failwith @@ "todo Const"
@@ -91,12 +91,12 @@ struct
           assign var ("\"" ^ String.escaped value ^ "\"")
       | Discard _ -> failwith @@ "todo Discard"
       | Then { first; second; data = _ } ->
-          let first = compile_ir self state first in
-          let second = compile_ir self state second in
+          let first = compile_ir self first in
+          let second = compile_ir self second in
           first.code ^ second.code ^ assign var (var_name second.var)
       | Call { f; args; data = _ } ->
-          let f = compile_ir self state f in
-          let args = compile_ir self state args in
+          let f = compile_ir self f in
+          let args = compile_ir self args in
           f.code ^ args.code
           ^ assign var (var_name f.var ^ "(" ^ var_name args.var ^ ")")
       | Instantiate _ -> failwith @@ "todo Instantiate"
@@ -112,7 +112,6 @@ struct
    fun self value ->
     let var = { id = Id.gen () } in
     let code =
-      assign var
         (match value with
         | Binding _ -> failwith @@ "Binding cant be compiled into js"
         | Var _ -> failwith @@ "Var cant be compiled into js"
@@ -121,9 +120,10 @@ struct
         | DelimitedToken _ ->
             failwith @@ "DelimitedToken cant be compiled into js"
         | Ast _ -> failwith @@ "Ast cant be compiled into js"
+        | Ir ir -> let compiled = compile_ir self ir in compiled.code ^ assign var (var_name compiled.var)
         | Macro _ -> failwith @@ "Macro cant be compiled into js"
         | BuiltinMacro _ -> failwith @@ "BuiltinMacro cant be compiled into js"
-        | BuiltinFn { f; ty } -> (
+        | BuiltinFn { f; ty } -> assign var (
             match f.name with
             | "print" -> "console.log"
             | _ ->
@@ -131,9 +131,10 @@ struct
                 ^ " is not implemented for js")
         | Template _ -> failwith @@ "Template cant be compiled into js"
         | Function f ->
+            (* TODO function arg *)
             let f = Compiler.ensure_compiled f in
-            let body = compile_ir self f.captured f.body in
-            "function () { " ^ body.code ^ "return " ^ var_name body.var ^ "; }"
+            let body = compile_ir self f.body in
+            assign var @@ "function () { " ^ body.code ^ "return " ^ var_name body.var ^ "; }"
         | Void -> failwith @@ "Void cant be compiled into js"
         | Bool _ -> failwith @@ "Bool cant be compiled into js"
         | Int32 _ -> failwith @@ "Int32 cant be compiled into js"

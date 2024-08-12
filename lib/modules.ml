@@ -49,6 +49,9 @@ module type Interpreter = sig
   val empty_state : unit -> state
   val only_std_syntax : unit -> state
   val default_state : unit -> state
+  val get_ast : state ref -> string -> filename:string -> ast
+  val compile : state ref -> string -> filename:string -> compiled
+  val compile_file : state ref -> filename:string -> compiled
   val eval : state ref -> string -> filename:string -> value
   val eval_file : state ref -> filename:string -> value
   val eval_ast : state -> ast -> evaled
