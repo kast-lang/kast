@@ -83,9 +83,11 @@ module Make
       | _ ->
           if Random.bool () then (
             a_data.inferred <- inferred_value;
+            check_again a_data;
             b.data <- SameAs a)
           else (
             b_data.inferred <- inferred_value;
+            check_again b_data;
             a.data <- SameAs b)
 
   and set var value =
@@ -105,6 +107,7 @@ module Make
             Log.trace @@ "set uniting " ^ show current_value ^ " + "
             ^ show value;
             data.inferred <- Some (unite current_value value));
+        check_again data;
         currently_being_set := prev_being_set
 
   and add_check var f =
@@ -236,6 +239,7 @@ module Make
       | Union _, _ -> failwith "todo union"
       | Var a, Var b -> if a.id = b.id then Var a else failinfer ()
       | Var _, _ -> failinfer ()
+      | MultiSetOldToRemove _, _ -> failwith "todo old multiset inferred"
       | MultiSet _, _ -> failwith "todo inferred multiset"
     with FailedUnite _ as failure ->
       Log.error @@ "  while uniting " ^ show_type a ^ " and " ^ show_type b;
@@ -296,6 +300,7 @@ module Make
       | Ref _, _ -> failwith "inferred ref?"
       | Type a, Type b -> Type (unite_types a b)
       | Type _, _ -> failinfer ()
+      | MultiSet _, _ -> failwith "todo inferred multiset"
     with FailedUnite _ as failure ->
       Log.error @@ "  while uniting values " ^ show a ^ " and " ^ show b;
       raise failure

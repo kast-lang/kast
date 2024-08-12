@@ -10,11 +10,11 @@
     now using generator as value
     calling .next()
     yielding 1
-    Yielded "1" :: Finished of void | Yielded of string
+    .Yielded "1" :: .Finished void | .Yielded string
     calling .next()
     yielding 2
-    Yielded "2" :: Finished of void | Yielded of string
+    .Yielded "2" :: .Finished void | .Yielded string
     calling .next()
-    Finished void :: Finished of void | Yielded of string
+    .Finished void :: .Finished void | .Yielded string
   '';
 }

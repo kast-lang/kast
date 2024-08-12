@@ -27,6 +27,7 @@ type value =
   | Ref of value ref
   | Type of value_type
   | Variant of { typ : value_type; name : string; value : value option }
+  | MultiSet of value list
 
 and value_type =
   | Var of { id : id }
@@ -52,7 +53,8 @@ and value_type =
   | Union of Id.Set.t
   | Type
   | InferVar of inference_var
-  | MultiSet of int Id.Map.t
+  | MultiSet of value_type
+  | MultiSetOldToRemove of int Id.Map.t
 
 and type_var_map = value_type Id.Map.t
 
@@ -80,6 +82,7 @@ and 'data get_impl = { captured : state; value : ir; trait : ir; data : 'data }
 
 and 'data ir_node =
   | Void of { data : 'data }
+  | NewType of { def : ir; data : 'data }
   | Use of { namespace : value; data : 'data }
   | Struct of { body : ir; field_types : value_type StringMap.t; data : 'data }
   | Assign of { pattern : pattern; value : ir; data : 'data }
@@ -93,10 +96,9 @@ and 'data ir_node =
   | GetImpl of 'data get_impl
   | CheckImpl of 'data get_impl
   | Match of { value : ir; branches : ir_data match_branch list; data : 'data }
-  | NewType of { def : pattern; data : 'data }
   | Scope of { expr : ir; data : 'data }
   | ConstructVariant of {
-      ty : value_type;
+      ty : value_type option;
       variant : string;
       value : ir option;
       data : 'data;
@@ -140,6 +142,7 @@ and 'data ir_node =
   | BuiltinFn of { f : builtin_fn; data : 'data }
   | If of { cond : ir; then_case : ir; else_case : ir; data : 'data }
   | Let of { pattern : pattern; value : ir; data : 'data }
+  | MultiSet of { a : ir; b : ir option; data : 'data }
 
 and inference_status = NotYet | InProgress | Done
 and type_inference_data = { type_var : inference_var }
@@ -216,6 +219,8 @@ and inference_var = { mutable data : inference_var_data; id : Id.t }
 
 let ir_data : 'data. 'data ir_node -> 'data = function
   | Use { data; _ }
+  | MultiSet { data; _ }
+  | NewType { data; _ }
   | ConstructVariant { data; _ }
   | Builtin { data; _ }
   | Assign { data; _ }
@@ -225,7 +230,6 @@ let ir_data : 'data. 'data ir_node -> 'data = function
   | CreateImpl { data; _ }
   | GetImpl { data; _ }
   | Match { data; _ }
-  | NewType { data; _ }
   | OneOf { data; _ }
   | Scope { data; _ }
   | UnwindableBlock { data; _ }

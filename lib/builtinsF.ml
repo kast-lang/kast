@@ -28,7 +28,10 @@ struct
           in
           let var =
             match value with
-            | Compiled compiled -> (ir_data compiled.ir).type_var
+            | Compiled compiled ->
+                Log.trace @@ "ascribing ir " ^ show_ir compiled.ir ^ " with "
+                ^ show_type typ;
+                (ir_data compiled.ir).type_var
             | Pattern pattern -> (pattern_data pattern).type_var
           in
           Log.trace @@ "ascribed " ^ Inference.show_id var ^ " with "
@@ -47,9 +50,10 @@ struct
           match new_bindings with
           | true ->
               let name =
-                match f with
-                | Simple { token = Ident name; _ } -> name
-                | _ -> failwith "variant name must be simple ident"
+                match compile_pattern self (Some f) with
+                | Variant { name; value = None; data = _ } -> name
+                | _ ->
+                    failwith "call in pattern must be on variant with no data"
               in
               let value = compile_pattern self (Some args) in
               Pattern
@@ -147,7 +151,7 @@ struct
             match ast with
             | Complex
                 {
-                  def = { name = "builtin macro combine_variants"; _ };
+                  def = { name = "builtin macro merge_multiset"; _ };
                   values;
                   _;
                 } -> (
@@ -948,32 +952,41 @@ struct
           | false -> failwith "variant is only a pattern");
     }
 
-  let construct_variant : builtin_macro =
+  let variant : builtin_macro =
     {
-      name = "construct_variant";
+      name = "variant";
       impl =
         (fun self args ~new_bindings ->
-          assert (not new_bindings);
-          Compiled
-            {
-              ir =
-                ConstructVariant
-                  {
-                    ty =
-                      value_to_type
-                        (eval_ast self (StringMap.find "type" args)).value;
-                    variant =
-                      (match StringMap.find "variant" args with
-                      | Simple { token = Ident name; _ } -> name
-                      | _ -> failwith "variant name must be simple ident");
-                    value =
-                      StringMap.find_opt "value" args
-                      |> Option.map (fun ast -> (compile_ast_to_ir self ast).ir);
-                    data = NoData;
-                  }
-                |> init_ir self;
-              new_bindings = StringMap.empty;
-            });
+          let variant_name =
+            match StringMap.find "variant" args with
+            | Simple { token = Ident name; _ } -> name
+            | _ -> failwith "variant name must be simple ident"
+          in
+          match new_bindings with
+          | true ->
+              Pattern
+                (Variant { name = variant_name; value = None; data = NoData }
+                |> init_pattern)
+          | false ->
+              Compiled
+                {
+                  ir =
+                    ConstructVariant
+                      {
+                        ty =
+                          StringMap.find_opt "type" args
+                          |> Option.map (fun type_ast ->
+                                 value_to_type (eval_ast self type_ast).value);
+                        variant = variant_name;
+                        value =
+                          StringMap.find_opt "value" args
+                          |> Option.map (fun ast ->
+                                 (compile_ast_to_ir self ast).ir);
+                        data = NoData;
+                      }
+                    |> init_ir self;
+                  new_bindings = StringMap.empty;
+                });
     }
 
   let single_variant : builtin_macro =
@@ -1353,13 +1366,51 @@ struct
             });
     }
 
+  let merge_multiset : builtin_macro =
+    {
+      name = "merge_multiset";
+      impl =
+        (fun self args ~new_bindings ->
+          assert (not new_bindings);
+          let get name : ir option =
+            match StringMap.find_opt name args with
+            | Some ast -> Some (compile_ast_to_ir self ast).ir
+            | None -> None
+          in
+          let a = get "a" |> Option.get in
+          let b = get "b" in
+          Compiled
+            {
+              ir = MultiSet { a; b; data = NoData } |> init_ir self;
+              new_bindings = StringMap.empty;
+            });
+    }
+
+  let newtype : builtin_macro =
+    {
+      name = "newtype";
+      impl =
+        (fun self args ~new_bindings ->
+          assert (not new_bindings);
+          let def = StringMap.find "def" args in
+          Compiled
+            {
+              ir =
+                NewType { def = (compile_ast_to_ir self def).ir; data = NoData }
+                |> init_ir self;
+              new_bindings = StringMap.empty;
+            });
+    }
+
   let builtin_macros : builtin_macro list =
     [
+      merge_multiset;
+      newtype;
       use;
       import;
       builtin;
       assign;
-      construct_variant;
+      variant;
       mutable_pattern;
       make_void;
       struct_def;

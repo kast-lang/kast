@@ -33,7 +33,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Ref _ -> "ref"
        | Struct _ -> "struct"
        | Type _ -> "type"
-       | InferVar _ -> "infervar");
+       | InferVar _ -> "infervar"
+       | MultiSet _ -> "multiset");
     let result = show2 value in
     result
 
@@ -42,7 +43,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Var { id; typ } -> "var " ^ Id.show id ^ " :: " ^ show_type typ
     | Ast ast -> "`(" ^ Ast.show ast ^ ")"
     | Variant { name; value; _ } ->
-        name ^ show_or "" (fun value -> " " ^ show value) value
+        "." ^ name ^ show_or "" (fun value -> " " ^ show value) value
     | UnwindToken id -> "unwind token " ^ Id.show id
     | DelimitedToken id -> "delimited token " ^ Id.show id
     | Void -> "void"
@@ -70,6 +71,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
         match (Inference.get_inferred var : value option) with
         | Some inferred -> show inferred
         | None -> "<not inferred " ^ Inference.show_id var ^ ">")
+    | MultiSet values ->
+        List.fold_left (fun acc value -> acc ^ " | " ^ show value) "" values
 
   and show_fn_ast (f : fn_ast) : string =
     (match f.args with Some ast -> Ast.show ast | None -> "()")
@@ -128,7 +131,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | NewType _ -> "newtype"
        | Var _ -> "var"
        | InferVar _ -> "infervar"
-       | MultiSet _ -> "multiset");
+       | MultiSet _ -> "multiset"
+       | MultiSetOldToRemove _ -> "multiset");
     let result = show_type2 t in
     result
 
@@ -168,8 +172,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
         StringMap.fold
           (fun name t acc ->
             (if acc = "" then "" else acc ^ " | ")
-            ^ name
-            ^ match t with Some t -> " of " ^ show_type t | None -> "")
+            ^ "." ^ name
+            ^ match t with Some t -> " " ^ show_type t | None -> "")
           variants ""
     | NewType inner -> "newtype " ^ show_type inner
     | Var { id } -> "var " ^ Id.show id
@@ -181,7 +185,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
         | Some (Type inferred) -> show_type inferred
         | Some _ -> failwith "type was inferred as not a type wtf"
         | None -> "<not inferred " ^ Inference.show_id var ^ ">")
-    | MultiSet _ -> failwith "todo show multiset"
+    | MultiSet t -> "multiset of " ^ show_type t
+    | MultiSetOldToRemove _ -> failwith "todo show multiset"
 
   and ir_name : 'a. 'a ir_node -> string = function
     | Use _ -> "use"
@@ -218,6 +223,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | BuiltinFn _ -> "builtinfn"
     | If _ -> "if"
     | Let _ -> "let"
+    | MultiSet _ -> "multiset"
 
   and show_ir_with_data : ('a -> string option) -> 'a ir_node -> string =
    fun show_data ->
@@ -252,9 +258,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
             ^ List.fold_left show_branch "" branches
             ^ ")"
         | ConstructVariant { ty; variant; value; _ } -> (
-            show_type ty ^ "." ^ variant
-            ^
-            match value with Some value -> " of" ^ show_rec value | None -> "")
+            show_or "" show_type ty ^ "." ^ variant
+            ^ match value with Some value -> " " ^ show_rec value | None -> "")
         | OneOf { variants; _ } ->
             StringMap.fold
               (fun name variant acc ->
@@ -265,7 +270,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
                 | Some variant -> " of " ^ show_rec variant
                 | None -> "")
               variants ""
-        | NewType { def; _ } -> "newtype " ^ show_rec_pat def
+        | NewType { def; _ } -> "newtype " ^ show_ir def
         | Scope { expr; _ } -> "(" ^ show_rec expr ^ ")"
         | TypeOf { expr; _ } -> "typeof " ^ show_rec expr
         | TypeOfValue { expr; _ } -> "typeofvalue " ^ show_rec expr
@@ -305,6 +310,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
             ^ show_rec else_case ^ ")"
         | Let { pattern; value; _ } ->
             "(let " ^ show_rec_pat pattern ^ " " ^ show_rec value ^ ")"
+        | MultiSet { a; b; _ } ->
+            "| " ^ show_ir a ^ show_or "" (fun b -> "| " ^ show_ir b) b
       in
       ir_itself ^ show_or "" (fun s -> s) (show_data (ir_data ir))
     in

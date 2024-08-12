@@ -56,6 +56,7 @@ module Make
                 data.locals;
           }
     | Type t -> Type
+    | MultiSet values -> MultiSet (type_of_value (List.hd values) ~ensure)
 
   and set_ir_type (ir : ir) (t : value_type) =
     Inference.set (ir_data ir).type_var (Type t : value)
@@ -127,6 +128,13 @@ module Make
       let result : ir =
         match ir with
         | Void { data = NoData } -> Void { data = known_type Void }
+        | MultiSet { data = NoData; a; b } ->
+            MultiSet
+              {
+                a;
+                b;
+                data = unknown () (* TODO actually know that its multiset? *);
+              }
         | Use { namespace; data = NoData } ->
             Use { namespace; data = known_type Void }
         | Const { value; data = NoData } ->
@@ -217,7 +225,6 @@ module Make
               branches;
             Match { value; branches; data = { type_var = result_type_var } }
         | NewType { def; data = NoData } ->
-            set_pattern_type def Type;
             NewType { def; data = known_type Type }
         | Scope { expr; data = NoData } -> Scope { expr; data = same_as expr }
         | Number { raw; data = NoData } ->
@@ -232,20 +239,32 @@ module Make
         | TypeOfValue { data = NoData; captured; expr } ->
             TypeOfValue { data = known_type Type; captured; expr }
         | ConstructVariant { data = NoData; ty; variant; value } ->
+            let var = Inference.new_var () in
+            Inference.add_check var (function
+              | Type ty -> (
+                  Log.trace @@ "setting variant type = " ^ show_type ty;
+                  match ty with
+                  | OneOf variants -> (
+                      let variant = StringMap.find variant variants in
+                      match (variant, value) with
+                      | Some value_ty, Some value ->
+                          Log.trace @@ "setting type of " ^ show_ir value
+                          ^ " = " ^ show_type value_ty;
+                          set_ir_type value value_ty;
+                          true
+                      | Some _, None ->
+                          failwith
+                            "variant expected a value, but value not provided"
+                      | None, Some _ -> failwith "variant didnt expect a value"
+                      | None, None -> true)
+                  | _ -> failwith @@ show_type ty ^ " is not a oneof")
+              | other ->
+                  failwith @@ "variant type inferred as not a type but "
+                  ^ show other);
             (match ty with
-            | OneOf variants -> (
-                let variant = StringMap.find variant variants in
-                match (variant, value) with
-                | Some value_ty, Some value ->
-                    Log.trace @@ "setting type of " ^ show_ir value ^ " = "
-                    ^ show_type value_ty;
-                    set_ir_type value value_ty
-                | Some _, None ->
-                    failwith "variant expected a value, but value not provided"
-                | None, Some _ -> failwith "variant didnt expect a value"
-                | None, None -> ())
-            | _ -> failwith @@ show_type ty ^ " is not a oneof");
-            ConstructVariant { data = known_type @@ ty; ty; variant; value }
+            | Some ty -> Inference.set var (Type ty)
+            | None -> ());
+            ConstructVariant { data = { type_var = var }; ty; variant; value }
         | OneOf { data = NoData; variants } ->
             OneOf { data = known_type Type; variants }
         | Let { data = NoData; pattern; value } ->
@@ -281,32 +300,41 @@ module Make
             set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
             UnwindableBlock { data = { type_var = f_type.result_type }; f }
         | Call { data = NoData; f; args } -> (
-            match (ir_data f).type_var |> Inference.get_inferred with
-            | Some (Type (Template t) : value) ->
-                Log.trace "auto instantiating template";
-                let instantiated =
-                  Instantiate
-                    {
-                      data = NoData;
-                      captured = t.captured;
-                      template = f;
-                      args =
-                        Const
-                          {
-                            data = NoData;
-                            value = InferVar (Inference.new_var ());
-                          }
-                        |> init_ir self;
-                    }
-                  |> init_ir self
-                in
-                Call { data = NoData; f = instantiated; args } |> init_ir self
-            | _ ->
-                Log.trace "calling an actual fn";
-                let f_type = new_fn_type_vars () in
-                Inference.make_same f_type.arg_type (ir_data args).type_var;
-                set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
-                Call { data = { type_var = f_type.result_type }; f; args })
+            match f with
+            | ConstructVariant { ty; variant; value = None; data = _ } ->
+                Log.trace @@ "call variant -> variant with value: " ^ show_ir f
+                ^ " " ^ show_ir args;
+                ConstructVariant
+                  { ty; variant; value = Some args; data = NoData }
+                |> init_ir self
+            | _ -> (
+                match (ir_data f).type_var |> Inference.get_inferred with
+                | Some (Type (Template t) : value) ->
+                    Log.trace "auto instantiating template";
+                    let instantiated =
+                      Instantiate
+                        {
+                          data = NoData;
+                          captured = t.captured;
+                          template = f;
+                          args =
+                            Const
+                              {
+                                data = NoData;
+                                value = InferVar (Inference.new_var ());
+                              }
+                            |> init_ir self;
+                        }
+                      |> init_ir self
+                    in
+                    Call { data = NoData; f = instantiated; args }
+                    |> init_ir self
+                | _ ->
+                    Log.trace "calling an actual fn";
+                    let f_type = new_fn_type_vars () in
+                    Inference.make_same f_type.arg_type (ir_data args).type_var;
+                    set_ir_type f @@ Fn (fn_type_vars_to_type f_type);
+                    Call { data = { type_var = f_type.result_type }; f; args }))
         | Then { data = NoData; first; second } ->
             set_ir_type first Void;
             Then { data = same_as second; first; second }
@@ -327,7 +355,15 @@ module Make
             Inference.add_check (ir_data obj).type_var (fun value ->
                 Log.trace @@ "checking field " ^ name ^ " of " ^ show value;
                 match value with
-                | Type Type -> failwith "todo"
+                | Type Type -> (
+                    let obj = (eval_ir self obj).value in
+                    match get_field_opt obj name with
+                    | None ->
+                        failwith @@ "no field " ^ name ^ " in type " ^ show obj
+                    | Some field ->
+                        Inference.set field_type_var
+                          (Type (type_of_value field ~ensure:false));
+                        true)
                 | _ -> (
                     match get_field_opt value name with
                     | None ->

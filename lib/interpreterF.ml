@@ -369,6 +369,18 @@ struct
       let result =
         match ir with
         | Void _ -> just_value Void
+        | MultiSet { a; b; _ } ->
+            let into_set : value -> value list = function
+              | MultiSet s -> s
+              | other -> [ other ]
+            in
+            let a = (eval_ir self a).value |> into_set in
+            let b =
+              match b with
+              | Some b -> (eval_ir self b).value |> into_set
+              | None -> []
+            in
+            just_value @@ MultiSet (a @ b)
         | Use { namespace; _ } ->
             { value = Void; new_bindings = namespace_locals namespace }
         | Struct { body; _ } ->
@@ -395,9 +407,22 @@ struct
             just_value (Struct struct')
         | NewType { def; _ } ->
             just_value
-              (Type
-                 (NewType
-                    (Inference.get_inferred_as_type (pattern_data def).type_var)))
+            @@ Type
+                 (let variants =
+                    match (eval_ir self def).value with
+                    | Variant _ as value -> [ value ]
+                    | MultiSet variants -> variants
+                    | other -> failwith @@ "todo newtype of " ^ show other
+                  in
+                  OneOf
+                    (StringMap.of_list
+                    @@ List.map
+                         (fun (value : value) ->
+                           match value with
+                           | Variant { typ; name; value } ->
+                               (name, value |> Option.map value_to_type)
+                           | _ -> failwith @@ "should be multiset of variants")
+                         variants))
         | Scope { expr; _ } -> just_value (eval_ir self expr).value
         | Assign { pattern; value; _ } ->
             let value = (eval_ir self value).value in
@@ -450,11 +475,11 @@ struct
             match result with
             | Some value -> just_value value
             | None -> failwith "match failed")
-        | ConstructVariant { ty; variant; value; _ } ->
+        | ConstructVariant { variant; value; _ } ->
             just_value
             @@ Variant
                  {
-                   typ = ty;
+                   typ = result_type;
                    name = variant;
                    value =
                      value
@@ -500,7 +525,7 @@ struct
                 | DelimitedToken _ | Ast _ | Macro _ | BuiltinMacro _
                 | Template _ | Function _ | Void | Bool _ | Int32 _ | Int64 _
                 | Float64 _ | String _ | Dict _ | Struct _ | Ref _ | Type _
-                | Variant _ ) as other ->
+                | Variant _ | MultiSet _ ) as other ->
                   other
             in
             Log.trace @@ "builtin " ^ name ^ " = " ^ show value ^ " :: "
@@ -784,6 +809,7 @@ struct
         | Some _ -> failwith "inferred as not type wtf"
         | None -> t)
     | MultiSet _ -> failwith @@ "todo MultiSet " ^ show_type t
+    | MultiSetOldToRemove _ -> failwith "todo multiset old"
 
   and substitute_bindings (sub : string -> value option) (value : value) : value
       =
@@ -817,4 +843,5 @@ struct
     | Variant { value; typ; name } ->
         Variant
           { typ; name; value = value |> Option.map (substitute_bindings sub) }
+    | MultiSet values -> MultiSet (List.map (substitute_bindings sub) values)
 end

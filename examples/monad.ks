@@ -18,8 +18,8 @@ impl Functor for Option as (
     self: Option,
     fmap: (forall (~a :: type, ~b :: type). (
         (~f :: (a -> b), ~this :: Option[a]) => match this (
-            | Some of a => Option[b].Some <| f a
-            | None ofnone => Option[b].None
+            | .Some a => Option[b].Some <| f a
+            | .None => Option[b].None
         )
     )),
 );

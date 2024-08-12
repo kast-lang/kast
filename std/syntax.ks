@@ -4,6 +4,7 @@ syntax @"builtin macro then" <- 0 = a ";" b;
 syntax @"builtin macro then" <- 0 = a ";";
 
 syntax @"builtin macro use" <- 1 = "use" namespace;
+syntax @"builtin macro newtype" <- 1 = "newtype" def;
 
 syntax break_with_value <- 2 = "break" value;
 syntax break_without_value <- 2 = "break";
@@ -30,8 +31,8 @@ syntax @"builtin fn macro" <- 5 = "macro" def;
 syntax @"builtin macro comptime" <- 5 = "comptime" value;
 syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
-syntax @"builtin macro combine_variants" <- 6 = "|" a;
-syntax @"builtin macro combine_variants" <- 6 = a "|" b;
+syntax @"builtin macro merge_multiset" <- 6 = "|" a;
+syntax @"builtin macro merge_multiset" <- 6 = a "|" b;
 syntax @"builtin macro function_def" -> 7 = args "=>" body;
 
 syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
@@ -41,9 +42,6 @@ syntax @"builtin macro mutable_pattern" <- 7.25 = "mut" pattern;
 syntax @"builtin fn function_type" -> 7.5 = arg "->" result;
 syntax @"builtin fn function_type" -> 7.5 = arg "->" result "with" contexts;
 syntax @"builtin macro function_def" -> 7.5 = args "->" returns "=>" body;
-
-syntax @"builtin macro single_variant" -> 8 = name "of" type;
-syntax @"builtin macro single_variant" -> 8 = name "ofnone";
 
 syntax @"builtin macro template_def" <- 9 = "forall" args "." body;
 syntax @"builtin macro template_def" <- 9 = "forall" args "where" where "." body;
@@ -98,16 +96,14 @@ syntax @"builtin macro call" <- 100 = f args;
 syntax @"builtin macro typeof" <- 120 = "typeof" expr;
 syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
 
-syntax @"builtin macro instantiate_template" <- 150 = template "[" args "]";
-
-syntax @"builtin macro quote" -> 200 = "`" expr;
 syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
 syntax @"builtin macro unquote" -> 200 = "$" expr;
 syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
 
 syntax @"builtin macro field_access" <- 300 = obj "." field;
-syntax @"builtin macro construct_variant" <- 300 = type "." variant "of" value;
-syntax @"builtin macro construct_variant" <- 300 = type "." variant "ofnone";
+syntax @"builtin macro variant" <- 300 = "." variant;
+
+syntax @"builtin macro instantiate_template" <- 300 = template "[" args "]";
 
 syntax @"builtin macro struct_def" <- 500 = "rec" "(" body ")";
 syntax @"builtin macro struct_def" <- 500 = "rec" "{" body "}";

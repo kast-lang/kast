@@ -77,6 +77,7 @@ struct
       | BuiltinFn _ -> failwith @@ "todo BuiltinFn"
       | If _ -> failwith @@ "todo If"
       | Let _ -> failwith @@ "todo Let"
+      | MultiSet _ -> failwith @@ "todo MultiSet"
     in
     { code; var }
 
@@ -116,7 +117,8 @@ struct
         | Struct s -> failwith @@ "Struct cant be compiled into js"
         | Ref _ -> failwith @@ "Ref cant be compiled into js"
         | Type _ -> failwith @@ "Type cant be compiled into js"
-        | Variant _ -> failwith @@ "Variant cant be compiled into js")
+        | Variant _ -> failwith @@ "Variant cant be compiled into js"
+        | MultiSet _ -> failwith @@ "MultiSet cant be compiled into js")
     in
     { code; var }
 

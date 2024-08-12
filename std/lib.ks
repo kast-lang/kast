@@ -17,9 +17,9 @@ const string = builtin "string";
 const never = builtin "never";
 const type = builtin "type";
 
-const Option = forall (T :: type). (Some of T | None ofnone);
-const Either = forall ((~left, ~right) :: ( left: type, right: type )). (Left of left | Right of right);
-const Result = forall ((~ok, ~error) :: ( ok: type, error: type)). (Ok of ok | Error of error);
+const Option = forall (T :: type). (newtype .Some T | .None);
+const Either = forall ((~left, ~right) :: ( left: type, right: type )). (newtype .Left left | .Right right);
+const Result = forall ((~ok, ~error) :: ( ok: type, error: type)). (newtype .Ok ok | .Error error);
 
 # args |> f
 const pipe = macro (~f, ~args) => `((
@@ -87,9 +87,9 @@ const do_try = forall
 	fn (body :: (void -> ok with throws[error])) {
 		unwindable_block fn(token :: unwind_token) {
 			const result_type = Result[~ok, ~error];
-			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error of e));
+			let throw_context = throw: (e :: error => unwind (~token, value: result_type.Error e));
 			with throw_context (
-			 	result_type.Ok of (body ())
+			 	result_type.Ok (body ())
 			)
 		}
 	}
@@ -108,8 +108,8 @@ const try_implicit = macro (~expr) => `(
 
 const catch_impl = macro (~expr :: ast, ~e :: ast, ~catch_block :: ast) => `(
 	match $expr (
-		| Ok of value => value
-		| Error of $e => $catch_block
+		| .Ok value => value
+		| .Error $e => $catch_block
 	)
 );
 
@@ -237,7 +237,9 @@ const for_loop = macro (~value_pattern, ~generator, ~body) => `(
 );
 
 const GeneratorNext = forall (~Yield :: type, ~Finish :: type). (
-    | Yielded of Yield | Finished of Finish
+    newtype
+    | .Yielded Yield
+    | .Finished Finish
 );
 
 const Generator = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
@@ -245,21 +247,22 @@ const Generator = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
 );
 
 const GeneratorState = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
-    | NotStarted of (() -> Finish with yields[~Yield, ~Resume])
-    | Suspended of (Resume -> GeneratorNext[~Yield, ~Finish] with yields[~Yield, ~Resume])
-    | Finished ofnone
+    newtype
+    | .NotStarted (() -> Finish with yields[~Yield, ~Resume])
+    | .Suspended (Resume -> GeneratorNext[~Yield, ~Finish] with yields[~Yield, ~Resume])
+    | .Finished
 );
 
 const generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type). (
     fn (generator :: () -> Finish with yields[~Yield, ~Resume]) -> Generator[~Yield, ~Resume, ~Finish] {
-        let mut state = GeneratorState[~Yield, ~Resume, ~Finish].NotStarted of generator;
+        let mut state = GeneratorState[~Yield, ~Resume, ~Finish].NotStarted generator;
         next: fn(resume_value :: Resume) -> GeneratorNext[~Yield, ~Finish] {
             match state {
                 # if none then resume_value is silently ignored?
-                | NotStarted of generator => (
+                | .NotStarted generator => (
                     let handler = fn(~value :: Yield, ~resume :: Resume -> GeneratorNext[~Yield, ~Finish]) -> GeneratorNext[~Yield, ~Finish] {
-                        state = GeneratorState[~Yield, ~Resume, ~Finish].Suspended of resume;
-                        GeneratorNext[~Yield, ~Finish].Yielded of value
+                        state = GeneratorState[~Yield, ~Resume, ~Finish].Suspended resume;
+                        GeneratorNext[~Yield, ~Finish].Yielded value
                     };
                     delimited_block (
                         ~handler,
@@ -272,15 +275,15 @@ const generator_value = forall (~Yield :: type, ~Resume :: type, ~Finish :: type
                             let final_value :: Finish = with context (
                                 generator()
                             );
-                            state = GeneratorState[~Yield, ~Resume, ~Finish].Finished ofnone;
-                            GeneratorNext[~Yield, ~Finish].Finished of final_value
+                            state = GeneratorState[~Yield, ~Resume, ~Finish].Finished;
+                            GeneratorNext[~Yield, ~Finish].Finished final_value
                         },
                     )
                 )
-                | Suspended of resume => (
+                | .Suspended resume => (
                     resume(resume_value)
                 )
-                | Finished ofnone => (
+                | .Finished => (
                     panic "generator is finished"
                 )
             }

@@ -87,6 +87,7 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
           | Some (Type inferred) -> get inferred
           | Some _ -> failwith "type was inferred as not a type wtf"
           | None -> failwith "can't get id for not inferred types")
+      | MultiSetOldToRemove _ -> failwith "todo typeid multiset"
       | MultiSet _ -> failwith "todo typeid multiset"
     in
     Hashtbl.add id_to_type id t;
