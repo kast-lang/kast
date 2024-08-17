@@ -52,6 +52,7 @@
             rlwrap
             zola
             screen
+            caddy
           ];
           shellHook = ''
             echo Hello from Kast devshell

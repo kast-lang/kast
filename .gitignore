@@ -2,3 +2,4 @@
 /.direnv/
 /.flock/
 /.logs/
+/dist/
