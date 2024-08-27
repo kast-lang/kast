@@ -24,6 +24,15 @@ struct
     | Some { value = Binding _; _ } | None -> None
     | Some { value; binding } -> Some value
 
+  let assign_to_pattern (pattern : pattern) (var : var) : string =
+    match pattern with
+    | Placeholder _ -> ""
+    | Void _ -> ""
+    | Binding { binding; data = _ } -> assign { id = binding.id } (var_name var)
+    | Dict _ -> failwith @@ "todo assign to dict"
+    | Variant _ -> failwith @@ "todo assign to variant"
+    | Union _ -> failwith @@ "todo assign to union"
+
   let rec compile_ir : compiler_state -> ir -> js =
    fun self ir ->
     let var = { id = Id.gen () } in
@@ -103,7 +112,9 @@ struct
       | Builtin _ -> failwith @@ "todo Builtin"
       | BuiltinFn _ -> failwith @@ "todo BuiltinFn"
       | If _ -> failwith @@ "todo If"
-      | Let _ -> failwith @@ "todo Let"
+      | Let { pattern; value; data = _ } ->
+          let value = compile_ir self value in
+          value.code ^ assign_to_pattern pattern value.var ^ void ()
       | MultiSet _ -> failwith @@ "todo MultiSet"
     in
     { code; var }
@@ -112,41 +123,40 @@ struct
    fun self value ->
     let var = { id = Id.gen () } in
     let code =
-        (match value with
-        | Binding _ -> failwith @@ "Binding cant be compiled into js"
-        | Var _ -> failwith @@ "Var cant be compiled into js"
-        | InferVar _ -> failwith @@ "InferVar cant be compiled into js"
-        | UnwindToken _ -> failwith @@ "UnwindToken cant be compiled into js"
-        | DelimitedToken _ ->
-            failwith @@ "DelimitedToken cant be compiled into js"
-        | Ast _ -> failwith @@ "Ast cant be compiled into js"
-        | Ir ir -> let compiled = compile_ir self ir in compiled.code ^ assign var (var_name compiled.var)
-        | Macro _ -> failwith @@ "Macro cant be compiled into js"
-        | BuiltinMacro _ -> failwith @@ "BuiltinMacro cant be compiled into js"
-        | BuiltinFn { f; ty } -> assign var (
-            match f.name with
-            | "print" -> "console.log"
-            | _ ->
-                failwith @@ "builtin fn " ^ f.name
-                ^ " is not implemented for js")
-        | Template _ -> failwith @@ "Template cant be compiled into js"
-        | Function f ->
-            (* TODO function arg *)
-            let f = Compiler.ensure_compiled f in
-            let body = compile_ir self f.body in
-            assign var @@ "function () { " ^ body.code ^ "return " ^ var_name body.var ^ "; }"
-        | Void -> failwith @@ "Void cant be compiled into js"
-        | Bool _ -> failwith @@ "Bool cant be compiled into js"
-        | Int32 _ -> failwith @@ "Int32 cant be compiled into js"
-        | Int64 _ -> failwith @@ "Int64 cant be compiled into js"
-        | Float64 _ -> failwith @@ "Float64 cant be compiled into js"
-        | String _ -> failwith @@ "String cant be compiled into js"
-        | Dict _ -> failwith @@ "Dict cant be compiled into js"
-        | Struct s -> failwith @@ "Struct cant be compiled into js"
-        | Ref _ -> failwith @@ "Ref cant be compiled into js"
-        | Type _ -> failwith @@ "Type cant be compiled into js"
-        | Variant _ -> failwith @@ "Variant cant be compiled into js"
-        | MultiSet _ -> failwith @@ "MultiSet cant be compiled into js")
+      match value with
+      | Binding _ -> failwith @@ "Binding cant be compiled into js"
+      | Var _ -> failwith @@ "Var cant be compiled into js"
+      | InferVar _ -> failwith @@ "InferVar cant be compiled into js"
+      | UnwindToken _ -> failwith @@ "UnwindToken cant be compiled into js"
+      | DelimitedToken _ ->
+          failwith @@ "DelimitedToken cant be compiled into js"
+      | Ast _ -> failwith @@ "Ast cant be compiled into js"
+      | Ir ir ->
+          let compiled = compile_ir self ir in
+          compiled.code ^ assign var (var_name compiled.var)
+      | Macro _ -> failwith @@ "Macro cant be compiled into js"
+      | BuiltinMacro _ -> failwith @@ "BuiltinMacro cant be compiled into js"
+      | Builtin { name; _ } | BuiltinFn { f = { name; _ }; _ } ->
+          assign var (match name with "print" -> "console.log" | _ -> name)
+      | Template _ -> failwith @@ "Template cant be compiled into js"
+      | Function f ->
+          (* TODO function arg *)
+          let f = Compiler.ensure_compiled f in
+          let body = compile_ir self f.body in
+          assign var @@ "function () { " ^ body.code ^ "return "
+          ^ var_name body.var ^ "; }"
+      | Void -> failwith @@ "Void cant be compiled into js"
+      | Bool _ -> failwith @@ "Bool cant be compiled into js"
+      | Int32 _ -> failwith @@ "Int32 cant be compiled into js"
+      | Int64 _ -> failwith @@ "Int64 cant be compiled into js"
+      | Float64 _ -> failwith @@ "Float64 cant be compiled into js"
+      | String _ -> failwith @@ "String cant be compiled into js"
+      | Dict _ -> failwith @@ "Dict cant be compiled into js"
+      | Struct s -> failwith @@ "Struct cant be compiled into js"
+      | Ref _ -> failwith @@ "Ref cant be compiled into js"
+      | Type _ -> failwith @@ "Type cant be compiled into js"
+      | Variant _ -> failwith @@ "Variant cant be compiled into js"
+      | MultiSet _ -> failwith @@ "MultiSet cant be compiled into js"
     in
     { code; var }
 

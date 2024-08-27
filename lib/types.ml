@@ -29,6 +29,7 @@ type value =
   | Type of value_type
   | Variant of { typ : value_type; name : string; value : value option }
   | MultiSet of value list
+  | Builtin of { name : string; ty : value_type }
 
 and value_type =
   | Var of { id : id }
@@ -48,6 +49,7 @@ and value_type =
   | Fn of fn_type
   | Macro of fn_type
   | Template of fn
+  | Builtin of string
   | BuiltinMacro
   | Dict of { fields : value_type StringMap.t }
   | NewType of value_type

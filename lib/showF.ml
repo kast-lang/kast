@@ -35,7 +35,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Struct _ -> "struct"
        | Type _ -> "type"
        | InferVar _ -> "infervar"
-       | MultiSet _ -> "multiset");
+       | MultiSet _ -> "multiset"
+       | Builtin _ -> "builtin");
     let result = show2 value in
     result
 
@@ -75,6 +76,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
         | None -> "<not inferred " ^ Inference.show_id var ^ ">")
     | MultiSet values ->
         List.fold_left (fun acc value -> acc ^ " | " ^ show value) "" values
+    | Builtin { name; _ } -> "builtin " ^ name
 
   and show_fn_ast (f : fn_ast) : string =
     (match f.args with Some ast -> Ast.show ast | None -> "()")
@@ -135,7 +137,8 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Var _ -> "var"
        | InferVar _ -> "infervar"
        | MultiSet _ -> "multiset"
-       | MultiSetOldToRemove _ -> "multiset");
+       | MultiSetOldToRemove _ -> "multiset"
+       | Builtin _ -> "builtin");
     let result = show_type2 t in
     result
 
@@ -191,6 +194,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
         | None -> "<not inferred " ^ Inference.show_id var ^ ">")
     | MultiSet t -> "multiset of " ^ show_type t
     | MultiSetOldToRemove _ -> failwith "todo show multiset"
+    | Builtin name -> "builtin " ^ name
 
   and ir_name : 'a. 'a ir_node -> string = function
     | Use _ -> "use"

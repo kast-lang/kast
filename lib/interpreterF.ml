@@ -530,25 +530,31 @@ struct
             Log.trace @@ "builtin " ^ name ^ " inferred as "
             ^ show_type inferred_type;
             let value =
-              match StringMap.find name self.builtins with
-              | BuiltinFn { f; ty = _ } ->
-                  (BuiltinFn
-                     {
-                       f;
-                       ty =
-                         (match inferred_type with
-                         | Fn f -> Some f
-                         | _ ->
-                             failwith
-                               "builtin fn was inferred to be not a fn ???");
-                     }
-                    : value)
-              | ( Ir _ | Binding _ | Var _ | InferVar _ | UnwindToken _
-                | DelimitedToken _ | Ast _ | Macro _ | BuiltinMacro _
-                | Template _ | Function _ | Void | Bool _ | Int32 _ | Int64 _
-                | Float64 _ | String _ | Dict _ | Struct _ | Ref _ | Type _
-                | Variant _ | MultiSet _ ) as other ->
-                  other
+              match StringMap.find_opt name self.builtins with
+              | Some builtin -> (
+                  match builtin with
+                  | BuiltinFn { f; ty = _ } ->
+                      (BuiltinFn
+                         {
+                           f;
+                           ty =
+                             (match inferred_type with
+                             | Fn f -> Some f
+                             | _ ->
+                                 failwith
+                                   "builtin fn was inferred to be not a fn ???");
+                         }
+                        : value)
+                  | ( Ir _ | Binding _ | Var _ | InferVar _ | UnwindToken _
+                    | DelimitedToken _ | Ast _ | Macro _ | BuiltinMacro _
+                    | Template _ | Function _ | Void | Bool _ | Int32 _
+                    | Int64 _ | Float64 _ | String _ | Dict _ | Struct _ | Ref _
+                    | Type _ | Variant _ | MultiSet _ | Builtin _ ) as other ->
+                      other)
+              | None -> (
+                  match inferred_type with
+                  | Type -> Type (Builtin name)
+                  | _ -> Builtin { name; ty = inferred_type })
             in
             Log.trace @@ "builtin " ^ name ^ " = " ^ show value ^ " :: "
             ^ show_type (type_of_value ~ensure:false value);
@@ -833,6 +839,7 @@ struct
         | None -> t)
     | MultiSet _ -> failwith @@ "todo MultiSet " ^ show_type t
     | MultiSetOldToRemove _ -> failwith "todo multiset old"
+    | Builtin _ -> t
 
   and substitute_bindings (sub : string -> value option) (value : value) : value
       =
@@ -868,4 +875,5 @@ struct
         Variant
           { typ; name; value = value |> Option.map (substitute_bindings sub) }
     | MultiSet values -> MultiSet (List.map (substitute_bindings sub) values)
+    | Builtin _ -> value
 end

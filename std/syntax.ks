@@ -4,7 +4,6 @@ syntax @"builtin macro then" <- 0 = a ";" b;
 syntax @"builtin macro then" <- 0 = a ";";
 
 syntax @"builtin macro use" <- 1 = "use" namespace;
-syntax @"builtin macro newtype" <- 1 = "newtype" def;
 
 syntax break_with_value <- 2 = "break" value;
 syntax break_without_value <- 2 = "break";
@@ -16,6 +15,8 @@ syntax @"builtin macro create_impl" <- 3 = "impl" trait "for" value "as" impl;
 syntax @"builtin macro let" <- 4 = "let" pattern "=" value;
 syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
 syntax @"builtin macro assign" <- 4 = pattern "=" value;
+
+syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
 
 syntax @"builtin macro tuple" <- 4.5 = a "," b;
 syntax @"builtin macro tuple" <- 4.5 = a ",";

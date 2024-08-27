@@ -58,6 +58,7 @@ module Make
           }
     | Type t -> Type
     | MultiSet values -> MultiSet (type_of_value (List.hd values) ~ensure)
+    | Builtin { ty; _ } -> ty
 
   and set_ir_type (ir : ir) (t : value_type) =
     Inference.set (ir_data ir).inference.type_var (Type t : value)

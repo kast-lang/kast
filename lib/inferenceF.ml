@@ -243,6 +243,8 @@ module Make
       | Var _, _ -> failinfer ()
       | MultiSetOldToRemove _, _ -> failwith "todo old multiset inferred"
       | MultiSet _, _ -> failwith "todo inferred multiset"
+      | Builtin a, Builtin b -> if a = b then Builtin a else failinfer ()
+      | Builtin _, _ -> failinfer ()
     with FailedUnite _ as failure ->
       Log.error @@ "  while uniting " ^ show_type a ^ " and " ^ show_type b;
       raise failure
@@ -305,6 +307,12 @@ module Make
       | Type a, Type b -> Type (unite_types a b)
       | Type _, _ -> failinfer ()
       | MultiSet _, _ -> failwith "todo inferred multiset"
+      | ( Builtin { name = name_a; ty = ty_a },
+          Builtin { name = name_b; ty = ty_b } ) ->
+          if name_a = name_b then
+            Builtin { name = name_a; ty = unite_types ty_a ty_b }
+          else failinfer ()
+      | Builtin _, _ -> failinfer ()
     with FailedUnite _ as failure ->
       Log.error @@ "  while uniting values " ^ show a ^ " and " ^ show b;
       raise failure

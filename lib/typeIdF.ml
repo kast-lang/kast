@@ -43,6 +43,10 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
 
   type fn_key = { args : id; result : id; contexts : id }
 
+  module BuiltinType = MakeMap (struct
+    type t = string
+  end)
+
   module Fn = MakeMap (struct
     type t = fn_key
   end)
@@ -91,6 +95,7 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
           | None -> failwith "can't get id for not inferred types")
       | MultiSetOldToRemove _ -> failwith "todo typeid multiset"
       | MultiSet _ -> failwith "todo typeid multiset"
+      | Builtin name -> BuiltinType.get_id name
     in
     Hashtbl.add id_to_type id t;
     id
