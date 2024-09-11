@@ -562,6 +562,7 @@ struct
         | Builtin { name; data } ->
             let inferred_type =
               Inference.get_inferred_as_type data.inference.type_var
+              |> substitute_type_bindings (get_local_value_opt self)
             in
             Log.trace @@ "builtin " ^ name ^ " inferred as "
             ^ show_type inferred_type;
@@ -863,7 +864,7 @@ struct
             contexts;
           }
     | Macro _ -> failwith @@ "todo Macro " ^ show_type t
-    | Template _ -> failwith @@ "todo Template " ^ show_type t
+    | Template _ -> t
     | BuiltinMacro -> failwith @@ "todo BuiltinMacro " ^ show_type t
     | Tuple { unnamed_fields; named_fields } ->
         Tuple
