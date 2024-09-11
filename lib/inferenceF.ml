@@ -199,9 +199,10 @@ module Make
              let bindings_b = pattern_bindings compiled_b.args in
              let vars_args : value =
                (* TODO pattern -> value with vars in place of bindings *)
-               Dict
+               Tuple
                  {
-                   fields =
+                   unnamed_fields = [];
+                   named_fields =
                      StringMap.match_map
                        (fun _name a b : value ->
                          let var = new_var () in
@@ -221,13 +222,17 @@ module Make
           Template a
       | Template _, _ -> failinfer ()
       | NewType _, _ -> failwith "todo newtype was inferred"
-      | Dict a, Dict b ->
-          Dict
+      | Tuple a, Tuple b ->
+          Tuple
             {
-              fields =
-                StringMap.match_map (fun _name -> unite_types) a.fields b.fields;
+              unnamed_fields =
+                List.match_map unite_types a.unnamed_fields b.unnamed_fields;
+              named_fields =
+                StringMap.match_map
+                  (fun _name -> unite_types)
+                  a.named_fields b.named_fields;
             }
-      | Dict _, _ -> failinfer ()
+      | Tuple _, _ -> failinfer ()
       | OneOf a, OneOf b ->
           OneOf
             (StringMap.match_map
@@ -294,13 +299,17 @@ module Make
       | Float64 _, _ -> failinfer ()
       | String a, String b -> if a = b then String a else failinfer ()
       | String _, _ -> failinfer ()
-      | Dict { fields = a }, Dict { fields = b } ->
-          Dict
+      | Tuple a, Tuple b ->
+          Tuple
             {
-              fields =
-                StringMap.match_map (fun _name a b -> unite_value a b) a b;
+              unnamed_fields =
+                List.match_map unite_value a.unnamed_fields b.unnamed_fields;
+              named_fields =
+                StringMap.match_map
+                  (fun _name a b -> unite_value a b)
+                  a.named_fields b.named_fields;
             }
-      | Dict _, _ -> failinfer ()
+      | Tuple _, _ -> failinfer ()
       | Struct _, _ -> failwith "inferred struct?"
       | Variant _, _ -> failwith "inferred variant?"
       | Ref _, _ -> failwith "inferred ref?"

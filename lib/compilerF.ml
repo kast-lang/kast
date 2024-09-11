@@ -45,13 +45,18 @@ module Make
     | Float64 _ -> Float64
     | Bool _ -> Bool
     | String _ -> String
-    | Dict { fields } ->
-        Dict { fields = StringMap.map (type_of_value ~ensure) fields }
+    | Tuple { unnamed_fields; named_fields } ->
+        Tuple
+          {
+            unnamed_fields = List.map (type_of_value ~ensure) unnamed_fields;
+            named_fields = StringMap.map (type_of_value ~ensure) named_fields;
+          }
     | Ref _ -> failwith "todo ref"
     | Struct { data; _ } ->
-        Dict
+        Tuple
           {
-            fields =
+            unnamed_fields = [];
+            named_fields =
               StringMap.map
                 (fun ({ value; _ } : local) -> type_of_value ~ensure value)
                 data.locals;
@@ -168,7 +173,9 @@ module Make
               {
                 body;
                 field_types;
-                data = known_type @@ Dict { fields = field_types };
+                data =
+                  known_type
+                  @@ Tuple { unnamed_fields = []; named_fields = field_types };
               }
         | Assign { pattern; value; data = NoData } ->
             Inference.make_same (pattern_data pattern).type_var
@@ -306,17 +313,18 @@ module Make
         | Ast { data = NoData; def; ast_data; values } ->
             values |> StringMap.iter (fun _name value -> set_ir_type value Ast);
             Ast { data = known_type Ast; def; ast_data; values }
-        | Dict { data = NoData; fields } ->
-            Dict
+        | Tuple { data = NoData; unnamed_fields; named_fields } ->
+            Tuple
               {
                 data =
                   known_type
-                  @@ Dict
+                  @@ Tuple
                        {
-                         fields =
-                           fields |> StringMap.map (fun field -> ir_type field);
+                         unnamed_fields = unnamed_fields |> List.map ir_type;
+                         named_fields = named_fields |> StringMap.map ir_type;
                        };
-                fields;
+                named_fields;
+                unnamed_fields;
               }
         | UnwindableBlock { data = NoData; f } ->
             let f_type = new_fn_type_vars () in
@@ -442,13 +450,18 @@ module Make
     | Void { data = NoData } -> Void { data = known_type Void }
     | Binding { data = NoData; binding } ->
         Binding { data = { type_var = binding.value_type }; binding }
-    | Dict { data = NoData; fields } ->
-        Dict
+    | Tuple { data = NoData; unnamed_fields; named_fields } ->
+        Tuple
           {
             data =
               known_type
-              @@ Dict { fields = fields |> StringMap.map pattern_type };
-            fields;
+              @@ Tuple
+                   {
+                     unnamed_fields = unnamed_fields |> List.map pattern_type;
+                     named_fields = named_fields |> StringMap.map pattern_type;
+                   };
+            unnamed_fields;
+            named_fields;
           }
     | Variant { data = NoData; name; value } ->
         (* TODO Inference.expand_sum_type with variant name *)
@@ -620,14 +633,23 @@ module Make
         if not (StringMap.equal (fun (a : binding) b -> a.name = b.name) a b)
         then failwith "pattern variants have different bindings";
         a
-    | Dict { fields; _ } ->
+    | Tuple { unnamed_fields; named_fields; _ } ->
+        let unnamed_bindings =
+          List.fold_left
+            (fun acc field ->
+              StringMap.union
+                (fun name _old _new ->
+                  failwith @@ name ^ " appears multiple times in pattern")
+                acc (pattern_bindings field))
+            StringMap.empty unnamed_fields
+        in
         StringMap.fold
           (fun _name field acc ->
             StringMap.union
               (fun name _old _new ->
                 failwith (name ^ " appears multiple times in pattern"))
               acc (pattern_bindings field))
-          fields StringMap.empty
+          named_fields unnamed_bindings
 
   and expand_ast (self : state) (ast : ast) ~(new_bindings : bool) :
       expanded_macro =
@@ -643,9 +665,10 @@ module Make
         match value with
         | Function _ | BuiltinFn _ | Template _ ->
             let args : ir =
-              Dict
+              Tuple
                 {
-                  fields =
+                  unnamed_fields = [];
+                  named_fields =
                     StringMap.map
                       (fun arg -> (compile_ast_to_ir self arg).ir)
                       values;
@@ -668,7 +691,11 @@ module Make
         | BuiltinMacro { impl; _ } -> impl self values ~new_bindings
         | Macro f -> (
             let values : value =
-              Dict { fields = StringMap.map (fun x : value -> Ast x) values }
+              Tuple
+                {
+                  unnamed_fields = [];
+                  named_fields = StringMap.map (fun x : value -> Ast x) values;
+                }
             in
             let compiled = ensure_compiled f in
             try

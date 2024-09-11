@@ -29,7 +29,7 @@ struct
     | Placeholder _ -> ""
     | Void _ -> ""
     | Binding { binding; data = _ } -> assign { id = binding.id } (var_name var)
-    | Dict _ -> failwith @@ "todo assign to dict"
+    | Tuple _ -> failwith @@ "todo assign to tuple"
     | Variant _ -> failwith @@ "todo assign to variant"
     | Union _ -> failwith @@ "todo assign to union"
 
@@ -55,7 +55,7 @@ struct
       | OneOf _ -> failwith @@ "todo OneOf"
       | TypeOf _ -> failwith @@ "todo TypeOf"
       | TypeOfValue _ -> failwith @@ "todo TypeOfValue"
-      | Dict _ -> failwith @@ "todo Dict"
+      | Tuple _ -> failwith @@ "todo Tuple"
       | UnwindableBlock _ -> failwith @@ "todo UnwindableBlock"
       | WithContext _ -> failwith @@ "todo WithContext"
       | CurrentContext _ -> failwith @@ "todo CurrentContext"
@@ -151,7 +151,7 @@ struct
       | Int64 _ -> failwith @@ "Int64 cant be compiled into js"
       | Float64 _ -> failwith @@ "Float64 cant be compiled into js"
       | String _ -> failwith @@ "String cant be compiled into js"
-      | Dict _ -> failwith @@ "Dict cant be compiled into js"
+      | Tuple _ -> failwith @@ "Tuple cant be compiled into js"
       | Struct s -> failwith @@ "Struct cant be compiled into js"
       | Ref _ -> failwith @@ "Ref cant be compiled into js"
       | Type _ -> failwith @@ "Type cant be compiled into js"

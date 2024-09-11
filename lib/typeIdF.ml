@@ -35,10 +35,10 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
           id
   end
 
-  type dict_key = { fields : id StringMap.t }
+  type tuple_key = { unnamed_fields : id list; named_fields : id StringMap.t }
 
-  module Dict = MakeMap (struct
-    type t = dict_key
+  module Tuple = MakeMap (struct
+    type t = tuple_key
   end)
 
   type fn_key = { args : id; result : id; contexts : id }
@@ -82,7 +82,12 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
       | Macro f -> failwith "todo typeid macro"
       | Template f -> failwith "todo typeid template"
       | BuiltinMacro -> failwith "todo typeid builtin_macro"
-      | Dict { fields } -> Dict.get_id { fields = fields |> StringMap.map get }
+      | Tuple { unnamed_fields; named_fields } ->
+          Tuple.get_id
+            {
+              unnamed_fields = unnamed_fields |> List.map get;
+              named_fields = named_fields |> StringMap.map get;
+            }
       | Type -> ty
       | Union _ -> failwith "todo typeid union"
       | OneOf variants -> failwith "todo typeid oneof"

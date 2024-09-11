@@ -240,7 +240,10 @@ struct
   let dict_fn f : fn_type -> value -> value =
    fun _fn_type args ->
     match args with
-    | Dict { fields = args } -> f args
+    | Tuple { unnamed_fields; named_fields = args } ->
+        if not (List.is_empty unnamed_fields) then
+          failwith "expected no unnamed fields";
+        f args
     | _ -> failwith "expected dict (dict_fn)"
 
   let int32_binary_op_with name lhs rhs f : builtin_fn =
@@ -558,9 +561,10 @@ struct
           match new_bindings with
           | true ->
               Pattern
-                (Dict
+                (Tuple
                    {
-                     fields =
+                     unnamed_fields = [];
+                     named_fields =
                        StringMap.singleton name
                          (compile_pattern self (Some value));
                      data = NoData;
@@ -570,9 +574,10 @@ struct
               Compiled
                 {
                   ir =
-                    (Dict
+                    (Tuple
                        {
-                         fields =
+                         unnamed_fields = [];
+                         named_fields =
                            StringMap.singleton name
                              (compile_ast_to_ir self value : compiled).ir;
                          data = NoData;
@@ -654,13 +659,15 @@ struct
           let a = StringMap.find "a" args in
           let a = expand_ast self a ~new_bindings in
           let pattern_fields : expanded_macro -> _ = function
-            | Pattern (Dict { fields; _ }) -> fields
-            | Pattern _ -> failwith "expected a dict (pattern fields)"
+            | Pattern (Tuple { unnamed_fields; named_fields; _ }) ->
+                (unnamed_fields, named_fields)
+            | Pattern pat -> ([ pat ], StringMap.empty)
             | Compiled _ -> failwith "wtf tuple pattern fields"
           in
           let fields : expanded_macro -> _ = function
-            | Compiled { ir = Dict { fields; _ }; _ } -> fields
-            | Compiled _ -> failwith "expected a dict (fields)"
+            | Compiled { ir = Tuple { unnamed_fields; named_fields; _ }; _ } ->
+                (unnamed_fields, named_fields)
+            | Compiled { ir; _ } -> ([ ir ], StringMap.empty)
             | Pattern _ -> failwith "wtf tuple fields"
           in
           match StringMap.find_opt "b" args with
@@ -668,29 +675,35 @@ struct
               let b = expand_ast self b ~new_bindings in
               match new_bindings with
               | true ->
+                  let fields_a = pattern_fields a in
+                  let fields_b = pattern_fields b in
                   Pattern
-                    (Dict
+                    (Tuple
                        {
-                         fields =
+                         unnamed_fields = fst fields_a @ fst fields_b;
+                         named_fields =
                            StringMap.union
                              (fun name _a _b ->
                                failwith (name ^ " is specified multiple times"))
-                             (pattern_fields a) (pattern_fields b);
+                             (snd fields_a) (snd fields_b);
                          data = NoData;
                        }
                     |> init_pattern)
               | false ->
+                  let fields_a = fields a in
+                  let fields_b = fields b in
                   Compiled
                     {
                       ir =
-                        (Dict
+                        (Tuple
                            {
-                             fields =
+                             unnamed_fields = fst fields_a @ fst fields_b;
+                             named_fields =
                                StringMap.union
                                  (fun name _a _b ->
                                    failwith
                                      (name ^ " is specified multiple times"))
-                                 (fields a) (fields b);
+                                 (snd fields_a) (snd fields_b);
                              data = NoData;
                            }
                           : _ ir_node)
@@ -700,14 +713,27 @@ struct
           | None -> (
               match new_bindings with
               | true ->
+                  let fields = pattern_fields a in
                   Pattern
-                    (Dict { fields = pattern_fields a; data = NoData }
+                    (Tuple
+                       {
+                         unnamed_fields = fst fields;
+                         named_fields = snd fields;
+                         data = NoData;
+                       }
                     |> init_pattern)
               | false ->
+                  let fields = fields a in
                   Compiled
                     {
                       ir =
-                        (Dict { fields = fields a; data = NoData } : _ ir_node)
+                        (Tuple
+                           {
+                             unnamed_fields = fst fields;
+                             named_fields = snd fields;
+                             data = NoData;
+                           }
+                          : _ ir_node)
                         |> init_ir self;
                       new_bindings = StringMap.empty;
                     }));
@@ -756,7 +782,7 @@ struct
       name = "function_type";
       impl =
         (fun _fn_type -> function
-          | Dict { fields = args } ->
+          | Tuple { unnamed_fields = _; named_fields = args } ->
               let arg_type = value_to_type (StringMap.find "arg" args) in
               let result_type = value_to_type (StringMap.find "result" args) in
               let contexts =
@@ -777,7 +803,7 @@ struct
       name = "random_int32";
       impl =
         (fun _fn_type -> function
-          | Dict { fields = args } ->
+          | Tuple { unnamed_fields = _; named_fields = args } ->
               let min = get_int32 (StringMap.find "min" args) in
               let max = get_int32 (StringMap.find "max" args) in
               Int32
@@ -792,7 +818,7 @@ struct
       name = "random_float64";
       impl =
         (fun _fn_type -> function
-          | Dict { fields = args } ->
+          | Tuple { unnamed_fields = _; named_fields = args } ->
               let min = get_float64 (StringMap.find "min" args) in
               let max = get_float64 (StringMap.find "max" args) in
               Float64 (min +. Random.float (max -. min))
@@ -808,12 +834,13 @@ struct
           | _ -> failwith "panicked with not a string kekw");
     }
 
+  (* <DaivyIsHere> next time if im not working on linksider Im probably pregnant too *)
   let is_same_type : builtin_fn =
     {
       name = "is_same_type";
       impl =
         (fun _fn_type -> function
-          | Dict { fields } ->
+          | Tuple { unnamed_fields = _; named_fields = fields } ->
               let a = get_type (StringMap.find "a" fields) in
               let b = get_type (StringMap.find "b" fields) in
               let result = TypeId.get a = TypeId.get b in
@@ -846,7 +873,7 @@ struct
       name = "unwind";
       impl =
         (fun _fn_type -> function
-          | Dict { fields } ->
+          | Tuple { named_fields = fields; unnamed_fields = _ } ->
               let token =
                 match StringMap.find "token" fields with
                 | UnwindToken token -> token
@@ -864,7 +891,7 @@ struct
       name = "delimited_block";
       impl =
         (fun fn_type -> function
-          | Dict { fields } ->
+          | Tuple { named_fields = fields; unnamed_fields = _ } ->
               let handler = StringMap.find "handler" fields in
               let body = StringMap.find "body" fields in
               let this_token_id = Id.gen () in
@@ -883,9 +910,10 @@ struct
                           Some
                             (fun (k : (a, _) Effect.Deep.continuation) ->
                               let handler_args : value =
-                                Dict
+                                Tuple
                                   {
-                                    fields =
+                                    unnamed_fields = [];
+                                    named_fields =
                                       StringMap.of_list
                                         [
                                           ("value", value);
@@ -919,7 +947,7 @@ struct
       name = "delimited_yield";
       impl =
         (fun _fn_type -> function
-          | Dict { fields } ->
+          | Tuple { named_fields = fields; unnamed_fields = _ } ->
               let token_id =
                 match StringMap.find "token" fields with
                 | DelimitedToken token -> token
@@ -1216,8 +1244,13 @@ struct
     | Binding { binding; data } ->
         Binding { binding = { binding with mut = true }; data }
     | Placeholder data -> Placeholder data
-    | Dict { fields; data } ->
-        Dict { fields = fields |> StringMap.map make_pattern_mutable; data }
+    | Tuple { unnamed_fields; named_fields; data } ->
+        Tuple
+          {
+            unnamed_fields = unnamed_fields |> List.map make_pattern_mutable;
+            named_fields = named_fields |> StringMap.map make_pattern_mutable;
+            data;
+          }
     | Variant { name; value; data } ->
         Variant { name; value = value |> Option.map make_pattern_mutable; data }
     | Union { a; b; data } ->
@@ -1247,11 +1280,14 @@ struct
         in
         Binding { binding = existing; data }
     | Placeholder data -> Placeholder data
-    | Dict { fields; data } ->
-        Dict
+    | Tuple { unnamed_fields; named_fields; data } ->
+        Tuple
           {
-            fields =
-              fields |> StringMap.map (pattern_with_existing_bindings self);
+            unnamed_fields =
+              unnamed_fields |> List.map (pattern_with_existing_bindings self);
+            named_fields =
+              named_fields
+              |> StringMap.map (pattern_with_existing_bindings self);
             data;
           }
     | Variant { name; value; data } ->
@@ -1468,9 +1504,10 @@ struct
       impl =
         (fun _fn_type value ->
           let js = Javascript.compile_value value in
-          Dict
+          Tuple
             {
-              fields =
+              unnamed_fields = [];
+              named_fields =
                 StringMap.of_list
                   [
                     ("code", (String js.code : value));

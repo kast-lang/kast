@@ -23,7 +23,7 @@ type value =
   | Int64 of int64
   | Float64 of float
   | String of string
-  | Dict of { fields : value StringMap.t }
+  | Tuple of { unnamed_fields : value list; named_fields : value StringMap.t }
   | Struct of struct'
   | Ref of value ref
   | Type of value_type
@@ -51,7 +51,10 @@ and value_type =
   | Template of fn
   | Builtin of string
   | BuiltinMacro
-  | Dict of { fields : value_type StringMap.t }
+  | Tuple of {
+      unnamed_fields : value_type list;
+      named_fields : value_type StringMap.t;
+    }
   | NewType of value_type
   | OneOf of value_type option StringMap.t
   | Union of Id.Set.t
@@ -110,7 +113,11 @@ and 'data ir_node =
   | OneOf of { variants : ir option StringMap.t; data : 'data }
   | TypeOf of { captured : state; expr : ir; data : 'data }
   | TypeOfValue of { captured : state; expr : ir; data : 'data }
-  | Dict of { fields : ir StringMap.t; data : 'data }
+  | Tuple of {
+      unnamed_fields : ir list;
+      named_fields : ir StringMap.t;
+      data : 'data;
+    }
   | UnwindableBlock of { f : ir; data : 'data }
   | WithContext of { new_context : ir; expr : ir; data : 'data }
   | CurrentContext of { context_type : value_type; data : 'data }
@@ -186,7 +193,11 @@ and 'data pattern_node =
   | Placeholder of { data : 'data }
   | Void of { data : 'data }
   | Binding of { binding : binding; data : 'data }
-  | Dict of { fields : pattern StringMap.t; data : 'data }
+  | Tuple of {
+      unnamed_fields : pattern list;
+      named_fields : pattern StringMap.t;
+      data : 'data;
+    }
   | Variant of { name : string; value : pattern option; data : 'data }
   | Union of { a : pattern; b : pattern; data : 'data }
 
@@ -244,7 +255,7 @@ let ir_data : 'data. 'data ir_node -> 'data = function
   | Instantiate { data; _ }
   | Template { data; _ }
   | Function { data; _ }
-  | Dict { data; _ }
+  | Tuple { data; _ }
   | Ast { data; _ }
   | FieldAccess { data; _ }
   | Const { data; _ }
@@ -266,5 +277,5 @@ and pattern_data (pattern : pattern) : pattern_data =
   | Union { data; _ }
   | Void { data; _ }
   | Binding { data; _ }
-  | Dict { data; _ } ->
+  | Tuple { data; _ } ->
       data

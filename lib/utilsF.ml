@@ -19,8 +19,14 @@ module Make (Inference : Modules.Inference) (Show : Modules.Show) = struct
           (let var = Inference.new_var () in
            Inference.set data.type_var (Type (Inference.get_type_of_var var));
            var)
-    | Dict { fields; data = _ } ->
-        Dict { fields = fields |> StringMap.map (pattern_to_value_with f) }
+    | Tuple { unnamed_fields; named_fields; data = _ } ->
+        Tuple
+          {
+            unnamed_fields =
+              unnamed_fields |> List.map (pattern_to_value_with f);
+            named_fields =
+              named_fields |> StringMap.map (pattern_to_value_with f);
+          }
     | Variant { data; name; value } ->
         Variant
           {
@@ -40,11 +46,17 @@ module Make (Inference : Modules.Inference) (Show : Modules.Show) = struct
             t)
     | Void -> Void
     | Type t -> t
-    | Dict { fields } -> Dict { fields = StringMap.map value_to_type fields }
-    | Struct { data; _ } ->
-        Dict
+    | Tuple { unnamed_fields; named_fields } ->
+        Tuple
           {
-            fields =
+            unnamed_fields = unnamed_fields |> List.map value_to_type;
+            named_fields = named_fields |> StringMap.map value_to_type;
+          }
+    | Struct { data; _ } ->
+        Tuple
+          {
+            unnamed_fields = [];
+            named_fields =
               data.locals
               |> StringMap.map (fun { value; _ } -> value_to_type value);
           }

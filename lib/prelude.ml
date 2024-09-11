@@ -50,6 +50,13 @@ let split_whitespace : string -> string Seq.t =
 let head (list : 'a list) : 'a option =
   match list with head :: _tail -> Some head | [] -> None
 
+module List = struct
+  include List
+
+  let match_map : 'a 'b 'c. ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t =
+   fun f a b -> try List.map2 f a b with Invalid_argument s -> failwith @@ s
+end
+
 module StringMap = struct
   include Map.Make (String)
 

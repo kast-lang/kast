@@ -51,23 +51,39 @@ struct
           | _ -> failwith "trying to match variant with a non-variant value")
       | Binding { binding; _ } ->
           Some (StringMap.singleton binding.name { value; binding })
-      | Dict { fields = field_patterns; _ } -> (
+      | Tuple
+          {
+            unnamed_fields = unnamed_patterns;
+            named_fields = named_patterns;
+            _;
+          } -> (
           match value with
           | InferVar var ->
-              let dict =
-                (Dict
+              let tuple =
+                (Tuple
                    {
-                     fields =
-                       field_patterns
+                     unnamed_fields =
+                       unnamed_patterns
+                       |> List.map (fun _ : value ->
+                              InferVar (Inference.new_var ()));
+                     named_fields =
+                       named_patterns
                        |> StringMap.map (fun _ : value ->
                               InferVar (Inference.new_var ()));
                    }
                   : value)
               in
-              Inference.set var dict;
-              pattern_match_opt pattern dict
-          | Dict { fields = field_values } ->
-              let fields =
+              Inference.set var tuple;
+              pattern_match_opt pattern tuple
+          | Tuple
+              { unnamed_fields = unnamed_values; named_fields = named_values }
+            ->
+              let unnamed_fields =
+                List.match_map
+                  (fun pattern value -> (pattern, value))
+                  unnamed_patterns unnamed_values
+              in
+              let named_fields =
                 StringMap.merge
                   (fun name pattern field_value ->
                     match (pattern, field_value) with
@@ -77,7 +93,23 @@ struct
                     | None, Some _value ->
                         failwith ("pattern does not specify field " ^ name)
                     | None, None -> failwith "unreachable")
-                  field_patterns field_values
+                  named_patterns named_values
+              in
+              let matched =
+                List.fold_left
+                  (fun result (pattern, value) ->
+                    Option.bind result (fun result ->
+                        Option.map
+                          (fun field ->
+                            StringMap.union
+                              (fun name _old _new ->
+                                failwith
+                                  (name
+                                 ^ " is specified multiple times in the pattern"
+                                  ))
+                              result field)
+                          (pattern_match_opt pattern value)))
+                  (Some StringMap.empty) unnamed_fields
               in
               StringMap.fold
                 (fun _name (pattern, value) result ->
@@ -91,7 +123,7 @@ struct
                                ^ " is specified multiple times in the pattern"))
                             result field)
                         (pattern_match_opt pattern value)))
-                fields (Some StringMap.empty)
+                named_fields matched
           | _ -> None)
     with Failure _ as failure ->
       Log.error @@ "  while pattern matching " ^ show value ^ " with "
@@ -177,12 +209,14 @@ struct
 
   and get_field_opt (obj : value) (field : string) : value option =
     match obj with
-    | Dict { fields = dict } -> StringMap.find_opt field dict
+    | Tuple { unnamed_fields; named_fields } ->
+        StringMap.find_opt field named_fields
     | Struct s ->
         StringMap.find_opt field s.data.locals
         |> Option.map (fun local -> local.value)
-    | Type (Dict { fields }) ->
-        StringMap.find_opt field fields |> Option.map (fun t : value -> Type t)
+    | Type (Tuple { unnamed_fields; named_fields }) ->
+        StringMap.find_opt field named_fields
+        |> Option.map (fun t : value -> Type t)
     | Type (OneOf variants as typ) ->
         Option.map
           (fun (variant : value_type option) : value ->
@@ -359,7 +393,9 @@ struct
   and namespace_locals (namespace : value) : local StringMap.t =
     match namespace with
     | Struct s -> s.data.locals
-    | Dict { fields } ->
+    | Tuple { unnamed_fields; named_fields = fields } ->
+        if not (List.is_empty unnamed_fields) then
+          failwith @@ "tuple with unnamed fields is not a namespace";
         fields
         |> StringMap.mapi (fun name value : local ->
                {
@@ -548,8 +584,9 @@ struct
                   | ( Ir _ | Binding _ | Var _ | InferVar _ | UnwindToken _
                     | DelimitedToken _ | Ast _ | Macro _ | BuiltinMacro _
                     | Template _ | Function _ | Void | Bool _ | Int32 _
-                    | Int64 _ | Float64 _ | String _ | Dict _ | Struct _ | Ref _
-                    | Type _ | Variant _ | MultiSet _ | Builtin _ ) as other ->
+                    | Int64 _ | Float64 _ | String _ | Tuple _ | Struct _
+                    | Ref _ | Type _ | Variant _ | MultiSet _ | Builtin _ ) as
+                    other ->
                       other)
               | None -> (
                   match inferred_type with
@@ -608,14 +645,17 @@ struct
                   ("context not available: " ^ show_type context_type
                  ^ ", current contexts: "
                   ^ show_contexts self.contexts))
-        | Dict { fields; _ } ->
+        | Tuple { unnamed_fields; named_fields; _ } ->
             just_value
-              (Dict
+              (Tuple
                  {
-                   fields =
+                   unnamed_fields =
+                     unnamed_fields
+                     |> List.map (fun value -> (eval_ir self value).value);
+                   named_fields =
                      StringMap.map
                        (fun value -> (eval_ir self value).value)
-                       fields;
+                       named_fields;
                  })
         | Template { f; _ } ->
             just_value
@@ -823,8 +863,14 @@ struct
     | Macro _ -> failwith @@ "todo Macro " ^ show_type t
     | Template _ -> failwith @@ "todo Template " ^ show_type t
     | BuiltinMacro -> failwith @@ "todo BuiltinMacro " ^ show_type t
-    | Dict { fields } ->
-        Dict { fields = fields |> StringMap.map (substitute_type_bindings sub) }
+    | Tuple { unnamed_fields; named_fields } ->
+        Tuple
+          {
+            unnamed_fields =
+              unnamed_fields |> List.map (substitute_type_bindings sub);
+            named_fields =
+              named_fields |> StringMap.map (substitute_type_bindings sub);
+          }
     | NewType _ -> failwith @@ "todo NewType " ^ show_type t
     | OneOf variants ->
         OneOf
@@ -866,8 +912,14 @@ struct
     | Int64 _ -> value
     | Float64 _ -> value
     | String _ -> value
-    | Dict { fields } ->
-        Dict { fields = fields |> StringMap.map (substitute_bindings sub) }
+    | Tuple { unnamed_fields; named_fields } ->
+        Tuple
+          {
+            unnamed_fields =
+              unnamed_fields |> List.map (substitute_bindings sub);
+            named_fields =
+              named_fields |> StringMap.map (substitute_bindings sub);
+          }
     | Struct _ -> value
     | Ref _ -> value
     | Type t -> Type (substitute_type_bindings sub t)

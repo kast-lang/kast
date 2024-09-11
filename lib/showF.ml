@@ -30,7 +30,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Float64 _ -> "float64"
        | Bool _ -> "bool"
        | String _ -> "string"
-       | Dict _ -> "dict"
+       | Tuple _ -> "tuple"
        | Ref _ -> "ref"
        | Struct _ -> "struct"
        | Type _ -> "type"
@@ -60,12 +60,16 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Float64 value -> Float.to_string value
     | Bool value -> Bool.to_string value
     | String value -> "\"" ^ String.escaped value ^ "\""
-    | Dict { fields } ->
+    | Tuple { unnamed_fields; named_fields } ->
         "( "
+        ^ List.fold_left
+            (fun acc field ->
+              (if acc = "" then "" else acc ^ ", ") ^ show field)
+            "" unnamed_fields
         ^ StringMap.fold
             (fun name field acc ->
               (if acc = "" then "" else acc ^ ", ") ^ name ^ ": " ^ show field)
-            fields ""
+            named_fields ""
         ^ " )"
     | Ref value -> "ref " ^ show !value
     | Struct _ -> "struct <...>"
@@ -129,7 +133,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Macro _ -> "macro"
        | Template _ -> "template"
        | BuiltinMacro -> "builtin_macro"
-       | Dict _ -> "dict"
+       | Tuple _ -> "tuple"
        | Type -> "type"
        | Union _ -> "union"
        | OneOf _ -> "oneof"
@@ -160,14 +164,18 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Macro f -> "macro " ^ show_fn_type f
     | Template f -> "template " ^ show_fn f
     | BuiltinMacro -> "builtin_macro"
-    | Dict { fields } ->
-        "{ "
+    | Tuple { unnamed_fields; named_fields } ->
+        "( "
+        ^ List.fold_left
+            (fun acc field_type ->
+              (if acc = "" then "" else acc ^ ", ") ^ show_type field_type)
+            "" unnamed_fields
         ^ StringMap.fold
             (fun name field_type acc ->
               (if acc = "" then "" else acc ^ ", ")
               ^ name ^ ": " ^ show_type field_type)
-            fields ""
-        ^ " }"
+            named_fields ""
+        ^ " )"
     | Type -> "type"
     | Union set ->
         Id.Set.fold
@@ -212,7 +220,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | OneOf _ -> "one_of"
     | TypeOf _ -> "type_of"
     | TypeOfValue _ -> "type_of_value"
-    | Dict _ -> "dict"
+    | Tuple _ -> "tuple"
     | UnwindableBlock _ -> "unwindable_block"
     | WithContext _ -> "with_context"
     | CurrentContext _ -> "current_context"
@@ -293,14 +301,18 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
             "with " ^ show_rec new_context ^ " (" ^ show_rec expr ^ ")"
         | CurrentContext { context_type; _ } ->
             "current_context " ^ show_type context_type
-        | Dict { fields; _ } ->
-            "{ "
+        | Tuple { unnamed_fields; named_fields; data = _ } ->
+            "( "
+            ^ List.fold_left
+                (fun acc field ->
+                  (if acc = "" then "" else acc ^ ", ") ^ show_rec field)
+                "" unnamed_fields
             ^ StringMap.fold
                 (fun name field acc ->
                   (if acc = "" then "" else acc ^ ", ")
                   ^ name ^ ": " ^ show_rec field)
-                fields ""
-            ^ " }"
+                named_fields ""
+            ^ " )"
         | Number { raw; _ } -> raw
         | Ast _ -> "ast"
         | Const { value; _ } -> "(const " ^ show value ^ ")"
@@ -357,14 +369,18 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
           "<" ^ binding.name ^ " " ^ Id.show binding.id ^ ">"
       | Variant { name; value; _ } ->
           name ^ show_or "" (fun value -> " " ^ show_rec value) value
-      | Dict { fields; _ } ->
-          "{ "
+      | Tuple { unnamed_fields; named_fields; _ } ->
+          "( "
+          ^ List.fold_left
+              (fun acc field ->
+                (if acc = "" then "" else acc ^ ", ") ^ show_rec field)
+              "" unnamed_fields
           ^ StringMap.fold
               (fun name field acc ->
                 (if acc = "" then "" else acc ^ ", ")
                 ^ name ^ ": " ^ show_rec field)
-              fields ""
-          ^ " }"
+              named_fields ""
+          ^ " )"
     in
     show_rec pattern
 end
