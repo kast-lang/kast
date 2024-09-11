@@ -1516,8 +1516,22 @@ struct
             });
     }
 
+  let empty_list : builtin_fn =
+    {
+      name = "empty_list";
+      impl =
+        (fun fn_type _value ->
+          let ty =
+            match fn_type.result_type with
+            | List t -> t
+            | _ -> failwith "can't figure out type of empty_list"
+          in
+          List { values = []; ty });
+    }
+
   let builtin_fns : builtin_fn list =
     [
+      empty_list;
       compile_to_js;
       delimited_block;
       delimited_yield;
@@ -1577,8 +1591,21 @@ struct
       };
     ]
 
-  let builtin_values : (string * value) List.t =
+  let builtin_values () : (string * value) List.t =
     [
+      ( "List",
+        BuiltinTemplate
+          {
+            f =
+              {
+                name = "List";
+                impl =
+                  (fun _fn_type t ->
+                    let t = value_to_type t in
+                    Type (List t));
+              };
+            ty = InferVar (Inference.new_var ());
+          } );
       ("unwind_token", Type UnwindToken);
       ("delimited_token", Type DelimitedToken);
       ("void", Void);
@@ -1603,5 +1630,5 @@ struct
       @ (builtin_fns
         |> List.map (fun (f : builtin_fn) ->
                ("fn " ^ f.name, (BuiltinFn { f; ty = None } : value))))
-      @ builtin_values)
+      @ builtin_values ())
 end

@@ -233,6 +233,8 @@ module Make
                   a.named_fields b.named_fields;
             }
       | Tuple _, _ -> failinfer ()
+      | List a, List b -> List (unite_types a b)
+      | List _, _ -> failinfer ()
       | OneOf a, OneOf b ->
           OneOf
             (StringMap.match_map
@@ -289,6 +291,7 @@ module Make
       | Template _, _ -> failwith "inferred template?"
       | BuiltinMacro _, _ -> failwith "inferred builtinmacro?"
       | BuiltinFn _, _ -> failwith "inferred builtinfn?"
+      | BuiltinTemplate _, _ -> failwith "inferred builtin template?"
       | Bool a, Bool b -> if a = b then Bool a else failinfer ()
       | Bool _, _ -> failinfer ()
       | Int32 a, Int32 b -> if a = b then Int32 a else failinfer ()
@@ -310,6 +313,13 @@ module Make
                   a.named_fields b.named_fields;
             }
       | Tuple _, _ -> failinfer ()
+      | List a, List b ->
+          List
+            {
+              values = List.match_map unite_value a.values b.values;
+              ty = unite_types a.ty b.ty;
+            }
+      | List _, _ -> failinfer ()
       | Struct _, _ -> failwith "inferred struct?"
       | Variant _, _ -> failwith "inferred variant?"
       | Ref _, _ -> failwith "inferred ref?"

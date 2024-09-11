@@ -136,6 +136,8 @@ struct
           compiled.code ^ assign var (var_name compiled.var)
       | Macro _ -> failwith @@ "Macro cant be compiled into js"
       | BuiltinMacro _ -> failwith @@ "BuiltinMacro cant be compiled into js"
+      | BuiltinTemplate _ ->
+          failwith @@ "BuiltinTemplate cant be compiled into js"
       | Builtin { name; _ } | BuiltinFn { f = { name; _ }; _ } ->
           assign var (match name with "print" -> "console.log" | _ -> name)
       | Template _ -> failwith @@ "Template cant be compiled into js"
@@ -152,6 +154,7 @@ struct
       | Float64 _ -> failwith @@ "Float64 cant be compiled into js"
       | String _ -> failwith @@ "String cant be compiled into js"
       | Tuple _ -> failwith @@ "Tuple cant be compiled into js"
+      | List _ -> failwith @@ "List cant be compiled into js"
       | Struct s -> failwith @@ "Struct cant be compiled into js"
       | Ref _ -> failwith @@ "Ref cant be compiled into js"
       | Type _ -> failwith @@ "Type cant be compiled into js"

@@ -22,6 +22,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Void -> "void"
        | Macro _ -> "macro"
        | BuiltinMacro _ -> "builtin_macro"
+       | BuiltinTemplate _ -> "builtin_template"
        | BuiltinFn _ -> "builtin_fn"
        | Template _ -> "template"
        | Function _ -> "fn"
@@ -31,6 +32,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Bool _ -> "bool"
        | String _ -> "string"
        | Tuple _ -> "tuple"
+       | List _ -> "list"
        | Ref _ -> "ref"
        | Struct _ -> "struct"
        | Type _ -> "type"
@@ -53,6 +55,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Macro f -> "macro " ^ show_fn f
     | BuiltinMacro _ -> "builtin_macro"
     | BuiltinFn { f = { name; _ }; _ } -> "builtin_fn " ^ name
+    | BuiltinTemplate { f = { name; _ }; _ } -> "builtin_template " ^ name
     | Template f -> "template " ^ show_fn f
     | Function f -> "function " ^ show_fn f
     | Int32 value -> Int32.to_string value
@@ -61,16 +64,25 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Bool value -> Bool.to_string value
     | String value -> "\"" ^ String.escaped value ^ "\""
     | Tuple { unnamed_fields; named_fields } ->
-        "( "
-        ^ List.fold_left
+        let unnamed =
+          List.fold_left
             (fun acc field ->
               (if acc = "" then "" else acc ^ ", ") ^ show field)
             "" unnamed_fields
+        in
+        "( "
         ^ StringMap.fold
             (fun name field acc ->
               (if acc = "" then "" else acc ^ ", ") ^ name ^ ": " ^ show field)
-            named_fields ""
+            named_fields unnamed
         ^ " )"
+    | List { values; ty = _ } ->
+        "["
+        ^ List.fold_left
+            (fun acc value ->
+              (if acc = "" then "" else acc ^ ", ") ^ show value)
+            "" values
+        ^ "]"
     | Ref value -> "ref " ^ show !value
     | Struct _ -> "struct <...>"
     | Type t -> "type " ^ show_type t
@@ -134,6 +146,7 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
        | Template _ -> "template"
        | BuiltinMacro -> "builtin_macro"
        | Tuple _ -> "tuple"
+       | List _ -> "list"
        | Type -> "type"
        | Union _ -> "union"
        | OneOf _ -> "oneof"
@@ -165,17 +178,20 @@ module Make (Inference : Modules.Inference) (TypeId : Modules.TypeId) :
     | Template f -> "template " ^ show_fn f
     | BuiltinMacro -> "builtin_macro"
     | Tuple { unnamed_fields; named_fields } ->
-        "( "
-        ^ List.fold_left
+        let unnamed =
+          List.fold_left
             (fun acc field_type ->
               (if acc = "" then "" else acc ^ ", ") ^ show_type field_type)
             "" unnamed_fields
+        in
+        "( "
         ^ StringMap.fold
             (fun name field_type acc ->
               (if acc = "" then "" else acc ^ ", ")
               ^ name ^ ": " ^ show_type field_type)
-            named_fields ""
+            named_fields unnamed
         ^ " )"
+    | List t -> "List[" ^ show_type t ^ "]"
     | Type -> "type"
     | Union set ->
         Id.Set.fold

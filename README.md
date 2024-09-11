@@ -12,9 +12,7 @@ But you can download current builds from [GitHub Actions](https://github.com/kas
 
 - Document current state
 - Mark builtin fns with contexts (e.g. print should require io)
-- Sum types should have better syntax (fix "ofnone"). I think it should be "let binding" for bindings and "variant" for variants?
 - let assert pattern
-- Unnamed tuples
 - Lists
 - Better error reporting (stack traces / reasons why syntax is not parsed)
 - Ir as value so we can write compiler (glsl)

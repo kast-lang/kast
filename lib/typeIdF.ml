@@ -41,6 +41,10 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
     type t = tuple_key
   end)
 
+  module ListId = MakeMap (struct
+    type t = id
+  end)
+
   type fn_key = { args : id; result : id; contexts : id }
 
   module BuiltinType = MakeMap (struct
@@ -88,6 +92,7 @@ module Make (Inference : Modules.Inference) : Modules.TypeId = struct
               unnamed_fields = unnamed_fields |> List.map get;
               named_fields = named_fields |> StringMap.map get;
             }
+      | List t -> ListId.get_id (get t)
       | Type -> ty
       | Union _ -> failwith "todo typeid union"
       | OneOf variants -> failwith "todo typeid oneof"

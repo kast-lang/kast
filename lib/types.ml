@@ -15,6 +15,7 @@ type value =
   | Macro of fn
   | BuiltinMacro of builtin_macro
   | BuiltinFn of { f : builtin_fn; ty : fn_type option }
+  | BuiltinTemplate of { f : builtin_fn; ty : value_type }
   | Template of fn
   | Function of fn
   | Void
@@ -24,6 +25,7 @@ type value =
   | Float64 of float
   | String of string
   | Tuple of { unnamed_fields : value list; named_fields : value StringMap.t }
+  | List of { values : value list; ty : value_type }
   | Struct of struct'
   | Ref of value ref
   | Type of value_type
@@ -55,6 +57,7 @@ and value_type =
       unnamed_fields : value_type list;
       named_fields : value_type StringMap.t;
     }
+  | List of value_type
   | NewType of value_type
   | OneOf of value_type option StringMap.t
   | Union of Id.Set.t

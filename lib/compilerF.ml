@@ -38,6 +38,7 @@ module Make
           | Some ty -> ty
           | None -> new_fn_type_vars () |> fn_type_vars_to_type)
     | Template f -> Template (template_to_template_type f)
+    | BuiltinTemplate { f = _; ty } -> ty
     | Macro f -> Macro (type_of_fn ~ensure f)
     | Function f -> Fn (type_of_fn ~ensure f)
     | Int32 _ -> Int32
@@ -51,6 +52,7 @@ module Make
             unnamed_fields = List.map (type_of_value ~ensure) unnamed_fields;
             named_fields = StringMap.map (type_of_value ~ensure) named_fields;
           }
+    | List { values = _; ty } -> List ty
     | Ref _ -> failwith "todo ref"
     | Struct { data; _ } ->
         Tuple
@@ -403,31 +405,40 @@ module Make
                   known_type @@ Fn (new_fn_type_vars () |> fn_type_vars_to_type);
                 f;
               }
-        | Instantiate { data = NoData; captured; template; args = args_ir } -> (
-            match (eval_ir self template).value with
-            | Template t ->
-                (*
+        | Instantiate { data = NoData; captured; template; args = args_ir } ->
+            let t_captured, tt =
+              match (eval_ir self template).value with
+              | Template t ->
+                  (*
                 let compiled = ensure_compiled t in
                 Log.trace @@ "template :: "
                 ^ show_fn_type (fn_type_vars_to_type t.vars);
                 Log.trace @@ "compiled result type = "
                 ^ show_type compiled.result_type; *)
-                (* TODO without template_to_template_type ?? *)
-                let tt = template_to_template_type t in
-                let compiled_tt = ensure_compiled tt in
-                let args = (eval_ir captured args_ir).value in
-                let result_type =
-                  call_compiled empty_contexts compiled_tt args
-                in
-                Log.trace @@ "instantiate result type = " ^ show result_type;
-                Instantiate
-                  {
-                    data = known_type @@ value_to_type result_type;
-                    captured = t.captured;
-                    template;
-                    args = args_ir;
-                  }
-            | other -> failwith @@ show other ^ " is not a template")
+                  (* TODO without template_to_template_type ?? *)
+                  (t.captured, template_to_template_type t)
+              | BuiltinTemplate { f = _; ty } -> (
+                  let ty =
+                    match ty with
+                    | InferVar v -> Inference.get_inferred_as_type v
+                    | _ -> ty
+                  in
+                  match ty with
+                  | Template tt -> (self, tt)
+                  | _ -> failwith @@ "builtin template type must be template")
+              | other -> failwith @@ show other ^ " is not a template"
+            in
+            let compiled_tt = ensure_compiled tt in
+            let args = (eval_ir captured args_ir).value in
+            let result_type = call_compiled empty_contexts compiled_tt args in
+            Log.trace @@ "instantiate result type = " ^ show result_type;
+            Instantiate
+              {
+                data = known_type @@ value_to_type result_type;
+                captured = t_captured;
+                template;
+                args = args_ir;
+              }
       in
       (* Log.trace @@ "almost: " ^ ir_name result; *)
       Log.trace @@ "initialized ir: " ^ show_ir result;

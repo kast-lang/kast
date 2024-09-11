@@ -585,8 +585,8 @@ struct
                     | DelimitedToken _ | Ast _ | Macro _ | BuiltinMacro _
                     | Template _ | Function _ | Void | Bool _ | Int32 _
                     | Int64 _ | Float64 _ | String _ | Tuple _ | Struct _
-                    | Ref _ | Type _ | Variant _ | MultiSet _ | Builtin _ ) as
-                    other ->
+                    | Ref _ | Type _ | Variant _ | MultiSet _ | Builtin _
+                    | List _ | BuiltinTemplate _ ) as other ->
                       other)
               | None -> (
                   match inferred_type with
@@ -759,6 +759,8 @@ struct
               | Template f ->
                   let compiled = ensure_compiled f in
                   call_compiled empty_contexts compiled
+              | BuiltinTemplate { f; ty = _ } ->
+                  f.impl (new_fn_type_vars () |> fn_type_vars_to_type)
               | _ -> failwith @@ show template ^ " is not a template"
             in
             let args = (eval_ir self args).value in
@@ -871,6 +873,7 @@ struct
             named_fields =
               named_fields |> StringMap.map (substitute_type_bindings sub);
           }
+    | List t -> List (substitute_type_bindings sub t)
     | NewType _ -> failwith @@ "todo NewType " ^ show_type t
     | OneOf variants ->
         OneOf
@@ -904,6 +907,7 @@ struct
     | Macro _ -> value
     | BuiltinMacro _ -> value
     | BuiltinFn _ -> value
+    | BuiltinTemplate _ -> value
     | Template _ -> value
     | Function _ -> value
     | Void -> value
@@ -919,6 +923,12 @@ struct
               unnamed_fields |> List.map (substitute_bindings sub);
             named_fields =
               named_fields |> StringMap.map (substitute_bindings sub);
+          }
+    | List { values; ty } ->
+        List
+          {
+            values = values |> List.map (substitute_bindings sub);
+            ty = substitute_type_bindings sub ty;
           }
     | Struct _ -> value
     | Ref _ -> value

@@ -307,3 +307,10 @@ const yield = forall[~T :: type, ~Resume :: type] {
 const compile_to_js = forall[T :: type] {
     builtin "fn compile_to_js" :: T -> (code: string, var: string)
 };
+
+const List = builtin "List" :: forall[T :: type] { type };
+
+const empty_list = forall[T :: type] {
+    builtin "fn empty_list" :: void -> List[T]
+};
+
