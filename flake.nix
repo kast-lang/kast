@@ -45,7 +45,8 @@
           packages = with pkgs; [
             ghc
             haskell-language-server
-            cabal-install
+            cabal-install # haskell package manager
+            ormolu # haskell formatter
             just
             rlwrap
             zola
@@ -61,19 +62,6 @@
               flock --conflict-exit-code 0 --nonblock .flock/zola \
                 bash -c "cd website && zola serve"
             echo "  zola: serving the website at http://127.0.0.1:1111"
-            screen -L -Logfile .logs/dune -S dune -dm \
-              flock --conflict-exit-code 0 --nonblock .flock/dune \
-                bash -c \
-                "
-                  unset TMP;
-                  unset TMPDIR;
-                  unset TEMP;
-                  unset TEMPDIR;
-                  unset NIX_BUILD_TOP;
-                  dune build -w;
-                "
-            echo "  dune: build --watch"
-            # export OCAMLRUNPARAM=b
           '';
         };
       };
