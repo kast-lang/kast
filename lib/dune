@@ -1,7 +1,0 @@
-(library
- (name kast))
-
-(env
- (dev
-  (flags
-   (:standard -w +8 -warn-error -a+8))))

@@ -42,12 +42,10 @@
       };
       devShells.${system} = {
         default = pkgs.mkShell {
-          packages = with pkgs; with ocamlPackages; [
-            # opam
-            dune_3
-            ocaml
-            ocaml-lsp
-            ocamlformat
+          packages = with pkgs; [
+            ghc
+            haskell-language-server
+            cabal-install
             just
             rlwrap
             zola
