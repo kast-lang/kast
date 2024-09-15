@@ -8,18 +8,25 @@ module MyPrelude
     ($),
     (+),
     (==),
+    (/=),
     (.),
     (||),
     (&&),
+    (<$>),
+    (<&>),
+    (++),
     not,
     error,
     todo,
     head,
     fmap,
+    show,
     Show,
+    fromInteger,
   )
 where
 
+import Data.Functor ((<&>))
 import Prelude
   ( Bool (..),
     Char,
@@ -30,11 +37,16 @@ import Prelude
     String,
     error,
     fmap,
+    fromInteger,
     not,
+    show,
     ($),
     (&&),
     (+),
+    (++),
     (.),
+    (/=),
+    (<$>),
     (==),
     (||),
   )
