@@ -1,26 +1,30 @@
-module Reader
-  ( Reading,
-    Position,
-    SourceFile (..),
-    read,
-    currentPosition,
-    currentLine,
-    currentFile,
-    peek,
-    skipAnyChar,
-    skipWhile,
-    skipWhitespace,
-    readChar,
-    skipChar,
-    readWhile,
-    readUntil,
-    readUntilChar,
-  )
+module Reader (
+  Reading,
+  Position,
+  SourceFile (..),
+  read,
+  currentPosition,
+  currentLine,
+  currentFile,
+  peek,
+  skipAnyChar,
+  skipWhile,
+  skipWhitespace,
+  readChar,
+  skipChar,
+  readWhile,
+  readUntil,
+  readUntilChar,
+  stopRecording,
+  startRecording,
+)
 where
 
 import Control.Monad.Loops (whileM)
 import Data.Char
 import Data.Functor ((<&>))
+import Data.List
+import Data.Map
 import Data.Maybe (fromJust, listToMaybe)
 import Effectful
 import Effectful.State.Static.Shared
@@ -33,26 +37,30 @@ data Position = Position {index :: Int, line :: Int, column :: Int}
   deriving (Show)
 
 data ReaderState = ReaderState
-  { filename :: String,
-    remaining_contents :: String,
-    position :: Position
+  { filename :: String
+  , remaining_contents :: String
+  , position :: Position
+  , recordings :: Map Int String
+  , nextRecordingId :: Int
   }
 
 data SourceFile = SourceFile {filename :: String, contents :: String}
   deriving (Show)
 
 read :: SourceFile -> Eff (Reading : es) a -> Eff es a
-read SourceFile {..} =
+read SourceFile{..} =
   evalState
     ReaderState
-      { filename,
-        remaining_contents = contents,
-        position =
+      { filename
+      , remaining_contents = contents
+      , position =
           Position
-            { index = 0,
-              line = 1,
-              column = 1
+            { index = 0
+            , line = 1
+            , column = 1
             }
+      , recordings = Data.Map.empty
+      , nextRecordingId = 0
       }
 
 currentPosition :: (Reading :> es) => Eff es Position
@@ -100,8 +108,33 @@ readChar = state \reader ->
   case reader.remaining_contents of
     [] -> (Nothing, reader)
     c : remaining_contents ->
-      let Position {..} = reader.position
+      let Position{..} = reader.position
           newPosition = case c of
-            '\n' -> Position {index = index + 1, line = line + 1, column = 1}
-            _ -> Position {index = index + 1, line, column = column + 1}
-       in (Just c, reader {remaining_contents, position = newPosition})
+            '\n' -> Position{index = index + 1, line = line + 1, column = 1}
+            _ -> Position{index = index + 1, line, column = column + 1}
+       in ( Just c
+          , reader
+              { remaining_contents
+              , position = newPosition
+              , recordings = Data.Map.map (\s -> s ++ [c]) reader.recordings
+              }
+          )
+
+newtype Recording = Recording Int
+
+startRecording :: (Reading :> es) => Eff es Recording
+startRecording = state \reader ->
+  let newId = reader.nextRecordingId
+      nextRecordingId = newId + 1
+   in ( Recording newId
+      , reader
+          { recordings = Data.Map.insert newId "" reader.recordings
+          , nextRecordingId
+          }
+      )
+
+stopRecording :: (Reading :> es) => Recording -> Eff es String
+stopRecording (Recording recordingId) = state \reader ->
+  let result = reader.recordings ! recordingId
+      recordings = Data.Map.delete recordingId reader.recordings
+   in (result, reader{recordings})

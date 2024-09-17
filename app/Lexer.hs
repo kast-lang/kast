@@ -1,10 +1,13 @@
 module Lexer where
 
 import Control.Monad
-import Data.Char
+import Data.Char hiding (isPunctuation)
+import Data.Function
+import Data.List
+import Data.Maybe
 import Effectful
-import MyPrelude
 import Reader
+import Prelude
 
 data Token
   = Ident String
@@ -17,7 +20,7 @@ data Token
 rawToken :: Token -> String
 rawToken = \case
   Ident raw -> raw
-  String {raw} -> raw
+  String{raw} -> raw
   Punctuation raw -> raw
   Number raw -> raw
   Comment raw -> raw
@@ -53,28 +56,47 @@ parseOneSpanned = do
   maybeToken <- parseOne
   end <- currentPosition
   case maybeToken of
-    Just token -> return $ Just SpannedToken {token, span = Span {start, end, filename}}
+    Just token -> return $ Just SpannedToken{token, span = Span{start, end, filename}}
     Nothing -> return Nothing
 
 parseOne :: (Reading :> es) => Eff es (Maybe Token)
 parseOne =
   peek >>= \case
     Nothing -> return Nothing
-    Just '#' -> do
-      skipChar '#'
-      comment <- readUntilChar '\n'
-      return $ Just (Comment comment)
-    Just c
-      | isDigit c ->
-          Just . Number <$> readWhile isDigit
-    Just '"' -> do
-      skipChar '"'
-      value <- readUntilChar '"'
-      skipChar '"'
-      return $ Just $ String {raw = '"' : value ++ "\"", value}
-    Just c
-      | isAlpha c || c == '_' ->
-          Just . Ident <$> readUntil (\c' -> not (isAlphaNum c' || c' == '_'))
-    Just c -> do
-      skipChar c
-      return $ Just (Punctuation [c])
+    Just peeked ->
+      Just <$> case peeked of
+        '#' -> readComment
+        c | isDigit c -> readNumber
+        '"' -> readString
+        c | isIdentStart c -> readIdent
+        c | isPunctuation c -> readPunctuation
+        c -> error $ "Unexpected character: " ++ show c
+ where
+  readComment = do
+    skipChar '#'
+    comment <- readUntilChar '\n'
+    return $ Comment comment
+  readNumber = do
+    s <- readWhile \c -> isDigit c || c == '.' || c == '_'
+    return $ Number s
+  readString = do
+    rawRecording <- startRecording
+    skipChar '"'
+    value <- readUntilChar '"'
+    skipChar '"'
+    raw <- stopRecording rawRecording
+    return $ String{raw, value}
+  isIdentStart c = isAlpha c || c == '_'
+  readIdent = do
+    ident <- readWhile \c -> isIdentStart c || isDigit c
+    return $ Ident ident
+  readPunctuation = do
+    s <-
+      peek >>= \case
+        Just c | isSinglePunctuation c -> do
+          skipChar c
+          return [c]
+        _ -> readWhile (\c -> isPunctuation c && not (isSinglePunctuation c))
+    return $ Punctuation s
+  isPunctuation c = not (isAlphaNum c || isSpace c || c == '\'' || c == '"')
+  isSinglePunctuation c = isJust $ find (== c) "(){}[]"
