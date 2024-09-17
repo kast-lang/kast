@@ -17,7 +17,7 @@ data Token
 rawToken :: Token -> String
 rawToken = \case
   Ident raw -> raw
-  String{raw} -> raw
+  String {raw} -> raw
   Punctuation raw -> raw
   Number raw -> raw
   Comment raw -> raw
@@ -37,7 +37,7 @@ parse sourceFile =
     sourceFile
     parseImpl
 
-parseImpl :: (Reader :> es) => Eff es [SpannedToken]
+parseImpl :: (Reading :> es) => Eff es [SpannedToken]
 parseImpl = do
   skipWhitespace
   parseOneSpanned >>= \case
@@ -46,17 +46,17 @@ parseImpl = do
       rest <- parseImpl
       return $ token : rest
 
-parseOneSpanned :: (Reader :> es) => Eff es (Maybe SpannedToken)
+parseOneSpanned :: (Reading :> es) => Eff es (Maybe SpannedToken)
 parseOneSpanned = do
   filename <- currentFile
   start <- currentPosition
   maybeToken <- parseOne
   end <- currentPosition
   case maybeToken of
-    Just token -> return $ Just SpannedToken{token, span = Span{start, end, filename}}
+    Just token -> return $ Just SpannedToken {token, span = Span {start, end, filename}}
     Nothing -> return Nothing
 
-parseOne :: (Reader :> es) => Eff es (Maybe Token)
+parseOne :: (Reading :> es) => Eff es (Maybe Token)
 parseOne =
   peek >>= \case
     Nothing -> return Nothing
@@ -71,7 +71,7 @@ parseOne =
       skipChar '"'
       value <- readUntilChar '"'
       skipChar '"'
-      return $ Just $ String{raw = '"' : value ++ "\"", value}
+      return $ Just $ String {raw = '"' : value ++ "\"", value}
     Just c
       | isAlpha c || c == '_' ->
           Just . Ident <$> readUntil (\c' -> not (isAlphaNum c' || c' == '_'))

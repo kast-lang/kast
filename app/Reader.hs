@@ -1,21 +1,22 @@
-module Reader (
-  Reader,
-  Position,
-  SourceFile (..),
-  read,
-  currentPosition,
-  currentLine,
-  currentFile,
-  peek,
-  skipAnyChar,
-  skipWhile,
-  skipWhitespace,
-  readChar,
-  skipChar,
-  readWhile,
-  readUntil,
-  readUntilChar,
-) where
+module Reader
+  ( Reading,
+    Position,
+    SourceFile (..),
+    read,
+    currentPosition,
+    currentLine,
+    currentFile,
+    peek,
+    skipAnyChar,
+    skipWhile,
+    skipWhitespace,
+    readChar,
+    skipChar,
+    readWhile,
+    readUntil,
+    readUntilChar,
+  )
+where
 
 import Control.Monad.Loops (whileM)
 import Data.Char
@@ -26,81 +27,81 @@ import Effectful.State.Static.Shared
 import Utils
 import Prelude hiding (read)
 
-type Reader = State ReaderState
+type Reading = State ReaderState
 
 data Position = Position {index :: Int, line :: Int, column :: Int}
   deriving (Show)
 
 data ReaderState = ReaderState
-  { filename :: String
-  , remaining_contents :: String
-  , position :: Position
+  { filename :: String,
+    remaining_contents :: String,
+    position :: Position
   }
 
 data SourceFile = SourceFile {filename :: String, contents :: String}
   deriving (Show)
 
-read :: SourceFile -> Eff (Reader : es) a -> Eff es a
-read SourceFile{..} =
+read :: SourceFile -> Eff (Reading : es) a -> Eff es a
+read SourceFile {..} =
   evalState
     ReaderState
-      { filename
-      , remaining_contents = contents
-      , position =
+      { filename,
+        remaining_contents = contents,
+        position =
           Position
-            { index = 0
-            , line = 1
-            , column = 1
+            { index = 0,
+              line = 1,
+              column = 1
             }
       }
 
-currentPosition :: (Reader :> es) => Eff es Position
+currentPosition :: (Reading :> es) => Eff es Position
 currentPosition = get <&> position
 
-currentLine :: (Reader :> es) => Eff es Int
+currentLine :: (Reading :> es) => Eff es Int
 currentLine = currentPosition <&> line
 
-currentFile :: (Reader :> es) => Eff es String
+currentFile :: (Reading :> es) => Eff es String
 currentFile = get @ReaderState <&> \reader -> reader.filename
 
-peek :: (Reader :> es) => Eff es (Maybe Char)
+peek :: (Reading :> es) => Eff es (Maybe Char)
 peek = get <&> listToMaybe . remaining_contents
 
-skipWhile :: (Reader :> es) => (Char -> Bool) -> Eff es ()
+skipWhile :: (Reading :> es) => (Char -> Bool) -> Eff es ()
 skipWhile predicate = readWhile predicate <&> ignore
 
-skipWhitespace :: (Reader :> es) => Eff es ()
+skipWhitespace :: (Reading :> es) => Eff es ()
 skipWhitespace = skipWhile isSpace
 
-readWhile :: (Reader :> es) => (Char -> Bool) -> Eff es String
+readWhile :: (Reading :> es) => (Char -> Bool) -> Eff es String
 readWhile predicate = whileM (peek <&> maybe False predicate) (readChar <&> fromJust)
 
-readUntil :: (Reader :> es) => (Char -> Bool) -> Eff es String
+readUntil :: (Reading :> es) => (Char -> Bool) -> Eff es String
 readUntil predicate = readWhile (not . predicate)
 
-readUntilChar :: (Reader :> es) => Char -> Eff es String
+readUntilChar :: (Reading :> es) => Char -> Eff es String
 readUntilChar c = readUntil (== c)
 
-skipAnyChar :: (Reader :> es) => Eff es ()
+skipAnyChar :: (Reading :> es) => Eff es ()
 skipAnyChar =
   readChar <&> \case
     Just _ -> ()
     Nothing -> error "there is nothing to skip"
 
-skipChar :: (Reader :> es) => Char -> Eff es ()
+skipChar :: (Reading :> es) => Char -> Eff es ()
 skipChar expected =
   readChar <&> \case
     Just actual | actual == expected -> ()
     Just actual -> error $ "expected " ++ show expected ++ ", got " ++ show actual
     Nothing -> error $ "expected " ++ show expected ++ ", got nothing"
 
-readChar :: (Reader :> es) => Eff es (Maybe Char)
+readChar :: (Reading :> es) => Eff es (Maybe Char)
 readChar = state \reader ->
   case reader.remaining_contents of
     [] -> (Nothing, reader)
     c : remaining_contents ->
-      let Position{..} = reader.position
+      let Position {..} = reader.position
           newPosition = case c of
-            '\n' -> Position{index = index + 1, line = line + 1, column = 1}
-            _ -> Position{index = index + 1, line, column = column + 1}
-       in (Just c, reader{remaining_contents, position = newPosition})
+            '\n' -> Position {index = index + 1, line = line + 1, column = 1}
+            _ -> Position {index = index + 1, line, column = column + 1}
+       in (Just c, reader {remaining_contents, position = newPosition})
