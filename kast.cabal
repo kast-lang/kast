@@ -67,6 +67,8 @@ executable kast
     -- Modules included in this executable, other than Main.
     other-modules:    Lexer
                       MyPrelude
+                      Ast
+                      Syntax
 
     -- LANGUAGE extensions used by modules in this package.
     default-extensions: OverloadedRecordDot
@@ -74,12 +76,18 @@ executable kast
                         RecordWildCards
                         LambdaCase
                         NoImplicitPrelude
+                        DataKinds
+                        FlexibleContexts
+                        ScopedTypeVariables
+                        MonoLocalBinds
 
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.18.2.1,
+                      containers,
                       mtl ^>=2.3.1,
                       pretty-simple ^>= 4.1.2,
-                      monad-loops
+                      monad-loops,
+                      effectful
 
     -- Directories containing source files.
     hs-source-dirs:   app

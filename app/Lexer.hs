@@ -2,12 +2,10 @@ module Lexer where
 
 import Control.Monad
 import Control.Monad.Loops (whileM_)
-import Control.Monad.State (evalState)
-import Control.Monad.State.Lazy (MonadState (get), State, modify)
 import Data.Char
+import Effectful
+import Effectful.State.Static.Shared
 import MyPrelude
-
-type Parse a = State ParserState a
 
 data Token
   = Ident String
@@ -20,7 +18,7 @@ data Token
 rawToken :: Token -> String
 rawToken = \case
   Ident raw -> raw
-  String {raw} -> raw
+  String{raw} -> raw
   Punctuation raw -> raw
   Number raw -> raw
   Comment raw -> raw
@@ -41,21 +39,25 @@ data ParserState = ParserState {filename :: String, contents :: String, position
   deriving (Show)
 
 parse :: SourceFile -> [Spanned Token]
-parse SourceFile {..} =
-  evalState
-    parseImpl
-    ParserState
-      { filename,
-        contents,
-        position =
-          Position
-            { index = 0,
-              line = 1,
-              column = 1
-            }
-      }
+parse SourceFile{..} =
+  runPureEff
+    ( evalState
+        ParserState
+          { filename
+          , contents
+          , position =
+              Position
+                { index = 0
+                , line = 1
+                , column = 1
+                }
+          }
+        ( parseImpl
+            @'[State ParserState]
+        )
+    )
 
-parseImpl :: Parse [Spanned Token]
+parseImpl :: (State ParserState :> es) => Eff es [Spanned Token]
 parseImpl = do
   skipWhitespace
   parseOneSpanned >>= \case
@@ -64,7 +66,7 @@ parseImpl = do
       rest <- parseImpl
       return $ token : rest
 
-skipWhitespace :: Parse ()
+skipWhitespace :: (State ParserState :> es) => Eff es ()
 skipWhitespace =
   whileM_
     ( peek
@@ -74,20 +76,20 @@ skipWhitespace =
     )
     consume
 
-currentPosition :: Parse Position
+currentPosition :: (State ParserState :> es) => Eff es Position
 currentPosition = get <&> position
 
-parseOneSpanned :: Parse (Maybe (Spanned Token))
+parseOneSpanned :: (State ParserState :> es) => Eff es (Maybe (Spanned Token))
 parseOneSpanned = do
-  filename <- get <&> \state -> state.filename
+  filename <- get @ParserState <&> \state -> state.filename
   start <- currentPosition
   maybeToken <- parseOne
   end <- currentPosition
   case maybeToken of
-    Just token -> return $ Just Spanned {value = token, span = Span {start, end, filename}}
+    Just token -> return $ Just Spanned{value = token, span = Span{start, end, filename}}
     Nothing -> return Nothing
 
-parseOne :: Parse (Maybe Token)
+parseOne :: (State ParserState :> es) => Eff es (Maybe Token)
 parseOne =
   peek >>= \case
     Nothing -> return Nothing
@@ -102,7 +104,7 @@ parseOne =
       consume
       value <- readUntilChar '"'
       assertConsume '"'
-      return $ Just $ String {raw = '"' : value ++ "\"", value}
+      return $ Just $ String{raw = '"' : value ++ "\"", value}
     Just c
       | isAlpha c || c == '_' ->
           Just . Ident <$> readUntil (\c' -> not (isAlphaNum c' || c' == '_'))
@@ -110,12 +112,12 @@ parseOne =
       consume
       return $ Just (Punctuation [c])
 
-peek :: Parse (Maybe Char)
+peek :: (State ParserState :> es) => Eff es (Maybe Char)
 peek = do
-  state <- get
+  state <- get @ParserState
   return $ head state.contents
 
-assertConsume :: Char -> Parse ()
+assertConsume :: (State ParserState :> es) => Char -> Eff es ()
 assertConsume expected = do
   actual <- next
   when
@@ -123,32 +125,32 @@ assertConsume expected = do
     ( error $ "expected " ++ show expected ++ ", got " ++ show actual
     )
 
-consume :: Parse ()
+consume :: (State ParserState :> es) => Eff es ()
 consume =
-  modify $ \state -> case state.contents of
+  modify @ParserState $ \state -> case state.contents of
     "" -> error "No character when consuming"
     '\n' : rest ->
       state
-        { contents = rest,
-          position =
+        { contents = rest
+        , position =
             Position
-              { line = state.position.line + 1,
-                column = 1,
-                index = state.position.index + 1
+              { line = state.position.line + 1
+              , column = 1
+              , index = state.position.index + 1
               }
         }
     _ : rest -> do
       state
-        { contents = rest,
-          position =
+        { contents = rest
+        , position =
             Position
-              { line = state.position.line,
-                column = state.position.column + 1,
-                index = state.position.index + 1
+              { line = state.position.line
+              , column = state.position.column + 1
+              , index = state.position.index + 1
               }
         }
 
-next :: Parse (Maybe Char)
+next :: (State ParserState :> es) => Eff es (Maybe Char)
 next = do
   c <- peek
   case c of
@@ -156,12 +158,12 @@ next = do
     Nothing -> return ()
   return c
 
-readUntilChar :: Char -> Parse String
+readUntilChar :: (State ParserState :> es) => Char -> Eff es String
 readUntilChar c = do
   readUntil (== c)
 
 -- | read until the predicate is true
-readUntil :: (Char -> Bool) -> Parse String
+readUntil :: (State ParserState :> es) => (Char -> Bool) -> Eff es String
 readUntil f =
   peek >>= \case
     Nothing -> return ""
