@@ -45,6 +45,7 @@
           packages = with pkgs; [
             ghc
             haskell-language-server
+            haskellPackages.hoogle
             cabal-install # haskell package manager
             ormolu # haskell formatter
             just
