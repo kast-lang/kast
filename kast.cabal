@@ -69,17 +69,20 @@ executable kast
                       MyPrelude
                       Ast
                       Syntax
+                      Reader
+                      Utils
 
     -- LANGUAGE extensions used by modules in this package.
     default-extensions: OverloadedRecordDot
                         DuplicateRecordFields
                         RecordWildCards
                         LambdaCase
-                        NoImplicitPrelude
                         DataKinds
                         FlexibleContexts
                         ScopedTypeVariables
                         MonoLocalBinds
+                        BlockArguments
+                        NoImplicitPrelude
 
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.18.2.1,

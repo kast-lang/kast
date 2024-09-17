@@ -4,7 +4,7 @@ import Control.Monad
 import Data.Map
 import Effectful
 import Effectful.State.Dynamic
-import Lexer (Span, Spanned, Token)
+import Lexer (Span, SpannedToken, Token)
 import MyPrelude
 import Syntax
 
@@ -30,7 +30,7 @@ class SourceStateMonad m
 
 data SourceState = SourceState
   { filename :: String
-  , token :: [Spanned Token]
+  , token :: [SpannedToken]
   }
 
 -- what do I think?

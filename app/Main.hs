@@ -1,12 +1,14 @@
 module Main where
 
+import Effectful
 import Lexer qualified
 import MyPrelude
+import Reader (SourceFile (..))
 import System.IO
 import Text.Pretty.Simple (pPrint)
 
 main :: IO ()
 main = do
   contents <- getContents
-  let tokens = Lexer.parse Lexer.SourceFile {filename = "<stdin>", contents}
-   in pPrint tokens
+  let tokens = runPureEff $ Lexer.parse Reader.SourceFile{filename = "<stdin>", contents}
+  pPrint tokens
