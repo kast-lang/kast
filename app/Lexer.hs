@@ -3,6 +3,7 @@ module Lexer where
 import Control.Monad
 import Data.Char hiding (isPunctuation)
 import Data.Function
+import Data.Functor
 import Data.List
 import Data.Maybe
 import Effectful
@@ -10,7 +11,7 @@ import Reader
 import Prelude
 
 data Token
-  = Ident String
+  = Ident {raw :: String, name :: String, isRaw :: Bool}
   | String {raw :: String, value :: String}
   | Punctuation String
   | Number String
@@ -19,7 +20,7 @@ data Token
 
 rawToken :: Token -> String
 rawToken = \case
-  Ident raw -> raw
+  Ident{raw} -> raw
   String{raw} -> raw
   Punctuation raw -> raw
   Number raw -> raw
@@ -68,6 +69,7 @@ parseOne =
         '#' -> readComment
         c | isDigit c -> readNumber
         '"' -> readString
+        '@' -> readRawIdent
         c | isIdentStart c -> readIdent
         c | isPunctuation c -> readPunctuation
         c -> error $ "Unexpected character: " ++ show c
@@ -88,8 +90,17 @@ parseOne =
     return $ String{raw, value}
   isIdentStart c = isAlpha c || c == '_'
   readIdent = do
-    ident <- readWhile \c -> isIdentStart c || isDigit c
-    return $ Ident ident
+    name <- readWhile \c -> isIdentStart c || isDigit c
+    return $ Ident{raw = name, name, isRaw = False}
+  readRawIdent = do
+    rawRecording <- startRecording
+    skipChar '@'
+    name <-
+      readString <&> \case
+        String{value} -> value
+        _ -> error "reading string didnt result in string???"
+    raw <- stopRecording rawRecording
+    return $ Ident{raw, name, isRaw = True}
   readPunctuation = do
     s <-
       peek >>= \case
