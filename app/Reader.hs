@@ -27,6 +27,7 @@ import Data.List
 import Data.Map
 import Data.Maybe (fromJust, listToMaybe)
 import Effectful
+import Effectful.Fail
 import Effectful.State.Static.Shared
 import Utils
 import Prelude hiding (read)
@@ -35,6 +36,9 @@ type Reading = State ReaderState
 
 data Position = Position {index :: Int, line :: Int, column :: Int}
   deriving (Show)
+
+showLineColumn :: Position -> String
+showLineColumn pos = show pos.line ++ ":" ++ show pos.column
 
 data ReaderState = ReaderState
   { filename :: String
@@ -47,8 +51,8 @@ data ReaderState = ReaderState
 data SourceFile = SourceFile {filename :: String, contents :: String}
   deriving (Show)
 
-read :: SourceFile -> Eff (Reading : es) a -> Eff es a
-read SourceFile{..} =
+read :: forall a es. SourceFile -> Eff (Fail : Reading : es) a -> Eff (Fail : es) a
+read SourceFile{..} f =
   evalState
     ReaderState
       { filename
@@ -62,6 +66,15 @@ read SourceFile{..} =
       , recordings = Data.Map.empty
       , nextRecordingId = 0
       }
+    run
+ where
+  run :: Eff (Reading : Fail : es) a
+  run = do
+    result <- inject $ runFail f
+    pos <- currentPosition
+    case result of
+      Left err -> fail $ err ++ " at " ++ showLineColumn pos
+      Right x -> return x
 
 currentPosition :: (Reading :> es) => Eff es Position
 currentPosition = get <&> position
@@ -90,18 +103,19 @@ readUntil predicate = readWhile (not . predicate)
 readUntilChar :: (Reading :> es) => Char -> Eff es String
 readUntilChar c = readUntil (== c)
 
-skipAnyChar :: (Reading :> es) => Eff es ()
+skipAnyChar :: (Reading :> es, Fail :> es) => Eff es ()
 skipAnyChar =
-  readChar <&> \case
-    Just _ -> ()
-    Nothing -> error "there is nothing to skip"
+  readChar >>= \case
+    Just _ -> return ()
+    Nothing -> fail "unexpected EOF"
 
-skipChar :: (Reading :> es) => Char -> Eff es ()
-skipChar expected =
-  readChar <&> \case
-    Just actual | actual == expected -> ()
-    Just actual -> error $ "expected " ++ show expected ++ ", got " ++ show actual
-    Nothing -> error $ "expected " ++ show expected ++ ", got nothing"
+skipChar :: (Reading :> es, Fail :> es) => Char -> Eff es ()
+skipChar expected = do
+  peek >>= \case
+    Just actual | actual == expected -> return ()
+    Just actual -> fail $ "expected " ++ show expected ++ ", got " ++ show actual
+    Nothing -> fail $ "expected " ++ show expected ++ ", got EOF"
+  skipAnyChar
 
 readChar :: (Reading :> es) => Eff es (Maybe Char)
 readChar = state \reader ->

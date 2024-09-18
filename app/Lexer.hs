@@ -7,6 +7,7 @@ import Data.Functor
 import Data.List
 import Data.Maybe
 import Effectful
+import Effectful.Fail
 import Reader
 import Prelude
 
@@ -35,13 +36,14 @@ data SpannedToken = SpannedToken {token :: Token, span :: Span}
 data ParserState = ParserState {filename :: String, contents :: String, position :: Position}
   deriving (Show)
 
-parse :: SourceFile -> Eff es [SpannedToken]
+parse :: (Fail :> es) => SourceFile -> Eff es [SpannedToken]
 parse sourceFile =
-  Reader.read
-    sourceFile
-    parseImpl
+  inject $
+    Reader.read
+      sourceFile
+      parseImpl
 
-parseImpl :: (Reading :> es) => Eff es [SpannedToken]
+parseImpl :: (Reading :> es, Fail :> es) => Eff es [SpannedToken]
 parseImpl = do
   skipWhitespace
   parseOneSpanned >>= \case
@@ -50,7 +52,7 @@ parseImpl = do
       rest <- parseImpl
       return $ token : rest
 
-parseOneSpanned :: (Reading :> es) => Eff es (Maybe SpannedToken)
+parseOneSpanned :: (Reading :> es, Fail :> es) => Eff es (Maybe SpannedToken)
 parseOneSpanned = do
   filename <- currentFile
   start <- currentPosition
@@ -60,7 +62,7 @@ parseOneSpanned = do
     Just token -> return $ Just SpannedToken{token, span = Span{start, end, filename}}
     Nothing -> return Nothing
 
-parseOne :: (Reading :> es) => Eff es (Maybe Token)
+parseOne :: (Reading :> es, Fail :> es) => Eff es (Maybe Token)
 parseOne =
   peek >>= \case
     Nothing -> return Nothing
@@ -84,7 +86,7 @@ parseOne =
   readString = do
     rawRecording <- startRecording
     skipChar '"'
-    value <- readUntilChar '"'
+    value <- readUntil \c -> c == '"' || c == '\n'
     skipChar '"'
     raw <- stopRecording rawRecording
     return $ String{raw, value}
