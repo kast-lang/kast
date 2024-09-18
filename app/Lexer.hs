@@ -9,10 +9,16 @@ import Data.Maybe
 import Effectful
 import Effectful.Fail
 import Reader
+import Utils
 import Prelude
 
 data StringType = SingleQuoted | DoubleQuoted
   deriving (Show)
+
+quoteChar :: StringType -> Char
+quoteChar = \case
+  SingleQuoted -> '\''
+  DoubleQuoted -> '"'
 
 data Token
   = Ident {raw :: String, name :: String, isRaw :: Bool}
@@ -49,54 +55,68 @@ parse sourceFile =
 parseImpl :: (Reading :> es, Fail :> es) => Eff es [SpannedToken]
 parseImpl = do
   skipWhitespace
-  parseOneSpanned >>= \case
+  maybeParseOneSpanned >>= \case
     Nothing -> return []
     Just token -> do
       rest <- parseImpl
       return $ token : rest
 
-parseOneSpanned :: (Reading :> es, Fail :> es) => Eff es (Maybe SpannedToken)
-parseOneSpanned = do
+maybeParseOneSpanned :: (Reading :> es, Fail :> es) => Eff es (Maybe SpannedToken)
+maybeParseOneSpanned = do
   filename <- currentFile
   start <- currentPosition
-  maybeToken <- parseOne
+  maybeToken <- maybeParseOne
   end <- currentPosition
   case maybeToken of
     Just token -> return $ Just SpannedToken{token, span = Span{start, end, filename}}
     Nothing -> return Nothing
 
-tryRead :: (Reading :> es) => Eff (Fail : es) a -> Eff es (Either String a)
-tryRead f = do
-  originalState <- saveState
-  runFail f >>= \case
-    Right value -> return $ Right value
-    Left e -> do
-      resetState originalState
-      return $ Left e
-
-parseOne :: (Reading :> es, Fail :> es) => Eff es (Maybe Token)
-parseOne =
+maybeParseOne :: (Reading :> es, Fail :> es) => Eff es (Maybe Token)
+maybeParseOne =
   peek >>= \case
     Nothing -> return Nothing
-    Just peeked ->
-      Just <$> case peeked of
-        '#' -> readComment
-        c | isDigit c -> readNumber
-        '\'' -> readString SingleQuoted
-        '"' -> readString DoubleQuoted
-        '@' -> readRawIdent
-        c | isIdentStart c -> readIdent
-        c | isPunctuation c -> readPunctuation
-        c -> error $ "Unexpected character: " ++ show c
+    Just _ -> Just <$> parseOne
+
+parseOne :: (Reading :> es, Fail :> es) => Eff es Token
+parseOne =
+  parseOneOf
+    [ readComment
+    , readNumber
+    , readString
+    , readRawIdent
+    , readIdent
+    , readPunctuation
+    ]
+
+type SpecificReader es a = Char -> Maybe (Eff es a)
+
+parseOneOf :: (Reading :> es, Fail :> es) => [SpecificReader es a] -> Eff es a
+parseOneOf options = do
+  peeked <- fromJust <$> peek
+  findMap (\option -> option peeked) options & \case
+    Nothing -> fail $ "Unexpected character: " ++ show peeked
+    Just option -> option
+
+readComment :: (Reading :> es, Fail :> es) => SpecificReader es Token
+readComment peeked = toMaybe (peeked == '#') do
+  skipChar '#'
+  comment <- readUntilChar '\n'
+  return $ Comment comment
+
+readNumber :: (Reading :> es, Fail :> es) => SpecificReader es Token
+readNumber peeked = toMaybe (isDigit peeked) do
+  s <- readWhile \c -> isDigit c || c == '.' || c == '_'
+  return $ Number s
+
+readString :: (Reading :> es, Fail :> es) => SpecificReader es Token
+readString peeked =
+  findMap
+    (\type_ -> toMaybe (quoteChar type_ == peeked) (readType type_))
+    [ SingleQuoted
+    , DoubleQuoted
+    ]
  where
-  readComment = do
-    skipChar '#'
-    comment <- readUntilChar '\n'
-    return $ Comment comment
-  readNumber = do
-    s <- readWhile \c -> isDigit c || c == '.' || c == '_'
-    return $ Number s
-  readString type_ = do
+  readType type_ = do
     start <- currentPosition
     let quote = case type_ of
           SingleQuoted -> '\''
@@ -151,26 +171,48 @@ parseOne =
     value <- readContents
     raw <- stopRecording rawRecording
     return $ String{raw, value, type_}
-  isIdentStart c = isAlpha c || c == '_'
-  readIdent = do
-    name <- readWhile \c -> isIdentStart c || isDigit c
-    return $ Ident{raw = name, name, isRaw = False}
-  readRawIdent = do
-    rawRecording <- startRecording
-    skipChar '@'
-    name <-
-      readString DoubleQuoted <&> \case
-        String{value} -> value
-        _ -> error "reading string didnt result in string???"
-    raw <- stopRecording rawRecording
-    return $ Ident{raw, name, isRaw = True}
-  readPunctuation = do
-    s <-
-      peek >>= \case
-        Just c | isSinglePunctuation c -> do
-          skipChar c
-          return [c]
-        _ -> readWhile (\c -> isPunctuation c && not (isSinglePunctuation c))
-    return $ Punctuation s
-  isPunctuation c = not (isAlphaNum c || isSpace c || c == '\'' || c == '"')
-  isSinglePunctuation c = isJust $ find (== c) "(){}[]"
+
+isIdentStart :: Char -> Bool
+isIdentStart c = isAlpha c || c == '_'
+
+readIdent :: (Reading :> es, Fail :> es) => SpecificReader es Token
+readIdent peeked = toMaybe (isIdentStart peeked) do
+  name <- readWhile \c -> isIdentStart c || isDigit c
+  return $ Ident{raw = name, name, isRaw = False}
+
+tryRead :: (Reading :> es, Fail :> es) => String -> SpecificReader es a -> Eff es a
+tryRead errorMsg reader = do
+  peeked <-
+    peek >>= \case
+      Just c -> return c
+      Nothing -> fail errorMsg
+  case reader peeked of
+    Just r -> r
+    Nothing -> fail errorMsg
+
+readRawIdent :: (Reading :> es, Fail :> es) => SpecificReader es Token
+readRawIdent peeked = toMaybe (peeked == '@') do
+  rawRecording <- startRecording
+  skipChar '@'
+  name <-
+    tryRead "expected a string for a raw token" readString <&> \case
+      String{value} -> value
+      _ -> error "reading string didnt result in string???"
+  raw <- stopRecording rawRecording
+  return $ Ident{raw, name, isRaw = True}
+
+readPunctuation :: (Reading :> es, Fail :> es) => SpecificReader es Token
+readPunctuation peeked = toMaybe (isPunctuation peeked) do
+  s <-
+    peek >>= \case
+      Just c | isSinglePunctuation c -> do
+        skipChar c
+        return [c]
+      _ -> readWhile (\c -> isPunctuation c && not (isSinglePunctuation c))
+  return $ Punctuation s
+
+isPunctuation :: Char -> Bool
+isPunctuation c = not (isAlphaNum c || isSpace c || c == '\'' || c == '"')
+
+isSinglePunctuation :: Char -> Bool
+isSinglePunctuation c = isJust $ find (== c) "(){}[]"
