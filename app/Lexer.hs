@@ -22,19 +22,11 @@ quoteChar = \case
 
 data Token
   = Ident {raw :: String, name :: String, isRaw :: Bool}
-  | String {raw :: String, value :: String, type_ :: StringType}
-  | Punctuation String
-  | Number String
-  | Comment String
+  | String {raw :: String, contents :: String, type_ :: StringType}
+  | Punctuation {raw :: String}
+  | Number {raw :: String}
+  | Comment {raw :: String}
   deriving (Show)
-
-rawToken :: Token -> String
-rawToken = \case
-  Ident{raw} -> raw
-  String{raw} -> raw
-  Punctuation raw -> raw
-  Number raw -> raw
-  Comment raw -> raw
 
 data Span = Span {start :: Position, end :: Position, filename :: String}
   deriving (Show)
@@ -132,45 +124,19 @@ readString peeked =
             Just '\\' -> do
               skipChar '\\'
               c <-
-                peek >>= \case
-                  Nothing -> fail "Unexpected EOF, expected escaped character in string literal"
-                  Just '\\' -> fromJust <$> readChar
-                  Just '\'' -> fromJust <$> readChar
-                  Just '"' -> fromJust <$> readChar
-                  Just 'x' -> do
-                    skipChar 'x'
-                    let readHexDigit =
-                          peek >>= \case
-                            Just c | isHexDigit c -> do
-                              skipChar c
-                              return $ digitToInt c
-                            _ -> fail "expected a hex digit"
-                    first <- readHexDigit
-                    second <- readHexDigit
-                    let hexCode = first * 16 + second
-                    return $ chr hexCode
-                  Just '0' -> do
-                    skipChar '0'
-                    return '\0'
-                  Just 'n' -> do
-                    skipChar 'n'
-                    return '\n'
-                  Just 'r' -> do
-                    skipChar 'r'
-                    return '\r'
-                  Just 't' -> do
-                    skipChar 't'
-                    return '\t'
-                  Just _ -> fail "Unexpected escape character"
+                readChar
+                  >>= \case
+                    Nothing -> fail "Unexpected EOF, expected escaped character in string literal"
+                    Just c -> return c
               rest <- readContents
-              return (c : rest)
+              return ('\\' : c : rest)
             Just c -> do
               skipChar c
               rest <- readContents
               return (c : rest)
-    value <- readContents
+    contents <- readContents
     raw <- stopRecording rawRecording
-    return $ String{raw, value, type_}
+    return $ String{raw, contents, type_}
 
 isIdentStart :: Char -> Bool
 isIdentStart c = isAlpha c || c == '_'
@@ -196,7 +162,7 @@ readRawIdent peeked = toMaybe (peeked == '@') do
   skipChar '@'
   name <-
     tryRead "expected a string for a raw token" readString <&> \case
-      String{value} -> value
+      String{contents} -> contents
       _ -> error "reading string didnt result in string???"
   raw <- stopRecording rawRecording
   return $ Ident{raw, name, isRaw = True}
