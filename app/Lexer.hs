@@ -139,9 +139,19 @@ readString peeked =
     return $ String{raw, contents, type_}
 
 readIdent :: (Reading :> es, Fail :> es) => SpecificReader es Token
-readIdent peeked = toMaybe (isAlpha peeked || peeked == '_') do
-  name <- readWhile \c -> isAlphaNum c || c == '-' || c == '_'
+readIdent peeked' = toMaybe (isAlpha peeked' || peeked' == '_') do
+  name <- readImpl
   return $ Ident{raw = name, name, isRaw = False}
+ where
+  readImpl = do
+    peeked <- peek
+    peeked2 <- peek2
+    case (peeked, peeked2) of
+      (Just c, c2) | isAlphaNum c || c == '_' || (c == '-' && maybe False isAlphaNum c2) -> do
+        skipChar c
+        rest <- readImpl
+        return (c : rest)
+      _ -> return ""
 
 tryRead :: (Reading :> es, Fail :> es) => String -> SpecificReader es a -> Eff es a
 tryRead errorMsg reader = do

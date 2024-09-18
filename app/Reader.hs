@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Functor law" #-}
 module Reader (
   Reading,
   Position,
@@ -20,6 +23,7 @@ module Reader (
   readUntilChar,
   stopRecording,
   startRecording,
+  peek2,
 )
 where
 
@@ -96,6 +100,12 @@ currentFile = get @ReaderState <&> \reader -> reader.filename
 
 peek :: (Reading :> es) => Eff es (Maybe Char)
 peek = get <&> listToMaybe . remaining_contents
+
+peek2 :: (Reading :> es) => Eff es (Maybe Char)
+peek2 =
+  get <&> remaining_contents <&> \case
+    _ : c2 : _ -> Just c2
+    _ -> Nothing
 
 skipWhile :: (Reading :> es) => (Char -> Bool) -> Eff es ()
 skipWhile predicate = readWhile predicate <&> ignore
