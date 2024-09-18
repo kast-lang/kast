@@ -11,9 +11,12 @@ import Effectful.Fail
 import Reader
 import Prelude
 
+data StringType = SingleQuoted | DoubleQuoted
+  deriving (Show)
+
 data Token
   = Ident {raw :: String, name :: String, isRaw :: Bool}
-  | String {raw :: String, value :: String}
+  | String {raw :: String, value :: String, type_ :: StringType}
   | Punctuation String
   | Number String
   | Comment String
@@ -62,6 +65,15 @@ parseOneSpanned = do
     Just token -> return $ Just SpannedToken{token, span = Span{start, end, filename}}
     Nothing -> return Nothing
 
+tryRead :: (Reading :> es) => Eff (Fail : es) a -> Eff es (Either String a)
+tryRead f = do
+  originalState <- saveState
+  runFail f >>= \case
+    Right value -> return $ Right value
+    Left e -> do
+      resetState originalState
+      return $ Left e
+
 parseOne :: (Reading :> es, Fail :> es) => Eff es (Maybe Token)
 parseOne =
   peek >>= \case
@@ -70,7 +82,8 @@ parseOne =
       Just <$> case peeked of
         '#' -> readComment
         c | isDigit c -> readNumber
-        '"' -> readString
+        '\'' -> readString SingleQuoted
+        '"' -> readString DoubleQuoted
         '@' -> readRawIdent
         c | isIdentStart c -> readIdent
         c | isPunctuation c -> readPunctuation
@@ -83,13 +96,61 @@ parseOne =
   readNumber = do
     s <- readWhile \c -> isDigit c || c == '.' || c == '_'
     return $ Number s
-  readString = do
+  readString type_ = do
+    start <- currentPosition
+    let quote = case type_ of
+          SingleQuoted -> '\''
+          DoubleQuoted -> '"'
     rawRecording <- startRecording
-    skipChar '"'
-    value <- readUntil \c -> c == '"' || c == '\n'
-    skipChar '"'
+    skipChar quote
+    let readContents =
+          peek >>= \case
+            Nothing -> fail $ "Unexpected EOF, string starting at " ++ showLineColumn start ++ " is not terminated"
+            Just c | c == quote -> do
+              skipChar quote
+              return ""
+            Just '\\' -> do
+              skipChar '\\'
+              c <-
+                peek >>= \case
+                  Nothing -> fail "Unexpected EOF, expected escaped character in string literal"
+                  Just '\\' -> fromJust <$> readChar
+                  Just '\'' -> fromJust <$> readChar
+                  Just '"' -> fromJust <$> readChar
+                  Just 'x' -> do
+                    skipChar 'x'
+                    let readHexDigit =
+                          peek >>= \case
+                            Just c | isHexDigit c -> do
+                              skipChar c
+                              return $ digitToInt c
+                            _ -> fail "expected a hex digit"
+                    first <- readHexDigit
+                    second <- readHexDigit
+                    let hexCode = first * 16 + second
+                    return $ chr hexCode
+                  Just '0' -> do
+                    skipChar '0'
+                    return '\0'
+                  Just 'n' -> do
+                    skipChar 'n'
+                    return '\n'
+                  Just 'r' -> do
+                    skipChar 'r'
+                    return '\r'
+                  Just 't' -> do
+                    skipChar 't'
+                    return '\t'
+                  Just _ -> fail "Unexpected escape character"
+              rest <- readContents
+              return (c : rest)
+            Just c -> do
+              skipChar c
+              rest <- readContents
+              return (c : rest)
+    value <- readContents
     raw <- stopRecording rawRecording
-    return $ String{raw, value}
+    return $ String{raw, value, type_}
   isIdentStart c = isAlpha c || c == '_'
   readIdent = do
     name <- readWhile \c -> isIdentStart c || isDigit c
@@ -98,7 +159,7 @@ parseOne =
     rawRecording <- startRecording
     skipChar '@'
     name <-
-      readString <&> \case
+      readString DoubleQuoted <&> \case
         String{value} -> value
         _ -> error "reading string didnt result in string???"
     raw <- stopRecording rawRecording

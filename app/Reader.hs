@@ -2,6 +2,9 @@ module Reader (
   Reading,
   Position,
   SourceFile (..),
+  saveState,
+  resetState,
+  showLineColumn,
   read,
   currentPosition,
   currentLine,
@@ -47,6 +50,12 @@ data ReaderState = ReaderState
   , recordings :: Map Int String
   , nextRecordingId :: Int
   }
+
+saveState :: (Reading :> es) => Eff es ReaderState
+saveState = get
+
+resetState :: (Reading :> es) => ReaderState -> Eff es ()
+resetState = put
 
 data SourceFile = SourceFile {filename :: String, contents :: String}
   deriving (Show)
