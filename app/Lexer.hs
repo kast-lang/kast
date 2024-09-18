@@ -138,12 +138,9 @@ readString peeked =
     raw <- stopRecording rawRecording
     return $ String{raw, contents, type_}
 
-isIdentStart :: Char -> Bool
-isIdentStart c = isAlpha c || c == '_'
-
 readIdent :: (Reading :> es, Fail :> es) => SpecificReader es Token
-readIdent peeked = toMaybe (isIdentStart peeked) do
-  name <- readWhile \c -> isIdentStart c || isDigit c
+readIdent peeked = toMaybe (isAlpha peeked || peeked == '_') do
+  name <- readWhile \c -> isAlphaNum c || c == '-' || c == '_'
   return $ Ident{raw = name, name, isRaw = False}
 
 tryRead :: (Reading :> es, Fail :> es) => String -> SpecificReader es a -> Eff es a
