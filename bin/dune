@@ -1,9 +1,0 @@
-(executable
- (public_name kast)
- (name main)
- (libraries kast))
-
-(env
- (dev
-  (flags
-   (:standard -warn-error -A))))

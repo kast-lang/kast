@@ -5,14 +5,10 @@ repl:
     just run --repl
 
 run *ARGS:
-    rlwrap _build/default/bin/main.exe {{ARGS}}
-    # dune exec kast -- {{ARGS}}
+    rlwrap cargo run -- {{ARGS}}
 
 serve:
     cd website && zola serve
-
-dune:
-    dune build --watch
 
 asteroids:
     mkdir -p dist

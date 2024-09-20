@@ -1,15 +1,23 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     # Precisely filter files copied to the nix store
     nix-filter.url = "github:numtide/nix-filter";
   };
 
-  outputs = { self, nixpkgs, nix-filter }:
+  outputs = { self, nixpkgs, nix-filter, rust-overlay }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
+      pkgs = import nixpkgs { inherit system; overlays = [ (import rust-overlay) ]; };
+      rust-toolchain = pkgs.rust-bin.stable.latest.default.override {
+        extensions = [ "rust-src" ];
+        targets = [ "wasm32-unknown-unknown" ];
+      };
     in
     {
       packages.${system} = {
@@ -43,11 +51,8 @@
       devShells.${system} = {
         default = pkgs.mkShell {
           packages = with pkgs; with ocamlPackages; [
-            # opam
-            dune_3
-            ocaml
-            ocaml-lsp
-            ocamlformat
+            rust-toolchain
+            rust-analyzer
             just
             rlwrap
             zola
@@ -63,19 +68,6 @@
               flock --conflict-exit-code 0 --nonblock .flock/zola \
                 bash -c "cd website && zola serve"
             echo "  zola: serving the website at http://127.0.0.1:1111"
-            screen -L -Logfile .logs/dune -S dune -dm \
-              flock --conflict-exit-code 0 --nonblock .flock/dune \
-                bash -c \
-                "
-                  unset TMP;
-                  unset TMPDIR;
-                  unset TEMP;
-                  unset TEMPDIR;
-                  unset NIX_BUILD_TOP;
-                  dune build -w;
-                "
-            echo "  dune: build --watch"
-            # export OCAMLRUNPARAM=b
           '';
         };
       };
