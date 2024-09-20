@@ -1,12 +1,11 @@
-use rustyline::config::Configurer;
-
 mod lexer;
 
 fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt::init();
     tracing::info!("Kast > Rust > Haskell");
-    let mut rustyline = rustyline::DefaultEditor::new()?;
-    rustyline.set_auto_add_history(true);
+    let mut rustyline = rustyline::DefaultEditor::with_config(
+        rustyline::Config::builder().auto_add_history(true).build(),
+    )?;
     loop {
         match rustyline.readline("> ") {
             Ok(line) => {
