@@ -66,7 +66,6 @@ executable kast
 
     -- Modules included in this executable, other than Main.
     other-modules:    Lexer
-                      MyPrelude
                       Ast
                       Syntax
                       Reader

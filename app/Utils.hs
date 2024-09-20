@@ -1,7 +1,10 @@
-module Utils (ignore, toMaybe, findMap) where
+module Utils (ignore, toMaybe, findMap, todo, (|>), (<|)) where
 
 import Data.Maybe
 import Prelude
+
+todo :: a
+todo = error "todo"
 
 ignore :: a -> ()
 ignore _ = ()
@@ -15,3 +18,11 @@ findMap f = \case
   x : xs -> case f x of
     Just result -> Just result
     Nothing -> findMap f xs
+
+infixr 1 |>
+(|>) :: a -> (a -> b) -> b
+args |> f = f args
+
+infixr 0 <|
+(<|) :: (a -> b) -> a -> b
+f <| args = f args

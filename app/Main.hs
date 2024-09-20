@@ -5,10 +5,10 @@ import Data.Function
 import Effectful
 import Effectful.Fail
 import Lexer qualified
-import MyPrelude
 import Reader qualified
 import System.IO
 import Text.Pretty.Simple (pPrint)
+import Prelude
 
 unwrap :: Either String a -> a
 unwrap = \case
