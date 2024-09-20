@@ -2,10 +2,14 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("{0}")]
 pub struct ErrorMessage(String);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("at {filename}:{position} - {message}")]
 pub struct Error {
     pub message: String,
     pub filename: PathBuf,
@@ -66,6 +70,12 @@ pub struct Position {
     pub index: usize,
     pub line: usize,
     pub column: usize,
+}
+
+impl std::fmt::Display for Position {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
+    }
 }
 
 struct Lexer {
@@ -209,10 +219,10 @@ impl Lexer {
         }))
     }
     fn read_string(&mut self) -> Result<Option<Token>> {
-        Ok([StringType::SingleQuoted, StringType::DoubleQuoted]
+        [StringType::SingleQuoted, StringType::DoubleQuoted]
             .into_iter()
             .find_map(|typ| self.read_string_of(typ).transpose())
-            .transpose()?)
+            .transpose()
     }
     fn read_string_of(&mut self, typ: StringType) -> Result<Option<Token>> {
         let quote_char = match typ {

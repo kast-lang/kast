@@ -54,7 +54,6 @@
             rust-toolchain
             rust-analyzer
             just
-            rlwrap
             zola
             screen
             caddy

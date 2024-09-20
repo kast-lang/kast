@@ -4,3 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+eyre = "0.6.12"
+rustyline = "14.0.0"
+thiserror = "1.0.63"

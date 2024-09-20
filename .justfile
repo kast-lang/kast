@@ -5,7 +5,7 @@ repl:
     just run --repl
 
 run *ARGS:
-    rlwrap cargo run -- {{ARGS}}
+    cargo run -- {{ARGS}}
 
 serve:
     cd website && zola serve
