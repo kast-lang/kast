@@ -3,7 +3,8 @@ use rustyline::config::Configurer;
 mod lexer;
 
 fn main() -> eyre::Result<()> {
-    println!("Kast > Rust > Haskell");
+    tracing_subscriber::fmt::init();
+    tracing::info!("Kast > Rust > Haskell");
     let mut rustyline = rustyline::DefaultEditor::new()?;
     rustyline.set_auto_add_history(true);
     loop {
@@ -19,7 +20,7 @@ fn main() -> eyre::Result<()> {
                     .into_iter()
                     .map(|spanned_token| spanned_token.token)
                     .collect();
-                dbg!(tokens);
+                tracing::info!("tokens: {tokens:#?}");
             }
             Err(rustyline::error::ReadlineError::Eof) => break,
             Err(e) => return Err(e.into()),
