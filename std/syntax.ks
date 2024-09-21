@@ -92,7 +92,8 @@ syntax @"op binary %" <- 40 = lhs "%" rhs;
 
 syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
-syntax @"builtin macro call" <- 100 = f args;
+# syntax @"builtin macro call" <- 100 = f args;
+syntax @"builtin macro call" <- 100 = f "(" args ")";
 
 syntax @"builtin macro typeof" <- 120 = "typeof" expr;
 syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
@@ -119,9 +120,9 @@ syntax @"builtin macro scope" <- 100000 = "(" e ")";
 syntax @"builtin macro make_void" <- 100000 = "(" ")";
 syntax @"builtin macro placeholder" <- 100000 = "_";
 
-const inline_field = macro (name : name) => `($name : $name);
-const inline_typed_field = macro (~name, ~type) => `(
-    $name: ($name :: $type)
-);
+# const inline_field = macro (name : name) => `($name : $name);
+# const inline_typed_field = macro (~name, ~type) => `(
+#     $name: ($name :: $type)
+# );
 
 

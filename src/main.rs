@@ -1,4 +1,8 @@
+#[macro_use]
+mod error;
+mod ast;
 mod lexer;
+mod syntax;
 
 fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt::init();
@@ -6,20 +10,25 @@ fn main() -> eyre::Result<()> {
     let mut rustyline = rustyline::DefaultEditor::with_config(
         rustyline::Config::builder().auto_add_history(true).build(),
     )?;
+
+    let syntax = ast::read_syntax(lexer::SourceFile {
+        contents: std::fs::read_to_string("std/syntax.ks")
+            .unwrap()
+            .chars()
+            .collect(),
+        filename: "std/syntax.ks".into(),
+    });
+    tracing::info!("{syntax:#?}");
+
     loop {
         match rustyline.readline("> ") {
             Ok(line) => {
-                let tokens: Result<Vec<lexer::SpannedToken>, lexer::Error> =
-                    lexer::lex(lexer::SourceFile {
-                        contents: line.chars().collect(),
-                        filename: "<stdin>".into(),
-                    })
-                    .collect();
-                let tokens: Vec<lexer::Token> = tokens?
-                    .into_iter()
-                    .map(|spanned_token| spanned_token.token)
-                    .collect();
-                tracing::info!("tokens: {tokens:#?}");
+                let source = lexer::SourceFile {
+                    contents: line.chars().collect(),
+                    filename: "<stdin>".into(),
+                };
+                let ast = ast::parse(&syntax, source).unwrap();
+                tracing::info!("{ast:#}");
             }
             Err(rustyline::error::ReadlineError::Eof) => break,
             Err(e) => return Err(e.into()),

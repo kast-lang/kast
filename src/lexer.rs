@@ -2,11 +2,8 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::error::*;
 use thiserror::Error;
-
-#[derive(Debug, Error)]
-#[error("{0}")]
-pub struct ErrorMessage(String);
 
 #[derive(Debug, Error)]
 #[error("at {filename}:{position} - {message}")]
@@ -17,18 +14,6 @@ pub struct Error {
 }
 
 pub type Result<T, E = ErrorMessage> = std::result::Result<T, E>;
-
-macro_rules! error_fmt {
-    ($f:tt) => {
-        ErrorMessage(format!($f))
-    };
-}
-
-macro_rules! error {
-    ($f:tt) => {
-        Err(error_fmt!($f))
-    };
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum StringType {
@@ -58,6 +43,18 @@ pub enum Token {
         raw: String,
         contents: String,
     },
+}
+
+impl Token {
+    pub fn raw(&self) -> &str {
+        match self {
+            Token::Ident { raw, .. } => raw,
+            Token::Punctuation { raw } => raw,
+            Token::String { raw, .. } => raw,
+            Token::Number { raw } => raw,
+            Token::Comment { raw, .. } => raw,
+        }
+    }
 }
 
 pub struct SourceFile {
@@ -357,6 +354,13 @@ pub struct Span {
 pub struct SpannedToken {
     pub token: Token,
     pub span: Span,
+}
+
+impl std::ops::Deref for SpannedToken {
+    type Target = Token;
+    fn deref(&self) -> &Self::Target {
+        &self.token
+    }
 }
 
 pub fn lex(source: SourceFile) -> impl Iterator<Item = Result<SpannedToken, Error>> {
