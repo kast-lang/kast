@@ -1,7 +1,7 @@
-{ ... }:
+{ self, ... }:
 
 {
-  source = ../examples/guess-a-number.ks;
+  source = self.outPath + "/examples/guess-a-number.ks";
   input = builtins.toFile "input" ''
     exit
   '';

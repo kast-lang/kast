@@ -71,26 +71,24 @@ pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Ast, Error> {
         end: tokens.back().map_or(start, |last| last.span.end),
         tokens,
     };
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        parser.read_until(syntax, None, None)
-    }))
-    .map_err(|e| {
-        if let Some(s) = e.downcast_ref::<&str>() {
-            return ErrorMessage(s.to_string());
-        }
-        if let Ok(s) = e.downcast::<String>() {
-            return ErrorMessage(*s);
-        }
-        error_fmt!("unknown")
-    })
-    .map_err(|ErrorMessage(message)| Error {
-        filename: filename.clone(),
-        message,
-        position: parser
-            .tokens
-            .front()
-            .map_or(parser.end, |front| front.span.start),
-    })
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| parser.read(syntax)))
+        .map_err(|e| {
+            if let Some(s) = e.downcast_ref::<&str>() {
+                return ErrorMessage(s.to_string());
+            }
+            if let Ok(s) = e.downcast::<String>() {
+                return ErrorMessage(*s);
+            }
+            error_fmt!("unknown")
+        })
+        .map_err(|ErrorMessage(message)| Error {
+            filename: filename.clone(),
+            message,
+            position: parser
+                .tokens
+                .front()
+                .map_or(parser.end, |front| front.span.start),
+        })
 }
 
 pub fn read_syntax(source: SourceFile) -> Syntax {
@@ -224,33 +222,35 @@ enum ReadOneProgress {
 }
 
 impl ReadOne<'_> {
-    fn finish(mut self) -> ReadOneResult {
-        ReadOneResult {
-            ast: if self.made_progress {
-                let mut result = None;
-                tracing::info!("finishing with {:?}", self.unassigned_value.is_some());
-                for using_unassigned_value in [self.unassigned_value.is_some(), false] {
-                    if let Some(definition) = self.current_node.finish.get(&using_unassigned_value)
-                    {
-                        if using_unassigned_value {
-                            self.assigned_values.push(self.unassigned_value.unwrap());
-                        }
-                        result = Some(Ast::Complex {
-                            definition: definition.clone(),
-                            values: definition.assign_values(self.assigned_values),
-                        });
-                        break;
+    fn finish(mut self) -> ReadResult {
+        if self.made_progress {
+            let mut result = None;
+            tracing::trace!("finishing with {:?}", self.unassigned_value.is_some());
+            for using_unassigned_value in [self.unassigned_value.is_some(), false] {
+                if let Some(definition) = self.current_node.finish.get(&using_unassigned_value) {
+                    if using_unassigned_value {
+                        self.assigned_values
+                            .push(self.unassigned_value.take().unwrap());
                     }
+                    result = Some(Ast::Complex {
+                        definition: definition.clone(),
+                        values: definition.assign_values(self.assigned_values),
+                    });
+                    break;
                 }
-                let result = result.expect("could not finish");
-                tracing::info!("parsed {result}");
-                result
-            } else {
-                tracing::info!("finishing without progress");
-                self.unassigned_value
-                    .expect("did not make progress and do not have a value")
-            },
-            made_progress: self.made_progress,
+            }
+            let result = result.expect("could not finish");
+            tracing::trace!("parsed {result}");
+            ReadResult {
+                result: Some(result),
+                unassigned_value: self.unassigned_value,
+            }
+        } else {
+            tracing::trace!("finishing without progress");
+            ReadResult {
+                result: None,
+                unassigned_value: self.unassigned_value,
+            }
         }
     }
     fn progress(&mut self) -> ReadOneProgress {
@@ -267,7 +267,7 @@ impl ReadOne<'_> {
                     .until
                     .map_or(true, |until| until.should_resume(next_node.binding_power))
                 {
-                    tracing::info!("continued with {edge:?}");
+                    tracing::trace!("continued with {edge:?}");
                     self.parser.tokens.pop_front().unwrap();
                     self.current_node = next_node;
                     self.made_progress = true;
@@ -283,10 +283,43 @@ impl ReadOne<'_> {
                     let def = Arc::new(def);
                     Ast::SyntaxDefinition { def, data: span }
                 } else if self.syntax.keywords.contains(raw_token) {
-                    return ReadOneProgress::Ready;
+                    if !self.made_progress {
+                        return ReadOneProgress::Ready;
+                    }
+                    let inner = self.parser.read_until(
+                        self.syntax,
+                        self.unassigned_value.take(),
+                        // TODO extract into a method?
+                        if !self.current_node.finish.is_empty()
+                            || self
+                                .current_node
+                                .next
+                                .keys()
+                                .any(|edge| self.syntax.root_node.next.contains_key(edge))
+                        {
+                            self.current_node.binding_power
+                        } else {
+                            None
+                        },
+                    );
+                    match inner.result {
+                        Some(value) => {
+                            if inner.unassigned_value.is_some() {
+                                todo!();
+                            }
+                            value
+                        }
+                        None => {
+                            if self.unassigned_value.is_some() {
+                                todo!()
+                            }
+                            self.unassigned_value = inner.unassigned_value;
+                            return ReadOneProgress::Ready;
+                        }
+                    }
                 } else {
                     let token = self.parser.tokens.pop_front().unwrap();
-                    tracing::info!("simple {:?}", token.raw());
+                    tracing::trace!("simple {:?}", token.raw());
                     Ast::Simple {
                         token: token.token,
                         data: token.span,
@@ -303,32 +336,39 @@ impl ReadOne<'_> {
                     }
                     _ => self.syntax.clone(),
                 };
-                self.unassigned_value = Some(
-                    self.parser.read_until(
-                        &updated_syntax,
-                        Some(value),
-                        if !self.current_node.finish.is_empty()
-                            || self
-                                .current_node
-                                .next
-                                .keys()
-                                .any(|edge| updated_syntax.root_node.next.contains_key(edge))
-                        {
-                            self.current_node.binding_power
-                        } else {
-                            None
-                        },
-                    ),
+                let inner = self.parser.read_until(
+                    &updated_syntax,
+                    Some(value),
+                    if !self.current_node.finish.is_empty()
+                        || self
+                            .current_node
+                            .next
+                            .keys()
+                            .any(|edge| updated_syntax.root_node.next.contains_key(edge))
+                    {
+                        self.current_node.binding_power
+                    } else {
+                        None
+                    },
                 );
+                self.unassigned_value = match inner.result {
+                    Some(inner_result) => {
+                        if inner.unassigned_value.is_some() {
+                            todo!()
+                        }
+                        Some(inner_result)
+                    }
+                    None => inner.unassigned_value,
+                };
             }
         }
         ReadOneProgress::NotReady
     }
 }
 
-struct ReadOneResult {
-    ast: Ast,
-    made_progress: bool,
+struct ReadResult {
+    result: Option<Ast>,
+    unassigned_value: Option<Ast>,
 }
 
 impl Parser {
@@ -339,8 +379,8 @@ impl Parser {
         syntax: &Syntax,
         unassigned_value: Option<Ast>,
         until: Option<BindingPower>,
-    ) -> ReadOneResult {
-        tracing::info!(
+    ) -> ReadResult {
+        tracing::trace!(
             "start with unassigned_value={:?} until={until:?}",
             unassigned_value.is_some(),
         );
@@ -359,7 +399,9 @@ impl Parser {
             }
         }
     }
+}
 
+impl Parser {
     /// Read an ast node from the stream of tokens, potentially starting with existing node,
     /// only using binding power stronger than given
     ///
@@ -371,13 +413,27 @@ impl Parser {
         syntax: &Syntax,
         mut unassigned_value: Option<Ast>,
         until: Option<BindingPower>,
-    ) -> Ast {
+    ) -> ReadResult {
         loop {
             let one = self.read_one(syntax, unassigned_value, until);
-            if !one.made_progress {
-                return one.ast;
+            if one.result.is_none() {
+                return one;
             }
-            unassigned_value = Some(one.ast);
+            if one.unassigned_value.is_some() {
+                todo!();
+            }
+            unassigned_value = one.result;
+        }
+    }
+
+    fn read(&mut self, syntax: &Syntax) -> Ast {
+        let result = self.read_until(syntax, None, None);
+        match result.result {
+            Some(result_value) => {
+                assert!(result.unassigned_value.is_none(), "todo");
+                result_value
+            }
+            None => result.unassigned_value.expect("hmm"),
         }
     }
 }

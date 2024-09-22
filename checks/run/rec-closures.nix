@@ -1,7 +1,7 @@
-{ ... }:
+{ self, ... }:
 
 {
-  source = ../examples/rec-closures.ks;
+  source = self.outPath + "/examples/rec-closures.ks";
   expected_output = builtins.toFile "expected_output" ''
     going in
     5 :: int32

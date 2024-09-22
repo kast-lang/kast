@@ -1,7 +1,7 @@
-{ ... }:
+{ self, ... }:
 
 {
-  import = ../examples/fibonacci.ks;
+  import = self.outPath + "/examples/fibonacci.ks";
   source = builtins.toFile "test.ks" ''
     dbg (fib 10)
   '';

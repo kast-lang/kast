@@ -1,5 +1,8 @@
-test TEST:
-    just run examples/{{TEST}}.ks
+default:
+    just --list
+
+test:
+    nix flake check
 
 repl:
     just run --repl

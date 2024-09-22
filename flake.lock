@@ -1,6 +1,21 @@
 {
   "nodes": {
-    "nix-filter": {
+    "crane-flake": {
+      "locked": {
+        "lastModified": 1725409566,
+        "narHash": "sha256-PrtLmqhM6UtJP7v7IGyzjBFhbG4eOAHT6LPYOFmYfbk=",
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "7e4586bad4e3f8f97a9271def747cf58c4b68f3c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ipetkov",
+        "repo": "crane",
+        "type": "github"
+      }
+    },
+    "nix-filter-flake": {
       "locked": {
         "lastModified": 1710156097,
         "narHash": "sha256-1Wvk8UP7PXdf8bCCaEoMnOT1qe5/Duqgj+rL8sRQsSM=",
@@ -33,7 +48,8 @@
     },
     "root": {
       "inputs": {
-        "nix-filter": "nix-filter",
+        "crane-flake": "crane-flake",
+        "nix-filter-flake": "nix-filter-flake",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }

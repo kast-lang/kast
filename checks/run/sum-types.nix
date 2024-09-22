@@ -1,7 +1,7 @@
-{ ... }:
+{ self, ... }:
 
 {
-  source = ../examples/sum-types.ks;
+  source = self.outPath + "/examples/sum-types.ks";
   expected_output = builtins.toFile "expected_output" ''
     hello
     left

@@ -1,6 +1,6 @@
-{ ... }:
+{ self, ... }:
 {
-  source = ../examples/exceptions.ks;
+  source = self.outPath + "/examples/exceptions.ks";
   expected_output = builtins.toFile "expected_output" ''
     1 :: int32
     thrown

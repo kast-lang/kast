@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.5.18", features = ["derive"] }
 eyre = "0.6.12"
 noisy_float = "0.2.0"
 rustyline = "14.0.0"

@@ -1,38 +1,75 @@
+use std::{
+    io::{IsTerminal, Read},
+    path::{Path, PathBuf},
+};
+
 #[macro_use]
 mod error;
 mod ast;
 mod lexer;
 mod syntax;
 
+mod cli;
+
+fn std_path() -> PathBuf {
+    match std::env::var_os("KAST_STD") {
+        Some(path) => path.into(),
+        None => match option_env!("CARGO_MANIFEST_DIR") {
+            Some(path) => Path::new(path).join("std"),
+            None => panic!("kast standard library not found"),
+        },
+    }
+}
+
 fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt::init();
-    tracing::info!("Kast > Rust > Haskell");
-    let mut rustyline = rustyline::DefaultEditor::with_config(
-        rustyline::Config::builder().auto_add_history(true).build(),
-    )?;
+    let cli_args = cli::parse();
+    match cli_args.command {
+        cli::Command::ParseAst => {
+            let mut rustyline = rustyline::DefaultEditor::with_config(
+                rustyline::Config::builder().auto_add_history(true).build(),
+            )?;
 
-    let syntax = ast::read_syntax(lexer::SourceFile {
-        contents: std::fs::read_to_string("std/syntax.ks")
-            .unwrap()
-            .chars()
-            .collect(),
-        filename: "std/syntax.ks".into(),
-    });
-    tracing::info!("{syntax:#?}");
+            let syntax = ast::read_syntax(lexer::SourceFile {
+                contents: std::fs::read_to_string(std_path().join("syntax.ks"))
+                    .unwrap()
+                    .chars()
+                    .collect(),
+                filename: "std/syntax.ks".into(),
+            });
+            tracing::trace!("{syntax:#?}");
 
-    loop {
-        match rustyline.readline("> ") {
-            Ok(line) => {
+            let is_tty = std::io::stdin().is_terminal();
+            tracing::debug!("is tty: {is_tty:?}");
+
+            loop {
+                let contents = match is_tty {
+                    true => match rustyline.readline("> ") {
+                        Ok(line) => line,
+                        Err(rustyline::error::ReadlineError::Eof) => break,
+                        Err(e) => return Err(e.into()),
+                    },
+                    false => {
+                        let mut contents = String::new();
+                        std::io::stdin()
+                            .lock()
+                            .read_to_string(&mut contents)
+                            .unwrap();
+                        contents
+                    }
+                };
                 let source = lexer::SourceFile {
-                    contents: line.chars().collect(),
+                    contents: contents.chars().collect(),
                     filename: "<stdin>".into(),
                 };
                 let ast = ast::parse(&syntax, source).unwrap();
-                tracing::info!("{ast:#}");
+                println!("{ast:#}");
+                if !is_tty {
+                    break;
+                }
             }
-            Err(rustyline::error::ReadlineError::Eof) => break,
-            Err(e) => return Err(e.into()),
         }
     }
+
     Ok(())
 }

@@ -5,52 +5,53 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    crane-flake.url = "github:ipetkov/crane";
 
     # Precisely filter files copied to the nix store
-    nix-filter.url = "github:numtide/nix-filter";
+    nix-filter-flake.url = "github:numtide/nix-filter";
   };
 
-  outputs = { self, nixpkgs, nix-filter, rust-overlay }:
+  outputs = { self, nixpkgs, nix-filter-flake, rust-overlay, crane-flake }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; overlays = [ (import rust-overlay) ]; };
+      crane = crane-flake.mkLib pkgs;
+      nix-filter = nix-filter-flake.lib;
       rust-toolchain = pkgs.rust-bin.stable.latest.default.override {
         extensions = [ "rust-src" ];
         targets = [ "wasm32-unknown-unknown" ];
       };
-    in
-    {
-      packages.${system} = {
-        default = with pkgs; ocamlPackages.buildDunePackage {
-          pname = "kast";
-          version = "0.1.0";
-          duneVersion = "3";
-          src = nix-filter.lib {
-            root = ./.;
-            include = [
-              ".ocamlformat"
-              "dune-project"
-              (nix-filter.lib.inDirectory "bin")
-              (nix-filter.lib.inDirectory "lib")
-              (nix-filter.lib.inDirectory "test")
-            ];
+      kast =
+        let
+          commonArgs = {
+            src = nix-filter {
+              root = ./.;
+              include = [
+                "src"
+                "Cargo.toml"
+                "Cargo.lock"
+              ];
+            };
           };
+          cargoArtifacts = crane.buildDepsOnly commonArgs;
+        in
+        crane.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
           buildInputs = [
-            # Ocaml package dependencies needed to build go here.
-            makeWrapper
+            pkgs.makeWrapper
           ];
-          strictDeps = true;
-          preBuild = ''
-            dune build kast.opam
-          '';
           postFixup = ''
             wrapProgram $out/bin/kast --set KAST_STD ${./std}
           '';
-        };
+        });
+    in
+    {
+      packages.${system} = {
+        default = kast;
       };
       devShells.${system} = {
         default = pkgs.mkShell {
-          packages = with pkgs; with ocamlPackages; [
+          packages = with pkgs; [
             rust-toolchain
             rust-analyzer
             just
@@ -71,43 +72,6 @@
         };
       };
       formatter.${system} = pkgs.nixpkgs-fmt;
-      checks.${system} = builtins.mapAttrs
-        (name: _entry:
-          let
-            test = import ./tests/${name} { inherit pkgs; };
-            expected_exit_code = builtins.toString (test.expected_exit_code or 0);
-          in
-          pkgs.stdenv.mkDerivation {
-            name = "kast-check-${name}";
-            nativeBuildInputs = [ self.packages.${system}.default pkgs.nodejs ];
-            dontUnpack = true;
-            # doCheck = true;
-            buildPhase = ''
-              set +e
-              kast ${test.import or ""} ${test.source} < ${test.input or "/dev/null"} > $out
-              EXIT_CODE=''$?
-              set -e
-              if [ "''$EXIT_CODE" -ne ${expected_exit_code} ]; then
-                echo "Expected exit code ${expected_exit_code}, got ''$EXIT_CODE"
-                exit 1
-              fi
-              diff $out ${test.expected_output}
-
-              if ${if test.test-js or false then "true" else "false"}; then
-                kast --to-js ${test.source} > compiled.js
-                set +e
-                node compiled.js < ${test.input or "/dev/null"} > $out
-                EXIT_CODE=''$?
-                set -e
-                if [ "''$EXIT_CODE" -ne ${expected_exit_code} ]; then
-                  echo "Expected exit code ${expected_exit_code}, got ''$EXIT_CODE"
-                  exit 1
-                fi
-                diff $out ${test.expected_output}
-              fi
-            '';
-          }
-        )
-        (builtins.readDir ./tests);
+      checks.${system} = import ./checks { inherit system pkgs kast self; };
     };
 }

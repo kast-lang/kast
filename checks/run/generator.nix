@@ -1,7 +1,7 @@
-{ ... }:
+{ self, ... }:
 
 {
-  source = ../examples/generator.ks;
+  source = self.outPath + "/examples/generator.ks";
   expected_output = builtins.toFile "expected_output" ''
     yielding 1
     1
