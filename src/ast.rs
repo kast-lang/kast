@@ -216,17 +216,34 @@ struct ReadOne<'a> {
     assigned_values: Vec<Ast>,
 }
 
+#[must_use]
 enum ReadOneProgress {
-    Ready,
+    Ready(Option<Ast>),
     NotReady,
 }
 
+fn maybe_single<T>(values: impl IntoIterator<Item = T>) -> Option<T> {
+    let mut iter = values.into_iter();
+    let result = iter.next();
+    if iter.next().is_some() {
+        panic!("expected at most one thing");
+    }
+    result
+}
+
 impl ReadOne<'_> {
-    fn finish(mut self) -> ReadResult {
-        if self.made_progress {
+    fn finish(mut self, mut extra_value: Option<Ast>) -> ReadResult {
+        if self.unassigned_value.is_none() {
+            self.unassigned_value = extra_value.take();
+        }
+        let result = if self.made_progress {
             let mut result = None;
-            tracing::trace!("finishing with {:?}", self.unassigned_value.is_some());
-            for using_unassigned_value in [self.unassigned_value.is_some(), false] {
+            tracing::trace!(
+                "finishing with {:?} unassigned values",
+                self.unassigned_value.iter().count(),
+            );
+            for using_unassigned_value in 0..=(self.unassigned_value.iter().count()) {
+                let using_unassigned_value = using_unassigned_value != 0;
                 if let Some(definition) = self.current_node.finish.get(&using_unassigned_value) {
                     if using_unassigned_value {
                         self.assigned_values
@@ -241,39 +258,100 @@ impl ReadOne<'_> {
             }
             let result = result.expect("could not finish");
             tracing::trace!("parsed {result}");
-            ReadResult {
-                result: Some(result),
-                unassigned_value: self.unassigned_value,
-            }
+            Some(result)
         } else {
             tracing::trace!("finishing without progress");
-            ReadResult {
-                result: None,
-                unassigned_value: self.unassigned_value,
+            None
+        };
+        ReadResult {
+            result,
+            extra_value: match (self.unassigned_value, extra_value) {
+                (None, None) => None,
+                (Some(value), None) | (None, Some(value)) => Some(value),
+                (Some(_), Some(_)) => unreachable!(),
+            },
+        }
+    }
+    fn progress_with_value(&mut self, mut value: Ast) -> ReadOneProgress {
+        while self.unassigned_value.is_some() {
+            match self
+                .syntax
+                .join
+                .as_ref()
+                .filter(|join| should_resume(self.until, join.binding_power))
+            {
+                Some(join_state) => {
+                    tracing::trace!("joining");
+                    assert!(
+                        join_state.binding_power.as_ref().unwrap().associativity
+                            == Associativity::Left
+                    );
+                    let result = ReadOne {
+                        parser: self.parser,
+                        syntax: self.syntax,
+                        made_progress: true,
+                        unassigned_value: Some(value),
+                        until: join_state.binding_power,
+                        current_node: join_state,
+                        assigned_values: vec![self.unassigned_value.take().unwrap()],
+                    }
+                    .read_one();
+                    tracing::trace!("join is done : {result:?}");
+                    let result_value = result.result.expect("join didnt finish?");
+                    if let Some(extra_value) = result.extra_value {
+                        self.unassigned_value = Some(result_value);
+                        value = extra_value;
+                        continue;
+                    } else {
+                        value = result_value;
+                    }
+                }
+                None => return ReadOneProgress::Ready(Some(value)),
             }
         }
+        let updated_syntax = match &value {
+            Ast::SyntaxDefinition { def, .. } => {
+                let mut syntax = self.syntax.clone();
+                syntax.insert(def.clone()).unwrap();
+                syntax
+            }
+            _ => self.syntax.clone(),
+        };
+        let inner = self.parser.read_until(
+            &updated_syntax,
+            Some(value),
+            self.min_binding_power_for_inner_values(),
+        );
+        self.unassigned_value = match inner.result {
+            Some(inner_result) => {
+                if let Some(extra) = inner.extra_value {
+                    todo!()
+                }
+                Some(inner_result)
+            }
+            None => inner.extra_value,
+        };
+        ReadOneProgress::NotReady
     }
     fn progress(&mut self) -> ReadOneProgress {
         let Some(token) = self.parser.tokens.front() else {
-            return ReadOneProgress::Ready;
+            return ReadOneProgress::Ready(None);
         };
         let edge = Edge {
             value_before_keyword: self.unassigned_value.is_some(),
             keyword: token.raw().to_owned(),
         };
+        tracing::trace!("looking up edge {edge:?}");
         match self.current_node.next.get(&edge) {
             Some(next_node) => {
-                if self
-                    .until
-                    .map_or(true, |until| until.should_resume(next_node.binding_power))
-                {
+                if should_resume(self.until, next_node.binding_power) {
                     tracing::trace!("continued with {edge:?}");
                     self.parser.tokens.pop_front().unwrap();
                     self.current_node = next_node;
                     self.made_progress = true;
                     self.assigned_values.extend(self.unassigned_value.take());
                 } else {
-                    return ReadOneProgress::Ready;
+                    return ReadOneProgress::Ready(None);
                 }
             }
             None => {
@@ -284,37 +362,22 @@ impl ReadOne<'_> {
                     Ast::SyntaxDefinition { def, data: span }
                 } else if self.syntax.keywords.contains(raw_token) {
                     if !self.made_progress {
-                        return ReadOneProgress::Ready;
+                        return ReadOneProgress::Ready(None);
                     }
                     let inner = self.parser.read_until(
                         self.syntax,
                         self.unassigned_value.take(),
-                        // TODO extract into a method?
-                        if !self.current_node.finish.is_empty()
-                            || self
-                                .current_node
-                                .next
-                                .keys()
-                                .any(|edge| self.syntax.root_node.next.contains_key(edge))
-                        {
-                            self.current_node.binding_power
-                        } else {
-                            None
-                        },
+                        self.min_binding_power_for_inner_values(),
                     );
                     match inner.result {
                         Some(value) => {
-                            if inner.unassigned_value.is_some() {
-                                todo!();
+                            if inner.extra_value.is_some() {
+                                todo!()
                             }
                             value
                         }
                         None => {
-                            if self.unassigned_value.is_some() {
-                                todo!()
-                            }
-                            self.unassigned_value = inner.unassigned_value;
-                            return ReadOneProgress::Ready;
+                            return ReadOneProgress::Ready(inner.extra_value);
                         }
                     }
                 } else {
@@ -325,50 +388,47 @@ impl ReadOne<'_> {
                         data: token.span,
                     }
                 };
-                if self.unassigned_value.is_some() {
-                    todo!();
+                match self.progress_with_value(value) {
+                    ReadOneProgress::Ready(result) => return ReadOneProgress::Ready(result),
+                    ReadOneProgress::NotReady => {}
                 }
-                let updated_syntax = match &value {
-                    Ast::SyntaxDefinition { def, .. } => {
-                        let mut syntax = self.syntax.clone();
-                        syntax.insert(def.clone()).unwrap();
-                        syntax
-                    }
-                    _ => self.syntax.clone(),
-                };
-                let inner = self.parser.read_until(
-                    &updated_syntax,
-                    Some(value),
-                    if !self.current_node.finish.is_empty()
-                        || self
-                            .current_node
-                            .next
-                            .keys()
-                            .any(|edge| updated_syntax.root_node.next.contains_key(edge))
-                    {
-                        self.current_node.binding_power
-                    } else {
-                        None
-                    },
-                );
-                self.unassigned_value = match inner.result {
-                    Some(inner_result) => {
-                        if inner.unassigned_value.is_some() {
-                            todo!()
-                        }
-                        Some(inner_result)
-                    }
-                    None => inner.unassigned_value,
-                };
             }
         }
+        tracing::trace!("not ready");
         ReadOneProgress::NotReady
+    }
+
+    fn read_one(mut self) -> ReadResult {
+        loop {
+            if let ReadOneProgress::Ready(extra_value) = self.progress() {
+                return self.finish(extra_value);
+            }
+        }
+    }
+
+    fn min_binding_power_for_inner_values(&self) -> Option<BindingPower> {
+        if !self.made_progress {
+            return self.until;
+        }
+
+        if !self.current_node.finish.is_empty()
+            || self
+                .current_node
+                .next
+                .keys()
+                .any(|edge| self.syntax.root_node.next.contains_key(edge))
+        {
+            self.current_node.binding_power
+        } else {
+            None
+        }
     }
 }
 
+#[derive(Debug)]
 struct ReadResult {
     result: Option<Ast>,
-    unassigned_value: Option<Ast>,
+    extra_value: Option<Ast>,
 }
 
 impl Parser {
@@ -384,7 +444,7 @@ impl Parser {
             "start with unassigned_value={:?} until={until:?}",
             unassigned_value.is_some(),
         );
-        let mut parser = ReadOne {
+        ReadOne {
             parser: self,
             syntax,
             made_progress: false,
@@ -392,12 +452,8 @@ impl Parser {
             until,
             current_node: &syntax.root_node,
             assigned_values: Vec::new(),
-        };
-        loop {
-            if let ReadOneProgress::Ready = parser.progress() {
-                return parser.finish();
-            }
         }
+        .read_one()
     }
 }
 
@@ -419,7 +475,7 @@ impl Parser {
             if one.result.is_none() {
                 return one;
             }
-            if one.unassigned_value.is_some() {
+            if one.extra_value.is_some() {
                 todo!();
             }
             unassigned_value = one.result;
@@ -430,10 +486,10 @@ impl Parser {
         let result = self.read_until(syntax, None, None);
         match result.result {
             Some(result_value) => {
-                assert!(result.unassigned_value.is_none(), "todo");
+                assert!(result.extra_value.is_none(), "todo");
                 result_value
             }
-            None => result.unassigned_value.expect("hmm"),
+            None => result.extra_value.expect("hmm"),
         }
     }
 }
@@ -467,23 +523,24 @@ impl SyntaxDefinition {
     }
 }
 
-impl BindingPower {
-    fn should_resume(&self, with: Option<BindingPower>) -> bool {
-        match with {
-            None => false,
-            Some(with) => match self.priority.cmp(&with.priority) {
-                std::cmp::Ordering::Equal => {
-                    if self.associativity != with.associativity {
-                        panic!("same priority different associativity");
-                    }
-                    match self.associativity {
-                        Associativity::Left => false,
-                        Associativity::Right => true,
-                    }
+fn should_resume(until: Option<BindingPower>, with: Option<BindingPower>) -> bool {
+    let Some(until) = until else {
+        return true;
+    };
+    match with {
+        None => false,
+        Some(with) => match until.priority.cmp(&with.priority) {
+            std::cmp::Ordering::Equal => {
+                if until.associativity != with.associativity {
+                    panic!("same priority different associativity");
                 }
-                std::cmp::Ordering::Less => true,
-                std::cmp::Ordering::Greater => false,
-            },
-        }
+                match until.associativity {
+                    Associativity::Left => false,
+                    Associativity::Right => true,
+                }
+            }
+            std::cmp::Ordering::Less => true,
+            std::cmp::Ordering::Greater => false,
+        },
     }
 }

@@ -92,8 +92,7 @@ syntax @"op binary %" <- 40 = lhs "%" rhs;
 
 syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
-# syntax @"builtin macro call" <- 100 = f args;
-syntax @"builtin macro call" <- 100 = f "(" args ")";
+syntax @"builtin macro call" <- 100 = f args;
 
 syntax @"builtin macro typeof" <- 120 = "typeof" expr;
 syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;

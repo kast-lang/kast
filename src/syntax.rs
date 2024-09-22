@@ -70,6 +70,7 @@ impl ParseNode {
 #[derive(Clone, Debug)]
 pub struct Syntax {
     pub keywords: HashSet<String>,
+    pub join: Option<ParseNode>,
     pub root_node: ParseNode,
 }
 
@@ -77,6 +78,7 @@ impl Syntax {
     pub fn empty() -> Self {
         Self {
             keywords: HashSet::new(),
+            join: None,
             root_node: ParseNode::new(None),
         }
     }
@@ -86,6 +88,22 @@ impl Syntax {
             priority: definition.priority,
             associativity: definition.associativity,
         };
+        if definition.parts.len() == 2
+            && !definition
+                .parts
+                .iter()
+                .any(|part| matches!(part, SyntaxDefinitionPart::Keyword(..)))
+        {
+            if self.join.is_some() {
+                return error!("Multiple join syntaxes");
+            }
+            self.join = Some(ParseNode {
+                finish: HashMap::from_iter([(true, definition)]),
+                next: HashMap::new(),
+                binding_power: Some(binding_power),
+            });
+            return Ok(());
+        }
         let mut current_node = &mut self.root_node;
         let mut number_of_values_before_keyword = 0;
         let value_before_keyword =
