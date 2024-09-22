@@ -1,5 +1,7 @@
 {% extends "juice/templates/index.html" %}
 
+{% block title %} Kast {% endblock title %}
+
 {% block sidebar %}
 {% endblock sidebar %}
 
@@ -27,9 +29,9 @@
     <script defer src="{{ get_url(path="showcase.js") }}"></script>
 
     <div id="tab-bar">
-        <a class="nav-item subtitle-text" selected onclick="raise(0)" style="">Hello World</a>
-        <a class="nav-item subtitle-text" onclick="raise(1)" style="">Fibonacci</a>
-        <a class="nav-item subtitle-text" onclick="raise(2)" style="">Exceptions</a>
+        <a class="nav-item subtitle-text" selected onclick="raise(0)" >Hello World</a>
+        <a class="nav-item subtitle-text" onclick="raise(1)" >Fibonacci</a>
+        <a class="nav-item subtitle-text" onclick="raise(2)" >Exceptions</a>
     </div>
 
     <div id="tabs">
