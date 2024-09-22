@@ -222,15 +222,6 @@ enum ReadOneProgress {
     NotReady,
 }
 
-fn maybe_single<T>(values: impl IntoIterator<Item = T>) -> Option<T> {
-    let mut iter = values.into_iter();
-    let result = iter.next();
-    if iter.next().is_some() {
-        panic!("expected at most one thing");
-    }
-    result
-}
-
 impl ReadOne<'_> {
     fn finish(mut self, mut extra_value: Option<Ast>) -> ReadResult {
         if self.unassigned_value.is_none() {

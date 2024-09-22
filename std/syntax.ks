@@ -92,6 +92,11 @@ syntax @"op binary %" <- 40 = lhs "%" rhs;
 
 syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
+syntax @"op postfix ++" <- 100 = x "++";
+syntax @"op prefix ++" <- 100 = "++" x;
+syntax @"op postfix --" <- 100 = x "--";
+syntax @"op prefix --" <- 100 = "--" x;
+
 syntax @"builtin macro call" <- 100 = f args;
 
 syntax @"builtin macro typeof" <- 120 = "typeof" expr;
@@ -124,4 +129,5 @@ syntax @"builtin macro placeholder" <- 100000 = "_";
 #     $name: ($name :: $type)
 # );
 
+# const @"postfix ++" = macro (~x :: ast) => `(x += 1);
 
