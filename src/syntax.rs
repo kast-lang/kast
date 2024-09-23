@@ -48,38 +48,50 @@ pub struct Edge {
 }
 
 #[derive(Clone, Debug)]
+pub enum NodeFinish {
+    Complex(Arc<SyntaxDefinition>),
+    SimpleValue,
+}
+
+#[derive(Clone, Debug)]
 pub struct ParseNode {
-    pub finish: HashMap<bool, Arc<SyntaxDefinition>>,
+    pub finish: HashMap<bool, NodeFinish>,
     pub next: HashMap<Edge, ParseNode>,
     pub binding_power: Option<BindingPower>,
+    pub is_open_paren: bool,
 }
 
 impl ParseNode {
-    fn new(binding_power: Option<BindingPower>) -> Self {
+    fn new(is_open_paren: bool, binding_power: Option<BindingPower>) -> Self {
         Self {
             finish: HashMap::new(),
             next: HashMap::new(),
             binding_power,
+            is_open_paren,
         }
     }
-    pub fn with_power(binding_power: BindingPower) -> Self {
-        Self::new(Some(binding_power))
+    pub fn with_power(is_open_paren: bool, binding_power: BindingPower) -> Self {
+        Self::new(is_open_paren, Some(binding_power))
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Syntax {
     pub keywords: HashSet<String>,
-    pub join: Option<ParseNode>,
-    pub root_node: ParseNode,
+    pub root: ParseNode,
+    pub maybe_join: ParseNode,
 }
 
 impl Syntax {
     pub fn empty() -> Self {
         Self {
             keywords: HashSet::new(),
-            join: None,
-            root_node: ParseNode::new(None),
+            maybe_join: {
+                let mut node = ParseNode::new(false, None);
+                node.finish.insert(false, NodeFinish::SimpleValue);
+                node
+            },
+            root: ParseNode::new(false, None),
         }
     }
 
@@ -94,17 +106,16 @@ impl Syntax {
                 .iter()
                 .any(|part| matches!(part, SyntaxDefinitionPart::Keyword(..)))
         {
-            if self.join.is_some() {
+            if self.maybe_join.binding_power.is_some() {
                 return error!("Multiple join syntaxes");
             }
-            self.join = Some(ParseNode {
-                finish: HashMap::from_iter([(true, definition)]),
-                next: HashMap::new(),
-                binding_power: Some(binding_power),
-            });
+            self.maybe_join.binding_power = Some(binding_power);
+            self.maybe_join
+                .finish
+                .insert(true, NodeFinish::Complex(definition));
             return Ok(());
         }
-        let mut current_node = &mut self.root_node;
+        let mut current_node = &mut self.root;
         let mut number_of_values_before_keyword = 0;
         let value_before_keyword =
             |number_of_values_before_keyword: usize| -> Result<bool, ErrorMessage> {
@@ -128,20 +139,19 @@ impl Syntax {
                         )?,
                         keyword: keyword.clone(),
                     };
-                    let next_node = current_node
-                        .next
-                        .entry(edge)
-                        .or_insert_with(|| ParseNode::with_power(binding_power));
+                    let next_node = current_node.next.entry(edge).or_insert_with(|| {
+                        ParseNode::with_power(
+                            keyword.chars().any(|c| "([{".contains(c)),
+                            binding_power,
+                        )
+                    });
                     if next_node.binding_power != Some(binding_power) {
                         return error!("different binding power");
                     }
                     number_of_values_before_keyword = 0;
                     current_node = next_node;
                 }
-                SyntaxDefinitionPart::UnnamedBinding => {
-                    number_of_values_before_keyword += 1;
-                }
-                SyntaxDefinitionPart::NamedBinding(_) => {
+                SyntaxDefinitionPart::UnnamedBinding | SyntaxDefinitionPart::NamedBinding(_) => {
                     number_of_values_before_keyword += 1;
                 }
             }
@@ -151,13 +161,16 @@ impl Syntax {
             .entry(value_before_keyword(number_of_values_before_keyword)?)
         {
             std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(definition);
+                entry.insert(NodeFinish::Complex(definition));
             }
             std::collections::hash_map::Entry::Occupied(entry) => {
+                let existing_def = match entry.get() {
+                    NodeFinish::Complex(def) => def,
+                    NodeFinish::SimpleValue => unreachable!(),
+                };
                 return error!(
                     "Conficting syntax definitions: {:?} and {:?}",
-                    entry.get().name,
-                    definition.name,
+                    existing_def.name, definition.name,
                 );
             }
         }

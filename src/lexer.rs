@@ -21,6 +21,7 @@ pub enum StringType {
     DoubleQuoted,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Token {
     Ident {
@@ -314,12 +315,12 @@ impl Lexer {
             Some(c) => c,
             None => return Ok(None),
         };
-        if !peeked.is_digit(10) {
+        if !peeked.is_ascii_digit() {
             return Ok(None);
         }
         let mut seen_dot = false;
         let raw = self.read_while(|c| {
-            c.is_digit(10) || c == '.' && !std::mem::replace(&mut seen_dot, true) || c == '_'
+            c.is_ascii_digit() || c == '.' && !std::mem::replace(&mut seen_dot, true) || c == '_'
         })?;
         Ok(Some(Token::Number { raw }))
     }
