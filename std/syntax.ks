@@ -47,12 +47,13 @@ syntax @"builtin macro function_def" -> 7.5 = args "->" returns "=>" body;
 syntax @"builtin macro template_def" <- 9 = "forall" "[" args "]" "{" body "}";
 syntax @"builtin macro template_def" <- 9 = "forall" "[" args "]" "where" where "{" body "}";
 
+syntax @"builtin macro if" -> 12.9 = cond "then" then "else" else;
 syntax @"builtin macro match" <- 13 = "match" value "(" branches ")";
 syntax @"builtin macro match" <- 13 = "match" value "{" branches "}";
 syntax @"builtin macro if" <- 13 = "if" cond "then" then;
 syntax @"builtin macro if" <- 13 = "if" cond "then" then "else" else;
-syntax @"builtin macro if" -> 13 = cond "?" then ":" else;
-syntax @"builtin macro if" -> 13 = cond "then" then "else" else;
+
+syntax @"builtin macro if" -> 13.1 = cond "?" then ":" else;
 
 syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" contexts "{" body "}";
 syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" "->" result_type "{" body "}";

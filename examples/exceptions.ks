@@ -8,7 +8,7 @@ let test = fn (x :: int32) {
 			else
 				throw[int32] x
 		);
-	let value :: string = result catch e (dbg e; "thrown");
+	let value :: string = result catch e { dbg e; "thrown" };
 	print <| value;
 };
 

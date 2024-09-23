@@ -62,8 +62,9 @@ fn main() -> eyre::Result<()> {
                     contents: contents.chars().collect(),
                     filename: "<stdin>".into(),
                 };
-                let ast = ast::parse(&syntax, source).unwrap();
-                println!("{ast:#}");
+                if let Some(ast) = ast::parse(&syntax, source).unwrap() {
+                    println!("{ast:#}");
+                }
                 if !is_tty {
                     break;
                 }

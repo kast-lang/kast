@@ -56,7 +56,7 @@ pub struct Tuple<T> {
     pub named: BTreeMap<String, T>,
 }
 
-pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Ast, Error> {
+pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> {
     let start = Position {
         index: 0,
         line: 1,
@@ -245,12 +245,11 @@ enum ReadOneProgress {
 
 // Bеst viewers on https://www.twitch.tv/kuviman
 impl ReadOne<'_> {
-    fn finish(mut self) -> ReadResult {
+    fn finish(mut self) -> Option<Ast> {
         if self.should_try_join {
             assert!(self.assigned_values.is_empty());
-            return ReadResult::NoProgress {
-                unassigned_value: self.unassigned_value,
-            };
+            tracing::trace!("finishing without any work");
+            return self.unassigned_value;
         }
         let mut result = None;
         tracing::trace!(
@@ -286,7 +285,7 @@ impl ReadOne<'_> {
             let prev_unprocessed_value = self.parser.unprocessed.value.replace(value);
             assert!(prev_unprocessed_value.is_none());
         }
-        ReadResult::MadeProgress { result }
+        Some(result)
     }
     // is this helpful yet?
     fn progress(&mut self) -> ReadOneProgress {
@@ -348,27 +347,15 @@ impl ReadOne<'_> {
                 } else {
                     tracing::trace!("trying to read some more values");
                     let unprocessed_before = self.parser.unprocessed.amount();
-                    match self.parser.read_until(
+                    self.unassigned_value = self.parser.read_until(
                         self.syntax,
                         self.unassigned_value.take(),
                         self.min_binding_power_for_inner_values(),
-                    ) {
-                        ReadResult::MadeProgress { result } => {
-                            self.unassigned_value = Some(result);
-                            // let made_progress =
-                            //     self.parser.unprocessed.amount() == unprocessed_before;
-                            // tracing::trace!("actually made progress = {made_progress:?}");
-                            // if !made_progress {
-                            //     tracing::trace!("actually did no progress");
-                            //     return ReadOneProgress::Ready;
-                            // }
-                        }
-                        ReadResult::NoProgress { unassigned_value } => {
-                            // after writing this comment I did not look at chat for 10 minutes
-                            self.unassigned_value = unassigned_value;
-                            tracing::trace!("no progress could be made");
-                            return ReadOneProgress::Ready;
-                        }
+                    );
+                    let made_progress = self.parser.unprocessed.amount() != unprocessed_before;
+                    if !made_progress {
+                        tracing::trace!("no progress could be made");
+                        return ReadOneProgress::Ready;
                     }
                 }
             }
@@ -377,7 +364,7 @@ impl ReadOne<'_> {
         ReadOneProgress::NotReady
     }
 
-    fn read_one(mut self) -> ReadResult {
+    fn read_one(mut self) -> Option<Ast> {
         loop {
             // let before = self.parser.unprocessed.amount();
             if let ReadOneProgress::Ready = self.progress() {
@@ -400,12 +387,6 @@ impl ReadOne<'_> {
     }
 }
 
-#[derive(Debug)]
-enum ReadResult {
-    MadeProgress { result: Ast },
-    NoProgress { unassigned_value: Option<Ast> },
-}
-
 impl Parser {
     /// Read a single ast node, without trying to combine it with the rest of the tokens
     fn read_one(
@@ -413,7 +394,7 @@ impl Parser {
         syntax: &Syntax,
         unassigned_value: Option<Ast>,
         until: Option<BindingPower>,
-    ) -> ReadResult {
+    ) -> Option<Ast> {
         tracing::trace!(
             "start with unassigned_value={:?} until={until:?}",
             unassigned_value.is_some(),
@@ -422,19 +403,15 @@ impl Parser {
             match self.unprocessed.peek() {
                 None => {}
                 Some(TokenOrValue::Value(_)) => {
-                    return ReadResult::MadeProgress {
-                        result: self.unprocessed.pop_value(),
-                    }
+                    return Some(self.unprocessed.pop_value());
                 }
                 Some(TokenOrValue::Token(token)) => {
                     if token.raw() == "syntax" {
                         let (def, span) = read_syntax_def(self.unprocessed.tokens());
-                        return ReadResult::MadeProgress {
-                            result: Ast::SyntaxDefinition {
-                                def: Arc::new(def),
-                                data: span,
-                            },
-                        };
+                        return Some(Ast::SyntaxDefinition {
+                            def: Arc::new(def),
+                            data: span,
+                        });
                     }
                     match token.token {
                         Token::Punctuation { .. } => {}
@@ -443,12 +420,10 @@ impl Parser {
                             if !syntax.keywords.contains(token.raw()) {
                                 let token = self.unprocessed.pop_token();
                                 tracing::trace!("got simple {:?}", token.raw());
-                                return ReadResult::MadeProgress {
-                                    result: Ast::Simple {
-                                        token: token.token,
-                                        data: token.span,
-                                    },
-                                };
+                                return Some(Ast::Simple {
+                                    token: token.token,
+                                    data: token.span,
+                                });
                             }
                         }
                     }
@@ -481,48 +456,29 @@ impl Parser {
         syntax: &Syntax,
         mut unassigned_value: Option<Ast>,
         until: Option<BindingPower>,
-    ) -> ReadResult {
+    ) -> Option<Ast> {
         tracing::trace!("starting read until");
-        let mut made_progress = false;
         loop {
             tracing::trace!("continuing read one");
             let unprocessed_before = self.unprocessed.amount();
             let one = self.read_one(syntax, unassigned_value, until);
             tracing::trace!("read one = {one:?}");
-            match one {
-                ReadResult::MadeProgress { result } => {
-                    made_progress = true;
-                    let made_progress = self.unprocessed.amount() < unprocessed_before;
-                    if !made_progress {
-                        return ReadResult::MadeProgress { result };
-                    }
-                    unassigned_value = Some(result);
-                }
-                ReadResult::NoProgress { unassigned_value } => {
-                    let made_progress = self.unprocessed.amount() < unprocessed_before;
-                    return match made_progress {
-                        false => ReadResult::NoProgress { unassigned_value },
-                        true => ReadResult::MadeProgress {
-                            result: unassigned_value.unwrap(),
-                        },
-                    };
-                }
+            let made_progress = self.unprocessed.amount() < unprocessed_before;
+            if !made_progress {
+                tracing::trace!("no more progress, stop read until");
+                return one;
             }
+            unassigned_value = one;
         }
     }
 
-    fn read_all(&mut self, syntax: &Syntax) -> Ast {
+    fn read_all(&mut self, syntax: &Syntax) -> Option<Ast> {
         let result = self.read_until(syntax, None, None);
         assert!(self.unprocessed.value.is_none());
         if let Some(token) = self.unprocessed.tokens.front() {
             panic!("unexpected token {:?}", token.raw());
         }
-        match result {
-            ReadResult::MadeProgress { result } => result,
-            ReadResult::NoProgress { unassigned_value } => {
-                unassigned_value.expect("nothing to read?")
-            }
-        }
+        result
     }
 }
 
@@ -564,7 +520,7 @@ fn should_resume(until: Option<BindingPower>, with: Option<BindingPower>) -> boo
         Some(with) => match until.priority.cmp(&with.priority) {
             std::cmp::Ordering::Equal => {
                 if until.associativity != with.associativity {
-                    panic!("same priority different associativity");
+                    panic!("same priority different associativity: {until:?} & {with:?}");
                 }
                 match until.associativity {
                     Associativity::Left => false,
