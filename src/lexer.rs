@@ -1,8 +1,8 @@
 // We are finally making some progress
 
+use crate::source::*;
+use crate::{error::*, peek2};
 use std::{collections::HashMap, path::PathBuf};
-
-use crate::error::*;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -58,64 +58,27 @@ impl Token {
     }
 }
 
-pub struct SourceFile {
-    pub contents: Vec<char>,
-    pub filename: PathBuf,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Position {
-    pub index: usize,
-    pub line: usize,
-    pub column: usize,
-}
-
-impl std::fmt::Display for Position {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
-    }
-}
-
 struct Lexer {
-    source: SourceFile,
-    current_position: Position,
+    // source: SourceFile,
+    reader: peek2::Reader<char>,
     next_recording_id: u64,
     recordings: HashMap<u64, String>,
 }
 
 impl Lexer {
-    fn peek(&self) -> Option<char> {
-        self.source
-            .contents
-            .get(self.current_position.index)
-            .copied()
-    }
-    fn peek2(&self) -> Option<char> {
-        self.source
-            .contents
-            .get(self.current_position.index + 1)
-            .copied()
-    }
-    fn next_char(&mut self) -> Option<char> {
-        let c = self.peek();
-        if c.is_some() {
-            self.advance().unwrap();
-        }
-        c
-    }
     fn next_token(&mut self) -> Result<Option<SpannedToken>, Error> {
         match self.next_token_impl() {
             Ok(result) => Ok(result),
             Err(ErrorMessage(message)) => Err(Error {
                 message,
-                filename: self.source.filename.clone(),
-                position: self.current_position,
+                filename: self.reader.filename().to_owned(),
+                position: self.reader.position(),
             }),
         }
     }
     fn next_token_impl(&mut self) -> Result<Option<SpannedToken>> {
         self.skip_whitespace();
-        let start = self.current_position;
+        let start = self.reader.position();
         let token = [
             Self::read_comment,
             Self::read_string,
@@ -127,61 +90,42 @@ impl Lexer {
         .find_map(|f| f(self).transpose())
         .transpose()?;
         if token.is_none() {
-            if let Some(c) = self.peek() {
+            if let Some(c) = self.reader.peek() {
                 return error!("Unexpected char {c:?}");
             }
         }
-        let end = self.current_position;
+        let end = self.reader.position();
         Ok(token.map(|token| SpannedToken {
             token,
             span: Span {
                 start,
                 end,
-                filename: self.source.filename.clone(),
+                filename: self.reader.filename().to_owned(),
             },
         }))
     }
     fn skip_whitespace(&mut self) {
-        while self.peek().map_or(false, char::is_whitespace) {
-            self.advance().unwrap();
+        while self.reader.peek().map_or(false, |c| c.is_whitespace()) {
+            self.reader.next().unwrap();
         }
     }
-    fn advance(&mut self) -> Result<()> {
-        match self.peek() {
-            None => return error!("advanced after EOF"),
-            Some(c) => {
-                for recording in self.recordings.values_mut() {
-                    recording.push(c);
-                }
-                if c == '\n' {
-                    self.current_position.line += 1;
-                    self.current_position.column = 1;
-                } else {
-                    self.current_position.column += 1;
-                }
-            }
-        }
-        self.current_position.index += 1;
-        Ok(())
-    }
-
     fn skip_char(&mut self, expected: char) -> Result<()> {
-        match self.peek() {
+        match self.reader.peek() {
             None => error!("expected {expected:?}, got EOF"),
-            Some(actual) if actual == expected => {
-                self.advance()?;
+            Some(&actual) if actual == expected => {
+                self.reader.next().unwrap();
                 Ok(())
             }
-            Some(actual) => error!("expected {expected:?}, got {actual:?}"),
+            Some(&actual) => error!("expected {expected:?}, got {actual:?}"),
         }
     }
 
     fn read_while(&mut self, mut f: impl FnMut(char) -> bool) -> Result<String> {
         let mut result = String::new();
-        while let Some(c) = self.peek() {
+        while let Some(&c) = self.reader.peek() {
             if f(c) {
                 result.push(c);
-                self.advance()?;
+                self.reader.next().unwrap();
             } else {
                 break;
             }
@@ -206,7 +150,7 @@ impl Lexer {
 
 impl Lexer {
     fn read_comment(&mut self) -> Result<Option<Token>> {
-        if self.peek() != Some('#') {
+        if self.reader.peek() != Some(&'#') {
             return Ok(None);
         }
         let raw = self.start_recording();
@@ -227,26 +171,26 @@ impl Lexer {
             StringType::SingleQuoted => '\'',
             StringType::DoubleQuoted => '"',
         };
-        if self.peek() != Some(quote_char) {
+        if self.reader.peek() != Some(&quote_char) {
             return Ok(None);
         }
         let raw = self.start_recording();
         self.skip_char(quote_char)?;
         let mut contents = String::new();
-        while let Some(c) = self.peek() {
+        while let Some(&c) = self.reader.peek() {
             if c == quote_char {
                 break;
             }
-            self.advance().unwrap();
+            self.reader.next().unwrap();
             if c == '\\' {
-                contents.push(match self.next_char() {
+                contents.push(match self.reader.next() {
                     None => return error!("Expected escaped character, got EOF"),
                     Some('n') => '\n',
                     Some('r') => '\r',
                     Some('t') => '\t',
                     Some('\\') => '\\',
                     Some('x') => {
-                        let mut read_digit = || match self.next_char() {
+                        let mut read_digit = || match self.reader.next() {
                             Some(c) => match c.to_digit(16) {
                                 Some(digit) => Ok(digit),
                                 None => error!("Expected a hex digit, got {c:?}"),
@@ -273,14 +217,14 @@ impl Lexer {
         }))
     }
     fn read_ident(&mut self) -> Result<Option<Token>> {
-        let peeked = match self.peek() {
-            Some(c) => c,
+        let peeked = match self.reader.peek() {
+            Some(&c) => c,
             None => return Ok(None),
         };
         match peeked {
             '@' => {
                 let raw = self.start_recording();
-                self.advance().unwrap();
+                self.reader.next().unwrap();
                 let Some(Token::String { contents: name, .. }) = self.read_string()? else {
                     return error!("Expected a string token after '@' for raw identifier");
                 };
@@ -292,11 +236,12 @@ impl Lexer {
             }
             c if c.is_alphabetic() || c == '_' => {
                 let mut name = String::new();
-                while let Some(c) = self.peek() {
+                while let Some(&c) = self.reader.peek() {
                     let is_good = |c: char| c.is_alphanumeric() || c == '_';
-                    if is_good(c) || c == '-' && self.peek2().map_or(false, is_good) {
+                    if is_good(c) || c == '-' && self.reader.peek2().map_or(false, |&c| is_good(c))
+                    {
                         name.push(c);
-                        self.advance().unwrap()
+                        self.reader.next().unwrap();
                     } else {
                         break;
                     }
@@ -311,8 +256,8 @@ impl Lexer {
         }
     }
     fn read_number(&mut self) -> Result<Option<Token>> {
-        let peeked = match self.peek() {
-            Some(c) => c,
+        let peeked = match self.reader.peek() {
+            Some(&c) => c,
             None => return Ok(None),
         };
         if !peeked.is_ascii_digit() {
@@ -328,10 +273,10 @@ impl Lexer {
         let is_single_punctuation = |c: char| "(){}[]".contains(c);
         let is_punctuation =
             |c: char| !(c.is_alphanumeric() || "_'\"".contains(c) || c.is_whitespace());
-        match self.peek() {
-            Some(c) if is_punctuation(c) => {
+        match self.reader.peek() {
+            Some(&c) if is_punctuation(c) => {
                 if is_single_punctuation(c) {
-                    self.advance().unwrap();
+                    self.reader.next().unwrap();
                     Ok(Some(Token::Punctuation { raw: c.to_string() }))
                 } else {
                     let raw =
@@ -342,13 +287,6 @@ impl Lexer {
             _ => Ok(None),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Span {
-    pub start: Position,
-    pub end: Position,
-    pub filename: PathBuf,
 }
 
 #[derive(Debug)]
@@ -368,12 +306,7 @@ pub fn lex(source: SourceFile) -> impl Iterator<Item = Result<SpannedToken, Erro
     let mut parser = Lexer {
         next_recording_id: 0,
         recordings: HashMap::new(),
-        source,
-        current_position: Position {
-            index: 0,
-            line: 1,
-            column: 1,
-        },
+        reader: peek2::Reader::read(source),
     };
     std::iter::from_fn(move || parser.next_token().transpose())
 }

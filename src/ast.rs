@@ -122,6 +122,7 @@ struct Unprocessed {
 
 enum TokenOrValue<'a> {
     Token(&'a SpannedToken),
+    #[allow(dead_code)]
     Value(&'a Ast),
 }
 

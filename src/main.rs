@@ -10,6 +10,10 @@ mod lexer;
 mod syntax;
 
 mod cli;
+mod peek2;
+mod source;
+
+use source::*;
 
 fn std_path() -> PathBuf {
     match std::env::var_os("KAST_STD") {
@@ -30,11 +34,8 @@ fn main() -> eyre::Result<()> {
                 rustyline::Config::builder().auto_add_history(true).build(),
             )?;
 
-            let syntax = ast::read_syntax(lexer::SourceFile {
-                contents: std::fs::read_to_string(std_path().join("syntax.ks"))
-                    .unwrap()
-                    .chars()
-                    .collect(),
+            let syntax = ast::read_syntax(SourceFile {
+                contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
                 filename: "std/syntax.ks".into(),
             });
             tracing::trace!("{syntax:#?}");
@@ -58,8 +59,8 @@ fn main() -> eyre::Result<()> {
                         contents
                     }
                 };
-                let source = lexer::SourceFile {
-                    contents: contents.chars().collect(),
+                let source = SourceFile {
+                    contents,
                     filename: "<stdin>".into(),
                 };
                 if let Some(ast) = ast::parse(&syntax, source).unwrap() {
