@@ -77,6 +77,51 @@ impl ParseNode {
     pub fn with_power(is_open_paren: bool, binding_power: BindingPower) -> Self {
         Self::new(is_open_paren, Some(binding_power))
     }
+    pub fn format_possible_continuations(&self) -> impl std::fmt::Display + '_ {
+        struct Format<'a>(&'a ParseNode);
+        impl std::fmt::Display for Format<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let write_values =
+                    |f: &mut std::fmt::Formatter<'_>, values: usize| -> std::fmt::Result {
+                        for i in 0..values {
+                            if i != 0 {
+                                write!(f, " ")?;
+                            }
+                            write!(f, "_")?;
+                        }
+                        Ok(())
+                    };
+                let mut option_written = false;
+                let mut start_option = |f: &mut std::fmt::Formatter<'_>| match option_written {
+                    false => {
+                        option_written = true;
+                        write!(f, "\"")
+                    }
+                    true => write!(f, ", \""),
+                };
+                let finish_option = |f: &mut std::fmt::Formatter<'_>| write!(f, "\"");
+                for &values in self.0.finish.keys() {
+                    start_option(f)?;
+                    write_values(f, values)?;
+                    if values == 0 {
+                        write!(f, "<no values>")?;
+                    }
+                    finish_option(f)?;
+                }
+                for edge in self.0.next.keys() {
+                    start_option(f)?;
+                    write_values(f, edge.values_before_keyword)?;
+                    if edge.values_before_keyword != 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}", edge.keyword)?;
+                    finish_option(f)?;
+                }
+                Ok(())
+            }
+        }
+        Format(self)
+    }
 }
 
 #[derive(Clone, Debug)]

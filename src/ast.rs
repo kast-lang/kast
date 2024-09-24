@@ -56,48 +56,37 @@ pub struct Tuple<T> {
 }
 
 pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<VecDeque<Ast>, Error> {
-    let filename = source.filename.clone();
     let mut parser = Parser {
         reader: lex(source)?,
         unassigned_values: VecDeque::new(),
     };
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| parser.read_all(syntax)))
-        .map_err(|e| {
-            if let Some(s) = e.downcast_ref::<&str>() {
-                return ErrorMessage(s.to_string());
-            }
-            if let Ok(s) = e.downcast::<String>() {
-                return ErrorMessage(*s);
-            }
-            error_fmt!("unknown")
-        })
-        .map_err(|ErrorMessage(message)| Error {
-            filename: filename.clone(),
-            message,
-            position: parser.reader.position(),
-        })
+    let result = parser.read_all(syntax);
+    result.map_err(|msg| msg.at(parser.reader.peek().unwrap().span.clone()))
 }
 
-pub fn read_syntax(source: SourceFile) -> Syntax {
-    let mut reader = lex(source).expect("lexing failed");
-    let mut syntax = Syntax::empty();
-    loop {
-        let should_skip = |token: &Token| match token {
-            Token::Punctuation { raw } if raw == ";" => true,
-            Token::Comment { .. } => true,
-            _ => false,
-        };
-        while should_skip(&reader.peek().unwrap().token) {
-            reader.next().unwrap();
-        }
+pub fn read_syntax(source: SourceFile) -> Result<Syntax, Error> {
+    let mut reader = lex(source)?;
+    let result = (|| {
+        let mut syntax = Syntax::empty();
+        loop {
+            let should_skip = |token: &Token| match token {
+                Token::Punctuation { raw } if raw == ";" => true,
+                Token::Comment { .. } => true,
+                _ => false,
+            };
+            while should_skip(&reader.peek().unwrap().token) {
+                reader.next().unwrap();
+            }
 
-        if reader.peek().unwrap().is_eof() {
-            break;
+            if reader.peek().unwrap().is_eof() {
+                break;
+            }
+            let def = read_syntax_def(&mut reader)?.0;
+            syntax.insert(Arc::new(def)).unwrap();
         }
-        let def = read_syntax_def(&mut reader).0;
-        syntax.insert(Arc::new(def)).unwrap();
-    }
-    syntax
+        Ok(syntax)
+    })();
+    result.map_err(|msg: ErrorMessage| msg.at(reader.peek().unwrap().span.clone()))
 }
 
 struct Parser {
@@ -105,33 +94,36 @@ struct Parser {
     reader: peek2::Reader<SpannedToken>,
 }
 
-fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> (SyntaxDefinition, Span) {
+fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(SyntaxDefinition, Span)> {
     let Span {
         start,
         end: _,
         filename,
-    } = match reader.peek() {
-        Some(token) if token.raw() == "syntax" => reader.next().unwrap().span,
-        _ => panic!("expected a syntax definition"),
+    } = match reader.peek().unwrap() {
+        token if token.raw() == "syntax" => reader.next().unwrap().span,
+        token => return error!("expected a syntax definition, got {}", token.token),
     };
     let name_token = reader.next().expect("expected a name for the syntax");
     let name = match name_token.token {
         Token::Ident { name, .. } => name,
-        _ => panic!("name for the syntax must be an identifier"),
+        _ => return error!("name for the syntax must be an identifier"),
     };
     let associativity = match reader.next().expect("expected a associativity").token {
         Token::Punctuation { raw } if raw == "<-" => Associativity::Left,
         Token::Punctuation { raw } if raw == "->" => Associativity::Right,
-        _ => panic!("expected associativity (<- or ->)"),
+        _ => return error!("expected associativity (<- or ->)"),
     };
     let priority = match reader.next().expect("expected a priority").token {
         Token::Number { raw } | Token::String { contents: raw, .. } => {
-            Priority::new(raw.parse().expect("failed to parse priority"))
+            Priority::new(match raw.parse() {
+                Ok(number) => number,
+                Err(e) => return error!("failed to parse priority: {e}"),
+            })
         }
-        _ => panic!("syntax priority must be a number"),
+        _ => return error!("syntax priority must be a number"),
     };
     if reader.next().map(|spanned| spanned.token.raw().to_owned()) != Some("=".to_owned()) {
-        panic!("expected a =");
+        return error!("expected a =");
     }
     let mut parts = Vec::new();
     let mut end = None;
@@ -149,7 +141,7 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> (SyntaxDefinitio
         });
         end = Some(reader.next().unwrap().span.end);
     }
-    (
+    Ok((
         SyntaxDefinition {
             name,
             priority,
@@ -161,19 +153,47 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> (SyntaxDefinitio
             end: end.unwrap(),
             filename: filename.clone(),
         },
-    )
+    ))
 }
 
 // My wife yelled at me for forgetting to lock the front door last night, but later apologized. She
 // wanted to be safe, then sorry.
 
+enum ProgressPart {
+    Keyword(String),
+    Value(Ast),
+}
+
+impl ProgressPart {
+    pub fn into_keyword(self) -> Option<String> {
+        match self {
+            ProgressPart::Keyword(keyword) => Some(keyword),
+            ProgressPart::Value(_) => None,
+        }
+    }
+    pub fn into_value(self) -> Option<Ast> {
+        match self {
+            ProgressPart::Keyword(_) => None,
+            ProgressPart::Value(value) => Some(value),
+        }
+    }
+}
+
+impl std::fmt::Display for ProgressPart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Keyword(keyword) => write!(f, "{keyword}"),
+            Self::Value(_) => write!(f, "_"),
+        }
+    }
+}
+
 struct ReadOne<'a> {
     parser: &'a mut Parser,
     syntax: &'a Syntax,
-    made_progress: bool,
     until: Option<BindingPower>,
     current_node: &'a syntax::ParseNode,
-    assigned_values: Vec<Ast>,
+    made_progress: Vec<ProgressPart>,
     already_read_values_before_keyword: bool,
 }
 
@@ -185,12 +205,32 @@ enum ReadOneProgress {
 
 // Bеst viewers on https://www.twitch.tv/kuviman
 impl ReadOne<'_> {
-    fn finish(self) -> Option<Ast> {
+    fn format_current_progress(&self) -> impl std::fmt::Display + '_ {
+        struct Format<'a>(&'a ReadOne<'a>);
+        impl std::fmt::Display for Format<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if self.0.made_progress.is_empty() {
+                    write!(f, "<no progress>")?;
+                } else {
+                    write!(f, "\"")?;
+                    for (index, part) in self.0.made_progress.iter().enumerate() {
+                        if index != 0 {
+                            write!(f, " ")?;
+                        }
+                        write!(f, "{part}")?;
+                    }
+                    write!(f, "\"")?;
+                }
+                Ok(())
+            }
+        }
+        Format(self)
+    }
+    fn finish(self) -> Result<Option<Ast>> {
         tracing::trace!(
             "finishing with {:?} unassigned values",
             self.parser.unassigned_values.len(),
         );
-        let mut result = None;
         for (amount, finish_definition) in self
             .current_node
             .finish
@@ -198,32 +238,34 @@ impl ReadOne<'_> {
             .rev()
         {
             if should_resume(self.until, Some(finish_definition.binding_power())) {
-                let mut values = self.assigned_values;
-                values.extend(self.parser.unassigned_values.drain(..amount));
-                result = Some(Some(Ast::Complex {
+                let mut made_progress = self.made_progress;
+                made_progress.extend(
+                    self.parser
+                        .unassigned_values
+                        .drain(..amount)
+                        .map(ProgressPart::Value),
+                );
+                let result = Ast::Complex {
                     definition: finish_definition.clone(),
-                    values: finish_definition.assign_values(values),
-                }));
-                break;
+                    values: assign_progress(finish_definition, made_progress)
+                        .expect("Failed to assign made progress"),
+                };
+                tracing::trace!("parsed {result}");
+                return Ok(Some(result));
             }
         }
-        let result = match result {
-            Some(result) => result,
-            None => {
-                if !self.made_progress {
-                    return None;
-                }
-                panic!("could not finish");
-            }
-        };
-        match &result {
-            Some(result) => tracing::trace!("parsed {result}"),
-            None => tracing::trace!("parsed nothing :)"),
+        if self.made_progress.is_empty() {
+            tracing::trace!("parsed nothing");
+            return Ok(None);
         }
-        result
+        error!(
+            "could not finish parsing {}, expected one of {}",
+            self.format_current_progress(),
+            self.current_node.format_possible_continuations(),
+        )
     }
     // is this helpful yet?
-    fn progress(&mut self) -> ReadOneProgress {
+    fn progress(&mut self) -> Result<ReadOneProgress> {
         tracing::trace!("continuing with until={:?}", self.until);
         let token = self.parser.reader.peek().unwrap();
         let edge = Edge {
@@ -235,35 +277,40 @@ impl ReadOne<'_> {
             Some(next_node) => {
                 if should_resume(self.until, next_node.binding_power) {
                     tracing::trace!("continued with {edge:?}");
-                    self.parser.reader.next().unwrap();
+                    self.made_progress.extend(
+                        self.parser
+                            .unassigned_values
+                            .drain(..)
+                            .map(ProgressPart::Value),
+                    );
+                    self.made_progress.push(ProgressPart::Keyword(
+                        self.parser.reader.next().unwrap().token.into_raw(),
+                    ));
                     self.current_node = next_node;
-                    self.made_progress = true;
-                    self.assigned_values
-                        .extend(self.parser.unassigned_values.drain(..));
                     self.already_read_values_before_keyword = false;
                 } else {
                     tracing::trace!("not continuing with {edge:?} because of priorities");
-                    return ReadOneProgress::Ready;
+                    return Ok(ReadOneProgress::Ready);
                 }
             }
             None => {
                 tracing::trace!("edge does not exist");
                 // what was I writing anyway?
-                if self.already_read_values_before_keyword || !self.made_progress {
-                    return ReadOneProgress::Ready;
+                if self.already_read_values_before_keyword || self.made_progress.is_empty() {
+                    return Ok(ReadOneProgress::Ready);
                 }
                 self.parser
-                    .read_until(self.syntax, self.min_binding_power_for_inner_values());
+                    .read_until(self.syntax, self.min_binding_power_for_inner_values())?;
                 self.already_read_values_before_keyword = true;
             }
         }
         tracing::trace!("not ready");
-        ReadOneProgress::NotReady
+        Ok(ReadOneProgress::NotReady)
     }
 
-    fn read(mut self) -> Option<Ast> {
+    fn read(mut self) -> Result<Option<Ast>> {
         loop {
-            if let ReadOneProgress::Ready = self.progress() {
+            if let ReadOneProgress::Ready = self.progress()? {
                 return self.finish();
             }
         }
@@ -282,23 +329,22 @@ impl ReadOne<'_> {
 
 impl Parser {
     /// Read a single ast node, without trying to combine it with the rest of the tokens
-    fn read_one(&mut self, syntax: &Syntax, until: Option<BindingPower>) -> Option<Ast> {
+    fn read_one(&mut self, syntax: &Syntax, until: Option<BindingPower>) -> Result<Option<Ast>> {
         tracing::trace!("start reading one until {until:?}");
         ReadOne {
             already_read_values_before_keyword: false,
             parser: self,
             syntax,
-            made_progress: false,
             until,
             current_node: &syntax.root,
-            assigned_values: Vec::new(),
+            made_progress: Vec::new(),
         }
         .read()
     }
 }
 
 impl Parser {
-    fn read_simple_values(&mut self, syntax: &Syntax) {
+    fn read_simple_values(&mut self, syntax: &Syntax) -> Result<()> {
         tracing::trace!("reading simple values");
         loop {
             match &self.reader.peek().unwrap().token {
@@ -306,7 +352,7 @@ impl Parser {
                     break;
                 }
                 Token::Ident { raw, .. } if raw == "syntax" => {
-                    let (def, span) = read_syntax_def(&mut self.reader);
+                    let (def, span) = read_syntax_def(&mut self.reader)?;
                     self.unassigned_values.push_back(Ast::SyntaxDefinition {
                         def: Arc::new(def),
                         data: span,
@@ -330,6 +376,7 @@ impl Parser {
             }
         }
         tracing::trace!("reading simple values - done!");
+        Ok(())
     }
 
     /// Read an ast node from the stream of tokens, potentially starting with existing node,
@@ -338,61 +385,78 @@ impl Parser {
     /// When we have smth like `a + b + c`
     /// read_one will only parse the `a + b`
     /// read_until is trying to combine the first parsed node with the rest
-    fn read_until(&mut self, syntax: &Syntax, until: Option<BindingPower>) {
+    fn read_until(&mut self, syntax: &Syntax, until: Option<BindingPower>) -> Result<()> {
         if self.reader.peek().unwrap().is_eof() {
-            return;
+            return Ok(());
         }
         tracing::trace!("read until - start");
         loop {
             tracing::trace!("continuing read one");
-            self.read_simple_values(syntax);
-            let value = self.read_one(syntax, until);
+            self.read_simple_values(syntax)?;
+            let value = self.read_one(syntax, until)?;
             match value {
                 Some(value) => self.unassigned_values.push_front(value),
                 None => break,
             }
         }
         tracing::trace!("read until - done!");
+        Ok(())
     }
 
-    fn read_all(&mut self, syntax: &Syntax) -> VecDeque<Ast> {
-        // TODO take self by &mut
-        self.read_until(syntax, None);
+    fn read_all(&mut self, syntax: &Syntax) -> Result<VecDeque<Ast>> {
+        self.read_until(syntax, None)?;
         let peek = self.reader.peek().unwrap();
         if !peek.is_eof() {
-            panic!("unexpected token {:?}", peek.raw());
+            return error!("unexpected token {:?}", peek.raw());
         }
-        std::mem::take(&mut self.unassigned_values)
+        Ok(std::mem::take(&mut self.unassigned_values))
     }
 }
 
-impl SyntaxDefinition {
-    fn assign_values(&self, values: impl IntoIterator<Item = Ast>) -> Tuple<Ast> {
-        let mut result = Tuple {
-            unnamed: Vec::new(),
-            named: BTreeMap::new(),
-        };
-        let mut values = values.into_iter();
-        for part in &self.parts {
-            match part {
-                SyntaxDefinitionPart::Keyword(_) => {}
-                SyntaxDefinitionPart::UnnamedBinding => {
-                    result
-                        .unnamed
-                        .push(values.next().expect("not enough values"));
-                }
-                SyntaxDefinitionPart::NamedBinding(name) => {
-                    result
-                        .named
-                        .insert(name.clone(), values.next().expect("not enough values"));
-                }
+fn assign_progress(
+    definition: &SyntaxDefinition,
+    values: impl IntoIterator<Item = ProgressPart>,
+) -> Result<Tuple<Ast>> {
+    let mut result = Tuple {
+        unnamed: Vec::new(),
+        named: BTreeMap::new(),
+    };
+    let mut progress = values.into_iter();
+    for part in &definition.parts {
+        let progress = progress
+            .next()
+            .ok_or_else(|| error_fmt!("not enough progress was made"))?;
+        match part {
+            SyntaxDefinitionPart::Keyword(expected) => {
+                assert_eq!(
+                    expected.as_str(),
+                    progress
+                        .into_keyword()
+                        .ok_or_else(|| error_fmt!("expected a keyword"))?
+                        .as_str(),
+                );
+            }
+            SyntaxDefinitionPart::UnnamedBinding => {
+                result.unnamed.push(
+                    progress
+                        .into_value()
+                        .ok_or_else(|| error_fmt!("expected a value"))?,
+                );
+            }
+            SyntaxDefinitionPart::NamedBinding(name) => {
+                result.named.insert(
+                    name.clone(),
+                    progress
+                        .into_value()
+                        .ok_or_else(|| error_fmt!("expected a value"))?,
+                );
             }
         }
-        if values.next().is_some() {
-            panic!("too many values");
-        }
-        result
     }
+    if progress.next().is_some() {
+        return error!("too many values");
+    }
+    Ok(result)
 }
 
 fn should_resume(until: Option<BindingPower>, with: Option<BindingPower>) -> bool {

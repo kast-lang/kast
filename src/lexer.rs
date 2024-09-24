@@ -2,16 +2,7 @@
 
 use crate::source::*;
 use crate::{error::*, peek2};
-use std::{collections::HashMap, path::PathBuf};
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-#[error("at {filename}:{position} - {message}")]
-pub struct Error {
-    pub message: String,
-    pub filename: PathBuf,
-    pub position: Position,
-}
+use std::collections::HashMap;
 
 pub type Result<T, E = ErrorMessage> = std::result::Result<T, E>;
 
@@ -47,7 +38,23 @@ pub enum Token {
     Eof,
 }
 
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.raw())
+    }
+}
+
 impl Token {
+    pub fn into_raw(self) -> String {
+        match self {
+            Token::Ident { raw, .. } => raw,
+            Token::Punctuation { raw } => raw,
+            Token::String { raw, .. } => raw,
+            Token::Number { raw } => raw,
+            Token::Comment { raw, .. } => raw,
+            Token::Eof => "<EOF>".to_owned(),
+        }
+    }
     pub fn raw(&self) -> &str {
         match self {
             Token::Ident { raw, .. } => raw,
@@ -74,11 +81,26 @@ impl Lexer {
     fn next_token(&mut self) -> Result<SpannedToken, Error> {
         match self.next_token_impl() {
             Ok(result) => Ok(result),
-            Err(ErrorMessage(message)) => Err(Error {
-                message,
-                filename: self.reader.filename().to_owned(),
-                position: self.reader.position(),
-            }),
+            Err(message) => {
+                let start = self.reader.position();
+                Err(message.at(Span {
+                    filename: self.reader.filename().to_owned(),
+                    start,
+                    end: match self.reader.peek() {
+                        Some('\n') => Position {
+                            index: start.index + 1,
+                            line: start.line + 1,
+                            column: 1,
+                        },
+                        Some(_) => Position {
+                            index: start.index + 1,
+                            line: start.line,
+                            column: start.column + 1,
+                        },
+                        None => start,
+                    },
+                }))
+            }
         }
     }
     fn next_token_impl(&mut self) -> Result<SpannedToken> {

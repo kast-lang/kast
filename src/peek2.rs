@@ -127,9 +127,11 @@ impl<T: ReadableItem> Reader<T> {
                 AdvancePosition::NextLine => {
                     self.current_position.line += 1;
                     self.current_position.column = 1;
+                    self.current_position.index += 1;
                 }
                 AdvancePosition::NextColumn => {
                     self.current_position.column += 1;
+                    self.current_position.index += 1;
                 }
                 AdvancePosition::SetTo(new_position) => {
                     self.current_position = new_position;

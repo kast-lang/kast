@@ -37,7 +37,7 @@ fn main() -> eyre::Result<()> {
             let syntax = ast::read_syntax(SourceFile {
                 contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
                 filename: "std/syntax.ks".into(),
-            });
+            })?;
             tracing::trace!("{syntax:#?}");
 
             let is_tty = std::io::stdin().is_terminal();
@@ -63,7 +63,7 @@ fn main() -> eyre::Result<()> {
                     contents,
                     filename: "<stdin>".into(),
                 };
-                let values = ast::parse(&syntax, source).unwrap();
+                let values = ast::parse(&syntax, source)?;
                 if values.is_empty() {
                     println!("<nothing>");
                 }
