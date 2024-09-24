@@ -54,17 +54,22 @@ pub struct Reader<T> {
 }
 
 pub enum AdvancePosition {
-    OneChar(char),
+    NextColumn,
+    NextLine,
+    Eof,
     SetTo(Position),
 }
 
 pub trait ReadableItem {
-    fn advance_position(&self) -> AdvancePosition;
+    fn advance_position(item: Option<&Self>) -> AdvancePosition;
 }
 
 impl ReadableItem for char {
-    fn advance_position(&self) -> AdvancePosition {
-        AdvancePosition::OneChar(*self)
+    fn advance_position(item: Option<&Self>) -> AdvancePosition {
+        match item {
+            Some(&'\n') => AdvancePosition::NextLine,
+            _ => AdvancePosition::NextColumn,
+        }
     }
 }
 
@@ -118,19 +123,19 @@ impl<T: ReadableItem> Reader<T> {
     pub fn next(&mut self) -> Option<T> {
         let item = self.peeked.pop().or_else(|| self.iter.next());
         self.progress += 1;
-        if let Some(item) = &item {
-            match item.advance_position() {
-                AdvancePosition::OneChar(c) => {
-                    if c == '\n' {
-                        self.current_position.line += 1;
-                        self.current_position.column = 1;
-                    } else {
-                        self.current_position.column += 1;
-                    }
-                }
-                AdvancePosition::SetTo(new_position) => {
-                    self.current_position = new_position;
-                }
+        match T::advance_position(item.as_ref()) {
+            AdvancePosition::NextLine => {
+                self.current_position.line += 1;
+                self.current_position.column = 1;
+            }
+            AdvancePosition::NextColumn => {
+                self.current_position.column += 1;
+            }
+            AdvancePosition::Eof => {
+                todo!()
+            }
+            AdvancePosition::SetTo(new_position) => {
+                self.current_position = new_position;
             }
         }
         item

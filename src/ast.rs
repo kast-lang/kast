@@ -54,11 +54,10 @@ pub struct Tuple<T> {
 
 pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> {
     let filename = source.filename.clone();
-    let tokens: Vec<_> = lex(source).collect::<Result<_, _>>()?;
     let mut parser = Parser {
         filename: filename.clone(),
         unprocessed: Unprocessed {
-            reader: peek2::Reader::new(filename.clone(), tokens),
+            reader: lex(source)?,
             value: None,
         },
     };
@@ -80,20 +79,19 @@ pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> 
 }
 
 pub fn read_syntax(source: SourceFile) -> Syntax {
-    let mut reader = peek2::Reader::new(
-        source.filename.clone(),
-        lex(source).collect::<Result<Vec<_>, _>>().unwrap(),
-    );
+    let mut reader = lex(source).expect("lexing failed");
     let mut syntax = Syntax::empty();
     loop {
-        while reader.peek().map_or(false, |front| match &front.token {
+        let should_skip = |token: &Token| match token {
             Token::Punctuation { raw } if raw == ";" => true,
             Token::Comment { .. } => true,
             _ => false,
-        }) {
+        };
+        while should_skip(&reader.peek().unwrap().token) {
             reader.next().unwrap();
         }
-        if reader.peek().is_none() {
+
+        if reader.peek().unwrap().is_eof() {
             break;
         }
         let def = read_syntax_def(&mut reader).0;
@@ -114,11 +112,11 @@ enum TokenOrValue<'a> {
 }
 
 impl Unprocessed {
-    fn peek(&mut self) -> Option<TokenOrValue<'_>> {
+    fn peek(&mut self) -> TokenOrValue<'_> {
         if let Some(value) = &self.value {
-            return Some(TokenOrValue::Value(value));
+            return TokenOrValue::Value(value);
         }
-        self.reader.peek().map(TokenOrValue::Token)
+        TokenOrValue::Token(self.reader.peek().unwrap())
     }
     fn reader(&mut self) -> &mut peek2::Reader<SpannedToken> {
         assert!(self.value.is_none());
@@ -128,7 +126,7 @@ impl Unprocessed {
     fn pop_value(&mut self) -> Ast {
         self.value.take().unwrap()
     }
-    // pop the token, panic if EOF or have unprocessed value
+    /// pop the token, panic have unprocessed value
     fn pop_token(&mut self) -> SpannedToken {
         if self.value.is_some() {
             panic!("have unprocessed value");
@@ -276,9 +274,7 @@ impl ReadOne<'_> {
     }
     // is this helpful yet?
     fn progress(&mut self) -> ReadOneProgress {
-        let Some(peek) = self.parser.unprocessed.peek() else {
-            return ReadOneProgress::Ready;
-        };
+        let peek = self.parser.unprocessed.peek();
         let keyword = match peek {
             TokenOrValue::Token(token) => {
                 let raw = token.raw();
@@ -388,11 +384,10 @@ impl Parser {
         );
         if unassigned_value.is_none() {
             match self.unprocessed.peek() {
-                None => {}
-                Some(TokenOrValue::Value(_)) => {
+                TokenOrValue::Value(_) => {
                     return Some(self.unprocessed.pop_value());
                 }
-                Some(TokenOrValue::Token(token)) => {
+                TokenOrValue::Token(token) => {
                     if token.raw() == "syntax" {
                         let (def, span) = read_syntax_def(self.unprocessed.reader());
                         return Some(Ast::SyntaxDefinition {
@@ -401,6 +396,7 @@ impl Parser {
                         });
                     }
                     match token.token {
+                        Token::Eof => {}
                         Token::Punctuation { .. } => {}
                         Token::Comment { .. } => unreachable!(),
                         _ => {
@@ -462,8 +458,9 @@ impl Parser {
     fn read_all(&mut self, syntax: &Syntax) -> Option<Ast> {
         let result = self.read_until(syntax, None, None);
         assert!(self.unprocessed.value.is_none());
-        if let Some(token) = self.unprocessed.reader.peek() {
-            panic!("unexpected token {:?}", token.raw());
+        let peek = self.unprocessed.reader.peek().unwrap();
+        if !peek.is_eof() {
+            panic!("unexpected token {:?}", peek.raw());
         }
         result
     }
