@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+};
 
 use super::*;
 use crate::{lexer::*, syntax::*};
@@ -52,14 +55,11 @@ pub struct Tuple<T> {
     pub named: BTreeMap<String, T>,
 }
 
-pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> {
+pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<VecDeque<Ast>, Error> {
     let filename = source.filename.clone();
     let mut parser = Parser {
-        filename: filename.clone(),
-        unprocessed: Unprocessed {
-            reader: lex(source)?,
-            value: None,
-        },
+        reader: lex(source)?,
+        unassigned_values: VecDeque::new(),
     };
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| parser.read_all(syntax)))
         .map_err(|e| {
@@ -74,7 +74,7 @@ pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> 
         .map_err(|ErrorMessage(message)| Error {
             filename: filename.clone(),
             message,
-            position: parser.unprocessed.reader.position(),
+            position: parser.reader.position(),
         })
 }
 
@@ -100,53 +100,9 @@ pub fn read_syntax(source: SourceFile) -> Syntax {
     syntax
 }
 
-struct Unprocessed {
-    value: Option<Ast>,
-    reader: peek2::Reader<SpannedToken>,
-}
-
-enum TokenOrValue<'a> {
-    Token(&'a SpannedToken),
-    #[allow(dead_code)]
-    Value(&'a Ast),
-}
-
-impl Unprocessed {
-    fn peek(&mut self) -> TokenOrValue<'_> {
-        if let Some(value) = &self.value {
-            return TokenOrValue::Value(value);
-        }
-        TokenOrValue::Token(self.reader.peek().unwrap())
-    }
-    fn reader(&mut self) -> &mut peek2::Reader<SpannedToken> {
-        assert!(self.value.is_none());
-        &mut self.reader
-    }
-    /// pop the value, panic if no unprocessed value
-    fn pop_value(&mut self) -> Ast {
-        self.value.take().unwrap()
-    }
-    /// pop the token, panic have unprocessed value
-    fn pop_token(&mut self) -> SpannedToken {
-        if self.value.is_some() {
-            panic!("have unprocessed value");
-        }
-        self.reader.next().unwrap()
-    }
-
-    fn progress(&self) -> usize {
-        self.reader.progress()
-            + match self.value {
-                Some(_) => 0,
-                None => 1,
-            }
-    }
-}
-
 struct Parser {
-    unprocessed: Unprocessed,
-    #[allow(dead_code)]
-    filename: PathBuf,
+    unassigned_values: VecDeque<Ast>,
+    reader: peek2::Reader<SpannedToken>,
 }
 
 fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> (SyntaxDefinition, Span) {
@@ -215,11 +171,10 @@ struct ReadOne<'a> {
     parser: &'a mut Parser,
     syntax: &'a Syntax,
     made_progress: bool,
-    unassigned_value: Option<Ast>,
     until: Option<BindingPower>,
     current_node: &'a syntax::ParseNode,
     assigned_values: Vec<Ast>,
-    should_try_join: bool,
+    already_read_values_before_keyword: bool,
 }
 
 #[must_use]
@@ -230,76 +185,62 @@ enum ReadOneProgress {
 
 // Bеst viewers on https://www.twitch.tv/kuviman
 impl ReadOne<'_> {
-    fn finish(mut self) -> Option<Ast> {
-        if self.should_try_join {
-            assert!(self.assigned_values.is_empty());
-            tracing::trace!("finishing without any work");
-            return self.unassigned_value;
-        }
-        let mut result = None;
+    fn finish(self) -> Option<Ast> {
         tracing::trace!(
             "finishing with {:?} unassigned values",
-            self.unassigned_value.iter().count(),
+            self.parser.unassigned_values.len(),
         );
-        for using_unassigned_value in [true, false] {
-            if using_unassigned_value && self.unassigned_value.is_none() {
-                continue;
-            }
-            if let Some(finish) = self.current_node.finish.get(&using_unassigned_value) {
-                if using_unassigned_value {
-                    self.assigned_values
-                        .push(self.unassigned_value.take().unwrap());
-                }
-                result = Some(match finish {
-                    NodeFinish::Complex(definition) => Ast::Complex {
-                        definition: definition.clone(),
-                        values: definition.assign_values(self.assigned_values),
-                    },
-                    NodeFinish::SimpleValue => {
-                        assert!(!using_unassigned_value);
-                        assert!(self.assigned_values.len() == 1);
-                        self.assigned_values.pop().unwrap()
-                    }
-                });
+        let mut result = None;
+        for (amount, finish_definition) in self
+            .current_node
+            .finish
+            .range(..=self.parser.unassigned_values.len())
+            .rev()
+        {
+            if should_resume(self.until, Some(finish_definition.binding_power())) {
+                let mut values = self.assigned_values;
+                values.extend(self.parser.unassigned_values.drain(..amount));
+                result = Some(Some(Ast::Complex {
+                    definition: finish_definition.clone(),
+                    values: finish_definition.assign_values(values),
+                }));
                 break;
             }
         }
-        let result = result.expect("could not finish");
-        tracing::trace!("parsed {result}");
-        if let Some(value) = self.unassigned_value.take() {
-            let prev_unprocessed_value = self.parser.unprocessed.value.replace(value);
-            assert!(prev_unprocessed_value.is_none());
+        let result = match result {
+            Some(result) => result,
+            None => {
+                if !self.made_progress {
+                    return None;
+                }
+                panic!("could not finish");
+            }
+        };
+        match &result {
+            Some(result) => tracing::trace!("parsed {result}"),
+            None => tracing::trace!("parsed nothing :)"),
         }
-        Some(result)
+        result
     }
     // is this helpful yet?
     fn progress(&mut self) -> ReadOneProgress {
-        let peek = self.parser.unprocessed.peek();
-        let keyword = match peek {
-            TokenOrValue::Token(token) => {
-                let raw = token.raw();
-                self.syntax.keywords.contains(raw).then_some(raw)
-            }
-            TokenOrValue::Value(_) => None,
-        };
-        let edge = keyword.map(|keyword| Edge {
-            value_before_keyword: self.unassigned_value.is_some(),
-            keyword: keyword.to_owned(),
-        });
         tracing::trace!("continuing with until={:?}", self.until);
+        let token = self.parser.reader.peek().unwrap();
+        let edge = Edge {
+            values_before_keyword: self.parser.unassigned_values.len(),
+            keyword: token.raw().to_owned(),
+        };
         tracing::trace!("looking up edge {edge:?}");
-        match edge
-            .as_ref()
-            .and_then(|edge| self.current_node.next.get(edge))
-        {
+        match self.current_node.next.get(&edge) {
             Some(next_node) => {
                 if should_resume(self.until, next_node.binding_power) {
                     tracing::trace!("continued with {edge:?}");
-                    self.parser.unprocessed.pop_token();
+                    self.parser.reader.next().unwrap();
                     self.current_node = next_node;
                     self.made_progress = true;
-                    self.should_try_join = false;
-                    self.assigned_values.extend(self.unassigned_value.take());
+                    self.assigned_values
+                        .extend(self.parser.unassigned_values.drain(..));
+                    self.already_read_values_before_keyword = false;
                 } else {
                     tracing::trace!("not continuing with {edge:?} because of priorities");
                     return ReadOneProgress::Ready;
@@ -308,54 +249,23 @@ impl ReadOne<'_> {
             None => {
                 tracing::trace!("edge does not exist");
                 // what was I writing anyway?
-                if self.unassigned_value.is_some() {
-                    if self.should_try_join
-                        && should_resume(self.until, self.syntax.maybe_join.binding_power)
-                    {
-                        tracing::trace!("trying to join");
-                        self.should_try_join = false;
-                        self.assigned_values
-                            .push(self.unassigned_value.take().unwrap());
-                        self.current_node = &self.syntax.maybe_join;
-                    } else {
-                        tracing::trace!("not much else to do");
-                        return ReadOneProgress::Ready;
-                    }
-                } else if self.should_try_join {
-                    // means i did nothing
-                    tracing::trace!(
-                        "did nothing, no need to go deeper, since cant do anything anyway"
-                    );
+                if self.already_read_values_before_keyword || !self.made_progress {
                     return ReadOneProgress::Ready;
-                } else {
-                    tracing::trace!("trying to read some more values");
-                    let progress_before = self.parser.unprocessed.progress();
-                    self.unassigned_value = self.parser.read_until(
-                        self.syntax,
-                        self.unassigned_value.take(),
-                        self.min_binding_power_for_inner_values(),
-                    );
-                    let made_progress = self.parser.unprocessed.progress() > progress_before;
-                    if !made_progress {
-                        tracing::trace!("no progress could be made");
-                        return ReadOneProgress::Ready;
-                    }
                 }
+                self.parser
+                    .read_until(self.syntax, self.min_binding_power_for_inner_values());
+                self.already_read_values_before_keyword = true;
             }
         }
         tracing::trace!("not ready");
         ReadOneProgress::NotReady
     }
 
-    fn read_one(mut self) -> Option<Ast> {
+    fn read(mut self) -> Option<Ast> {
         loop {
-            // let before = self.parser.unprocessed.amount();
             if let ReadOneProgress::Ready = self.progress() {
                 return self.finish();
             }
-            // if self.parser.unprocessed.amount() == before {
-            //     return self.finish();
-            // }
         }
     }
 
@@ -372,97 +282,87 @@ impl ReadOne<'_> {
 
 impl Parser {
     /// Read a single ast node, without trying to combine it with the rest of the tokens
-    fn read_one(
-        &mut self,
-        syntax: &Syntax,
-        unassigned_value: Option<Ast>,
-        until: Option<BindingPower>,
-    ) -> Option<Ast> {
-        tracing::trace!(
-            "start with unassigned_value={:?} until={until:?}",
-            unassigned_value.is_some(),
-        );
-        if unassigned_value.is_none() {
-            match self.unprocessed.peek() {
-                TokenOrValue::Value(_) => {
-                    return Some(self.unprocessed.pop_value());
-                }
-                TokenOrValue::Token(token) => {
-                    if token.raw() == "syntax" {
-                        let (def, span) = read_syntax_def(self.unprocessed.reader());
-                        return Some(Ast::SyntaxDefinition {
-                            def: Arc::new(def),
-                            data: span,
-                        });
-                    }
-                    match token.token {
-                        Token::Eof => {}
-                        Token::Punctuation { .. } => {}
-                        Token::Comment { .. } => unreachable!(),
-                        _ => {
-                            if !syntax.keywords.contains(token.raw()) {
-                                let token = self.unprocessed.pop_token();
-                                tracing::trace!("got simple {:?}", token.raw());
-                                return Some(Ast::Simple {
-                                    token: token.token,
-                                    data: token.span,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    fn read_one(&mut self, syntax: &Syntax, until: Option<BindingPower>) -> Option<Ast> {
+        tracing::trace!("start reading one until {until:?}");
         ReadOne {
+            already_read_values_before_keyword: false,
             parser: self,
             syntax,
             made_progress: false,
-            unassigned_value,
             until,
             current_node: &syntax.root,
             assigned_values: Vec::new(),
-            should_try_join: true,
         }
-        .read_one()
+        .read()
     }
 }
 
 impl Parser {
+    fn read_simple_values(&mut self, syntax: &Syntax) {
+        tracing::trace!("reading simple values");
+        loop {
+            match &self.reader.peek().unwrap().token {
+                Token::Eof | Token::Punctuation { .. } => {
+                    break;
+                }
+                Token::Ident { raw, .. } if raw == "syntax" => {
+                    let (def, span) = read_syntax_def(&mut self.reader);
+                    self.unassigned_values.push_back(Ast::SyntaxDefinition {
+                        def: Arc::new(def),
+                        data: span,
+                    });
+                }
+                Token::Comment { .. } => {
+                    // ignore
+                    self.reader.next().unwrap();
+                }
+                token => {
+                    if syntax.keywords.contains(token.raw()) {
+                        break;
+                    }
+                    let token = self.reader.next().unwrap();
+                    tracing::trace!("got simple {:?}", token.raw());
+                    self.unassigned_values.push_back(Ast::Simple {
+                        token: token.token,
+                        data: token.span,
+                    });
+                }
+            }
+        }
+        tracing::trace!("reading simple values - done!");
+    }
+
     /// Read an ast node from the stream of tokens, potentially starting with existing node,
     /// only using binding power stronger than given
     ///
     /// When we have smth like `a + b + c`
     /// read_one will only parse the `a + b`
     /// read_until is trying to combine the first parsed node with the rest
-    fn read_until(
-        &mut self,
-        syntax: &Syntax,
-        mut unassigned_value: Option<Ast>,
-        until: Option<BindingPower>,
-    ) -> Option<Ast> {
-        tracing::trace!("starting read until");
+    fn read_until(&mut self, syntax: &Syntax, until: Option<BindingPower>) {
+        if self.reader.peek().unwrap().is_eof() {
+            return;
+        }
+        tracing::trace!("read until - start");
         loop {
             tracing::trace!("continuing read one");
-            let progress_before = self.unprocessed.progress();
-            let one = self.read_one(syntax, unassigned_value, until);
-            tracing::trace!("read one = {one:?}");
-            let made_progress = self.unprocessed.progress() > progress_before;
-            if !made_progress {
-                tracing::trace!("no more progress, stop read until");
-                return one;
+            self.read_simple_values(syntax);
+            let value = self.read_one(syntax, until);
+            match value {
+                Some(value) => self.unassigned_values.push_front(value),
+                None => break,
             }
-            unassigned_value = one;
         }
+        tracing::trace!("read until - done!");
     }
 
-    fn read_all(&mut self, syntax: &Syntax) -> Option<Ast> {
-        let result = self.read_until(syntax, None, None);
-        assert!(self.unprocessed.value.is_none());
-        let peek = self.unprocessed.reader.peek().unwrap();
+    fn read_all(&mut self, syntax: &Syntax) -> VecDeque<Ast> {
+        // TODO take self by &mut
+        self.read_until(syntax, None);
+        let peek = self.reader.peek().unwrap();
         if !peek.is_eof() {
             panic!("unexpected token {:?}", peek.raw());
         }
-        result
+        std::mem::take(&mut self.unassigned_values)
     }
 }
 

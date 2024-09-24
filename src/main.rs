@@ -63,8 +63,15 @@ fn main() -> eyre::Result<()> {
                     contents,
                     filename: "<stdin>".into(),
                 };
-                if let Some(ast) = ast::parse(&syntax, source).unwrap() {
-                    println!("{ast:#}");
+                let values = ast::parse(&syntax, source).unwrap();
+                if values.is_empty() {
+                    println!("<nothing>");
+                }
+                for (index, value) in values.iter().enumerate() {
+                    if values.len() != 1 {
+                        print!("value #{index}: ");
+                    }
+                    println!("{value:#}");
                 }
                 if !is_tty {
                     break;

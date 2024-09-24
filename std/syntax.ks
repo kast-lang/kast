@@ -5,6 +5,7 @@ syntax @"builtin macro then" <- 0 = a ";";
 
 syntax @"builtin macro use" <- 1 = "use" namespace;
 
+syntax return <- 2 = "return" value;
 syntax break_with_value <- 2 = "break" value;
 syntax break_without_value <- 2 = "break";
 syntax continue_impl <- 2 = "continue";

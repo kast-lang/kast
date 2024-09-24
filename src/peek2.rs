@@ -145,6 +145,7 @@ impl<T: ReadableItem> Reader<T> {
         self.current_position
     }
 
+    #[allow(dead_code)]
     pub fn progress(&self) -> usize {
         self.progress
     }
