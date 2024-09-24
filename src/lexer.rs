@@ -314,11 +314,8 @@ pub struct SpannedToken {
 }
 
 impl peek2::ReadableItem for SpannedToken {
-    fn advance_position(item: Option<&Self>) -> peek2::AdvancePosition {
-        match item {
-            Some(token) => peek2::AdvancePosition::SetTo(token.span.start),
-            None => peek2::AdvancePosition::Eof,
-        }
+    fn advance_position(&self) -> peek2::AdvancePosition {
+        peek2::AdvancePosition::SetTo(self.span.start)
     }
 }
 
