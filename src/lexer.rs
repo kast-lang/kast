@@ -295,6 +295,12 @@ pub struct SpannedToken {
     pub span: Span,
 }
 
+impl peek2::ReadableItem for SpannedToken {
+    fn advance_position(&self) -> peek2::AdvancePosition {
+        peek2::AdvancePosition::SetTo(self.span.start)
+    }
+}
+
 impl std::ops::Deref for SpannedToken {
     type Target = Token;
     fn deref(&self) -> &Self::Target {

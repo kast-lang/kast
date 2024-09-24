@@ -1,8 +1,4 @@
-use std::{
-    collections::{BTreeMap, VecDeque},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use super::*;
 use crate::{lexer::*, syntax::*};
@@ -57,20 +53,12 @@ pub struct Tuple<T> {
 }
 
 pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> {
-    let start = Position {
-        index: 0,
-        line: 1,
-        column: 1,
-    };
     let filename = source.filename.clone();
-    let tokens: VecDeque<_> = lex(source)
-        .collect::<Result<_, _>>()
-        .expect("todo error message");
+    let tokens: Vec<_> = lex(source).collect::<Result<_, _>>()?;
     let mut parser = Parser {
         filename: filename.clone(),
-        end: tokens.back().map_or(start, |last| last.span.end),
         unprocessed: Unprocessed {
-            tokens,
+            reader: peek2::Reader::new(filename.clone(), tokens),
             value: None,
         },
     };
@@ -87,29 +75,28 @@ pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> 
         .map_err(|ErrorMessage(message)| Error {
             filename: filename.clone(),
             message,
-            position: parser
-                .unprocessed
-                .tokens
-                .front()
-                .map_or(parser.end, |front| front.span.start),
+            position: parser.unprocessed.reader.position(),
         })
 }
 
 pub fn read_syntax(source: SourceFile) -> Syntax {
-    let mut tokens: VecDeque<_> = lex(source).collect::<Result<_, _>>().unwrap();
+    let mut reader = peek2::Reader::new(
+        source.filename.clone(),
+        lex(source).collect::<Result<Vec<_>, _>>().unwrap(),
+    );
     let mut syntax = Syntax::empty();
     loop {
-        while tokens.front().map_or(false, |front| match &front.token {
+        while reader.peek().map_or(false, |front| match &front.token {
             Token::Punctuation { raw } if raw == ";" => true,
             Token::Comment { .. } => true,
             _ => false,
         }) {
-            tokens.pop_front();
+            reader.next().unwrap();
         }
-        if tokens.is_empty() {
+        if reader.peek().is_none() {
             break;
         }
-        let def = read_syntax_def(&mut tokens).0;
+        let def = read_syntax_def(&mut reader).0;
         syntax.insert(Arc::new(def)).unwrap();
     }
     syntax
@@ -117,7 +104,7 @@ pub fn read_syntax(source: SourceFile) -> Syntax {
 
 struct Unprocessed {
     value: Option<Ast>,
-    tokens: VecDeque<SpannedToken>,
+    reader: peek2::Reader<SpannedToken>,
 }
 
 enum TokenOrValue<'a> {
@@ -127,15 +114,15 @@ enum TokenOrValue<'a> {
 }
 
 impl Unprocessed {
-    fn peek(&self) -> Option<TokenOrValue<'_>> {
+    fn peek(&mut self) -> Option<TokenOrValue<'_>> {
         if let Some(value) = &self.value {
             return Some(TokenOrValue::Value(value));
         }
-        self.tokens.front().map(TokenOrValue::Token)
+        self.reader.peek().map(TokenOrValue::Token)
     }
-    fn tokens(&mut self) -> &mut VecDeque<SpannedToken> {
+    fn reader(&mut self) -> &mut peek2::Reader<SpannedToken> {
         assert!(self.value.is_none());
-        &mut self.tokens
+        &mut self.reader
     }
     /// pop the value, panic if no unprocessed value
     fn pop_value(&mut self) -> Ast {
@@ -146,11 +133,15 @@ impl Unprocessed {
         if self.value.is_some() {
             panic!("have unprocessed value");
         }
-        self.tokens.pop_front().unwrap()
+        self.reader.next().unwrap()
     }
 
-    fn amount(&self) -> usize {
-        self.tokens.len() + self.value.is_some() as usize
+    fn progress(&self) -> usize {
+        self.reader.progress()
+            + match self.value {
+                Some(_) => 0,
+                None => 1,
+            }
     }
 }
 
@@ -158,44 +149,39 @@ struct Parser {
     unprocessed: Unprocessed,
     #[allow(dead_code)]
     filename: PathBuf,
-    end: Position,
 }
 
-fn read_syntax_def(tokens: &mut VecDeque<SpannedToken>) -> (SyntaxDefinition, Span) {
+fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> (SyntaxDefinition, Span) {
     let Span {
         start,
         end: _,
         filename,
-    } = match tokens.front() {
-        Some(token) if token.raw() == "syntax" => tokens.pop_front().unwrap().span,
+    } = match reader.peek() {
+        Some(token) if token.raw() == "syntax" => reader.next().unwrap().span,
         _ => panic!("expected a syntax definition"),
     };
-    let name_token = tokens.pop_front().expect("expected a name for the syntax");
+    let name_token = reader.next().expect("expected a name for the syntax");
     let name = match name_token.token {
         Token::Ident { name, .. } => name,
         _ => panic!("name for the syntax must be an identifier"),
     };
-    let associativity = match tokens.pop_front().expect("expected a associativity").token {
+    let associativity = match reader.next().expect("expected a associativity").token {
         Token::Punctuation { raw } if raw == "<-" => Associativity::Left,
         Token::Punctuation { raw } if raw == "->" => Associativity::Right,
         _ => panic!("expected associativity (<- or ->)"),
     };
-    let priority = match tokens.pop_front().expect("expected a priority").token {
+    let priority = match reader.next().expect("expected a priority").token {
         Token::Number { raw } | Token::String { contents: raw, .. } => {
             Priority::new(raw.parse().expect("failed to parse priority"))
         }
         _ => panic!("syntax priority must be a number"),
     };
-    if tokens
-        .pop_front()
-        .map(|spanned| spanned.token.raw().to_owned())
-        != Some("=".to_owned())
-    {
+    if reader.next().map(|spanned| spanned.token.raw().to_owned()) != Some("=".to_owned()) {
         panic!("expected a =");
     }
     let mut parts = Vec::new();
     let mut end = None;
-    while let Some(token) = tokens.front() {
+    while let Some(token) = reader.peek() {
         parts.push(match &token.token {
             Token::Ident { name, .. } => {
                 if name == "_" {
@@ -207,7 +193,7 @@ fn read_syntax_def(tokens: &mut VecDeque<SpannedToken>) -> (SyntaxDefinition, Sp
             Token::String { contents, .. } => SyntaxDefinitionPart::Keyword(contents.clone()),
             _ => break,
         });
-        end = Some(tokens.pop_front().unwrap().span.end);
+        end = Some(reader.next().unwrap().span.end);
     }
     (
         SyntaxDefinition {
@@ -347,13 +333,13 @@ impl ReadOne<'_> {
                     return ReadOneProgress::Ready;
                 } else {
                     tracing::trace!("trying to read some more values");
-                    let unprocessed_before = self.parser.unprocessed.amount();
+                    let progress_before = self.parser.unprocessed.progress();
                     self.unassigned_value = self.parser.read_until(
                         self.syntax,
                         self.unassigned_value.take(),
                         self.min_binding_power_for_inner_values(),
                     );
-                    let made_progress = self.parser.unprocessed.amount() != unprocessed_before;
+                    let made_progress = self.parser.unprocessed.progress() > progress_before;
                     if !made_progress {
                         tracing::trace!("no progress could be made");
                         return ReadOneProgress::Ready;
@@ -408,7 +394,7 @@ impl Parser {
                 }
                 Some(TokenOrValue::Token(token)) => {
                     if token.raw() == "syntax" {
-                        let (def, span) = read_syntax_def(self.unprocessed.tokens());
+                        let (def, span) = read_syntax_def(self.unprocessed.reader());
                         return Some(Ast::SyntaxDefinition {
                             def: Arc::new(def),
                             data: span,
@@ -461,10 +447,10 @@ impl Parser {
         tracing::trace!("starting read until");
         loop {
             tracing::trace!("continuing read one");
-            let unprocessed_before = self.unprocessed.amount();
+            let progress_before = self.unprocessed.progress();
             let one = self.read_one(syntax, unassigned_value, until);
             tracing::trace!("read one = {one:?}");
-            let made_progress = self.unprocessed.amount() < unprocessed_before;
+            let made_progress = self.unprocessed.progress() > progress_before;
             if !made_progress {
                 tracing::trace!("no more progress, stop read until");
                 return one;
@@ -476,7 +462,7 @@ impl Parser {
     fn read_all(&mut self, syntax: &Syntax) -> Option<Ast> {
         let result = self.read_until(syntax, None, None);
         assert!(self.unprocessed.value.is_none());
-        if let Some(token) = self.unprocessed.tokens.front() {
+        if let Some(token) = self.unprocessed.reader.peek() {
             panic!("unexpected token {:?}", token.raw());
         }
         result

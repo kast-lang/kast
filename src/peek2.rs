@@ -50,6 +50,7 @@ pub struct Reader<T> {
     iter: Box<dyn Iterator<Item = T>>,
     current_position: Position,
     filename: PathBuf,
+    progress: usize,
 }
 
 pub enum AdvancePosition {
@@ -79,6 +80,7 @@ impl Reader<char> {
 impl<T: ReadableItem> Reader<T> {
     pub fn new(filename: PathBuf, iter: impl IntoIterator<Item = T> + 'static) -> Self {
         Self {
+            progress: 0,
             peeked: Peeked::None,
             iter: Box::new(iter.into_iter()),
             current_position: Position {
@@ -115,6 +117,7 @@ impl<T: ReadableItem> Reader<T> {
 
     pub fn next(&mut self) -> Option<T> {
         let item = self.peeked.pop().or_else(|| self.iter.next());
+        self.progress += 1;
         if let Some(item) = &item {
             match item.advance_position() {
                 AdvancePosition::OneChar(c) => {
@@ -135,5 +138,9 @@ impl<T: ReadableItem> Reader<T> {
 
     pub fn position(&self) -> Position {
         self.current_position
+    }
+
+    pub fn progress(&self) -> usize {
+        self.progress
     }
 }
