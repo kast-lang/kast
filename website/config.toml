@@ -20,6 +20,7 @@ highlight_theme = "one-dark"
 juice_logo_name = "Kast"
 juice_logo_path = "logo.png"
 juice_extra_menu = [
+    { title = "Blog", link = "/blog" },
     { title = "Github", link = "https://github.com/kast-lang/kast" },
 ]
 juice_exclude_menu = ["exclude_from_nav"]
