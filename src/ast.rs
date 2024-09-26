@@ -385,7 +385,7 @@ impl Parser {
             let value = self.read_one(syntax, until)?;
             match value {
                 Some(value) => {
-                    tracing::info!("read one = {value}");
+                    tracing::trace!("read one = {value}");
                     self.unassigned_values.push_front(value)
                 }
                 None => break,
