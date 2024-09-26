@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::*;
@@ -211,6 +212,7 @@ impl Parser {
     fn read_one(
         &mut self,
         syntax: &Syntax,
+        continuation_keywords: &HashSet<&str>,
         start_value: Option<Ast>,
         outer_bp: Option<BindingPower>,
     ) -> Result<ReadOneResult> {
@@ -255,8 +257,12 @@ impl Parser {
             self.skip_comments();
             let peek = self.reader.peek().unwrap();
             let raw = peek.raw();
-            if let Some(node) = current_node.next.get(&Edge::Keyword(raw.to_owned())) {
-                if !should_resume(outer_bp, node.binding_power) {
+            if let Some(next_node) = current_node
+                .next
+                .get(&Edge::Keyword(raw.to_owned()))
+                .filter(|_| !continuation_keywords.contains(raw))
+            {
+                if !should_resume(outer_bp, next_node.binding_power) {
                     tracing::trace!("not continuing with keyword {raw:?} because of outer_bp");
                     break;
                 }
@@ -264,28 +270,40 @@ impl Parser {
                 parsed_parts.push(ProgressPart::Keyword(
                     self.reader.next().unwrap().token.into_raw(),
                 ));
-                current_node = node;
+                current_node = next_node;
                 made_progress = true;
-            } else if let Some(node) = current_node.next.get(&Edge::Value) {
-                if !should_resume(outer_bp, node.binding_power) {
+            } else if let Some(next_node) = current_node.next.get(&Edge::Value) {
+                if !should_resume(outer_bp, next_node.binding_power) {
                     tracing::trace!("not trying to read a value because of outer_bp");
                     break;
                 }
-                let current_bp = if current_node.is_open_paren {
-                    None
-                } else if !made_progress {
-                    node.binding_power
+                let (current_bp, inner_continuation_keywords) = if current_node.is_open_paren {
+                    tracing::trace!(
+                        "since we just opened a paren, we reset bp and continuation keywords",
+                    );
+                    (None, HashSet::new())
                 } else {
-                    current_node.binding_power
+                    let mut keywords = continuation_keywords.clone();
+                    for edge in next_node.next.keys() {
+                        if let Edge::Keyword(keyword) = edge {
+                            keywords.insert(keyword);
+                        }
+                    }
+                    let bp = if !made_progress {
+                        next_node.binding_power
+                    } else {
+                        current_node.binding_power
+                    };
+                    (bp, keywords)
                 };
-                tracing::trace!(
-                    "trying to read a value to continue with (current_bp={current_bp:?})",
-                );
-                match self.read_expr(syntax, current_bp)? {
+                tracing::trace!("trying to read a value to continue with");
+                tracing::trace!("current_bp={current_bp:?}");
+                tracing::trace!("inner_continuation_keywords={inner_continuation_keywords:?})");
+                match self.read_expr(syntax, &inner_continuation_keywords, current_bp)? {
                     Some(value) => {
                         tracing::trace!("continuing with a value");
                         parsed_parts.push(ProgressPart::Value(value));
-                        current_node = node;
+                        current_node = next_node;
                         made_progress = true;
                     }
                     None => {
@@ -327,6 +345,7 @@ impl Parser {
     fn read_expr(
         &mut self,
         syntax: &Syntax,
+        continuation_keywords: &HashSet<&str>,
         outer_bp: Option<BindingPower>,
     ) -> Result<Option<Ast>> {
         if self.reader.peek().unwrap().is_eof() {
@@ -339,7 +358,7 @@ impl Parser {
                 "trying to read one more node with start_value={}",
                 display_option(&start_value),
             );
-            match self.read_one(syntax, start_value, outer_bp)? {
+            match self.read_one(syntax, continuation_keywords, start_value, outer_bp)? {
                 ReadOneResult::Progress(value) => start_value = Some(value),
                 ReadOneResult::NoProgress(value) => {
                     match &value {
@@ -353,7 +372,7 @@ impl Parser {
     }
 
     fn read_all(&mut self, syntax: &Syntax) -> Result<Option<Ast>> {
-        let result = self.read_expr(syntax, None)?;
+        let result = self.read_expr(syntax, &HashSet::new(), None)?;
         let peek = self.reader.peek().unwrap();
         if !peek.is_eof() {
             return error!("unexpected token {:?}", peek.raw());
