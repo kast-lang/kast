@@ -10,6 +10,7 @@ mod lexer;
 mod syntax;
 
 mod cli;
+mod display_option;
 mod peek2;
 mod source;
 mod tuple;
@@ -64,15 +65,10 @@ fn main() -> eyre::Result<()> {
                     contents,
                     filename: "<stdin>".into(),
                 };
-                let values = ast::parse(&syntax, source)?;
-                if values.is_empty() {
-                    println!("<nothing>");
-                }
-                for (index, value) in values.iter().enumerate() {
-                    if values.len() != 1 {
-                        print!("value #{index}: ");
-                    }
-                    println!("{value:#}");
+                let ast = ast::parse(&syntax, source)?;
+                match ast {
+                    None => println!("<nothing>"),
+                    Some(ast) => println!("{ast:#}"),
                 }
                 if !is_tty {
                     break;

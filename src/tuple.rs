@@ -34,16 +34,16 @@ impl<T: std::fmt::Display> std::fmt::Display for Tuple<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "(")?;
         {
+            if !self.is_empty() {
+                writeln!(f)?;
+            }
             let mut f = pad_adapter::PadAdapter::new(f);
             for field in &self.unnamed {
-                write!(f, "\n{field}")?;
+                writeln!(f, "{field}")?;
             }
             for name in &self.named_order {
                 let field = &self.named[name];
-                write!(f, "\n{name}: {field}")?;
-            }
-            if !self.is_empty() {
-                writeln!(f)?;
+                writeln!(f, "{name}: {field}")?;
             }
         }
         write!(f, ")")?;

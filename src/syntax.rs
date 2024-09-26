@@ -1,7 +1,7 @@
 use crate::error::*;
 use noisy_float::prelude::*;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     sync::Arc,
 };
 
@@ -51,15 +51,22 @@ pub struct BindingPower {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
-pub struct Edge {
-    pub values_before_keyword: usize,
-    pub keyword: String,
+pub enum Edge {
+    Value,
+    Keyword(String),
+}
+impl Edge {
+    fn is_open_bracket(&self) -> bool {
+        match self {
+            Self::Keyword(keyword) => keyword.chars().any(|c| "([{".contains(c)),
+            Self::Value => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct ParseNode {
-    /// Map key is amount of values before we finish
-    pub finish: BTreeMap<usize, Arc<SyntaxDefinition>>,
+    pub finish: Option<Arc<SyntaxDefinition>>,
     pub next: HashMap<Edge, ParseNode>,
     pub binding_power: Option<BindingPower>,
     pub is_open_paren: bool,
@@ -68,7 +75,7 @@ pub struct ParseNode {
 impl ParseNode {
     fn new(is_open_paren: bool, binding_power: Option<BindingPower>) -> Self {
         Self {
-            finish: BTreeMap::new(),
+            finish: None,
             next: HashMap::new(),
             binding_power,
             is_open_paren,
@@ -77,45 +84,19 @@ impl ParseNode {
     pub fn with_power(is_open_paren: bool, binding_power: BindingPower) -> Self {
         Self::new(is_open_paren, Some(binding_power))
     }
+    /// write what is expected after this node (a value or on of the keywords)
     pub fn format_possible_continuations(&self) -> impl std::fmt::Display + '_ {
         struct Format<'a>(&'a ParseNode);
         impl std::fmt::Display for Format<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                let write_values =
-                    |f: &mut std::fmt::Formatter<'_>, values: usize| -> std::fmt::Result {
-                        for i in 0..values {
-                            if i != 0 {
-                                write!(f, " ")?;
-                            }
-                            write!(f, "_")?;
-                        }
-                        Ok(())
-                    };
-                let mut option_written = false;
-                let mut start_option = |f: &mut std::fmt::Formatter<'_>| match option_written {
-                    false => {
-                        option_written = true;
-                        write!(f, "\"")
+                for (i, edge) in self.0.next.keys().enumerate() {
+                    if i != 0 {
+                        write!(f, " or ")?;
                     }
-                    true => write!(f, ", \""),
-                };
-                let finish_option = |f: &mut std::fmt::Formatter<'_>| write!(f, "\"");
-                for &values in self.0.finish.keys() {
-                    start_option(f)?;
-                    write_values(f, values)?;
-                    if values == 0 {
-                        write!(f, "<no values>")?;
+                    match edge {
+                        Edge::Value => write!(f, "a value")?,
+                        Edge::Keyword(keyword) => write!(f, "{keyword:?}")?,
                     }
-                    finish_option(f)?;
-                }
-                for edge in self.0.next.keys() {
-                    start_option(f)?;
-                    write_values(f, edge.values_before_keyword)?;
-                    if edge.values_before_keyword != 0 {
-                        write!(f, " ")?;
-                    }
-                    write!(f, "{}", edge.keyword)?;
-                    finish_option(f)?;
                 }
                 Ok(())
             }
@@ -127,59 +108,59 @@ impl ParseNode {
 #[derive(Clone, Debug)]
 pub struct Syntax {
     pub keywords: HashSet<String>,
-    pub root: ParseNode,
+    pub root_without_start_value: ParseNode,
+    pub root_with_start_value: ParseNode,
 }
 
 impl Syntax {
     pub fn empty() -> Self {
         Self {
             keywords: HashSet::new(),
-            root: ParseNode::new(false, None),
+            root_without_start_value: ParseNode::new(false, None),
+            root_with_start_value: ParseNode::new(false, None),
         }
     }
 
     pub fn insert(&mut self, definition: Arc<SyntaxDefinition>) -> Result<(), ErrorMessage> {
         let binding_power = definition.binding_power();
-        let mut current_node = &mut self.root;
-        let mut values_before_keyword = 0;
-        for part in &definition.parts {
-            match part {
+        let skip;
+        let mut current_node = match definition.parts[0] {
+            SyntaxDefinitionPart::Keyword(_) => {
+                skip = 0;
+                &mut self.root_without_start_value
+            }
+            _ => {
+                skip = 1;
+                &mut self.root_with_start_value
+            }
+        };
+        for part in definition.parts.iter().skip(skip) {
+            let edge = match part {
                 SyntaxDefinitionPart::Keyword(keyword) => {
                     self.keywords.insert(keyword.clone());
-                    let edge = Edge {
-                        values_before_keyword,
-                        keyword: keyword.clone(),
-                    };
-                    let next_node = current_node.next.entry(edge).or_insert_with(|| {
-                        ParseNode::with_power(
-                            keyword.chars().any(|c| "([{".contains(c)),
-                            binding_power,
-                        )
-                    });
-                    if next_node.binding_power != Some(binding_power) {
-                        return error!("different binding power");
-                    }
-                    values_before_keyword = 0;
-                    current_node = next_node;
+                    Edge::Keyword(keyword.clone())
                 }
                 SyntaxDefinitionPart::UnnamedBinding | SyntaxDefinitionPart::NamedBinding(_) => {
-                    values_before_keyword += 1;
+                    Edge::Value
                 }
+            };
+            let is_open_bracket = edge.is_open_bracket();
+            let next_node = current_node
+                .next
+                .entry(edge)
+                .or_insert_with(|| ParseNode::with_power(is_open_bracket, binding_power));
+            if next_node.binding_power != Some(binding_power) {
+                return error!("different binding power");
             }
+            current_node = next_node;
         }
-        use std::collections::btree_map::Entry;
-        match current_node.finish.entry(values_before_keyword) {
-            Entry::Vacant(entry) => {
-                entry.insert(definition);
-            }
-            Entry::Occupied(entry) => {
-                return error!(
-                    "Conficting syntax definitions: {:?} and {:?}",
-                    entry.get().name,
-                    definition.name,
-                );
-            }
+        if let Some(current) = &current_node.finish {
+            return error!(
+                "Conficting syntax definitions: {:?} and {:?}",
+                current.name, definition.name,
+            );
         }
+        current_node.finish = Some(definition);
         Ok(())
     }
 }

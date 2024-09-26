@@ -68,6 +68,9 @@ impl Token {
     pub fn is_eof(&self) -> bool {
         matches!(self, Self::Eof)
     }
+    pub fn is_comment(&self) -> bool {
+        matches!(self, Self::Comment { .. })
+    }
 }
 
 struct Lexer {
