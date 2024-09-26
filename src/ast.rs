@@ -4,7 +4,9 @@ use std::{
 };
 
 use super::*;
-use crate::{lexer::*, syntax::*};
+use crate::lexer::*;
+use crate::syntax::*;
+use crate::tuple::*;
 use error::*;
 
 #[allow(dead_code)]
@@ -35,24 +37,11 @@ impl std::fmt::Display for Ast {
         match self {
             Ast::Simple { token, .. } => write!(f, "{:?}", token.raw()),
             Ast::Complex { definition, values } => {
-                let mut f = f.debug_struct(&definition.name);
-                for (index, value) in values.unnamed.iter().enumerate() {
-                    f.field(&index.to_string(), &Display(value));
-                }
-                for (name, value) in &values.named {
-                    f.field(name, &Display(value));
-                }
-                f.finish()
+                write!(f, "{}", values.fmt_with_name(&definition.name))
             }
             Ast::SyntaxDefinition { def, .. } => write!(f, "syntax {:?}", def.name),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Tuple<T> {
-    pub unnamed: Vec<T>,
-    pub named: BTreeMap<String, T>,
 }
 
 pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<VecDeque<Ast>, Error> {
@@ -395,7 +384,10 @@ impl Parser {
             self.read_simple_values(syntax)?;
             let value = self.read_one(syntax, until)?;
             match value {
-                Some(value) => self.unassigned_values.push_front(value),
+                Some(value) => {
+                    tracing::info!("read one = {value}");
+                    self.unassigned_values.push_front(value)
+                }
                 None => break,
             }
         }
@@ -417,10 +409,7 @@ fn assign_progress(
     definition: &SyntaxDefinition,
     values: impl IntoIterator<Item = ProgressPart>,
 ) -> Result<Tuple<Ast>> {
-    let mut result = Tuple {
-        unnamed: Vec::new(),
-        named: BTreeMap::new(),
-    };
+    let mut result = Tuple::empty();
     let mut progress = values.into_iter();
     for part in &definition.parts {
         let progress = progress
@@ -437,14 +426,14 @@ fn assign_progress(
                 );
             }
             SyntaxDefinitionPart::UnnamedBinding => {
-                result.unnamed.push(
+                result.add_unnamed(
                     progress
                         .into_value()
                         .ok_or_else(|| error_fmt!("expected a value"))?,
                 );
             }
             SyntaxDefinitionPart::NamedBinding(name) => {
-                result.named.insert(
+                result.add_named(
                     name.clone(),
                     progress
                         .into_value()

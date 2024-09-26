@@ -7,6 +7,7 @@ edition = "2021"
 clap = { version = "4.5.18", features = ["derive"] }
 eyre = "0.6.12"
 noisy_float = "0.2.0"
+pad-adapter = "0.1.1"
 rustyline = "14.0.0"
 thiserror = "1.0.63"
 tracing = "0.1.40"

@@ -12,6 +12,7 @@ mod syntax;
 mod cli;
 mod peek2;
 mod source;
+mod tuple;
 
 use source::*;
 
