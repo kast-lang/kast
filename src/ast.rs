@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, VecDeque},
-    sync::Arc,
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use super::*;
 use crate::lexer::*;
@@ -28,12 +25,6 @@ pub enum Ast<Data = Span> {
 
 impl std::fmt::Display for Ast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct Display<T: std::fmt::Display>(T);
-        impl<T: std::fmt::Display> std::fmt::Debug for Display<T> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                self.0.fmt(f)
-            }
-        }
         match self {
             Ast::Simple { token, .. } => write!(f, "{:?}", token.raw()),
             Ast::Complex { definition, values } => {
