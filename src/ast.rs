@@ -352,14 +352,14 @@ impl Parser {
             return Ok(None);
         }
         tracing::trace!("starting to read expr with outer_bp={outer_bp:?}");
-        let mut start_value = None;
+        let mut already_parsed = None;
         loop {
             tracing::trace!(
-                "trying to read one more node with start_value={}",
-                display_option(&start_value),
+                "trying to read one more node with already_parsed={}",
+                display_option(&already_parsed),
             );
-            match self.read_one(syntax, continuation_keywords, start_value, outer_bp)? {
-                ReadOneResult::Progress(value) => start_value = Some(value),
+            match self.read_one(syntax, continuation_keywords, already_parsed, outer_bp)? {
+                ReadOneResult::Progress(value) => already_parsed = Some(value),
                 ReadOneResult::NoProgress(value) => {
                     match &value {
                         Some(value) => tracing::trace!("read expr - done! parsed {value}"),
