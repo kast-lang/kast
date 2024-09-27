@@ -1,12 +1,17 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::*;
-use crate::display_option::display_option;
-use crate::lexer::*;
-use crate::syntax::*;
-use crate::tuple::*;
-use error::*;
+use kast_util::*;
+
+mod lexer;
+mod peek2;
+mod syntax;
+
+pub use lexer::{StringType, Token};
+pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefinitionPart};
+
+use lexer::*;
+use syntax::{BindingPower, Edge};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -18,6 +23,7 @@ pub enum Ast<Data = Span> {
     Complex {
         definition: Arc<SyntaxDefinition>,
         values: Tuple<Self>,
+        data: Data,
     },
     SyntaxDefinition {
         def: Arc<SyntaxDefinition>,
@@ -25,14 +31,28 @@ pub enum Ast<Data = Span> {
     },
 }
 
+impl<Data> Ast<Data> {
+    pub fn data(&self) -> &Data {
+        match self {
+            Ast::Simple { data, .. }
+            | Ast::Complex { data, .. }
+            | Ast::SyntaxDefinition { data, .. } => data,
+        }
+    }
+}
+
 impl std::fmt::Display for Ast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Ast::Simple { token, .. } => write!(f, "{:?}", token.raw()),
-            Ast::Complex { definition, values } => {
+            Ast::Simple { token, data: _ } => write!(f, "{:?}", token.raw()),
+            Ast::Complex {
+                definition,
+                values,
+                data: _,
+            } => {
                 write!(f, "{}", values.fmt_with_name(&definition.name))
             }
-            Ast::SyntaxDefinition { def, .. } => write!(f, "syntax {:?}", def.name),
+            Ast::SyntaxDefinition { def, data: _ } => write!(f, "syntax {:?}", def.name),
         }
     }
 }
@@ -140,20 +160,26 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(SyntaxDe
 // wanted to be safe, then sorry.
 
 enum ProgressPart {
-    Keyword(String),
+    Keyword(String, Span),
     Value(Ast),
 }
 
 impl ProgressPart {
+    pub fn span(&self) -> &Span {
+        match self {
+            ProgressPart::Keyword(_, span) => span,
+            ProgressPart::Value(ast) => ast.data(),
+        }
+    }
     pub fn into_keyword(self) -> Option<String> {
         match self {
-            ProgressPart::Keyword(keyword) => Some(keyword),
+            ProgressPart::Keyword(keyword, _) => Some(keyword),
             ProgressPart::Value(_) => None,
         }
     }
     pub fn into_value(self) -> Option<Ast> {
         match self {
-            ProgressPart::Keyword(_) => None,
+            ProgressPart::Keyword(_, _) => None,
             ProgressPart::Value(value) => Some(value),
         }
     }
@@ -183,7 +209,7 @@ impl ProgressPart {
 impl std::fmt::Display for ProgressPart {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Keyword(keyword) => write!(f, "{keyword}"),
+            Self::Keyword(keyword, _) => write!(f, "{keyword}"),
             Self::Value(_) => write!(f, "_"),
         }
     }
@@ -267,9 +293,10 @@ impl Parser {
                     break;
                 }
                 tracing::trace!("continuing with keyword {raw:?}");
-                parsed_parts.push(ProgressPart::Keyword(
-                    self.reader.next().unwrap().token.into_raw(),
-                ));
+                parsed_parts.push({
+                    let keyword = self.reader.next().unwrap();
+                    ProgressPart::Keyword(keyword.token.into_raw(), keyword.span)
+                });
                 current_node = next_node;
                 made_progress = true;
             } else if let Some(next_node) = current_node.next.get(&Edge::Value) {
@@ -319,7 +346,7 @@ impl Parser {
             tracing::trace!("no progress was made, returning start_value back");
             assert!(parsed_parts.len() <= 1);
             let start_value = parsed_parts.pop().map(|part| match part {
-                ProgressPart::Keyword(_) => unreachable!(),
+                ProgressPart::Keyword(_, _) => unreachable!(),
                 ProgressPart::Value(value) => value,
             });
             return Ok(ReadOneResult::NoProgress(start_value));
@@ -332,9 +359,15 @@ impl Parser {
             );
         };
         tracing::trace!("read one finished, collecting progress");
+        let span = Span {
+            filename: self.reader.filename().to_owned(),
+            start: parsed_parts[0].span().start,
+            end: parsed_parts.last().unwrap().span().end,
+        };
         Ok(ReadOneResult::Progress(Ast::Complex {
             definition: definition.clone(),
             values: assign_progress(definition, parsed_parts).expect("Failed to assign values"),
+            data: span,
         }))
     }
 }

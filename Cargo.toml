@@ -1,14 +1,29 @@
+[workspace]
+members = ["crates/*"]
+
+[workspace.dependencies]
+clap = { version = "4.5.18", features = ["derive"] }
+eyre = "0.6.12"
+noisy_float = "0.2.0"
+rustyline = "14.0.0"
+thiserror = "1.0.63"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+pad-adapter = "0.1.1"
+
+kast-util = { path = "crates/util" }
+kast-ast = { path = "crates/ast" }
+
 [package]
 name = "kast"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.18", features = ["derive"] }
-eyre = "0.6.12"
-noisy_float = "0.2.0"
-pad-adapter = "0.1.1"
-rustyline = "14.0.0"
-thiserror = "1.0.63"
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
+clap.workspace = true
+eyre.workspace = true
+rustyline.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+kast-util.workspace = true
+kast-ast.workspace = true

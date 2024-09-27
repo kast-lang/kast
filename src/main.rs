@@ -1,21 +1,11 @@
+use kast_ast as ast;
+use kast_util::*;
 use std::{
     io::{IsTerminal, Read},
     path::{Path, PathBuf},
 };
 
-#[macro_use]
-mod error;
-mod ast;
-mod lexer;
-mod syntax;
-
 mod cli;
-mod display_option;
-mod peek2;
-mod source;
-mod tuple;
-
-use source::*;
 
 fn std_path() -> PathBuf {
     match std::env::var_os("KAST_STD") {

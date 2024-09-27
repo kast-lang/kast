@@ -20,12 +20,14 @@ impl ErrorMessage {
     }
 }
 
+#[macro_export]
 macro_rules! error_fmt {
     ($($f:tt)*) => {
         ErrorMessage(format!($($f)*))
     };
 }
 
+#[macro_export]
 macro_rules! error {
     ($($f:tt)*) => {
         Err(error_fmt!($($f)*))

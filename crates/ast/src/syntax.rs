@@ -1,4 +1,4 @@
-use crate::error::*;
+use super::*;
 use noisy_float::prelude::*;
 use std::{
     collections::{HashMap, HashSet},
@@ -107,9 +107,9 @@ impl ParseNode {
 
 #[derive(Clone, Debug)]
 pub struct Syntax {
-    pub keywords: HashSet<String>,
-    pub root_without_start_value: ParseNode,
-    pub root_with_start_value: ParseNode,
+    pub(crate) keywords: HashSet<String>,
+    pub(crate) root_without_start_value: ParseNode,
+    pub(crate) root_with_start_value: ParseNode,
 }
 
 impl Syntax {

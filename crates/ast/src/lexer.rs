@@ -1,7 +1,5 @@
 // We are finally making some progress
-
-use crate::source::*;
-use crate::{error::*, peek2};
+use super::*;
 use std::collections::HashMap;
 
 pub type Result<T, E = ErrorMessage> = std::result::Result<T, E>;
