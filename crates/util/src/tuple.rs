@@ -44,6 +44,21 @@ impl<T> Tuple<T> {
                 .map(move |name| self.named.remove(&name).unwrap()),
         )
     }
+    pub fn into_named<const N: usize>(mut self, names: [&str; N]) -> Result<[T; N], Self> {
+        if !self.unnamed.is_empty() {
+            return Err(self);
+        }
+        if self.named.len() != N {
+            return Err(self);
+        }
+        if names.iter().any(|&name| !self.named.contains_key(name)) {
+            return Err(self);
+        }
+        Ok(names.map(|name| self.named.remove(name).unwrap()))
+    }
+    pub fn into_single_named(self, name: &str) -> Result<T, Self> {
+        self.into_named([name]).map(|[value]| value)
+    }
 }
 
 pub enum TupleZipError {

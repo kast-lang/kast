@@ -1,6 +1,7 @@
 #[derive(clap::Subcommand)]
 pub enum Command {
     ParseAst,
+    Repl,
 }
 
 #[derive(clap::Parser)]

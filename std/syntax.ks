@@ -117,7 +117,7 @@ syntax @"builtin macro struct_def" <- 500 = "rec" "(" body ")";
 syntax @"builtin macro struct_def" <- 500 = "rec" "{" body "}";
 syntax @"builtin macro struct_def" <- 500 = "struct" "(" body ")";
 syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
-syntax @"builtin macro builtin" <- 500 = "builtin" name;
+syntax @"builtin macro native" <- 500 = "native" name;
 syntax @"builtin macro import" <- 500 = "import" path;
 
 # syntax @"builtin macro function_def" <- 100000 = "{" body "}";
