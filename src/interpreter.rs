@@ -23,60 +23,64 @@ impl State {
 }
 
 impl Kast {
-    pub fn eval_ast(&mut self, ast: Ast) -> Value {
-        let expr = self.compile_expr(ast);
-        self.eval(expr)
-    }
-    pub fn eval(&mut self, expr: Expr) -> Value {
-        match expr {
-            Expr::Binding { binding, data: _ } => self
-                .interpreter
-                .values
-                .get(&binding.name)
-                .expect("todo err binding not found")
-                .clone(),
-            Expr::Constant { value, data: _ } => value,
-            Expr::Number { raw, data } => match data.ty.inferred() {
-                Ok(Type::Int32) => {
-                    Value::Int32(raw.parse().expect("todo err failed to parse number"))
-                }
-                Ok(other) => {
-                    panic!("todo err {other} is not a number")
-                }
-                Err(_) => panic!("todo err number type could not be inferred"),
-            },
-            Expr::Native { name, data: _ } => {
-                let name = self
-                    .eval(*name)
-                    .expect_string()
-                    .map_err(|s| error_fmt!("{s} is not a string"))
-                    .expect("todo err native name must be a string");
-                match self.interpreter.builtins.get(name.as_str()) {
-                    Some(value) => value.clone(),
-                    None => panic!("todo err builtin {name:?} not found"),
-                }
-            }
-            Expr::Let {
-                pattern,
-                value,
-                data: _,
-            } => {
-                let value = self.eval(*value);
-                let matches = pattern.r#match(value);
-                for (binding, _value) in &matches {
-                    // TODO do smth else
-                    self.compiler
-                        .locals
-                        .insert(binding.name.raw().to_owned(), binding.clone());
-                }
-                self.interpreter.values.extend(
-                    matches
-                        .into_iter()
-                        .map(|(binding, value)| (binding.name.clone(), value)),
-                );
-                Value::Unit
-            }
+    pub fn eval_ast(&mut self, ast: &Ast, expected_ty: Option<Type>) -> eyre::Result<Value> {
+        let mut expr: Expr = self.compile(ast)?;
+        if let Some(ty) = expected_ty {
+            expr.data_mut().ty.make_same(ty)?;
         }
+        let result = self.eval(&expr)?;
+        Ok(result)
+    }
+    pub fn eval(&mut self, expr: &Expr) -> eyre::Result<Value> {
+        (|| {
+            Ok(match expr {
+                Expr::Binding { binding, data: _ } => self
+                    .interpreter
+                    .values
+                    .get(&binding.name)
+                    .ok_or_else(|| eyre!("{:?} not found", binding.name))?
+                    .clone(),
+                Expr::Constant { value, data: _ } => value.clone(),
+                Expr::Number { raw, data } => match data.ty.inferred() {
+                    Ok(Type::Int32) => Value::Int32(
+                        raw.parse()
+                            .wrap_err_with(|| format!("Failed to parse {raw:?} as int32"))?,
+                    ),
+                    Ok(other) => {
+                        eyre::bail!("number literals can not be treated as {other}")
+                    }
+                    Err(_) => eyre::bail!("number literal type could not be inferred"),
+                },
+                Expr::Native { name, data: _ } => {
+                    let name = self.eval(name)?.expect_string()?;
+                    match self.interpreter.builtins.get(name.as_str()) {
+                        Some(value) => value.clone(),
+                        None => eyre::bail!("native {name:?} not found"),
+                    }
+                }
+                Expr::Let {
+                    pattern,
+                    value,
+                    data: _,
+                } => {
+                    let value = self.eval(value)?;
+                    let matches = pattern.r#match(value);
+                    for (binding, _value) in &matches {
+                        // TODO do smth else
+                        self.compiler
+                            .locals
+                            .insert(binding.name.raw().to_owned(), binding.clone());
+                    }
+                    self.interpreter.values.extend(
+                        matches
+                            .into_iter()
+                            .map(|(binding, value)| (binding.name.clone(), value)),
+                    );
+                    Value::Unit
+                }
+            })
+        })()
+        .wrap_err_with(|| format!("while evaluating {}", expr.show_short()))
     }
 }
 

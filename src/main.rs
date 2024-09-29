@@ -1,3 +1,5 @@
+use color_eyre::Section as _;
+use eyre::{eyre, Context as _};
 use kast_ast as ast;
 use kast_util::*;
 use std::{
@@ -66,7 +68,9 @@ fn run_repl(mut handler: impl FnMut(String) -> eyre::Result<()>) -> eyre::Result
                 contents
             }
         };
-        handler(s)?;
+        if let Err(e) = handler(s) {
+            println!("{e:?}");
+        };
         if !is_tty {
             break;
         }
@@ -75,6 +79,10 @@ fn run_repl(mut handler: impl FnMut(String) -> eyre::Result<()>) -> eyre::Result
 }
 
 fn main() -> eyre::Result<()> {
+    color_eyre::config::HookBuilder::new()
+        .display_env_section(false)
+        .display_location_section(false)
+        .install()?;
     tracing_subscriber::fmt::init();
     let cli_args = cli::parse();
     match cli_args.command {
@@ -113,7 +121,7 @@ fn main() -> eyre::Result<()> {
                     // empty line
                     return Ok(());
                 };
-                let value = kast.eval_ast(ast);
+                let value = kast.eval_ast(&ast, None)?;
                 println!("{} :: {}", value, value.ty());
                 Ok(())
             })?;

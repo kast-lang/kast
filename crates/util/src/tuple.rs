@@ -44,19 +44,116 @@ impl<T> Tuple<T> {
                 .map(move |name| self.named.remove(&name).unwrap()),
         )
     }
-    pub fn into_named<const N: usize>(mut self, names: [&str; N]) -> Result<[T; N], Self> {
+    pub fn show_fields(&self) -> impl std::fmt::Display + '_ {
+        struct ShowFields<'a, T>(&'a Tuple<T>);
+        impl<T> std::fmt::Display for ShowFields<'_, T> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let mut first = true;
+                if !self.0.unnamed.is_empty() {
+                    write!(f, "{} unnamed fields", self.0.unnamed.len())?;
+                    first = false;
+                }
+                for name in &self.0.named_order {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name:?}")?;
+                }
+                Ok(())
+            }
+        }
+        ShowFields(self)
+    }
+    pub fn as_ref(&self) -> Tuple<&T> {
+        Tuple {
+            unnamed: self.unnamed.iter().collect(),
+            named: self
+                .named
+                .iter()
+                .map(|(key, value)| (key.clone(), value))
+                .collect(),
+            named_order: self.named_order.clone(),
+        }
+    }
+    pub fn map<U>(self, f: impl Fn(T) -> U) -> Tuple<U> {
+        Tuple {
+            unnamed: self.unnamed.into_iter().map(&f).collect(),
+            named: self
+                .named
+                .into_iter()
+                .map(|(key, value)| (key, f(value)))
+                .collect(),
+            named_order: self.named_order,
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum NamedErrorReason {
+    UnnamedFieldsPresent,
+    FieldNotPresent(String),
+    FieldUnexpected(String),
+}
+
+impl std::fmt::Display for NamedErrorReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NamedErrorReason::UnnamedFieldsPresent => write!(f, "no unnamed fields were expected"),
+            NamedErrorReason::FieldNotPresent(name) => write!(f, "field {name:?} not present"),
+            NamedErrorReason::FieldUnexpected(name) => write!(f, "field {name:?} was not expected"),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub struct NamedError {
+    erased_value: Tuple<()>,
+    expected_fields: Vec<String>,
+    #[source]
+    reason: NamedErrorReason,
+}
+
+impl std::fmt::Display for NamedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "expected only named fields {:?}, got {}",
+            self.expected_fields,
+            self.erased_value.show_fields(),
+        )
+    }
+}
+
+impl<T> Tuple<T> {
+    pub fn into_named<const N: usize>(mut self, names: [&str; N]) -> Result<[T; N], NamedError> {
+        macro_rules! error {
+            ($reason:expr) => {
+                Err(NamedError {
+                    expected_fields: names.into_iter().map(String::from).collect(),
+                    reason: $reason,
+                    erased_value: self.map(|_| ()),
+                })
+            };
+        }
         if !self.unnamed.is_empty() {
-            return Err(self);
+            return error!(NamedErrorReason::UnnamedFieldsPresent);
         }
-        if self.named.len() != N {
-            return Err(self);
+        if let Some(name) = names.iter().find(|&&name| !self.named.contains_key(name)) {
+            return error!(NamedErrorReason::FieldNotPresent(name.to_string()));
         }
-        if names.iter().any(|&name| !self.named.contains_key(name)) {
-            return Err(self);
+        if self.named.iter().len() != N {
+            let name = self
+                .named_order
+                .iter()
+                .find(|&name| !self.named.contains_key(name))
+                .unwrap();
+            return error!(NamedErrorReason::FieldUnexpected(name.to_string()));
         }
         Ok(names.map(|name| self.named.remove(name).unwrap()))
     }
-    pub fn into_single_named(self, name: &str) -> Result<T, Self> {
+    pub fn into_single_named(self, name: &str) -> Result<T, NamedError> {
         self.into_named([name]).map(|[value]| value)
     }
 }

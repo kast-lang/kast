@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Type {
     Unit,
     Bool,
@@ -21,19 +21,20 @@ impl Type {
             Ok(self.clone())
         }
     }
-    pub fn make_same(&mut self, other: Self) {
-        *self = inference::Inferrable::make_same(self.clone(), other);
+    pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
+        *self = inference::Inferrable::make_same(self.clone(), other)?;
+        Ok(())
     }
 }
 
 impl inference::Inferrable for Type {
-    fn make_same(a: Self, b: Self) -> Self {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         macro_rules! fail {
             () => {
-                panic!("type check error")
+                eyre::bail!("expected {a}, got {b}")
             };
         }
-        match (a.inferred(), b.inferred()) {
+        Ok(match (a.inferred(), b.inferred()) {
             (Ok(a), Ok(b)) => match (a, b) {
                 (Type::Infer(_), _) | (_, Type::Infer(_)) => unreachable!(),
 
@@ -49,18 +50,18 @@ impl inference::Inferrable for Type {
                 (Type::Type, _) => fail!(),
             },
             (Ok(a), Err(b)) => {
-                b.set(a.clone());
+                b.set(a.clone())?;
                 a
             }
             (Err(a), Ok(b)) => {
-                a.set(b.clone());
+                a.set(b.clone())?;
                 b
             }
             (Err(a), Err(b)) => {
-                a.make_same(b);
+                a.make_same(b)?;
                 Type::Infer(a.clone())
             }
-        }
+        })
     }
 }
 

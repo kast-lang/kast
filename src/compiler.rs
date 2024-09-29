@@ -28,9 +28,17 @@ impl State {
 
 pub trait Compilable: Sized {
     const CTY: CompiledType;
-    fn compile(kast: &mut Kast, ast: Ast) -> Self;
-    fn r#macro(f: BuiltinMacro) -> impl Fn(&mut Kast, Tuple<Ast>, Span) -> Self {
-        move |kast, values, span| Self::from_compiled(f(kast, Self::CTY, values, span))
+    fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self>;
+    fn r#macro(
+        macro_name: &str,
+        f: BuiltinMacro,
+    ) -> impl Fn(&mut Kast, &Tuple<Ast>, Span) -> eyre::Result<Self> + '_ {
+        move |kast, values, span| {
+            Ok(Self::from_compiled(
+                f(kast, Self::CTY, values, span)
+                    .wrap_err_with(|| format!("in builtin macro {macro_name:?}"))?,
+            ))
+        }
     }
     fn from_compiled(compiled: Compiled) -> Self;
 }
@@ -43,8 +51,8 @@ impl Compilable for Expr {
             Compiled::Pattern(_) => unreachable!(),
         }
     }
-    fn compile(kast: &mut Kast, ast: Ast) -> Self {
-        match ast {
+    fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
+        Ok(match ast {
             Ast::Simple { token, data: span } => match token {
                 Token::Ident {
                     raw: _,
@@ -55,21 +63,25 @@ impl Compilable for Expr {
                         .compiler
                         .locals
                         .get(name.as_str())
-                        .expect("todo err name not found")
+                        .ok_or_else(|| eyre!("{name:?} not found"))?
                         .clone(),
-                    data: span,
+                    data: span.clone(),
                 }
-                .init(),
+                .init()?,
                 Token::String {
                     raw: _,
                     contents,
                     typ: _,
                 } => Expr::Constant {
-                    value: Value::String(contents),
-                    data: span,
+                    value: Value::String(contents.clone()),
+                    data: span.clone(),
                 }
-                .init(),
-                Token::Number { raw } => Expr::Number { raw, data: span }.init(),
+                .init()?,
+                Token::Number { raw } => Expr::Number {
+                    raw: raw.clone(),
+                    data: span.clone(),
+                }
+                .init()?,
                 Token::Comment { .. } | Token::Punctuation { .. } | Token::Eof => unreachable!(),
             },
             Ast::Complex {
@@ -82,15 +94,14 @@ impl Compilable for Expr {
                         .compiler
                         .builtin_macros
                         .get(builtin_macro_name)
-                        .unwrap_or_else(|| {
-                            panic!("todo err builtin macro {builtin_macro_name:?} not found")
-                        });
-                    return Self::r#macro(r#macro)(kast, values, span);
+                        .ok_or_else(|| eyre!("builtin macro {builtin_macro_name:?} not found"))?;
+                    Self::r#macro(builtin_macro_name, r#macro)(kast, values, span.clone())?
+                } else {
+                    todo!()
                 }
-                todo!()
             }
             Ast::SyntaxDefinition { def: _, data: _ } => todo!(),
-        }
+        })
     }
 }
 
@@ -102,8 +113,8 @@ impl Compilable for Pattern {
             Compiled::Pattern(p) => p,
         }
     }
-    fn compile(kast: &mut Kast, ast: Ast) -> Self {
-        match ast {
+    fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
+        Ok(match ast {
             Ast::Simple { token, data: span } => match token {
                 Token::Ident {
                     raw: _,
@@ -114,7 +125,7 @@ impl Compilable for Pattern {
                         name: Name::new(name),
                         ty: Type::Infer(inference::Var::new()),
                     }),
-                    data: span,
+                    data: span.clone(),
                 }
                 .init(),
                 Token::String {
@@ -135,80 +146,85 @@ impl Compilable for Pattern {
                         .compiler
                         .builtin_macros
                         .get(builtin_macro_name)
-                        .unwrap_or_else(|| {
-                            panic!("todo err builtin macro {builtin_macro_name:?} not found")
-                        });
-                    return Self::r#macro(r#macro)(kast, values, span);
+                        .ok_or_else(|| eyre!("builtin macro {builtin_macro_name:?} not found"))?;
+                    Self::r#macro(builtin_macro_name, r#macro)(kast, values, span.clone())?
+                } else {
+                    todo!()
                 }
-                todo!()
             }
             Ast::SyntaxDefinition { def: _, data: _ } => todo!(),
-        }
+        })
     }
 }
 
 impl Kast {
-    pub fn compile<T: Compilable>(&mut self, ast: Ast) -> T {
-        T::compile(self, ast)
+    pub fn compile<T: Compilable>(&mut self, ast: &Ast) -> eyre::Result<T> {
+        T::compile(self, ast).wrap_err_with(|| format!("while compiling {}", ast.show_short()))
     }
-    pub fn compile_into(&mut self, ty: CompiledType, ast: Ast) -> Compiled {
-        match ty {
-            CompiledType::Expr => Compiled::Expr(self.compile(ast)),
-            CompiledType::Pattern => Compiled::Pattern(self.compile(ast)),
-        }
-    }
-    pub fn compile_pattern(&mut self, ast: Ast) -> Pattern {
-        self.compile(ast)
-    }
-    pub fn compile_expr(&mut self, ast: Ast) -> Expr {
-        self.compile(ast)
+    fn compile_into(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        Ok(match ty {
+            CompiledType::Expr => Compiled::Expr(self.compile(ast)?),
+            CompiledType::Pattern => Compiled::Pattern(self.compile(ast)?),
+        })
     }
     fn macro_type_ascribe(
         &mut self,
         cty: CompiledType,
-        values: Tuple<Ast>,
+        values: &Tuple<Ast>,
         _span: Span,
-    ) -> Compiled {
+    ) -> eyre::Result<Compiled> {
         let [value, ty] = values
+            .as_ref()
             .into_named(["value", "type"])
-            .unwrap_or_else(|_| panic!("todo err"));
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
         let ty = self
-            .eval_ast(ty)
+            .eval_ast(ty, Some(Type::Type))
+            .wrap_err_with(|| "Failed to evaluate the type")?
             .into_ty()
-            .unwrap_or_else(|value| panic!("todo err {value} is not a type"));
-        let mut value = self.compile_into(cty, value);
-        value.ty_mut().make_same(ty);
-        value
+            .map_err(|value| eyre!("{value} is not a type"))?;
+        let mut value = self.compile_into(cty, value)?;
+        value.ty_mut().make_same(ty)?;
+        Ok(value)
     }
-    fn macro_let(&mut self, ty: CompiledType, values: Tuple<Ast>, span: Span) -> Compiled {
+    fn macro_let(
+        &mut self,
+        ty: CompiledType,
+        values: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Compiled> {
         assert_eq!(ty, CompiledType::Expr);
         let [pattern, value] = values
+            .as_ref()
             .into_named(["pattern", "value"])
-            .unwrap_or_else(|_| panic!("todo err"));
-        Compiled::Expr(
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        Ok(Compiled::Expr(
             Expr::Let {
-                pattern: self.compile_pattern(pattern),
-                value: Box::new(self.compile_expr(value)),
+                pattern: self.compile(pattern)?,
+                value: Box::new(self.compile(value)?),
                 data: span,
             }
-            .init(),
-        )
+            .init()?,
+        ))
     }
-    fn macro_native(&mut self, cty: CompiledType, values: Tuple<Ast>, span: Span) -> Compiled {
+    fn macro_native(
+        &mut self,
+        cty: CompiledType,
+        values: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
-        Compiled::Expr(
+        let name = values
+            .as_ref()
+            .into_single_named("name")
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let name = self.compile(name)?;
+        Ok(Compiled::Expr(
             Expr::Native {
-                name: Box::new(
-                    self.compile_expr(
-                        values
-                            .into_single_named("name")
-                            .unwrap_or_else(|_| panic!("todo err")),
-                    ),
-                ),
+                name: Box::new(name),
                 data: span,
             }
-            .init(),
-        )
+            .init()?,
+        ))
     }
 }
 
@@ -232,5 +248,9 @@ impl Compiled {
     }
 }
 
-type BuiltinMacro =
-    fn(kast: &mut Kast, cty: CompiledType, values: Tuple<Ast>, span: Span) -> Compiled;
+type BuiltinMacro = fn(
+    kast: &mut Kast,
+    cty: CompiledType,
+    values: &Tuple<Ast>,
+    span: Span,
+) -> eyre::Result<Compiled>;

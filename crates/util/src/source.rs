@@ -27,6 +27,9 @@ impl std::fmt::Display for Span {
             None => write!(f, "<non-utf8 filename>")?,
         }
         write!(f, ":{}", self.start)?;
+        if self.start != self.end {
+            write!(f, "~{}", self.end)?;
+        }
         Ok(())
     }
 }

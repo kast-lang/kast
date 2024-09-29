@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Unit,
     Bool(bool),
@@ -39,10 +39,23 @@ impl Value {
             Value::Type(_) => Type::Type,
         }
     }
-    pub fn expect_string(self) -> Result<String, Self> {
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{value} is not {expected_ty}")]
+pub struct ExpectError {
+    value: Value,
+    expected_ty: Type,
+}
+
+impl Value {
+    pub fn expect_string(self) -> Result<String, ExpectError> {
         match self {
             Self::String(s) => Ok(s),
-            _ => Err(self),
+            _ => Err(ExpectError {
+                value: self,
+                expected_ty: Type::String,
+            }),
         }
     }
 }

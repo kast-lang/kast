@@ -32,7 +32,38 @@ pub enum Expr<Data = ExprData> {
     },
 }
 
+impl Expr {
+    pub fn show_short(&self) -> impl std::fmt::Display + '_ {
+        struct Show<'a>(&'a Expr);
+        impl std::fmt::Display for Show<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match &self.0 {
+                    Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
+                    Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
+                    Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
+                    Expr::Native { name: _, data: _ } => write!(f, "native expr")?,
+                    Expr::Let {
+                        pattern: _,
+                        value: _,
+                        data: _,
+                    } => write!(f, "let expr")?,
+                }
+                write!(f, " at {}", self.0.data().span)
+            }
+        }
+        Show(self)
+    }
+}
+
 impl<Data> Expr<Data> {
+    pub fn data(&self) -> &Data {
+        let (Expr::Binding { data, .. }
+        | Expr::Constant { data, .. }
+        | Expr::Number { data, .. }
+        | Expr::Native { data, .. }
+        | Expr::Let { data, .. }) = self;
+        data
+    }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
         | Expr::Constant { data, .. }
@@ -45,8 +76,8 @@ impl<Data> Expr<Data> {
 
 impl Expr<Span> {
     /// Initialize expr data
-    pub fn init(self) -> Expr {
-        match self {
+    pub fn init(self) -> eyre::Result<Expr> {
+        Ok(match self {
             Expr::Binding {
                 binding,
                 data: span,
@@ -71,19 +102,28 @@ impl Expr<Span> {
                     span,
                 },
             },
-            Expr::Native { name, data: span } => Expr::Native {
-                name,
-                data: ExprData {
-                    ty: Type::Infer(inference::Var::new()),
-                    span,
-                },
-            },
+            Expr::Native {
+                mut name,
+                data: span,
+            } => {
+                name.data_mut().ty.make_same(Type::String)?;
+                Expr::Native {
+                    name,
+                    data: ExprData {
+                        ty: Type::Infer(inference::Var::new()),
+                        span,
+                    },
+                }
+            }
             Expr::Let {
                 mut pattern,
                 mut value,
                 data: span,
             } => {
-                pattern.data_mut().ty.make_same(value.data_mut().ty.clone());
+                pattern
+                    .data_mut()
+                    .ty
+                    .make_same(value.data_mut().ty.clone())?;
                 Expr::Let {
                     pattern,
                     value,
@@ -93,7 +133,7 @@ impl Expr<Span> {
                     },
                 }
             }
-        }
+        })
     }
 }
 

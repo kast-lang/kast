@@ -41,6 +41,27 @@ impl<Data> Ast<Data> {
     }
 }
 
+impl Ast {
+    pub fn show_short(&self) -> impl std::fmt::Display + '_ {
+        struct Show<'a>(&'a Ast);
+        impl std::fmt::Display for Show<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match &self.0 {
+                    Ast::Simple { token, data: _ } => write!(f, "token {token}")?,
+                    Ast::Complex {
+                        definition,
+                        values: _,
+                        data: _,
+                    } => write!(f, "{:?}", definition.name)?,
+                    Ast::SyntaxDefinition { def: _, data: _ } => write!(f, "syntax definition")?,
+                }
+                write!(f, " at {}", self.0.data())
+            }
+        }
+        Show(self)
+    }
+}
+
 impl std::fmt::Display for Ast {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
