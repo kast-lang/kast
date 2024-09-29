@@ -73,7 +73,10 @@ impl std::fmt::Display for Type {
             Type::Int32 => write!(f, "int32"),
             Type::String => write!(f, "string"),
             Type::Type => write!(f, "type"),
-            Type::Infer(var) => todo!(),
+            Type::Infer(var) => match var.get() {
+                Some(inferred) => inferred.fmt(f),
+                None => write!(f, "<not inferred>"),
+            },
         }
     }
 }

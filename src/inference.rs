@@ -3,6 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use rand::{thread_rng, Rng};
+
 use super::*;
 
 enum VarState<T> {
@@ -76,6 +78,34 @@ impl<T: Inferrable> Var<T> {
         Ok(())
     }
     pub fn make_same(&self, other: &Self) -> eyre::Result<()> {
-        todo!()
+        let root_state = VarState::get_root(&self.state);
+        let other_root_state = VarState::get_root(&other.state);
+        if Arc::ptr_eq(&root_state, &other_root_state) {
+            return Ok(());
+        }
+        let mut root = root_state.lock().unwrap();
+        let mut other_root = other_root_state.lock().unwrap();
+        let value = root.as_root().take();
+        let other_value = other_root.as_root().take();
+        let common_value = match (value, other_value) {
+            (None, None) => None,
+            (Some(value), None) | (None, Some(value)) => Some(value),
+            (Some(self_value), Some(other_value)) => Some(Arc::new(T::make_same(
+                T::clone(&self_value),
+                T::clone(&other_value),
+            )?)),
+        };
+        if thread_rng().gen() {
+            *other_root.as_root() = common_value;
+            *root = VarState::NotRoot {
+                closer_to_root: other_root_state.clone(),
+            };
+        } else {
+            *root.as_root() = common_value;
+            *other_root = VarState::NotRoot {
+                closer_to_root: root_state.clone(),
+            };
+        }
+        Ok(())
     }
 }

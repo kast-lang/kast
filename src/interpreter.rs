@@ -51,10 +51,14 @@ impl Kast {
                     }
                     Err(_) => eyre::bail!("number literal type could not be inferred"),
                 },
-                Expr::Native { name, data: _ } => {
+                Expr::Native { name, data } => {
                     let name = self.eval(name)?.expect_string()?;
                     match self.interpreter.builtins.get(name.as_str()) {
-                        Some(value) => value.clone(),
+                        Some(value) => {
+                            // TODO: mutate?
+                            data.ty.clone().make_same(value.ty())?;
+                            value.clone()
+                        }
                         None => eyre::bail!("native {name:?} not found"),
                     }
                 }

@@ -16,7 +16,10 @@ impl std::fmt::Display for Value {
             Value::Bool(value) => value.fmt(f),
             Value::Int32(value) => value.fmt(f),
             Value::String(s) => write!(f, "{s:?}"),
-            Value::Type(ty) => ty.fmt(f),
+            Value::Type(ty) => {
+                write!(f, "type ")?;
+                ty.fmt(f)
+            }
         }
     }
 }
