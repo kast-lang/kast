@@ -12,6 +12,7 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 pad-adapter = "0.1.1"
 rand = "0.8.5"
+colored = "2.1.0"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
@@ -26,6 +27,7 @@ clap.workspace = true
 eyre.workspace = true
 color-eyre.workspace = true
 rustyline.workspace = true
+colored.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 kast-util.workspace = true
