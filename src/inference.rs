@@ -1,11 +1,6 @@
-use std::{
-    marker::PhantomData,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use rand::{thread_rng, Rng};
-
-use super::*;
 
 enum VarState<T> {
     Root { value: Option<Arc<T>> },

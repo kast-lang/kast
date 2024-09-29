@@ -312,8 +312,6 @@ impl Lexer {
     }
     fn read_punctuation(&mut self) -> Result<Option<Token>> {
         let is_single_punctuation = |c: char| "(){}[]".contains(c);
-        let is_punctuation =
-            |c: char| !(c.is_alphanumeric() || "_'\"".contains(c) || c.is_whitespace());
         match self.reader.peek() {
             Some(&c) if is_punctuation(c) => {
                 if is_single_punctuation(c) {
@@ -328,6 +326,10 @@ impl Lexer {
             _ => Ok(None),
         }
     }
+}
+
+pub fn is_punctuation(c: char) -> bool {
+    !(c.is_alphanumeric() || "_'\"".contains(c) || c.is_whitespace())
 }
 
 #[derive(Debug)]

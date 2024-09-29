@@ -7,6 +7,11 @@ pub struct State {
     values: HashMap<Name, Value>,
 }
 
+pub struct CompletionCandidate {
+    pub name: String,
+    pub ty: Type,
+}
+
 impl State {
     pub fn new() -> Self {
         Self {
@@ -15,10 +20,26 @@ impl State {
                 map.insert("bool", Value::Type(Type::Bool));
                 map.insert("int32", Value::Type(Type::Int32));
                 map.insert("string", Value::Type(Type::String));
+                map.insert("type", Value::Type(Type::Type));
                 map
             },
             values: HashMap::new(),
         }
+    }
+    pub fn autocomplete<'a>(
+        &'a self,
+        s: &'a str,
+    ) -> impl Iterator<Item = CompletionCandidate> + 'a {
+        self.values.iter().filter_map(move |(name, value)| {
+            if name.raw().contains(s) {
+                Some(CompletionCandidate {
+                    name: name.raw().to_owned(),
+                    ty: value.ty(),
+                })
+            } else {
+                None
+            }
+        })
     }
 }
 

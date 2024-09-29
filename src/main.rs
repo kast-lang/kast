@@ -1,10 +1,10 @@
-use color_eyre::Section as _;
 use eyre::{eyre, Context as _};
 use kast_ast as ast;
 use kast_util::*;
 use std::{
     io::{IsTerminal, Read},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 mod cli;
@@ -46,10 +46,14 @@ fn std_path() -> PathBuf {
     }
 }
 
-fn run_repl(mut handler: impl FnMut(String) -> eyre::Result<()>) -> eyre::Result<()> {
-    let mut rustyline = rustyline::DefaultEditor::with_config(
+fn run_repl<H: rustyline::Helper>(
+    helper: H,
+    mut handler: impl FnMut(String) -> eyre::Result<()>,
+) -> eyre::Result<()> {
+    let mut rustyline = rustyline::Editor::with_config(
         rustyline::Config::builder().auto_add_history(true).build(),
     )?;
+    rustyline.set_helper(Some(helper));
     let is_tty = std::io::stdin().is_terminal();
     tracing::debug!("is tty: {is_tty:?}");
     loop {
@@ -92,7 +96,7 @@ fn main() -> eyre::Result<()> {
                 filename: "std/syntax.ks".into(),
             })?;
             tracing::trace!("{syntax:#?}");
-            run_repl(|contents| {
+            run_repl((), |contents| {
                 let source = SourceFile {
                     contents,
                     filename: "<stdin>".into(),
@@ -110,8 +114,55 @@ fn main() -> eyre::Result<()> {
                 contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
                 filename: "std/syntax.ks".into(),
             })?;
-            let mut kast = Kast::new();
-            run_repl(|contents| {
+            let kast = Arc::new(Mutex::new(Kast::new()));
+            let helper = {
+                struct Helper(Arc<Mutex<Kast>>);
+                struct CompletionCandidate {
+                    display: String,
+                    replacement: String,
+                }
+                impl rustyline::completion::Candidate for CompletionCandidate {
+                    fn display(&self) -> &str {
+                        &self.display
+                    }
+                    fn replacement(&self) -> &str {
+                        &self.replacement
+                    }
+                }
+                impl rustyline::completion::Completer for Helper {
+                    type Candidate = CompletionCandidate;
+                    fn complete(
+                        &self,
+                        line: &str,
+                        pos: usize,
+                        _ctx: &rustyline::Context<'_>,
+                    ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+                        let start = line[..pos]
+                            .rfind(|c| kast_ast::is_punctuation(c) || c.is_whitespace())
+                            .map(|i| i + 1)
+                            .unwrap_or(0);
+                        let part = &line[start..pos];
+                        let kast = self.0.lock().unwrap();
+                        let completions = kast
+                            .interpreter
+                            .autocomplete(part)
+                            .map(|candidate| CompletionCandidate {
+                                display: format!("{} :: {}", candidate.name, candidate.ty),
+                                replacement: candidate.name,
+                            })
+                            .collect();
+                        Ok((start, completions))
+                    }
+                }
+                impl rustyline::hint::Hinter for Helper {
+                    type Hint = String;
+                }
+                impl rustyline::highlight::Highlighter for Helper {}
+                impl rustyline::validate::Validator for Helper {}
+                impl rustyline::Helper for Helper {}
+                Helper(kast.clone())
+            };
+            run_repl(helper, |contents| {
                 let source = SourceFile {
                     contents,
                     filename: "<stdin>".into(),
@@ -121,7 +172,7 @@ fn main() -> eyre::Result<()> {
                     // empty line
                     return Ok(());
                 };
-                let value = kast.eval_ast(&ast, None)?;
+                let value = kast.lock().unwrap().eval_ast(&ast, None)?;
                 println!("{} :: {}", value, value.ty());
                 Ok(())
             })?;
