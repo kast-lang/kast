@@ -26,10 +26,13 @@ impl std::fmt::Display for Value {
 
 impl Value {
     /// Get this value AS a type
-    pub fn into_ty(self) -> Result<Type, Self> {
+    pub fn expect_type(self) -> Result<Type, ExpectError> {
         match self {
             Self::Type(ty) => Ok(ty),
-            _ => Err(self),
+            _ => Err(ExpectError {
+                value: self,
+                expected_ty: Type::Type,
+            }),
         }
     }
     /// Get the type OF this value

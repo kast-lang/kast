@@ -180,8 +180,7 @@ impl Kast {
         let ty = self
             .eval_ast(ty, Some(Type::Type))
             .wrap_err_with(|| "Failed to evaluate the type")?
-            .into_ty()
-            .map_err(|value| eyre!("{value} is not a type"))?;
+            .expect_type()?;
         let mut value = self.compile_into(cty, value)?;
         value.ty_mut().make_same(ty)?;
         Ok(value)
