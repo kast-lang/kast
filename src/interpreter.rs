@@ -97,6 +97,17 @@ impl State {
 }
 
 impl Kast {
+    pub fn eval_source(
+        &mut self,
+        source: SourceFile,
+        expected_ty: Option<Type>,
+    ) -> eyre::Result<Value> {
+        let ast = ast::parse(&self.syntax, source)?;
+        match ast {
+            Some(ast) => self.eval_ast(&ast, expected_ty),
+            None => Ok(Value::Unit),
+        }
+    }
     pub fn eval_ast(&mut self, ast: &Ast, expected_ty: Option<Type>) -> eyre::Result<Value> {
         let mut expr: Expr = self.compile(ast)?;
         if let Some(ty) = expected_ty {

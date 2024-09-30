@@ -13,6 +13,33 @@ pub enum Type {
     Infer(inference::Var<Type>),
 }
 
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.inferred(), other.inferred()) {
+            (Ok(a), Ok(b)) => match (a, b) {
+                (Type::Infer(_), _) | (_, Type::Infer(_)) => unreachable!(),
+
+                (Self::Unit, Self::Unit) => true,
+                (Self::Unit, _) => false,
+                (Self::Bool, Self::Bool) => true,
+                (Self::Bool, _) => false,
+                (Self::Int32, Self::Int32) => true,
+                (Self::Int32, _) => false,
+                (Self::String, Self::String) => true,
+                (Self::String, _) => false,
+                (Self::Function(a), Self::Function(b)) => a == b,
+                (Self::Function(_), _) => false,
+                (Self::Type, Self::Type) => true,
+                (Self::Type, _) => false,
+            },
+            (Err(a), Err(b)) => a.is_same_as(b),
+            (Ok(_), Err(_)) | (Err(_), Ok(_)) => false,
+        }
+    }
+}
+
+impl Eq for Type {}
+
 impl Type {
     /// Get actual value (if it is an inference var)
     pub fn inferred(&self) -> Result<Self, &inference::Var<Type>> {
@@ -87,7 +114,7 @@ impl std::fmt::Display for Type {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FnType {
     pub arg: Type,
     pub result: Type,

@@ -11,6 +11,31 @@ pub enum Value {
     Type(Type),
 }
 
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unit, Self::Unit) => true,
+            (Self::Unit, _) => false,
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Bool(_), _) => false,
+            (Self::Int32(a), Self::Int32(b)) => a == b,
+            (Self::Int32(_), _) => false,
+            (Self::String(a), Self::String(b)) => a == b,
+            (Self::String(_), _) => false,
+            (Self::NativeFunction(a), Self::NativeFunction(b)) => {
+                Arc::ptr_eq(&a.r#impl, &b.r#impl) && a.ty == b.ty
+            }
+            (Self::NativeFunction(_), _) => false,
+            (Self::Binding(a), Self::Binding(b)) => Arc::ptr_eq(a, b),
+            (Self::Binding(_), _) => false,
+            (Self::Type(a), Self::Type(b)) => a == b,
+            (Self::Type(_), _) => false,
+        }
+    }
+}
+
+impl Eq for Value {}
+
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -33,6 +33,14 @@ pub struct Var<T> {
     state: Arc<Mutex<VarState<T>>>,
 }
 
+impl<T> Var<T> {
+    pub fn is_same_as(&self, other: &Self) -> bool {
+        let self_root = VarState::get_root(&self.state);
+        let other_root = VarState::get_root(&other.state);
+        Arc::ptr_eq(&self_root, &other_root)
+    }
+}
+
 impl<T: Inferrable + std::fmt::Debug> std::fmt::Debug for Var<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Var(")?;

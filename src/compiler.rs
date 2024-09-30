@@ -20,6 +20,7 @@ impl State {
         populate!(
             macro_native,
             macro_type_ascribe,
+            macro_const_let,
             macro_let,
             macro_call,
             macro_then,
@@ -195,6 +196,26 @@ impl Kast {
         let mut value = self.compile_into(cty, value)?;
         value.ty_mut().make_same(ty)?;
         Ok(value)
+    }
+    fn macro_const_let(
+        &mut self,
+        ty: CompiledType,
+        values: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Compiled> {
+        assert_eq!(ty, CompiledType::Expr);
+        let let_expr = match self.macro_let(CompiledType::Expr, values, span.clone())? {
+            Compiled::Expr(e) => e,
+            _ => unreachable!(),
+        };
+        self.eval(&let_expr)?;
+        Ok(Compiled::Expr(
+            Expr::Constant {
+                value: Value::Unit,
+                data: span,
+            }
+            .init()?,
+        ))
     }
     fn macro_let(
         &mut self,

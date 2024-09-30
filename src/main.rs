@@ -1,52 +1,12 @@
-use eyre::{eyre, Context as _};
-use kast_ast as ast;
-use kast_util::*;
+mod cli;
+mod repl_helper;
+
 use std::{
     io::{IsTerminal, Read},
-    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-mod cli;
-mod compiler;
-mod id;
-mod inference;
-mod interpreter;
-mod ir;
-mod repl_helper;
-mod ty;
-mod value;
-
-use id::*;
-use inference::Inferrable;
-use ir::*;
-use kast_ast::{Ast, Token};
-use ty::*;
-use value::*;
-
-struct Kast {
-    compiler: compiler::State,
-    interpreter: interpreter::State,
-}
-
-impl Kast {
-    fn new() -> Self {
-        Self {
-            compiler: compiler::State::new(),
-            interpreter: interpreter::State::new(),
-        }
-    }
-}
-
-fn std_path() -> PathBuf {
-    match std::env::var_os("KAST_STD") {
-        Some(path) => path.into(),
-        None => match option_env!("CARGO_MANIFEST_DIR") {
-            Some(path) => Path::new(path).join("std"),
-            None => panic!("kast standard library not found"),
-        },
-    }
-}
+use kast::*;
 
 fn run_repl<H: rustyline::Helper>(
     helper: H,
@@ -112,10 +72,6 @@ fn main() -> eyre::Result<()> {
             })?;
         }
         cli::Command::Repl => {
-            let syntax = ast::read_syntax(SourceFile {
-                contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
-                filename: "std/syntax.ks".into(),
-            })?;
             let kast = Arc::new(Mutex::new(Kast::new()));
             let helper = repl_helper::Helper::new(kast.clone());
             run_repl(helper, |contents| {
@@ -123,12 +79,7 @@ fn main() -> eyre::Result<()> {
                     contents,
                     filename: "<stdin>".into(),
                 };
-                let ast = ast::parse(&syntax, source)?;
-                let Some(ast) = ast else {
-                    // empty line
-                    return Ok(());
-                };
-                let value = kast.lock().unwrap().eval_ast(&ast, None)?;
+                let value = kast.lock().unwrap().eval_source(source, None)?;
                 println!("{} :: {}", value, value.ty());
                 Ok(())
             })?;
