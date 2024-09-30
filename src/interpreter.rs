@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use super::*;
 
 pub struct State {
-    builtins: HashMap<&'static str, Value>,
+    builtins: HashMap<&'static str, Builtin>,
     scope: Scope,
 }
 
@@ -32,6 +32,8 @@ impl Scope {
     }
 }
 
+type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
+
 pub struct CompletionCandidate {
     pub name: String,
     pub ty: Type,
@@ -42,24 +44,57 @@ impl State {
     pub fn new() -> Self {
         Self {
             builtins: {
-                let mut map = HashMap::new();
-                map.insert("bool", Value::Type(Type::Bool));
-                map.insert("int32", Value::Type(Type::Int32));
-                map.insert("string", Value::Type(Type::String));
-                map.insert("type", Value::Type(Type::Type));
+                let mut map = HashMap::<&str, Builtin>::new();
+                let mut insert_ty = |name, ty: Type| {
+                    map.insert(
+                        name,
+                        Box::new(move |mut expected: Type| {
+                            expected.make_same(Type::Type)?;
+                            Ok(Value::Type(ty.clone()))
+                        }),
+                    );
+                };
+                insert_ty("bool", Type::Bool);
+                insert_ty("int32", Type::Int32);
+                insert_ty("string", Type::String);
+                insert_ty("type", Type::Type);
+                map.insert(
+                    "dbg",
+                    Box::new(|mut expected: Type| {
+                        let ty = FnType {
+                            arg: Type::Infer(inference::Var::new()),
+                            result: Type::Unit,
+                        };
+                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "dbg".to_owned(),
+                            r#impl: Arc::new(|fn_ty, value: Value| {
+                                let ty = &fn_ty.arg;
+                                assert_eq!(&value.ty(), ty);
+                                println!("{value} :: {ty}");
+                                Ok(Value::Unit)
+                            }),
+                            ty,
+                        }))
+                    }),
+                );
                 map.insert(
                     "print",
-                    Value::NativeFunction(NativeFunction {
-                        name: "print".to_owned(),
-                        r#impl: Arc::new(|_fn_ty, s: Value| {
-                            let s = s.expect_string()?;
-                            println!("{s}");
-                            Ok(Value::Unit)
-                        }),
-                        ty: FnType {
+                    Box::new(|mut expected: Type| {
+                        let ty = FnType {
                             arg: Type::String,
                             result: Type::Unit,
-                        },
+                        };
+                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "print".to_owned(),
+                            r#impl: Arc::new(|_fn_ty, s: Value| {
+                                let s = s.expect_string()?;
+                                println!("{s}");
+                                Ok(Value::Unit)
+                            }),
+                            ty,
+                        }))
                     }),
                 );
                 map
@@ -149,11 +184,7 @@ impl Kast {
                 Expr::Native { name, data } => {
                     let name = self.eval(name)?.expect_string()?;
                     match self.interpreter.builtins.get(name.as_str()) {
-                        Some(value) => {
-                            // TODO: mutate?
-                            data.ty.clone().make_same(value.ty())?;
-                            value.clone()
-                        }
+                        Some(builtin) => builtin(data.ty.clone())?,
                         None => eyre::bail!("native {name:?} not found"),
                     }
                 }
