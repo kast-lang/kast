@@ -76,6 +76,10 @@ impl Kast {
                     .get(&binding.name)
                     .ok_or_else(|| eyre!("{:?} not found", binding.name))?
                     .clone(),
+                Expr::Then { a, b, data: _ } => {
+                    self.eval(a)?;
+                    self.eval(b)?
+                }
                 Expr::Constant { value, data: _ } => value.clone(),
                 Expr::Number { raw, data } => match data.ty.inferred() {
                     Ok(Type::Int32) => Value::Int32(

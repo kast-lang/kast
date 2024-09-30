@@ -18,7 +18,13 @@ impl State {
                 )*
             }
         }
-        populate!(macro_native, macro_type_ascribe, macro_let, macro_call);
+        populate!(
+            macro_native,
+            macro_type_ascribe,
+            macro_let,
+            macro_call,
+            macro_then,
+        );
         Self {
             builtin_macros,
             locals: HashMap::new(),
@@ -224,6 +230,37 @@ impl Kast {
             }
             .init()?,
         ))
+    }
+    fn macro_then(
+        &mut self,
+        cty: CompiledType,
+        values: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (a, b) = values
+            .as_ref()
+            .into_single_named("a")
+            .map(|a| (a, None))
+            .or_else(|_| {
+                values
+                    .as_ref()
+                    .into_named(["a", "b"])
+                    .map(|[a, b]| (a, Some(b)))
+            })
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let mut a: Expr = self.compile(a)?;
+        a.data_mut().ty.make_same(Type::Unit)?;
+        let b: Option<Expr> = b.map(|b| self.compile(b)).transpose()?;
+        Ok(Compiled::Expr(match b {
+            None => a,
+            Some(b) => Expr::Then {
+                a: Box::new(a),
+                b: Box::new(b),
+                data: span,
+            }
+            .init()?,
+        }))
     }
     fn macro_call(
         &mut self,

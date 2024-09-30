@@ -12,6 +12,11 @@ pub enum Expr<Data = ExprData> {
         binding: Arc<Binding>,
         data: Data,
     },
+    Then {
+        a: Box<Expr>,
+        b: Box<Expr>,
+        data: Data,
+    },
     Constant {
         value: Value,
         data: Data,
@@ -44,6 +49,7 @@ impl Expr {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
                     Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
+                    Expr::Then { .. } => write!(f, "then expr")?,
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
                     Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
                     Expr::Native { name: _, data: _ } => write!(f, "native expr")?,
@@ -64,6 +70,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
         | Expr::Native { data, .. }
@@ -73,6 +80,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
         | Expr::Native { data, .. }
@@ -96,6 +104,22 @@ impl Expr<Span> {
                 },
                 binding,
             },
+            Expr::Then {
+                mut a,
+                b,
+                data: span,
+            } => {
+                a.data_mut().ty.make_same(Type::Unit)?;
+                let result_ty = b.data().ty.clone();
+                Expr::Then {
+                    a,
+                    b,
+                    data: ExprData {
+                        ty: result_ty,
+                        span,
+                    },
+                }
+            }
             Expr::Constant { value, data: span } => Expr::Constant {
                 data: ExprData {
                     ty: value.ty(),

@@ -147,7 +147,7 @@ impl<T> Tuple<T> {
             let name = self
                 .named_order
                 .iter()
-                .find(|&name| !self.named.contains_key(name))
+                .find(|&name| !names.iter().any(|s| s == name))
                 .unwrap();
             return error!(NamedErrorReason::FieldUnexpected(name.to_string()));
         }
