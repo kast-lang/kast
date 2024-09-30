@@ -30,6 +30,11 @@ pub enum Expr<Data = ExprData> {
         value: Box<Expr>,
         data: Data,
     },
+    Call {
+        f: Box<Expr>,
+        args: Box<Expr>,
+        data: Data,
+    },
 }
 
 impl Expr {
@@ -47,6 +52,7 @@ impl Expr {
                         value: _,
                         data: _,
                     } => write!(f, "let expr")?,
+                    Expr::Call { .. } => write!(f, "call expr")?,
                 }
                 write!(f, " at {}", self.0.data().span)
             }
@@ -61,7 +67,8 @@ impl<Data> Expr<Data> {
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
         | Expr::Native { data, .. }
-        | Expr::Let { data, .. }) = self;
+        | Expr::Let { data, .. }
+        | Expr::Call { data, .. }) = self;
         data
     }
     pub fn data_mut(&mut self) -> &mut Data {
@@ -69,7 +76,8 @@ impl<Data> Expr<Data> {
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
         | Expr::Native { data, .. }
-        | Expr::Let { data, .. }) = self;
+        | Expr::Let { data, .. }
+        | Expr::Call { data, .. }) = self;
         data
     }
 }
@@ -129,6 +137,25 @@ impl Expr<Span> {
                     value,
                     data: ExprData {
                         ty: Type::Unit,
+                        span,
+                    },
+                }
+            }
+            Expr::Call {
+                mut f,
+                args,
+                data: span,
+            } => {
+                let result_ty = Type::Infer(inference::Var::new());
+                f.data_mut().ty.make_same(Type::Function(Box::new(FnType {
+                    arg: args.data().ty.clone(),
+                    result: result_ty.clone(),
+                })))?;
+                Expr::Call {
+                    f,
+                    args,
+                    data: ExprData {
+                        ty: result_ty,
                         span,
                     },
                 }

@@ -6,6 +6,7 @@ pub enum Type {
     Bool,
     Int32,
     String,
+    Function(Box<FnType>),
     #[allow(clippy::enum_variant_names)]
     Type,
 
@@ -22,12 +23,12 @@ impl Type {
         }
     }
     pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
-        *self = inference::Inferrable::make_same(self.clone(), other)?;
+        *self = Inferrable::make_same(self.clone(), other)?;
         Ok(())
     }
 }
 
-impl inference::Inferrable for Type {
+impl Inferrable for Type {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         macro_rules! fail {
             () => {
@@ -46,6 +47,10 @@ impl inference::Inferrable for Type {
                 (Type::Int32, _) => fail!(),
                 (Type::String, Type::String) => Type::String,
                 (Type::String, _) => fail!(),
+                (Type::Function(a), Type::Function(b)) => {
+                    Type::Function(Box::new(Inferrable::make_same(*a, *b)?))
+                }
+                (Type::Function(_), _) => fail!(),
                 (Type::Type, Type::Type) => Type::Type,
                 (Type::Type, _) => fail!(),
             },
@@ -72,11 +77,33 @@ impl std::fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Int32 => write!(f, "int32"),
             Type::String => write!(f, "string"),
+            Type::Function(ty) => ty.fmt(f),
             Type::Type => write!(f, "type"),
             Type::Infer(var) => match var.get() {
                 Some(inferred) => inferred.fmt(f),
                 None => write!(f, "<not inferred>"),
             },
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FnType {
+    pub arg: Type,
+    pub result: Type,
+}
+
+impl std::fmt::Display for FnType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} -> {}", self.arg, self.result)
+    }
+}
+
+impl Inferrable for FnType {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        Ok(Self {
+            arg: Inferrable::make_same(a.arg, b.arg)?,
+            result: Inferrable::make_same(a.result, b.result)?,
+        })
     }
 }

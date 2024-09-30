@@ -18,7 +18,7 @@ impl State {
                 )*
             }
         }
-        populate!(macro_native, macro_type_ascribe, macro_let);
+        populate!(macro_native, macro_type_ascribe, macro_let, macro_call);
         Self {
             builtin_macros,
             locals: HashMap::new(),
@@ -220,6 +220,28 @@ impl Kast {
         Ok(Compiled::Expr(
             Expr::Native {
                 name: Box::new(name),
+                data: span,
+            }
+            .init()?,
+        ))
+    }
+    fn macro_call(
+        &mut self,
+        cty: CompiledType,
+        values: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let [f, args] = values
+            .as_ref()
+            .into_named(["f", "args"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let f = self.compile(f)?;
+        let args = self.compile(args)?;
+        Ok(Compiled::Expr(
+            Expr::Call {
+                f: Box::new(f),
+                args: Box::new(args),
                 data: span,
             }
             .init()?,

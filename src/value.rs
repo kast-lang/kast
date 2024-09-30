@@ -6,6 +6,7 @@ pub enum Value {
     Bool(bool),
     Int32(i32),
     String(String),
+    NativeFunction(NativeFunction),
     Type(Type),
 }
 
@@ -16,6 +17,7 @@ impl std::fmt::Display for Value {
             Value::Bool(value) => value.fmt(f),
             Value::Int32(value) => value.fmt(f),
             Value::String(s) => write!(f, "{s:?}"),
+            Value::NativeFunction(function) => function.fmt(f),
             Value::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
@@ -42,6 +44,7 @@ impl Value {
             Value::Bool(_) => Type::Bool,
             Value::Int32(_) => Type::Int32,
             Value::String(_) => Type::String,
+            Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Type(_) => Type::Type,
         }
     }
@@ -63,5 +66,24 @@ impl Value {
                 expected_ty: Type::String,
             }),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct NativeFunction {
+    pub name: String,
+    pub r#impl: Arc<dyn Fn(FnType, Value) -> eyre::Result<Value> + Send + Sync>,
+    pub ty: FnType,
+}
+
+impl std::fmt::Debug for NativeFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<native fn {:?}>", self.name)
+    }
+}
+
+impl std::fmt::Display for NativeFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }

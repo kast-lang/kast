@@ -18,6 +18,7 @@ mod ty;
 mod value;
 
 use id::*;
+use inference::Inferrable;
 use ir::*;
 use kast_ast::{Ast, Token};
 use ty::*;

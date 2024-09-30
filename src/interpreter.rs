@@ -21,6 +21,21 @@ impl State {
                 map.insert("int32", Value::Type(Type::Int32));
                 map.insert("string", Value::Type(Type::String));
                 map.insert("type", Value::Type(Type::Type));
+                map.insert(
+                    "print",
+                    Value::NativeFunction(NativeFunction {
+                        name: "print".to_owned(),
+                        r#impl: Arc::new(|_fn_ty, s: Value| {
+                            let s = s.expect_string()?;
+                            println!("{s}");
+                            Ok(Value::Unit)
+                        }),
+                        ty: FnType {
+                            arg: Type::String,
+                            result: Type::Unit,
+                        },
+                    }),
+                );
                 map
             },
             values: HashMap::new(),
@@ -102,6 +117,14 @@ impl Kast {
                             .map(|(binding, value)| (binding.name.clone(), value)),
                     );
                     Value::Unit
+                }
+                Expr::Call { f, args, data: _ } => {
+                    let f = self.eval(f)?;
+                    let args = self.eval(args)?;
+                    match f {
+                        Value::NativeFunction(f) => (f.r#impl)(f.ty.clone(), args)?,
+                        _ => eyre::bail!("{f} is not a function"),
+                    }
                 }
             })
         })()
