@@ -38,6 +38,7 @@ pub struct CompletionCandidate {
 }
 
 impl State {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             builtins: {

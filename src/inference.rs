@@ -57,6 +57,7 @@ pub trait Inferrable: Clone {
 }
 
 impl<T: Inferrable> Var<T> {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             state: Arc::new(Mutex::new(VarState::Root { value: None })),

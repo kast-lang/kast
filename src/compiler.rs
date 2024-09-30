@@ -142,10 +142,10 @@ impl Compilable for Pattern {
                 .init(),
                 Token::String {
                     raw: _,
-                    contents,
-                    typ,
+                    contents: _,
+                    typ: _,
                 } => todo!(),
-                Token::Number { raw } => todo!(),
+                Token::Number { raw: _ } => todo!(),
                 Token::Comment { .. } | Token::Punctuation { .. } | Token::Eof => unreachable!(),
             },
             Ast::Complex {
