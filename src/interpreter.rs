@@ -4,7 +4,32 @@ use super::*;
 
 pub struct State {
     builtins: HashMap<&'static str, Value>,
-    values: HashMap<Name, Value>,
+    scope: Scope,
+}
+
+struct Scope {
+    parent: Option<Box<Scope>>,
+    locals: HashMap<String, Value>,
+}
+
+impl Scope {
+    fn new() -> Self {
+        Self {
+            parent: None,
+            locals: HashMap::new(),
+        }
+    }
+    fn get(&self, name: &str) -> Option<&Value> {
+        if let Some(value) = self.locals.get(name) {
+            return Some(value);
+        }
+        if let Some(parent) = &self.parent {
+            if let Some(value) = parent.get(name) {
+                return Some(value);
+            }
+        }
+        None
+    }
 }
 
 pub struct CompletionCandidate {
@@ -38,23 +63,36 @@ impl State {
                 );
                 map
             },
-            values: HashMap::new(),
+            scope: Scope::new(),
         }
     }
     pub fn autocomplete<'a>(
         &'a self,
         s: &'a str,
     ) -> impl Iterator<Item = CompletionCandidate> + 'a {
-        self.values.iter().filter_map(move |(name, value)| {
-            if name.raw().contains(s) {
+        self.scope.locals.iter().filter_map(move |(name, value)| {
+            if name.contains(s) {
                 Some(CompletionCandidate {
-                    name: name.raw().to_owned(),
+                    name: name.clone(),
                     ty: value.ty(),
                 })
             } else {
                 None
             }
         })
+    }
+    pub fn get(&self, name: &str) -> Option<&Value> {
+        self.scope.get(name)
+    }
+    pub fn enter_scope(&mut self) {
+        let parent = std::mem::replace(&mut self.scope, Scope::new());
+        self.scope.parent = Some(Box::new(parent));
+    }
+    pub fn exit_scope(&mut self) {
+        self.scope = *self.scope.parent.take().expect("no parent scope");
+    }
+    pub fn insert_local(&mut self, name: &str, value: Value) {
+        self.scope.locals.insert(name.to_owned(), value);
     }
 }
 
@@ -70,10 +108,15 @@ impl Kast {
     pub fn eval(&mut self, expr: &Expr) -> eyre::Result<Value> {
         (|| {
             Ok(match expr {
+                Expr::Scope { expr, data: _ } => {
+                    self.interpreter.enter_scope();
+                    let value = self.eval(expr)?;
+                    self.interpreter.exit_scope();
+                    value
+                }
                 Expr::Binding { binding, data: _ } => self
                     .interpreter
-                    .values
-                    .get(&binding.name)
+                    .get(binding.name.raw())
                     .ok_or_else(|| eyre!("{:?} not found", binding.name))?
                     .clone(),
                 Expr::Then { a, b, data: _ } => {
@@ -109,16 +152,10 @@ impl Kast {
                 } => {
                     let value = self.eval(value)?;
                     let matches = pattern.r#match(value);
-                    for (binding, _value) in &matches {
-                        // TODO do smth else
-                        self.compiler
-                            .locals
-                            .insert(binding.name.raw().to_owned(), binding.clone());
-                    }
-                    self.interpreter.values.extend(
+                    self.interpreter.scope.locals.extend(
                         matches
                             .into_iter()
-                            .map(|(binding, value)| (binding.name.clone(), value)),
+                            .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
                     );
                     Value::Unit
                 }

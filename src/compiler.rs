@@ -4,7 +4,6 @@ use std::{collections::HashMap, sync::Arc};
 
 pub struct State {
     builtin_macros: HashMap<&'static str, BuiltinMacro>,
-    pub locals: HashMap<String, Arc<Binding>>,
 }
 
 impl State {
@@ -24,11 +23,9 @@ impl State {
             macro_let,
             macro_call,
             macro_then,
+            macro_scope,
         );
-        Self {
-            builtin_macros,
-            locals: HashMap::new(),
-        }
+        Self { builtin_macros }
     }
 }
 
@@ -64,16 +61,24 @@ impl Compilable for Expr {
                     raw: _,
                     name,
                     is_raw: _,
-                } => Expr::Binding {
-                    binding: kast
-                        .compiler
-                        .locals
+                } => {
+                    let value = kast
+                        .interpreter
                         .get(name.as_str())
-                        .ok_or_else(|| eyre!("{name:?} not found"))?
-                        .clone(),
-                    data: span.clone(),
+                        .ok_or_else(|| eyre!("{name:?} not found"))?;
+                    match value {
+                        Value::Binding(binding) => Expr::Binding {
+                            binding: binding.clone(),
+                            data: span.clone(),
+                        }
+                        .init()?,
+                        _ => Expr::Constant {
+                            value: value.clone(),
+                            data: span.clone(),
+                        }
+                        .init()?,
+                    }
                 }
-                .init()?,
                 Token::String {
                     raw: _,
                     contents,
@@ -251,7 +256,13 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let mut a: Expr = self.compile(a)?;
         a.data_mut().ty.make_same(Type::Unit)?;
+        self.interpreter.enter_scope();
+        a.collect_bindings(&mut |binding| {
+            self.interpreter
+                .insert_local(binding.name.raw(), Value::Binding(binding.clone()))
+        });
         let b: Option<Expr> = b.map(|b| self.compile(b)).transpose()?;
+        self.interpreter.exit_scope();
         Ok(Compiled::Expr(match b {
             None => a,
             Some(b) => Expr::Then {
@@ -261,6 +272,26 @@ impl Kast {
             }
             .init()?,
         }))
+    }
+    fn macro_scope(
+        &mut self,
+        cty: CompiledType,
+        values: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let [expr] = values
+            .as_ref()
+            .into_unnamed()
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let expr = self.compile(expr)?;
+        Ok(Compiled::Expr(
+            Expr::Scope {
+                expr: Box::new(expr),
+                data: span,
+            }
+            .init()?,
+        ))
     }
     fn macro_call(
         &mut self,

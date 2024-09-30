@@ -40,14 +40,35 @@ pub enum Expr<Data = ExprData> {
         args: Box<Expr>,
         data: Data,
     },
+    Scope {
+        expr: Box<Expr>,
+        data: Data,
+    },
 }
 
 impl Expr {
+    pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
+        match self {
+            Expr::Binding { .. }
+            | Expr::Scope { .. }
+            | Expr::Then { .. }
+            | Expr::Constant { .. }
+            | Expr::Number { .. }
+            | Expr::Native { .. }
+            | Expr::Call { .. } => {}
+            Expr::Let {
+                pattern,
+                value: _,
+                data: _,
+            } => pattern.collect_bindings(consumer),
+        }
+    }
     pub fn show_short(&self) -> impl std::fmt::Display + '_ {
         struct Show<'a>(&'a Expr);
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Scope { .. } => write!(f, "scope expr")?,
                     Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
                     Expr::Then { .. } => write!(f, "then expr")?,
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
@@ -70,6 +91,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
@@ -80,6 +102,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
@@ -94,6 +117,13 @@ impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self) -> eyre::Result<Expr> {
         Ok(match self {
+            Expr::Scope { expr, data: span } => Expr::Scope {
+                data: ExprData {
+                    ty: expr.data().ty.clone(),
+                    span,
+                },
+                expr,
+            },
             Expr::Binding {
                 binding,
                 data: span,
@@ -206,9 +236,16 @@ impl Name {
     }
 }
 
+#[derive(Debug)]
 pub struct Binding {
     pub name: Name,
     pub ty: Type,
+}
+
+impl std::fmt::Display for Binding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<binding {:?}>", self.name.raw())
+    }
 }
 
 pub struct PatternData {
@@ -224,6 +261,11 @@ impl<Data> Pattern<Data> {
     pub fn data_mut(&mut self) -> &mut Data {
         let Self::Binding { data, .. } = self;
         data
+    }
+    pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
+        match self {
+            Pattern::Binding { binding, data: _ } => consumer(binding.clone()),
+        }
     }
 }
 

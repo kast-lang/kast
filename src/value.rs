@@ -7,6 +7,7 @@ pub enum Value {
     Int32(i32),
     String(String),
     NativeFunction(NativeFunction),
+    Binding(Arc<Binding>),
     Type(Type),
 }
 
@@ -18,6 +19,7 @@ impl std::fmt::Display for Value {
             Value::Int32(value) => value.fmt(f),
             Value::String(s) => write!(f, "{s:?}"),
             Value::NativeFunction(function) => function.fmt(f),
+            Value::Binding(binding) => binding.fmt(f),
             Value::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
@@ -44,6 +46,7 @@ impl Value {
             Value::Bool(_) => Type::Bool,
             Value::Int32(_) => Type::Int32,
             Value::String(_) => Type::String,
+            Value::Binding(_b) => todo!(),
             Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Type(_) => Type::Type,
         }

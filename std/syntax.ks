@@ -122,7 +122,7 @@ syntax @"builtin macro import" <- 500 = "import" path;
 
 # syntax @"builtin macro function_def" <- 100000 = "{" body "}";
 
-syntax @"builtin macro scope" <- 100000 = "(" e ")";
+syntax @"builtin macro scope" <- 100000 = "(" _ ")";
 syntax @"builtin macro make_void" <- 100000 = "(" ")";
 syntax @"builtin macro placeholder" <- 100000 = "_";
 

@@ -126,7 +126,68 @@ impl std::fmt::Display for NamedError {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum UnnamedErrorReason {
+    NamedFieldsPresent(Vec<String>),
+    IncorrectAmountOfFields { expected: usize, actual: usize },
+}
+
+impl std::fmt::Display for UnnamedErrorReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnnamedErrorReason::NamedFieldsPresent(_fields) => {
+                write!(f, "named fields were not expected")
+            }
+            UnnamedErrorReason::IncorrectAmountOfFields { expected, actual } => {
+                write!(f, "expected {expected} fields, got {actual}")
+            }
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub struct UnnamedError {
+    erased_value: Tuple<()>,
+    expected_fields: usize,
+    #[source]
+    reason: UnnamedErrorReason,
+}
+
+impl std::fmt::Display for UnnamedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "expected only named fields {:?}, got {}",
+            self.expected_fields,
+            self.erased_value.show_fields(),
+        )
+    }
+}
+
 impl<T> Tuple<T> {
+    pub fn into_unnamed<const N: usize>(self) -> Result<[T; N], UnnamedError> {
+        macro_rules! error {
+            ($reason:expr) => {
+                Err(UnnamedError {
+                    expected_fields: N,
+                    reason: $reason,
+                    erased_value: self.map(|_| ()),
+                })
+            };
+        }
+        if !self.named.is_empty() {
+            return error!(UnnamedErrorReason::NamedFieldsPresent(
+                self.named_order.clone()
+            ));
+        }
+        if self.unnamed.len() != N {
+            return error!(UnnamedErrorReason::IncorrectAmountOfFields {
+                expected: N,
+                actual: self.unnamed.len()
+            });
+        }
+        Ok(self.unnamed.try_into().ok().unwrap())
+    }
     pub fn into_named<const N: usize>(mut self, names: [&str; N]) -> Result<[T; N], NamedError> {
         macro_rules! error {
             ($reason:expr) => {
