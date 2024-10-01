@@ -25,6 +25,7 @@ impl State {
             macro_call,
             macro_then,
             macro_scope,
+            macro_function_def,
         );
         Self { builtin_macros }
     }
@@ -139,7 +140,7 @@ impl Compilable for Pattern {
                     }),
                     data: span.clone(),
                 }
-                .init(),
+                .init()?,
                 Token::String {
                     raw: _,
                     contents: _,
@@ -294,25 +295,69 @@ impl Kast {
             .init()?,
         }))
     }
-    fn macro_scope(
+    fn macro_function_def(
         &mut self,
         cty: CompiledType,
         values: &Tuple<Ast>,
         span: Span,
     ) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
-        let [expr] = values
+        let ([body], [arg, contexts, result_type]) = values
             .as_ref()
-            .into_unnamed()
+            .into_named_opt(["body"], ["arg", "contexts", "result_type"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let expr = self.compile(expr)?;
+        let arg: Pattern = match arg {
+            Some(arg) => self.compile(arg)?,
+            None => Pattern::Unit { data: span.clone() }.init()?,
+        };
+        self.interpreter.enter_scope();
+        arg.collect_bindings(&mut |binding| {
+            self.interpreter
+                .insert_local(binding.name.raw(), Value::Binding(binding.clone()))
+        });
+        let result_type = match result_type {
+            Some(ast) => self.eval_ast(ast, Some(Type::Type))?.expect_type()?,
+            None => Type::Infer(inference::Var::new()),
+        };
+        let _ = contexts; // TODO
+        let mut body: Expr = self.compile(body)?;
+        body.data_mut().ty.make_same(result_type.clone())?;
+        self.interpreter.exit_scope();
         Ok(Compiled::Expr(
-            Expr::Scope {
-                expr: Box::new(expr),
+            Expr::Function {
+                ty: FnType {
+                    arg: arg.data().ty.clone(),
+                    result: result_type,
+                },
+                compiled: Arc::new(CompiledFn { arg, body }),
                 data: span,
             }
             .init()?,
         ))
+    }
+    fn macro_scope(
+        &mut self,
+        cty: CompiledType,
+        values: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Compiled> {
+        let [expr] = values
+            .as_ref()
+            .into_unnamed()
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        Ok(match cty {
+            CompiledType::Expr => {
+                let expr = self.compile(expr)?;
+                Compiled::Expr(
+                    Expr::Scope {
+                        expr: Box::new(expr),
+                        data: span,
+                    }
+                    .init()?,
+                )
+            }
+            CompiledType::Pattern => Compiled::Pattern(self.compile(expr)?),
+        })
     }
     fn macro_call(
         &mut self,
@@ -321,16 +366,16 @@ impl Kast {
         span: Span,
     ) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
-        let [f, args] = values
+        let [f, arg] = values
             .as_ref()
-            .into_named(["f", "args"])
+            .into_named(["f", "arg"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let f = self.compile(f)?;
-        let args = self.compile(args)?;
+        let arg = self.compile(arg)?;
         Ok(Compiled::Expr(
             Expr::Call {
                 f: Box::new(f),
-                args: Box::new(args),
+                arg: Box::new(arg),
                 data: span,
             }
             .init()?,

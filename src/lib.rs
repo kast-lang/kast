@@ -1,8 +1,9 @@
 use eyre::{eyre, Context as _};
 pub use kast_ast as ast;
 pub use kast_util::*;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 mod compiler;
 mod id;
@@ -14,6 +15,7 @@ mod value;
 
 pub use id::*;
 use inference::Inferrable;
+use interpreter::Scope;
 use ir::*;
 pub use kast_ast::{Ast, Token};
 pub use ty::*;

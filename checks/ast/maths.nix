@@ -12,7 +12,7 @@
                 lhs: op binary * (
                     lhs: builtin macro call (
                         f: "sin"
-                        args: "x"
+                        arg: "x"
                     )
                     rhs: "c"
                 )

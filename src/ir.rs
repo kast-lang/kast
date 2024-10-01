@@ -2,11 +2,13 @@ use std::sync::Arc;
 
 use super::*;
 
+#[derive(Debug)]
 pub struct ExprData {
     pub ty: Type,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub enum Expr<Data = ExprData> {
     Binding {
         binding: Arc<Binding>,
@@ -37,19 +39,31 @@ pub enum Expr<Data = ExprData> {
     },
     Call {
         f: Box<Expr>,
-        args: Box<Expr>,
+        arg: Box<Expr>,
         data: Data,
     },
     Scope {
         expr: Box<Expr>,
         data: Data,
     },
+    Function {
+        ty: FnType,
+        compiled: Arc<CompiledFn>,
+        data: Data,
+    },
+}
+
+#[derive(Debug)]
+pub struct CompiledFn {
+    pub arg: Pattern,
+    pub body: Expr,
 }
 
 impl Expr {
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
         match self {
             Expr::Binding { .. }
+            | Expr::Function { .. }
             | Expr::Scope { .. }
             | Expr::Then { .. }
             | Expr::Constant { .. }
@@ -68,6 +82,7 @@ impl Expr {
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Function { .. } => write!(f, "function expr")?,
                     Expr::Scope { .. } => write!(f, "scope expr")?,
                     Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
                     Expr::Then { .. } => write!(f, "then expr")?,
@@ -91,6 +106,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Function { data, .. }
         | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
@@ -102,6 +118,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Function { data, .. }
         | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
@@ -117,6 +134,18 @@ impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self) -> eyre::Result<Expr> {
         Ok(match self {
+            Expr::Function {
+                ty,
+                compiled,
+                data: span,
+            } => Expr::Function {
+                data: ExprData {
+                    ty: Type::Function(Box::new(ty.clone())),
+                    span,
+                },
+                ty,
+                compiled,
+            },
             Expr::Scope { expr, data: span } => Expr::Scope {
                 data: ExprData {
                     ty: expr.data().ty.clone(),
@@ -197,7 +226,7 @@ impl Expr<Span> {
             }
             Expr::Call {
                 mut f,
-                args,
+                arg: args,
                 data: span,
             } => {
                 let result_ty = Type::Infer(inference::Var::new());
@@ -207,7 +236,7 @@ impl Expr<Span> {
                 })))?;
                 Expr::Call {
                     f,
-                    args,
+                    arg: args,
                     data: ExprData {
                         ty: result_ty,
                         span,
@@ -248,30 +277,44 @@ impl std::fmt::Display for Binding {
     }
 }
 
+#[derive(Debug)]
 pub struct PatternData {
     pub ty: Type,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub enum Pattern<Data = PatternData> {
+    Unit { data: Data },
     Binding { binding: Arc<Binding>, data: Data },
 }
 
 impl<Data> Pattern<Data> {
+    pub fn data(&self) -> &Data {
+        let (Self::Unit { data, .. } | Self::Binding { data, .. }) = self;
+        data
+    }
     pub fn data_mut(&mut self) -> &mut Data {
-        let Self::Binding { data, .. } = self;
+        let (Self::Unit { data, .. } | Self::Binding { data, .. }) = self;
         data
     }
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
         match self {
-            Pattern::Binding { binding, data: _ } => consumer(binding.clone()),
+            Self::Unit { data: _ } => {}
+            Self::Binding { binding, data: _ } => consumer(binding.clone()),
         }
     }
 }
 
 impl Pattern<Span> {
-    pub fn init(self) -> Pattern {
-        match self {
+    pub fn init(self) -> eyre::Result<Pattern> {
+        Ok(match self {
+            Pattern::Unit { data: span } => Pattern::Unit {
+                data: PatternData {
+                    ty: Type::Unit,
+                    span,
+                },
+            },
             Pattern::Binding {
                 binding,
                 data: span,
@@ -282,6 +325,6 @@ impl Pattern<Span> {
                 },
                 binding,
             },
-        }
+        })
     }
 }

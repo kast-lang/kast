@@ -2,6 +2,7 @@ mod cli;
 mod repl_helper;
 
 use std::{
+    collections::HashMap,
     io::{IsTerminal, Read},
     sync::{Arc, Mutex},
 };

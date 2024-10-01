@@ -1,11 +1,12 @@
 use super::*;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Value {
     Unit,
     Bool(bool),
     Int32(i32),
     String(String),
+    Function(Function),
     NativeFunction(NativeFunction),
     Binding(Arc<Binding>),
     Type(Type),
@@ -28,6 +29,8 @@ impl PartialEq for Value {
             (Self::NativeFunction(_), _) => false,
             (Self::Binding(a), Self::Binding(b)) => Arc::ptr_eq(a, b),
             (Self::Binding(_), _) => false,
+            (Self::Function(a), Self::Function(b)) => a == b,
+            (Self::Function(_), _) => false,
             (Self::Type(a), Self::Type(b)) => a == b,
             (Self::Type(_), _) => false,
         }
@@ -45,11 +48,18 @@ impl std::fmt::Display for Value {
             Value::String(s) => write!(f, "{s:?}"),
             Value::NativeFunction(function) => function.fmt(f),
             Value::Binding(binding) => binding.fmt(f),
+            Value::Function(_function) => write!(f, "<function>"),
             Value::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
             }
         }
+    }
+}
+
+impl std::fmt::Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
     }
 }
 
@@ -72,6 +82,7 @@ impl Value {
             Value::Int32(_) => Type::Int32,
             Value::String(_) => Type::String,
             Value::Binding(_b) => todo!(),
+            Value::Function(f) => Type::Function(Box::new(f.ty.clone())),
             Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Type(_) => Type::Type,
         }
@@ -96,6 +107,22 @@ impl Value {
         }
     }
 }
+
+#[derive(Clone)]
+pub struct Function {
+    pub id: Id,
+    pub ty: FnType,
+    pub captured: Arc<Scope>,
+    pub compiled: Arc<CompiledFn>,
+}
+
+impl PartialEq for Function {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Function {}
 
 #[derive(Clone)]
 pub struct NativeFunction {

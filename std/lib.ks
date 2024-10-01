@@ -27,9 +27,9 @@ const Result = forall[(~ok, ~error) :: ( ok: type, error: type)] {
     newtype .Ok ok | .Error error
 };
 
-# args |> f
-const pipe = macro (~f, ~args) => `((
-    $f $args
+# arg |> f
+const pipe = macro (~f, ~arg) => `((
+    $f $arg
 ));
 
 const input :: void -> string = builtin "fn input";
@@ -102,10 +102,10 @@ const do_try = forall[~ok :: type, ~error :: type] {
 	}
 };
 
-const try_explicit = macro (~targs, ~expr) => `(
-    let (~ok, ~error) = $targs;
+const try_explicit = macro (~targ, ~expr) => `(
+    let (~ok, ~error) = $targ;
     let f :: void -> ok with throws[error] = () => $expr;
-    do_try[$targs] f
+    do_try[$targ] f
 );
 
 const try_implicit = macro (~expr) => `(
@@ -220,11 +220,11 @@ const yields = forall[~Yield :: type, ~Resume :: type] {
 };
 
 const delimited_block = forall[~Yield :: type, ~Resume :: type, ~Finish :: type] {
-	const Args = (
+	const Arg = (
 		handler: (value: Yield, resume: Resume -> Finish) -> Finish,
 		body: delimited_token -> Finish,
 	);
-	builtin "fn delimited_block" :: Args -> Finish
+	builtin "fn delimited_block" :: Arg -> Finish
 };
 
 const loop_impl = macro (~body) => `(

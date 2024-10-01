@@ -1,26 +1,24 @@
-use std::{collections::HashMap, sync::Arc};
-
 use super::*;
 
 pub struct State {
     builtins: HashMap<&'static str, Builtin>,
-    scope: Scope,
+    scope: Arc<Scope>,
 }
 
-struct Scope {
-    parent: Option<Box<Scope>>,
-    locals: HashMap<String, Value>,
+pub struct Scope {
+    parent: Option<Arc<Scope>>,
+    locals: Mutex<HashMap<String, Value>>,
 }
 
 impl Scope {
     fn new() -> Self {
         Self {
             parent: None,
-            locals: HashMap::new(),
+            locals: Mutex::new(HashMap::new()),
         }
     }
-    fn get(&self, name: &str) -> Option<&Value> {
-        if let Some(value) = self.locals.get(name) {
+    fn get(&self, name: &str) -> Option<Value> {
+        if let Some(value) = self.locals.lock().unwrap().get(name).cloned() {
             return Some(value);
         }
         if let Some(parent) = &self.parent {
@@ -99,36 +97,45 @@ impl State {
                 );
                 map
             },
-            scope: Scope::new(),
+            scope: Arc::new(Scope::new()),
         }
     }
-    pub fn autocomplete<'a>(
-        &'a self,
-        s: &'a str,
-    ) -> impl Iterator<Item = CompletionCandidate> + 'a {
-        self.scope.locals.iter().filter_map(move |(name, value)| {
-            if name.contains(s) {
-                Some(CompletionCandidate {
-                    name: name.clone(),
-                    ty: value.ty(),
-                })
-            } else {
-                None
-            }
-        })
+    pub fn autocomplete<'a>(&'a self, s: &'a str) -> impl Iterator<Item = CompletionCandidate> {
+        let locals = self.scope.locals.lock().unwrap();
+        locals
+            .iter()
+            .filter_map(move |(name, value)| {
+                if name.contains(s) {
+                    Some(CompletionCandidate {
+                        name: name.clone(),
+                        ty: value.ty(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
     }
-    pub fn get(&self, name: &str) -> Option<&Value> {
+    pub fn get(&self, name: &str) -> Option<Value> {
         self.scope.get(name)
     }
     pub fn enter_scope(&mut self) {
-        let parent = std::mem::replace(&mut self.scope, Scope::new());
-        self.scope.parent = Some(Box::new(parent));
+        self.scope = Arc::new({
+            let mut scope = Scope::new();
+            scope.parent = Some(self.scope.clone());
+            scope
+        });
     }
     pub fn exit_scope(&mut self) {
-        self.scope = *self.scope.parent.take().expect("no parent scope");
+        self.scope = self.scope.parent.clone().expect("no parent scope");
     }
     pub fn insert_local(&mut self, name: &str, value: Value) {
-        self.scope.locals.insert(name.to_owned(), value);
+        self.scope
+            .locals
+            .lock()
+            .unwrap()
+            .insert(name.to_owned(), value);
     }
 }
 
@@ -155,6 +162,16 @@ impl Kast {
     pub fn eval(&mut self, expr: &Expr) -> eyre::Result<Value> {
         (|| {
             Ok(match expr {
+                Expr::Function {
+                    ty,
+                    compiled,
+                    data: _,
+                } => Value::Function(Function {
+                    id: Id::new(),
+                    ty: ty.clone(),
+                    captured: self.interpreter.scope.clone(),
+                    compiled: compiled.clone(),
+                }),
                 Expr::Scope { expr, data: _ } => {
                     self.interpreter.enter_scope();
                     let value = self.eval(expr)?;
@@ -195,18 +212,34 @@ impl Kast {
                 } => {
                     let value = self.eval(value)?;
                     let matches = pattern.r#match(value);
-                    self.interpreter.scope.locals.extend(
+                    self.interpreter.scope.locals.lock().unwrap().extend(
                         matches
                             .into_iter()
                             .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
                     );
                     Value::Unit
                 }
-                Expr::Call { f, args, data: _ } => {
+                Expr::Call { f, arg, data: _ } => {
                     let f = self.eval(f)?;
-                    let args = self.eval(args)?;
+                    let arg = self.eval(arg)?;
                     match f {
-                        Value::NativeFunction(f) => (f.r#impl)(f.ty.clone(), args)?,
+                        Value::NativeFunction(f) => (f.r#impl)(f.ty.clone(), arg)?,
+                        Value::Function(f) => {
+                            let mut new_scope = Scope::new();
+                            new_scope.parent = Some(f.captured.clone());
+                            new_scope.locals.lock().unwrap().extend(
+                                f.compiled
+                                    .arg
+                                    .r#match(arg)
+                                    .into_iter()
+                                    .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
+                            );
+                            let prev_scope =
+                                std::mem::replace(&mut self.interpreter.scope, Arc::new(new_scope));
+                            let value = self.eval(&f.compiled.body)?;
+                            self.interpreter.scope = prev_scope;
+                            value
+                        }
                         _ => eyre::bail!("{f} is not a function"),
                     }
                 }
@@ -222,6 +255,9 @@ impl Pattern {
         let mut result = Vec::new();
         fn match_impl(pattern: &Pattern, value: Value, matches: &mut Vec<(Arc<Binding>, Value)>) {
             match pattern {
+                Pattern::Unit { data: _ } => {
+                    assert_eq!(value, Value::Unit);
+                }
                 Pattern::Binding { binding, data: _ } => {
                     matches.push((binding.clone(), value));
                 }

@@ -35,7 +35,7 @@ syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
 syntax @"builtin macro merge_multiset" <- 6 = "|" a;
 syntax @"builtin macro merge_multiset" <- 6 = a "|" b;
-syntax @"builtin macro function_def" -> 7 = args "=>" body;
+syntax @"builtin macro function_def" -> 7 = arg "=>" body;
 
 syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
 
@@ -43,10 +43,10 @@ syntax @"builtin macro mutable_pattern" <- 7.25 = "mut" pattern;
 
 syntax @"builtin fn function_type" -> 7.5 = arg "->" result;
 syntax @"builtin fn function_type" -> 7.5 = arg "->" result "with" contexts;
-syntax @"builtin macro function_def" -> 7.5 = args "->" returns "=>" body;
+syntax @"builtin macro function_def" -> 7.5 = arg "->" returns "=>" body;
 
-syntax @"builtin macro template_def" <- 9 = "forall" "[" args "]" "{" body "}";
-syntax @"builtin macro template_def" <- 9 = "forall" "[" args "]" "where" where "{" body "}";
+syntax @"builtin macro template_def" <- 9 = "forall" "[" arg "]" "{" body "}";
+syntax @"builtin macro template_def" <- 9 = "forall" "[" arg "]" "where" where "{" body "}";
 
 syntax @"builtin macro if" -> 12.9 = cond "then" then "else" else;
 syntax @"builtin macro match" <- 13 = "match" value "(" branches ")";
@@ -56,16 +56,16 @@ syntax @"builtin macro if" <- 13 = "if" cond "then" then "else" else;
 
 syntax @"builtin macro if" -> 13.1 = cond "?" then ":" else;
 
-syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" contexts "{" body "}";
-syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" "->" result_type "{" body "}";
-syntax @"builtin macro function_def" <- 13.5 = "fn" "(" args ")" "{" body "}";
+syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" contexts "{" body "}";
+syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "->" result_type "{" body "}";
+syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "{" body "}";
 
 syntax implements <- 14 = type "implements" trait;
 
-syntax pipe <- 15 = args "|>" f;
-syntax pipe <- 15 = f "<|" args;
+syntax pipe <- 15 = arg "|>" f;
+syntax pipe <- 15 = f "<|" arg;
 
-syntax try_explicit <- 16 = "try" "[" targs "]" expr;
+syntax try_explicit <- 16 = "try" "[" targ "]" expr;
 syntax try_implicit <- 16 = "try" expr;
 syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
 syntax catch_impl <- 16 = expr "catch" e "(" catch_block ")";
@@ -99,7 +99,7 @@ syntax @"op prefix ++" <- 100 = "++" x;
 syntax @"op postfix --" <- 100 = x "--";
 syntax @"op prefix --" <- 100 = "--" x;
 
-syntax @"builtin macro call" <- 100 = f args;
+syntax @"builtin macro call" <- 100 = f arg;
 
 syntax @"builtin macro typeof" <- 120 = "typeof" expr;
 syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
@@ -111,7 +111,7 @@ syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
 syntax @"builtin macro field_access" <- 300 = obj "." field;
 syntax @"builtin macro variant" <- 300 = "." variant;
 
-syntax @"builtin macro instantiate_template" <- 300 = template "[" args "]";
+syntax @"builtin macro instantiate_template" <- 300 = template "[" arg "]";
 
 syntax @"builtin macro struct_def" <- 500 = "rec" "(" body ")";
 syntax @"builtin macro struct_def" <- 500 = "rec" "{" body "}";
