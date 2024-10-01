@@ -10,6 +10,10 @@ pub struct ExprData {
 
 #[derive(Debug)]
 pub enum Expr<Data = ExprData> {
+    Recursive {
+        body: Box<Expr>,
+        data: Data,
+    },
     Binding {
         binding: Arc<Binding>,
         data: Data,
@@ -48,7 +52,7 @@ pub enum Expr<Data = ExprData> {
     },
     Function {
         ty: FnType,
-        compiled: Arc<CompiledFn>,
+        compiled: MaybeCompiledFn,
         data: Data,
     },
 }
@@ -59,13 +63,15 @@ pub struct CompiledFn {
     pub body: Expr,
 }
 
+pub type MaybeCompiledFn = Arc<Mutex<Option<Arc<CompiledFn>>>>;
+
 impl Expr {
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
         match self {
             Expr::Binding { .. }
+            | Expr::Recursive { .. }
             | Expr::Function { .. }
             | Expr::Scope { .. }
-            | Expr::Then { .. }
             | Expr::Constant { .. }
             | Expr::Number { .. }
             | Expr::Native { .. }
@@ -75,6 +81,10 @@ impl Expr {
                 value: _,
                 data: _,
             } => pattern.collect_bindings(consumer),
+            Expr::Then { a, b, data: _ } => {
+                a.collect_bindings(consumer);
+                b.collect_bindings(consumer);
+            }
         }
     }
     pub fn show_short(&self) -> impl std::fmt::Display + '_ {
@@ -82,6 +92,7 @@ impl Expr {
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Recursive { .. } => write!(f, "recursive expr")?,
                     Expr::Function { .. } => write!(f, "function expr")?,
                     Expr::Scope { .. } => write!(f, "scope expr")?,
                     Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
@@ -106,6 +117,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
         | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
@@ -118,6 +130,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
         | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
@@ -134,6 +147,13 @@ impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self) -> eyre::Result<Expr> {
         Ok(match self {
+            Expr::Recursive { body, data: span } => Expr::Recursive {
+                data: ExprData {
+                    ty: body.data().ty.clone(),
+                    span,
+                },
+                body,
+            },
             Expr::Function {
                 ty,
                 compiled,

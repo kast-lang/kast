@@ -1,27 +1,32 @@
+#![allow(async_fn_in_trait)]
 use eyre::{eyre, Context as _};
+use futures::future::BoxFuture;
+use futures::prelude::*;
+pub use id::*;
+use inference::Inferrable;
+use ir::*;
 pub use kast_ast as ast;
+pub use kast_ast::{Ast, Token};
 pub use kast_util::*;
+use scope::Scope;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+pub use ty::*;
+pub use value::*;
 
 mod compiler;
 mod id;
 mod inference;
 mod interpreter;
 mod ir;
+mod scope;
 mod ty;
 mod value;
 
-pub use id::*;
-use inference::Inferrable;
-use interpreter::Scope;
-use ir::*;
-pub use kast_ast::{Ast, Token};
-pub use ty::*;
-pub use value::*;
-
+#[derive(Clone)]
 pub struct Kast {
+    executor: Arc<async_executor::Executor<'static>>,
     syntax: ast::Syntax,
     compiler: compiler::State,
     pub interpreter: interpreter::State,
@@ -31,6 +36,7 @@ impl Kast {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
+            executor: Arc::new(async_executor::Executor::new()),
             syntax: ast::read_syntax(SourceFile {
                 contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
                 filename: "std/syntax.ks".into(),

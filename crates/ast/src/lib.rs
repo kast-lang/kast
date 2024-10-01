@@ -14,7 +14,7 @@ use lexer::*;
 use syntax::{BindingPower, Edge};
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Ast<Data = Span> {
     Simple {
         token: Token,

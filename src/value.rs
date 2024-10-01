@@ -113,7 +113,7 @@ pub struct Function {
     pub id: Id,
     pub ty: FnType,
     pub captured: Arc<Scope>,
-    pub compiled: Arc<CompiledFn>,
+    pub compiled: MaybeCompiledFn,
 }
 
 impl PartialEq for Function {

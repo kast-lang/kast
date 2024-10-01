@@ -1,33 +1,9 @@
 use super::*;
 
+#[derive(Clone)]
 pub struct State {
-    builtins: HashMap<&'static str, Builtin>,
+    builtins: Arc<HashMap<&'static str, Builtin>>,
     scope: Arc<Scope>,
-}
-
-pub struct Scope {
-    parent: Option<Arc<Scope>>,
-    locals: Mutex<HashMap<String, Value>>,
-}
-
-impl Scope {
-    fn new() -> Self {
-        Self {
-            parent: None,
-            locals: Mutex::new(HashMap::new()),
-        }
-    }
-    fn get(&self, name: &str) -> Option<Value> {
-        if let Some(value) = self.locals.lock().unwrap().get(name).cloned() {
-            return Some(value);
-        }
-        if let Some(parent) = &self.parent {
-            if let Some(value) = parent.get(name) {
-                return Some(value);
-            }
-        }
-        None
-    }
 }
 
 type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
@@ -95,7 +71,7 @@ impl State {
                         }))
                     }),
                 );
-                map
+                Arc::new(map)
             },
             scope: Arc::new(Scope::new()),
         }
@@ -117,17 +93,28 @@ impl State {
             .collect::<Vec<_>>()
             .into_iter()
     }
-    pub fn get(&self, name: &str) -> Option<Value> {
-        self.scope.get(name)
+    pub async fn get(&self, name: &str) -> Option<Value> {
+        self.scope.get(name).await
     }
     pub fn enter_scope(&mut self) {
+        tracing::trace!("entering scope");
         self.scope = Arc::new({
             let mut scope = Scope::new();
             scope.parent = Some(self.scope.clone());
             scope
         });
     }
+    pub fn enter_recursive_scope(&mut self) {
+        tracing::trace!("entering recursive scope");
+        self.scope = Arc::new({
+            let mut scope = Scope::recursive();
+            scope.parent = Some(self.scope.clone());
+            scope
+        });
+    }
     pub fn exit_scope(&mut self) {
+        tracing::trace!("exit scope");
+        self.scope.close();
         self.scope = self.scope.parent.clone().expect("no parent scope");
     }
     pub fn insert_local(&mut self, name: &str, value: Value) {
@@ -147,21 +134,28 @@ impl Kast {
     ) -> eyre::Result<Value> {
         let ast = ast::parse(&self.syntax, source)?;
         match ast {
-            Some(ast) => self.eval_ast(&ast, expected_ty),
+            Some(ast) => futures::executor::block_on(self.eval_ast(&ast, expected_ty)), // TODO
             None => Ok(Value::Unit),
         }
     }
-    pub fn eval_ast(&mut self, ast: &Ast, expected_ty: Option<Type>) -> eyre::Result<Value> {
-        let mut expr: Expr = self.compile(ast)?;
+    pub async fn eval_ast(&mut self, ast: &Ast, expected_ty: Option<Type>) -> eyre::Result<Value> {
+        let mut expr: Expr = self.compile(ast).await?;
         if let Some(ty) = expected_ty {
             expr.data_mut().ty.make_same(ty)?;
         }
-        let result = self.eval(&expr)?;
+        let result = self.eval(&expr).await?;
         Ok(result)
     }
-    pub fn eval(&mut self, expr: &Expr) -> eyre::Result<Value> {
-        (|| {
-            Ok(match expr {
+    pub fn eval<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<Value>> {
+        let r#impl = async move {
+            tracing::debug!("evaluating {}", expr.show_short());
+            let result = match expr {
+                Expr::Recursive { body, data: _ } => {
+                    self.interpreter.enter_recursive_scope();
+                    let value = self.eval(body).await?;
+                    self.interpreter.exit_scope();
+                    value
+                }
                 Expr::Function {
                     ty,
                     compiled,
@@ -174,18 +168,19 @@ impl Kast {
                 }),
                 Expr::Scope { expr, data: _ } => {
                     self.interpreter.enter_scope();
-                    let value = self.eval(expr)?;
+                    let value = self.eval(expr).await?;
                     self.interpreter.exit_scope();
                     value
                 }
                 Expr::Binding { binding, data: _ } => self
                     .interpreter
                     .get(binding.name.raw())
+                    .await // TODO this should not be async?
                     .ok_or_else(|| eyre!("{:?} not found", binding.name))?
                     .clone(),
                 Expr::Then { a, b, data: _ } => {
-                    self.eval(a)?;
-                    self.eval(b)?
+                    self.eval(a).await?;
+                    self.eval(b).await?
                 }
                 Expr::Constant { value, data: _ } => value.clone(),
                 Expr::Number { raw, data } => match data.ty.inferred() {
@@ -199,7 +194,7 @@ impl Kast {
                     Err(_) => eyre::bail!("number literal type could not be inferred"),
                 },
                 Expr::Native { name, data } => {
-                    let name = self.eval(name)?.expect_string()?;
+                    let name = self.eval(name).await?.expect_string()?;
                     match self.interpreter.builtins.get(name.as_str()) {
                         Some(builtin) => builtin(data.ty.clone())?,
                         None => eyre::bail!("native {name:?} not found"),
@@ -210,7 +205,7 @@ impl Kast {
                     value,
                     data: _,
                 } => {
-                    let value = self.eval(value)?;
+                    let value = self.eval(value).await?;
                     let matches = pattern.r#match(value);
                     self.interpreter.scope.locals.lock().unwrap().extend(
                         matches
@@ -220,15 +215,20 @@ impl Kast {
                     Value::Unit
                 }
                 Expr::Call { f, arg, data: _ } => {
-                    let f = self.eval(f)?;
-                    let arg = self.eval(arg)?;
+                    let f = self.eval(f).await?;
+                    let arg = self.eval(arg).await?;
                     match f {
                         Value::NativeFunction(f) => (f.r#impl)(f.ty.clone(), arg)?,
                         Value::Function(f) => {
                             let mut new_scope = Scope::new();
                             new_scope.parent = Some(f.captured.clone());
+                            while self.executor.try_tick() {}
+                            let compiled: Arc<CompiledFn> = match &*f.compiled.lock().unwrap() {
+                                Some(compiled) => compiled.clone(),
+                                None => panic!("function is not compiled yet"),
+                            };
                             new_scope.locals.lock().unwrap().extend(
-                                f.compiled
+                                compiled
                                     .arg
                                     .r#match(arg)
                                     .into_iter()
@@ -236,16 +236,24 @@ impl Kast {
                             );
                             let prev_scope =
                                 std::mem::replace(&mut self.interpreter.scope, Arc::new(new_scope));
-                            let value = self.eval(&f.compiled.body)?;
+                            let value = self.eval(&compiled.body).await?;
                             self.interpreter.scope = prev_scope;
                             value
                         }
                         _ => eyre::bail!("{f} is not a function"),
                     }
                 }
-            })
-        })()
-        .wrap_err_with(|| format!("while evaluating {}", expr.show_short()))
+            };
+            tracing::debug!("finished evaluating {}", expr.show_short());
+            tracing::trace!("result = {result}");
+            Ok(result)
+        };
+        async {
+            r#impl
+                .await
+                .wrap_err_with(|| format!("while evaluating {}", expr.show_short()))
+        }
+        .boxed()
     }
 }
 
