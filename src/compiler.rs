@@ -137,7 +137,8 @@ impl Compilable for Pattern {
         }
     }
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
-        Ok(match ast {
+        tracing::debug!("compiling {}...", ast.show_short());
+        let result = match ast {
             Ast::Simple { token, data: span } => match token {
                 Token::Ident {
                     raw: _,
@@ -176,7 +177,9 @@ impl Compilable for Pattern {
                 }
             }
             Ast::SyntaxDefinition { def: _, data: _ } => todo!(),
-        })
+        };
+        tracing::debug!("compiled {}", ast.show_short());
+        Ok(result)
     }
 }
 
@@ -377,7 +380,10 @@ impl Kast {
                     assert!(old_compiled.is_none(), "function compiled twice wtf?");
                     Ok(())
                 }
-                .map_err(|err: eyre::Report| panic!("{err:?}"))
+                .map_err(|err: eyre::Report| {
+                    tracing::error!("{err:?}");
+                    panic!("{err:?}")
+                })
             })
             .detach();
         self.interpreter.exit_scope();
