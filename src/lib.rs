@@ -26,6 +26,8 @@ mod value;
 
 #[derive(Clone)]
 pub struct Kast {
+    /// Am I a background task? :)
+    spawned: bool,
     executor: Arc<async_executor::Executor<'static>>,
     syntax: ast::Syntax,
     compiler: compiler::State,
@@ -36,6 +38,7 @@ impl Kast {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
+            spawned: false,
             executor: Arc::new(async_executor::Executor::new()),
             syntax: ast::read_syntax(SourceFile {
                 contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),

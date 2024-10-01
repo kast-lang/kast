@@ -31,7 +31,13 @@ impl Scope {
         self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
         self.closed_notify.notify();
     }
-    pub fn get<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Option<Value>> {
+    fn get_sync(&self, name: &str) -> Option<Value> {
+        self.get_impl(name, false).now_or_never().unwrap()
+    }
+    async fn get_async(&self, name: &str) -> Option<Value> {
+        self.get_impl(name, true).await
+    }
+    pub fn get_impl<'a>(&'a self, name: &'a str, do_await: bool) -> BoxFuture<'a, Option<Value>> {
         async move {
             loop {
                 let was_closed = self.closed.load(std::sync::atomic::Ordering::Relaxed);
@@ -46,11 +52,14 @@ impl Scope {
                 if was_closed {
                     break;
                 }
+                if !do_await {
+                    break;
+                }
                 // TODO maybe wait for the name, not entire scope?
                 self.closed_notify.notified().await
             }
             if let Some(parent) = &self.parent {
-                if let Some(value) = parent.get(name).await {
+                if let Some(value) = parent.get_impl(name, do_await).await {
                     return Some(value);
                 }
             }

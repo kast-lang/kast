@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Clone)]
 pub struct State {
+    pub spawned: bool,
     builtins: Arc<HashMap<&'static str, Builtin>>,
     scope: Arc<Scope>,
 }
@@ -17,6 +18,7 @@ impl State {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
+            spawned: false,
             builtins: {
                 let mut map = HashMap::<&str, Builtin>::new();
                 let mut insert_ty = |name, ty: Type| {
@@ -94,7 +96,7 @@ impl State {
             .into_iter()
     }
     pub async fn get(&self, name: &str) -> Option<Value> {
-        self.scope.get(name).await
+        self.scope.get_impl(name, self.spawned).await
     }
     pub fn enter_scope(&mut self) {
         tracing::trace!("entering scope");

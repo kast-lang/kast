@@ -367,6 +367,7 @@ impl Kast {
         self.executor
             .spawn({
                 let mut kast = self.clone();
+                kast.interpreter.spawned = true;
                 let compiled = compiled.clone();
                 let body: Ast = body.clone();
                 let result_type = result_type.clone();
