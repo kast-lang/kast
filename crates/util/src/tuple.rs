@@ -91,130 +91,145 @@ impl<T> Tuple<T> {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum NamedErrorReason {
-    UnnamedFieldsPresent,
-    FieldNotPresent(String),
-    FieldUnexpected(String),
+pub enum IntoFixedErrorReason {
+    IncorrectAmountOfUnnamedFields { expected: usize, actual: usize },
+    NamedFieldNotPresent(String),
+    NamedFieldUnexpected(String),
 }
 
-impl std::fmt::Display for NamedErrorReason {
+impl std::fmt::Display for IntoFixedErrorReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NamedErrorReason::UnnamedFieldsPresent => write!(f, "no unnamed fields were expected"),
-            NamedErrorReason::FieldNotPresent(name) => write!(f, "field {name:?} not present"),
-            NamedErrorReason::FieldUnexpected(name) => write!(f, "field {name:?} was not expected"),
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub struct NamedError {
-    erased_value: Tuple<()>,
-    expected_fields: Vec<String>,
-    #[source]
-    reason: NamedErrorReason,
-}
-
-impl std::fmt::Display for NamedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "expected only named fields {:?}, got {}",
-            self.expected_fields,
-            self.erased_value.show_fields(),
-        )
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum UnnamedErrorReason {
-    NamedFieldsPresent(Vec<String>),
-    IncorrectAmountOfFields { expected: usize, actual: usize },
-}
-
-impl std::fmt::Display for UnnamedErrorReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UnnamedErrorReason::NamedFieldsPresent(_fields) => {
-                write!(f, "named fields were not expected")
+            Self::NamedFieldNotPresent(name) => {
+                write!(f, "field {name:?} is not present")
             }
-            UnnamedErrorReason::IncorrectAmountOfFields { expected, actual } => {
-                write!(f, "expected {expected} fields, got {actual}")
+            Self::NamedFieldUnexpected(name) => {
+                write!(f, "field {name:?} was not expected")
+            }
+            Self::IncorrectAmountOfUnnamedFields { expected, actual } => {
+                write!(f, "expected {expected} unnamed fields, got {actual}")
             }
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub struct UnnamedError {
+pub struct IntoFixedError {
     erased_value: Tuple<()>,
-    expected_fields: usize,
+    expected_unnamed_fields: usize,
+    expected_named_fields: Vec<String>,
+    optional_fields: Vec<String>,
     #[source]
-    reason: UnnamedErrorReason,
+    reason: IntoFixedErrorReason,
 }
 
-impl std::fmt::Display for UnnamedError {
+impl std::fmt::Display for IntoFixedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "expected only named fields {:?}, got {}",
-            self.expected_fields,
-            self.erased_value.show_fields(),
-        )
+        write!(f, "expected ")?;
+        let mut started = false;
+        let mut start = |f: &mut std::fmt::Formatter| {
+            if started {
+                write!(f, ", ")
+            } else {
+                started = true;
+                Ok(())
+            }
+        };
+        if self.expected_unnamed_fields != 0 {
+            start(f)?;
+            write!(f, "{} unnamed fields", self.expected_unnamed_fields)?;
+        }
+        for name in &self.expected_named_fields {
+            start(f)?;
+            write!(f, "{name:?}")?;
+        }
+        if !self.optional_fields.is_empty() {
+            start(f)?;
+            write!(f, "optional ")?;
+            for (i, name) in self.optional_fields.iter().enumerate() {
+                if i != 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{name:?}")?;
+            }
+        }
+        write!(f, " but got {}", self.erased_value.show_fields())
     }
+}
+
+pub struct FixedTuple<const UNNAMED: usize, const NAMED: usize, const OPTIONAL: usize, T> {
+    unnamed: [T; UNNAMED],
+    named: [T; NAMED],
+    optional: [Option<T>; OPTIONAL],
 }
 
 impl<T> Tuple<T> {
-    pub fn into_unnamed<const N: usize>(self) -> Result<[T; N], UnnamedError> {
+    pub fn into_fixed<const UNNAMED: usize, const NAMED: usize, const OPTIONAL: usize>(
+        mut self,
+        named: [&str; NAMED],
+        optional: [&str; OPTIONAL],
+    ) -> Result<FixedTuple<UNNAMED, NAMED, OPTIONAL, T>, IntoFixedError> {
+        let erased_value = self.as_ref().map(|_| ());
         macro_rules! error {
             ($reason:expr) => {
-                Err(UnnamedError {
-                    expected_fields: N,
+                Err(IntoFixedError {
+                    expected_unnamed_fields: UNNAMED,
+                    expected_named_fields: named.iter().map(|s| s.to_string()).collect(),
+                    optional_fields: optional.iter().map(|s| s.to_string()).collect(),
                     reason: $reason,
-                    erased_value: self.map(|_| ()),
+                    erased_value,
                 })
             };
         }
-        if !self.named.is_empty() {
-            return error!(UnnamedErrorReason::NamedFieldsPresent(
-                self.named_order.clone()
-            ));
-        }
-        if self.unnamed.len() != N {
-            return error!(UnnamedErrorReason::IncorrectAmountOfFields {
-                expected: N,
+
+        if self.unnamed.len() != UNNAMED {
+            return error!(IntoFixedErrorReason::IncorrectAmountOfUnnamedFields {
+                expected: UNNAMED,
                 actual: self.unnamed.len()
             });
         }
-        Ok(self.unnamed.try_into().ok().unwrap())
+        let unnamed: [T; UNNAMED] = self.unnamed.try_into().ok().unwrap();
+
+        if let Some(name) = self
+            .named_order
+            .iter()
+            .find(|name| !named.contains(&name.as_str()) && !optional.contains(&name.as_str()))
+        {
+            return error!(IntoFixedErrorReason::NamedFieldUnexpected(name.to_string()));
+        }
+
+        if let Some(name) = named.iter().find(|&&name| !self.named.contains_key(name)) {
+            return error!(IntoFixedErrorReason::NamedFieldNotPresent(name.to_string()));
+        }
+
+        let named = named.map(|name| self.named.remove(name).unwrap());
+        let optional = optional.map(|name| self.named.remove(name));
+
+        Ok(FixedTuple {
+            unnamed,
+            named,
+            optional,
+        })
     }
-    pub fn into_named<const N: usize>(mut self, names: [&str; N]) -> Result<[T; N], NamedError> {
-        macro_rules! error {
-            ($reason:expr) => {
-                Err(NamedError {
-                    expected_fields: names.into_iter().map(String::from).collect(),
-                    reason: $reason,
-                    erased_value: self.map(|_| ()),
-                })
-            };
-        }
-        if !self.unnamed.is_empty() {
-            return error!(NamedErrorReason::UnnamedFieldsPresent);
-        }
-        if let Some(name) = names.iter().find(|&&name| !self.named.contains_key(name)) {
-            return error!(NamedErrorReason::FieldNotPresent(name.to_string()));
-        }
-        if self.named.iter().len() != N {
-            let name = self
-                .named_order
-                .iter()
-                .find(|&name| !names.iter().any(|s| s == name))
-                .unwrap();
-            return error!(NamedErrorReason::FieldUnexpected(name.to_string()));
-        }
-        Ok(names.map(|name| self.named.remove(name).unwrap()))
+    pub fn into_unnamed<const N: usize>(self) -> Result<[T; N], IntoFixedError> {
+        Ok(self.into_fixed([], [])?.unnamed)
     }
-    pub fn into_single_named(self, name: &str) -> Result<T, NamedError> {
+    pub fn into_named_opt<const N: usize, const OPT: usize>(
+        self,
+        names: [&str; N],
+        optional: [&str; OPT],
+    ) -> Result<([T; N], [Option<T>; OPT]), IntoFixedError> {
+        let FixedTuple {
+            unnamed: [],
+            named,
+            optional,
+        } = self.into_fixed(names, optional)?;
+        Ok((named, optional))
+    }
+    pub fn into_named<const N: usize>(self, names: [&str; N]) -> Result<[T; N], IntoFixedError> {
+        Ok(self.into_fixed::<0, N, 0>(names, [])?.named)
+    }
+    pub fn into_single_named(self, name: &str) -> Result<T, IntoFixedError> {
         self.into_named([name]).map(|[value]| value)
     }
 }
