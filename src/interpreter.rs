@@ -158,6 +158,23 @@ impl Kast {
                     self.interpreter.exit_scope();
                     value
                 }
+                Expr::Ast {
+                    definition,
+                    values,
+                    data,
+                } => {
+                    let mut ast_values = Tuple::empty();
+                    for (name, value) in values.as_ref().into_iter() {
+                        let value = self.eval(value).await?;
+                        let value = value.expect_ast()?;
+                        ast_values.add(name, value);
+                    }
+                    Value::Ast(Ast::Complex {
+                        definition: definition.clone(),
+                        values: ast_values,
+                        data: data.span.clone(),
+                    })
+                }
                 Expr::Function {
                     ty,
                     compiled,
@@ -221,27 +238,7 @@ impl Kast {
                     let arg = self.eval(arg).await?;
                     match f {
                         Value::NativeFunction(f) => (f.r#impl)(f.ty.clone(), arg)?,
-                        Value::Function(f) => {
-                            let mut new_scope = Scope::new();
-                            new_scope.parent = Some(f.captured.clone());
-                            while self.executor.try_tick() {}
-                            let compiled: Arc<CompiledFn> = match &*f.compiled.lock().unwrap() {
-                                Some(compiled) => compiled.clone(),
-                                None => panic!("function is not compiled yet"),
-                            };
-                            new_scope.locals.lock().unwrap().extend(
-                                compiled
-                                    .arg
-                                    .r#match(arg)
-                                    .into_iter()
-                                    .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
-                            );
-                            let prev_scope =
-                                std::mem::replace(&mut self.interpreter.scope, Arc::new(new_scope));
-                            let value = self.eval(&compiled.body).await?;
-                            self.interpreter.scope = prev_scope;
-                            value
-                        }
+                        Value::Function(f) => self.call_fn(f, arg).await?,
                         _ => eyre::bail!("{f} is not a function"),
                     }
                 }
@@ -257,6 +254,27 @@ impl Kast {
         }
         .boxed()
     }
+
+    pub async fn call_fn(&mut self, f: Function, arg: Value) -> eyre::Result<Value> {
+        let mut new_scope = Scope::new();
+        new_scope.parent = Some(f.captured.clone());
+        while self.executor.try_tick() {}
+        let compiled: Arc<CompiledFn> = match &*f.compiled.lock().unwrap() {
+            Some(compiled) => compiled.clone(),
+            None => panic!("function is not compiled yet"),
+        };
+        new_scope.locals.lock().unwrap().extend(
+            compiled
+                .arg
+                .r#match(arg)
+                .into_iter()
+                .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
+        );
+        let prev_scope = std::mem::replace(&mut self.interpreter.scope, Arc::new(new_scope));
+        let value = self.eval(&compiled.body).await?;
+        self.interpreter.scope = prev_scope;
+        Ok(value)
+    }
 }
 
 impl Pattern {
@@ -270,6 +288,26 @@ impl Pattern {
                 }
                 Pattern::Binding { binding, data: _ } => {
                     matches.push((binding.clone(), value));
+                }
+                Pattern::Tuple {
+                    tuple: pattern,
+                    data: _,
+                } => {
+                    let value = match value {
+                        Value::Tuple(value) => value,
+                        _ => {
+                            let pattern = pattern.as_ref().map(|_| "_");
+                            panic!("trying to pattern match tuple {pattern}, but got {value}");
+                        }
+                    };
+                    for (_, (field_pattern, field_value)) in pattern
+                        .as_ref()
+                        .zip(value)
+                        .expect("pattern is incorrect structure")
+                        .into_iter()
+                    {
+                        match_impl(field_pattern, field_value, matches);
+                    }
                 }
             }
         }

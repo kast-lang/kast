@@ -6,7 +6,10 @@ pub enum Type {
     Bool,
     Int32,
     String,
+    Tuple(Tuple<Type>),
     Function(Box<FnType>),
+    Macro(Box<FnType>),
+    Ast,
     #[allow(clippy::enum_variant_names)]
     Type,
 
@@ -27,8 +30,14 @@ impl PartialEq for Type {
                 (Self::Int32, _) => false,
                 (Self::String, Self::String) => true,
                 (Self::String, _) => false,
+                (Self::Tuple(a), Self::Tuple(b)) => a == b,
+                (Self::Tuple(_), _) => false,
                 (Self::Function(a), Self::Function(b)) => a == b,
                 (Self::Function(_), _) => false,
+                (Self::Macro(a), Self::Macro(b)) => a == b,
+                (Self::Macro(_), _) => false,
+                (Self::Ast, Self::Ast) => true,
+                (Self::Ast, _) => false,
                 (Self::Type, Self::Type) => true,
                 (Self::Type, _) => false,
             },
@@ -74,10 +83,25 @@ impl Inferrable for Type {
                 (Type::Int32, _) => fail!(),
                 (Type::String, Type::String) => Type::String,
                 (Type::String, _) => fail!(),
+                (Type::Tuple(a), Type::Tuple(b)) => {
+                    let mut result = Tuple::empty();
+                    for (name, (a, b)) in a.zip(b)?.into_iter() {
+                        let value = Inferrable::make_same(a, b)?;
+                        result.add(name, value);
+                    }
+                    Type::Tuple(result)
+                }
+                (Type::Tuple(_), _) => fail!(),
                 (Type::Function(a), Type::Function(b)) => {
                     Type::Function(Box::new(Inferrable::make_same(*a, *b)?))
                 }
                 (Type::Function(_), _) => fail!(),
+                (Type::Macro(a), Type::Macro(b)) => {
+                    Type::Macro(Box::new(Inferrable::make_same(*a, *b)?))
+                }
+                (Type::Macro(_), _) => fail!(),
+                (Type::Ast, Type::Ast) => Type::Ast,
+                (Type::Ast, _) => fail!(),
                 (Type::Type, Type::Type) => Type::Type,
                 (Type::Type, _) => fail!(),
             },
@@ -104,7 +128,10 @@ impl std::fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Int32 => write!(f, "int32"),
             Type::String => write!(f, "string"),
+            Type::Tuple(tuple) => tuple.fmt(f),
             Type::Function(ty) => ty.fmt(f),
+            Type::Macro(ty) => write!(f, "macro {ty}"),
+            Type::Ast => write!(f, "ast"),
             Type::Type => write!(f, "type"),
             Type::Infer(var) => match var.get() {
                 Some(inferred) => inferred.fmt(f),

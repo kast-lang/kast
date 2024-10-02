@@ -31,9 +31,11 @@ impl Scope {
         self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
         self.closed_notify.notify();
     }
+    #[allow(dead_code)]
     fn get_sync(&self, name: &str) -> Option<Value> {
         self.get_impl(name, false).now_or_never().unwrap()
     }
+    #[allow(dead_code)]
     async fn get_async(&self, name: &str) -> Option<Value> {
         self.get_impl(name, true).await
     }

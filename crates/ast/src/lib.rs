@@ -31,12 +31,65 @@ pub enum Ast<Data = Span> {
     },
 }
 
+impl<Data: PartialEq> PartialEq for Ast<Data> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Simple {
+                    token: l_token,
+                    data: l_data,
+                },
+                Self::Simple {
+                    token: r_token,
+                    data: r_data,
+                },
+            ) => l_token == r_token && l_data == r_data,
+            (
+                Self::Complex {
+                    definition: l_definition,
+                    values: l_values,
+                    data: l_data,
+                },
+                Self::Complex {
+                    definition: r_definition,
+                    values: r_values,
+                    data: r_data,
+                },
+            ) => {
+                Arc::ptr_eq(l_definition, r_definition) && l_values == r_values && l_data == r_data
+            }
+            (
+                Self::SyntaxDefinition {
+                    def: l_def,
+                    data: l_data,
+                },
+                Self::SyntaxDefinition {
+                    def: r_def,
+                    data: r_data,
+                },
+            ) => Arc::ptr_eq(l_def, r_def) && l_data == r_data,
+            _ => false,
+        }
+    }
+}
+
+impl<Data: Eq> Eq for Ast<Data> {}
+
 impl<Data> Ast<Data> {
     pub fn data(&self) -> &Data {
         match self {
             Ast::Simple { data, .. }
             | Ast::Complex { data, .. }
             | Ast::SyntaxDefinition { data, .. } => data,
+        }
+    }
+    pub fn as_ident(&self) -> Option<&str> {
+        match self {
+            Ast::Simple {
+                token: Token::Ident { name, .. },
+                ..
+            } => Some(name),
+            _ => None,
         }
     }
 }

@@ -29,7 +29,7 @@ syntax inline_typed_field <- 4.75 = "~" name "::" type;
 syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
 syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
 syntax @"builtin macro current_context" <- 5 = "current" context_type;
-syntax @"builtin fn macro" <- 5 = "macro" def;
+syntax @"builtin macro macro" <- 5 = "macro" def;
 syntax @"builtin macro comptime" <- 5 = "comptime" value;
 syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
@@ -62,8 +62,8 @@ syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "{" body "}";
 
 syntax implements <- 14 = type "implements" trait;
 
-syntax pipe <- 15 = arg "|>" f;
-syntax pipe <- 15 = f "<|" arg;
+syntax pipe_right <- 15 = arg "|>" f;
+syntax pipe_left <- 15 = f "<|" arg;
 
 syntax try_explicit <- 16 = "try" "[" targ "]" expr;
 syntax try_implicit <- 16 = "try" expr;

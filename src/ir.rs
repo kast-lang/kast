@@ -55,6 +55,11 @@ pub enum Expr<Data = ExprData> {
         compiled: MaybeCompiledFn,
         data: Data,
     },
+    Ast {
+        definition: Arc<ast::SyntaxDefinition>,
+        values: Tuple<Expr>,
+        data: Data,
+    },
 }
 
 #[derive(Debug)]
@@ -75,6 +80,7 @@ impl Expr {
             | Expr::Constant { .. }
             | Expr::Number { .. }
             | Expr::Native { .. }
+            | Expr::Ast { .. }
             | Expr::Call { .. } => {}
             Expr::Let {
                 pattern,
@@ -100,6 +106,7 @@ impl Expr {
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
                     Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
                     Expr::Native { name: _, data: _ } => write!(f, "native expr")?,
+                    Expr::Ast { .. } => write!(f, "ast expr")?,
                     Expr::Let {
                         pattern: _,
                         value: _,
@@ -117,6 +124,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
         | Expr::Scope { data, .. }
@@ -130,6 +138,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
         | Expr::Scope { data, .. }
@@ -147,6 +156,24 @@ impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self) -> eyre::Result<Expr> {
         Ok(match self {
+            Expr::Ast {
+                definition,
+                values,
+                data: span,
+            } => {
+                for value in values.values() {
+                    // TODO clone???
+                    value.data().ty.clone().make_same(Type::Ast)?;
+                }
+                Expr::Ast {
+                    data: ExprData {
+                        ty: Type::Ast,
+                        span,
+                    },
+                    definition,
+                    values,
+                }
+            }
             Expr::Recursive { body, data: span } => Expr::Recursive {
                 data: ExprData {
                     ty: body.data().ty.clone(),
@@ -307,21 +334,29 @@ pub struct PatternData {
 pub enum Pattern<Data = PatternData> {
     Unit { data: Data },
     Binding { binding: Arc<Binding>, data: Data },
+    Tuple { tuple: Tuple<Pattern>, data: Data },
 }
 
 impl<Data> Pattern<Data> {
     pub fn data(&self) -> &Data {
-        let (Self::Unit { data, .. } | Self::Binding { data, .. }) = self;
+        let (Self::Unit { data, .. } | Self::Binding { data, .. } | Self::Tuple { data, .. }) =
+            self;
         data
     }
     pub fn data_mut(&mut self) -> &mut Data {
-        let (Self::Unit { data, .. } | Self::Binding { data, .. }) = self;
+        let (Self::Unit { data, .. } | Self::Binding { data, .. } | Self::Tuple { data, .. }) =
+            self;
         data
     }
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
         match self {
             Self::Unit { data: _ } => {}
             Self::Binding { binding, data: _ } => consumer(binding.clone()),
+            Self::Tuple { tuple, data: _ } => {
+                for field in tuple.values() {
+                    field.collect_bindings(consumer);
+                }
+            }
         }
     }
 }
@@ -344,6 +379,13 @@ impl Pattern<Span> {
                     span,
                 },
                 binding,
+            },
+            Pattern::Tuple { tuple, data: span } => Pattern::Tuple {
+                data: PatternData {
+                    ty: Type::Tuple(tuple.as_ref().map(|field| field.data().ty.clone())),
+                    span,
+                },
+                tuple,
             },
         })
     }

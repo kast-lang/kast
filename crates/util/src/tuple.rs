@@ -26,6 +26,12 @@ impl<T> Tuple<T> {
         self.named_order.push(name.clone());
         self.named.insert(name, value);
     }
+    pub fn add(&mut self, name: Option<String>, value: T) {
+        match name {
+            Some(name) => self.add_named(name, value),
+            None => self.add_unnamed(value),
+        }
+    }
     pub fn fmt_with_name<'a>(&'a self, name: &'a str) -> NamedTupleFmt<'a, T> {
         NamedTupleFmt { name, tuple: self }
     }
@@ -86,6 +92,41 @@ impl<T> Tuple<T> {
                 .map(|(key, value)| (key, f(value)))
                 .collect(),
             named_order: self.named_order,
+        }
+    }
+    pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
+        self.unnamed
+            .iter()
+            .chain(self.named_order.iter().map(|name| &self.named[name]))
+    }
+}
+
+pub struct TupleIntoIter<T> {
+    unnamed: <Vec<T> as IntoIterator>::IntoIter,
+    names: <Vec<String> as IntoIterator>::IntoIter,
+    named: BTreeMap<String, T>,
+}
+
+impl<T> Iterator for TupleIntoIter<T> {
+    type Item = (Option<String>, T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(value) = self.unnamed.next() {
+            return Some((None, value));
+        }
+        let name = self.names.next()?;
+        let value = self.named.remove(&name).unwrap();
+        Some((Some(name), value))
+    }
+}
+
+impl<T> IntoIterator for Tuple<T> {
+    type Item = (Option<String>, T);
+    type IntoIter = TupleIntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        TupleIntoIter {
+            unnamed: self.unnamed.into_iter(),
+            names: self.named_order.into_iter(),
+            named: self.named,
         }
     }
 }
@@ -234,9 +275,13 @@ impl<T> Tuple<T> {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
 pub enum TupleZipError {
+    #[error("different amount of unnamed fields: {0} vs {1}")]
     DifferentUnnamedAmount(usize, usize),
+    #[error("field {0} not present in other")]
     NamedNotPresentInOther(String),
+    #[error("field {0} is only present in other")]
     NamedOnlyPresentInOther(String),
 }
 

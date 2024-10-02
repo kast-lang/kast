@@ -11,7 +11,7 @@ pub enum StringType {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
     Ident {
         raw: String,
