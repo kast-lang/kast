@@ -7,3 +7,4 @@ syntax mul <- 30 = lhs "*" rhs;
 syntax call <- 50 = f args;
 
 syntax scoped <- 1000 = "(" e ")";
+

@@ -1,3 +1,5 @@
+use future::LocalBoxFuture;
+use futures::prelude::*;
 use std::sync::Arc;
 use std::{borrow::Cow, collections::HashSet};
 
@@ -131,10 +133,12 @@ impl std::fmt::Display for Ast {
 }
 
 pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> {
+    let executor = Arc::new(async_executor::LocalExecutor::new());
     let mut parser = Parser {
+        executor: executor.clone(),
         reader: lex(source)?,
     };
-    let result = parser.read_all(syntax);
+    let result = futures::executor::block_on(executor.run(parser.read_all(syntax)));
     result.map_err(|msg| msg.at(parser.reader.peek().unwrap().span.clone()))
 }
 
@@ -168,6 +172,7 @@ pub fn read_syntax(source: SourceFile) -> Result<Syntax, Error> {
 }
 
 struct Parser {
+    executor: Arc<async_executor::LocalExecutor<'static>>,
     reader: peek2::Reader<SpannedToken>,
 }
 
@@ -312,7 +317,7 @@ impl Parser {
     ///
     /// If currently parsing an inner value inside another expr,
     /// binding power of the outer expr must be taken into consideration
-    fn read_one(
+    async fn read_one(
         &mut self,
         syntax: &Syntax,
         continuation_keywords: &HashSet<&str>,
@@ -403,7 +408,10 @@ impl Parser {
                 tracing::trace!("trying to read a value to continue with");
                 tracing::trace!("current_bp={current_bp:?}");
                 tracing::trace!("inner_continuation_keywords={inner_continuation_keywords:?})");
-                match self.read_expr(syntax, &inner_continuation_keywords, current_bp)? {
+                match self
+                    .read_expr(syntax, &inner_continuation_keywords, current_bp)
+                    .await?
+                {
                     Some(value) => {
                         tracing::trace!("continuing with a value");
                         parsed_parts.push(ProgressPart::Value(value));
@@ -452,7 +460,7 @@ impl Parser {
 impl Parser {
     /// Try to read an expr, maybe inside another expr with given binding power
     /// (can only use stronger binding power then)
-    fn read_expr(
+    async fn read_expr(
         &mut self,
         syntax: &Syntax,
         continuation_keywords: &HashSet<&str>,
@@ -469,7 +477,17 @@ impl Parser {
                 "trying to read one more node with already_parsed={}",
                 display_option(&already_parsed),
             );
-            match self.read_one(&syntax, continuation_keywords, already_parsed, outer_bp)? {
+            let executor = self.executor.clone();
+            let spawned = executor.spawn(unsafe {
+                std::mem::transmute::<
+                    LocalBoxFuture<'_, Result<ReadOneResult>>,
+                    LocalBoxFuture<'static, Result<ReadOneResult>>,
+                >(
+                    self.read_one(&syntax, continuation_keywords, already_parsed, outer_bp)
+                        .boxed_local(),
+                )
+            });
+            match spawned.await? {
                 ReadOneResult::Progress(value) => {
                     if let Ast::SyntaxDefinition { def, data: _ } = &value {
                         let mut new_syntax = syntax.into_owned();
@@ -489,8 +507,8 @@ impl Parser {
         }
     }
 
-    fn read_all(&mut self, syntax: &Syntax) -> Result<Option<Ast>> {
-        let result = self.read_expr(syntax, &HashSet::new(), None)?;
+    async fn read_all(&mut self, syntax: &Syntax) -> Result<Option<Ast>> {
+        let result = self.read_expr(syntax, &HashSet::new(), None).await?;
         let peek = self.reader.peek().unwrap();
         if !peek.is_eof() {
             return error!("unexpected token {:?}", peek.raw());

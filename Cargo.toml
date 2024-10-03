@@ -1,3 +1,6 @@
+[patch.crates-io]
+backtrace-on-stack-overflow.path = "../../Temp/backtrace-on-stack-overflow"
+
 [workspace]
 members = ["crates/*"]
 
@@ -14,6 +17,10 @@ pad-adapter = "0.1.1"
 rand = "0.8.5"
 colored = "2.1.0"
 futures = "0.3.30"
+async-notify = "0.3.0"
+async-executor = "1.13.1"
+async-trait = "0.1.83"
+backtrace-on-stack-overflow = "0.3.0"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
@@ -36,6 +43,7 @@ kast-ast.workspace = true
 thiserror.workspace = true
 rand.workspace = true
 futures.workspace = true
-async-notify = "0.3.0"
-async-executor = "1.13.1"
-async-trait = "0.1.83"
+async-notify.workspace = true
+async-executor.workspace = true
+async-trait.workspace = true
+backtrace-on-stack-overflow.workspace = true
