@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use std::sync::Arc;
+use std::{borrow::Cow, collections::HashSet};
 
 use kast_util::*;
 
@@ -13,7 +13,6 @@ pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefini
 use lexer::*;
 use syntax::{BindingPower, Edge};
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Ast<Data = Span> {
     Simple {
@@ -140,28 +139,32 @@ pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> 
 }
 
 pub fn read_syntax(source: SourceFile) -> Result<Syntax, Error> {
-    let mut reader = lex(source)?;
-    let result = (|| {
-        let mut syntax = Syntax::empty();
-        loop {
-            let should_skip = |token: &Token| match token {
-                Token::Punctuation { raw } if raw == ";" => true,
-                Token::Comment { .. } => true,
-                _ => false,
-            };
-            while should_skip(&reader.peek().unwrap().token) {
-                reader.next().unwrap();
+    let ast = parse(&Syntax::empty(), source)?;
+    let mut syntax = Syntax::empty();
+    fn collect_syntax_definitions(syntax: &mut Syntax, ast: Ast) -> Result<(), Error> {
+        match ast {
+            Ast::Simple { .. } => {}
+            Ast::Complex {
+                definition: _,
+                values,
+                data: _,
+            } => {
+                for (_name, value) in values {
+                    collect_syntax_definitions(syntax, value)?;
+                }
             }
-
-            if reader.peek().unwrap().is_eof() {
-                break;
+            Ast::SyntaxDefinition { def, data: span } => {
+                syntax
+                    .insert(def)
+                    .map_err(|ErrorMessage(message)| Error { message, span })?;
             }
-            let def = read_syntax_def(&mut reader)?.0;
-            syntax.insert(Arc::new(def)).unwrap();
         }
-        Ok(syntax)
-    })();
-    result.map_err(|msg: ErrorMessage| msg.at(reader.peek().unwrap().span.clone()))
+        Ok(())
+    }
+    if let Some(ast) = ast {
+        collect_syntax_definitions(&mut syntax, ast)?;
+    }
+    Ok(syntax)
 }
 
 struct Parser {
@@ -459,14 +462,22 @@ impl Parser {
             return Ok(None);
         }
         tracing::trace!("starting to read expr with outer_bp={outer_bp:?}");
+        let mut syntax = Cow::Borrowed(syntax);
         let mut already_parsed = None;
         loop {
             tracing::trace!(
                 "trying to read one more node with already_parsed={}",
                 display_option(&already_parsed),
             );
-            match self.read_one(syntax, continuation_keywords, already_parsed, outer_bp)? {
-                ReadOneResult::Progress(value) => already_parsed = Some(value),
+            match self.read_one(&syntax, continuation_keywords, already_parsed, outer_bp)? {
+                ReadOneResult::Progress(value) => {
+                    if let Ast::SyntaxDefinition { def, data: _ } = &value {
+                        let mut new_syntax = syntax.into_owned();
+                        new_syntax.insert(def.clone())?;
+                        syntax = Cow::Owned(new_syntax);
+                    }
+                    already_parsed = Some(value);
+                }
                 ReadOneResult::NoProgress(value) => {
                     match &value {
                         Some(value) => tracing::trace!("read expr - done! parsed {value}"),

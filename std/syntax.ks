@@ -1,7 +1,7 @@
-syntax @"builtin macro struct_def" <- "-1" = "module" ":" body;
+syntax @"builtin macro then" -> 0 = a ";" b;
+syntax @"builtin macro then" -> 0 = a ";";
 
-syntax @"builtin macro then" <- 0 = a ";" b;
-syntax @"builtin macro then" <- 0 = a ";";
+syntax @"builtin macro struct_def" <- "-1" = "module" ":" body;
 
 syntax @"builtin macro use" <- 1 = "use" namespace;
 
@@ -128,3 +128,5 @@ syntax @"builtin macro placeholder" <- 100000 = "_";
 
 # const @"postfix ++" = macro (~x :: ast) => `(x += 1);
 
+const pipe_right = macro (f: f, arg: arg) => `((let arg = $arg; let f = $f; f arg));
+const pipe_left = macro (f: f, arg: arg) => `((let f = $f; let arg = $arg; f arg));

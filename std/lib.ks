@@ -12,5 +12,3 @@ const print :: string -> () = native "print";
 # const inline_typed_field = macro (~name, ~type) => `(
 #     $name: ($name :: $type)
 # );
-const pipe_right = macro (f: f, arg: arg) => `((let arg = $arg; let f = $f; f arg));
-const pipe_left = macro (f: f, arg: arg) => `((let f = $f; let arg = $arg; f arg));
