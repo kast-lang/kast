@@ -2,14 +2,19 @@ use std::sync::Arc;
 
 use super::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprData {
     pub ty: Type,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    FieldAccess {
+        obj: Box<Expr>,
+        field: String,
+        data: Data,
+    },
     Recursive {
         body: Box<Expr>,
         data: Data,
@@ -37,6 +42,7 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Let {
+        is_const_let: bool,
         pattern: Pattern,
         value: Box<Expr>,
         data: Data,
@@ -53,6 +59,10 @@ pub enum Expr<Data = ExprData> {
     Function {
         ty: FnType,
         compiled: MaybeCompiledFn,
+        data: Data,
+    },
+    Tuple {
+        tuple: Tuple<Expr>,
         data: Data,
     },
     Ast {
@@ -74,6 +84,8 @@ impl Expr {
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
         match self {
             Expr::Binding { .. }
+            | Expr::Tuple { .. }
+            | Expr::FieldAccess { .. }
             | Expr::Recursive { .. }
             | Expr::Function { .. }
             | Expr::Scope { .. }
@@ -83,10 +95,15 @@ impl Expr {
             | Expr::Ast { .. }
             | Expr::Call { .. } => {}
             Expr::Let {
+                is_const_let,
                 pattern,
                 value: _,
                 data: _,
-            } => pattern.collect_bindings(consumer),
+            } => {
+                if !is_const_let {
+                    pattern.collect_bindings(consumer);
+                }
+            }
             Expr::Then { a, b, data: _ } => {
                 a.collect_bindings(consumer);
                 b.collect_bindings(consumer);
@@ -98,6 +115,8 @@ impl Expr {
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Tuple { .. } => write!(f, "tuple expr")?,
+                    Expr::FieldAccess { .. } => write!(f, "field access expr")?,
                     Expr::Recursive { .. } => write!(f, "recursive expr")?,
                     Expr::Function { .. } => write!(f, "function expr")?,
                     Expr::Scope { .. } => write!(f, "scope expr")?,
@@ -107,11 +126,7 @@ impl Expr {
                     Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
                     Expr::Native { name: _, data: _ } => write!(f, "native expr")?,
                     Expr::Ast { .. } => write!(f, "ast expr")?,
-                    Expr::Let {
-                        pattern: _,
-                        value: _,
-                        data: _,
-                    } => write!(f, "let expr")?,
+                    Expr::Let { .. } => write!(f, "let expr")?,
                     Expr::Call { .. } => write!(f, "call expr")?,
                 }
                 write!(f, " at {}", self.0.data().span)
@@ -124,6 +139,8 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Tuple { data, .. }
+        | Expr::FieldAccess { data, .. }
         | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
@@ -138,6 +155,8 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Tuple { data, .. }
+        | Expr::FieldAccess { data, .. }
         | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
@@ -156,6 +175,40 @@ impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self) -> eyre::Result<Expr> {
         Ok(match self {
+            Expr::Tuple { tuple, data: span } => Expr::Tuple {
+                data: ExprData {
+                    ty: Type::Tuple({
+                        let mut result = Tuple::empty();
+                        for (name, field) in tuple.as_ref() {
+                            result.add(name, field.data().ty.clone());
+                        }
+                        result
+                    }),
+                    span,
+                },
+                tuple,
+            },
+            Expr::FieldAccess {
+                obj,
+                field,
+                data: span,
+            } => Expr::FieldAccess {
+                data: ExprData {
+                    ty: match obj.data().ty.inferred() {
+                        Ok(ty) => match &ty {
+                            Type::Tuple(fields) => match fields.get_named(&field) {
+                                Some(field_ty) => field_ty.clone(),
+                                None => eyre::bail!("{ty} does not have field {field:?}"),
+                            },
+                            _ => eyre::bail!("can not get fields of type {ty}"),
+                        },
+                        Err(_) => todo!("lazy inferring field access type"),
+                    },
+                    span,
+                },
+                obj,
+                field,
+            },
             Expr::Ast {
                 definition,
                 values,
@@ -174,13 +227,23 @@ impl Expr<Span> {
                     values,
                 }
             }
-            Expr::Recursive { body, data: span } => Expr::Recursive {
-                data: ExprData {
-                    ty: body.data().ty.clone(),
-                    span,
-                },
-                body,
-            },
+            Expr::Recursive {
+                mut body,
+                data: span,
+            } => {
+                body.data_mut().ty.make_same(Type::Unit)?;
+                let mut fields = Tuple::empty();
+                body.collect_bindings(&mut |binding| {
+                    fields.add_named(binding.name.raw().to_owned(), binding.ty.clone());
+                });
+                Expr::Recursive {
+                    data: ExprData {
+                        ty: Type::Tuple(fields),
+                        span,
+                    },
+                    body,
+                }
+            }
             Expr::Function {
                 ty,
                 compiled,
@@ -254,6 +317,7 @@ impl Expr<Span> {
                 }
             }
             Expr::Let {
+                is_const_let,
                 mut pattern,
                 mut value,
                 data: span,
@@ -263,6 +327,7 @@ impl Expr<Span> {
                     .ty
                     .make_same(value.data_mut().ty.clone())?;
                 Expr::Let {
+                    is_const_let,
                     pattern,
                     value,
                     data: ExprData {
@@ -324,13 +389,13 @@ impl std::fmt::Display for Binding {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PatternData {
     pub ty: Type,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Pattern<Data = PatternData> {
     Unit { data: Data },
     Binding { binding: Arc<Binding>, data: Data },

@@ -19,6 +19,12 @@ impl<T> Tuple<T> {
     pub fn is_empty(&self) -> bool {
         self.unnamed.is_empty() && self.named.is_empty()
     }
+    pub fn get_unnamed(&self) -> &[T] {
+        &self.unnamed
+    }
+    pub fn get_named(&self, name: &str) -> Option<&T> {
+        self.named.get(name)
+    }
     pub fn add_unnamed(&mut self, value: T) {
         self.unnamed.push(value);
     }

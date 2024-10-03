@@ -79,6 +79,7 @@ impl Value {
     /// Get this value AS a type
     pub fn expect_type(self) -> Result<Type, ExpectError> {
         match self {
+            Self::Unit => Ok(Type::Unit), // TODO this is a hack (maybe, maybe not?)
             Self::Type(ty) => Ok(ty),
             _ => Err(ExpectError {
                 value: self,
@@ -112,6 +113,15 @@ pub struct ExpectError {
 }
 
 impl Value {
+    pub fn expect_unit(self) -> Result<(), ExpectError> {
+        match self {
+            Self::Unit => Ok(()),
+            _ => Err(ExpectError {
+                value: self,
+                expected_ty: Type::Unit,
+            }),
+        }
+    }
     pub fn expect_string(self) -> Result<String, ExpectError> {
         match self {
             Self::String(s) => Ok(s),

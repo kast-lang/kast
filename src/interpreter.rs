@@ -33,6 +33,7 @@ impl State {
                 insert_ty("bool", Type::Bool);
                 insert_ty("int32", Type::Int32);
                 insert_ty("string", Type::String);
+                insert_ty("ast", Type::Ast);
                 insert_ty("type", Type::Type);
                 map.insert(
                     "dbg",
@@ -98,27 +99,6 @@ impl State {
     pub async fn get(&self, name: &str) -> Option<Value> {
         self.scope.get_impl(name, self.spawned).await
     }
-    pub fn enter_scope(&mut self) {
-        tracing::trace!("entering scope");
-        self.scope = Arc::new({
-            let mut scope = Scope::new();
-            scope.parent = Some(self.scope.clone());
-            scope
-        });
-    }
-    pub fn enter_recursive_scope(&mut self) {
-        tracing::trace!("entering recursive scope");
-        self.scope = Arc::new({
-            let mut scope = Scope::recursive();
-            scope.parent = Some(self.scope.clone());
-            scope
-        });
-    }
-    pub fn exit_scope(&mut self) {
-        tracing::trace!("exit scope");
-        self.scope.close();
-        self.scope = self.scope.parent.clone().expect("no parent scope");
-    }
     pub fn insert_local(&mut self, name: &str, value: Value) {
         self.scope
             .locals
@@ -128,7 +108,41 @@ impl State {
     }
 }
 
+impl Drop for Kast {
+    fn drop(&mut self) {
+        self.interpreter.scope.close();
+    }
+}
+
 impl Kast {
+    #[must_use]
+    pub fn enter_recursive_scope(&self) -> Self {
+        let mut inner = self.clone();
+        inner.interpreter.scope = Arc::new({
+            let mut scope = Scope::recursive();
+            scope.parent = Some(self.interpreter.scope.clone());
+            scope
+        });
+        inner
+    }
+    #[must_use]
+    pub fn enter_scope(&self) -> Self {
+        let mut inner = self.clone();
+        inner.interpreter.scope = Arc::new({
+            let mut scope = Scope::new();
+            scope.parent = Some(self.interpreter.scope.clone());
+            scope
+        });
+        inner
+    }
+    pub fn add_local(&mut self, name: &str, value: Value) {
+        self.interpreter
+            .scope
+            .locals
+            .lock()
+            .unwrap()
+            .insert(name.to_owned(), value);
+    }
     pub fn eval_source(
         &mut self,
         source: SourceFile,
@@ -152,11 +166,35 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
+                Expr::Tuple { tuple, data: _ } => {
+                    let mut result = Tuple::empty();
+                    for (name, field) in tuple.as_ref() {
+                        result.add(name, self.eval(field).await?);
+                    }
+                    Value::Tuple(result)
+                }
+                Expr::FieldAccess {
+                    obj,
+                    field,
+                    data: _,
+                } => {
+                    let obj = self.eval(obj).await?;
+                    match &obj {
+                        Value::Tuple(fields) => match fields.get_named(field) {
+                            Some(field_value) => field_value.clone(),
+                            None => eyre::bail!("{obj} does not have field {field:?}"),
+                        },
+                        _ => eyre::bail!("{obj} is not smth that has fields"),
+                    }
+                }
                 Expr::Recursive { body, data: _ } => {
-                    self.interpreter.enter_recursive_scope();
-                    let value = self.eval(body).await?;
-                    self.interpreter.exit_scope();
-                    value
+                    let mut inner = self.enter_recursive_scope();
+                    inner.eval(body).await?.expect_unit()?;
+                    let mut fields = Tuple::empty();
+                    for (name, value) in &*inner.interpreter.scope.locals.lock().unwrap() {
+                        fields.add_named(name.clone(), value.clone());
+                    }
+                    Value::Tuple(fields)
                 }
                 Expr::Ast {
                     definition,
@@ -186,10 +224,8 @@ impl Kast {
                     compiled: compiled.clone(),
                 }),
                 Expr::Scope { expr, data: _ } => {
-                    self.interpreter.enter_scope();
-                    let value = self.eval(expr).await?;
-                    self.interpreter.exit_scope();
-                    value
+                    let mut inner = self.enter_scope();
+                    inner.eval(expr).await?
                 }
                 Expr::Binding { binding, data: _ } => self
                     .interpreter
@@ -220,6 +256,7 @@ impl Kast {
                     }
                 }
                 Expr::Let {
+                    is_const_let: _,
                     pattern,
                     value,
                     data: _,

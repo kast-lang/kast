@@ -32,6 +32,9 @@ impl State {
             macro_struct_def,
             macro_tuple,
             macro_quote,
+            macro_field_access,
+            macro_function_type,
+            macro_make_unit,
         );
         Self { builtin_macros }
     }
@@ -114,7 +117,7 @@ impl Compilable for Expr {
             Ast::Complex {
                 definition,
                 values,
-                data: _,
+                data: span,
             } => {
                 if let Some(builtin_macro_name) = definition.name.strip_prefix("builtin macro ") {
                     let r#macro = *kast
@@ -141,7 +144,32 @@ impl Compilable for Expr {
                                 };
                                 kast.compile(&expanded).await?
                             }
-                            _ => eyre::bail!("{macro} is not a macro"),
+                            _ => Expr::Call {
+                                // TODO not constant?
+                                f: Box::new(
+                                    Expr::Constant {
+                                        value: r#macro,
+                                        data: span.clone(),
+                                    }
+                                    .init()?,
+                                ),
+                                arg: Box::new(
+                                    Expr::Tuple {
+                                        tuple: {
+                                            let mut tuple = Tuple::empty();
+                                            for (name, field) in values.as_ref() {
+                                                tuple.add(name, kast.compile(field).await?);
+                                            }
+                                            tuple
+                                        },
+                                        data: span.clone(),
+                                    }
+                                    .init()?,
+                                ),
+                                data: span.clone(),
+                            }
+                            .init()?,
+                            // _ => eyre::bail!("{macro} is not a macro"),
                         }
                     } else {
                         eyre::bail!("{name:?} was not found");
@@ -238,16 +266,38 @@ impl Kast {
         Ok(value)
     }
     async fn macro_const_let(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        let (_values, span) = get_complex(ast);
+        let (values, span) = get_complex(ast);
         assert_eq!(ty, CompiledType::Expr);
-        let let_expr = match self.macro_let(CompiledType::Expr, ast).await? {
-            Compiled::Expr(e) => e,
-            _ => unreachable!(),
-        };
-        self.eval(&let_expr).await?;
-        Ok(Compiled::Expr(
+        let [pattern, value_ast] = values
+            .as_ref()
+            .into_named(["pattern", "value"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let pattern: Pattern = self.compile(pattern).await?;
+        let value = self
+            .eval_ast(value_ast, Some(pattern.data().ty.clone()))
+            .await?;
+        let value = Box::new(
             Expr::Constant {
-                value: Value::Unit,
+                value,
+                data: value_ast.data().clone(),
+            }
+            .init()?,
+        );
+        self.eval(
+            &Expr::Let {
+                is_const_let: false,
+                pattern: pattern.clone(),
+                value: value.clone(),
+                data: span.clone(),
+            }
+            .init()?,
+        )
+        .await?;
+        Ok(Compiled::Expr(
+            Expr::Let {
+                is_const_let: true,
+                pattern,
+                value,
                 data: span,
             }
             .init()?,
@@ -262,6 +312,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         Ok(Compiled::Expr(
             Expr::Let {
+                is_const_let: false,
                 pattern: self.compile(pattern).await?,
                 value: Box::new(self.compile(value).await?),
                 data: span,
@@ -326,9 +377,8 @@ impl Kast {
             .as_ref()
             .into_single_named("body")
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        self.interpreter.enter_recursive_scope();
-        let body = self.compile(body).await?;
-        self.interpreter.exit_scope();
+        let mut inner = self.enter_recursive_scope();
+        let body = inner.compile(body).await?;
         Ok(Compiled::Expr(
             Expr::Recursive {
                 body: Box::new(body),
@@ -366,21 +416,23 @@ impl Kast {
             Some(arg) => self.compile(arg).await?,
             None => Pattern::Unit { data: span.clone() }.init()?,
         };
-        self.interpreter.enter_scope();
+        let mut inner = self.enter_scope();
         arg.collect_bindings(&mut |binding| {
-            self.interpreter
+            inner
+                .interpreter
                 .insert_local(binding.name.raw(), Value::Binding(binding.clone()))
         });
         let arg_ty = arg.data().ty.clone();
         let result_type = match result_type {
-            Some(ast) => self.eval_ast(ast, Some(Type::Type)).await?.expect_type()?,
+            Some(ast) => inner.eval_ast(ast, Some(Type::Type)).await?.expect_type()?,
             None => Type::Infer(inference::Var::new()),
         };
         let _ = contexts; // TODO
         let compiled = Arc::new(Mutex::new(None));
-        self.executor
+        inner
+            .executor
             .spawn({
-                let mut kast = self.clone();
+                let mut kast = inner.clone();
                 kast.interpreter.spawned = true;
                 let compiled = compiled.clone();
                 let body: Ast = body.clone();
@@ -401,7 +453,6 @@ impl Kast {
                 })
             })
             .detach();
-        self.interpreter.exit_scope();
         Ok(Compiled::Expr(
             Expr::Function {
                 ty: FnType {
@@ -434,6 +485,18 @@ impl Kast {
             CompiledType::Pattern => Compiled::Pattern(self.compile(expr).await?),
         })
     }
+    async fn macro_make_unit(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [] = values.as_ref().into_named([])?;
+        Ok(Compiled::Expr(
+            Expr::Constant {
+                value: Value::Unit,
+                data: span,
+            }
+            .init()?,
+        ))
+    }
     async fn macro_call(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
         assert_eq!(cty, CompiledType::Expr);
@@ -447,6 +510,55 @@ impl Kast {
             Expr::Call {
                 f: Box::new(f),
                 arg: Box::new(arg),
+                data: span,
+            }
+            .init()?,
+        ))
+    }
+    /// this function might succeed (no promises)
+    async fn macro_function_type(
+        &mut self,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        #[allow(unused_variables)]
+        let ([arg, result], [contexts]) = values
+            .as_ref()
+            .into_named_opt(["arg", "result"], ["contexts"])?;
+        Ok(Compiled::Expr(
+            Expr::Constant {
+                value: Value::Type(Type::Function(Box::new(FnType {
+                    // TODO when evaluating, expect Some(Type), not None
+                    arg: self
+                        .eval_ast(arg, None)
+                        .await?
+                        .expect_type()
+                        .wrap_err("arg is expected to be a type")?,
+                    result: self
+                        .eval_ast(result, None)
+                        .await?
+                        .expect_type()
+                        .wrap_err("result is expected to be a type")?,
+                }))),
+                data: span,
+            }
+            .init()?,
+        ))
+    }
+    async fn macro_field_access(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [obj, field] = values.as_ref().into_named(["obj", "field"])?;
+        let field = field
+            .as_ident()
+            .ok_or_else(|| eyre!("field expected to be an identifier, got {field}"))?;
+        // My hair is very crusty today
+        Ok(Compiled::Expr(
+            Expr::FieldAccess {
+                obj: Box::new(self.compile(obj).await?),
+                field: field.to_owned(),
                 data: span,
             }
             .init()?,

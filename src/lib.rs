@@ -36,7 +36,7 @@ pub struct Kast {
 impl Kast {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self {
+        let mut kast = Self {
             executor: Arc::new(async_executor::Executor::new()),
             syntax: ast::read_syntax(SourceFile {
                 contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
@@ -45,7 +45,20 @@ impl Kast {
             .expect("failed to parse std syntax"),
             compiler: compiler::State::new(),
             interpreter: interpreter::State::new(),
-        }
+        };
+        let std = kast
+            .import(std_path().join("lib.ks"))
+            .expect("std lib import failed");
+        kast.add_local("std", std);
+        kast
+    }
+
+    pub fn import(&mut self, path: impl AsRef<Path>) -> eyre::Result<Value> {
+        let source = SourceFile {
+            contents: std::fs::read_to_string(path.as_ref())?,
+            filename: path.as_ref().into(),
+        };
+        self.eval_source(source, None)
     }
 }
 

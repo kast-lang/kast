@@ -41,8 +41,8 @@ syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
 
 syntax @"builtin macro mutable_pattern" <- 7.25 = "mut" pattern;
 
-syntax @"builtin fn function_type" -> 7.5 = arg "->" result;
-syntax @"builtin fn function_type" -> 7.5 = arg "->" result "with" contexts;
+syntax @"builtin macro function_type" -> 7.5 = arg "->" result;
+syntax @"builtin macro function_type" -> 7.5 = arg "->" result "with" contexts;
 syntax @"builtin macro function_def" -> 7.5 = arg "->" returns "=>" body;
 
 syntax @"builtin macro template_def" <- 9 = "forall" "[" arg "]" "{" body "}";
@@ -123,7 +123,7 @@ syntax @"builtin macro import" <- 500 = "import" path;
 # syntax @"builtin macro function_def" <- 100000 = "{" body "}";
 
 syntax @"builtin macro scope" <- 100000 = "(" _ ")";
-syntax @"builtin macro make_void" <- 100000 = "(" ")";
+syntax @"builtin macro make_unit" <- 100000 = "(" ")";
 syntax @"builtin macro placeholder" <- 100000 = "_";
 
 # const inline_field = macro (name : name) => `($name : $name);
