@@ -133,6 +133,7 @@ impl std::fmt::Display for Ast {
 pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> {
     let mut parser = Parser {
         reader: lex(source)?,
+        parse_defs: true,
     };
     let result = parser.read_all(syntax);
     result.map_err(|msg| msg.at(parser.reader.peek().unwrap().span.clone()))
@@ -167,8 +168,9 @@ pub fn read_syntax(source: SourceFile) -> Result<Syntax, Error> {
     Ok(syntax)
 }
 
-struct Parser {
-    reader: peek2::Reader<SpannedToken>,
+pub struct Parser {
+    pub reader: peek2::Reader<SpannedToken>,
+    parse_defs: bool,
 }
 
 fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(SyntaxDefinition, Span)> {
@@ -301,6 +303,24 @@ enum ReadOneResult {
 }
 
 impl Parser {
+    /// Construct a new parser that has the ability to parse new syntax-definitions when
+    /// [`Parser::read_all`] is called
+    pub fn recursive(reader: peek2::Reader<SpannedToken>) -> Self {
+        Parser {
+            reader,
+            parse_defs: true,
+        }
+    }
+
+    /// Construct a new parser that does not have the ability to parse new syntax-definitions
+    /// when [`Parser::read_all`] is called
+    pub fn one_shot(reader: peek2::Reader<SpannedToken>) -> Self {
+        Parser {
+            reader,
+            parse_defs: false,
+        }
+    }
+
     fn skip_comments(&mut self) {
         while self.reader.peek().unwrap().is_comment() {
             self.reader.next().unwrap();
@@ -328,7 +348,7 @@ impl Parser {
             self.skip_comments();
             let peek = self.reader.peek().unwrap();
             let raw = peek.raw();
-            if raw == "syntax" {
+            if self.parse_defs && raw == "syntax" {
                 tracing::trace!("see syntax keyword, parsing syntax definition...");
                 let (def, span) = read_syntax_def(&mut self.reader)?;
                 return Ok(ReadOneResult::Progress(Ast::SyntaxDefinition {
@@ -489,7 +509,7 @@ impl Parser {
         }
     }
 
-    fn read_all(&mut self, syntax: &Syntax) -> Result<Option<Ast>> {
+    pub fn read_all(&mut self, syntax: &Syntax) -> Result<Option<Ast>> {
         let result = self.read_expr(syntax, &HashSet::new(), None)?;
         let peek = self.reader.peek().unwrap();
         if !peek.is_eof() {
