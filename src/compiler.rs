@@ -35,6 +35,7 @@ impl State {
             macro_field_access,
             macro_function_type,
             macro_make_unit,
+            macro_use,
         );
         Self { builtin_macros }
     }
@@ -484,6 +485,36 @@ impl Kast {
             }
             CompiledType::Pattern => Compiled::Pattern(self.compile(expr).await?),
         })
+    }
+    async fn macro_use(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let namespace = values.as_ref().into_single_named("namespace")?;
+        let namespace: Expr = self.compile(namespace).await?;
+        Ok(Compiled::Expr(
+            Expr::Use {
+                new_bindings: match &namespace.data().ty {
+                    Type::Tuple(tuple) => {
+                        let mut bindings = Tuple::empty();
+                        for (name, field_ty) in tuple.as_ref() {
+                            let name = name.ok_or_else(|| {
+                                eyre!("{tuple} has unnamed fields and so cant be `use`d")
+                            })?;
+                            let binding = Binding {
+                                name: Name::new(&name),
+                                ty: field_ty.clone(),
+                            };
+                            bindings.add_named(name, Arc::new(binding));
+                        }
+                        bindings
+                    }
+                    ty => eyre::bail!("{ty} is not a namespace"),
+                },
+                namespace: Box::new(namespace),
+                data: span,
+            }
+            .init()?,
+        ))
     }
     async fn macro_make_unit(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);

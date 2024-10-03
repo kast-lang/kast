@@ -166,6 +166,24 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
+                Expr::Use {
+                    namespace,
+                    new_bindings,
+                    data: _,
+                } => {
+                    let _todo = new_bindings;
+                    let namespace = self.eval(namespace).await?;
+                    match namespace {
+                        Value::Tuple(namespace) => {
+                            for (name, value) in namespace.into_iter() {
+                                let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
+                                self.add_local(name.as_str(), value);
+                            }
+                        }
+                        _ => eyre::bail!("{namespace} is not a namespace"),
+                    }
+                    Value::Unit
+                }
                 Expr::Tuple { tuple, data: _ } => {
                     let mut result = Tuple::empty();
                     for (name, field) in tuple.as_ref() {

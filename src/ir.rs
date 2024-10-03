@@ -10,6 +10,11 @@ pub struct ExprData {
 
 #[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    Use {
+        namespace: Box<Expr>,
+        new_bindings: Tuple<Arc<Binding>>,
+        data: Data,
+    },
     FieldAccess {
         obj: Box<Expr>,
         field: String,
@@ -104,6 +109,15 @@ impl Expr {
                     pattern.collect_bindings(consumer);
                 }
             }
+            Expr::Use {
+                namespace: _,
+                data: _,
+                new_bindings,
+            } => {
+                for binding in new_bindings.values() {
+                    consumer(binding.clone());
+                }
+            }
             Expr::Then { a, b, data: _ } => {
                 a.collect_bindings(consumer);
                 b.collect_bindings(consumer);
@@ -115,6 +129,7 @@ impl Expr {
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Use { .. } => write!(f, "use expr")?,
                     Expr::Tuple { .. } => write!(f, "tuple expr")?,
                     Expr::FieldAccess { .. } => write!(f, "field access expr")?,
                     Expr::Recursive { .. } => write!(f, "recursive expr")?,
@@ -139,6 +154,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Use { data, .. }
         | Expr::Tuple { data, .. }
         | Expr::FieldAccess { data, .. }
         | Expr::Ast { data, .. }
@@ -155,6 +171,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Use { data, .. }
         | Expr::Tuple { data, .. }
         | Expr::FieldAccess { data, .. }
         | Expr::Ast { data, .. }
@@ -175,6 +192,18 @@ impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self) -> eyre::Result<Expr> {
         Ok(match self {
+            Expr::Use {
+                namespace,
+                new_bindings,
+                data: span,
+            } => Expr::Use {
+                namespace,
+                new_bindings,
+                data: ExprData {
+                    ty: Type::Unit,
+                    span,
+                },
+            },
             Expr::Tuple { tuple, data: span } => Expr::Tuple {
                 data: ExprData {
                     ty: Type::Tuple({
