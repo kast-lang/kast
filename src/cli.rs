@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
 #[derive(clap::Subcommand)]
 pub enum Command {
     ParseAst,
     Repl,
+    Run { path: PathBuf },
 }
 
 #[derive(clap::Parser)]

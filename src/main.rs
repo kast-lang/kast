@@ -52,6 +52,20 @@ fn main() -> eyre::Result<()> {
     tracing_subscriber::fmt::init();
     let cli_args = cli::parse();
     match cli_args.command {
+        cli::Command::Run { path } => {
+            let mut kast = Kast::new();
+            let value = kast.eval_source(
+                SourceFile {
+                    contents: std::fs::read_to_string(&path)?,
+                    filename: path,
+                },
+                None,
+            )?;
+            match value {
+                Value::Unit => {}
+                _ => tracing::info!("evaluated to {value}"),
+            }
+        }
         cli::Command::ParseAst => {
             let syntax = ast::read_syntax(SourceFile {
                 contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),

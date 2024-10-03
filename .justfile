@@ -5,10 +5,10 @@ test:
     nix flake check
 
 repl:
-    just run --repl
+    cargo run -- repl
 
 run *ARGS:
-    cargo run -- {{ARGS}}
+    cargo run -- run {{ARGS}}
 
 serve:
     cd website && zola serve
