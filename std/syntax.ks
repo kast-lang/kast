@@ -126,10 +126,5 @@ syntax @"builtin macro scope" <- 100000 = "(" _ ")";
 syntax @"builtin macro make_unit" <- 100000 = "(" ")";
 syntax @"builtin macro placeholder" <- 100000 = "_";
 
-# const inline_field = macro (name : name) => `($name : $name);
-# const inline_typed_field = macro (~name, ~type) => `(
-#     $name: ($name :: $type)
-# );
-
 # const @"postfix ++" = macro (~x :: ast) => `(x += 1);
 

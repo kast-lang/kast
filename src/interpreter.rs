@@ -166,12 +166,7 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
-                Expr::Use {
-                    namespace,
-                    new_bindings,
-                    data: _,
-                } => {
-                    let _todo = new_bindings;
+                Expr::Use { namespace, data: _ } => {
                     let namespace = self.eval(namespace).await?;
                     match namespace {
                         Value::Tuple(namespace) => {

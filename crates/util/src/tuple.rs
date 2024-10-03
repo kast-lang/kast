@@ -16,6 +16,11 @@ impl<T> Tuple<T> {
             named_order: vec![],
         }
     }
+    pub fn single_named(name: impl Into<String>, value: T) -> Self {
+        let mut result = Self::empty();
+        result.add_named(name, value);
+        result
+    }
     pub fn is_empty(&self) -> bool {
         self.unnamed.is_empty() && self.named.is_empty()
     }
@@ -28,7 +33,8 @@ impl<T> Tuple<T> {
     pub fn add_unnamed(&mut self, value: T) {
         self.unnamed.push(value);
     }
-    pub fn add_named(&mut self, name: String, value: T) {
+    pub fn add_named(&mut self, name: impl Into<String>, value: T) {
+        let name: String = name.into();
         self.named_order.push(name.clone());
         self.named.insert(name, value);
     }

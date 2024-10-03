@@ -12,7 +12,6 @@ pub struct ExprData {
 pub enum Expr<Data = ExprData> {
     Use {
         namespace: Box<Expr>,
-        new_bindings: Tuple<Arc<Binding>>,
         data: Data,
     },
     FieldAccess {
@@ -112,12 +111,7 @@ impl Expr {
             Expr::Use {
                 namespace: _,
                 data: _,
-                new_bindings,
-            } => {
-                for binding in new_bindings.values() {
-                    consumer(binding.clone());
-                }
-            }
+            } => {}
             Expr::Then { a, b, data: _ } => {
                 a.collect_bindings(consumer);
                 b.collect_bindings(consumer);
@@ -194,11 +188,9 @@ impl Expr<Span> {
         Ok(match self {
             Expr::Use {
                 namespace,
-                new_bindings,
                 data: span,
             } => Expr::Use {
                 namespace,
-                new_bindings,
                 data: ExprData {
                     ty: Type::Unit,
                     span,

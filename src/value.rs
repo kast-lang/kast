@@ -95,7 +95,7 @@ impl Value {
             Value::Int32(_) => Type::Int32,
             Value::String(_) => Type::String,
             Value::Tuple(tuple) => Type::Tuple(tuple.as_ref().map(|field| field.ty())),
-            Value::Binding(_b) => todo!(),
+            Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             Value::Function(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Macro(f) => Type::Macro(Box::new(f.ty.clone())),
             Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),

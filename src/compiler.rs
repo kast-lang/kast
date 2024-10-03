@@ -31,6 +31,7 @@ impl State {
             macro_function_def,
             macro_struct_def,
             macro_tuple,
+            macro_field,
             macro_quote,
             macro_field_access,
             macro_function_type,
@@ -217,7 +218,7 @@ impl Compilable for Pattern {
             },
             Ast::Complex {
                 definition,
-                values: _,
+                values,
                 data: _,
             } => {
                 if let Some(builtin_macro_name) = definition.name.strip_prefix("builtin macro ") {
@@ -228,7 +229,28 @@ impl Compilable for Pattern {
                         .ok_or_else(|| eyre!("builtin macro {builtin_macro_name:?} not found"))?;
                     Self::r#macro(builtin_macro_name, r#macro)(kast, ast).await?
                 } else {
-                    todo!()
+                    let name = definition.name.as_str();
+                    if let Some(r#macro) = kast.interpreter.get(name).await {
+                        match r#macro {
+                            Value::Macro(f) => {
+                                let arg = Value::Tuple(
+                                    values.as_ref().map(|ast| Value::Ast(ast.clone())),
+                                );
+                                // hold on
+                                let expanded = kast.call_fn(f, arg).await?;
+                                let expanded = match expanded {
+                                    Value::Ast(ast) => ast,
+                                    _ => eyre::bail!(
+                                        "macro {name} did not expand to an ast, but to {expanded}"
+                                    ),
+                                };
+                                kast.compile(&expanded).await?
+                            }
+                            _ => eyre::bail!("{macro} is not a macro"),
+                        }
+                    } else {
+                        eyre::bail!("{name:?} was not found");
+                    }
                 }
             }
             Ast::SyntaxDefinition { def: _, data: _ } => todo!(),
@@ -474,7 +496,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         Ok(match cty {
             CompiledType::Expr => {
-                let expr = self.compile(expr).await?;
+                let expr = self.enter_scope().compile(expr).await?;
                 Compiled::Expr(
                     Expr::Scope {
                         expr: Box::new(expr),
@@ -490,27 +512,25 @@ impl Kast {
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
         let namespace = values.as_ref().into_single_named("namespace")?;
-        let namespace: Expr = self.compile(namespace).await?;
+        let namespace: Value = self.eval_ast(namespace, None).await?;
+        match namespace.clone() {
+            Value::Tuple(namespace) => {
+                for (name, value) in namespace.into_iter() {
+                    let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
+                    self.add_local(name.as_str(), value);
+                }
+            }
+            _ => eyre::bail!("{namespace} is not a namespace"),
+        }
         Ok(Compiled::Expr(
             Expr::Use {
-                new_bindings: match &namespace.data().ty {
-                    Type::Tuple(tuple) => {
-                        let mut bindings = Tuple::empty();
-                        for (name, field_ty) in tuple.as_ref() {
-                            let name = name.ok_or_else(|| {
-                                eyre!("{tuple} has unnamed fields and so cant be `use`d")
-                            })?;
-                            let binding = Binding {
-                                name: Name::new(&name),
-                                ty: field_ty.clone(),
-                            };
-                            bindings.add_named(name, Arc::new(binding));
-                        }
-                        bindings
+                namespace: Box::new(
+                    Expr::Constant {
+                        value: namespace,
+                        data: span.clone(),
                     }
-                    ty => eyre::bail!("{ty} is not a namespace"),
-                },
-                namespace: Box::new(namespace),
+                    .init()?,
+                ),
                 data: span,
             }
             .init()?,
@@ -640,6 +660,29 @@ impl Kast {
         }
         Ok(Compiled::Expr(quote(self, expr).await?))
     }
+    async fn macro_field(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        let [name, value] = values.as_ref().into_named(["name", "value"])?;
+        let name = name
+            .as_ident()
+            .ok_or_else(|| eyre!("{name} is not an ident"))?;
+        Ok(match cty {
+            CompiledType::Expr => Compiled::Expr(
+                Expr::Tuple {
+                    tuple: Tuple::single_named(name, self.compile(value).await?),
+                    data: span,
+                }
+                .init()?,
+            ),
+            CompiledType::Pattern => Compiled::Pattern(
+                Pattern::Tuple {
+                    tuple: Tuple::single_named(name, self.compile(value).await?),
+                    data: span,
+                }
+                .init()?,
+            ),
+        })
+    }
     async fn macro_tuple(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         struct ListCollector<'a> {
             macro_name: &'a str,
@@ -703,7 +746,13 @@ impl Kast {
             }
         }
         Ok(match cty {
-            CompiledType::Expr => todo!(),
+            CompiledType::Expr => Compiled::Expr(
+                Expr::Tuple {
+                    tuple: tuple.map(|field| field.expect_expr().unwrap()),
+                    data: ast.data().clone(),
+                }
+                .init()?,
+            ),
             CompiledType::Pattern => Compiled::Pattern(
                 Pattern::Tuple {
                     tuple: tuple.map(|field| field.expect_pattern().unwrap()),
@@ -733,7 +782,6 @@ impl Compiled {
             Compiled::Pattern(p) => &mut p.data_mut().ty,
         }
     }
-    #[allow(dead_code)]
     fn expect_expr(self) -> Option<Expr> {
         match self {
             Compiled::Expr(e) => Some(e),
