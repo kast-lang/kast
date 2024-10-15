@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::{borrow::Cow, collections::HashSet};
 
+use decursion::FutureExt;
 use kast_util::*;
 
 mod lexer;
@@ -312,7 +313,7 @@ impl Parser {
     ///
     /// If currently parsing an inner value inside another expr,
     /// binding power of the outer expr must be taken into consideration
-    fn read_one(
+    async fn read_one(
         &mut self,
         syntax: &Syntax,
         continuation_keywords: &HashSet<&str>,
@@ -403,7 +404,11 @@ impl Parser {
                 tracing::trace!("trying to read a value to continue with");
                 tracing::trace!("current_bp={current_bp:?}");
                 tracing::trace!("inner_continuation_keywords={inner_continuation_keywords:?})");
-                match self.read_expr(syntax, &inner_continuation_keywords, current_bp)? {
+                match self
+                    .read_expr(syntax, &inner_continuation_keywords, current_bp)
+                    .decurse()
+                    .await?
+                {
                     Some(value) => {
                         tracing::trace!("continuing with a value");
                         parsed_parts.push(ProgressPart::Value(value));
@@ -452,7 +457,7 @@ impl Parser {
 impl Parser {
     /// Try to read an expr, maybe inside another expr with given binding power
     /// (can only use stronger binding power then)
-    fn read_expr(
+    async fn read_expr(
         &mut self,
         syntax: &Syntax,
         continuation_keywords: &HashSet<&str>,
@@ -469,7 +474,10 @@ impl Parser {
                 "trying to read one more node with already_parsed={}",
                 display_option(&already_parsed),
             );
-            match self.read_one(&syntax, continuation_keywords, already_parsed, outer_bp)? {
+            match self
+                .read_one(&syntax, continuation_keywords, already_parsed, outer_bp)
+                .await?
+            {
                 ReadOneResult::Progress(value) => {
                     if let Ast::SyntaxDefinition { def, data: _ } = &value {
                         let mut new_syntax = syntax.into_owned();
@@ -490,7 +498,7 @@ impl Parser {
     }
 
     fn read_all(&mut self, syntax: &Syntax) -> Result<Option<Ast>> {
-        let result = self.read_expr(syntax, &HashSet::new(), None)?;
+        let result = decursion::run_decursing(self.read_expr(syntax, &HashSet::new(), None))?;
         let peek = self.reader.peek().unwrap();
         if !peek.is_eof() {
             return error!("unexpected token {:?}", peek.raw());

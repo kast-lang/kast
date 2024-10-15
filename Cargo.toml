@@ -18,6 +18,8 @@ futures = "0.3.30"
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
 
+decursion = { git = "https://github.com/kuviman/decursion" }
+
 [package]
 name = "kast"
 version = "0.1.0"
