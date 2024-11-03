@@ -35,10 +35,6 @@ impl Scope {
     fn get_sync(&self, name: &str) -> Option<Value> {
         self.get_impl(name, false).now_or_never().unwrap()
     }
-    #[allow(dead_code)]
-    async fn get_async(&self, name: &str) -> Option<Value> {
-        self.get_impl(name, true).await
-    }
     pub fn get_impl<'a>(&'a self, name: &'a str, do_await: bool) -> BoxFuture<'a, Option<Value>> {
         async move {
             loop {
