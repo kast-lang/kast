@@ -14,11 +14,15 @@ pad-adapter = "0.1.1"
 rand = "0.8.5"
 colored = "2.1.0"
 futures = "0.3.30"
+async-notify = "0.3.0"
+async-executor = "1.13.1"
+async-trait = "0.1.83"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
 
 decursion = { git = "https://github.com/kuviman/decursion" }
+refmap = { path = "crates/refmap" }
 
 [package]
 name = "kast"
@@ -38,6 +42,7 @@ kast-ast.workspace = true
 thiserror.workspace = true
 rand.workspace = true
 futures.workspace = true
-async-notify = "0.3.0"
-async-executor = "1.13.1"
-async-trait = "0.1.83"
+refmap.workspace = true
+async-notify.workspace = true
+async-executor.workspace = true
+async-trait.workspace = true

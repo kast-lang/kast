@@ -14,6 +14,7 @@ pub enum Type {
     Type,
 
     Infer(inference::Var<Type>),
+    Syntax,
 }
 
 impl PartialEq for Type {
@@ -40,6 +41,8 @@ impl PartialEq for Type {
                 (Self::Ast, _) => false,
                 (Self::Type, Self::Type) => true,
                 (Self::Type, _) => false,
+                (Self::Syntax, Self::Syntax) => true,
+                (Self::Syntax, _) => false,
             },
             (Err(a), Err(b)) => a.is_same_as(b),
             (Ok(_), Err(_)) | (Err(_), Ok(_)) => false,
@@ -104,6 +107,8 @@ impl Inferrable for Type {
                 (Type::Ast, _) => fail!(),
                 (Type::Type, Type::Type) => Type::Type,
                 (Type::Type, _) => fail!(),
+                (Type::Syntax, Type::Syntax) => Type::Syntax,
+                (Type::Syntax, _) => fail!(),
             },
             (Ok(a), Err(b)) => {
                 b.set(a.clone())?;
@@ -137,6 +142,7 @@ impl std::fmt::Display for Type {
                 Some(inferred) => inferred.fmt(f),
                 None => write!(f, "<not inferred>"),
             },
+            Type::Syntax => write!(f, "syntax"),
         }
     }
 }

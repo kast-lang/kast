@@ -13,6 +13,7 @@ pub enum Value {
     Binding(Arc<Binding>),
     Ast(Ast),
     Type(Type),
+    Syntax(Arc<Vec<Arc<ast::SyntaxDefinition>>>),
 }
 
 impl PartialEq for Value {
@@ -42,6 +43,8 @@ impl PartialEq for Value {
             (Self::Ast(_), _) => false,
             (Self::Type(a), Self::Type(b)) => a == b,
             (Self::Type(_), _) => false,
+            (Self::Syntax(a), Self::Syntax(b)) => Arc::ptr_eq(a, b),
+            (Self::Syntax(_), _) => false,
         }
     }
 }
@@ -65,6 +68,7 @@ impl std::fmt::Display for Value {
                 write!(f, "type ")?;
                 ty.fmt(f)
             }
+            Value::Syntax(_definitions) => write!(f, "<syntax>"),
         }
     }
 }
@@ -101,6 +105,7 @@ impl Value {
             Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Ast(_) => Type::Ast,
             Value::Type(_) => Type::Type,
+            Value::Syntax(_) => Type::Syntax,
         }
     }
 }
@@ -113,6 +118,15 @@ pub struct ExpectError {
 }
 
 impl Value {
+    pub fn expect_syntax(self) -> Result<Arc<Vec<Arc<ast::SyntaxDefinition>>>, ExpectError> {
+        match self {
+            Self::Syntax(syntax) => Ok(syntax),
+            _ => Err(ExpectError {
+                value: self,
+                expected_ty: Type::Unit,
+            }),
+        }
+    }
     pub fn expect_unit(self) -> Result<(), ExpectError> {
         match self {
             Self::Unit => Ok(()),

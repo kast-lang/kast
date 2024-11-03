@@ -5,6 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 #[derive(Clone)]
 pub struct State {
     builtin_macros: HashMap<&'static str, BuiltinMacro>,
+    syntax_definitions: Arc<Mutex<RefMap<Arc<ast::SyntaxDefinition>, std::task::Poll<Value>>>>,
 }
 
 impl State {
@@ -37,9 +38,54 @@ impl State {
             macro_function_type,
             macro_make_unit,
             macro_use,
+            macro_syntax_module,
         );
-        Self { builtin_macros }
+        Self {
+            builtin_macros,
+            syntax_definitions: Default::default(),
+        }
     }
+
+    fn find_macro(&self, definition: &Arc<ast::SyntaxDefinition>) -> eyre::Result<Macro> {
+        Ok(
+            if let Some(builtin_macro_name) = definition.name.strip_prefix("builtin macro ") {
+                let r#impl = *self
+                    .builtin_macros
+                    .get(builtin_macro_name)
+                    .ok_or_else(|| eyre!("builtin macro {builtin_macro_name:?} not found"))?;
+                Macro::Builtin {
+                    name: builtin_macro_name.to_owned(),
+                    r#impl,
+                }
+            } else {
+                let name = definition.name.as_str();
+                if let Some(r#macro) = self.syntax_definitions.lock().unwrap().get(definition) {
+                    let r#macro = match r#macro {
+                        std::task::Poll::Pending => {
+                            eyre::bail!("{name} can not be used until it is defined")
+                        }
+                        std::task::Poll::Ready(value) => value,
+                    };
+                    match r#macro {
+                        Value::Macro(f) => Macro::UserDefined(f.clone()),
+                        _ => Macro::Value(r#macro.clone()),
+                    }
+                } else {
+                    eyre::bail!("{name:?} was not defined??? how is that even possible?");
+                }
+            },
+        )
+    }
+}
+
+enum Macro {
+    Builtin {
+        name: String,
+        r#impl: BuiltinMacro,
+    },
+    UserDefined(Function),
+    /// Not really a macro :)
+    Value(Value),
 }
 
 #[async_trait]
@@ -121,64 +167,89 @@ impl Compilable for Expr {
                 values,
                 data: span,
             } => {
-                if let Some(builtin_macro_name) = definition.name.strip_prefix("builtin macro ") {
-                    let r#macro = *kast
-                        .compiler
-                        .builtin_macros
-                        .get(builtin_macro_name)
-                        .ok_or_else(|| eyre!("builtin macro {builtin_macro_name:?} not found"))?;
-                    Self::r#macro(builtin_macro_name, r#macro)(kast, ast).await?
-                } else {
-                    let name = definition.name.as_str();
-                    if let Some(r#macro) = kast.interpreter.get(name).await {
-                        match r#macro {
-                            Value::Macro(f) => {
-                                let arg = Value::Tuple(
-                                    values.as_ref().map(|ast| Value::Ast(ast.clone())),
-                                );
-                                // hold on
-                                let expanded = kast.call_fn(f, arg).await?;
-                                let expanded = match expanded {
-                                    Value::Ast(ast) => ast,
-                                    _ => eyre::bail!(
-                                        "macro {name} did not expand to an ast, but to {expanded}"
-                                    ),
-                                };
-                                kast.compile(&expanded).await?
-                            }
-                            _ => Expr::Call {
-                                // TODO not constant?
-                                f: Box::new(
-                                    Expr::Constant {
-                                        value: r#macro,
-                                        data: span.clone(),
-                                    }
-                                    .init()?,
-                                ),
-                                arg: Box::new(
-                                    Expr::Tuple {
-                                        tuple: {
-                                            let mut tuple = Tuple::empty();
-                                            for (name, field) in values.as_ref() {
-                                                tuple.add(name, kast.compile(field).await?);
-                                            }
-                                            tuple
-                                        },
-                                        data: span.clone(),
-                                    }
-                                    .init()?,
-                                ),
+                match kast.compiler.find_macro(definition)? {
+                    Macro::Builtin { name, r#impl } => {
+                        Self::r#macro(&name, r#impl)(kast, ast).await?
+                    }
+                    Macro::UserDefined(r#macro) => {
+                        let r#macro = r#macro.clone();
+                        let arg = Value::Tuple(values.as_ref().map(|ast| Value::Ast(ast.clone())));
+                        // hold on
+                        let expanded = kast.call_fn(r#macro, arg).await?;
+                        let expanded = match expanded {
+                            Value::Ast(ast) => ast,
+                            _ => eyre::bail!(
+                                "macro {name} did not expand to an ast, but to {expanded}",
+                                name = definition.name,
+                            ),
+                        };
+                        kast.compile(&expanded).await?
+                    }
+                    Macro::Value(value) => Expr::Call {
+                        // TODO not constant?
+                        f: Box::new(
+                            Expr::Constant {
+                                value: value.clone(),
                                 data: span.clone(),
                             }
                             .init()?,
-                            // _ => eyre::bail!("{macro} is not a macro"),
-                        }
-                    } else {
-                        eyre::bail!("{name:?} was not found");
+                        ),
+                        arg: Box::new(
+                            Expr::Tuple {
+                                tuple: {
+                                    let mut tuple = Tuple::empty();
+                                    for (name, field) in values.as_ref() {
+                                        tuple.add(name, kast.compile(field).await?);
+                                    }
+                                    tuple
+                                },
+                                data: span.clone(),
+                            }
+                            .init()?,
+                        ),
+                        data: span.clone(),
                     }
+                    .init()?,
+                    // _ => eyre::bail!("{macro} is not a macro"),
                 }
             }
-            Ast::SyntaxDefinition { def: _, data: _ } => todo!(),
+            Ast::SyntaxDefinition { def, data: span } => {
+                kast.interpreter.insert_syntax(def.clone())?;
+                if !def.name.starts_with("builtin macro ") {
+                    kast.compiler
+                        .syntax_definitions
+                        .lock()
+                        .unwrap()
+                        .insert(def.clone(), std::task::Poll::Pending);
+                    kast.executor
+                        .spawn({
+                            let kast = kast.spawn_clone();
+                            let def = def.clone();
+                            async move {
+                                let value =
+                                    kast.interpreter.get(&def.name).await.ok_or_else(|| {
+                                        eyre!("syntax {:?} definition could not be found", def.name)
+                                    })?;
+                                kast.compiler
+                                    .syntax_definitions
+                                    .lock()
+                                    .unwrap()
+                                    .insert(def.clone(), std::task::Poll::Ready(value));
+                                Ok(())
+                            }
+                            .map_err(|err: eyre::Report| {
+                                tracing::error!("{err:?}");
+                                panic!("{err:?}")
+                            })
+                        })
+                        .detach();
+                }
+                Expr::Constant {
+                    value: Value::Unit,
+                    data: span.clone(),
+                }
+                .init()?
+            }
         })
     }
 }
@@ -221,35 +292,25 @@ impl Compilable for Pattern {
                 values,
                 data: _,
             } => {
-                if let Some(builtin_macro_name) = definition.name.strip_prefix("builtin macro ") {
-                    let r#macro = *kast
-                        .compiler
-                        .builtin_macros
-                        .get(builtin_macro_name)
-                        .ok_or_else(|| eyre!("builtin macro {builtin_macro_name:?} not found"))?;
-                    Self::r#macro(builtin_macro_name, r#macro)(kast, ast).await?
-                } else {
-                    let name = definition.name.as_str();
-                    if let Some(r#macro) = kast.interpreter.get(name).await {
-                        match r#macro {
-                            Value::Macro(f) => {
-                                let arg = Value::Tuple(
-                                    values.as_ref().map(|ast| Value::Ast(ast.clone())),
-                                );
-                                // hold on
-                                let expanded = kast.call_fn(f, arg).await?;
-                                let expanded = match expanded {
-                                    Value::Ast(ast) => ast,
-                                    _ => eyre::bail!(
-                                        "macro {name} did not expand to an ast, but to {expanded}"
-                                    ),
-                                };
-                                kast.compile(&expanded).await?
-                            }
-                            _ => eyre::bail!("{macro} is not a macro"),
-                        }
-                    } else {
-                        eyre::bail!("{name:?} was not found");
+                match kast.compiler.find_macro(definition)? {
+                    Macro::Builtin { name, r#impl } => {
+                        Self::r#macro(&name, r#impl)(kast, ast).await?
+                    }
+                    Macro::UserDefined(r#macro) => {
+                        let arg = Value::Tuple(values.as_ref().map(|ast| Value::Ast(ast.clone())));
+                        // hold on
+                        let expanded = kast.call_fn(r#macro, arg).await?;
+                        let expanded = match expanded {
+                            Value::Ast(ast) => ast,
+                            _ => eyre::bail!(
+                                "macro {name} did not expand to an ast, but to {expanded}",
+                                name = definition.name,
+                            ),
+                        };
+                        kast.compile(&expanded).await?
+                    }
+                    Macro::Value(value) => {
+                        eyre::bail!("{value} is not a macro")
                     }
                 }
             }
@@ -393,6 +454,30 @@ impl Kast {
             .init()?,
         }))
     }
+    async fn macro_syntax_module(
+        &mut self,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        assert_eq!(cty, CompiledType::Expr);
+        let body = values
+            .as_ref()
+            .into_single_named("body")
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let mut inner = self.enter_recursive_scope();
+        inner
+            .eval_ast(body, Some(Type::Unit))
+            .await?
+            .expect_unit()?;
+        Ok(Compiled::Expr(
+            Expr::Constant {
+                value: Value::Syntax(Arc::new(inner.interpreter.scope_syntax_definitions())),
+                data: span,
+            }
+            .init()?,
+        ))
+    }
     async fn macro_struct_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
         assert_eq!(cty, CompiledType::Expr);
@@ -455,8 +540,7 @@ impl Kast {
         inner
             .executor
             .spawn({
-                let mut kast = inner.clone();
-                kast.interpreter.spawned = true;
+                let mut kast = inner.spawn_clone();
                 let compiled = compiled.clone();
                 let body: Ast = body.clone();
                 let result_type = result_type.clone();

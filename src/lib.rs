@@ -8,6 +8,7 @@ use ir::*;
 pub use kast_ast as ast;
 pub use kast_ast::{Ast, Token};
 pub use kast_util::*;
+use refmap::RefMap;
 use scope::Scope;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -38,14 +39,21 @@ impl Kast {
     pub fn new() -> Self {
         let mut kast = Self {
             executor: Arc::new(async_executor::Executor::new()),
-            syntax: ast::read_syntax(SourceFile {
-                contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
-                filename: "std/syntax.ks".into(),
-            })
-            .expect("failed to parse std syntax"),
+            syntax: ast::Syntax::empty(),
             compiler: compiler::State::new(),
             interpreter: interpreter::State::new(),
         };
+        let syntax = kast
+            .import(std_path().join("syntax.ks"))
+            .expect("failed to import std syntax")
+            .expect_syntax()
+            .expect("std/syntax.ks must evaluate to syntax");
+        for definition in &*syntax {
+            // println!("std syntax: {}", definition.name);
+            kast.syntax
+                .insert(definition.clone())
+                .expect("Failed to add std syntax");
+        }
         let std = kast
             .import(std_path().join("lib.ks"))
             .expect("std lib import failed");
@@ -53,12 +61,23 @@ impl Kast {
         kast
     }
 
-    pub fn import(&mut self, path: impl AsRef<Path>) -> eyre::Result<Value> {
+    pub fn import(&self, path: impl AsRef<Path>) -> eyre::Result<Value> {
+        let mut kast = self.clone();
         let source = SourceFile {
             contents: std::fs::read_to_string(path.as_ref())?,
             filename: path.as_ref().into(),
         };
-        self.eval_source(source, None)
+        kast.eval_source(source, None)
+    }
+
+    fn spawn_clone(&self) -> Self {
+        let mut kast = self.clone();
+        kast.interpreter.spawned = true;
+        kast
+    }
+
+    fn advance_executor(&self) {
+        while self.executor.try_tick() {}
     }
 }
 

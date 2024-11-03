@@ -106,11 +106,23 @@ impl State {
             .unwrap()
             .insert(name.to_owned(), value);
     }
+    pub fn scope_syntax_definitions(&self) -> Vec<Arc<ast::SyntaxDefinition>> {
+        self.scope.syntax_definitions.lock().unwrap().clone()
+    }
+    pub fn insert_syntax(&mut self, definition: Arc<ast::SyntaxDefinition>) -> eyre::Result<()> {
+        self.scope
+            .syntax_definitions
+            .lock()
+            .unwrap()
+            .push(definition);
+        Ok(())
+    }
 }
 
 impl Drop for Kast {
     fn drop(&mut self) {
         self.interpreter.scope.close();
+        self.advance_executor();
     }
 }
 

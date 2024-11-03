@@ -7,6 +7,7 @@ pub struct Scope {
     recursive: bool,
     closed: AtomicBool,
     closed_notify: async_notify::Notify,
+    pub syntax_definitions: Mutex<Vec<Arc<ast::SyntaxDefinition>>>,
     pub locals: Mutex<HashMap<String, Value>>,
 }
 
@@ -21,6 +22,7 @@ impl Scope {
             recursive,
             closed: AtomicBool::new(false),
             closed_notify: async_notify::Notify::new(),
+            syntax_definitions: Default::default(),
             locals: Mutex::new(HashMap::new()),
         }
     }
