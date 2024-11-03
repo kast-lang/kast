@@ -128,5 +128,5 @@ syntax @"builtin macro placeholder" <- 100000 = "_";
 
 # const @"postfix ++" = macro (~x :: ast) => `(x += 1);
 
-const pipe_right = macro (f: f, arg: arg) => `((let arg = $arg; let f = $f; f arg));
+const pipe_right = macro (arg: arg, f: f) => `((let arg = $arg; let f = $f; f arg));
 const pipe_left = macro (f: f, arg: arg) => `((let f = $f; let arg = $arg; f arg));
