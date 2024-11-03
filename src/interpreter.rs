@@ -162,7 +162,7 @@ impl Kast {
     ) -> eyre::Result<Value> {
         let ast = ast::parse(&self.syntax, source)?;
         match ast {
-            Some(ast) => futures::executor::block_on(self.eval_ast(&ast, expected_ty)), // TODO
+            Some(ast) => futures_lite::future::block_on(self.eval_ast(&ast, expected_ty)), // TODO
             None => Ok(Value::Unit),
         }
     }

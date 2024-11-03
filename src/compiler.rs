@@ -39,6 +39,7 @@ impl State {
             macro_make_unit,
             macro_use,
             macro_syntax_module,
+            macro_import,
         );
         Self {
             builtin_macros,
@@ -250,6 +251,18 @@ impl Compilable for Expr {
                 }
                 .init()?
             }
+            Ast::FromScratch { next, data: span } => {
+                // kast.compiler.syntax_definitions.lock().unwrap().clear();
+                if let Some(next) = next {
+                    kast.compile(next).await?
+                } else {
+                    Expr::Constant {
+                        value: Value::Unit,
+                        data: span.clone(),
+                    }
+                    .init()?
+                }
+            }
         })
     }
 }
@@ -315,6 +328,7 @@ impl Compilable for Pattern {
                 }
             }
             Ast::SyntaxDefinition { def: _, data: _ } => todo!(),
+            Ast::FromScratch { next: _, data: _ } => todo!(),
         };
         tracing::debug!("compiled {}", ast.show_short());
         Ok(result)
@@ -591,6 +605,19 @@ impl Kast {
             }
             CompiledType::Pattern => Compiled::Pattern(self.compile(expr).await?),
         })
+    }
+    async fn macro_import(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let path = self
+            .eval_ast(
+                values.as_ref().into_single_named("path")?,
+                Some(Type::String),
+            )
+            .await?
+            .expect_string()?;
+        let value: Value = self.import(path)?;
+        Ok(Compiled::Expr(Expr::Constant { value, data: span }.init()?))
     }
     async fn macro_use(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);

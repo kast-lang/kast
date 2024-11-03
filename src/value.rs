@@ -123,7 +123,7 @@ impl Value {
             Self::Syntax(syntax) => Ok(syntax),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::Unit,
+                expected_ty: Type::Syntax,
             }),
         }
     }

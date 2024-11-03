@@ -1,3 +1,5 @@
+syntax from scratch
+
 syntax @"builtin macro then" -> "0" = a ";;" b;;
 syntax @"builtin macro syntax_module" -> "0" = "syntax_module" "{" body "}";;
 
@@ -9,19 +11,19 @@ syntax_module {
 
   syntax @"builtin macro use" <- 1 = "use" namespace;
 
-  syntax return <- 2 = "return" value;
-  syntax break_with_value <- 2 = "break" value;
-  syntax break_without_value <- 2 = "break";
-  syntax continue_impl <- 2 = "continue";
+  # syntax return <- 2 = "return" value;
+  # syntax break_with_value <- 2 = "break" value;
+  # syntax break_without_value <- 2 = "break";
+  # syntax continue_impl <- 2 = "continue";
 
-  syntax loop_impl <- 3 = "loop" "{" body "}";
-  syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
-  syntax @"builtin macro create_impl" <- 3 = "impl" trait "for" value "as" impl;
+  # syntax loop_impl <- 3 = "loop" "{" body "}";
+  # syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
+  # syntax @"builtin macro create_impl" <- 3 = "impl" trait "for" value "as" impl;
   syntax @"builtin macro let" <- 4 = "let" pattern "=" value;
   syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
-  syntax @"builtin macro assign" <- 4 = pattern "=" value;
+  # syntax @"builtin macro assign" <- 4 = pattern "=" value;
 
-  syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
+  # syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
 
   syntax @"builtin macro tuple" <- 4.5 = a "," b;
   syntax @"builtin macro tuple" <- 4.5 = a ",";
@@ -30,15 +32,15 @@ syntax_module {
   syntax inline_field <- 4.75 = "~" name;
   syntax inline_typed_field <- 4.75 = "~" name "::" type;
 
-  syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
-  syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
-  syntax @"builtin macro current_context" <- 5 = "current" context_type;
+  # syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
+  # syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
+  # syntax @"builtin macro current_context" <- 5 = "current" context_type;
   syntax @"builtin macro macro" <- 5 = "macro" def;
   syntax @"builtin macro comptime" <- 5 = "comptime" value;
   syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
-  syntax @"builtin macro merge_multiset" <- 6 = "|" a;
-  syntax @"builtin macro merge_multiset" <- 6 = a "|" b;
+  # syntax @"builtin macro merge_multiset" <- 6 = "|" a;
+  # syntax @"builtin macro merge_multiset" <- 6 = a "|" b;
   syntax @"builtin macro function_def" -> 7 = arg "=>" body;
 
   syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
@@ -64,49 +66,49 @@ syntax_module {
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "->" result_type "{" body "}";
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "{" body "}";
 
-  syntax implements <- 14 = type "implements" trait;
+  # syntax implements <- 14 = type "implements" trait;
 
   syntax pipe_right <- 15 = arg "|>" f;
   syntax pipe_left <- 15 = f "<|" arg;
 
-  syntax try_explicit <- 16 = "try" "[" targ "]" expr;
-  syntax try_implicit <- 16 = "try" expr;
-  syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
-  syntax catch_impl <- 16 = expr "catch" e "(" catch_block ")";
+  # syntax try_explicit <- 16 = "try" "[" targ "]" expr;
+  # syntax try_implicit <- 16 = "try" expr;
+  # syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
+  # syntax catch_impl <- 16 = expr "catch" e "(" catch_block ")";
 
-  syntax @"builtin fn or" <- 17 = lhs "or" rhs;
-  syntax @"builtin fn and" <- 18 = lhs "and" rhs;
+  # syntax @"builtin fn or" <- 17 = lhs "or" rhs;
+  # syntax @"builtin fn and" <- 18 = lhs "and" rhs;
 
-  syntax @"op binary <" <- 19 = lhs "<" rhs;
-  syntax @"op binary <=" <- 19 = lhs "<=" rhs;
-  syntax @"op binary ==" <- 19 = lhs "==" rhs;
-  syntax @"op binary !=" <- 19 = lhs "!=" rhs;
-  syntax @"op binary >=" <- 19 = lhs ">=" rhs;
-  syntax @"op binary >" <- 19 = lhs ">" rhs;
+  # syntax @"op binary <" <- 19 = lhs "<" rhs;
+  # syntax @"op binary <=" <- 19 = lhs "<=" rhs;
+  # syntax @"op binary ==" <- 19 = lhs "==" rhs;
+  # syntax @"op binary !=" <- 19 = lhs "!=" rhs;
+  # syntax @"op binary >=" <- 19 = lhs ">=" rhs;
+  # syntax @"op binary >" <- 19 = lhs ">" rhs;
 
-  syntax @"builtin macro get_impl" <- 20 = value "as" trait;
-  syntax @"builtin macro check_impl" <- 20 = value "impl" trait;
+  # syntax @"builtin macro get_impl" <- 20 = value "as" trait;
+  # syntax @"builtin macro check_impl" <- 21 = value "impl" trait;
 
-  syntax @"op unary +" <- 25 = "+" x;
-  syntax @"op unary -" <- 25 = "-" x;
-  syntax @"op binary +" <- 25 = lhs "+" rhs;
-  syntax @"op binary -" <- 25 = lhs "-" rhs;
+  # syntax @"op unary +" <- 25 = "+" x;
+  # syntax @"op unary -" <- 25 = "-" x;
+  # syntax @"op binary +" <- 25 = lhs "+" rhs;
+  # syntax @"op binary -" <- 25 = lhs "-" rhs;
 
-  syntax @"op binary *" <- 40 = lhs "*" rhs;
-  syntax @"op binary /" <- 40 = lhs "/" rhs;
-  syntax @"op binary %" <- 40 = lhs "%" rhs;
+  # syntax @"op binary *" <- 40 = lhs "*" rhs;
+  # syntax @"op binary /" <- 40 = lhs "/" rhs;
+  # syntax @"op binary %" <- 40 = lhs "%" rhs;
 
-  syntax @"op binary ^" -> 60 = lhs "^" rhs;
+  # syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
-  syntax @"op postfix ++" <- 100 = x "++";
-  syntax @"op prefix ++" <- 100 = "++" x;
-  syntax @"op postfix --" <- 100 = x "--";
-  syntax @"op prefix --" <- 100 = "--" x;
+  # syntax @"op postfix ++" <- 100 = x "++";
+  # syntax @"op prefix ++" <- 100 = "++" x;
+  # syntax @"op postfix --" <- 100 = x "--";
+  # syntax @"op prefix --" <- 100 = "--" x;
 
   syntax @"builtin macro call" <- 100 = f arg;
 
-  syntax @"builtin macro typeof" <- 120 = "typeof" expr;
-  syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
+  # syntax @"builtin macro typeof" <- 120 = "typeof" expr;
+  # syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
 
   syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
   syntax @"builtin macro unquote" -> 200 = "$" expr;

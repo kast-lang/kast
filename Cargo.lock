@@ -515,6 +515,7 @@ dependencies = [
  "colored",
  "eyre",
  "futures",
+ "futures-lite",
  "kast-ast",
  "kast-util",
  "rand",

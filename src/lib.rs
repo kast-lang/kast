@@ -35,16 +35,24 @@ pub struct Kast {
 }
 
 impl Kast {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    fn only_std_syntax(
+        executor: Option<Arc<async_executor::Executor<'static>>>,
+    ) -> eyre::Result<Self> {
         let mut kast = Self {
-            executor: Arc::new(async_executor::Executor::new()),
+            executor: executor.unwrap_or_else(|| Arc::new(async_executor::Executor::new())),
             syntax: ast::Syntax::empty(),
             compiler: compiler::State::new(),
             interpreter: interpreter::State::new(),
         };
-        let syntax = kast
-            .import(std_path().join("syntax.ks"))
+        fn import(kast: &mut Kast, path: impl AsRef<Path>) -> eyre::Result<Value> {
+            let source = SourceFile {
+                contents: std::fs::read_to_string(path.as_ref())?,
+                filename: path.as_ref().into(),
+            };
+            kast.eval_source(source, None)
+        }
+        // TODO only eval once?
+        let syntax = import(&mut kast, std_path().join("syntax.ks"))
             .expect("failed to import std syntax")
             .expect_syntax()
             .expect("std/syntax.ks must evaluate to syntax");
@@ -54,6 +62,11 @@ impl Kast {
                 .insert(definition.clone())
                 .expect("Failed to add std syntax");
         }
+        Ok(kast)
+    }
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        let mut kast = Self::only_std_syntax(None).expect("failed to init with only std syntax");
         let std = kast
             .import(std_path().join("lib.ks"))
             .expect("std lib import failed");
@@ -62,7 +75,7 @@ impl Kast {
     }
 
     pub fn import(&self, path: impl AsRef<Path>) -> eyre::Result<Value> {
-        let mut kast = self.clone();
+        let mut kast = Self::only_std_syntax(Some(self.executor.clone())).unwrap();
         let source = SourceFile {
             contents: std::fs::read_to_string(path.as_ref())?,
             filename: path.as_ref().into(),

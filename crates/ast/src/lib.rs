@@ -29,6 +29,10 @@ pub enum Ast<Data = Span> {
         def: Arc<SyntaxDefinition>,
         data: Data,
     },
+    FromScratch {
+        next: Option<Box<Self>>,
+        data: Data,
+    },
 }
 
 impl<Data: PartialEq> PartialEq for Ast<Data> {
@@ -80,7 +84,8 @@ impl<Data> Ast<Data> {
         match self {
             Ast::Simple { data, .. }
             | Ast::Complex { data, .. }
-            | Ast::SyntaxDefinition { data, .. } => data,
+            | Ast::SyntaxDefinition { data, .. }
+            | Ast::FromScratch { data, .. } => data,
         }
     }
     pub fn as_ident(&self) -> Option<&str> {
@@ -107,6 +112,7 @@ impl Ast {
                         data: _,
                     } => write!(f, "{:?}", definition.name)?,
                     Ast::SyntaxDefinition { def: _, data: _ } => write!(f, "syntax definition")?,
+                    Ast::FromScratch { next: _, data: _ } => write!(f, "syntax from scratch")?,
                 }
                 write!(f, " at {}", self.0.data())
             }
@@ -127,6 +133,13 @@ impl std::fmt::Display for Ast {
                 write!(f, "{}", values.fmt_with_name(&definition.name))
             }
             Ast::SyntaxDefinition { def, data: _ } => write!(f, "syntax {:?}", def.name),
+            Ast::FromScratch { next, data: _ } => {
+                write!(f, "syntax from scratch")?;
+                if let Some(next) = next {
+                    write!(f, "{next}")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -159,6 +172,11 @@ pub fn read_syntax(source: SourceFile) -> Result<Syntax, Error> {
                     .insert(def)
                     .map_err(|ErrorMessage(message)| Error { message, span })?;
             }
+            Ast::FromScratch { next, data: _ } => {
+                if let Some(next) = next {
+                    collect_syntax_definitions(syntax, *next)?;
+                }
+            }
         }
         Ok(())
     }
@@ -172,7 +190,12 @@ struct Parser {
     reader: peek2::Reader<SpannedToken>,
 }
 
-fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(SyntaxDefinition, Span)> {
+enum ParsedSyntax {
+    Definition(SyntaxDefinition),
+    FromScratch,
+}
+
+fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSyntax, Span)> {
     let Span {
         start,
         end: _,
@@ -182,6 +205,20 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(SyntaxDe
         token => return error!("expected a syntax definition, got {}", token.token),
     };
     let name_token = reader.next().expect("expected a name for the syntax");
+    if name_token.raw() == "from" {
+        let scratch_token = reader.next().expect("expected 'scratch'");
+        if scratch_token.raw() != "scratch" {
+            return error!("expected 'scratch'");
+        }
+        return Ok((
+            ParsedSyntax::FromScratch,
+            Span {
+                start,
+                end: scratch_token.span.end,
+                filename: filename.clone(),
+            },
+        ));
+    }
     let name = match name_token.token {
         Token::Ident { name, .. } => name,
         _ => return error!("name for the syntax must be an identifier"),
@@ -220,12 +257,12 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(SyntaxDe
         end = Some(reader.next().unwrap().span.end);
     }
     Ok((
-        SyntaxDefinition {
+        ParsedSyntax::Definition(SyntaxDefinition {
             name,
             priority,
             associativity,
             parts,
-        },
+        }),
         Span {
             start,
             end: end.unwrap(),
@@ -331,11 +368,32 @@ impl Parser {
             let raw = peek.raw();
             if raw == "syntax" {
                 tracing::trace!("see syntax keyword, parsing syntax definition...");
-                let (def, span) = read_syntax_def(&mut self.reader)?;
-                return Ok(ReadOneResult::Progress(Ast::SyntaxDefinition {
-                    def: Arc::new(def),
-                    data: span,
-                }));
+                let (parsed, span) = read_syntax_def(&mut self.reader)?;
+                match parsed {
+                    ParsedSyntax::Definition(def) => {
+                        return Ok(ReadOneResult::Progress(Ast::SyntaxDefinition {
+                            def: Arc::new(def),
+                            data: span,
+                        }));
+                    }
+                    ParsedSyntax::FromScratch => {
+                        let next = self
+                            .read_expr(&Syntax::empty(), &Default::default(), None)
+                            .decurse()
+                            .await?;
+                        return Ok(ReadOneResult::Progress(Ast::FromScratch {
+                            data: Span {
+                                start: span.start,
+                                end: next
+                                    .as_ref()
+                                    .map(|next| next.data().end)
+                                    .unwrap_or(span.end),
+                                filename: span.filename,
+                            },
+                            next: next.map(Box::new),
+                        }));
+                    }
+                }
             }
             if !syntax.keywords.contains(raw)
                 && matches!(

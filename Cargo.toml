@@ -17,6 +17,7 @@ futures = "0.3.30"
 async-notify = "0.3.0"
 async-executor = "1.13.1"
 async-trait = "0.1.83"
+futures-lite = "2"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
@@ -46,3 +47,4 @@ refmap.workspace = true
 async-notify.workspace = true
 async-executor.workspace = true
 async-trait.workspace = true
+futures-lite.workspace = true
