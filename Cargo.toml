@@ -48,3 +48,4 @@ async-notify.workspace = true
 async-executor.workspace = true
 async-trait.workspace = true
 futures-lite.workspace = true
+decursion.workspace = true

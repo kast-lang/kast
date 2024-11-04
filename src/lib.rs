@@ -83,6 +83,14 @@ impl Kast {
         kast.eval_source(source, None)
     }
 
+    pub fn eval_file(&mut self, path: impl AsRef<Path>) -> eyre::Result<Value> {
+        let source = SourceFile {
+            contents: std::fs::read_to_string(path.as_ref())?,
+            filename: path.as_ref().into(),
+        };
+        self.eval_source(source, None)
+    }
+
     fn spawn_clone(&self) -> Self {
         let mut kast = self.clone();
         kast.interpreter.spawned = true;
