@@ -10,7 +10,6 @@ struct Case<'a> {
 
 fn test(case: Case<'_>) {
     let mut kast = Kast::new();
-    println!("1");
     let _value = kast
         .eval_file(Path::new("examples").join(case.name).with_extension("ks"))
         .expect("Failed to run the test");

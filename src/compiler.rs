@@ -2,6 +2,60 @@ use super::*;
 
 use std::{collections::HashMap, sync::Arc};
 
+struct ListCollector<'a> {
+    macro_name: &'a str,
+    a: &'a str,
+    b: &'a str,
+}
+
+impl ListCollector<'_> {
+    fn collect<'a>(&self, ast: &'a Ast) -> eyre::Result<Vec<&'a Ast>> {
+        let mut result = Vec::new();
+        let mut node = ast;
+        let mut reverse = false;
+        loop {
+            match node {
+                Ast::Complex {
+                    definition,
+                    values,
+                    data: _,
+                } if definition.name == self.macro_name => {
+                    let ([a], [b]) = values
+                        .as_ref()
+                        .into_named_opt([self.a], [self.b])
+                        .wrap_err_with(|| "Macro received incorrect arguments")?;
+                    match definition.associativity {
+                        ast::Associativity::Left => {
+                            reverse = true;
+                            node = a;
+                            if let Some(b) = b {
+                                result.push(b);
+                            } else {
+                                break;
+                            }
+                        }
+                        ast::Associativity::Right => {
+                            if let Some(b) = b {
+                                node = b;
+                                result.push(a);
+                            } else {
+                                node = a;
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => break,
+            }
+        }
+        result.push(node);
+        if reverse {
+            result.reverse();
+        }
+        Ok(result)
+    }
+}
+
 #[derive(Clone)]
 pub struct State {
     builtin_macros: HashMap<&'static str, BuiltinMacro>,
@@ -336,6 +390,12 @@ impl Compilable for Pattern {
 }
 
 impl Kast {
+    fn inject_bindings(&mut self, pattern: &Pattern) {
+        pattern.collect_bindings(&mut |binding| {
+            self.interpreter
+                .insert_local(binding.name.raw(), Value::Binding(binding.clone()));
+        });
+    }
     pub async fn compile<T: Compilable>(&mut self, ast: &Ast) -> eyre::Result<T> {
         T::compile(self, ast)
             .boxed()
@@ -408,11 +468,14 @@ impl Kast {
             .as_ref()
             .into_named(["pattern", "value"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let pattern: Pattern = self.compile(pattern).await?;
+        let value: Expr = self.compile(value).await?;
+        self.inject_bindings(&pattern);
         Ok(Compiled::Expr(
             Expr::Let {
                 is_const_let: false,
-                pattern: self.compile(pattern).await?,
-                value: Box::new(self.compile(value).await?),
+                pattern,
+                value: Box::new(value),
                 data: span,
             }
             .init()?,
@@ -435,38 +498,28 @@ impl Kast {
         ))
     }
     async fn macro_then(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
-        let (a, b) = values
-            .as_ref()
-            .into_single_named("a")
-            .map(|a| (a, None))
-            .or_else(|_| {
-                values
-                    .as_ref()
-                    .into_named(["a", "b"])
-                    .map(|[a, b]| (a, Some(b)))
-            })
-            .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let mut a: Expr = self.compile(a).await?;
-        a.data_mut().ty.make_same(Type::Unit)?;
-        a.collect_bindings(&mut |binding| {
-            self.interpreter
-                .insert_local(binding.name.raw(), Value::Binding(binding.clone()))
-        });
-        let b: Option<Expr> = match b {
-            Some(b) => Some(self.compile(b).await?),
-            None => None,
+        let macro_name = match ast {
+            Ast::Complex { definition, .. } => definition.name.as_str(),
+            _ => unreachable!(),
         };
-        Ok(Compiled::Expr(match b {
-            None => a,
-            Some(b) => Expr::Then {
-                a: Box::new(a),
-                b: Box::new(b),
-                data: span,
+        assert_eq!(cty, CompiledType::Expr);
+        let ast_list = ListCollector {
+            macro_name,
+            a: "a",
+            b: "b",
+        }
+        .collect(ast)?;
+        let mut expr_list = Vec::with_capacity(ast_list.len());
+        for ast in ast_list {
+            expr_list.push(self.compile(ast).await?);
+        }
+        Ok(Compiled::Expr(
+            Expr::Then {
+                list: expr_list,
+                data: ast.data().clone(),
             }
             .init()?,
-        }))
+        ))
     }
     async fn macro_syntax_module(
         &mut self,
@@ -539,11 +592,7 @@ impl Kast {
             None => Pattern::Unit { data: span.clone() }.init()?,
         };
         let mut inner = self.enter_scope();
-        arg.collect_bindings(&mut |binding| {
-            inner
-                .interpreter
-                .insert_local(binding.name.raw(), Value::Binding(binding.clone()))
-        });
+        self.inject_bindings(&arg);
         let arg_ty = arg.data().ty.clone();
         let result_type = match result_type {
             Some(ast) => inner.eval_ast(ast, Some(Type::Type)).await?.expect_type()?,
@@ -795,34 +844,6 @@ impl Kast {
         })
     }
     async fn macro_tuple(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        struct ListCollector<'a> {
-            macro_name: &'a str,
-            a: &'a str,
-            b: &'a str,
-        }
-
-        impl ListCollector<'_> {
-            fn collect<'a>(&self, ast: &'a Ast) -> eyre::Result<Vec<&'a Ast>> {
-                Ok(match ast {
-                    Ast::Complex {
-                        definition,
-                        values,
-                        data: _,
-                    } if definition.name == self.macro_name => {
-                        let ([a], [b]) = values
-                            .as_ref()
-                            .into_named_opt([self.a], [self.b])
-                            .wrap_err_with(|| "Macro received incorrect arguments")?;
-                        let mut result = self.collect(a)?;
-                        if let Some(b) = b {
-                            result.push(b);
-                        }
-                        result
-                    }
-                    _ => vec![ast],
-                })
-            }
-        }
         let macro_name = match ast {
             Ast::Complex { definition, .. } => definition.name.as_str(),
             _ => unreachable!(),

@@ -258,9 +258,12 @@ impl Kast {
                     .await // TODO this should not be async?
                     .ok_or_else(|| eyre!("{:?} not found", binding.name))?
                     .clone(),
-                Expr::Then { a, b, data: _ } => {
-                    self.eval(a).await?;
-                    self.eval(b).await?
+                Expr::Then { list, data: _ } => {
+                    let mut value = Value::Unit;
+                    for expr in list {
+                        value = self.eval(expr).await?;
+                    }
+                    value
                 }
                 Expr::Constant { value, data: _ } => value.clone(),
                 Expr::Number { raw, data } => match data.ty.inferred() {

@@ -28,8 +28,7 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Then {
-        a: Box<Expr>,
-        b: Box<Expr>,
+        list: Vec<Expr>,
         data: Data,
     },
     Constant {
@@ -112,9 +111,10 @@ impl Expr {
                 namespace: _,
                 data: _,
             } => {}
-            Expr::Then { a, b, data: _ } => {
-                a.collect_bindings(consumer);
-                b.collect_bindings(consumer);
+            Expr::Then { list, data: _ } => {
+                for expr in list {
+                    expr.collect_bindings(consumer);
+                }
             }
         }
     }
@@ -295,15 +295,18 @@ impl Expr<Span> {
                 binding,
             },
             Expr::Then {
-                mut a,
-                b,
+                mut list,
                 data: span,
             } => {
-                a.data_mut().ty.make_same(Type::Unit)?;
-                let result_ty = b.data().ty.clone();
+                let mut last = None;
+                for expr in &mut list {
+                    if let Some(prev) = last.replace(expr) {
+                        prev.data_mut().ty.make_same(Type::Unit)?;
+                    }
+                }
+                let result_ty = last.map_or(Type::Unit, |prev| prev.data().ty.clone());
                 Expr::Then {
-                    a,
-                    b,
+                    list,
                     data: ExprData {
                         ty: result_ty,
                         span,
