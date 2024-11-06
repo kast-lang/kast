@@ -99,6 +99,9 @@ impl State {
     pub async fn get(&self, name: &str) -> Option<Value> {
         self.scope.get_impl(name, self.spawned).await
     }
+    pub fn get_nowait(&self, name: &str) -> Option<Value> {
+        self.scope.get_nowait(name)
+    }
     pub fn insert_local(&mut self, name: &str, value: Value) {
         self.scope
             .locals
@@ -242,9 +245,16 @@ impl Kast {
                     ty,
                     compiled,
                     data: _,
-                } => Value::Function(Function {
-                    id: Id::new(),
+                } => Value::Function(TypedFunction {
                     ty: ty.clone(),
+                    f: Function {
+                        id: Id::new(),
+                        captured: self.interpreter.scope.clone(),
+                        compiled: compiled.clone(),
+                    },
+                }),
+                Expr::Template { compiled, data: _ } => Value::Template(Function {
+                    id: Id::new(),
                     captured: self.interpreter.scope.clone(),
                     compiled: compiled.clone(),
                 }),
@@ -277,9 +287,10 @@ impl Kast {
                     Err(_) => eyre::bail!("number literal type could not be inferred"),
                 },
                 Expr::Native { name, data } => {
+                    let actual_type = self.substitute_type_bindings(&data.ty);
                     let name = self.eval(name).await?.expect_string()?;
                     match self.interpreter.builtins.get(name.as_str()) {
-                        Some(builtin) => builtin(data.ty.clone())?,
+                        Some(builtin) => builtin(actual_type)?,
                         None => eyre::bail!("native {name:?} not found"),
                     }
                 }
@@ -303,7 +314,7 @@ impl Kast {
                     let arg = self.eval(arg).await?;
                     match f {
                         Value::NativeFunction(f) => (f.r#impl)(f.ty.clone(), arg)?,
-                        Value::Function(f) => self.call_fn(f, arg).await?,
+                        Value::Function(f) => self.call_fn(f.f, arg).await?,
                         _ => eyre::bail!("{f} is not a function"),
                     }
                 }

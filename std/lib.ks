@@ -8,3 +8,4 @@ const string :: type = native "string";
 
 const print :: string -> () = native "print";
 
+const dbg = forall[T] { native "dbg" :: T -> () };

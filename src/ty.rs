@@ -8,13 +8,15 @@ pub enum Type {
     String,
     Tuple(Tuple<Type>),
     Function(Box<FnType>),
+    Template,
     Macro(Box<FnType>),
     Ast,
     #[allow(clippy::enum_variant_names)]
     Type,
+    Syntax,
+    Binding(Arc<Binding>),
 
     Infer(inference::Var<Type>),
-    Syntax,
 }
 
 impl PartialEq for Type {
@@ -35,6 +37,8 @@ impl PartialEq for Type {
                 (Self::Tuple(_), _) => false,
                 (Self::Function(a), Self::Function(b)) => a == b,
                 (Self::Function(_), _) => false,
+                (Self::Template, Self::Template) => true,
+                (Self::Template, _) => false,
                 (Self::Macro(a), Self::Macro(b)) => a == b,
                 (Self::Macro(_), _) => false,
                 (Self::Ast, Self::Ast) => true,
@@ -43,6 +47,8 @@ impl PartialEq for Type {
                 (Self::Type, _) => false,
                 (Self::Syntax, Self::Syntax) => true,
                 (Self::Syntax, _) => false,
+                (Self::Binding(a), Self::Binding(b)) => Arc::ptr_eq(&a, &b),
+                (Self::Binding(_), _) => false,
             },
             (Err(a), Err(b)) => a.is_same_as(b),
             (Ok(_), Err(_)) | (Err(_), Ok(_)) => false,
@@ -99,6 +105,8 @@ impl Inferrable for Type {
                     Type::Function(Box::new(Inferrable::make_same(*a, *b)?))
                 }
                 (Type::Function(_), _) => fail!(),
+                (Type::Template, Type::Template) => Type::Template,
+                (Type::Template, _) => fail!(),
                 (Type::Macro(a), Type::Macro(b)) => {
                     Type::Macro(Box::new(Inferrable::make_same(*a, *b)?))
                 }
@@ -109,6 +117,8 @@ impl Inferrable for Type {
                 (Type::Type, _) => fail!(),
                 (Type::Syntax, Type::Syntax) => Type::Syntax,
                 (Type::Syntax, _) => fail!(),
+                (Type::Binding(a), Type::Binding(b)) if Arc::ptr_eq(&a, &b) => Type::Binding(a),
+                (Type::Binding(_), _) => fail!(),
             },
             (Ok(a), Err(b)) => {
                 b.set(a.clone())?;
@@ -135,6 +145,7 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Tuple(tuple) => tuple.fmt(f),
             Type::Function(ty) => ty.fmt(f),
+            Type::Template => write!(f, "forall[TODO]"),
             Type::Macro(ty) => write!(f, "macro {ty}"),
             Type::Ast => write!(f, "ast"),
             Type::Type => write!(f, "type"),
@@ -143,6 +154,7 @@ impl std::fmt::Display for Type {
                 None => write!(f, "<not inferred>"),
             },
             Type::Syntax => write!(f, "syntax"),
+            Type::Binding(binding) => binding.fmt(f),
         }
     }
 }
@@ -165,5 +177,42 @@ impl Inferrable for FnType {
             arg: Inferrable::make_same(a.arg, b.arg)?,
             result: Inferrable::make_same(a.result, b.result)?,
         })
+    }
+}
+
+impl Kast {
+    pub fn substitute_type_bindings(&self, ty: &Type) -> Type {
+        match ty.inferred() {
+            Ok(ty) => match ty {
+                Type::Unit
+                | Type::Bool
+                | Type::Int32
+                | Type::String
+                | Type::Ast
+                | Type::Type
+                | Type::Syntax => ty.clone(),
+                Type::Tuple(tuple) => {
+                    Type::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
+                }
+                Type::Function(f) => Type::Function(Box::new(FnType {
+                    arg: self.substitute_type_bindings(&f.arg),
+                    result: self.substitute_type_bindings(&f.result),
+                })),
+                Type::Template => Type::Template,
+                Type::Macro(f) => Type::Macro(Box::new(FnType {
+                    arg: self.substitute_type_bindings(&f.arg),
+                    result: self.substitute_type_bindings(&f.result),
+                })),
+                Type::Binding(binding) => match self.interpreter.get_nowait(binding.name.raw()) {
+                    Some(value) => value.expect_type().unwrap_or_else(|e| {
+                        panic!("{} expected to be a type: {e}", binding.name.raw())
+                    }),
+                    None => Type::Binding(binding.clone()),
+                },
+
+                Type::Infer(_) => unreachable!(),
+            },
+            Err(_var) => ty.clone(),
+        }
     }
 }

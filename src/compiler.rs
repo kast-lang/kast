@@ -94,6 +94,8 @@ impl State {
             macro_use,
             macro_syntax_module,
             macro_import,
+            macro_template_def,
+            macro_instantiate_template,
         );
         Self {
             builtin_macros,
@@ -122,7 +124,7 @@ impl State {
                         std::task::Poll::Ready(value) => value,
                     };
                     match r#macro {
-                        Value::Macro(f) => Macro::UserDefined(f.clone()),
+                        Value::Macro(f) => Macro::UserDefined(f.f.clone()),
                         _ => Macro::Value(r#macro.clone()),
                     }
                 } else {
@@ -580,6 +582,82 @@ impl Kast {
             .init()?,
         ))
     }
+    async fn macro_template_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        assert_eq!(cty, CompiledType::Expr);
+        let ([arg, body], [r#where]) = values
+            .as_ref()
+            .into_named_opt(["arg", "body"], ["where"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let _ = r#where; // TODO
+        let arg: Pattern = self.compile(arg).await?;
+
+        let mut inner = self.enter_scope();
+        self.inject_bindings(&arg);
+        let compiled = inner.compile_fn_body(arg, body, None);
+        Ok(Compiled::Expr(
+            Expr::Template {
+                compiled,
+                data: span,
+            }
+            .init()?,
+        ))
+    }
+    async fn macro_instantiate_template(
+        &mut self,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        assert_eq!(cty, CompiledType::Expr);
+        let [template, arg] = values
+            .as_ref()
+            .into_named(["template", "arg"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let template = self.eval_ast(template, Some(Type::Template)).await?;
+        let arg = self.eval_ast(arg, None).await?;
+        let instantiated = self.call_fn(template.expect_template()?, arg).await?;
+        Ok(Compiled::Expr(
+            Expr::Constant {
+                value: instantiated,
+                data: span,
+            }
+            .init()?,
+        ))
+    }
+    fn compile_fn_body(
+        &mut self,
+        arg: Pattern,
+        body: &Ast,
+        result_type: Option<Type>,
+    ) -> MaybeCompiledFn {
+        let compiled = Arc::new(Mutex::new(None));
+        self.executor
+            .spawn({
+                let mut kast = self.spawn_clone();
+                let compiled = compiled.clone();
+                let body: Ast = body.clone();
+                let result_type = result_type.clone();
+                async move {
+                    let mut body: Expr = kast.compile(&body).await?;
+                    if let Some(result_type) = result_type {
+                        body.data_mut().ty.make_same(result_type)?;
+                    }
+                    let old_compiled = compiled
+                        .lock()
+                        .unwrap()
+                        .replace(Arc::new(CompiledFn { body, arg }));
+                    assert!(old_compiled.is_none(), "function compiled twice wtf?");
+                    Ok(())
+                }
+                .map_err(|err: eyre::Report| {
+                    tracing::error!("{err:?}");
+                    panic!("{err:?}")
+                })
+            })
+            .detach();
+        compiled
+    }
     async fn macro_function_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
         assert_eq!(cty, CompiledType::Expr);
@@ -599,30 +677,7 @@ impl Kast {
             None => Type::Infer(inference::Var::new()),
         };
         let _ = contexts; // TODO
-        let compiled = Arc::new(Mutex::new(None));
-        inner
-            .executor
-            .spawn({
-                let mut kast = inner.spawn_clone();
-                let compiled = compiled.clone();
-                let body: Ast = body.clone();
-                let result_type = result_type.clone();
-                async move {
-                    let mut body: Expr = kast.compile(&body).await?;
-                    body.data_mut().ty.make_same(result_type)?;
-                    let old_compiled = compiled
-                        .lock()
-                        .unwrap()
-                        .replace(Arc::new(CompiledFn { body, arg }));
-                    assert!(old_compiled.is_none(), "function compiled twice wtf?");
-                    Ok(())
-                }
-                .map_err(|err: eyre::Report| {
-                    tracing::error!("{err:?}");
-                    panic!("{err:?}")
-                })
-            })
-            .detach();
+        let compiled = inner.compile_fn_body(arg, body, Some(result_type.clone()));
         Ok(Compiled::Expr(
             Expr::Function {
                 ty: FnType {

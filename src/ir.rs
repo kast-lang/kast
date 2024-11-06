@@ -64,6 +64,10 @@ pub enum Expr<Data = ExprData> {
         compiled: MaybeCompiledFn,
         data: Data,
     },
+    Template {
+        compiled: MaybeCompiledFn,
+        data: Data,
+    },
     Tuple {
         tuple: Tuple<Expr>,
         data: Data,
@@ -91,6 +95,7 @@ impl Expr {
             | Expr::FieldAccess { .. }
             | Expr::Recursive { .. }
             | Expr::Function { .. }
+            | Expr::Template { .. }
             | Expr::Scope { .. }
             | Expr::Constant { .. }
             | Expr::Number { .. }
@@ -128,6 +133,7 @@ impl Expr {
                     Expr::FieldAccess { .. } => write!(f, "field access expr")?,
                     Expr::Recursive { .. } => write!(f, "recursive expr")?,
                     Expr::Function { .. } => write!(f, "function expr")?,
+                    Expr::Template { .. } => write!(f, "template expr")?,
                     Expr::Scope { .. } => write!(f, "scope expr")?,
                     Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
                     Expr::Then { .. } => write!(f, "then expr")?,
@@ -154,6 +160,7 @@ impl<Data> Expr<Data> {
         | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
+        | Expr::Template { data, .. }
         | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
@@ -171,6 +178,7 @@ impl<Data> Expr<Data> {
         | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
+        | Expr::Template { data, .. }
         | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
@@ -275,6 +283,16 @@ impl Expr<Span> {
                     span,
                 },
                 ty,
+                compiled,
+            },
+            Expr::Template {
+                compiled,
+                data: span,
+            } => Expr::Template {
+                data: ExprData {
+                    ty: Type::Template,
+                    span,
+                },
                 compiled,
             },
             Expr::Scope { expr, data: span } => Expr::Scope {

@@ -33,8 +33,7 @@ impl Scope {
         self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
         self.closed_notify.notify();
     }
-    #[allow(dead_code)]
-    fn get_sync(&self, name: &str) -> Option<Value> {
+    pub fn get_nowait(&self, name: &str) -> Option<Value> {
         self.get_impl(name, false).now_or_never().unwrap()
     }
     pub fn get_impl<'a>(&'a self, name: &'a str, do_await: bool) -> BoxFuture<'a, Option<Value>> {

@@ -7,8 +7,9 @@ pub enum Value {
     Int32(i32),
     String(String),
     Tuple(Tuple<Value>),
-    Function(Function),
-    Macro(Function),
+    Function(TypedFunction),
+    Template(Function),
+    Macro(TypedFunction),
     NativeFunction(NativeFunction),
     Binding(Arc<Binding>),
     Ast(Ast),
@@ -37,6 +38,8 @@ impl PartialEq for Value {
             (Self::Binding(_), _) => false,
             (Self::Function(a), Self::Function(b)) => a == b,
             (Self::Function(_), _) => false,
+            (Self::Template(a), Self::Template(b)) => a == b,
+            (Self::Template(_), _) => false,
             (Self::Macro(a), Self::Macro(b)) => a == b,
             (Self::Macro(_), _) => false,
             (Self::Ast(a), Self::Ast(b)) => a == b,
@@ -62,6 +65,7 @@ impl std::fmt::Display for Value {
             Value::NativeFunction(function) => function.fmt(f),
             Value::Binding(binding) => binding.fmt(f),
             Value::Function(_function) => write!(f, "<function>"),
+            Value::Template(_template) => write!(f, "<template>"),
             Value::Macro(_macro) => write!(f, "<macro>"),
             Value::Ast(ast) => ast.fmt(f),
             Value::Type(ty) => {
@@ -84,6 +88,10 @@ impl Value {
     pub fn expect_type(self) -> Result<Type, ExpectError> {
         match self {
             Self::Unit => Ok(Type::Unit), // TODO this is a hack (maybe, maybe not?)
+            Self::Binding(binding) => {
+                binding.ty.clone().make_same(Type::Type).unwrap(); // TODO dont unwrap
+                Ok(Type::Binding(binding))
+            }
             Self::Type(ty) => Ok(ty),
             _ => Err(ExpectError {
                 value: self,
@@ -101,6 +109,7 @@ impl Value {
             Value::Tuple(tuple) => Type::Tuple(tuple.as_ref().map(|field| field.ty())),
             Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             Value::Function(f) => Type::Function(Box::new(f.ty.clone())),
+            Value::Template(t) => Type::Template,
             Value::Macro(f) => Type::Macro(Box::new(f.ty.clone())),
             Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Ast(_) => Type::Ast,
@@ -154,7 +163,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_function(self) -> Result<Function, ExpectError> {
+    pub fn expect_function(self) -> Result<TypedFunction, ExpectError> {
         match self {
             Self::Function(f) => Ok(f),
             _ => Err(ExpectError {
@@ -166,12 +175,41 @@ impl Value {
             }),
         }
     }
+    pub fn expect_template(self) -> Result<Function, ExpectError> {
+        match self {
+            Self::Template(f) => Ok(f),
+            _ => Err(ExpectError {
+                value: self,
+                expected_ty: Type::Template,
+            }),
+        }
+    }
 }
+
+#[derive(Clone)]
+pub struct TypedFunction {
+    pub ty: FnType,
+    pub f: Function,
+}
+
+impl std::ops::Deref for TypedFunction {
+    type Target = Function;
+    fn deref(&self) -> &Self::Target {
+        &self.f
+    }
+}
+
+impl PartialEq for TypedFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for TypedFunction {}
 
 #[derive(Clone)]
 pub struct Function {
     pub id: Id,
-    pub ty: FnType,
     pub captured: Arc<Scope>,
     pub compiled: MaybeCompiledFn,
 }
