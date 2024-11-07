@@ -150,6 +150,12 @@ impl Kast {
         });
         inner
     }
+    #[must_use]
+    pub fn with_scope(&self, scope: Arc<Scope>) -> Self {
+        let mut kast = self.clone();
+        kast.interpreter.scope = scope;
+        kast
+    }
     pub fn add_local(&mut self, name: &str, value: Value) {
         self.interpreter
             .scope
@@ -323,12 +329,9 @@ impl Kast {
                     arg,
                     data: _,
                 } => {
-                    let template = self.eval(template).await?;
+                    let template = self.eval(template).await?.expect_template()?;
                     let arg = self.eval(arg).await?;
-                    match template {
-                        Value::Template(template) => self.call_fn(template, arg).await?,
-                        _ => eyre::bail!("{template} is not a template"),
-                    }
+                    self.call_fn(template, arg).await?
                 }
             };
             tracing::debug!("finished evaluating {}", expr.show_short());
@@ -346,22 +349,24 @@ impl Kast {
     pub async fn call_fn(&mut self, f: Function, arg: Value) -> eyre::Result<Value> {
         let mut new_scope = Scope::new();
         new_scope.parent = Some(f.captured.clone());
-        while self.executor.try_tick() {}
+        self.advance_executor();
         let compiled: Arc<CompiledFn> = match &*f.compiled.lock().unwrap() {
             Some(compiled) => compiled.clone(),
             None => panic!("function is not compiled yet"),
         };
-        new_scope.locals.lock().unwrap().extend(
-            compiled
-                .arg
-                .r#match(arg)
+        let mut kast = self.with_scope(Arc::new(new_scope));
+        kast.bind_pattern_match(&compiled.arg, arg);
+        let value = kast.eval(&compiled.body).await?;
+        Ok(value)
+    }
+
+    pub fn bind_pattern_match(&mut self, pattern: &Pattern, value: Value) {
+        self.interpreter.scope.locals.lock().unwrap().extend(
+            pattern
+                .r#match(value)
                 .into_iter()
                 .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
         );
-        let prev_scope = std::mem::replace(&mut self.interpreter.scope, Arc::new(new_scope));
-        let value = self.eval(&compiled.body).await?;
-        self.interpreter.scope = prev_scope;
-        Ok(value)
     }
 }
 

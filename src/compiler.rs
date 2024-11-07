@@ -1279,12 +1279,28 @@ impl Expr<Span> {
                     data: span,
                 } => {
                     // TODO why am I cloning kast?
-                    let template = kast.clone().eval(&template_ir).await?;
+                    let template = kast.clone().eval(&template_ir).await?.expect_template()?;
                     let arg = kast.clone().eval(&arg_ir).await?;
+
+                    let mut new_scope = Scope::new();
+                    new_scope.parent = Some(template.captured.clone());
+                    let mut template_kast = kast.with_scope(Arc::new(new_scope));
+                    template_kast.advance_executor();
+                    let compiled: Arc<CompiledFn> = match &*template.compiled.lock().unwrap() {
+                        Some(compiled) => compiled.clone(),
+                        None => panic!("template is not compiled yet"),
+                    };
+                    template_kast.bind_pattern_match(&compiled.arg, arg);
+                    let result_ty =
+                        template_kast.substitute_type_bindings(&compiled.body.data().ty);
+
                     Expr::Instantiate {
                         template: template_ir,
                         arg: arg_ir,
-                        data: ExprData { ty: todo!(), span },
+                        data: ExprData {
+                            ty: result_ty,
+                            span,
+                        },
                     }
                 }
             })
