@@ -9,7 +9,7 @@ syntax_module {
 
   syntax @"builtin macro struct_def" <- "-1" = "module" ":" body;
 
-  syntax @"builtin macro use" <- 1 = "use" namespace;
+  syntax @"builtin macro use" <- 1 = "use" namespace ".*";
 
   # syntax return <- 2 = "return" value;
   # syntax break_with_value <- 2 = "break" value;

@@ -1,3 +1,3 @@
 std.print "Hello";
-use std;
+use std.*;
 "World" |> print;
