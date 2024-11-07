@@ -312,14 +312,23 @@ impl Lexer {
     }
     fn read_punctuation(&mut self) -> Result<Option<Token>> {
         let is_single_punctuation = |c: char| "(){}[]".contains(c);
+        let is_single_char_punctuation = |c: char| ";".contains(c);
         match self.reader.peek() {
-            Some(&c) if is_punctuation(c) => {
-                if is_single_punctuation(c) {
+            Some(&first) if is_punctuation(first) => {
+                if is_single_punctuation(first) {
                     self.next().unwrap();
-                    Ok(Some(Token::Punctuation { raw: c.to_string() }))
+                    Ok(Some(Token::Punctuation {
+                        raw: first.to_string(),
+                    }))
+                } else if is_single_char_punctuation(first) {
+                    let raw = self.read_while(|c| c == first)?;
+                    Ok(Some(Token::Punctuation { raw }))
                 } else {
-                    let raw =
-                        self.read_while(|c| is_punctuation(c) && !is_single_punctuation(c))?;
+                    let raw = self.read_while(|c| {
+                        is_punctuation(c)
+                            && !is_single_punctuation(c)
+                            && !is_single_char_punctuation(c)
+                    })?;
                     Ok(Some(Token::Punctuation { raw }))
                 }
             }
