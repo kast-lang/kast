@@ -96,6 +96,7 @@ impl State {
             macro_import,
             macro_template_def,
             macro_instantiate_template,
+            macro_placeholder,
         );
         Self {
             builtin_macros,
@@ -947,6 +948,23 @@ impl Kast {
                 }
                 .init()?,
             ),
+        })
+    }
+    async fn macro_placeholder(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        let [] = values
+            .as_ref()
+            .into_named([])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        Ok(match cty {
+            CompiledType::Expr => Compiled::Expr(
+                Expr::Constant {
+                    value: Value::Type(Type::Infer(inference::Var::new())),
+                    data: span,
+                }
+                .init()?,
+            ),
+            CompiledType::Pattern => Compiled::Pattern(Pattern::Placeholder { data: span }.init()?),
         })
     }
 }

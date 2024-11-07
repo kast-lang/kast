@@ -439,24 +439,41 @@ pub struct PatternData {
 
 #[derive(Debug, Clone)]
 pub enum Pattern<Data = PatternData> {
-    Unit { data: Data },
-    Binding { binding: Arc<Binding>, data: Data },
-    Tuple { tuple: Tuple<Pattern>, data: Data },
+    /// matches anything
+    Placeholder {
+        data: Data,
+    },
+    Unit {
+        data: Data,
+    },
+    Binding {
+        binding: Arc<Binding>,
+        data: Data,
+    },
+    Tuple {
+        tuple: Tuple<Pattern>,
+        data: Data,
+    },
 }
 
 impl<Data> Pattern<Data> {
     pub fn data(&self) -> &Data {
-        let (Self::Unit { data, .. } | Self::Binding { data, .. } | Self::Tuple { data, .. }) =
-            self;
+        let (Self::Placeholder { data, .. }
+        | Self::Unit { data, .. }
+        | Self::Binding { data, .. }
+        | Self::Tuple { data, .. }) = self;
         data
     }
     pub fn data_mut(&mut self) -> &mut Data {
-        let (Self::Unit { data, .. } | Self::Binding { data, .. } | Self::Tuple { data, .. }) =
-            self;
+        let (Self::Placeholder { data, .. }
+        | Self::Unit { data, .. }
+        | Self::Binding { data, .. }
+        | Self::Tuple { data, .. }) = self;
         data
     }
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
         match self {
+            Self::Placeholder { data: _ } => {}
             Self::Unit { data: _ } => {}
             Self::Binding { binding, data: _ } => consumer(binding.clone()),
             Self::Tuple { tuple, data: _ } => {
@@ -471,6 +488,12 @@ impl<Data> Pattern<Data> {
 impl Pattern<Span> {
     pub fn init(self) -> eyre::Result<Pattern> {
         Ok(match self {
+            Pattern::Placeholder { data: span } => Pattern::Placeholder {
+                data: PatternData {
+                    ty: Type::Infer(inference::Var::new()),
+                    span,
+                },
+            },
             Pattern::Unit { data: span } => Pattern::Unit {
                 data: PatternData {
                     ty: Type::Unit,

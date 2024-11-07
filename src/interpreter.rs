@@ -359,6 +359,7 @@ impl Pattern {
         let mut result = Vec::new();
         fn match_impl(pattern: &Pattern, value: Value, matches: &mut Vec<(Arc<Binding>, Value)>) {
             match pattern {
+                Pattern::Placeholder { data: _ } => {}
                 Pattern::Unit { data: _ } => {
                     assert_eq!(value, Value::Unit);
                 }
