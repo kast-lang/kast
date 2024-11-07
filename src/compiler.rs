@@ -615,12 +615,12 @@ impl Kast {
             .as_ref()
             .into_named(["template", "arg"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let template = self.eval_ast(template, Some(Type::Template)).await?;
-        let arg = self.eval_ast(arg, None).await?;
-        let instantiated = self.call_fn(template.expect_template()?, arg).await?;
+        let template = self.compile(template).await?;
+        let arg = self.compile(arg).await?;
         Ok(Compiled::Expr(
-            Expr::Constant {
-                value: instantiated,
+            Expr::Instantiate {
+                template: Box::new(template),
+                arg: Box::new(arg),
                 data: span,
             }
             .init()?,

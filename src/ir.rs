@@ -68,6 +68,11 @@ pub enum Expr<Data = ExprData> {
         compiled: MaybeCompiledFn,
         data: Data,
     },
+    Instantiate {
+        template: Box<Expr>,
+        arg: Box<Expr>,
+        data: Data,
+    },
     Tuple {
         tuple: Tuple<Expr>,
         data: Data,
@@ -101,7 +106,8 @@ impl Expr {
             | Expr::Number { .. }
             | Expr::Native { .. }
             | Expr::Ast { .. }
-            | Expr::Call { .. } => {}
+            | Expr::Call { .. }
+            | Expr::Instantiate { .. } => {}
             Expr::Let {
                 is_const_let,
                 pattern,
@@ -143,6 +149,7 @@ impl Expr {
                     Expr::Ast { .. } => write!(f, "ast expr")?,
                     Expr::Let { .. } => write!(f, "let expr")?,
                     Expr::Call { .. } => write!(f, "call expr")?,
+                    Expr::Instantiate { .. } => write!(f, "instantiate expr")?,
                 }
                 write!(f, " at {}", self.0.data().span)
             }
@@ -167,7 +174,8 @@ impl<Data> Expr<Data> {
         | Expr::Number { data, .. }
         | Expr::Native { data, .. }
         | Expr::Let { data, .. }
-        | Expr::Call { data, .. }) = self;
+        | Expr::Call { data, .. }
+        | Expr::Instantiate { data, .. }) = self;
         data
     }
     pub fn data_mut(&mut self) -> &mut Data {
@@ -185,7 +193,8 @@ impl<Data> Expr<Data> {
         | Expr::Number { data, .. }
         | Expr::Native { data, .. }
         | Expr::Let { data, .. }
-        | Expr::Call { data, .. }) = self;
+        | Expr::Call { data, .. }
+        | Expr::Instantiate { data, .. }) = self;
         data
     }
 }
@@ -379,17 +388,18 @@ impl Expr<Span> {
                 }
             }
             Expr::Call {
-                mut f,
+                f,
                 arg: args,
                 data: span,
             } => {
+                let mut f = f.auto_instantiate()?;
                 let result_ty = Type::Infer(inference::Var::new());
                 f.data_mut().ty.make_same(Type::Function(Box::new(FnType {
                     arg: args.data().ty.clone(),
                     result: result_ty.clone(),
                 })))?;
                 Expr::Call {
-                    f,
+                    f: Box::new(f),
                     arg: args,
                     data: ExprData {
                         ty: result_ty,
@@ -397,7 +407,42 @@ impl Expr<Span> {
                     },
                 }
             }
+            Expr::Instantiate {
+                template,
+                arg,
+                data: span,
+            } => Expr::Instantiate {
+                template,
+                arg,
+                data: ExprData { ty: todo!(), span },
+            },
         })
+    }
+}
+
+impl Expr {
+    fn auto_instantiate(self) -> eyre::Result<Self> {
+        let mut result = self;
+        loop {
+            let data = result.data();
+            let is_template = data.ty.inferred().map_or(false, |ty| ty == Type::Template);
+            if !is_template {
+                break;
+            }
+            result = Expr::Instantiate {
+                arg: Box::new(
+                    Expr::Constant {
+                        value: Value::Type(Type::Infer(inference::Var::new())), // TODO not only type
+                        data: data.span.clone(),
+                    }
+                    .init()?,
+                ),
+                data: data.span.clone(),
+                template: Box::new(result),
+            }
+            .init()?;
+        }
+        Ok(result)
     }
 }
 

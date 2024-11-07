@@ -318,6 +318,18 @@ impl Kast {
                         _ => eyre::bail!("{f} is not a function"),
                     }
                 }
+                Expr::Instantiate {
+                    template,
+                    arg,
+                    data: _,
+                } => {
+                    let template = self.eval(template).await?;
+                    let arg = self.eval(arg).await?;
+                    match template {
+                        Value::Template(template) => self.call_fn(template, arg).await?,
+                        _ => eyre::bail!("{template} is not a template"),
+                    }
+                }
             };
             tracing::debug!("finished evaluating {}", expr.show_short());
             tracing::trace!("result = {result}");
