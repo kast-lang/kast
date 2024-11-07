@@ -752,6 +752,15 @@ impl Kast {
             )
             .await?
             .expect_string()?;
+        let path = if path.starts_with('.') {
+            ast.data()
+                .filename
+                .parent()
+                .expect("no parent dir??")
+                .join(path)
+        } else {
+            todo!("absolute import")
+        };
         let value: Value = self.import(path)?;
         Ok(Compiled::Expr(
             Expr::Constant { value, data: span }.init(self).await?,

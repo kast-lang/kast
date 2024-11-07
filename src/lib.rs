@@ -67,15 +67,19 @@ impl Kast {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let mut kast = Self::only_std_syntax(None).expect("failed to init with only std syntax");
-        let std = kast
-            .import(std_path().join("lib.ks"))
+
+        // TODO only once
+        let mut std_scope = kast.enter_scope();
+        let std = std_scope
+            .eval_file(std_path().join("lib.ks"))
             .expect("std lib import failed");
         kast.add_local("std", std);
         kast
     }
 
     pub fn import(&self, path: impl AsRef<Path>) -> eyre::Result<Value> {
-        let mut kast = Self::only_std_syntax(Some(self.executor.clone())).unwrap();
+        // TODO cache
+        let mut kast = Self::new();
         let source = SourceFile {
             contents: std::fs::read_to_string(path.as_ref())?,
             filename: path.as_ref().into(),

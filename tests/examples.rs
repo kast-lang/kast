@@ -23,3 +23,12 @@ fn test_hello_world() {
         expect_output: "Hello\nWorld\n",
     });
 }
+
+#[test]
+fn test_import_zero() {
+    test(Case {
+        name: "import-zero",
+        input: "",
+        expect_output: "0 :: int32\n",
+    });
+}

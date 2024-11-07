@@ -1,3 +1,3 @@
-use std;
+use std.*;
 
-dbg <| import "zero.ks"
+dbg import "./zero.ks"
