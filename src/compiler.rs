@@ -192,32 +192,44 @@ impl Compilable for Expr {
                         .await
                         .ok_or_else(|| eyre!("{name:?} not found"))?;
                     match value {
-                        Value::Binding(binding) => Expr::Binding {
-                            binding: binding.clone(),
-                            data: span.clone(),
+                        Value::Binding(binding) => {
+                            Expr::Binding {
+                                binding: binding.clone(),
+                                data: span.clone(),
+                            }
+                            .init(kast)
+                            .await?
                         }
-                        .init(kast)?,
-                        _ => Expr::Constant {
-                            value: value.clone(),
-                            data: span.clone(),
+                        _ => {
+                            Expr::Constant {
+                                value: value.clone(),
+                                data: span.clone(),
+                            }
+                            .init(kast)
+                            .await?
                         }
-                        .init(kast)?,
                     }
                 }
                 Token::String {
                     raw: _,
                     contents,
                     typ: _,
-                } => Expr::Constant {
-                    value: Value::String(contents.clone()),
-                    data: span.clone(),
+                } => {
+                    Expr::Constant {
+                        value: Value::String(contents.clone()),
+                        data: span.clone(),
+                    }
+                    .init(kast)
+                    .await?
                 }
-                .init(kast)?,
-                Token::Number { raw } => Expr::Number {
-                    raw: raw.clone(),
-                    data: span.clone(),
+                Token::Number { raw } => {
+                    Expr::Number {
+                        raw: raw.clone(),
+                        data: span.clone(),
+                    }
+                    .init(kast)
+                    .await?
                 }
-                .init(kast)?,
                 Token::Comment { .. } | Token::Punctuation { .. } | Token::Eof => unreachable!(),
             },
             Ast::Complex {
@@ -243,32 +255,36 @@ impl Compilable for Expr {
                         };
                         kast.compile(&expanded).await?
                     }
-                    Macro::Value(value) => Expr::Call {
-                        // TODO not constant?
-                        f: Box::new(
-                            Expr::Constant {
-                                value: value.clone(),
-                                data: span.clone(),
-                            }
-                            .init(kast)?,
-                        ),
-                        arg: Box::new(
-                            Expr::Tuple {
-                                tuple: {
-                                    let mut tuple = Tuple::empty();
-                                    for (name, field) in values.as_ref() {
-                                        tuple.add(name, kast.compile(field).await?);
-                                    }
-                                    tuple
-                                },
-                                data: span.clone(),
-                            }
-                            .init(kast)?,
-                        ),
-                        data: span.clone(),
-                    }
-                    .init(kast)?,
-                    // _ => eyre::bail!("{macro} is not a macro"),
+                    Macro::Value(value) => {
+                        Expr::Call {
+                            // TODO not constant?
+                            f: Box::new(
+                                Expr::Constant {
+                                    value: value.clone(),
+                                    data: span.clone(),
+                                }
+                                .init(kast)
+                                .await?,
+                            ),
+                            arg: Box::new(
+                                Expr::Tuple {
+                                    tuple: {
+                                        let mut tuple = Tuple::empty();
+                                        for (name, field) in values.as_ref() {
+                                            tuple.add(name, kast.compile(field).await?);
+                                        }
+                                        tuple
+                                    },
+                                    data: span.clone(),
+                                }
+                                .init(kast)
+                                .await?,
+                            ),
+                            data: span.clone(),
+                        }
+                        .init(kast)
+                        .await?
+                    } // _ => eyre::bail!("{macro} is not a macro"),
                 }
             }
             Ast::SyntaxDefinition { def, data: span } => {
@@ -306,7 +322,8 @@ impl Compilable for Expr {
                     value: Value::Unit,
                     data: span.clone(),
                 }
-                .init(kast)?
+                .init(kast)
+                .await?
             }
             Ast::FromScratch { next, data: span } => {
                 // kast.compiler.syntax_definitions.lock().unwrap().clear();
@@ -317,7 +334,8 @@ impl Compilable for Expr {
                         value: Value::Unit,
                         data: span.clone(),
                     }
-                    .init(kast)?
+                    .init(kast)
+                    .await?
                 }
             }
         })
@@ -442,7 +460,8 @@ impl Kast {
                 value,
                 data: value_ast.data().clone(),
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         );
         self.eval(
             &Expr::Let {
@@ -451,7 +470,8 @@ impl Kast {
                 value: value.clone(),
                 data: span.clone(),
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         )
         .await?;
         Ok(Compiled::Expr(
@@ -461,7 +481,8 @@ impl Kast {
                 value,
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_let(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -481,7 +502,8 @@ impl Kast {
                 value: Box::new(value),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_native(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -497,7 +519,8 @@ impl Kast {
                 name: Box::new(name),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_then(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -521,7 +544,8 @@ impl Kast {
                 list: expr_list,
                 data: ast.data().clone(),
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_syntax_module(
@@ -545,7 +569,8 @@ impl Kast {
                 value: Value::Syntax(Arc::new(inner.interpreter.scope_syntax_definitions())),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_struct_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -562,7 +587,8 @@ impl Kast {
                 body: Box::new(body),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_macro(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -580,7 +606,8 @@ impl Kast {
                 value: Value::Macro(def),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_template_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -601,7 +628,8 @@ impl Kast {
                 compiled,
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_instantiate_template(
@@ -623,7 +651,8 @@ impl Kast {
                 arg: Box::new(arg),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     fn compile_fn_body(
@@ -688,7 +717,8 @@ impl Kast {
                 compiled,
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_scope(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -705,7 +735,8 @@ impl Kast {
                         expr: Box::new(expr),
                         data: span,
                     }
-                    .init(self)?,
+                    .init(self)
+                    .await?,
                 )
             }
             CompiledType::Pattern => Compiled::Pattern(self.compile(expr).await?),
@@ -723,7 +754,7 @@ impl Kast {
             .expect_string()?;
         let value: Value = self.import(path)?;
         Ok(Compiled::Expr(
-            Expr::Constant { value, data: span }.init(self)?,
+            Expr::Constant { value, data: span }.init(self).await?,
         ))
     }
     async fn macro_use(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -747,11 +778,13 @@ impl Kast {
                         value: namespace,
                         data: span.clone(),
                     }
-                    .init(self)?,
+                    .init(self)
+                    .await?,
                 ),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_make_unit(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -763,7 +796,8 @@ impl Kast {
                 value: Value::Unit,
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_call(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -781,7 +815,8 @@ impl Kast {
                 arg: Box::new(arg),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     /// this function might succeed (no promises)
@@ -813,7 +848,8 @@ impl Kast {
                 }))),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_field_access(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -830,7 +866,8 @@ impl Kast {
                 field: field.to_owned(),
                 data: span,
             }
-            .init(self)?,
+            .init(self)
+            .await?,
         ))
     }
     async fn macro_quote(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -864,14 +901,18 @@ impl Kast {
                                 },
                                 data: data.clone(),
                             }
-                            .init(kast)?
+                            .init(kast)
+                            .await?
                         }
                     }
-                    _ => Expr::Constant {
-                        value: Value::Ast(ast.clone()),
-                        data: ast.data().clone(),
+                    _ => {
+                        Expr::Constant {
+                            value: Value::Ast(ast.clone()),
+                            data: ast.data().clone(),
+                        }
+                        .init(kast)
+                        .await?
                     }
-                    .init(kast)?,
                 })
             }
             .boxed()
@@ -890,7 +931,8 @@ impl Kast {
                     tuple: Tuple::single_named(name, self.compile(value).await?),
                     data: span,
                 }
-                .init(self)?,
+                .init(self)
+                .await?,
             ),
             CompiledType::Pattern => Compiled::Pattern(
                 Pattern::Tuple {
@@ -941,7 +983,8 @@ impl Kast {
                     tuple: tuple.map(|field| field.expect_expr().unwrap()),
                     data: ast.data().clone(),
                 }
-                .init(self)?,
+                .init(self)
+                .await?,
             ),
             CompiledType::Pattern => Compiled::Pattern(
                 Pattern::Tuple {
@@ -964,7 +1007,8 @@ impl Kast {
                     value: Value::Type(Type::Infer(inference::Var::new())),
                     data: span,
                 }
-                .init(self)?,
+                .init(self)
+                .await?,
             ),
             CompiledType::Pattern => Compiled::Pattern(Pattern::Placeholder { data: span }.init()?),
         })
@@ -1022,227 +1066,235 @@ fn get_complex(ast: &Ast) -> (&Tuple<Ast>, Span) {
 
 impl Expr<Span> {
     /// Initialize expr data
-    pub fn init(self, kast: &Kast) -> eyre::Result<Expr> {
-        Ok(match self {
-            Expr::Use {
-                namespace,
-                data: span,
-            } => Expr::Use {
-                namespace,
-                data: ExprData {
-                    ty: Type::Unit,
-                    span,
-                },
-            },
-            Expr::Tuple { tuple, data: span } => Expr::Tuple {
-                data: ExprData {
-                    ty: Type::Tuple({
-                        let mut result = Tuple::empty();
-                        for (name, field) in tuple.as_ref() {
-                            result.add(name, field.data().ty.clone());
-                        }
-                        result
-                    }),
-                    span,
-                },
-                tuple,
-            },
-            Expr::FieldAccess {
-                obj,
-                field,
-                data: span,
-            } => Expr::FieldAccess {
-                data: ExprData {
-                    ty: match obj.data().ty.inferred() {
-                        Ok(ty) => match &ty {
-                            Type::Tuple(fields) => match fields.get_named(&field) {
-                                Some(field_ty) => field_ty.clone(),
-                                None => eyre::bail!("{ty} does not have field {field:?}"),
-                            },
-                            _ => eyre::bail!("can not get fields of type {ty}"),
-                        },
-                        Err(_) => todo!("lazy inferring field access type"),
-                    },
-                    span,
-                },
-                obj,
-                field,
-            },
-            Expr::Ast {
-                definition,
-                values,
-                data: span,
-            } => {
-                for value in values.values() {
-                    // TODO clone???
-                    value.data().ty.clone().make_same(Type::Ast)?;
-                }
-                Expr::Ast {
-                    data: ExprData {
-                        ty: Type::Ast,
-                        span,
-                    },
-                    definition,
-                    values,
-                }
-            }
-            Expr::Recursive {
-                mut body,
-                data: span,
-            } => {
-                body.data_mut().ty.make_same(Type::Unit)?;
-                let mut fields = Tuple::empty();
-                body.collect_bindings(&mut |binding| {
-                    fields.add_named(binding.name.raw().to_owned(), binding.ty.clone());
-                });
-                Expr::Recursive {
-                    data: ExprData {
-                        ty: Type::Tuple(fields),
-                        span,
-                    },
-                    body,
-                }
-            }
-            Expr::Function {
-                ty,
-                compiled,
-                data: span,
-            } => Expr::Function {
-                data: ExprData {
-                    ty: Type::Function(Box::new(ty.clone())),
-                    span,
-                },
-                ty,
-                compiled,
-            },
-            Expr::Template {
-                compiled,
-                data: span,
-            } => Expr::Template {
-                data: ExprData {
-                    ty: Type::Template,
-                    span,
-                },
-                compiled,
-            },
-            Expr::Scope { expr, data: span } => Expr::Scope {
-                data: ExprData {
-                    ty: expr.data().ty.clone(),
-                    span,
-                },
-                expr,
-            },
-            Expr::Binding {
-                binding,
-                data: span,
-            } => Expr::Binding {
-                data: ExprData {
-                    ty: binding.ty.clone(),
-                    span,
-                },
-                binding,
-            },
-            Expr::Then {
-                mut list,
-                data: span,
-            } => {
-                let mut last = None;
-                for expr in &mut list {
-                    if let Some(prev) = last.replace(expr) {
-                        prev.data_mut().ty.make_same(Type::Unit)?;
-                    }
-                }
-                let result_ty = last.map_or(Type::Unit, |prev| prev.data().ty.clone());
-                Expr::Then {
-                    list,
-                    data: ExprData {
-                        ty: result_ty,
-                        span,
-                    },
-                }
-            }
-            Expr::Constant { value, data: span } => Expr::Constant {
-                data: ExprData {
-                    ty: value.ty(),
-                    span,
-                },
-                value,
-            },
-            Expr::Number { raw, data: span } => Expr::Number {
-                raw,
-                data: ExprData {
-                    ty: Type::Infer(inference::Var::new()),
-                    span,
-                },
-            },
-            Expr::Native {
-                mut name,
-                data: span,
-            } => {
-                name.data_mut().ty.make_same(Type::String)?;
-                Expr::Native {
-                    name,
-                    data: ExprData {
-                        ty: Type::Infer(inference::Var::new()),
-                        span,
-                    },
-                }
-            }
-            Expr::Let {
-                is_const_let,
-                mut pattern,
-                mut value,
-                data: span,
-            } => {
-                pattern
-                    .data_mut()
-                    .ty
-                    .make_same(value.data_mut().ty.clone())?;
-                Expr::Let {
-                    is_const_let,
-                    pattern,
-                    value,
+    pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
+        let r#impl = async {
+            Ok(match self {
+                Expr::Use {
+                    namespace,
+                    data: span,
+                } => Expr::Use {
+                    namespace,
                     data: ExprData {
                         ty: Type::Unit,
                         span,
                     },
-                }
-            }
-            Expr::Call {
-                f,
-                arg: args,
-                data: span,
-            } => {
-                let mut f = f.auto_instantiate(kast)?;
-                let result_ty = Type::Infer(inference::Var::new());
-                f.data_mut().ty.make_same(Type::Function(Box::new(FnType {
-                    arg: args.data().ty.clone(),
-                    result: result_ty.clone(),
-                })))?;
-                Expr::Call {
-                    f: Box::new(f),
-                    arg: args,
+                },
+                Expr::Tuple { tuple, data: span } => Expr::Tuple {
                     data: ExprData {
-                        ty: result_ty,
+                        ty: Type::Tuple({
+                            let mut result = Tuple::empty();
+                            for (name, field) in tuple.as_ref() {
+                                result.add(name, field.data().ty.clone());
+                            }
+                            result
+                        }),
                         span,
                     },
+                    tuple,
+                },
+                Expr::FieldAccess {
+                    obj,
+                    field,
+                    data: span,
+                } => Expr::FieldAccess {
+                    data: ExprData {
+                        ty: match obj.data().ty.inferred() {
+                            Ok(ty) => match &ty {
+                                Type::Tuple(fields) => match fields.get_named(&field) {
+                                    Some(field_ty) => field_ty.clone(),
+                                    None => eyre::bail!("{ty} does not have field {field:?}"),
+                                },
+                                _ => eyre::bail!("can not get fields of type {ty}"),
+                            },
+                            Err(_) => todo!("lazy inferring field access type"),
+                        },
+                        span,
+                    },
+                    obj,
+                    field,
+                },
+                Expr::Ast {
+                    definition,
+                    values,
+                    data: span,
+                } => {
+                    for value in values.values() {
+                        // TODO clone???
+                        value.data().ty.clone().make_same(Type::Ast)?;
+                    }
+                    Expr::Ast {
+                        data: ExprData {
+                            ty: Type::Ast,
+                            span,
+                        },
+                        definition,
+                        values,
+                    }
                 }
-            }
-            Expr::Instantiate {
-                template,
-                arg,
-                data: span,
-            } => Expr::Instantiate {
-                template,
-                arg,
-                data: ExprData { ty: todo!(), span },
-            },
-        })
+                Expr::Recursive {
+                    mut body,
+                    data: span,
+                } => {
+                    body.data_mut().ty.make_same(Type::Unit)?;
+                    let mut fields = Tuple::empty();
+                    body.collect_bindings(&mut |binding| {
+                        fields.add_named(binding.name.raw().to_owned(), binding.ty.clone());
+                    });
+                    Expr::Recursive {
+                        data: ExprData {
+                            ty: Type::Tuple(fields),
+                            span,
+                        },
+                        body,
+                    }
+                }
+                Expr::Function {
+                    ty,
+                    compiled,
+                    data: span,
+                } => Expr::Function {
+                    data: ExprData {
+                        ty: Type::Function(Box::new(ty.clone())),
+                        span,
+                    },
+                    ty,
+                    compiled,
+                },
+                Expr::Template {
+                    compiled,
+                    data: span,
+                } => Expr::Template {
+                    data: ExprData {
+                        ty: Type::Template,
+                        span,
+                    },
+                    compiled,
+                },
+                Expr::Scope { expr, data: span } => Expr::Scope {
+                    data: ExprData {
+                        ty: expr.data().ty.clone(),
+                        span,
+                    },
+                    expr,
+                },
+                Expr::Binding {
+                    binding,
+                    data: span,
+                } => Expr::Binding {
+                    data: ExprData {
+                        ty: binding.ty.clone(),
+                        span,
+                    },
+                    binding,
+                },
+                Expr::Then {
+                    mut list,
+                    data: span,
+                } => {
+                    let mut last = None;
+                    for expr in &mut list {
+                        if let Some(prev) = last.replace(expr) {
+                            prev.data_mut().ty.make_same(Type::Unit)?;
+                        }
+                    }
+                    let result_ty = last.map_or(Type::Unit, |prev| prev.data().ty.clone());
+                    Expr::Then {
+                        list,
+                        data: ExprData {
+                            ty: result_ty,
+                            span,
+                        },
+                    }
+                }
+                Expr::Constant { value, data: span } => Expr::Constant {
+                    data: ExprData {
+                        ty: value.ty(),
+                        span,
+                    },
+                    value,
+                },
+                Expr::Number { raw, data: span } => Expr::Number {
+                    raw,
+                    data: ExprData {
+                        ty: Type::Infer(inference::Var::new()),
+                        span,
+                    },
+                },
+                Expr::Native {
+                    mut name,
+                    data: span,
+                } => {
+                    name.data_mut().ty.make_same(Type::String)?;
+                    Expr::Native {
+                        name,
+                        data: ExprData {
+                            ty: Type::Infer(inference::Var::new()),
+                            span,
+                        },
+                    }
+                }
+                Expr::Let {
+                    is_const_let,
+                    mut pattern,
+                    mut value,
+                    data: span,
+                } => {
+                    pattern
+                        .data_mut()
+                        .ty
+                        .make_same(value.data_mut().ty.clone())?;
+                    Expr::Let {
+                        is_const_let,
+                        pattern,
+                        value,
+                        data: ExprData {
+                            ty: Type::Unit,
+                            span,
+                        },
+                    }
+                }
+                Expr::Call {
+                    f,
+                    arg: args,
+                    data: span,
+                } => {
+                    let mut f = f.auto_instantiate(kast).await?;
+                    let result_ty = Type::Infer(inference::Var::new());
+                    f.data_mut().ty.make_same(Type::Function(Box::new(FnType {
+                        arg: args.data().ty.clone(),
+                        result: result_ty.clone(),
+                    })))?;
+                    Expr::Call {
+                        f: Box::new(f),
+                        arg: args,
+                        data: ExprData {
+                            ty: result_ty,
+                            span,
+                        },
+                    }
+                }
+                Expr::Instantiate {
+                    template: template_ir,
+                    arg: arg_ir,
+                    data: span,
+                } => {
+                    // TODO why am I cloning kast?
+                    let template = kast.clone().eval(&template_ir).await?;
+                    let arg = kast.clone().eval(&arg_ir).await?;
+                    Expr::Instantiate {
+                        template: template_ir,
+                        arg: arg_ir,
+                        data: ExprData { ty: todo!(), span },
+                    }
+                }
+            })
+        };
+        r#impl.boxed()
     }
 }
 
 impl Expr {
-    fn auto_instantiate(self, kast: &Kast) -> eyre::Result<Self> {
+    async fn auto_instantiate(self, kast: &Kast) -> eyre::Result<Self> {
         let mut result = self;
         loop {
             let data = result.data();
@@ -1256,12 +1308,14 @@ impl Expr {
                         value: Value::Type(Type::Infer(inference::Var::new())), // TODO not only type
                         data: data.span.clone(),
                     }
-                    .init(kast)?,
+                    .init(kast)
+                    .await?,
                 ),
                 data: data.span.clone(),
                 template: Box::new(result),
             }
-            .init(kast)?;
+            .init(kast)
+            .await?;
         }
         Ok(result)
     }
