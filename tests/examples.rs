@@ -25,6 +25,17 @@ fn test_hello_world() {
 }
 
 #[test]
+#[ignore = "TODO"]
+#[should_panic = "test failure to make sure other tests are actually checking output"]
+fn test_import_zero_but_expect_1() {
+    test(Case {
+        name: "import-zero",
+        input: "",
+        expect_output: "1 :: int32\n",
+    });
+}
+
+#[test]
 fn test_import_zero() {
     test(Case {
         name: "import-zero",
