@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title> Kast </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    
+    <link rel="icon" type="image/png" href="/favicon.ico">
+    
+    <style>
+    :root {
+        /* Primary theme color */
+        --primary-color: #FED43F;
+        /* Primary theme text color */
+        --primary-text-color: #543631;
+        --primary-text-color-over: #000;
+        /* Primary theme link color */
+        --primary-link-color: #F9BB2D;
+        /* Secondary color: the background body color */
+        --secondary-color: #fcfaf6;
+        --secondary-text-color: #303030;
+        /* Highlight text color of table of content */
+        --toc-highlight-text-color: #d46e13;
+        --toc-background-color: white;
+        --code-color: #4a4a4a;
+        /* one-dark */
+        --code-background-color: #2b303b;
+
+        --shadow-color: #ddd;
+
+        /* Font used for headers (h1 & h2) */
+        --header-font-family: "Fira Sans", sans-serif;
+        /* Font used for text */
+        --text-font-family: "Fira Sans", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --primary-color: #382929;
+            --primary-text-color: #d7d7d7;
+            --primary-text-color-over: #FFF;
+            --primary-link-color: #9b9b9b;
+            --secondary-color: #282828;
+            --secondary-text-color: #f2f2f2;
+            --toc-highlight-text-color: #f2f2f2;
+            --toc-background-color: #3a3a3a;
+            --code-color: white;
+            /* one-dark */
+            --code-background-color: #2b303b;
+
+            --shadow-color: #202020;
+            --header-font-family: "Fira Sans", sans-serif;
+            --text-font-family: "Fira Sans", sans-serif;
+        }
+    }
+</style>
+
+    
+    <link href="https://fonts.googleapis.com/css?family=Alfa+Slab+One&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Fira+Sans:400,500,600&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/normalize.css">
+    <link rel="stylesheet" href="https://kast-lang.org/juice.css">
+    
+    <link rel="stylesheet" href="https://kast-lang.org/carbon.css">
+    
+</head>
+
+<body>
+    
+
+    <header class="pos-absolute" style="background-color: transparent">
+        
+
+<a href="https://kast-lang.org/">
+    <div class="logo">
+        <img src="https://kast-lang.org/logo.png" alt="logo">
+        Kast
+    </div>
+</a>
+
+<nav>
+    
+    
+        
+        <a class="nav-item subtitle-text" href="/blog">Blog</a>
+        
+        <a class="nav-item subtitle-text" href="https://github.com/kast-lang/kast">Github</a>
+        
+    
+</nav>
+
+    </header>
+
+    <div class="hero">
+        
+<script async defer src="https://buttons.github.io/buttons.js"></script>
+<section class="text-center">
+    <h1 class="heading-text" style="font-size: 50px">
+        Kast
+    </h1>
+    <h3 class="title-text">
+        A first-class programming language
+    </h3>
+    <p style="color:white">
+        Functions, types, templates, bindings, AST, IR, the compiler itself &mdash;
+        everything is treated as value in Kast, bringing absolute power
+    </p>
+    <div>
+        <a class="github-button" href="https://github.com/kast-lang/kast" data-size="large" data-show-count="true"
+            aria-label="Star Kast on GitHub">Star</a>
+    </div>
+</section>
+
+<section id="showcase" class="hero-image">
+    <link rel="stylesheet" href="https://kast-lang.org/tabs.css"/>
+    <script defer src="https://kast-lang.org/showcase.js"></script>
+
+    <div id="tab-bar">
+        <a class="nav-item subtitle-text" selected onclick="raise(0)" >Hello World</a>
+        <a class="nav-item subtitle-text" onclick="raise(1)" >Fibonacci</a>
+        <a class="nav-item subtitle-text" onclick="raise(2)" >Exceptions</a>
+    </div>
+
+    <div id="tabs">
+        <div class="tab" selected>
+            
+            <pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#abb2bf;">print </span><span style="color:#9acc76;">&quot;Hello&quot;</span><span style="color:#abb2bf;">;
+</span><span style="color:#9acc76;">&quot;World&quot; </span><span style="color:#adb7c9;">|&gt;</span><span style="color:#abb2bf;"> print;
+</span></code></pre>
+
+        </div>
+        <div class="tab">
+            
+            <pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> fib </span><span style="color:#adb7c9;">=</span><span style="color:#abb2bf;"> n </span><span style="color:#adb7c9;">=&gt;
+</span><span style="color:#abb2bf;">    </span><span style="color:#cd74e8;">if</span><span style="color:#abb2bf;"> n </span><span style="color:#adb7c9;">&lt; </span><span style="color:#db9d63;">2</span><span style="color:#abb2bf;"> then
+</span><span style="color:#abb2bf;">        </span><span style="color:#db9d63;">1
+</span><span style="color:#abb2bf;">    </span><span style="color:#cd74e8;">else
+</span><span style="color:#abb2bf;">        fib (n </span><span style="color:#adb7c9;">- </span><span style="color:#db9d63;">1</span><span style="color:#abb2bf;">) </span><span style="color:#adb7c9;">+</span><span style="color:#abb2bf;"> fib (n </span><span style="color:#adb7c9;">- </span><span style="color:#db9d63;">2</span><span style="color:#abb2bf;">);
+</span></code></pre>
+
+        </div>
+        <div class="tab">
+            
+            <pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> test </span><span style="color:#adb7c9;">= </span><span style="color:#cd74e8;">fn </span><span style="color:#abb2bf;">(x :: int32) {
+</span><span style="color:#abb2bf;">	print </span><span style="color:#adb7c9;">&lt;|</span><span style="color:#abb2bf;"> try[ok: string, error: int32] {
+</span><span style="color:#abb2bf;">		</span><span style="color:#cd74e8;">if</span><span style="color:#abb2bf;"> x </span><span style="color:#adb7c9;">== </span><span style="color:#db9d63;">0</span><span style="color:#abb2bf;"> then
+</span><span style="color:#abb2bf;">			</span><span style="color:#9acc76;">&quot;hello&quot;
+</span><span style="color:#abb2bf;">		</span><span style="color:#cd74e8;">else
+</span><span style="color:#abb2bf;">			throw[int32] x
+</span><span style="color:#abb2bf;">	} catch e {
+</span><span style="color:#abb2bf;">		dbg e;
+</span><span style="color:#abb2bf;">		</span><span style="color:#9acc76;">&quot;thrown&quot;
+</span><span style="color:#abb2bf;">	};
+</span><span style="color:#abb2bf;">};
+</span><span style="color:#abb2bf;">
+</span><span style="color:#abb2bf;">test </span><span style="color:#db9d63;">1</span><span style="color:#abb2bf;">;
+</span><span style="color:#abb2bf;">test </span><span style="color:#db9d63;">0</span><span style="color:#abb2bf;">;
+</span></code></pre>
+
+        </div>
+    </div>
+</section>
+
+<div class="explore-more text" onclick="document.getElementById('features').scrollIntoView({behavior: 'smooth'})">
+    Read More ⇩
+</div>
+<style>
+    .hero section {
+        padding: 0 5rem;
+    }
+
+    @media screen and (max-width: 768px) {
+        .hero section {
+            padding: 0 2rem;
+        }
+
+        .hero-image {
+            display: none !important;
+        }
+    }
+</style>
+
+    </div>
+
+    
+
+    <main>
+        
+        
+        
+        
+        
+        <div class="toc">
+            <div class="toc-sticky">
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#current-state">Current State</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#powerful">Powerful</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#reliable">Reliable</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#minimal-but-general">Minimal but General</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#compiled-or-interpreted">Compiled or interpreted</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#performance">Performance</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#type-system">Type system</a>
+                </div>
+                
+                
+                <div class="toc-item-child">
+                    <a class="subtext" href="https://kast-lang.org/#sum-types"><small>- Sum types</small></a>
+                </div>
+                
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#casting">Casting</a>
+                </div>
+                
+                
+                <div class="toc-item-child">
+                    <a class="subtext" href="https://kast-lang.org/#tuples"><small>- Tuples</small></a>
+                </div>
+                
+                <div class="toc-item-child">
+                    <a class="subtext" href="https://kast-lang.org/#type-inference"><small>- Type inference</small></a>
+                </div>
+                
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#function-contexts">Function contexts</a>
+                </div>
+                
+                
+                <div class="toc-item-child">
+                    <a class="subtext" href="https://kast-lang.org/#overflows"><small>- overflows</small></a>
+                </div>
+                
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#unwinding">Unwinding</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#delimited-continuations">Delimited continuations</a>
+                </div>
+                
+                
+                <div class="toc-item">
+                    <a class="subtext" href="https://kast-lang.org/#syntax">Syntax</a>
+                </div>
+                
+                
+            </div>
+        </div>
+        
+        
+
+        <div class="content text">
+            
+            <div id="features" class="heading-text">Overview</div>
+            <h1 id="current-state">Current State</h1>
+<p>This page briefly describes some ideas of the language.</p>
+<p>The current work is focused on getting a proof of concept implementation of the described features.</p>
+<p><strong>The language is not usable yet</strong>.</p>
+<h1 id="powerful">Powerful</h1>
+<p>While a language being easy to learn is a nice thing to have,
+it should not be done at the cost of missing features.</p>
+<p>Being a beginner is only temporary,
+and thus being beginner friendly is not a priority for Kast.</p>
+<p>At the same time, if something can be made simpler without sacrificing power,
+it should be made simpler.</p>
+<h1 id="reliable">Reliable</h1>
+<p>Kast is focusing more on program's ease of maintenance
+instead of focusing on the speed of prototyping.</p>
+<p>The goal is to eliminate as many classes of bugs at compile-time as possible.</p>
+<h1 id="minimal-but-general">Minimal but General</h1>
+<p>Kast is designed to have a minimal set of core features,
+which can be composed into more complex ones easily.</p>
+<p>If a feature can be broken down into simpler ones, it should not be in the core.</p>
+<p>For example, while the core of the language is purely functional,
+we can still have familiar <code>for</code> loops, <code>return</code>s from functions,
+<strong>checked</strong> exceptions from other languages implemented as library features:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">fn </span><span style="color:#5cb3fa;">find</span><span style="color:#abb2bf;">[T](predicate :: T -&gt; </span><span style="color:#cd74e8;">bool</span><span style="color:#abb2bf;">, values :: [T]) -&gt; T throws[NotFound] {
+</span><span style="color:#abb2bf;">  </span><span style="color:#cd74e8;">for</span><span style="color:#abb2bf;"> value </span><span style="color:#adb7c9;">in</span><span style="color:#abb2bf;"> list {
+</span><span style="color:#abb2bf;">    </span><span style="color:#cd74e8;">if </span><span style="color:#5ebfcc;">predicate</span><span style="color:#abb2bf;">(value) then
+</span><span style="color:#abb2bf;">      </span><span style="color:#cd74e8;">return</span><span style="color:#abb2bf;"> value
+</span><span style="color:#abb2bf;">  }
+</span><span style="color:#abb2bf;">  throw NotFound
+</span><span style="color:#abb2bf;">}
+</span><span style="color:#abb2bf;">
+</span><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> result :: Result&lt;int32, NotFound&gt; </span><span style="color:#adb7c9;">=</span><span style="color:#abb2bf;"> try </span><span style="color:#5ebfcc;">find</span><span style="color:#abb2bf;">(x </span><span style="color:#adb7c9;">=&gt;</span><span style="color:#abb2bf;"> x </span><span style="color:#adb7c9;">% </span><span style="color:#db9d63;">2 </span><span style="color:#adb7c9;">== </span><span style="color:#db9d63;">0</span><span style="color:#abb2bf;">, [</span><span style="color:#db9d63;">1</span><span style="color:#abb2bf;">, </span><span style="color:#db9d63;">2</span><span style="color:#abb2bf;">, </span><span style="color:#db9d63;">3</span><span style="color:#abb2bf;">]);
+</span><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> value :: int32 </span><span style="color:#adb7c9;">=</span><span style="color:#abb2bf;"> result catch NotFound </span><span style="color:#adb7c9;">=&gt; -</span><span style="color:#db9d63;">1</span><span style="color:#abb2bf;">;
+</span></code></pre>
+<p>This works as a combination of core features like:</p>
+<ul>
+<li>first-class functions</li>
+<li>function contexts</li>
+<li>sum types</li>
+<li>unwinding</li>
+</ul>
+<p>Another example of composable feature is async/await,
+which also needs delimited continuations in addition to the above</p>
+<h1 id="compiled-or-interpreted">Compiled or interpreted</h1>
+<p>Kast is an interpreter with compiler implemented as a library.</p>
+<p>The interpreter still has the "compilation" process,
+which is "compiling" the code into IR.
+During that "compilation" interpreting might still be triggered
+if something needs to be known at "comptime".</p>
+<p>By having first-class IR (intermetiate representation as value)
+you can write a function that coverts it into the desired target:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">fn </span><span style="color:#5cb3fa;">vertex_shader</span><span style="color:#abb2bf;">(vertex_data :: (pos: vec3)) -&gt; vertex_shader_output {
+</span><span style="color:#abb2bf;">  </span><span style="color:#adb7c9;">...
+</span><span style="color:#abb2bf;">}
+</span><span style="color:#abb2bf;">
+</span><span style="color:#cd74e8;">fn </span><span style="color:#5cb3fa;">my_game</span><span style="color:#abb2bf;">() io {
+</span><span style="color:#abb2bf;">  </span><span style="color:#cd74e8;">const</span><span style="color:#abb2bf;"> vertex_shader_glsl :: string </span><span style="color:#adb7c9;">= </span><span style="color:#5ebfcc;">transpile_to_glsl</span><span style="color:#abb2bf;">(vertex_shader);
+</span><span style="color:#abb2bf;">  </span><span style="color:#adb7c9;">...
+</span><span style="color:#abb2bf;">}
+</span><span style="color:#abb2bf;">
+</span><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> exe </span><span style="color:#adb7c9;">= </span><span style="color:#5ebfcc;">build_exe</span><span style="color:#abb2bf;">(my_game);
+</span><span style="color:#cd74e8;">let c_source </span><span style="color:#adb7c9;">= </span><span style="color:#5ebfcc;">transpile_to_c</span><span style="color:#abb2bf;">(my_game);
+</span></code></pre>
+<h1 id="performance">Performance</h1>
+<p>The IR should have enough information for the compiler to produce performant code.
+For example, compilation target is not required to have a garbage collector.</p>
+<p>Those references that can be checked at compile time, are checked.</p>
+<p>If you need recursive data structures (for example construct mutually recursive closures),
+then they must be explicitly marked as such:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> arena </span><span style="color:#adb7c9;">=</span><span style="color:#abb2bf;"> rec (
+</span><span style="color:#abb2bf;">  </span><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> f </span><span style="color:#adb7c9;">= </span><span style="color:#abb2bf;">() </span><span style="color:#adb7c9;">=&gt; </span><span style="color:#5ebfcc;">g</span><span style="color:#abb2bf;">();
+</span><span style="color:#abb2bf;">  </span><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> g </span><span style="color:#adb7c9;">= </span><span style="color:#abb2bf;">() </span><span style="color:#adb7c9;">=&gt; </span><span style="color:#5ebfcc;">f</span><span style="color:#abb2bf;">();
+</span><span style="color:#abb2bf;">);
+</span><span style="color:#abb2bf;">
+</span><span style="color:#abb2bf;">arena.</span><span style="color:#5ebfcc;">f</span><span style="color:#abb2bf;">();
+</span><span style="color:#abb2bf;">
+</span></code></pre>
+<p>In this case, both <code>f</code> and <code>g</code> are going to be freed as soon as the <code>arena</code> object itself needs to be.
+In there are still references to them when <code>arena</code> is dropped,
+the borrow checker is going to result in compilation error.</p>
+<p>In addition to compile checked borrows,
+cell types / reference counting / garbage collector are implementable as a library</p>
+<h1 id="type-system">Type system</h1>
+<p>Kast is a strongly typed language.</p>
+<h2 id="sum-types">Sum types</h2>
+<p>aka discriminated union / algebraic data type:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let </span><span style="color:#abb2bf;">Option </span><span style="color:#adb7c9;">=</span><span style="color:#abb2bf;"> forall T. (Some T </span><span style="color:#adb7c9;">| </span><span style="color:#abb2bf;">None);
+</span></code></pre>
+<h1 id="casting">Casting</h1>
+<p>In Kast you can define casting rules:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">impl </span><span style="color:#abb2bf;">(123 :: int32) as string = &quot;123&quot;;
+</span><span style="color:#abb2bf;">print (123 :: int32 as string) # prints 123
+</span></code></pre>
+<p>By defining casting rules for types we can get trait/typeclass/interfaces:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#abb2bf;">kast: </span><span style="color:#cd74e8;">impl </span><span style="color:#abb2bf;">Type as Trait = ImplBlock;
+</span><span style="color:#abb2bf;">rust: impl Trait for Type { ImplBlock };
+</span><span style="color:#abb2bf;">haskell: instance Trait Type </span><span style="color:#cd74e8;">where</span><span style="color:#abb2bf;"> ImplBlock;
+</span></code></pre>
+<p>Here, trait can either be a concrete type, or a template.
+In the latter case, the value for which casting is being defined becomes the argument of the template.
+This allows you to refer to <code>Self</code> in trait definition, or implement traits for a pair of types
+(multi-parameter typeclasses) easily.</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> Parse </span><span style="color:#adb7c9;">=</span><span style="color:#abb2bf;"> forall </span><span style="color:#cd74e8;">Self</span><span style="color:#abb2bf;">. (
+</span><span style="color:#abb2bf;">  parse: string -&gt; </span><span style="color:#cd74e8;">Self
+</span><span style="color:#abb2bf;">);
+</span><span style="color:#cd74e8;">impl </span><span style="color:#abb2bf;">int32 as Parse = (
+</span><span style="color:#abb2bf;">  parse: parse_string_to_int32
+</span><span style="color:#abb2bf;">);
+</span><span style="color:#abb2bf;">
+</span><span style="color:#abb2bf;">let Add = forall (Lhs, Rhs). rec@this (
+</span><span style="color:#abb2bf;">  output: type,
+</span><span style="color:#abb2bf;">  add: (Lhs, Rhs) -&gt; this.output,
+</span><span style="color:#abb2bf;">);
+</span><span style="color:#abb2bf;">impl (int32, int64) as Add = (
+</span><span style="color:#abb2bf;">  output: int64,
+</span><span style="color:#abb2bf;">  add: fn (lhs :: int32, rhs :: int64) -&gt; int64 {
+</span><span style="color:#abb2bf;">    (lhs </span><span style="color:#adb7c9;">as</span><span style="color:#abb2bf;"> int64) </span><span style="color:#adb7c9;">+</span><span style="color:#abb2bf;"> rhs
+</span><span style="color:#abb2bf;">  },
+</span><span style="color:#abb2bf;">);
+</span></code></pre>
+<h2 id="tuples">Tuples</h2>
+<p>Tuples in Kast can have both named and unnamed fields:</p>
+<pre style="background-color:#2b303b;color:#6c7079;"><code><span style="color:#abb2bf;">let tuple :: (int32, int64, float32, four: int32, five: int32) =
+</span><span style="color:#abb2bf;">  (1, 2, 3, four: 4, five: 5);
+</span></code></pre>
+<p>Variadic length tuples:</p>
+<pre style="background-color:#2b303b;color:#6c7079;"><code><span style="color:#abb2bf;">let variadic_int :: (*int32) = (1, 2, 3, 4)
+</span></code></pre>
+<p>Variadic tuples allow for variadic generics easily:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#abb2bf;">forall (</span><span style="color:#adb7c9;">*</span><span style="color:#abb2bf;">fields :: </span><span style="color:#cd74e8;">type</span><span style="color:#abb2bf;">). (
+</span><span style="color:#abb2bf;">  </span><span style="color:#cd74e8;">impl </span><span style="color:#abb2bf;">(*fields) as Trait = ...
+</span><span style="color:#abb2bf;">)
+</span></code></pre>
+<h2 id="type-inference">Type inference</h2>
+<p>Kast implements an inference algorithm based on the Hindley–Milner approach,
+which allows most of types in the program to be inferred.</p>
+<h1 id="function-contexts">Function contexts</h1>
+<p>Not every function in Kast can just be called whenever.
+Functions can specify contexts that must be in scope when calling them.
+Contexts can be of any type:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">fn </span><span style="color:#5cb3fa;">function_that_allocates_a_lot</span><span style="color:#abb2bf;">() with allocator { </span><span style="color:#adb7c9;">... </span><span style="color:#abb2bf;">}
+</span></code></pre>
+<p>This function specifies that a allocator must be present when calling it.
+In a way, function contexts act like implicit arguments (but implemented differently).</p>
+<p>In order to bring a context into scope, use <code>with</code>:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#abb2bf;">with ArenaAllocator.</span><span style="color:#5ebfcc;">new</span><span style="color:#abb2bf;">() (
+</span><span style="color:#abb2bf;">  </span><span style="color:#5ebfcc;">function_that_allocates_a_lot</span><span style="color:#abb2bf;">()
+</span><span style="color:#abb2bf;">)
+</span></code></pre>
+<h2 id="overflows">overflows</h2>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#abb2bf;">add_int32 :: (a :: int32, b :: int32) -&gt; int32 with potentially_overflows;
+</span><span style="color:#abb2bf;">
+</span><span style="color:#abb2bf;">with saturating (
+</span><span style="color:#abb2bf;">  a </span><span style="color:#adb7c9;">+</span><span style="color:#abb2bf;"> with overflowing (b </span><span style="color:#adb7c9;">+</span><span style="color:#abb2bf;"> c)
+</span><span style="color:#abb2bf;">)
+</span><span style="color:#abb2bf;">
+</span><span style="color:#adb7c9;"># </span><span style="color:#cd74e8;">for</span><span style="color:#abb2bf;"> compiler to optimize the checks away
+</span><span style="color:#abb2bf;">with undefined_behavior_on_overflow (
+</span><span style="color:#abb2bf;">  a </span><span style="color:#adb7c9;">+</span><span style="color:#abb2bf;"> b
+</span><span style="color:#abb2bf;">)
+</span></code></pre>
+<h1 id="unwinding">Unwinding</h1>
+<p>We can declare named blocks that we can return to without executing the rest of the body:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> f </span><span style="color:#adb7c9;">= </span><span style="color:#cd74e8;">fn </span><span style="color:#abb2bf;">(token :: unwind_token) {
+</span><span style="color:#abb2bf;">  </span><span style="color:#adb7c9;">...
+</span><span style="color:#abb2bf;">  unwind (</span><span style="color:#adb7c9;">~</span><span style="color:#abb2bf;">token, </span><span style="color:#adb7c9;">~</span><span style="color:#abb2bf;">value);
+</span><span style="color:#abb2bf;">  </span><span style="color:#adb7c9;">...
+</span><span style="color:#abb2bf;">};
+</span><span style="color:#abb2bf;">unwindable_block f
+</span></code></pre>
+<p><code>unwindable_block</code> creates the block and takes a function of type <code>unwind_token -&gt; T</code>
+and executes it immediately with the token of that block.</p>
+<p>When <code>unwind :: (~token :: unwind_token, ~value :: T)</code> function is used from within,
+it stops executing current function and unwinds the stack until we return to the block.
+The value of the block if either the result of executing the function (if <code>unwind</code> was not called),
+or the value given to the <code>unwind</code>.</p>
+<h1 id="delimited-continuations">Delimited continuations</h1>
+<p>Similar to unwind, but allow you to resume execution after unwinding by creating the continuation object</p>
+<h1 id="syntax">Syntax</h1>
+<p>Kast's syntax is not static, but dynamic.
+The programmer can define their own syntax easily.</p>
+<p>The default syntax is declared in std and can be not used if you wish.</p>
+<p>The only builtin syntax is the syntax for defining new syntax:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#abb2bf;">syntax ternary </span><span style="color:#adb7c9;">&lt;- </span><span style="color:#db9d63;">10 </span><span style="color:#adb7c9;">=</span><span style="color:#abb2bf;"> cond </span><span style="color:#9acc76;">&quot;?&quot;</span><span style="color:#abb2bf;"> then </span><span style="color:#9acc76;">&quot;:&quot; </span><span style="color:#cd74e8;">else</span><span style="color:#abb2bf;">;
+</span></code></pre>
+<p>This defines left associative (<code>&lt;-</code>) syntax for ternary operator with priority of <code>10</code>.
+When Kast sees this in the source code, its being transformed into an AST:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> ternary_ast :: </span><span style="color:#cd74e8;">type </span><span style="color:#adb7c9;">= </span><span style="color:#abb2bf;">(cond: ast, then: ast, </span><span style="color:#cd74e8;">else</span><span style="color:#abb2bf;">: ast);
+</span></code></pre>
+<p>When compilation happes, the compiler is trying to find
+a matching macro for the name given (<code>ternary</code> in this case),
+which is being invoked and evaluated into a new ast
+which is then processed recursively until some builtin macro converts it into IR</p>
+<p>Macros in Kast are just like normal functions:</p>
+<pre data-lang="rs" style="background-color:#2b303b;color:#6c7079;" class="language-rs "><code class="language-rs" data-lang="rs"><span style="color:#cd74e8;">let</span><span style="color:#abb2bf;"> ternary </span><span style="color:#adb7c9;">= </span><span style="background-color:#e05252;color:#ffffff;">macro</span><span style="color:#abb2bf;"> (</span><span style="color:#adb7c9;">~</span><span style="color:#abb2bf;">cond :: ast, </span><span style="color:#adb7c9;">~</span><span style="color:#abb2bf;">then :: ast, </span><span style="color:#adb7c9;">~</span><span style="color:#cd74e8;">else </span><span style="color:#abb2bf;">:: ast) </span><span style="color:#adb7c9;">=&gt;
+</span><span style="color:#abb2bf;">  `(</span><span style="color:#cd74e8;">if </span><span style="color:#eb6772;">$cond</span><span style="color:#abb2bf;"> then </span><span style="color:#eb6772;">$then </span><span style="color:#cd74e8;">else </span><span style="color:#eb6772;">$else</span><span style="color:#abb2bf;">)
+</span></code></pre>
+<p>Here, we use a quote operator (<code>`</code>) to construct the resulting ast
+using already existing syntax.
+The unquote operator (<code>$</code>) is replacing the following ident with the ast
+that was passed to the macro as argument.</p>
+
+            
+        </div>
+
+        
+
+    </main>
+
+    
+<!-- <footer> -->
+<!--     <small class="subtext"> -->
+<!--         <a href="https://kast-lang.org">kast-lang.org</a> -->
+<!--     </small> -->
+<!-- </footer> -->
+
+</body>
+<script>
+    const scrollHandler = entries => {
+        // Find the first entry which intersecting and ratio > 0.9 to highlight.
+        let entry = entries.find(entry => {
+            return entry.isIntersecting && entry.intersectionRatio > 0.9;
+        });
+        if (!entry) return;
+
+        document.querySelectorAll(".toc a").forEach((item) => {
+            item.classList.remove("active");
+        });
+
+        // let url = new URL(`#${entry.target.id}`);
+        let link = document.querySelector(`.toc a[href$="${decodeURIComponent(`#${entry.target.id}`)}"]`)
+        if (link) {
+            link.classList.add("active");
+            link.scrollIntoView({ behavior: "auto", block: "nearest" });
+        }
+    };
+    // Set -100px root margin to improve highlight experience.
+    const observer = new IntersectionObserver(scrollHandler, { threshold: 1 });
+    let items = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
+    items.forEach(item => observer.observe(item));
+</script>
+
+</html>
