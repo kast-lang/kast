@@ -1,7 +1,8 @@
-let call_both = macro args => `($args.a(); $args.b());
+# TODO (~a, ~b)
+const call_both = macro (a: a, b: b) => `($a(); $b());
 
-let hello = _ => print "hello";
-let world = _ => print "world";
+let hello = () => std.print "hello";
+let world = () => std.print "world";
 
 (
     syntax call_both <- 20 = "call" a "and" b;

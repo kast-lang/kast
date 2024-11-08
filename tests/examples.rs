@@ -32,3 +32,23 @@ fn test_import_zero() {
         expect_output: "0 :: int32\n",
     });
 }
+
+#[test]
+#[ignore = "TODO make this not infinite recursion"]
+fn test_mutual_recursion() {
+    test(Case {
+        name: "mutual-recursion",
+        input: "",
+        expect_output: "",
+    });
+}
+
+#[test]
+
+fn test_local_syntax() {
+    test(Case {
+        name: "local-syntax",
+        input: "",
+        expect_output: "",
+    });
+}

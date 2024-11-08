@@ -317,6 +317,7 @@ impl Compilable for Expr {
                             })
                         })
                         .detach();
+                    kast.advance_executor();
                 }
                 Expr::Constant {
                     value: Value::Unit,
