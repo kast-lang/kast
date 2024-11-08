@@ -1174,7 +1174,7 @@ impl Expr<Span> {
                     data: span,
                 } => Expr::Template {
                     data: ExprData {
-                        ty: Type::Template,
+                        ty: Type::Template(compiled.clone()),
                         span,
                     },
                     compiled,
@@ -1287,18 +1287,22 @@ impl Expr<Span> {
                     arg: arg_ir,
                     data: span,
                 } => {
+                    let template_ty = template_ir
+                        .data()
+                        .ty
+                        .inferred()
+                        .expect("template must be inferred")
+                        .expect_template()?;
                     // TODO why am I cloning kast?
-                    let template = kast.clone().eval(&template_ir).await?.expect_template()?;
+                    // TODO why eval, if then arg should be value??
                     let arg = kast.clone().eval(&arg_ir).await?;
 
-                    let mut new_scope = Scope::new();
-                    new_scope.parent = Some(template.captured.clone());
-                    let mut template_kast = kast.with_scope(Arc::new(new_scope));
-                    template_kast.advance_executor();
-                    let compiled: Arc<CompiledFn> = match &*template.compiled.lock().unwrap() {
+                    kast.advance_executor();
+                    let compiled: Arc<CompiledFn> = match &*template_ty.lock().unwrap() {
                         Some(compiled) => compiled.clone(),
                         None => panic!("template is not compiled yet"),
                     };
+                    let mut template_kast = kast.with_scope(Arc::new(Scope::new()));
                     template_kast.bind_pattern_match(&compiled.arg, arg);
                     let result_ty =
                         template_kast.substitute_type_bindings(&compiled.body.data().ty);
@@ -1323,7 +1327,10 @@ impl Expr {
         let mut result = self;
         loop {
             let data = result.data();
-            let is_template = data.ty.inferred().map_or(false, |ty| ty == Type::Template);
+            let is_template = data
+                .ty
+                .inferred()
+                .map_or(false, |ty| matches!(ty, Type::Template { .. }));
             if !is_template {
                 break;
             }

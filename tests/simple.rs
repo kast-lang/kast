@@ -20,4 +20,5 @@ fn special_for_DevNinYa() {
         "const int32 = native \"int32\"; 123 :: int32",
         Value::Int32(123),
     );
+    test_eq("\"hello\" |> std.dbg", Value::Unit);
 }

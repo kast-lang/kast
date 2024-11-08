@@ -8,7 +8,7 @@ pub enum Type {
     String,
     Tuple(Tuple<Type>),
     Function(Box<FnType>),
-    Template,
+    Template(MaybeCompiledFn),
     Macro(Box<FnType>),
     Ast,
     #[allow(clippy::enum_variant_names)]
@@ -37,8 +37,8 @@ impl PartialEq for Type {
                 (Self::Tuple(_), _) => false,
                 (Self::Function(a), Self::Function(b)) => a == b,
                 (Self::Function(_), _) => false,
-                (Self::Template, Self::Template) => true,
-                (Self::Template, _) => false,
+                (Self::Template(a), Self::Template(b)) => Arc::ptr_eq(&a, &b),
+                (Self::Template(_), _) => false,
                 (Self::Macro(a), Self::Macro(b)) => a == b,
                 (Self::Macro(_), _) => false,
                 (Self::Ast, Self::Ast) => true,
@@ -70,6 +70,16 @@ impl Type {
     pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
         *self = Inferrable::make_same(self.clone(), other)?;
         Ok(())
+    }
+
+    pub fn expect_template(self) -> Result<MaybeCompiledFn, ExpectError<Type, &'static str>> {
+        match self {
+            Self::Template(t) => Ok(t),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "template",
+            }),
+        }
     }
 }
 
@@ -105,8 +115,8 @@ impl Inferrable for Type {
                     Type::Function(Box::new(Inferrable::make_same(*a, *b)?))
                 }
                 (Type::Function(_), _) => fail!(),
-                (Type::Template, Type::Template) => Type::Template,
-                (Type::Template, _) => fail!(),
+                (Type::Template(a), Type::Template(b)) if Arc::ptr_eq(&a, &b) => Type::Template(a),
+                (Type::Template(_), _) => fail!(),
                 (Type::Macro(a), Type::Macro(b)) => {
                     Type::Macro(Box::new(Inferrable::make_same(*a, *b)?))
                 }
@@ -145,7 +155,7 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Tuple(tuple) => tuple.fmt(f),
             Type::Function(ty) => ty.fmt(f),
-            Type::Template => write!(f, "forall[TODO]"),
+            Type::Template(_template) => write!(f, "<template>"),
             Type::Macro(ty) => write!(f, "macro {ty}"),
             Type::Ast => write!(f, "ast"),
             Type::Type => write!(f, "type"),
@@ -198,7 +208,7 @@ impl Kast {
                     arg: self.substitute_type_bindings(&f.arg),
                     result: self.substitute_type_bindings(&f.result),
                 })),
-                Type::Template => Type::Template,
+                Type::Template(t) => Type::Template(t),
                 Type::Macro(f) => Type::Macro(Box::new(FnType {
                     arg: self.substitute_type_bindings(&f.arg),
                     result: self.substitute_type_bindings(&f.result),

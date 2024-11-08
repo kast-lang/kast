@@ -95,7 +95,7 @@ impl Value {
             Self::Type(ty) => Ok(ty),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::Type,
+                expected: Type::Type,
             }),
         }
     }
@@ -109,7 +109,7 @@ impl Value {
             Value::Tuple(tuple) => Type::Tuple(tuple.as_ref().map(|field| field.ty())),
             Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             Value::Function(f) => Type::Function(Box::new(f.ty.clone())),
-            Value::Template(t) => Type::Template,
+            Value::Template(t) => Type::Template(t.compiled.clone()),
             Value::Macro(f) => Type::Macro(Box::new(f.ty.clone())),
             Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Ast(_) => Type::Ast,
@@ -120,10 +120,10 @@ impl Value {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("{value} is not {expected_ty}")]
-pub struct ExpectError {
-    value: Value,
-    expected_ty: Type,
+#[error("{value} is not {expected}")]
+pub struct ExpectError<V = Value, Expected = Type> {
+    pub value: V,
+    pub expected: Expected,
 }
 
 impl Value {
@@ -132,7 +132,7 @@ impl Value {
             Self::Syntax(syntax) => Ok(syntax),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::Syntax,
+                expected: Type::Syntax,
             }),
         }
     }
@@ -141,7 +141,7 @@ impl Value {
             Self::Unit => Ok(()),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::Unit,
+                expected: Type::Unit,
             }),
         }
     }
@@ -150,7 +150,7 @@ impl Value {
             Self::String(s) => Ok(s),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::String,
+                expected: Type::String,
             }),
         }
     }
@@ -159,7 +159,7 @@ impl Value {
             Self::Ast(ast) => Ok(ast),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::Ast,
+                expected: Type::Ast,
             }),
         }
     }
@@ -168,19 +168,19 @@ impl Value {
             Self::Function(f) => Ok(f),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::Function(Box::new(FnType {
+                expected: Type::Function(Box::new(FnType {
                     arg: Type::Infer(inference::Var::new()),
                     result: Type::Infer(inference::Var::new()),
                 })),
             }),
         }
     }
-    pub fn expect_template(self) -> Result<Function, ExpectError> {
+    pub fn expect_template(self) -> Result<Function, ExpectError<Value, &'static str>> {
         match self {
             Self::Template(f) => Ok(f),
             _ => Err(ExpectError {
                 value: self,
-                expected_ty: Type::Template,
+                expected: "template",
             }),
         }
     }
@@ -212,6 +212,12 @@ pub struct Function {
     pub id: Id,
     pub captured: Arc<Scope>,
     pub compiled: MaybeCompiledFn,
+}
+
+impl std::fmt::Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<function {:?}>", self.id)
+    }
 }
 
 impl PartialEq for Function {
