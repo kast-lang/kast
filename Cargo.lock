@@ -85,7 +85,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db96c36382f56ea91e5d012c4c7170046c7731449daa46655cbcabc594c8bee6"
 dependencies = [
- "event-listener",
+ "event-listener 4.0.3",
  "futures-core",
  "pin-project-lite",
 ]
@@ -322,6 +322,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "event-listener"
+version = "5.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6032be9bd27023a771701cc49f9f053c751055f71efb2e0ae5c15809093675ba"
+dependencies = [
+ "concurrent-queue",
+ "parking",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "eyre"
 version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -514,6 +525,7 @@ dependencies = [
  "color-eyre",
  "colored",
  "decursion",
+ "event-listener 5.3.1",
  "eyre",
  "futures",
  "futures-lite",

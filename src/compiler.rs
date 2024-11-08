@@ -797,17 +797,19 @@ impl Kast {
         ))
     }
     async fn macro_make_unit(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
         let [] = values.as_ref().into_named([])?;
-        Ok(Compiled::Expr(
-            Expr::Constant {
-                value: Value::Unit,
-                data: span,
-            }
-            .init(self)
-            .await?,
-        ))
+        Ok(match cty {
+            CompiledType::Pattern => Compiled::Pattern(Pattern::Unit { data: span }.init()?),
+            CompiledType::Expr => Compiled::Expr(
+                Expr::Constant {
+                    value: Value::Unit,
+                    data: span,
+                }
+                .init(self)
+                .await?,
+            ),
+        })
     }
     async fn macro_call(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);

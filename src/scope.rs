@@ -2,13 +2,27 @@ use std::sync::atomic::AtomicBool;
 
 use super::*;
 
+pub type Locals = HashMap<String, Value>;
+
 pub struct Scope {
+    id: Id,
     pub parent: Option<Arc<Scope>>,
     recursive: bool,
     closed: AtomicBool,
-    closed_notify: async_notify::Notify,
+    closed_event: event_listener::Event,
     pub syntax_definitions: Mutex<Vec<Arc<ast::SyntaxDefinition>>>,
-    pub locals: Mutex<HashMap<String, Value>>,
+    locals: Mutex<Locals>,
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        if !*self.closed.get_mut() {
+            if self.recursive {
+                panic!("recursive scope should be closed manually to advance executor");
+            }
+            self.close();
+        }
+    }
 }
 
 impl Scope {
@@ -17,26 +31,42 @@ impl Scope {
         Self::new_impl(false)
     }
     fn new_impl(recursive: bool) -> Self {
+        let id = Id::new();
+        tracing::trace!("new scope {id:?} (recursive={recursive:?})");
         Self {
+            id,
             parent: None,
             recursive,
             closed: AtomicBool::new(false),
-            closed_notify: async_notify::Notify::new(),
+            closed_event: event_listener::Event::new(),
             syntax_definitions: Default::default(),
-            locals: Mutex::new(HashMap::new()),
+            locals: Mutex::new(Locals::new()),
         }
     }
     pub fn recursive() -> Self {
         Self::new_impl(true)
     }
     pub fn close(&self) {
+        tracing::trace!("close scope {:?}", self.id);
         self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
-        self.closed_notify.notify();
+        self.closed_event.notify(usize::MAX);
+    }
+    pub fn inspect<R>(&self, f: impl FnOnce(&Locals) -> R) -> R {
+        f(&self.locals.lock().unwrap())
+    }
+    pub fn insert(&self, name: String, value: Value) {
+        self.locals.lock().unwrap().insert(name, value);
+    }
+    pub fn extend(&self, values: impl IntoIterator<Item = (String, Value)>) {
+        for (name, value) in values {
+            self.insert(name, value);
+        }
     }
     pub fn get_nowait(&self, name: &str) -> Option<Value> {
         self.get_impl(name, false).now_or_never().unwrap()
     }
     pub fn get_impl<'a>(&'a self, name: &'a str, do_await: bool) -> BoxFuture<'a, Option<Value>> {
+        tracing::trace!("looking for {name:?} in {:?}", self.id);
         async move {
             loop {
                 let was_closed = self.closed.load(std::sync::atomic::Ordering::Relaxed);
@@ -55,7 +85,8 @@ impl Scope {
                     break;
                 }
                 // TODO maybe wait for the name, not entire scope?
-                self.closed_notify.notified().await
+                self.closed_event.listen().await;
+                tracing::trace!("continuing searching for {name:?}");
             }
             if let Some(parent) = &self.parent {
                 if let Some(value) = parent.get_impl(name, do_await).await {

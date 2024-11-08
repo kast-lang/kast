@@ -80,21 +80,22 @@ impl State {
         }
     }
     pub fn autocomplete<'a>(&'a self, s: &'a str) -> impl Iterator<Item = CompletionCandidate> {
-        let locals = self.scope.locals.lock().unwrap();
-        locals
-            .iter()
-            .filter_map(move |(name, value)| {
-                if name.contains(s) {
-                    Some(CompletionCandidate {
-                        name: name.clone(),
-                        ty: value.ty(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
+        self.scope.inspect(|locals| {
+            locals
+                .iter()
+                .filter_map(move |(name, value)| {
+                    if name.contains(s) {
+                        Some(CompletionCandidate {
+                            name: name.clone(),
+                            ty: value.ty(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+        })
     }
     pub async fn get(&self, name: &str) -> Option<Value> {
         self.scope.get_impl(name, self.spawned).await
@@ -103,11 +104,7 @@ impl State {
         self.scope.get_nowait(name)
     }
     pub fn insert_local(&mut self, name: &str, value: Value) {
-        self.scope
-            .locals
-            .lock()
-            .unwrap()
-            .insert(name.to_owned(), value);
+        self.scope.insert(name.to_owned(), value);
     }
     pub fn scope_syntax_definitions(&self) -> Vec<Arc<ast::SyntaxDefinition>> {
         self.scope.syntax_definitions.lock().unwrap().clone()
@@ -157,12 +154,7 @@ impl Kast {
         kast
     }
     pub fn add_local(&mut self, name: &str, value: Value) {
-        self.interpreter
-            .scope
-            .locals
-            .lock()
-            .unwrap()
-            .insert(name.to_owned(), value);
+        self.interpreter.scope.insert(name.to_owned(), value);
     }
     pub fn eval_source(
         &mut self,
@@ -225,9 +217,11 @@ impl Kast {
                     let mut inner = self.enter_recursive_scope();
                     inner.eval(body).await?.expect_unit()?;
                     let mut fields = Tuple::empty();
-                    for (name, value) in &*inner.interpreter.scope.locals.lock().unwrap() {
-                        fields.add_named(name.clone(), value.clone());
-                    }
+                    inner.interpreter.scope.inspect(|locals| {
+                        for (name, value) in locals {
+                            fields.add_named(name.clone(), value.clone());
+                        }
+                    });
                     Value::Tuple(fields)
                 }
                 Expr::Ast {
@@ -308,7 +302,7 @@ impl Kast {
                 } => {
                     let value = self.eval(value).await?;
                     let matches = pattern.r#match(value);
-                    self.interpreter.scope.locals.lock().unwrap().extend(
+                    self.interpreter.scope.extend(
                         matches
                             .into_iter()
                             .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
@@ -361,7 +355,7 @@ impl Kast {
     }
 
     pub fn bind_pattern_match(&mut self, pattern: &Pattern, value: Value) {
-        self.interpreter.scope.locals.lock().unwrap().extend(
+        self.interpreter.scope.extend(
             pattern
                 .r#match(value)
                 .into_iter()
