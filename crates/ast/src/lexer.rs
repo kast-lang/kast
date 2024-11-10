@@ -338,7 +338,7 @@ impl Lexer {
 }
 
 pub fn is_punctuation(c: char) -> bool {
-    !(c.is_alphanumeric() || "_'\"".contains(c) || c.is_whitespace())
+    !(c.is_alphanumeric() || "_'\"@".contains(c) || c.is_whitespace())
 }
 
 #[derive(Debug)]

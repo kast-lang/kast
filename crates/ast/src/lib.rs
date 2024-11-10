@@ -149,7 +149,16 @@ pub fn parse(syntax: &Syntax, source: SourceFile) -> Result<Option<Ast>, Error> 
         reader: lex(source)?,
     };
     let result = parser.read_all(syntax);
-    result.map_err(|msg| msg.at(parser.reader.peek().unwrap().span.clone()))
+    result.map_err(|msg| {
+        msg.at(match parser.reader.peek() {
+            Some(peek) => peek.span.clone(),
+            None => Span {
+                start: parser.reader.position(),
+                end: parser.reader.position(),
+                filename: parser.reader.filename().to_owned(),
+            },
+        })
+    })
 }
 
 pub fn read_syntax(source: SourceFile) -> Result<Syntax, Error> {

@@ -1,6 +1,6 @@
 module:
 
-const sntax = import "./syntax.ks";
+const @"syntax" = import "./syntax.ks";
 
 const type = native "type";
 const ast :: type = native "ast";
