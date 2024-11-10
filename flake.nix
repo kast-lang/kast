@@ -27,6 +27,7 @@
             src = nix-filter {
               root = ./.;
               include = [
+                "crates"
                 "src"
                 "Cargo.toml"
                 "Cargo.lock"
