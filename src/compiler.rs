@@ -1126,6 +1126,7 @@ impl Expr<Span> {
                                     Some(field_ty) => field_ty.clone(),
                                     None => eyre::bail!("{ty} does not have field {field:?}"),
                                 },
+                                Type::SyntaxModule => Type::SyntaxDefinition,
                                 _ => eyre::bail!("can not get fields of type {ty}"),
                             },
                             Err(_) => todo!("lazy inferring field access type"),

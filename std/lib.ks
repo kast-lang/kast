@@ -11,3 +11,5 @@ const string :: type = native "string";
 const print :: string -> () = native "print";
 
 const dbg = forall[T] { native "dbg" :: T -> () };
+
+impl syntax @"syntax".@"op binary +" = native "+" :: (lhs: int32, rhs: int32) -> int32;

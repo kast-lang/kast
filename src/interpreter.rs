@@ -74,6 +74,40 @@ impl State {
                         }))
                     }),
                 );
+                map.insert(
+                    "+",
+                    Box::new(|mut expected: Type| {
+                        let operand_type = Type::Int32;
+                        let ty = FnType {
+                            arg: Type::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_named("lhs", operand_type.clone());
+                                args.add_named("rhs", operand_type.clone());
+                                args
+                            }),
+                            result: operand_type,
+                        };
+                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "+".to_owned(),
+                            r#impl: Arc::new(|_fn_ty, args: Value| {
+                                let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
+                                let result = match (&lhs, &rhs) {
+                                    (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
+                                        lhs.checked_add(*rhs).ok_or_else(|| eyre!("overflow"))?,
+                                    ),
+                                    _ => eyre::bail!(
+                                        "+ doesnt work for {} and {}",
+                                        lhs.ty(),
+                                        rhs.ty()
+                                    ),
+                                };
+                                Ok(result)
+                            }),
+                            ty,
+                        }))
+                    }),
+                );
                 Arc::new(map)
             },
             scope: Arc::new(Scope::new()),
@@ -210,6 +244,15 @@ impl Kast {
                             Some(field_value) => field_value.clone(),
                             None => eyre::bail!("{obj} does not have field {field:?}"),
                         },
+                        Value::SyntaxModule(definitions) => Value::SyntaxDefinition(
+                            definitions
+                                .iter() // TODO store a map? iteration is slow?
+                                .find(|def| def.name == *field)
+                                .ok_or_else(|| {
+                                    eyre!("syntax def {field:?} not found in syntax module")
+                                })?
+                                .clone(),
+                        ),
                         _ => eyre::bail!("{obj} is not smth that has fields"),
                     }
                 }

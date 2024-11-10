@@ -97,6 +97,13 @@ impl Value {
                 Ok(Type::Binding(binding))
             }
             Self::Type(ty) => Ok(ty),
+            Self::Tuple(tuple) => {
+                let mut ty = Tuple::empty();
+                for (name, value) in tuple {
+                    ty.add(name, value.expect_type()?);
+                }
+                Ok(Type::Tuple(ty))
+            }
             _ => Err(ExpectError {
                 value: self,
                 expected: Type::Type,
@@ -132,6 +139,15 @@ pub struct ExpectError<V = Value, Expected = Type> {
 }
 
 impl Value {
+    pub fn expect_tuple(self) -> Result<Tuple<Value>, ExpectError<Value, &'static str>> {
+        match self {
+            Self::Tuple(tuple) => Ok(tuple),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "tuple",
+            }),
+        }
+    }
     pub fn expect_syntax_definition(self) -> Result<Arc<ast::SyntaxDefinition>, ExpectError> {
         match self {
             Self::SyntaxDefinition(def) => Ok(def),
