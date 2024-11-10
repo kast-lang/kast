@@ -22,4 +22,5 @@ fn special_for_DevNinYa() {
     );
     test_eq("\"hello\" |> std.dbg", Value::Unit);
     test_eq("2 + 2", Value::Int32(4));
+    test_eq("2 + 2", Value::Int64(4));
 }

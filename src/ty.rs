@@ -5,6 +5,7 @@ pub enum Type {
     Unit,
     Bool,
     Int32,
+    Int64,
     String,
     Tuple(Tuple<Type>),
     Function(Box<FnType>),
@@ -32,6 +33,8 @@ impl PartialEq for Type {
                 (Self::Bool, _) => false,
                 (Self::Int32, Self::Int32) => true,
                 (Self::Int32, _) => false,
+                (Self::Int64, Self::Int64) => true,
+                (Self::Int64, _) => false,
                 (Self::String, Self::String) => true,
                 (Self::String, _) => false,
                 (Self::Tuple(a), Self::Tuple(b)) => a == b,
@@ -103,6 +106,8 @@ impl Inferrable for Type {
                 (Type::Bool, _) => fail!(),
                 (Type::Int32, Type::Int32) => Type::Int32,
                 (Type::Int32, _) => fail!(),
+                (Type::Int64, Type::Int64) => Type::Int64,
+                (Type::Int64, _) => fail!(),
                 (Type::String, Type::String) => Type::String,
                 (Type::String, _) => fail!(),
                 (Type::Tuple(a), Type::Tuple(b)) => {
@@ -157,6 +162,7 @@ impl std::fmt::Display for Type {
             Type::Unit => write!(f, "()"),
             Type::Bool => write!(f, "bool"),
             Type::Int32 => write!(f, "int32"),
+            Type::Int64 => write!(f, "int64"),
             Type::String => write!(f, "string"),
             Type::Tuple(tuple) => tuple.fmt(f),
             Type::Function(ty) => ty.fmt(f),
@@ -203,6 +209,7 @@ impl Kast {
                 Type::Unit
                 | Type::Bool
                 | Type::Int32
+                | Type::Int64
                 | Type::String
                 | Type::Ast
                 | Type::Type

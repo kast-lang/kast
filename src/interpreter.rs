@@ -32,6 +32,7 @@ impl State {
                 };
                 insert_ty("bool", Type::Bool);
                 insert_ty("int32", Type::Int32);
+                insert_ty("int64", Type::Int64);
                 insert_ty("string", Type::String);
                 insert_ty("ast", Type::Ast);
                 insert_ty("type", Type::Type);
@@ -77,7 +78,7 @@ impl State {
                 map.insert(
                     "+",
                     Box::new(|mut expected: Type| {
-                        let operand_type = Type::Int32;
+                        let operand_type = Type::Infer(inference::Var::new());
                         let ty = FnType {
                             arg: Type::Tuple({
                                 let mut args = Tuple::empty();
@@ -94,6 +95,9 @@ impl State {
                                 let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
                                 let result = match (&lhs, &rhs) {
                                     (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
+                                        lhs.checked_add(*rhs).ok_or_else(|| eyre!("overflow"))?,
+                                    ),
+                                    (Value::Int64(lhs), Value::Int64(rhs)) => Value::Int64(
                                         lhs.checked_add(*rhs).ok_or_else(|| eyre!("overflow"))?,
                                     ),
                                     _ => eyre::bail!(
@@ -323,6 +327,10 @@ impl Kast {
                     Ok(Type::Int32) => Value::Int32(
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as int32"))?,
+                    ),
+                    Ok(Type::Int64) => Value::Int64(
+                        raw.parse()
+                            .wrap_err_with(|| format!("Failed to parse {raw:?} as int64"))?,
                     ),
                     Ok(other) => {
                         eyre::bail!("number literals can not be treated as {other}")
