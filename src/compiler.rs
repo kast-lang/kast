@@ -56,13 +56,12 @@ impl ListCollector<'_> {
     }
 }
 
-#[derive(Clone)]
-pub struct State {
+pub struct Cache {
     builtin_macros: HashMap<&'static str, BuiltinMacro>,
-    syntax_definitions: Arc<Mutex<RefMap<Arc<ast::SyntaxDefinition>, std::task::Poll<Value>>>>,
+    syntax_definitions: Mutex<RefMap<Arc<ast::SyntaxDefinition>, std::task::Poll<Value>>>,
 }
 
-impl State {
+impl Cache {
     pub fn new() -> Self {
         let mut builtin_macros = HashMap::new();
         macro_rules! populate {
@@ -102,6 +101,14 @@ impl State {
         Self {
             builtin_macros,
             syntax_definitions: Default::default(),
+        }
+    }
+
+    pub fn register_syntax(&self, definition: &Arc<ast::SyntaxDefinition>) {
+        let mut definitions = self.syntax_definitions.lock().unwrap();
+        if definitions.get(definition).is_none() {
+            definitions.insert(definition.clone(), std::task::Poll::Pending);
+            tracing::trace!("registered syntax {:?}", definition.name);
         }
     }
 
@@ -238,7 +245,7 @@ impl Compilable for Expr {
                 values,
                 data: span,
             } => {
-                match kast.compiler.find_macro(definition)? {
+                match kast.cache.compiler.find_macro(definition)? {
                     Macro::Builtin { name, r#impl } => {
                         Self::r#macro(&name, r#impl)(kast, ast).await?
                     }
@@ -292,6 +299,8 @@ impl Compilable for Expr {
                 kast.interpreter.insert_syntax(def.clone())?;
                 kast.interpreter
                     .insert_local(&def.name, Value::SyntaxDefinition(def.clone()));
+                kast.cache.compiler.register_syntax(def);
+
                 Expr::Constant {
                     value: Value::Unit,
                     data: span.clone(),
@@ -354,7 +363,7 @@ impl Compilable for Pattern {
                 values,
                 data: _,
             } => {
-                match kast.compiler.find_macro(definition)? {
+                match kast.cache.compiler.find_macro(definition)? {
                     Macro::Builtin { name, r#impl } => {
                         Self::r#macro(&name, r#impl)(kast, ast).await?
                     }
@@ -533,8 +542,10 @@ impl Kast {
             .eval_ast(def, Some(Type::SyntaxDefinition))
             .await?
             .expect_syntax_definition()?;
+        tracing::trace!("defined syntax {:?}", def.name);
         let r#impl = self.eval_ast(r#impl, None).await?; // TODO should be a macro?
-        self.compiler
+        self.cache
+            .compiler
             .syntax_definitions
             .lock()
             .unwrap()

@@ -1,5 +1,7 @@
 module:
 
+const sntax = import "./syntax.ks";
+
 const type = native "type";
 const ast :: type = native "ast";
 const bool :: type = native "bool";
