@@ -54,7 +54,7 @@ impl Kast {
         // TODO only eval once?
         let syntax = import(&mut kast, std_path().join("syntax.ks"))
             .expect("failed to import std syntax")
-            .expect_syntax()
+            .expect_syntax_module()
             .expect("std/syntax.ks must evaluate to syntax");
         for definition in &*syntax {
             // println!("std syntax: {}", definition.name);

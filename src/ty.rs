@@ -13,7 +13,8 @@ pub enum Type {
     Ast,
     #[allow(clippy::enum_variant_names)]
     Type,
-    Syntax,
+    SyntaxModule,
+    SyntaxDefinition,
     Binding(Arc<Binding>),
 
     Infer(inference::Var<Type>),
@@ -45,8 +46,10 @@ impl PartialEq for Type {
                 (Self::Ast, _) => false,
                 (Self::Type, Self::Type) => true,
                 (Self::Type, _) => false,
-                (Self::Syntax, Self::Syntax) => true,
-                (Self::Syntax, _) => false,
+                (Self::SyntaxModule, Self::SyntaxModule) => true,
+                (Self::SyntaxModule, _) => false,
+                (Self::SyntaxDefinition, Self::SyntaxDefinition) => true,
+                (Self::SyntaxDefinition, _) => false,
                 (Self::Binding(a), Self::Binding(b)) => Arc::ptr_eq(&a, &b),
                 (Self::Binding(_), _) => false,
             },
@@ -125,8 +128,10 @@ impl Inferrable for Type {
                 (Type::Ast, _) => fail!(),
                 (Type::Type, Type::Type) => Type::Type,
                 (Type::Type, _) => fail!(),
-                (Type::Syntax, Type::Syntax) => Type::Syntax,
-                (Type::Syntax, _) => fail!(),
+                (Type::SyntaxModule, Type::SyntaxModule) => Type::SyntaxModule,
+                (Type::SyntaxModule, _) => fail!(),
+                (Type::SyntaxDefinition, Type::SyntaxDefinition) => Type::SyntaxDefinition,
+                (Type::SyntaxDefinition, _) => fail!(),
                 (Type::Binding(a), Type::Binding(b)) if Arc::ptr_eq(&a, &b) => Type::Binding(a),
                 (Type::Binding(_), _) => fail!(),
             },
@@ -155,7 +160,7 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Tuple(tuple) => tuple.fmt(f),
             Type::Function(ty) => ty.fmt(f),
-            Type::Template(_template) => write!(f, "<template>"),
+            Type::Template(_template) => write!(f, "template"),
             Type::Macro(ty) => write!(f, "macro {ty}"),
             Type::Ast => write!(f, "ast"),
             Type::Type => write!(f, "type"),
@@ -163,7 +168,8 @@ impl std::fmt::Display for Type {
                 Some(inferred) => inferred.fmt(f),
                 None => write!(f, "<not inferred>"),
             },
-            Type::Syntax => write!(f, "syntax"),
+            Type::SyntaxModule => write!(f, "syntax module"),
+            Type::SyntaxDefinition => write!(f, "syntax definition"),
             Type::Binding(binding) => binding.fmt(f),
         }
     }
@@ -200,7 +206,8 @@ impl Kast {
                 | Type::String
                 | Type::Ast
                 | Type::Type
-                | Type::Syntax => ty.clone(),
+                | Type::SyntaxModule
+                | Type::SyntaxDefinition => ty.clone(),
                 Type::Tuple(tuple) => {
                     Type::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
                 }

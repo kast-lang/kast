@@ -7,7 +7,7 @@ fn test_eq(source: &str, expected_value: Value) {
     };
     let mut kast = Kast::new();
     let value = kast
-        .eval_source(source, None)
+        .eval_source(source, Some(expected_value.ty()))
         .expect("Failed to eval source");
     assert_eq!(value, expected_value);
 }
@@ -21,4 +21,5 @@ fn special_for_DevNinYa() {
         Value::Int32(123),
     );
     test_eq("\"hello\" |> std.dbg", Value::Unit);
+    test_eq("2 + 2", Value::Int32(4));
 }

@@ -14,7 +14,8 @@ pub enum Value {
     Binding(Arc<Binding>),
     Ast(Ast),
     Type(Type),
-    Syntax(Arc<Vec<Arc<ast::SyntaxDefinition>>>),
+    SyntaxModule(Arc<Vec<Arc<ast::SyntaxDefinition>>>),
+    SyntaxDefinition(Arc<ast::SyntaxDefinition>),
 }
 
 impl PartialEq for Value {
@@ -46,8 +47,10 @@ impl PartialEq for Value {
             (Self::Ast(_), _) => false,
             (Self::Type(a), Self::Type(b)) => a == b,
             (Self::Type(_), _) => false,
-            (Self::Syntax(a), Self::Syntax(b)) => Arc::ptr_eq(a, b),
-            (Self::Syntax(_), _) => false,
+            (Self::SyntaxModule(a), Self::SyntaxModule(b)) => Arc::ptr_eq(a, b),
+            (Self::SyntaxModule(_), _) => false,
+            (Self::SyntaxDefinition(a), Self::SyntaxDefinition(b)) => Arc::ptr_eq(a, b),
+            (Self::SyntaxDefinition(_), _) => false,
         }
     }
 }
@@ -72,7 +75,8 @@ impl std::fmt::Display for Value {
                 write!(f, "type ")?;
                 ty.fmt(f)
             }
-            Value::Syntax(_definitions) => write!(f, "<syntax>"),
+            Value::SyntaxModule(_definitions) => write!(f, "<syntax module>"),
+            Value::SyntaxDefinition(_definition) => write!(f, "<syntax definition>"),
         }
     }
 }
@@ -114,7 +118,8 @@ impl Value {
             Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
             Value::Ast(_) => Type::Ast,
             Value::Type(_) => Type::Type,
-            Value::Syntax(_) => Type::Syntax,
+            Value::SyntaxModule(_) => Type::SyntaxModule,
+            Value::SyntaxDefinition(_) => Type::SyntaxDefinition,
         }
     }
 }
@@ -127,12 +132,21 @@ pub struct ExpectError<V = Value, Expected = Type> {
 }
 
 impl Value {
-    pub fn expect_syntax(self) -> Result<Arc<Vec<Arc<ast::SyntaxDefinition>>>, ExpectError> {
+    pub fn expect_syntax_definition(self) -> Result<Arc<ast::SyntaxDefinition>, ExpectError> {
         match self {
-            Self::Syntax(syntax) => Ok(syntax),
+            Self::SyntaxDefinition(def) => Ok(def),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Syntax,
+                expected: Type::SyntaxModule,
+            }),
+        }
+    }
+    pub fn expect_syntax_module(self) -> Result<Arc<Vec<Arc<ast::SyntaxDefinition>>>, ExpectError> {
+        match self {
+            Self::SyntaxModule(syntax) => Ok(syntax),
+            _ => Err(ExpectError {
+                value: self,
+                expected: Type::SyntaxModule,
             }),
         }
     }

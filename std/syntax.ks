@@ -19,6 +19,7 @@ syntax_module {
   # syntax loop_impl <- 3 = "loop" "{" body "}";
   # syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
   # syntax @"builtin macro create_impl" <- 3 = "impl" trait "for" value "as" impl;
+  syntax @"builtin macro impl_syntax" <- 4 = "impl" "syntax" def "=" impl;
   syntax @"builtin macro let" <- 4 = "let" pattern "=" value;
   syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
   # syntax @"builtin macro assign" <- 4 = pattern "=" value;
@@ -91,7 +92,7 @@ syntax_module {
 
   # syntax @"op unary +" <- 25 = "+" x;
   # syntax @"op unary -" <- 25 = "-" x;
-  # syntax @"op binary +" <- 25 = lhs "+" rhs;
+  syntax @"op binary +" <- 25 = lhs "+" rhs;
   # syntax @"op binary -" <- 25 = lhs "-" rhs;
 
   # syntax @"op binary *" <- 40 = lhs "*" rhs;
@@ -134,11 +135,11 @@ syntax_module {
 
 # const @"postfix ++" = macro (~x :: ast) => `(x += 1);
 
-  const pipe_right = macro (arg: arg, f: f) => `((let arg = $arg; let f = $f; f arg));
-  const pipe_left = macro (f: f, arg: arg) => `((let f = $f; let arg = $arg; f arg));
+  impl syntax pipe_right = macro (arg: arg, f: f) => `((let arg = $arg; let f = $f; f arg));
+  impl syntax pipe_left = macro (f: f, arg: arg) => `((let f = $f; let arg = $arg; f arg));
 
-  const inline_field = macro (name: name) => `($name : $name);
-  const inline_typed_field = macro (name: name, type: type) => `(
+  impl syntax inline_field = macro (name: name) => `($name : $name);
+  impl syntax inline_typed_field = macro (name: name, type: type) => `(
   # const inline_typed_field = macro (~name, ~type) => `(
       $name: ($name :: $type)
   );

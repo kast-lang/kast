@@ -93,6 +93,7 @@ impl State {
             macro_make_unit,
             macro_use,
             macro_syntax_module,
+            macro_impl_syntax,
             macro_import,
             macro_template_def,
             macro_instantiate_template,
@@ -289,36 +290,8 @@ impl Compilable for Expr {
             }
             Ast::SyntaxDefinition { def, data: span } => {
                 kast.interpreter.insert_syntax(def.clone())?;
-                if !def.name.starts_with("builtin macro ") {
-                    kast.compiler
-                        .syntax_definitions
-                        .lock()
-                        .unwrap()
-                        .insert(def.clone(), std::task::Poll::Pending);
-                    kast.executor
-                        .spawn({
-                            let kast = kast.spawn_clone();
-                            let def = def.clone();
-                            async move {
-                                let value =
-                                    kast.interpreter.get(&def.name).await.ok_or_else(|| {
-                                        eyre!("syntax {:?} definition could not be found", def.name)
-                                    })?;
-                                kast.compiler
-                                    .syntax_definitions
-                                    .lock()
-                                    .unwrap()
-                                    .insert(def.clone(), std::task::Poll::Ready(value));
-                                Ok(())
-                            }
-                            .map_err(|err: eyre::Report| {
-                                tracing::error!("{err:?}");
-                                panic!("{err:?}")
-                            })
-                        })
-                        .detach();
-                    kast.advance_executor();
-                }
+                kast.interpreter
+                    .insert_local(&def.name, Value::SyntaxDefinition(def.clone()));
                 Expr::Constant {
                     value: Value::Unit,
                     data: span.clone(),
@@ -549,6 +522,32 @@ impl Kast {
             .await?,
         ))
     }
+    async fn macro_impl_syntax(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        assert_eq!(cty, CompiledType::Expr);
+        let [def, r#impl] = values
+            .as_ref()
+            .into_named(["def", "impl"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let def = self
+            .eval_ast(def, Some(Type::SyntaxDefinition))
+            .await?
+            .expect_syntax_definition()?;
+        let r#impl = self.eval_ast(r#impl, None).await?; // TODO should be a macro?
+        self.compiler
+            .syntax_definitions
+            .lock()
+            .unwrap()
+            .insert(def, std::task::Poll::Ready(r#impl)); // TODO check previous value?
+        Ok(Compiled::Expr(
+            Expr::Constant {
+                value: Value::Unit,
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
     async fn macro_syntax_module(
         &mut self,
         cty: CompiledType,
@@ -567,7 +566,7 @@ impl Kast {
             .expect_unit()?;
         Ok(Compiled::Expr(
             Expr::Constant {
-                value: Value::Syntax(Arc::new(inner.interpreter.scope_syntax_definitions())),
+                value: Value::SyntaxModule(Arc::new(inner.interpreter.scope_syntax_definitions())),
                 data: span,
             }
             .init(self)
