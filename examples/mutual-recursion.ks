@@ -3,7 +3,7 @@ use std.*;
 
 let rec_scope = rec (
   let f = depth => (
-    if depth < 10 then (
+    if depth < 3 then (
       print "inside f";
       dbg depth;
       g (depth + 1);
