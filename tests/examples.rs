@@ -45,7 +45,6 @@ fn test_import_zero() {
 }
 
 #[test]
-#[ignore = "TODO make this not infinite recursion"]
 fn test_mutual_recursion() {
     test(Case {
         name: "mutual-recursion",
