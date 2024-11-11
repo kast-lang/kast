@@ -189,6 +189,33 @@ impl Value {
             }),
         }
     }
+    pub fn expect_int32(self) -> Result<i32, ExpectError> {
+        match self {
+            Self::Int32(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: Type::Int32,
+            }),
+        }
+    }
+    pub fn expect_int64(self) -> Result<i64, ExpectError> {
+        match self {
+            Self::Int64(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: Type::Int64,
+            }),
+        }
+    }
+    pub fn expect_bool(self) -> Result<bool, ExpectError> {
+        match self {
+            Self::Bool(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: Type::Bool,
+            }),
+        }
+    }
     pub fn expect_ast(self) -> Result<Ast, ExpectError> {
         match self {
             Self::Ast(ast) => Ok(ast),

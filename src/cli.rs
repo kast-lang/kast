@@ -3,7 +3,7 @@ use std::path::PathBuf;
 #[derive(clap::Subcommand)]
 pub enum Command {
     ParseAst,
-    Repl,
+    Repl { path: Option<PathBuf> },
     Run { path: PathBuf },
 }
 

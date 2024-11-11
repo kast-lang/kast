@@ -4,8 +4,8 @@ default:
 test:
     nix flake check
 
-repl:
-    cargo run -- repl
+repl *ARGS:
+    cargo run -- repl {{ARGS}}
 
 run *ARGS:
     cargo run -- run {{ARGS}}

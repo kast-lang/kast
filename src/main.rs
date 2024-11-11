@@ -85,8 +85,14 @@ fn main() -> eyre::Result<()> {
                 Ok(())
             })?;
         }
-        cli::Command::Repl => {
+        cli::Command::Repl { path } => {
             let kast = Arc::new(Mutex::new(Kast::new()));
+            if let Some(path) = path {
+                let name = path.file_stem().unwrap().to_str().unwrap();
+                let mut kast = kast.lock().unwrap();
+                let value = kast.eval_file(&path).expect("Failed to eval file");
+                kast.interpreter.insert_local(name, value);
+            }
             let helper = repl_helper::Helper::new(kast.clone());
             run_repl(helper, |contents| {
                 let source = SourceFile {

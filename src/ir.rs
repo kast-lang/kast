@@ -27,6 +27,12 @@ pub enum Expr<Data = ExprData> {
         binding: Arc<Binding>,
         data: Data,
     },
+    If {
+        condition: Box<Expr>,
+        then_case: Box<Expr>,
+        else_case: Option<Box<Expr>>,
+        data: Data,
+    },
     Then {
         list: Vec<Expr>,
         data: Data,
@@ -107,6 +113,7 @@ impl Expr {
             | Expr::Native { .. }
             | Expr::Ast { .. }
             | Expr::Call { .. }
+            | Expr::If { .. }
             | Expr::Instantiate { .. } => {}
             Expr::Let {
                 is_const_let,
@@ -141,6 +148,7 @@ impl Expr {
                     Expr::Function { .. } => write!(f, "function expr")?,
                     Expr::Template { .. } => write!(f, "template expr")?,
                     Expr::Scope { .. } => write!(f, "scope expr")?,
+                    Expr::If { .. } => write!(f, "if expr")?,
                     Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
                     Expr::Then { .. } => write!(f, "then expr")?,
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
@@ -170,6 +178,7 @@ impl<Data> Expr<Data> {
         | Expr::Template { data, .. }
         | Expr::Scope { data, .. }
         | Expr::Then { data, .. }
+        | Expr::If { data, .. }
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
         | Expr::Native { data, .. }
@@ -194,6 +203,7 @@ impl<Data> Expr<Data> {
         | Expr::Native { data, .. }
         | Expr::Let { data, .. }
         | Expr::Call { data, .. }
+        | Expr::If { data, .. }
         | Expr::Instantiate { data, .. }) = self;
         data
     }

@@ -14,3 +14,5 @@ const print :: string -> () = native "print";
 const dbg = forall[T] { native "dbg" :: T -> () };
 
 impl syntax @"syntax".@"op binary +" = forall[T] { native "+" :: (lhs: T, rhs: T) -> T };
+impl syntax @"syntax".@"op binary -" = forall[T] { native "-" :: (lhs: T, rhs: T) -> T };
+impl syntax @"syntax".@"op binary <" = forall[T] { native "<" :: (lhs: T, rhs: T) -> bool };

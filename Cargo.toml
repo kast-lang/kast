@@ -19,6 +19,8 @@ async-executor = "1.13.1"
 async-trait = "0.1.83"
 futures-lite = "2"
 event-listener = "5"
+# https://github.com/rust-random/rand#wasm-support
+getrandom = { version = "0.2", features = ["js"] }
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
@@ -32,6 +34,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+getrandom.workspace = true
 clap.workspace = true
 eyre.workspace = true
 color-eyre.workspace = true

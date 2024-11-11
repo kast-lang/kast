@@ -67,49 +67,49 @@ syntax_module {
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "->" result_type "{" body "}";
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "{" body "}";
 
-  # syntax implements <- 14 = type "implements" trait;
+  syntax implements <- 14 = type "implements" trait;
 
   syntax pipe_right <- 15 = arg "|>" f;
   syntax pipe_left <- 15 = f "<|" arg;
 
-  # syntax try_explicit <- 16 = "try" "[" targ "]" expr;
-  # syntax try_implicit <- 16 = "try" expr;
-  # syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
-  # syntax catch_impl <- 16 = expr "catch" e "(" catch_block ")";
+  syntax try_explicit <- 16 = "try" "[" targ "]" expr;
+  syntax try_implicit <- 16 = "try" expr;
+  syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
+  syntax catch_impl <- 16 = expr "catch" e "(" catch_block ")";
 
-  # syntax @"builtin fn or" <- 17 = lhs "or" rhs;
-  # syntax @"builtin fn and" <- 18 = lhs "and" rhs;
+  syntax @"builtin fn or" <- 17 = lhs "or" rhs;
+  syntax @"builtin fn and" <- 18 = lhs "and" rhs;
 
-  # syntax @"op binary <" <- 19 = lhs "<" rhs;
-  # syntax @"op binary <=" <- 19 = lhs "<=" rhs;
-  # syntax @"op binary ==" <- 19 = lhs "==" rhs;
-  # syntax @"op binary !=" <- 19 = lhs "!=" rhs;
-  # syntax @"op binary >=" <- 19 = lhs ">=" rhs;
-  # syntax @"op binary >" <- 19 = lhs ">" rhs;
+  syntax @"op binary <" <- 19 = lhs "<" rhs;
+  syntax @"op binary <=" <- 19 = lhs "<=" rhs;
+  syntax @"op binary ==" <- 19 = lhs "==" rhs;
+  syntax @"op binary !=" <- 19 = lhs "!=" rhs;
+  syntax @"op binary >=" <- 19 = lhs ">=" rhs;
+  syntax @"op binary >" <- 19 = lhs ">" rhs;
 
-  # syntax @"builtin macro get_impl" <- 20 = value "as" trait;
-  # syntax @"builtin macro check_impl" <- 21 = value "impl" trait;
+  syntax @"builtin macro get_impl" <- 20 = value "as" trait;
+  syntax @"builtin macro check_impl" <- 21 = value "impl" trait;
 
-  # syntax @"op unary +" <- 25 = "+" x;
-  # syntax @"op unary -" <- 25 = "-" x;
+  syntax @"op unary +" <- 25 = "+" x;
+  syntax @"op unary -" <- 25 = "-" x;
   syntax @"op binary +" <- 25 = lhs "+" rhs;
-  # syntax @"op binary -" <- 25 = lhs "-" rhs;
+  syntax @"op binary -" <- 25 = lhs "-" rhs;
 
-  # syntax @"op binary *" <- 40 = lhs "*" rhs;
-  # syntax @"op binary /" <- 40 = lhs "/" rhs;
-  # syntax @"op binary %" <- 40 = lhs "%" rhs;
+  syntax @"op binary *" <- 40 = lhs "*" rhs;
+  syntax @"op binary /" <- 40 = lhs "/" rhs;
+  syntax @"op binary %" <- 40 = lhs "%" rhs;
 
-  # syntax @"op binary ^" -> 60 = lhs "^" rhs;
+  syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
-  # syntax @"op postfix ++" <- 100 = x "++";
-  # syntax @"op prefix ++" <- 100 = "++" x;
-  # syntax @"op postfix --" <- 100 = x "--";
-  # syntax @"op prefix --" <- 100 = "--" x;
+  syntax @"op postfix ++" <- 100 = x "++";
+  syntax @"op prefix ++" <- 100 = "++" x;
+  syntax @"op postfix --" <- 100 = x "--";
+  syntax @"op prefix --" <- 100 = "--" x;
 
   syntax @"builtin macro call" <- 100 = f arg;
 
-  # syntax @"builtin macro typeof" <- 120 = "typeof" expr;
-  # syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
+  syntax @"builtin macro typeof" <- 120 = "typeof" expr;
+  syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
 
   syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
   syntax @"builtin macro unquote" -> 200 = "$" expr;

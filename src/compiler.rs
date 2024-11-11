@@ -80,6 +80,7 @@ impl Cache {
             macro_let,
             macro_call,
             macro_then,
+            macro_if,
             macro_scope,
             macro_macro,
             macro_function_def,
@@ -500,6 +501,27 @@ impl Kast {
         Ok(Compiled::Expr(
             Expr::Native {
                 name: Box::new(name),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_if(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let ([cond, then_case], [else_case]) = values
+            .as_ref()
+            .into_named_opt(["cond", "then"], ["else"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        Ok(Compiled::Expr(
+            Expr::If {
+                condition: Box::new(self.compile(cond).await?),
+                then_case: Box::new(self.compile(then_case).await?),
+                else_case: match else_case {
+                    Some(else_case) => Some(Box::new(self.compile(else_case).await?)),
+                    None => None,
+                },
                 data: span,
             }
             .init(self)
@@ -1209,6 +1231,27 @@ impl Expr<Span> {
                         span,
                     },
                     binding,
+                },
+                Expr::If {
+                    condition,
+                    then_case,
+                    else_case,
+                    data: span,
+                } => Expr::If {
+                    data: ExprData {
+                        ty: {
+                            let ty = match &else_case {
+                                Some(else_case) => else_case.data().ty.clone(),
+                                None => Type::Unit,
+                            };
+                            then_case.data().ty.clone().make_same(ty.clone())?;
+                            ty
+                        },
+                        span,
+                    },
+                    condition,
+                    then_case,
+                    else_case,
                 },
                 Expr::Then {
                     mut list,

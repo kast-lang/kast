@@ -63,3 +63,29 @@ fn test_local_syntax() {
         expect_output: "",
     });
 }
+
+#[test]
+fn test_fibonacci() {
+    let name = "fibonacci";
+    let mut kast = Kast::new();
+    let module = kast
+        .import(Path::new("examples").join(name).with_extension("ks"))
+        .expect("Failed to import the test");
+    kast.interpreter.insert_local("test", module);
+    let mut test_fib = |n: usize, answer: i32| {
+        let value = kast
+            .eval_source(
+                SourceFile {
+                    contents: format!("test.fib {n}"),
+                    filename: "<test>".into(),
+                },
+                None,
+            )
+            .unwrap();
+        let value = value.expect_int32().unwrap();
+        assert_eq!(answer, value);
+    };
+    test_fib(1, 1);
+    test_fib(5, 8);
+    test_fib(10, 89);
+}

@@ -76,6 +76,80 @@ impl State {
                     }),
                 );
                 map.insert(
+                    "<",
+                    Box::new(|mut expected: Type| {
+                        let operand_type = Type::Infer(inference::Var::new());
+                        let ty = FnType {
+                            arg: Type::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_named("lhs", operand_type.clone());
+                                args.add_named("rhs", operand_type.clone());
+                                args
+                            }),
+                            result: Type::Bool,
+                        };
+                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "<".to_owned(),
+                            r#impl: Arc::new(|_fn_ty, args: Value| {
+                                let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
+                                let result = match (&lhs, &rhs) {
+                                    (Value::Int32(lhs), Value::Int32(rhs)) => {
+                                        Value::Bool(lhs < rhs)
+                                    }
+                                    (Value::Int64(lhs), Value::Int64(rhs)) => {
+                                        Value::Bool(lhs < rhs)
+                                    }
+                                    _ => eyre::bail!(
+                                        "< doesnt work for {} and {}",
+                                        lhs.ty(),
+                                        rhs.ty()
+                                    ),
+                                };
+                                Ok(result)
+                            }),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "-",
+                    Box::new(|mut expected: Type| {
+                        let operand_type = Type::Infer(inference::Var::new());
+                        let ty = FnType {
+                            arg: Type::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_named("lhs", operand_type.clone());
+                                args.add_named("rhs", operand_type.clone());
+                                args
+                            }),
+                            result: operand_type,
+                        };
+                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "-".to_owned(),
+                            r#impl: Arc::new(|_fn_ty, args: Value| {
+                                let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
+                                let result = match (&lhs, &rhs) {
+                                    (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
+                                        lhs.checked_sub(*rhs).ok_or_else(|| eyre!("overflow"))?,
+                                    ),
+                                    (Value::Int64(lhs), Value::Int64(rhs)) => Value::Int64(
+                                        lhs.checked_sub(*rhs).ok_or_else(|| eyre!("overflow"))?,
+                                    ),
+                                    _ => eyre::bail!(
+                                        "+ doesnt work for {} and {}",
+                                        lhs.ty(),
+                                        rhs.ty()
+                                    ),
+                                };
+                                Ok(result)
+                            }),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "+",
                     Box::new(|mut expected: Type| {
                         let operand_type = Type::Infer(inference::Var::new());
@@ -315,6 +389,22 @@ impl Kast {
                     .await // TODO this should not be async?
                     .ok_or_else(|| eyre!("{:?} not found", binding.name))?
                     .clone(),
+                Expr::If {
+                    condition,
+                    then_case,
+                    else_case,
+                    data: _,
+                } => {
+                    let mut kast = self.enter_scope();
+                    let condition = kast.eval(condition).await?.expect_bool()?;
+                    if condition {
+                        kast.eval(then_case).await?
+                    } else if let Some(else_case) = else_case {
+                        kast.eval(else_case).await?
+                    } else {
+                        Value::Unit
+                    }
+                }
                 Expr::Then { list, data: _ } => {
                     let mut value = Value::Unit;
                     for expr in list {
