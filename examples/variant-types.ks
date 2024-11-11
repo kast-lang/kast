@@ -1,15 +1,22 @@
-use std;
+use std.*;
 
-let value = Option[string].Some "hello";
+let value = .Some "hello" :: Option[string];
+
+if value is .Some value then (
+  print "some";
+  print value;
+);
 
 match value (
-    | .Some value => print value
-    | .None => print "none"
+  | .Some _ => (
+    print "some";
+  )
+  | .None => print "none"
 );
 
 const either_type :: type = Either[left: int32, right: string];
-let value_left = either_type.Left 123;
-let value_right = either_type.Right "right value";
+let value_left :: either_type = .Left 123;
+let value_right :: either_type = .Right "right value";
 let check_either = (value :: either_type) => (
     match value (
         | .Left value => print "left"
@@ -19,7 +26,7 @@ let check_either = (value :: either_type) => (
 check_either value_left;
 check_either value_right;
 
-const result_type :: type = Result[ok: void, error: string];
+const result_type :: type = Result[ok: (), error: string];
 let unwrap = (result :: result_type) => (
     match result (
         | .Ok value => (
@@ -30,5 +37,5 @@ let unwrap = (result :: result_type) => (
     )
 );
 
-result_type.Ok () |> unwrap;
-result_type.Error "this is going to panic" |> unwrap;
+.Ok () |> unwrap;
+.Error "this is going to panic" |> unwrap;

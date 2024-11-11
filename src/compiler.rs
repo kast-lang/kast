@@ -81,9 +81,10 @@ impl Cache {
             macro_call,
             macro_then,
             macro_if,
+            macro_match,
             macro_variant,
             macro_newtype,
-            macro_merge_multiset,
+            macro_merge,
             macro_scope,
             macro_macro,
             macro_function_def,
@@ -536,11 +537,7 @@ impl Kast {
             .await?,
         ))
     }
-    async fn macro_merge_multiset(
-        &mut self,
-        cty: CompiledType,
-        ast: &Ast,
-    ) -> eyre::Result<Compiled> {
+    async fn macro_merge(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (macro_name, span) = match ast {
             Ast::Complex {
                 definition,
@@ -600,6 +597,54 @@ impl Kast {
                 .init()?,
             ),
         })
+    }
+    /// Sarah is kinda cool
+    /// Kappa
+    /// NoKappa
+    async fn macro_match(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [value, branches] = values
+            .as_ref()
+            .into_named(["value", "branches"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let branch_asts = ListCollector {
+            macro_name: "builtin macro merge",
+            a: "a",
+            b: "b",
+        }
+        .collect(branches)?;
+        let mut branches = Vec::new();
+        for branch in branch_asts {
+            match branch {
+                Ast::Complex {
+                    definition,
+                    values,
+                    data: _,
+                } if definition.name == "builtin macro function_def" => {
+                    let [arg, body] = values.as_ref().into_named(["arg", "body"])?;
+                    let arg = self.compile(arg).await?;
+                    branches.push(MatchBranch {
+                        body: {
+                            let mut kast = self.enter_scope();
+                            kast.inject_bindings(&arg);
+                            kast.compile(body).await?
+                        },
+                        pattern: arg,
+                    });
+                }
+                _ => eyre::bail!("match branches wrong syntax"),
+            }
+        }
+        Ok(Compiled::Expr(
+            Expr::Match {
+                value: Box::new(self.compile(value).await?),
+                branches,
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
     }
     async fn macro_if(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
@@ -1262,6 +1307,26 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::Match {
+                    value,
+                    branches,
+                    data: span,
+                } => {
+                    let mut result_ty = Type::Infer(inference::Var::new());
+                    let mut value_ty = value.data().ty.clone();
+                    for branch in &branches {
+                        value_ty.make_same(branch.pattern.data().ty.clone())?;
+                        result_ty.make_same(branch.body.data().ty.clone())?;
+                    }
+                    Expr::Match {
+                        value,
+                        branches,
+                        data: ExprData {
+                            ty: result_ty,
+                            span,
+                        },
+                    }
+                }
                 Expr::Is {
                     value,
                     pattern,

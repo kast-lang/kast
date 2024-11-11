@@ -40,8 +40,8 @@ syntax_module {
   syntax @"builtin macro comptime" <- 5 = "comptime" value;
   syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
-  syntax @"builtin macro merge_multiset" <- 6 = "|" a;
-  syntax @"builtin macro merge_multiset" <- 6 = a "|" b;
+  syntax @"builtin macro merge" <- 6 = "|" a;
+  syntax @"builtin macro merge" <- 6 = a "|" b;
   syntax @"builtin macro function_def" -> 7 = arg "=>" body;
 
   syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;

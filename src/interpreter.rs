@@ -57,6 +57,24 @@ impl State {
                     }),
                 );
                 map.insert(
+                    "panic",
+                    Box::new(|mut expected: Type| {
+                        let ty = FnType {
+                            arg: Type::String,
+                            result: Type::Unit, // TODO never type
+                        };
+                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "panic".to_owned(),
+                            r#impl: Arc::new(|_fn_ty, s: Value| {
+                                let s = s.expect_string()?;
+                                Err(eyre!("panic: {s}"))
+                            }),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "print",
                     Box::new(|mut expected: Type| {
                         let ty = FnType {
@@ -291,6 +309,23 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
+                Expr::Match {
+                    value,
+                    branches,
+                    data: _,
+                } => 'result: {
+                    let value = self.eval(value).await?;
+                    for branch in branches {
+                        // TODO no clone value
+                        if let Some(matches) = branch.pattern.r#match(value.clone()) {
+                            let mut kast = self.enter_scope();
+                            kast.interpreter.scope.extend(matches);
+                            let result = kast.eval(&branch.body).await?;
+                            break 'result result;
+                        }
+                    }
+                    eyre::bail!("non exhaustive pattern matching??")
+                }
                 Expr::Is {
                     value,
                     pattern,

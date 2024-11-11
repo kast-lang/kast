@@ -9,10 +9,21 @@ pub struct ExprData {
 }
 
 #[derive(Debug, Clone)]
+pub struct MatchBranch {
+    pub pattern: Pattern,
+    pub body: Expr,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
     Is {
         value: Box<Expr>,
         pattern: Pattern,
+        data: Data,
+    },
+    Match {
+        value: Box<Expr>,
+        branches: Vec<MatchBranch>,
         data: Data,
     },
     Newtype {
@@ -124,6 +135,7 @@ impl Expr {
     ) {
         match self {
             Expr::Binding { .. }
+            | Expr::Match { .. }
             | Expr::Newtype { .. }
             | Expr::MakeMultiset { .. }
             | Expr::Variant { .. }
@@ -176,6 +188,7 @@ impl Expr {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
                     Expr::Newtype { .. } => write!(f, "newtype expr")?,
+                    Expr::Match { .. } => write!(f, "match expr")?,
                     Expr::Is { .. } => write!(f, "is expr")?,
                     Expr::MakeMultiset { .. } => write!(f, "make multiset expr")?,
                     Expr::Variant { .. } => write!(f, "variant expr")?,
@@ -208,6 +221,7 @@ impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
         | Expr::Is { data, .. }
+        | Expr::Match { data, .. }
         | Expr::Newtype { data, .. }
         | Expr::MakeMultiset { data, .. }
         | Expr::Variant { data, .. }
@@ -232,6 +246,7 @@ impl<Data> Expr<Data> {
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
         | Expr::Is { data, .. }
+        | Expr::Match { data, .. }
         | Expr::Newtype { data, .. }
         | Expr::MakeMultiset { data, .. }
         | Expr::Variant { data, .. }

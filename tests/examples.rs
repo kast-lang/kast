@@ -8,11 +8,13 @@ struct Case<'a> {
     expect_output: &'a str,
 }
 
-fn test(case: Case<'_>) {
+fn try_test(case: Case<'_>) -> eyre::Result<Value> {
     let mut kast = Kast::new();
-    let _value = kast
-        .eval_file(Path::new("examples").join(case.name).with_extension("ks"))
-        .expect("Failed to run the test");
+    kast.eval_file(Path::new("examples").join(case.name).with_extension("ks"))
+}
+
+fn test(case: Case<'_>) {
+    try_test(case).expect("Failed to run the test");
 }
 
 #[test]
@@ -87,4 +89,19 @@ fn test_fibonacci() {
     test_fib(1, 1);
     test_fib(5, 8);
     test_fib(10, 89);
+}
+
+#[test]
+fn test_variant_types() {
+    let err = try_test(Case {
+        name: "variant-types",
+        input: "",
+        expect_output: "",
+    })
+    .unwrap_err();
+    let err = format!("{err:?}"); // debug impl shows the whole chain
+    assert!(
+        err.contains("this is going to panic"),
+        "this example does unwrap of .Error"
+    );
 }
