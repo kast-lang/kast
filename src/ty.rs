@@ -7,10 +7,12 @@ pub enum Type {
     Int32,
     Int64,
     String,
+    Variant(Vec<VariantType>),
     Tuple(Tuple<Type>),
     Function(Box<FnType>),
     Template(MaybeCompiledFn),
     Macro(Box<FnType>),
+    Multiset,
     Ast,
     #[allow(clippy::enum_variant_names)]
     Type,
@@ -19,6 +21,22 @@ pub enum Type {
     Binding(Arc<Binding>),
 
     Infer(inference::Var<Type>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariantType {
+    pub name: String,
+    pub value: Option<Box<Type>>,
+}
+
+impl std::fmt::Display for VariantType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, ".{}", self.name)?;
+        if let Some(value) = &self.value {
+            write!(f, " {value}")?;
+        }
+        Ok(())
+    }
 }
 
 impl PartialEq for Type {
@@ -43,8 +61,12 @@ impl PartialEq for Type {
                 (Self::Function(_), _) => false,
                 (Self::Template(a), Self::Template(b)) => Arc::ptr_eq(&a, &b),
                 (Self::Template(_), _) => false,
+                (Self::Variant(a), Self::Variant(b)) => a == b,
+                (Self::Variant(_), _) => false,
                 (Self::Macro(a), Self::Macro(b)) => a == b,
                 (Self::Macro(_), _) => false,
+                (Self::Multiset, Self::Multiset) => true,
+                (Self::Multiset, _) => false,
                 (Self::Ast, Self::Ast) => true,
                 (Self::Ast, _) => false,
                 (Self::Type, Self::Type) => true,
@@ -76,6 +98,16 @@ impl Type {
     pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
         *self = Inferrable::make_same(self.clone(), other)?;
         Ok(())
+    }
+
+    pub fn expect_variant(self) -> Result<Vec<VariantType>, ExpectError<Type, &'static str>> {
+        match self {
+            Self::Variant(variants) => Ok(variants),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "variant",
+            }),
+        }
     }
 
     pub fn expect_template(self) -> Result<MaybeCompiledFn, ExpectError<Type, &'static str>> {
@@ -129,6 +161,8 @@ impl Inferrable for Type {
                     Type::Macro(Box::new(Inferrable::make_same(*a, *b)?))
                 }
                 (Type::Macro(_), _) => fail!(),
+                (Type::Multiset, Type::Multiset) => Type::Multiset,
+                (Type::Multiset, _) => fail!(),
                 (Type::Ast, Type::Ast) => Type::Ast,
                 (Type::Ast, _) => fail!(),
                 (Type::Type, Type::Type) => Type::Type,
@@ -139,6 +173,15 @@ impl Inferrable for Type {
                 (Type::SyntaxDefinition, _) => fail!(),
                 (Type::Binding(a), Type::Binding(b)) if Arc::ptr_eq(&a, &b) => Type::Binding(a),
                 (Type::Binding(_), _) => fail!(),
+                (Type::Variant(a), Type::Variant(b)) => {
+                    if a == b {
+                        Type::Variant(a)
+                    } else {
+                        // TODO
+                        fail!()
+                    }
+                }
+                (Type::Variant(_), _) => fail!(),
             },
             (Ok(a), Err(b)) => {
                 b.set(a.clone())?;
@@ -168,6 +211,7 @@ impl std::fmt::Display for Type {
             Type::Function(ty) => ty.fmt(f),
             Type::Template(_template) => write!(f, "template"),
             Type::Macro(ty) => write!(f, "macro {ty}"),
+            Type::Multiset => write!(f, "multiset"),
             Type::Ast => write!(f, "ast"),
             Type::Type => write!(f, "type"),
             Type::Infer(var) => match var.get() {
@@ -177,6 +221,15 @@ impl std::fmt::Display for Type {
             Type::SyntaxModule => write!(f, "syntax module"),
             Type::SyntaxDefinition => write!(f, "syntax definition"),
             Type::Binding(binding) => binding.fmt(f),
+            Type::Variant(variants) => {
+                for (index, variant) in variants.iter().enumerate() {
+                    if index != 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "| {variant}")?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -212,9 +265,22 @@ impl Kast {
                 | Type::Int64
                 | Type::String
                 | Type::Ast
+                | Type::Multiset
                 | Type::Type
                 | Type::SyntaxModule
                 | Type::SyntaxDefinition => ty.clone(),
+                Type::Variant(variants) => Type::Variant(
+                    variants
+                        .iter()
+                        .map(|variant| VariantType {
+                            name: variant.name.clone(),
+                            value: variant
+                                .value
+                                .as_ref()
+                                .map(|ty| Box::new(self.substitute_type_bindings(ty))),
+                        })
+                        .collect(),
+                ),
                 Type::Tuple(tuple) => {
                     Type::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
                 }

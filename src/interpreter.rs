@@ -291,6 +291,46 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
+                Expr::Newtype { def, data: _ } => {
+                    let def = self.eval(def).await?;
+                    let ty = match def {
+                        Value::Multiset(values) => {
+                            let mut variants = Vec::new();
+                            for value in values {
+                                let value = value.expect_variant()?;
+                                variants.push(VariantType {
+                                    name: value.name,
+                                    value: value
+                                        .value
+                                        .map(|value| value.expect_type())
+                                        .transpose()?
+                                        .map(Box::new),
+                                });
+                            }
+                            Type::Variant(variants)
+                        }
+                        _ => eyre::bail!("{def} can not be used in newtype"),
+                    };
+                    Value::Type(ty)
+                }
+                Expr::MakeMultiset { values, data: _ } => {
+                    let mut result = Vec::new();
+                    for value in values {
+                        result.push(self.eval(value).await?);
+                    }
+                    Value::Multiset(result)
+                }
+                Expr::Variant { name, value, data } => {
+                    let value = match value {
+                        Some(value) => Some(self.eval(value).await?),
+                        None => None,
+                    };
+                    Value::Variant(VariantValue {
+                        name: name.clone(),
+                        value: value.map(Box::new),
+                        ty: data.ty.clone(),
+                    })
+                }
                 Expr::Use { namespace, data: _ } => {
                     let namespace = self.eval(namespace).await?;
                     match namespace {

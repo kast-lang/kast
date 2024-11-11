@@ -10,6 +10,19 @@ pub struct ExprData {
 
 #[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    Newtype {
+        def: Box<Expr>,
+        data: Data,
+    },
+    Variant {
+        name: String,
+        value: Option<Box<Expr>>,
+        data: Data,
+    },
+    MakeMultiset {
+        values: Vec<Expr>,
+        data: Data,
+    },
     Use {
         namespace: Box<Expr>,
         data: Data,
@@ -102,6 +115,9 @@ impl Expr {
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
         match self {
             Expr::Binding { .. }
+            | Expr::Newtype { .. }
+            | Expr::MakeMultiset { .. }
+            | Expr::Variant { .. }
             | Expr::Tuple { .. }
             | Expr::FieldAccess { .. }
             | Expr::Recursive { .. }
@@ -141,6 +157,9 @@ impl Expr {
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Newtype { .. } => write!(f, "newtype expr")?,
+                    Expr::MakeMultiset { .. } => write!(f, "make multiset expr")?,
+                    Expr::Variant { .. } => write!(f, "variant expr")?,
                     Expr::Use { .. } => write!(f, "use expr")?,
                     Expr::Tuple { .. } => write!(f, "tuple expr")?,
                     Expr::FieldAccess { .. } => write!(f, "field access expr")?,
@@ -169,6 +188,9 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Newtype { data, .. }
+        | Expr::MakeMultiset { data, .. }
+        | Expr::Variant { data, .. }
         | Expr::Use { data, .. }
         | Expr::Tuple { data, .. }
         | Expr::FieldAccess { data, .. }
@@ -189,6 +211,9 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Newtype { data, .. }
+        | Expr::MakeMultiset { data, .. }
+        | Expr::Variant { data, .. }
         | Expr::Use { data, .. }
         | Expr::Tuple { data, .. }
         | Expr::FieldAccess { data, .. }

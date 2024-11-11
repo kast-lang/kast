@@ -24,7 +24,7 @@ syntax_module {
   syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
   # syntax @"builtin macro assign" <- 4 = pattern "=" value;
 
-  # syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
+  syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
 
   syntax @"builtin macro tuple" <- 4.5 = a "," b;
   syntax @"builtin macro tuple" <- 4.5 = a ",";
@@ -40,8 +40,8 @@ syntax_module {
   syntax @"builtin macro comptime" <- 5 = "comptime" value;
   syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
-  # syntax @"builtin macro merge_multiset" <- 6 = "|" a;
-  # syntax @"builtin macro merge_multiset" <- 6 = a "|" b;
+  syntax @"builtin macro merge_multiset" <- 6 = "|" a;
+  syntax @"builtin macro merge_multiset" <- 6 = a "|" b;
   syntax @"builtin macro function_def" -> 7 = arg "=>" body;
 
   syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
@@ -115,8 +115,10 @@ syntax_module {
   syntax @"builtin macro unquote" -> 200 = "$" expr;
   syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
 
+  syntax @"builtin macro variant" <- 250 = "." name;
+  syntax @"builtin macro variant" <- 250 = "." name value;
+
   syntax @"builtin macro field_access" <- 300 = obj "." field;
-  syntax @"builtin macro variant" <- 300 = "." variant;
 
   syntax @"builtin macro instantiate_template" <- 300 = template "[" arg "]";
 

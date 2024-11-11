@@ -13,10 +13,29 @@ pub enum Value {
     Macro(TypedFunction),
     NativeFunction(NativeFunction),
     Binding(Arc<Binding>),
+    Variant(VariantValue),
+    Multiset(Vec<Value>),
     Ast(Ast),
     Type(Type),
     SyntaxModule(Arc<Vec<Arc<ast::SyntaxDefinition>>>),
     SyntaxDefinition(Arc<ast::SyntaxDefinition>),
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct VariantValue {
+    pub name: String,
+    pub value: Option<Box<Value>>,
+    pub ty: Type,
+}
+
+impl std::fmt::Display for VariantValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, ".{}", self.name)?;
+        if let Some(value) = &self.value {
+            write!(f, " {value}")?;
+        }
+        Ok(())
+    }
 }
 
 impl PartialEq for Value {
@@ -38,6 +57,10 @@ impl PartialEq for Value {
                 Arc::ptr_eq(&a.r#impl, &b.r#impl) && a.ty == b.ty
             }
             (Self::NativeFunction(_), _) => false,
+            (Self::Multiset(a), Self::Multiset(b)) => a == b,
+            (Self::Multiset(_), _) => false,
+            (Self::Variant(a), Self::Variant(b)) => a == b,
+            (Self::Variant(_), _) => false,
             (Self::Binding(a), Self::Binding(b)) => Arc::ptr_eq(a, b),
             (Self::Binding(_), _) => false,
             (Self::Function(a), Self::Function(b)) => a == b,
@@ -64,10 +87,21 @@ impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unit => write!(f, "()"),
+            Self::Variant(value) => write!(f, "{value}"),
             Value::Bool(value) => value.fmt(f),
             Value::Int32(value) => value.fmt(f),
             Value::Int64(value) => value.fmt(f),
             Value::String(s) => write!(f, "{s:?}"),
+            Value::Multiset(values) => {
+                for (index, value) in values.iter().enumerate() {
+                    if index != 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "| ")?;
+                    write!(f, "{value}")?;
+                }
+                Ok(())
+            }
             Value::Tuple(tuple) => tuple.fmt(f),
             Value::NativeFunction(function) => function.fmt(f),
             Value::Binding(binding) => binding.fmt(f),
@@ -118,6 +152,8 @@ impl Value {
     pub fn ty(&self) -> Type {
         match self {
             Value::Unit => Type::Unit,
+            Value::Multiset(_) => Type::Multiset,
+            Value::Variant(value) => value.ty.clone(),
             Value::Bool(_) => Type::Bool,
             Value::Int32(_) => Type::Int32,
             Value::Int64(_) => Type::Int64,
@@ -144,6 +180,15 @@ pub struct ExpectError<V = Value, Expected = Type> {
 }
 
 impl Value {
+    pub fn expect_variant(self) -> Result<VariantValue, ExpectError<Value, &'static str>> {
+        match self {
+            Self::Variant(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "variant",
+            }),
+        }
+    }
     pub fn expect_tuple(self) -> Result<Tuple<Value>, ExpectError<Value, &'static str>> {
         match self {
             Self::Tuple(tuple) => Ok(tuple),

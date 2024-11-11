@@ -81,6 +81,9 @@ impl Cache {
             macro_call,
             macro_then,
             macro_if,
+            macro_variant,
+            macro_newtype,
+            macro_merge_multiset,
             macro_scope,
             macro_macro,
             macro_function_def,
@@ -506,6 +509,77 @@ impl Kast {
             .init(self)
             .await?,
         ))
+    }
+    async fn macro_newtype(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let def = values
+            .as_ref()
+            .into_single_named("def")
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        Ok(Compiled::Expr(
+            Expr::Newtype {
+                def: Box::new(self.compile(def).await?),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_merge_multiset(
+        &mut self,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        let (macro_name, span) = match ast {
+            Ast::Complex {
+                definition,
+                data: span,
+                ..
+            } => (definition.name.as_str(), span.clone()),
+            _ => unreachable!(),
+        };
+        let value_asts = ListCollector {
+            macro_name,
+            a: "a",
+            b: "b",
+        }
+        .collect(ast)?;
+        let mut values = Vec::new();
+        for value_ast in value_asts {
+            values.push(self.compile(value_ast).await?);
+        }
+        Ok(match cty {
+            CompiledType::Expr => {
+                Compiled::Expr(Expr::MakeMultiset { values, data: span }.init(self).await?)
+            }
+            CompiledType::Pattern => todo!(),
+        })
+    }
+    async fn macro_variant(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        let ([name], [value]) = values
+            .as_ref()
+            .into_named_opt(["name"], ["value"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let name = name
+            .as_ident()
+            .ok_or_else(|| eyre!("variant name must be an identifier"))?;
+        Ok(match cty {
+            CompiledType::Expr => Compiled::Expr(
+                Expr::Variant {
+                    name: name.to_owned(),
+                    value: match value {
+                        Some(value) => Some(Box::new(self.compile(value).await?)),
+                        None => None,
+                    },
+                    data: span,
+                }
+                .init(self)
+                .await?,
+            ),
+            CompiledType::Pattern => todo!(),
+        })
     }
     async fn macro_if(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
@@ -1113,6 +1187,58 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::Newtype { def, data: span } => Expr::Newtype {
+                    def,
+                    data: ExprData {
+                        ty: Type::Type,
+                        span,
+                    },
+                },
+                Expr::MakeMultiset { values, data: span } => Expr::MakeMultiset {
+                    values,
+                    data: ExprData {
+                        ty: Type::Multiset,
+                        span,
+                    },
+                },
+                Expr::Variant {
+                    name,
+                    value,
+                    data: span,
+                } => {
+                    let value_ty = value.as_ref().map(|value| value.data().ty.clone());
+                    Expr::Variant {
+                        name: name.clone(),
+                        value,
+                        data: ExprData {
+                            ty: Type::Infer({
+                                let var = inference::Var::new();
+                                var.add_check(move |ty: &Type| {
+                                    let variants = ty.clone().expect_variant()?;
+                                    match variants.iter().find(|variant| variant.name == name) {
+                                        Some(variant) => match (&variant.value, &value_ty) {
+                                            (None, None) => Ok(()),
+                                            (None, Some(_)) => {
+                                                eyre::bail!("variant {name} did not expect a value")
+                                            }
+                                            (Some(_), None) => {
+                                                eyre::bail!("variant {name} expected a value")
+                                            }
+                                            (Some(expected_ty), Some(actual_ty)) => {
+                                                expected_ty.clone().make_same(actual_ty.clone())
+                                            }
+                                        },
+                                        None => {
+                                            eyre::bail!("variant {name} not found in type {ty}")
+                                        }
+                                    }
+                                });
+                                var
+                            }),
+                            span,
+                        },
+                    }
+                }
                 Expr::Use {
                     namespace,
                     data: span,

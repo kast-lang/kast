@@ -2,15 +2,33 @@ use std::sync::{Arc, Mutex};
 
 use rand::{thread_rng, Rng};
 
+type Check<T> = Box<dyn Fn(&T) -> eyre::Result<()> + Send + Sync>;
+
+struct Data<T> {
+    value: Option<Arc<T>>,
+    checks: Vec<Check<T>>,
+}
+
+impl<T> Data<T> {
+    fn run_checks(&self) -> eyre::Result<()> {
+        if let Some(value) = &self.value {
+            for check in &self.checks {
+                check(value)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 enum VarState<T> {
-    Root { value: Option<Arc<T>> },
+    Root(Data<T>),
     NotRoot { closer_to_root: Arc<Mutex<Self>> },
 }
 
 impl<T> VarState<T> {
-    fn as_root(&mut self) -> &mut Option<Arc<T>> {
+    fn as_root(&mut self) -> &mut Data<T> {
         match self {
-            VarState::Root { value } => value,
+            VarState::Root(data) => data,
             VarState::NotRoot { .. } => unreachable!(),
         }
     }
@@ -39,6 +57,14 @@ impl<T> Var<T> {
         let other_root = VarState::get_root(&other.state);
         Arc::ptr_eq(&self_root, &other_root)
     }
+    pub fn add_check(&self, check: impl Fn(&T) -> eyre::Result<()> + Sync + Send + 'static) {
+        VarState::get_root(&self.state)
+            .lock()
+            .unwrap()
+            .as_root()
+            .checks
+            .push(Box::new(check));
+    }
 }
 
 impl<T: Inferrable + std::fmt::Debug> std::fmt::Debug for Var<T> {
@@ -60,7 +86,10 @@ impl<T: Inferrable> Var<T> {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
-            state: Arc::new(Mutex::new(VarState::Root { value: None })),
+            state: Arc::new(Mutex::new(VarState::Root(Data {
+                value: None,
+                checks: Vec::new(),
+            }))),
         }
     }
     pub fn get(&self) -> Option<Arc<T>> {
@@ -68,17 +97,19 @@ impl<T: Inferrable> Var<T> {
             .lock()
             .unwrap()
             .as_root()
+            .value
             .clone()
     }
     pub fn set(&self, value: T) -> eyre::Result<()> {
         let root = VarState::get_root(&self.state);
         let mut root = root.lock().unwrap();
         let root = root.as_root();
-        let new_value = match root.take() {
+        let new_value = match root.value.take() {
             Some(prev_value) => T::make_same((*prev_value).clone(), value)?,
             None => value,
         };
-        *root = Some(Arc::new(new_value));
+        root.value = Some(Arc::new(new_value));
+        root.run_checks()?;
         Ok(())
     }
     pub fn make_same(&self, other: &Self) -> eyre::Result<()> {
@@ -87,10 +118,12 @@ impl<T: Inferrable> Var<T> {
         if Arc::ptr_eq(&root_state, &other_root_state) {
             return Ok(());
         }
-        let mut root = root_state.lock().unwrap();
-        let mut other_root = other_root_state.lock().unwrap();
-        let value = root.as_root().take();
-        let other_value = other_root.as_root().take();
+        let mut root_locked = root_state.lock().unwrap();
+        let root = root_locked.as_root();
+        let mut other_root_locked = other_root_state.lock().unwrap();
+        let other_root = other_root_locked.as_root();
+        let value = root.value.take();
+        let other_value = other_root.value.take();
         let common_value = match (value, other_value) {
             (None, None) => None,
             (Some(value), None) | (None, Some(value)) => Some(value),
@@ -100,13 +133,17 @@ impl<T: Inferrable> Var<T> {
             )?)),
         };
         if thread_rng().gen() {
-            *other_root.as_root() = common_value;
-            *root = VarState::NotRoot {
+            other_root.value = common_value;
+            other_root.checks.append(&mut root.checks);
+            other_root.run_checks()?;
+            *root_locked = VarState::NotRoot {
                 closer_to_root: other_root_state.clone(),
             };
         } else {
-            *root.as_root() = common_value;
-            *other_root = VarState::NotRoot {
+            root.value = common_value;
+            root.checks.append(&mut other_root.checks);
+            root.run_checks()?;
+            *other_root_locked = VarState::NotRoot {
                 closer_to_root: root_state.clone(),
             };
         }
