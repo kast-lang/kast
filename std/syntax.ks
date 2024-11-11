@@ -80,6 +80,8 @@ syntax_module {
   syntax @"builtin fn or" <- 17 = lhs "or" rhs;
   syntax @"builtin fn and" <- 18 = lhs "and" rhs;
 
+  syntax @"builtin macro is" <- 18.5 = value "is" pattern;
+
   syntax @"op binary <" <- 19 = lhs "<" rhs;
   syntax @"op binary <=" <- 19 = lhs "<=" rhs;
   syntax @"op binary ==" <- 19 = lhs "==" rhs;

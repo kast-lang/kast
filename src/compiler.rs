@@ -101,6 +101,7 @@ impl Cache {
             macro_template_def,
             macro_instantiate_template,
             macro_placeholder,
+            macro_is,
         );
         Self {
             builtin_macros,
@@ -398,6 +399,15 @@ impl Compilable for Pattern {
 }
 
 impl Kast {
+    fn inject_conditional_bindings(&mut self, expr: &Expr, condition: bool) {
+        expr.collect_bindings(
+            &mut |binding| {
+                self.interpreter
+                    .insert_local(binding.name.raw(), Value::Binding(binding.clone()));
+            },
+            Some(condition),
+        );
+    }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| {
             self.interpreter
@@ -578,7 +588,17 @@ impl Kast {
                 .init(self)
                 .await?,
             ),
-            CompiledType::Pattern => todo!(),
+            CompiledType::Pattern => Compiled::Pattern(
+                Pattern::Variant {
+                    name: name.to_owned(),
+                    value: match value {
+                        Some(value) => Some(Box::new(self.compile(value).await?)),
+                        None => None,
+                    },
+                    data: span,
+                }
+                .init()?,
+            ),
         })
     }
     async fn macro_if(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -588,14 +608,23 @@ impl Kast {
             .as_ref()
             .into_named_opt(["cond", "then"], ["else"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let cond: Expr = self.compile(cond).await?;
         Ok(Compiled::Expr(
             Expr::If {
-                condition: Box::new(self.compile(cond).await?),
-                then_case: Box::new(self.compile(then_case).await?),
+                then_case: {
+                    let mut kast = self.enter_scope();
+                    kast.inject_conditional_bindings(&cond, true);
+                    Box::new(kast.compile(then_case).await?)
+                },
                 else_case: match else_case {
-                    Some(else_case) => Some(Box::new(self.compile(else_case).await?)),
+                    Some(else_case) => Some({
+                        let mut kast = self.enter_scope();
+                        kast.inject_conditional_bindings(&cond, false);
+                        Box::new(self.compile(else_case).await?)
+                    }),
                     None => None,
                 },
+                condition: Box::new(cond),
                 data: span,
             }
             .init(self)
@@ -1113,6 +1142,23 @@ impl Kast {
             ),
         })
     }
+    async fn macro_is(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        assert_eq!(cty, CompiledType::Expr);
+        let [value, pattern] = values
+            .as_ref()
+            .into_named(["value", "pattern"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        Ok(Compiled::Expr(
+            Expr::Is {
+                value: Box::new(self.compile(value).await?),
+                pattern: self.compile(pattern).await?,
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
     async fn macro_placeholder(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
         let [] = values
@@ -1182,11 +1228,59 @@ fn get_complex(ast: &Ast) -> (&Tuple<Ast>, Span) {
     }
 }
 
+impl Type {
+    fn infer_variant(name: String, value_ty: Option<Type>) -> Type {
+        Type::Infer({
+            let var = inference::Var::new();
+            var.add_check(move |ty: &Type| {
+                let variants = ty.clone().expect_variant()?;
+                match variants.iter().find(|variant| variant.name == name) {
+                    Some(variant) => match (&variant.value, &value_ty) {
+                        (None, None) => Ok(()),
+                        (None, Some(_)) => {
+                            eyre::bail!("variant {name} did not expect a value")
+                        }
+                        (Some(_), None) => {
+                            eyre::bail!("variant {name} expected a value")
+                        }
+                        (Some(expected_ty), Some(actual_ty)) => {
+                            expected_ty.clone().make_same(actual_ty.clone())
+                        }
+                    },
+                    None => {
+                        eyre::bail!("variant {name} not found in type {ty}")
+                    }
+                }
+            });
+            var
+        })
+    }
+}
+
 impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::Is {
+                    value,
+                    pattern,
+                    data: span,
+                } => {
+                    value
+                        .data()
+                        .ty
+                        .clone()
+                        .make_same(pattern.data().ty.clone())?;
+                    Expr::Is {
+                        value,
+                        pattern,
+                        data: ExprData {
+                            ty: Type::Bool,
+                            span,
+                        },
+                    }
+                }
                 Expr::Newtype { def, data: span } => Expr::Newtype {
                     def,
                     data: ExprData {
@@ -1211,30 +1305,7 @@ impl Expr<Span> {
                         name: name.clone(),
                         value,
                         data: ExprData {
-                            ty: Type::Infer({
-                                let var = inference::Var::new();
-                                var.add_check(move |ty: &Type| {
-                                    let variants = ty.clone().expect_variant()?;
-                                    match variants.iter().find(|variant| variant.name == name) {
-                                        Some(variant) => match (&variant.value, &value_ty) {
-                                            (None, None) => Ok(()),
-                                            (None, Some(_)) => {
-                                                eyre::bail!("variant {name} did not expect a value")
-                                            }
-                                            (Some(_), None) => {
-                                                eyre::bail!("variant {name} expected a value")
-                                            }
-                                            (Some(expected_ty), Some(actual_ty)) => {
-                                                expected_ty.clone().make_same(actual_ty.clone())
-                                            }
-                                        },
-                                        None => {
-                                            eyre::bail!("variant {name} not found in type {ty}")
-                                        }
-                                    }
-                                });
-                                var
-                            }),
+                            ty: Type::infer_variant(name, value_ty),
                             span,
                         },
                     }
@@ -1308,9 +1379,12 @@ impl Expr<Span> {
                 } => {
                     body.data_mut().ty.make_same(Type::Unit)?;
                     let mut fields = Tuple::empty();
-                    body.collect_bindings(&mut |binding| {
-                        fields.add_named(binding.name.raw().to_owned(), binding.ty.clone());
-                    });
+                    body.collect_bindings(
+                        &mut |binding| {
+                            fields.add_named(binding.name.raw().to_owned(), binding.ty.clone());
+                        },
+                        None,
+                    );
                     Expr::Recursive {
                         data: ExprData {
                             ty: Type::Tuple(fields),
@@ -1533,5 +1607,56 @@ impl Expr {
             .await?;
         }
         Ok(result)
+    }
+}
+
+impl Pattern<Span> {
+    pub fn init(self) -> eyre::Result<Pattern> {
+        Ok(match self {
+            Pattern::Variant {
+                name,
+                value,
+                data: span,
+            } => {
+                let value_ty = value.as_ref().map(|value| value.data().ty.clone());
+                Pattern::Variant {
+                    name: name.clone(),
+                    value,
+                    data: PatternData {
+                        ty: Type::infer_variant(name, value_ty),
+                        span,
+                    },
+                }
+            }
+            Pattern::Placeholder { data: span } => Pattern::Placeholder {
+                data: PatternData {
+                    ty: Type::Infer(inference::Var::new()),
+                    span,
+                },
+            },
+            Pattern::Unit { data: span } => Pattern::Unit {
+                data: PatternData {
+                    ty: Type::Unit,
+                    span,
+                },
+            },
+            Pattern::Binding {
+                binding,
+                data: span,
+            } => Pattern::Binding {
+                data: PatternData {
+                    ty: binding.ty.clone(),
+                    span,
+                },
+                binding,
+            },
+            Pattern::Tuple { tuple, data: span } => Pattern::Tuple {
+                data: PatternData {
+                    ty: Type::Tuple(tuple.as_ref().map(|field| field.data().ty.clone())),
+                    span,
+                },
+                tuple,
+            },
+        })
     }
 }

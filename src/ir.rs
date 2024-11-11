@@ -10,6 +10,11 @@ pub struct ExprData {
 
 #[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    Is {
+        value: Box<Expr>,
+        pattern: Pattern,
+        data: Data,
+    },
     Newtype {
         def: Box<Expr>,
         data: Data,
@@ -112,7 +117,11 @@ pub struct CompiledFn {
 pub type MaybeCompiledFn = Arc<Mutex<Option<Arc<CompiledFn>>>>;
 
 impl Expr {
-    pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
+    pub fn collect_bindings(
+        &self,
+        consumer: &mut impl FnMut(Arc<Binding>),
+        condition: Option<bool>,
+    ) {
         match self {
             Expr::Binding { .. }
             | Expr::Newtype { .. }
@@ -131,6 +140,15 @@ impl Expr {
             | Expr::Call { .. }
             | Expr::If { .. }
             | Expr::Instantiate { .. } => {}
+            Expr::Is {
+                value: _,
+                pattern,
+                data: _,
+            } => {
+                if condition == Some(true) {
+                    pattern.collect_bindings(consumer);
+                }
+            }
             Expr::Let {
                 is_const_let,
                 pattern,
@@ -147,7 +165,7 @@ impl Expr {
             } => {}
             Expr::Then { list, data: _ } => {
                 for expr in list {
-                    expr.collect_bindings(consumer);
+                    expr.collect_bindings(consumer, None);
                 }
             }
         }
@@ -158,6 +176,7 @@ impl Expr {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
                     Expr::Newtype { .. } => write!(f, "newtype expr")?,
+                    Expr::Is { .. } => write!(f, "is expr")?,
                     Expr::MakeMultiset { .. } => write!(f, "make multiset expr")?,
                     Expr::Variant { .. } => write!(f, "variant expr")?,
                     Expr::Use { .. } => write!(f, "use expr")?,
@@ -188,6 +207,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Is { data, .. }
         | Expr::Newtype { data, .. }
         | Expr::MakeMultiset { data, .. }
         | Expr::Variant { data, .. }
@@ -211,6 +231,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Is { data, .. }
         | Expr::Newtype { data, .. }
         | Expr::MakeMultiset { data, .. }
         | Expr::Variant { data, .. }
@@ -287,6 +308,11 @@ pub enum Pattern<Data = PatternData> {
         tuple: Tuple<Pattern>,
         data: Data,
     },
+    Variant {
+        name: String,
+        value: Option<Box<Pattern>>,
+        data: Data,
+    },
 }
 
 impl<Data> Pattern<Data> {
@@ -294,14 +320,16 @@ impl<Data> Pattern<Data> {
         let (Self::Placeholder { data, .. }
         | Self::Unit { data, .. }
         | Self::Binding { data, .. }
-        | Self::Tuple { data, .. }) = self;
+        | Self::Tuple { data, .. }
+        | Self::Variant { data, .. }) = self;
         data
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Self::Placeholder { data, .. }
         | Self::Unit { data, .. }
         | Self::Binding { data, .. }
-        | Self::Tuple { data, .. }) = self;
+        | Self::Tuple { data, .. }
+        | Self::Variant { data, .. }) = self;
         data
     }
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
@@ -314,42 +342,15 @@ impl<Data> Pattern<Data> {
                     field.collect_bindings(consumer);
                 }
             }
+            Self::Variant {
+                name: _,
+                value,
+                data: _,
+            } => {
+                if let Some(value) = value {
+                    value.collect_bindings(consumer);
+                }
+            }
         }
-    }
-}
-
-impl Pattern<Span> {
-    pub fn init(self) -> eyre::Result<Pattern> {
-        Ok(match self {
-            Pattern::Placeholder { data: span } => Pattern::Placeholder {
-                data: PatternData {
-                    ty: Type::Infer(inference::Var::new()),
-                    span,
-                },
-            },
-            Pattern::Unit { data: span } => Pattern::Unit {
-                data: PatternData {
-                    ty: Type::Unit,
-                    span,
-                },
-            },
-            Pattern::Binding {
-                binding,
-                data: span,
-            } => Pattern::Binding {
-                data: PatternData {
-                    ty: binding.ty.clone(),
-                    span,
-                },
-                binding,
-            },
-            Pattern::Tuple { tuple, data: span } => Pattern::Tuple {
-                data: PatternData {
-                    ty: Type::Tuple(tuple.as_ref().map(|field| field.data().ty.clone())),
-                    span,
-                },
-                tuple,
-            },
-        })
     }
 }

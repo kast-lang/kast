@@ -291,6 +291,19 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
+                Expr::Is {
+                    value,
+                    pattern,
+                    data: _,
+                } => {
+                    let value = self.eval(value).await?;
+                    if let Some(matches) = pattern.r#match(value) {
+                        self.interpreter.scope.extend(matches);
+                        Value::Bool(true)
+                    } else {
+                        Value::Bool(false)
+                    }
+                }
                 Expr::Newtype { def, data: _ } => {
                     let def = self.eval(def).await?;
                     let ty = match def {
@@ -482,12 +495,10 @@ impl Kast {
                     data: _,
                 } => {
                     let value = self.eval(value).await?;
-                    let matches = pattern.r#match(value);
-                    self.interpreter.scope.extend(
-                        matches
-                            .into_iter()
-                            .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
-                    );
+                    let matches = pattern
+                        .r#match(value)
+                        .expect("pattern match was not exhaustive???");
+                    self.interpreter.scope.extend(matches);
                     Value::Unit
                 }
                 Expr::Call { f, arg, data: _ } => {
@@ -536,20 +547,20 @@ impl Kast {
     }
 
     pub fn bind_pattern_match(&mut self, pattern: &Pattern, value: Value) {
-        self.interpreter.scope.extend(
-            pattern
-                .r#match(value)
-                .into_iter()
-                .map(|(binding, value)| (binding.name.raw().to_owned(), value)),
-        );
+        self.interpreter
+            .scope
+            .extend(pattern.r#match(value).expect("???"));
     }
 }
 
 impl Pattern {
-    #[must_use]
-    pub fn r#match(&self, value: Value) -> Vec<(Arc<Binding>, Value)> {
+    pub fn r#match(&self, value: Value) -> Option<Vec<(Arc<Binding>, Value)>> {
         let mut result = Vec::new();
-        fn match_impl(pattern: &Pattern, value: Value, matches: &mut Vec<(Arc<Binding>, Value)>) {
+        fn match_impl(
+            pattern: &Pattern,
+            value: Value,
+            matches: &mut Vec<(Arc<Binding>, Value)>,
+        ) -> Option<()> {
             match pattern {
                 Pattern::Placeholder { data: _ } => {}
                 Pattern::Unit { data: _ } => {
@@ -557,6 +568,27 @@ impl Pattern {
                 }
                 Pattern::Binding { binding, data: _ } => {
                     matches.push((binding.clone(), value));
+                }
+                Pattern::Variant {
+                    name,
+                    value: value_pattern,
+                    data: _,
+                } => {
+                    let value = value
+                        .expect_variant()
+                        .expect("matching non variant with variant???");
+                    if value.name == *name {
+                        match (value_pattern, value.value) {
+                            (None, None) => {}
+                            (Some(_), None) => panic!("pattern expected a value"),
+                            (None, Some(_)) => panic!("pattern did not expect a value"),
+                            (Some(value_pattern), Some(value)) => {
+                                match_impl(value_pattern, *value, matches)?
+                            }
+                        }
+                    } else {
+                        return None;
+                    }
                 }
                 Pattern::Tuple {
                     tuple: pattern,
@@ -575,12 +607,13 @@ impl Pattern {
                         .expect("pattern is incorrect structure")
                         .into_iter()
                     {
-                        match_impl(field_pattern, field_value, matches);
+                        match_impl(field_pattern, field_value, matches)?;
                     }
                 }
             }
+            Some(())
         }
-        match_impl(self, value, &mut result);
-        result
+        match_impl(self, value, &mut result)?;
+        Some(result)
     }
 }

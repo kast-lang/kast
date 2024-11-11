@@ -57,9 +57,9 @@ impl Scope {
     pub fn insert(&self, name: String, value: Value) {
         self.locals.lock().unwrap().insert(name, value);
     }
-    pub fn extend(&self, values: impl IntoIterator<Item = (String, Value)>) {
-        for (name, value) in values {
-            self.insert(name, value);
+    pub fn extend(&self, values: impl IntoIterator<Item = (Arc<Binding>, Value)>) {
+        for (binding, value) in values {
+            self.insert(binding.name.raw().to_owned(), value);
         }
     }
     pub fn get_nowait(&self, name: &str) -> Option<Value> {
