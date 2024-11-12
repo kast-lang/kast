@@ -565,16 +565,20 @@ impl Kast {
     }
     async fn macro_variant(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        let ([name], [value]) = values
+        let ([name], [ty, value]) = values
             .as_ref()
-            .into_named_opt(["name"], ["value"])
+            .into_named_opt(["name"], ["type", "value"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let name = name
             .as_ident()
             .ok_or_else(|| eyre!("variant name must be an identifier"))?;
+        let ty = match ty {
+            None => None,
+            Some(ty) => Some(self.eval_ast(ty, Some(Type::Type)).await?.expect_type()?),
+        };
         Ok(match cty {
-            CompiledType::Expr => Compiled::Expr(
-                Expr::Variant {
+            CompiledType::Expr => Compiled::Expr({
+                let mut expr = Expr::Variant {
                     name: name.to_owned(),
                     value: match value {
                         Some(value) => Some(Box::new(self.compile(value).await?)),
@@ -583,10 +587,14 @@ impl Kast {
                     data: span,
                 }
                 .init(self)
-                .await?,
-            ),
-            CompiledType::Pattern => Compiled::Pattern(
-                Pattern::Variant {
+                .await?;
+                if let Some(ty) = ty {
+                    expr.data_mut().ty.make_same(ty)?;
+                }
+                expr
+            }),
+            CompiledType::Pattern => Compiled::Pattern({
+                let mut pattern = Pattern::Variant {
                     name: name.to_owned(),
                     value: match value {
                         Some(value) => Some(Box::new(self.compile(value).await?)),
@@ -594,8 +602,12 @@ impl Kast {
                     },
                     data: span,
                 }
-                .init()?,
-            ),
+                .init()?;
+                if let Some(ty) = ty {
+                    pattern.data_mut().ty.make_same(ty)?;
+                }
+                pattern
+            }),
         })
     }
     /// Sarah is kinda cool

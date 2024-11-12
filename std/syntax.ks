@@ -117,8 +117,10 @@ syntax_module {
   syntax @"builtin macro unquote" -> 200 = "$" expr;
   syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
 
-  syntax @"builtin macro variant" <- 250 = ":" name;
+  syntax @"builtin macro variant" <- 250 = type ":" name value;
+  syntax @"builtin macro variant" <- 250 = type ":" name;
   syntax @"builtin macro variant" <- 250 = ":" name value;
+  syntax @"builtin macro variant" <- 250 = ":" name;
 
   syntax @"builtin macro field_access" <- 300 = obj "." field;
 
