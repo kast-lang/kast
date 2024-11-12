@@ -241,7 +241,7 @@ We can declare named blocks that we can return to without executing the rest of 
 ```rs
 let f = fn (token :: unwind_token) {
   ...
-  unwind (~token, ~value);
+  unwind (.token, .value);
   ...
 };
 unwindable_block f
@@ -250,7 +250,7 @@ unwindable_block f
 `unwindable_block` creates the block and takes a function of type `unwind_token -> T`
 and executes it immediately with the token of that block.
 
-When `unwind :: (~token :: unwind_token, ~value :: T)` function is used from within,
+When `unwind :: (.token :: unwind_token, .value :: T)` function is used from within,
 it stops executing current function and unwinds the stack until we return to the block.
 The value of the block if either the result of executing the function (if `unwind` was not called),
 or the value given to the `unwind`.
@@ -287,7 +287,7 @@ which is then processed recursively until some builtin macro converts it into IR
 Macros in Kast are just like normal functions:
 
 ```rs
-let ternary = macro (~cond :: ast, ~then :: ast, ~else :: ast) =>
+let ternary = macro (.cond :: ast, .then :: ast, .else :: ast) =>
   `(if $cond then $then else $else)
 ```
 

@@ -15,12 +15,12 @@ const print :: string -> () = native "print";
 
 const dbg = forall[T] { native "dbg" :: T -> () };
 
-const Option = forall[T] { newtype .Some T | .None };
+const Option = forall[T] { newtype :Some T | :None };
 
-const Either = forall[left: left, right: right] { newtype .Left left | .Right right };
+const Either = forall[.left = left, .right = right] { newtype :Left left | :Right right };
 
-const Result = forall[ok: ok, error: error] { newtype .Ok ok | .Error error };
+const Result = forall[.ok = ok, .error = error] { newtype :Ok ok | :Error error };
 
-impl syntax @"syntax".@"op binary +" = forall[T] { native "+" :: (lhs: T, rhs: T) -> T };
-impl syntax @"syntax".@"op binary -" = forall[T] { native "-" :: (lhs: T, rhs: T) -> T };
-impl syntax @"syntax".@"op binary <" = forall[T] { native "<" :: (lhs: T, rhs: T) -> bool };
+impl syntax @"syntax".@"op binary +" = forall[T] { native "+" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary -" = forall[T] { native "-" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary <" = forall[T] { native "<" :: (.lhs = T, .rhs = T) -> bool };

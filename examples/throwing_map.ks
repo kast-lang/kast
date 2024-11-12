@@ -2,7 +2,7 @@
 
 syntax map_impl <- 300 = generator "." "map" map_fn;
 
-const map_impl = macro (~generator, ~map_fn) => `(
+const map_impl = macro (.generator, .map_fn) => `(
 	const outer_y = _; const inner_y = _;
 	let map_fn :: inner_y -> outer_y = $map_fn;
 	dbg map_fn;

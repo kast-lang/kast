@@ -10,14 +10,14 @@ dbg Option[int32]; # todo instantiate the template to make sure its compiled to 
 const Hkt = forall (t :: type). (type);
 
 const Functor = trait (
-    let fmap = forall (~a :: type, ~b :: type).
+    let fmap = forall (.a :: type, .b :: type).
         (f: (a -> b), this: self[a]) -> self[b];
 );
 
 impl Functor for Option as (
     self: Option,
-    fmap: (forall (~a :: type, ~b :: type). (
-        (~f :: (a -> b), ~this :: Option[a]) => match this (
+    fmap: (forall (.a :: type, .b :: type). (
+        (.f :: (a -> b), .this :: Option[a]) => match this (
             | .Some a => Option[b].Some <| f a
             | .None => Option[b].None
         )
@@ -29,9 +29,9 @@ let test = fn (int_option :: Option[int32]) {
     let f = fn (x :: int32) {
         "im a string now!"  
     };
-    let string_option = (Option as Functor).fmap[a: int32, b: string] (~f, this: int_option);
+    let string_option = (Option as Functor).fmap[.a = int32, .b = string] (.f, .this = int_option);
     dbg string_option;
 };
 
-test <| Option[int32].Some 123;
-test <| Option[int32].None;
+test <| Option[int32]:Some 123;
+test <| Option[int32]:None;
