@@ -344,11 +344,11 @@ impl<T: std::fmt::Display> std::fmt::Display for Tuple<T> {
             }
             let mut f = pad_adapter::PadAdapter::new(f);
             for field in &self.unnamed {
-                writeln!(f, "{field}")?;
+                writeln!(f, "{field},")?;
             }
             for name in &self.named_order {
                 let field = &self.named[name];
-                writeln!(f, "{name}: {field}")?;
+                writeln!(f, ".{name} = {field},")?;
             }
         }
         write!(f, ")")?;
