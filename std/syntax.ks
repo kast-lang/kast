@@ -45,6 +45,9 @@ syntax_module {
   syntax @"builtin macro function_def" -> 7 = arg "=>" body;
 
   syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
+  syntax @"builtin macro type_ascribe" <- 7.1 = type "of" value;
+  syntax @"builtin macro type_ascribe" <- 7.1 = type ":>" value;
+  syntax @"builtin macro type_ascribe" <- 7.1 = value "<:" type;
 
   syntax @"builtin macro mutable_pattern" <- 7.25 = "mut" pattern;
 
@@ -117,8 +120,8 @@ syntax_module {
   syntax @"builtin macro unquote" -> 200 = "$" expr;
   syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
 
-  syntax @"builtin macro variant" <- 250 = type ":" name value;
-  syntax @"builtin macro variant" <- 250 = type ":" name;
+  #syntax @"builtin macro variant" <- 250 = type ":" name value;
+  #syntax @"builtin macro variant" <- 250 = type ":" name;
   syntax @"builtin macro variant" <- 250 = ":" name value;
   syntax @"builtin macro variant" <- 250 = ":" name;
 

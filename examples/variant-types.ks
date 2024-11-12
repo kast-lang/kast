@@ -15,7 +15,7 @@ match value (
 );
 
 const either_type :: type = Either[.left = int32, .right = string];
-let value_left = either_type:Left 123;
+let value_left = either_type of :Left 123;
 let value_right :: either_type = :Right "right value";
 let check_either = (value :: either_type) => (
     match value (
