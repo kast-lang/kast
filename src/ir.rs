@@ -14,6 +14,15 @@ pub struct MatchBranch {
 
 #[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    Unit {
+        data: Data,
+    },
+    FunctionType {
+        arg: Box<Expr>,
+        result: Box<Expr>,
+        // TODO contexts
+        data: Data,
+    },
     Cast {
         value: Box<Expr>,
         target: Value,
@@ -138,7 +147,9 @@ impl Expr {
     ) {
         match self {
             Expr::Binding { .. }
+            | Expr::Unit { .. }
             | Expr::Cast { .. }
+            | Expr::FunctionType { .. }
             | Expr::Match { .. }
             | Expr::Newtype { .. }
             | Expr::MakeMultiset { .. }
@@ -191,7 +202,9 @@ impl Expr {
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Unit { .. } => write!(f, "unit expr")?,
                     Expr::Cast { .. } => write!(f, "cast expr")?,
+                    Expr::FunctionType { .. } => write!(f, "fn type expr")?,
                     Expr::Newtype { .. } => write!(f, "newtype expr")?,
                     Expr::Match { .. } => write!(f, "match expr")?,
                     Expr::Is { .. } => write!(f, "is expr")?,
@@ -225,7 +238,9 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Unit { data, .. }
         | Expr::Cast { data, .. }
+        | Expr::FunctionType { data, .. }
         | Expr::Is { data, .. }
         | Expr::Match { data, .. }
         | Expr::Newtype { data, .. }
@@ -251,6 +266,8 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Unit { data, .. }
+        | Expr::FunctionType { data, .. }
         | Expr::Cast { data, .. }
         | Expr::Is { data, .. }
         | Expr::Match { data, .. }

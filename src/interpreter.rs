@@ -353,6 +353,20 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
+                Expr::Unit { data } => match data.ty.inferred() {
+                    Ok(InferredType::Type) => Value::Type(InferredType::Unit.into()),
+                    Ok(InferredType::Unit) | Err(_) => Value::Unit,
+                    Ok(other) => panic!("unit inferred to be not unit but {other}???"),
+                },
+                Expr::FunctionType {
+                    arg,
+                    result,
+                    data: _,
+                } => {
+                    let arg = self.eval(arg).await?.expect_type()?;
+                    let result = self.eval(result).await?.expect_type()?;
+                    Value::Type(InferredType::Function(Box::new(FnType { arg, result })).into())
+                }
                 Expr::Cast {
                     value,
                     target,

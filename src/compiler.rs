@@ -1005,14 +1005,7 @@ impl Kast {
         let [] = values.as_ref().into_named([])?;
         Ok(match cty {
             CompiledType::Pattern => Compiled::Pattern(Pattern::Unit { data: span }.init()?),
-            CompiledType::Expr => Compiled::Expr(
-                Expr::Constant {
-                    value: Value::Unit,
-                    data: span,
-                }
-                .init(self)
-                .await?,
-            ),
+            CompiledType::Expr => Compiled::Expr(Expr::Unit { data: span }.init(self).await?),
         })
     }
     async fn macro_call(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -1042,28 +1035,15 @@ impl Kast {
     ) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
-        #[allow(unused_variables)]
         let ([arg, result], [contexts]) = values
             .as_ref()
             .into_named_opt(["arg", "result"], ["contexts"])?;
+        // TODO
+        let _ = contexts;
         Ok(Compiled::Expr(
-            Expr::Constant {
-                value: Value::Type(
-                    InferredType::Function(Box::new(FnType {
-                        // TODO when evaluating, expect Some(Type), not None
-                        arg: self
-                            .eval_ast(arg, None)
-                            .await?
-                            .expect_type()
-                            .wrap_err("arg is expected to be a type")?,
-                        result: self
-                            .eval_ast(result, None)
-                            .await?
-                            .expect_type()
-                            .wrap_err("result is expected to be a type")?,
-                    }))
-                    .into(),
-                ),
+            Expr::FunctionType {
+                arg: Box::new(self.compile(arg).await?),
+                result: Box::new(self.compile(result).await?),
                 data: span,
             }
             .init(self)
@@ -1397,6 +1377,28 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::Unit { data: span } => Expr::Unit {
+                    data: ExprData {
+                        ty: Type::new_not_inferred(), // HUH?? TODO
+                        span,
+                    },
+                },
+                Expr::FunctionType {
+                    arg,
+                    result,
+                    data: span,
+                } => {
+                    // arg.data().ty.expect_inferred(InferredType::Type)?;
+                    // result.data().ty.expect_inferred(InferredType::Type)?;
+                    Expr::FunctionType {
+                        arg,
+                        result,
+                        data: ExprData {
+                            ty: InferredType::Type.into(),
+                            span,
+                        },
+                    }
+                }
                 Expr::Cast {
                     value,
                     target,
