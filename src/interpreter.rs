@@ -3,8 +3,8 @@ use super::*;
 #[derive(Clone)]
 pub struct State {
     pub spawned: bool,
-    builtins: Arc<HashMap<&'static str, Builtin>>,
-    scope: Arc<Scope>,
+    builtins: Parc<HashMap<&'static str, Builtin>>,
+    scope: Parc<Scope>,
 }
 
 type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
@@ -21,95 +21,131 @@ impl State {
             spawned: false,
             builtins: {
                 let mut map = HashMap::<&str, Builtin>::new();
-                let mut insert_ty = |name, ty: Type| {
+                let mut insert_ty = |name, ty: InferredType| {
                     map.insert(
                         name,
-                        Box::new(move |mut expected: Type| {
-                            expected.make_same(Type::Type)?;
-                            Ok(Value::Type(ty.clone()))
+                        Box::new(move |expected: Type| {
+                            expected.expect_inferred(InferredType::Type)?;
+                            Ok(Value::Type(ty.clone().into()))
                         }),
                     );
                 };
-                insert_ty("bool", Type::Bool);
-                insert_ty("int32", Type::Int32);
-                insert_ty("int64", Type::Int64);
-                insert_ty("string", Type::String);
-                insert_ty("ast", Type::Ast);
-                insert_ty("type", Type::Type);
+                insert_ty("bool", InferredType::Bool);
+                insert_ty("int32", InferredType::Int32);
+                insert_ty("int64", InferredType::Int64);
+                insert_ty("float64", InferredType::Float64);
+                insert_ty("string", InferredType::String);
+                insert_ty("ast", InferredType::Ast);
+                insert_ty("type", InferredType::Type);
                 map.insert(
                     "dbg",
-                    Box::new(|mut expected: Type| {
+                    Box::new(|expected: Type| {
                         let ty = FnType {
-                            arg: Type::Infer(inference::Var::new()),
-                            result: Type::Unit,
+                            arg: Type::new_not_inferred(),
+                            result: InferredType::Unit.into(),
                         };
-                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg".to_owned(),
-                            r#impl: Arc::new(|fn_ty, value: Value| {
+                            r#impl: (std::sync::Arc::new(|fn_ty: FnType, value: Value| {
                                 let ty = &fn_ty.arg;
                                 assert_eq!(&value.ty(), ty);
                                 println!("{value} :: {ty}");
                                 Ok(Value::Unit)
-                            }),
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
                             ty,
                         }))
                     }),
                 );
                 map.insert(
                     "panic",
-                    Box::new(|mut expected: Type| {
+                    Box::new(|expected: Type| {
                         let ty = FnType {
-                            arg: Type::String,
-                            result: Type::Unit, // TODO never type
+                            arg: InferredType::String.into(),
+                            result: InferredType::Unit.into(), // TODO never type
                         };
-                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "panic".to_owned(),
-                            r#impl: Arc::new(|_fn_ty, s: Value| {
+                            r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
                                 let s = s.expect_string()?;
                                 Err(eyre!("panic: {s}"))
-                            }),
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "parse",
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: InferredType::String.into(),
+                            result: Type::new_not_inferred(),
+                        };
+                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "parse".to_owned(),
+                            r#impl: (std::sync::Arc::new(|fn_ty: FnType, s: Value| {
+                                let s = s.expect_string()?;
+                                Ok(match fn_ty.result.inferred() {
+                                    Ok(ty) => match ty {
+                                        InferredType::Int32 => Value::Int32(s.parse()?),
+                                        InferredType::Int64 => Value::Int64(s.parse()?),
+                                        InferredType::Float64 => Value::Float64(s.parse()?),
+                                        _ => eyre::bail!("{ty} is not parseable???"),
+                                    },
+                                    Err(_) => eyre::bail!("cant parse not inferred type"),
+                                })
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
                             ty,
                         }))
                     }),
                 );
                 map.insert(
                     "print",
-                    Box::new(|mut expected: Type| {
+                    Box::new(|expected: Type| {
                         let ty = FnType {
-                            arg: Type::String,
-                            result: Type::Unit,
+                            arg: InferredType::String.into(),
+                            result: InferredType::Unit.into(),
                         };
-                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "print".to_owned(),
-                            r#impl: Arc::new(|_fn_ty, s: Value| {
+                            r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
                                 let s = s.expect_string()?;
                                 println!("{s}");
                                 Ok(Value::Unit)
-                            }),
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
                             ty,
                         }))
                     }),
                 );
                 map.insert(
                     "<",
-                    Box::new(|mut expected: Type| {
-                        let operand_type = Type::Infer(inference::Var::new());
+                    Box::new(|expected: Type| {
+                        let operand_type = Type::new_not_inferred();
                         let ty = FnType {
-                            arg: Type::Tuple({
+                            arg: InferredType::Tuple({
                                 let mut args = Tuple::empty();
                                 args.add_named("lhs", operand_type.clone());
                                 args.add_named("rhs", operand_type.clone());
                                 args
-                            }),
-                            result: Type::Bool,
+                            })
+                            .into(),
+                            result: InferredType::Bool.into(),
                         };
-                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "<".to_owned(),
-                            r#impl: Arc::new(|_fn_ty, args: Value| {
+                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
                                 let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
                                 let result = match (&lhs, &rhs) {
                                     (Value::Int32(lhs), Value::Int32(rhs)) => {
@@ -125,28 +161,31 @@ impl State {
                                     ),
                                 };
                                 Ok(result)
-                            }),
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
                             ty,
                         }))
                     }),
                 );
                 map.insert(
                     "-",
-                    Box::new(|mut expected: Type| {
-                        let operand_type = Type::Infer(inference::Var::new());
+                    Box::new(|expected: Type| {
+                        let operand_type = Type::new_not_inferred();
                         let ty = FnType {
-                            arg: Type::Tuple({
+                            arg: InferredType::Tuple({
                                 let mut args = Tuple::empty();
                                 args.add_named("lhs", operand_type.clone());
                                 args.add_named("rhs", operand_type.clone());
                                 args
-                            }),
+                            })
+                            .into(),
                             result: operand_type,
                         };
-                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "-".to_owned(),
-                            r#impl: Arc::new(|_fn_ty, args: Value| {
+                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
                                 let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
                                 let result = match (&lhs, &rhs) {
                                     (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
@@ -162,28 +201,31 @@ impl State {
                                     ),
                                 };
                                 Ok(result)
-                            }),
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
                             ty,
                         }))
                     }),
                 );
                 map.insert(
                     "+",
-                    Box::new(|mut expected: Type| {
-                        let operand_type = Type::Infer(inference::Var::new());
+                    Box::new(|expected: Type| {
+                        let operand_type = Type::new_not_inferred();
                         let ty = FnType {
-                            arg: Type::Tuple({
+                            arg: InferredType::Tuple({
                                 let mut args = Tuple::empty();
                                 args.add_named("lhs", operand_type.clone());
                                 args.add_named("rhs", operand_type.clone());
                                 args
-                            }),
+                            })
+                            .into(),
                             result: operand_type,
                         };
-                        expected.make_same(Type::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "+".to_owned(),
-                            r#impl: Arc::new(|_fn_ty, args: Value| {
+                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
                                 let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
                                 let result = match (&lhs, &rhs) {
                                     (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
@@ -199,14 +241,16 @@ impl State {
                                     ),
                                 };
                                 Ok(result)
-                            }),
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
                             ty,
                         }))
                     }),
                 );
-                Arc::new(map)
+                Parc::new(map)
             },
-            scope: Arc::new(Scope::new()),
+            scope: Parc::new(Scope::new()),
         }
     }
     pub fn autocomplete<'a>(&'a self, s: &'a str) -> impl Iterator<Item = CompletionCandidate> {
@@ -236,10 +280,10 @@ impl State {
     pub fn insert_local(&mut self, name: &str, value: Value) {
         self.scope.insert(name.to_owned(), value);
     }
-    pub fn scope_syntax_definitions(&self) -> Vec<Arc<ast::SyntaxDefinition>> {
+    pub fn scope_syntax_definitions(&self) -> Vec<Parc<ast::SyntaxDefinition>> {
         self.scope.syntax_definitions.lock().unwrap().clone()
     }
-    pub fn insert_syntax(&mut self, definition: Arc<ast::SyntaxDefinition>) -> eyre::Result<()> {
+    pub fn insert_syntax(&mut self, definition: Parc<ast::SyntaxDefinition>) -> eyre::Result<()> {
         self.scope
             .syntax_definitions
             .lock()
@@ -260,7 +304,7 @@ impl Kast {
     #[must_use]
     pub fn enter_recursive_scope(&self) -> Self {
         let mut inner = self.clone();
-        inner.interpreter.scope = Arc::new({
+        inner.interpreter.scope = Parc::new({
             let mut scope = Scope::recursive();
             scope.parent = Some(self.interpreter.scope.clone());
             scope
@@ -270,7 +314,7 @@ impl Kast {
     #[must_use]
     pub fn enter_scope(&self) -> Self {
         let mut inner = self.clone();
-        inner.interpreter.scope = Arc::new({
+        inner.interpreter.scope = Parc::new({
             let mut scope = Scope::new();
             scope.parent = Some(self.interpreter.scope.clone());
             scope
@@ -278,7 +322,7 @@ impl Kast {
         inner
     }
     #[must_use]
-    pub fn with_scope(&self, scope: Arc<Scope>) -> Self {
+    pub fn with_scope(&self, scope: Parc<Scope>) -> Self {
         let mut kast = self.clone();
         kast.interpreter.scope = scope;
         kast
@@ -309,6 +353,24 @@ impl Kast {
         let r#impl = async move {
             tracing::debug!("evaluating {}", expr.show_short());
             let result = match expr {
+                Expr::Cast {
+                    value,
+                    target,
+                    data: _,
+                } => {
+                    let value = self.eval(value).await?;
+                    match self
+                        .cache
+                        .compiler
+                        .casts
+                        .lock()
+                        .unwrap()
+                        .cast(value, target)
+                    {
+                        Ok(result) => result,
+                        Err(value) => eyre::bail!("casting {value} into {target} not implemented"),
+                    }
+                }
                 Expr::Match {
                     value,
                     branches,
@@ -341,7 +403,7 @@ impl Kast {
                 }
                 Expr::Newtype { def, data: _ } => {
                     let def = self.eval(def).await?;
-                    let ty = match def {
+                    let ty: Type = match def {
                         Value::Multiset(values) => {
                             let mut variants = Vec::new();
                             for value in values {
@@ -355,7 +417,7 @@ impl Kast {
                                         .map(Box::new),
                                 });
                             }
-                            Type::Variant(variants)
+                            InferredType::Variant(variants).into()
                         }
                         _ => eyre::bail!("{def} can not be used in newtype"),
                     };
@@ -500,13 +562,16 @@ impl Kast {
                     }
                     value
                 }
-                Expr::Constant { value, data: _ } => value.clone(),
+                Expr::Constant { value, data: _ } => match value {
+                    Value::Type(ty) => Value::Type(self.substitute_type_bindings(ty)),
+                    _ => value.clone(),
+                },
                 Expr::Number { raw, data } => match data.ty.inferred() {
-                    Ok(Type::Int32) => Value::Int32(
+                    Ok(InferredType::Int32) => Value::Int32(
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as int32"))?,
                     ),
-                    Ok(Type::Int64) => Value::Int64(
+                    Ok(InferredType::Int64) => Value::Int64(
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as int64"))?,
                     ),
@@ -571,11 +636,11 @@ impl Kast {
         let mut new_scope = Scope::new();
         new_scope.parent = Some(f.captured.clone());
         self.advance_executor();
-        let compiled: Arc<CompiledFn> = match &*f.compiled.lock().unwrap() {
+        let compiled: Parc<CompiledFn> = match &*f.compiled.lock().unwrap() {
             Some(compiled) => compiled.clone(),
             None => panic!("function is not compiled yet"),
         };
-        let mut kast = self.with_scope(Arc::new(new_scope));
+        let mut kast = self.with_scope(Parc::new(new_scope));
         kast.bind_pattern_match(&compiled.arg, arg);
         let value = kast.eval(&compiled.body).await?;
         Ok(value)
@@ -589,12 +654,12 @@ impl Kast {
 }
 
 impl Pattern {
-    pub fn r#match(&self, value: Value) -> Option<Vec<(Arc<Binding>, Value)>> {
+    pub fn r#match(&self, value: Value) -> Option<Vec<(Parc<Binding>, Value)>> {
         let mut result = Vec::new();
         fn match_impl(
             pattern: &Pattern,
             value: Value,
-            matches: &mut Vec<(Arc<Binding>, Value)>,
+            matches: &mut Vec<(Parc<Binding>, Value)>,
         ) -> Option<()> {
             match pattern {
                 Pattern::Placeholder { data: _ } => {}

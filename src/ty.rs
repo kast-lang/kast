@@ -1,11 +1,12 @@
 use super::*;
 
-#[derive(Debug, Clone)]
-pub enum Type {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum InferredType {
     Unit,
     Bool,
     Int32,
     Int64,
+    Float64,
     String,
     Variant(Vec<VariantType>),
     Tuple(Tuple<Type>),
@@ -18,12 +19,49 @@ pub enum Type {
     Type,
     SyntaxModule,
     SyntaxDefinition,
-    Binding(Arc<Binding>),
-
-    Infer(inference::Var<Type>),
+    Binding(Parc<Binding>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
+pub struct Type(inference::Var<InferredType>);
+
+impl From<InferredType> for Type {
+    fn from(value: InferredType) -> Self {
+        Self({
+            let var = inference::Var::new();
+            var.set(value).unwrap();
+            var
+        })
+    }
+}
+
+impl From<inference::Var<InferredType>> for Type {
+    fn from(value: inference::Var<InferredType>) -> Self {
+        Self(value)
+    }
+}
+
+impl std::hash::Hash for Type {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self.0.get() {
+            Some(inferred) => inferred.hash(state),
+            None => panic!("not inferred type can't be hashed"), // TODO use custom hash trait?
+        }
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.0.get(), other.0.get()) {
+            (Some(a), Some(b)) => a == b,
+            _ => self.0.is_same_as(&other.0),
+        }
+    }
+}
+
+impl Eq for Type {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VariantType {
     pub name: String,
     pub value: Option<Box<Type>>,
@@ -39,68 +77,27 @@ impl std::fmt::Display for VariantType {
     }
 }
 
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        match (self.inferred(), other.inferred()) {
-            (Ok(a), Ok(b)) => match (a, b) {
-                (Type::Infer(_), _) | (_, Type::Infer(_)) => unreachable!(),
-
-                (Self::Unit, Self::Unit) => true,
-                (Self::Unit, _) => false,
-                (Self::Bool, Self::Bool) => true,
-                (Self::Bool, _) => false,
-                (Self::Int32, Self::Int32) => true,
-                (Self::Int32, _) => false,
-                (Self::Int64, Self::Int64) => true,
-                (Self::Int64, _) => false,
-                (Self::String, Self::String) => true,
-                (Self::String, _) => false,
-                (Self::Tuple(a), Self::Tuple(b)) => a == b,
-                (Self::Tuple(_), _) => false,
-                (Self::Function(a), Self::Function(b)) => a == b,
-                (Self::Function(_), _) => false,
-                (Self::Template(a), Self::Template(b)) => Arc::ptr_eq(&a, &b),
-                (Self::Template(_), _) => false,
-                (Self::Variant(a), Self::Variant(b)) => a == b,
-                (Self::Variant(_), _) => false,
-                (Self::Macro(a), Self::Macro(b)) => a == b,
-                (Self::Macro(_), _) => false,
-                (Self::Multiset, Self::Multiset) => true,
-                (Self::Multiset, _) => false,
-                (Self::Ast, Self::Ast) => true,
-                (Self::Ast, _) => false,
-                (Self::Type, Self::Type) => true,
-                (Self::Type, _) => false,
-                (Self::SyntaxModule, Self::SyntaxModule) => true,
-                (Self::SyntaxModule, _) => false,
-                (Self::SyntaxDefinition, Self::SyntaxDefinition) => true,
-                (Self::SyntaxDefinition, _) => false,
-                (Self::Binding(a), Self::Binding(b)) => Arc::ptr_eq(&a, &b),
-                (Self::Binding(_), _) => false,
-            },
-            (Err(a), Err(b)) => a.is_same_as(b),
-            (Ok(_), Err(_)) | (Err(_), Ok(_)) => false,
-        }
-    }
-}
-
-impl Eq for Type {}
-
 impl Type {
+    pub fn expect_inferred(&self, ty: InferredType) -> eyre::Result<()> {
+        self.0.set(ty)
+    }
+    pub fn new_not_inferred() -> Self {
+        Self(inference::Var::new())
+    }
     /// Get actual value (if it is an inference var)
-    pub fn inferred(&self) -> Result<Self, &inference::Var<Type>> {
-        if let Self::Infer(var) = self {
-            var.get().map(|value| (*value).clone()).ok_or(var)
-        } else {
-            Ok(self.clone())
-        }
+    pub fn inferred(&self) -> Result<InferredType, &inference::Var<InferredType>> {
+        self.0.get().map(|value| (*value).clone()).ok_or(&self.0)
     }
     pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
         *self = Inferrable::make_same(self.clone(), other)?;
         Ok(())
     }
+}
 
-    pub fn expect_variant(self) -> Result<Vec<VariantType>, ExpectError<Type, &'static str>> {
+impl InferredType {
+    pub fn expect_variant(
+        self,
+    ) -> Result<Vec<VariantType>, ExpectError<InferredType, &'static str>> {
         match self {
             Self::Variant(variants) => Ok(variants),
             _ => Err(ExpectError {
@@ -109,8 +106,9 @@ impl Type {
             }),
         }
     }
-
-    pub fn expect_template(self) -> Result<MaybeCompiledFn, ExpectError<Type, &'static str>> {
+    pub fn expect_template(
+        self,
+    ) -> Result<MaybeCompiledFn, ExpectError<InferredType, &'static str>> {
         match self {
             Self::Template(t) => Ok(t),
             _ => Err(ExpectError {
@@ -123,105 +121,95 @@ impl Type {
 
 impl Inferrable for Type {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        a.0.make_same(&b.0)?;
+        Ok(a)
+    }
+}
+
+impl Inferrable for InferredType {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         macro_rules! fail {
             () => {
                 eyre::bail!("expected {a}, got {b}")
             };
         }
-        Ok(match (a.inferred(), b.inferred()) {
-            (Ok(a), Ok(b)) => match (a, b) {
-                (Type::Infer(_), _) | (_, Type::Infer(_)) => unreachable!(),
-
-                (Type::Unit, Type::Unit) => Type::Unit,
-                (Type::Unit, _) => fail!(),
-                (Type::Bool, Type::Bool) => Type::Bool,
-                (Type::Bool, _) => fail!(),
-                (Type::Int32, Type::Int32) => Type::Int32,
-                (Type::Int32, _) => fail!(),
-                (Type::Int64, Type::Int64) => Type::Int64,
-                (Type::Int64, _) => fail!(),
-                (Type::String, Type::String) => Type::String,
-                (Type::String, _) => fail!(),
-                (Type::Tuple(a), Type::Tuple(b)) => {
-                    let mut result = Tuple::empty();
-                    for (name, (a, b)) in a.zip(b)?.into_iter() {
-                        let value = Inferrable::make_same(a, b)?;
-                        result.add(name, value);
-                    }
-                    Type::Tuple(result)
+        Ok(match (a.clone(), b.clone()) {
+            (Self::Unit, Self::Unit) => Self::Unit,
+            (Self::Unit, _) => fail!(),
+            (Self::Bool, Self::Bool) => Self::Bool,
+            (Self::Bool, _) => fail!(),
+            (Self::Int32, Self::Int32) => Self::Int32,
+            (Self::Int32, _) => fail!(),
+            (Self::Int64, Self::Int64) => Self::Int64,
+            (Self::Int64, _) => fail!(),
+            (Self::Float64, Self::Float64) => Self::Float64,
+            (Self::Float64, _) => fail!(),
+            (Self::String, Self::String) => Self::String,
+            (Self::String, _) => fail!(),
+            (Self::Tuple(a), Self::Tuple(b)) => {
+                let mut result = Tuple::empty();
+                for (name, (a, b)) in a.zip(b)?.into_iter() {
+                    let value = Inferrable::make_same(a, b)?;
+                    result.add(name, value);
                 }
-                (Type::Tuple(_), _) => fail!(),
-                (Type::Function(a), Type::Function(b)) => {
-                    Type::Function(Box::new(Inferrable::make_same(*a, *b)?))
-                }
-                (Type::Function(_), _) => fail!(),
-                (Type::Template(a), Type::Template(b)) if Arc::ptr_eq(&a, &b) => Type::Template(a),
-                (Type::Template(_), _) => fail!(),
-                (Type::Macro(a), Type::Macro(b)) => {
-                    Type::Macro(Box::new(Inferrable::make_same(*a, *b)?))
-                }
-                (Type::Macro(_), _) => fail!(),
-                (Type::Multiset, Type::Multiset) => Type::Multiset,
-                (Type::Multiset, _) => fail!(),
-                (Type::Ast, Type::Ast) => Type::Ast,
-                (Type::Ast, _) => fail!(),
-                (Type::Type, Type::Type) => Type::Type,
-                (Type::Type, _) => fail!(),
-                (Type::SyntaxModule, Type::SyntaxModule) => Type::SyntaxModule,
-                (Type::SyntaxModule, _) => fail!(),
-                (Type::SyntaxDefinition, Type::SyntaxDefinition) => Type::SyntaxDefinition,
-                (Type::SyntaxDefinition, _) => fail!(),
-                (Type::Binding(a), Type::Binding(b)) if Arc::ptr_eq(&a, &b) => Type::Binding(a),
-                (Type::Binding(_), _) => fail!(),
-                (Type::Variant(a), Type::Variant(b)) => {
-                    if a == b {
-                        Type::Variant(a)
-                    } else {
-                        // TODO
-                        fail!()
-                    }
-                }
-                (Type::Variant(_), _) => fail!(),
-            },
-            (Ok(a), Err(b)) => {
-                b.set(a.clone())?;
-                a
+                Self::Tuple(result)
             }
-            (Err(a), Ok(b)) => {
-                a.set(b.clone())?;
-                b
+            (Self::Tuple(_), _) => fail!(),
+            (Self::Function(a), Self::Function(b)) => {
+                Self::Function(Box::new(Inferrable::make_same(*a, *b)?))
             }
-            (Err(a), Err(b)) => {
-                a.make_same(b)?;
-                Type::Infer(a.clone())
+            (Self::Function(_), _) => fail!(),
+            (Self::Template(a), Self::Template(b)) if a == b => Self::Template(a),
+            (Self::Template(_), _) => fail!(),
+            (Self::Macro(a), Self::Macro(b)) => {
+                Self::Macro(Box::new(Inferrable::make_same(*a, *b)?))
             }
+            (Self::Macro(_), _) => fail!(),
+            (Self::Multiset, Self::Multiset) => Self::Multiset,
+            (Self::Multiset, _) => fail!(),
+            (Self::Ast, Self::Ast) => Self::Ast,
+            (Self::Ast, _) => fail!(),
+            (Self::Type, Self::Type) => Self::Type,
+            (Self::Type, _) => fail!(),
+            (Self::SyntaxModule, Self::SyntaxModule) => Self::SyntaxModule,
+            (Self::SyntaxModule, _) => fail!(),
+            (Self::SyntaxDefinition, Self::SyntaxDefinition) => Self::SyntaxDefinition,
+            (Self::SyntaxDefinition, _) => fail!(),
+            (Self::Binding(a), Self::Binding(b)) if a == b => Self::Binding(a),
+            (Self::Binding(_), _) => fail!(),
+            (Self::Variant(a), Self::Variant(b)) => {
+                if a == b {
+                    Self::Variant(a)
+                } else {
+                    // TODO
+                    fail!()
+                }
+            }
+            (Self::Variant(_), _) => fail!(),
         })
     }
 }
 
-impl std::fmt::Display for Type {
+impl std::fmt::Display for InferredType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Unit => write!(f, "()"),
-            Type::Bool => write!(f, "bool"),
-            Type::Int32 => write!(f, "int32"),
-            Type::Int64 => write!(f, "int64"),
-            Type::String => write!(f, "string"),
-            Type::Tuple(tuple) => tuple.fmt(f),
-            Type::Function(ty) => ty.fmt(f),
-            Type::Template(_template) => write!(f, "template"),
-            Type::Macro(ty) => write!(f, "macro {ty}"),
-            Type::Multiset => write!(f, "multiset"),
-            Type::Ast => write!(f, "ast"),
-            Type::Type => write!(f, "type"),
-            Type::Infer(var) => match var.get() {
-                Some(inferred) => inferred.fmt(f),
-                None => write!(f, "<not inferred>"),
-            },
-            Type::SyntaxModule => write!(f, "syntax module"),
-            Type::SyntaxDefinition => write!(f, "syntax definition"),
-            Type::Binding(binding) => binding.fmt(f),
-            Type::Variant(variants) => {
+            Self::Unit => write!(f, "()"),
+            Self::Bool => write!(f, "bool"),
+            Self::Int32 => write!(f, "int32"),
+            Self::Int64 => write!(f, "int64"),
+            Self::Float64 => write!(f, "float64"),
+            Self::String => write!(f, "string"),
+            Self::Tuple(tuple) => tuple.fmt(f),
+            Self::Function(ty) => ty.fmt(f),
+            Self::Template(_template) => write!(f, "template"),
+            Self::Macro(ty) => write!(f, "macro {ty}"),
+            Self::Multiset => write!(f, "multiset"),
+            Self::Ast => write!(f, "ast"),
+            Self::Type => write!(f, "type"),
+            Self::SyntaxModule => write!(f, "syntax module"),
+            Self::SyntaxDefinition => write!(f, "syntax definition"),
+            Self::Binding(binding) => binding.fmt(f),
+            Self::Variant(variants) => {
                 for (index, variant) in variants.iter().enumerate() {
                     if index != 0 {
                         write!(f, " ")?;
@@ -234,7 +222,16 @@ impl std::fmt::Display for Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.get() {
+            Some(inferred) => inferred.fmt(f),
+            None => write!(f, "<not inferred>"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FnType {
     pub arg: Type,
     pub result: Type,
@@ -258,18 +255,19 @@ impl Inferrable for FnType {
 impl Kast {
     pub fn substitute_type_bindings(&self, ty: &Type) -> Type {
         match ty.inferred() {
-            Ok(ty) => match ty {
-                Type::Unit
-                | Type::Bool
-                | Type::Int32
-                | Type::Int64
-                | Type::String
-                | Type::Ast
-                | Type::Multiset
-                | Type::Type
-                | Type::SyntaxModule
-                | Type::SyntaxDefinition => ty.clone(),
-                Type::Variant(variants) => Type::Variant(
+            Ok(inferred) => match inferred {
+                InferredType::Unit
+                | InferredType::Bool
+                | InferredType::Int32
+                | InferredType::Int64
+                | InferredType::Float64
+                | InferredType::String
+                | InferredType::Ast
+                | InferredType::Multiset
+                | InferredType::Type
+                | InferredType::SyntaxModule
+                | InferredType::SyntaxDefinition => ty.clone(),
+                InferredType::Variant(variants) => InferredType::Variant(
                     variants
                         .iter()
                         .map(|variant| VariantType {
@@ -280,27 +278,31 @@ impl Kast {
                                 .map(|ty| Box::new(self.substitute_type_bindings(ty))),
                         })
                         .collect(),
-                ),
-                Type::Tuple(tuple) => {
-                    Type::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
+                )
+                .into(),
+                InferredType::Tuple(tuple) => {
+                    InferredType::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
+                        .into()
                 }
-                Type::Function(f) => Type::Function(Box::new(FnType {
+                InferredType::Function(f) => InferredType::Function(Box::new(FnType {
                     arg: self.substitute_type_bindings(&f.arg),
                     result: self.substitute_type_bindings(&f.result),
-                })),
-                Type::Template(t) => Type::Template(t),
-                Type::Macro(f) => Type::Macro(Box::new(FnType {
+                }))
+                .into(),
+                InferredType::Template(t) => InferredType::Template(t).into(),
+                InferredType::Macro(f) => InferredType::Macro(Box::new(FnType {
                     arg: self.substitute_type_bindings(&f.arg),
                     result: self.substitute_type_bindings(&f.result),
-                })),
-                Type::Binding(binding) => match self.interpreter.get_nowait(binding.name.raw()) {
-                    Some(value) => value.expect_type().unwrap_or_else(|e| {
-                        panic!("{} expected to be a type: {e}", binding.name.raw())
-                    }),
-                    None => Type::Binding(binding.clone()),
-                },
-
-                Type::Infer(_) => unreachable!(),
+                }))
+                .into(),
+                InferredType::Binding(binding) => {
+                    match self.interpreter.get_nowait(binding.name.raw()) {
+                        Some(value) => value.expect_type().unwrap_or_else(|e| {
+                            panic!("{} expected to be a type: {e}", binding.name.raw())
+                        }),
+                        None => InferredType::Binding(binding.clone()).into(),
+                    }
+                }
             },
             Err(_var) => ty.clone(),
         }

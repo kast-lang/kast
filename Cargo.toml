@@ -21,6 +21,7 @@ futures-lite = "2"
 event-listener = "5"
 # https://github.com/rust-random/rand#wasm-support
 getrandom = { version = "0.2", features = ["js"] }
+ordered-float = "4"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
@@ -47,6 +48,7 @@ kast-ast.workspace = true
 thiserror.workspace = true
 rand.workspace = true
 futures.workspace = true
+ordered-float.workspace = true
 refmap.workspace = true
 async-notify.workspace = true
 async-executor.workspace = true

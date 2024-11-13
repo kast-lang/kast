@@ -6,11 +6,11 @@ pub type Locals = HashMap<String, Value>;
 
 pub struct Scope {
     id: Id,
-    pub parent: Option<Arc<Scope>>,
+    pub parent: Option<Parc<Scope>>,
     recursive: bool,
     closed: AtomicBool,
     closed_event: event_listener::Event,
-    pub syntax_definitions: Mutex<Vec<Arc<ast::SyntaxDefinition>>>,
+    pub syntax_definitions: Mutex<Vec<Parc<ast::SyntaxDefinition>>>,
     locals: Mutex<Locals>,
 }
 
@@ -57,7 +57,7 @@ impl Scope {
     pub fn insert(&self, name: String, value: Value) {
         self.locals.lock().unwrap().insert(name, value);
     }
-    pub fn extend(&self, values: impl IntoIterator<Item = (Arc<Binding>, Value)>) {
+    pub fn extend(&self, values: impl IntoIterator<Item = (Parc<Binding>, Value)>) {
         for (binding, value) in values {
             self.insert(binding.name.raw().to_owned(), value);
         }

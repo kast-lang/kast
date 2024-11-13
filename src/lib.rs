@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use cast::*;
 use eyre::{eyre, Context as _};
 use futures::future::BoxFuture;
 use futures::prelude::*;
@@ -8,14 +9,15 @@ use ir::*;
 pub use kast_ast as ast;
 pub use kast_ast::{Ast, Token};
 pub use kast_util::*;
-use refmap::RefMap;
+use ordered_float::OrderedFloat;
 use scope::Scope;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 pub use ty::*;
 pub use value::*;
 
+mod cast;
 mod compiler;
 mod id;
 mod inference;
@@ -28,10 +30,10 @@ mod value;
 #[derive(Clone)]
 pub struct Kast {
     /// Am I a background task? :)
-    executor: Arc<async_executor::Executor<'static>>,
+    executor: Parc<async_executor::Executor<'static>>,
     syntax: ast::Syntax,
     pub interpreter: interpreter::State,
-    cache: Arc<Cache>,
+    cache: Parc<Cache>,
 }
 
 enum ImportMode {
@@ -55,15 +57,15 @@ impl Default for Cache {
 }
 
 impl Kast {
-    fn from_scratch(cache: Option<Arc<Cache>>) -> Self {
+    fn from_scratch(cache: Option<Parc<Cache>>) -> Self {
         Self {
-            executor: Arc::new(async_executor::Executor::new()),
+            executor: Parc::new(async_executor::Executor::new()),
             syntax: ast::Syntax::empty(),
             interpreter: interpreter::State::new(),
             cache: cache.unwrap_or_default(),
         }
     }
-    fn only_std_syntax(cache: Option<Arc<Cache>>) -> Self {
+    fn only_std_syntax(cache: Option<Parc<Cache>>) -> Self {
         let mut kast = Self::from_scratch(cache);
         let syntax = kast
             .import_impl(std_path().join("syntax.ks"), ImportMode::FromScratch)
@@ -83,7 +85,7 @@ impl Kast {
     pub fn new() -> Self {
         Self::new_normal(None)
     }
-    fn new_normal(cache: Option<Arc<Cache>>) -> Self {
+    fn new_normal(cache: Option<Parc<Cache>>) -> Self {
         let mut kast = Self::only_std_syntax(cache);
         let std = kast
             .import_impl(std_path().join("lib.ks"), ImportMode::OnlyStdSyntax)

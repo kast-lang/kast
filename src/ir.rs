@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::*;
 
 #[derive(Debug, Clone)]
@@ -16,6 +14,11 @@ pub struct MatchBranch {
 
 #[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    Cast {
+        value: Box<Expr>,
+        target: Value,
+        data: Data,
+    },
     Is {
         value: Box<Expr>,
         pattern: Pattern,
@@ -53,7 +56,7 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Binding {
-        binding: Arc<Binding>,
+        binding: Parc<Binding>,
         data: Data,
     },
     If {
@@ -113,7 +116,7 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Ast {
-        definition: Arc<ast::SyntaxDefinition>,
+        definition: Parc<ast::SyntaxDefinition>,
         values: Tuple<Expr>,
         data: Data,
     },
@@ -125,16 +128,17 @@ pub struct CompiledFn {
     pub body: Expr,
 }
 
-pub type MaybeCompiledFn = Arc<Mutex<Option<Arc<CompiledFn>>>>;
+pub type MaybeCompiledFn = Parc<Mutex<Option<Parc<CompiledFn>>>>;
 
 impl Expr {
     pub fn collect_bindings(
         &self,
-        consumer: &mut impl FnMut(Arc<Binding>),
+        consumer: &mut impl FnMut(Parc<Binding>),
         condition: Option<bool>,
     ) {
         match self {
             Expr::Binding { .. }
+            | Expr::Cast { .. }
             | Expr::Match { .. }
             | Expr::Newtype { .. }
             | Expr::MakeMultiset { .. }
@@ -187,6 +191,7 @@ impl Expr {
         impl std::fmt::Display for Show<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Cast { .. } => write!(f, "cast expr")?,
                     Expr::Newtype { .. } => write!(f, "newtype expr")?,
                     Expr::Match { .. } => write!(f, "match expr")?,
                     Expr::Is { .. } => write!(f, "is expr")?,
@@ -220,6 +225,7 @@ impl Expr {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Cast { data, .. }
         | Expr::Is { data, .. }
         | Expr::Match { data, .. }
         | Expr::Newtype { data, .. }
@@ -245,6 +251,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Cast { data, .. }
         | Expr::Is { data, .. }
         | Expr::Match { data, .. }
         | Expr::Newtype { data, .. }
@@ -316,7 +323,7 @@ pub enum Pattern<Data = PatternData> {
         data: Data,
     },
     Binding {
-        binding: Arc<Binding>,
+        binding: Parc<Binding>,
         data: Data,
     },
     Tuple {
@@ -347,7 +354,7 @@ impl<Data> Pattern<Data> {
         | Self::Variant { data, .. }) = self;
         data
     }
-    pub fn collect_bindings(&self, consumer: &mut impl FnMut(Arc<Binding>)) {
+    pub fn collect_bindings(&self, consumer: &mut impl FnMut(Parc<Binding>)) {
         match self {
             Self::Placeholder { data: _ } => {}
             Self::Unit { data: _ } => {}

@@ -1,9 +1,6 @@
 use super::*;
 use noisy_float::prelude::*;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Priority(R64);
@@ -66,7 +63,7 @@ impl Edge {
 
 #[derive(Clone, Debug)]
 pub struct ParseNode {
-    pub finish: Option<Arc<SyntaxDefinition>>,
+    pub finish: Option<Parc<SyntaxDefinition>>,
     pub next: HashMap<Edge, ParseNode>,
     pub binding_power: Option<BindingPower>,
     pub is_open_paren: bool,
@@ -121,7 +118,7 @@ impl Syntax {
         }
     }
 
-    pub fn insert(&mut self, definition: Arc<SyntaxDefinition>) -> Result<(), ErrorMessage> {
+    pub fn insert(&mut self, definition: Parc<SyntaxDefinition>) -> Result<(), ErrorMessage> {
         let binding_power = definition.binding_power();
         let skip;
         let mut current_node = match definition.parts[0] {

@@ -1,27 +1,28 @@
 use super::*;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Value {
     Unit,
     Bool(bool),
     Int32(i32),
     Int64(i64),
+    Float64(OrderedFloat<f64>),
     String(String),
     Tuple(Tuple<Value>),
     Function(TypedFunction),
     Template(Function),
     Macro(TypedFunction),
     NativeFunction(NativeFunction),
-    Binding(Arc<Binding>),
+    Binding(Parc<Binding>),
     Variant(VariantValue),
     Multiset(Vec<Value>),
     Ast(Ast),
     Type(Type),
-    SyntaxModule(Arc<Vec<Arc<ast::SyntaxDefinition>>>),
-    SyntaxDefinition(Arc<ast::SyntaxDefinition>),
+    SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
+    SyntaxDefinition(Parc<ast::SyntaxDefinition>),
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct VariantValue {
     pub name: String,
     pub value: Option<Box<Value>>,
@@ -38,51 +39,6 @@ impl std::fmt::Display for VariantValue {
     }
 }
 
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Unit, Self::Unit) => true,
-            (Self::Unit, _) => false,
-            (Self::Bool(a), Self::Bool(b)) => a == b,
-            (Self::Bool(_), _) => false,
-            (Self::Int32(a), Self::Int32(b)) => a == b,
-            (Self::Int32(_), _) => false,
-            (Self::Int64(a), Self::Int64(b)) => a == b,
-            (Self::Int64(_), _) => false,
-            (Self::String(a), Self::String(b)) => a == b,
-            (Self::String(_), _) => false,
-            (Self::Tuple(a), Self::Tuple(b)) => a == b,
-            (Self::Tuple(_), _) => false,
-            (Self::NativeFunction(a), Self::NativeFunction(b)) => {
-                Arc::ptr_eq(&a.r#impl, &b.r#impl) && a.ty == b.ty
-            }
-            (Self::NativeFunction(_), _) => false,
-            (Self::Multiset(a), Self::Multiset(b)) => a == b,
-            (Self::Multiset(_), _) => false,
-            (Self::Variant(a), Self::Variant(b)) => a == b,
-            (Self::Variant(_), _) => false,
-            (Self::Binding(a), Self::Binding(b)) => Arc::ptr_eq(a, b),
-            (Self::Binding(_), _) => false,
-            (Self::Function(a), Self::Function(b)) => a == b,
-            (Self::Function(_), _) => false,
-            (Self::Template(a), Self::Template(b)) => a == b,
-            (Self::Template(_), _) => false,
-            (Self::Macro(a), Self::Macro(b)) => a == b,
-            (Self::Macro(_), _) => false,
-            (Self::Ast(a), Self::Ast(b)) => a == b,
-            (Self::Ast(_), _) => false,
-            (Self::Type(a), Self::Type(b)) => a == b,
-            (Self::Type(_), _) => false,
-            (Self::SyntaxModule(a), Self::SyntaxModule(b)) => Arc::ptr_eq(a, b),
-            (Self::SyntaxModule(_), _) => false,
-            (Self::SyntaxDefinition(a), Self::SyntaxDefinition(b)) => Arc::ptr_eq(a, b),
-            (Self::SyntaxDefinition(_), _) => false,
-        }
-    }
-}
-
-impl Eq for Value {}
-
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -91,6 +47,7 @@ impl std::fmt::Display for Value {
             Value::Bool(value) => value.fmt(f),
             Value::Int32(value) => value.fmt(f),
             Value::Int64(value) => value.fmt(f),
+            Value::Float64(value) => value.fmt(f),
             Value::String(s) => write!(f, "{s:?}"),
             Value::Multiset(values) => {
                 for (index, value) in values.iter().enumerate() {
@@ -129,10 +86,10 @@ impl Value {
     /// Get this value AS a type
     pub fn expect_type(self) -> Result<Type, ExpectError> {
         match self {
-            Self::Unit => Ok(Type::Unit), // TODO this is a hack (maybe, maybe not?)
+            Self::Unit => Ok(InferredType::Unit.into()), // TODO this is a hack (maybe, maybe not?)
             Self::Binding(binding) => {
-                binding.ty.clone().make_same(Type::Type).unwrap(); // TODO dont unwrap
-                Ok(Type::Binding(binding))
+                binding.ty.expect_inferred(InferredType::Type).unwrap(); // TODO dont unwrap
+                Ok(InferredType::Binding(binding).into())
             }
             Self::Type(ty) => Ok(ty),
             Self::Tuple(tuple) => {
@@ -140,41 +97,44 @@ impl Value {
                 for (name, value) in tuple {
                     ty.add(name, value.expect_type()?);
                 }
-                Ok(Type::Tuple(ty))
+                Ok(InferredType::Tuple(ty).into())
             }
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Type,
+                expected: InferredType::Type,
             }),
         }
     }
     /// Get the type OF this value
     pub fn ty(&self) -> Type {
         match self {
-            Value::Unit => Type::Unit,
-            Value::Multiset(_) => Type::Multiset,
+            Value::Unit => InferredType::Unit.into(),
+            Value::Multiset(_) => InferredType::Multiset.into(),
             Value::Variant(value) => value.ty.clone(),
-            Value::Bool(_) => Type::Bool,
-            Value::Int32(_) => Type::Int32,
-            Value::Int64(_) => Type::Int64,
-            Value::String(_) => Type::String,
-            Value::Tuple(tuple) => Type::Tuple(tuple.as_ref().map(|field| field.ty())),
+            Value::Bool(_) => InferredType::Bool.into(),
+            Value::Int32(_) => InferredType::Int32.into(),
+            Value::Int64(_) => InferredType::Int64.into(),
+            Value::Float64(_) => InferredType::Float64.into(),
+            Value::String(_) => InferredType::String.into(),
+            Value::Tuple(tuple) => {
+                InferredType::Tuple(tuple.as_ref().map(|field| field.ty())).into()
+            }
             Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
-            Value::Function(f) => Type::Function(Box::new(f.ty.clone())),
-            Value::Template(t) => Type::Template(t.compiled.clone()),
-            Value::Macro(f) => Type::Macro(Box::new(f.ty.clone())),
-            Value::NativeFunction(f) => Type::Function(Box::new(f.ty.clone())),
-            Value::Ast(_) => Type::Ast,
-            Value::Type(_) => Type::Type,
-            Value::SyntaxModule(_) => Type::SyntaxModule,
-            Value::SyntaxDefinition(_) => Type::SyntaxDefinition,
+            Value::Function(f) => InferredType::Function(Box::new(f.ty.clone())).into(),
+            Value::Template(t) => InferredType::Template(t.compiled.clone()).into(),
+            Value::Macro(f) => InferredType::Macro(Box::new(f.ty.clone())).into(),
+            Value::NativeFunction(f) => InferredType::Function(Box::new(f.ty.clone())).into(),
+            Value::Ast(_) => InferredType::Ast.into(),
+            Value::Type(_) => InferredType::Type.into(),
+            Value::SyntaxModule(_) => InferredType::SyntaxModule.into(),
+            Value::SyntaxDefinition(_) => InferredType::SyntaxDefinition.into(),
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("{value} is not {expected}")]
-pub struct ExpectError<V = Value, Expected = Type> {
+pub struct ExpectError<V = Value, Expected = InferredType> {
     pub value: V,
     pub expected: Expected,
 }
@@ -198,21 +158,23 @@ impl Value {
             }),
         }
     }
-    pub fn expect_syntax_definition(self) -> Result<Arc<ast::SyntaxDefinition>, ExpectError> {
+    pub fn expect_syntax_definition(self) -> Result<Parc<ast::SyntaxDefinition>, ExpectError> {
         match self {
             Self::SyntaxDefinition(def) => Ok(def),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::SyntaxModule,
+                expected: InferredType::SyntaxModule,
             }),
         }
     }
-    pub fn expect_syntax_module(self) -> Result<Arc<Vec<Arc<ast::SyntaxDefinition>>>, ExpectError> {
+    pub fn expect_syntax_module(
+        self,
+    ) -> Result<Parc<Vec<Parc<ast::SyntaxDefinition>>>, ExpectError> {
         match self {
             Self::SyntaxModule(syntax) => Ok(syntax),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::SyntaxModule,
+                expected: InferredType::SyntaxModule,
             }),
         }
     }
@@ -221,7 +183,7 @@ impl Value {
             Self::Unit => Ok(()),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Unit,
+                expected: InferredType::Unit,
             }),
         }
     }
@@ -230,7 +192,7 @@ impl Value {
             Self::String(s) => Ok(s),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::String,
+                expected: InferredType::String,
             }),
         }
     }
@@ -239,7 +201,7 @@ impl Value {
             Self::Int32(value) => Ok(value),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Int32,
+                expected: InferredType::Int32,
             }),
         }
     }
@@ -248,7 +210,7 @@ impl Value {
             Self::Int64(value) => Ok(value),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Int64,
+                expected: InferredType::Int64,
             }),
         }
     }
@@ -257,7 +219,7 @@ impl Value {
             Self::Bool(value) => Ok(value),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Bool,
+                expected: InferredType::Bool,
             }),
         }
     }
@@ -266,7 +228,7 @@ impl Value {
             Self::Ast(ast) => Ok(ast),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Ast,
+                expected: InferredType::Ast,
             }),
         }
     }
@@ -275,9 +237,9 @@ impl Value {
             Self::Function(f) => Ok(f),
             _ => Err(ExpectError {
                 value: self,
-                expected: Type::Function(Box::new(FnType {
-                    arg: Type::Infer(inference::Var::new()),
-                    result: Type::Infer(inference::Var::new()),
+                expected: InferredType::Function(Box::new(FnType {
+                    arg: Type::new_not_inferred(),
+                    result: Type::new_not_inferred(),
                 })),
             }),
         }
@@ -293,7 +255,7 @@ impl Value {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct TypedFunction {
     pub ty: FnType,
     pub f: Function,
@@ -306,18 +268,10 @@ impl std::ops::Deref for TypedFunction {
     }
 }
 
-impl PartialEq for TypedFunction {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl Eq for TypedFunction {}
-
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub id: Id,
-    pub captured: Arc<Scope>,
+    pub captured: Parc<Scope>,
     pub compiled: MaybeCompiledFn,
 }
 
@@ -327,18 +281,12 @@ impl std::fmt::Debug for Function {
     }
 }
 
-impl PartialEq for Function {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
+pub type NativeFunctionImpl = dyn Fn(FnType, Value) -> eyre::Result<Value> + Send + Sync;
 
-impl Eq for Function {}
-
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NativeFunction {
     pub name: String,
-    pub r#impl: Arc<dyn Fn(FnType, Value) -> eyre::Result<Value> + Send + Sync>,
+    pub r#impl: Parc<NativeFunctionImpl>,
     pub ty: FnType,
 }
 

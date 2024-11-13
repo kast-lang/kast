@@ -18,7 +18,7 @@ syntax_module {
 
   # syntax loop_impl <- 3 = "loop" "{" body "}";
   # syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
-  # syntax @"builtin macro create_impl" <- 3 = "impl" trait "for" value "as" impl;
+  syntax @"builtin macro impl_cast" <- 4 = "impl" value "as" target "=" impl;
   syntax @"builtin macro impl_syntax" <- 4 = "impl" "syntax" def "=" impl;
   syntax @"builtin macro let" <- 4 = "let" pattern "=" value;
   syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
@@ -92,8 +92,8 @@ syntax_module {
   syntax @"op binary >=" <- 19 = lhs ">=" rhs;
   syntax @"op binary >" <- 19 = lhs ">" rhs;
 
-  syntax @"builtin macro get_impl" <- 20 = value "as" trait;
-  syntax @"builtin macro check_impl" <- 21 = value "impl" trait;
+  syntax @"builtin macro cast" <- 20 = value "as" target;
+  #syntax @"builtin macro check_impl" <- 21 = value "impl" trait;
 
   syntax @"op unary +" <- 25 = "+" x;
   syntax @"op unary -" <- 25 = "-" x;

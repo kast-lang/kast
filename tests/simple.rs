@@ -27,4 +27,8 @@ fn special_for_DevNinYa() {
         "use std.*; (:Some 123 :: Option[int32]) is :Some _",
         Value::Bool(true),
     );
+    test_eq(
+        "use std.*; let foo = (a :: int32, b) => a + b; foo (parse \"123\", parse \"456\")",
+        Value::Int32(579),
+    );
 }
