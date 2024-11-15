@@ -655,7 +655,35 @@ impl Kast {
                     self.call_fn(template, arg).await?
                 }
             };
-            if result.ty() != expected_ty {
+            let should_check_result_ty = match expr {
+                Expr::Unit { .. }
+                | Expr::FunctionType { .. }
+                | Expr::Cast { .. }
+                | Expr::Is { .. }
+                | Expr::Match { .. }
+                | Expr::Newtype { .. }
+                | Expr::Variant { .. }
+                | Expr::MakeMultiset { .. }
+                | Expr::Use { .. }
+                | Expr::FieldAccess { .. }
+                | Expr::Binding { .. }
+                | Expr::If { .. }
+                | Expr::Then { .. }
+                | Expr::Constant { .. }
+                | Expr::Number { .. }
+                | Expr::Native { .. }
+                | Expr::Let { .. }
+                | Expr::Call { .. }
+                | Expr::Scope { .. }
+                | Expr::Function { .. }
+                | Expr::Template { .. }
+                | Expr::Instantiate { .. }
+                | Expr::Tuple { .. }
+                | Expr::Ast { .. } => true,
+                // TODO
+                Expr::Recursive { .. } => false,
+            };
+            if should_check_result_ty && result.ty() != expected_ty {
                 eyre::bail!(
                     "expr expected to be of type {}, but we got {} :: {}",
                     expected_ty,
@@ -687,6 +715,7 @@ impl Kast {
         let mut new_scope = Scope::new();
         new_scope.parent = Some(f.captured.clone());
         let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
+        arg.ty().make_same(compiled.arg.data().ty.clone())?;
         let mut kast = self.with_scope(Parc::new(new_scope));
         kast.bind_pattern_match(&compiled.arg, arg);
         let value = kast.eval(&compiled.body).await?;

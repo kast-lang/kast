@@ -16,12 +16,14 @@ const print :: string -> () = native "print";
 
 const dbg = forall[T] { native "dbg" :: T -> () };
 
-const Option = forall[T] { newtype :Some T | :None };
+# TODO `:: type` should be inferred
+const Option = forall[T :: type] { newtype :Some T | :None };
 
-const Either = forall[.left = left, .right = right] { newtype :Left left | :Right right };
+const Either = forall[.left = left :: type, .right = right :: type] { newtype :Left left | :Right right };
 
-const Result = forall[.ok = ok, .error = error] { newtype :Ok ok | :Error error };
+const Result = forall[.ok = ok :: type, .error = error :: type] { newtype :Ok ok | :Error error };
 
+# TODO where T: Num or smth
 impl syntax @"syntax".@"op binary +" = forall[T] { native "+" :: (.lhs = T, .rhs = T) -> T };
 impl syntax @"syntax".@"op binary -" = forall[T] { native "-" :: (.lhs = T, .rhs = T) -> T };
 impl syntax @"syntax".@"op binary <" = forall[T] { native "<" :: (.lhs = T, .rhs = T) -> bool };
@@ -46,6 +48,6 @@ impl float64 as Parse = (
   .parse = native "parse",
 );
 
-const parse = forall[T :: type] {
+const parse = forall[T] {
   (T as Parse).parse
 };

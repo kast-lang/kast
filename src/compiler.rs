@@ -1778,13 +1778,20 @@ impl Expr<Span> {
                         .expect_template()?;
                     // TODO why am I cloning kast?
                     // TODO why eval, if then arg should be value??
-                    let arg = kast.clone().eval(&arg_ir).await?;
 
                     kast.advance_executor();
                     let compiled: Parc<CompiledFn> = match &*template_ty.lock().unwrap() {
                         Some(compiled) => compiled.clone(),
                         None => panic!("template is not compiled yet"),
                     };
+
+                    arg_ir
+                        .data()
+                        .ty
+                        .clone()
+                        .make_same(compiled.arg.data().ty.clone())?;
+                    let arg = kast.clone().eval(&arg_ir).await?;
+
                     let mut template_kast = kast.with_scope(Parc::new(Scope::new()));
                     template_kast.bind_pattern_match(&compiled.arg, arg);
                     let result_ty =
