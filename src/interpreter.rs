@@ -580,7 +580,7 @@ impl Kast {
                     Value::Type(ty) => Value::Type(self.substitute_type_bindings(ty)),
                     _ => value.clone(),
                 },
-                Expr::Number { raw, data } => match data.ty.inferred() {
+                Expr::Number { raw, data } => match data.ty.inferred_or_default()? {
                     Ok(InferredType::Int32) => Value::Int32(
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as int32"))?,

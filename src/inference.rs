@@ -7,6 +7,7 @@ type Check<T> = Arc<dyn Fn(&T) -> eyre::Result<()> + Send + Sync>;
 #[derive(Clone)]
 struct Data<T> {
     value: Option<Arc<T>>,
+    default_value: Option<Arc<T>>,
     checks: Vec<Check<T>>,
 }
 
@@ -43,7 +44,7 @@ impl<T: Sync + Send + Clone + 'static> VarState<T> {
             VarState::NotRoot {
                 ref mut closer_to_root,
             } => {
-                let root = Self::get_root(&closer_to_root);
+                let root = Self::get_root(closer_to_root);
                 *closer_to_root = root.clone();
                 root
             }
@@ -191,9 +192,30 @@ impl<T: Inferrable> Var<T> {
         Self {
             state: global_state::Id::new(VarState::Root(Data {
                 value: None,
+                default_value: None,
                 checks: Vec::new(),
             })),
         }
+    }
+    #[allow(clippy::new_without_default)]
+    pub fn new_with_default(default: T) -> Self {
+        Self {
+            state: global_state::Id::new(VarState::Root(Data {
+                value: None,
+                default_value: Some(Arc::new(default)),
+                checks: Vec::new(),
+            })),
+        }
+    }
+    pub fn get_or_default(&self) -> eyre::Result<Option<Arc<T>>> {
+        VarState::get_root(&self.state).modify(|root| {
+            let root = root.as_root();
+            if root.value.is_none() {
+                root.value = root.default_value.clone();
+                root.run_checks()?;
+            }
+            Ok(root.value.clone())
+        })
     }
     pub fn get(&self) -> Option<Arc<T>> {
         VarState::get_root(&self.state)

@@ -87,9 +87,22 @@ impl Type {
     pub fn new_not_inferred() -> Self {
         Self(inference::Var::new())
     }
+    pub fn new_not_inferred_with_default(default: InferredType) -> Self {
+        Self(inference::Var::new_with_default(default))
+    }
     /// Get actual value (if it is an inference var)
     pub fn inferred(&self) -> Result<InferredType, &inference::Var<InferredType>> {
         self.0.get().map(|value| (*value).clone()).ok_or(&self.0)
+    }
+    /// Get actual value (if it is an inference var)
+    pub fn inferred_or_default(
+        &self,
+    ) -> eyre::Result<Result<InferredType, &inference::Var<InferredType>>> {
+        Ok(self
+            .0
+            .get_or_default()?
+            .map(|value| (*value).clone())
+            .ok_or(&self.0))
     }
     pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
         *self = Inferrable::make_same(self.clone(), other)?;

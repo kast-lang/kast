@@ -60,6 +60,8 @@ pub struct Cache {
     builtin_macros: HashMap<&'static str, BuiltinMacro>,
     syntax_definitions: Mutex<HashMap<Parc<ast::SyntaxDefinition>, std::task::Poll<Value>>>,
     pub casts: Mutex<CastMap>,
+    /// TODO use compile time context
+    default_number_type: InferredType,
 }
 
 impl Cache {
@@ -111,6 +113,7 @@ impl Cache {
             builtin_macros,
             syntax_definitions: Default::default(),
             casts: Default::default(),
+            default_number_type: InferredType::Int32,
         }
     }
 
@@ -1661,7 +1664,9 @@ impl Expr<Span> {
                 Expr::Number { raw, data: span } => Expr::Number {
                     raw,
                     data: ExprData {
-                        ty: Type::new_not_inferred(),
+                        ty: Type::new_not_inferred_with_default(
+                            kast.cache.compiler.default_number_type.clone(),
+                        ),
                         span,
                     },
                 },
