@@ -556,6 +556,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-subscriber",
+ "try-hash",
 ]
 
 [[package]]
@@ -984,6 +985,22 @@ dependencies = [
  "thread_local",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "try-hash"
+version = "0.1.0"
+dependencies = [
+ "try-hash-derive",
+]
+
+[[package]]
+name = "try-hash-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

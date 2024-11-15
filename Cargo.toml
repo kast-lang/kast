@@ -28,6 +28,7 @@ kast-ast = { path = "crates/ast" }
 
 decursion = { git = "https://github.com/kuviman/decursion" }
 refmap = { path = "crates/refmap" }
+try-hash = { path = "crates/try-hash" }
 
 [package]
 name = "kast"
@@ -56,3 +57,4 @@ async-trait.workspace = true
 futures-lite.workspace = true
 decursion.workspace = true
 event-listener.workspace = true
+try-hash.workspace = true
