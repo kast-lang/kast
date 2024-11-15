@@ -58,3 +58,4 @@ futures-lite.workspace = true
 decursion.workspace = true
 event-listener.workspace = true
 try-hash.workspace = true
+anymap3 = "1.0.1"

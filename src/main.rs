@@ -95,11 +95,18 @@ fn main() -> eyre::Result<()> {
             }
             let helper = repl_helper::Helper::new(kast.clone());
             run_repl(helper, |contents| {
+                let snapshot = kast::inference::global_state::snapshot();
                 let source = SourceFile {
                     contents,
                     filename: "<stdin>".into(),
                 };
-                let value = kast.lock().unwrap().eval_source(source, None)?;
+                let value = match kast.lock().unwrap().eval_source(source, None) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        kast::inference::global_state::revert(snapshot);
+                        return Err(e);
+                    }
+                };
                 println!("{} :: {}", value, value.ty());
                 Ok(())
             })?;

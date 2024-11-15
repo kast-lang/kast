@@ -21,7 +21,7 @@ pub use value::*;
 mod cast;
 mod compiler;
 mod id;
-mod inference;
+pub mod inference;
 mod interpreter;
 mod ir;
 mod scope;
