@@ -575,6 +575,7 @@ version = "0.1.0"
 dependencies = [
  "pad-adapter",
  "thiserror",
+ "try-hash",
 ]
 
 [[package]]

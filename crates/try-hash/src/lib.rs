@@ -5,13 +5,30 @@ pub trait TryHash {
     fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error>;
 }
 
-impl<T> TryHash for T
-where
-    T: std::hash::Hash,
-{
-    type Error = Box<dyn std::error::Error>;
+impl<T: ?Sized + TryHash> TryHash for Box<T> {
+    type Error = T::Error;
     fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
-        <T as std::hash::Hash>::hash(self, hasher);
+        T::try_hash(self, hasher)
+    }
+}
+
+impl<T: TryHash> TryHash for Option<T> {
+    type Error = T::Error;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        std::hash::Hash::hash(&std::mem::discriminant(self), hasher);
+        if let Some(value) = self {
+            value.try_hash(hasher)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: TryHash> TryHash for Vec<T> {
+    type Error = T::Error;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        for elem in self {
+            elem.try_hash(hasher)?;
+        }
         Ok(())
     }
 }

@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, TryHash)]
 pub enum Value {
     Unit,
     Bool(bool),
@@ -8,24 +8,26 @@ pub enum Value {
     Int64(i64),
     Float64(OrderedFloat<f64>),
     String(String),
-    Tuple(Tuple<Value>),
-    Function(TypedFunction),
+    Tuple(#[try_hash] Tuple<Value>),
+    Function(#[try_hash] TypedFunction),
     Template(Function),
-    Macro(TypedFunction),
-    NativeFunction(NativeFunction),
+    Macro(#[try_hash] TypedFunction),
+    NativeFunction(#[try_hash] NativeFunction),
     Binding(Parc<Binding>),
-    Variant(VariantValue),
-    Multiset(Vec<Value>),
+    Variant(#[try_hash] VariantValue),
+    Multiset(#[try_hash] Vec<Value>),
     Ast(Ast),
-    Type(Type),
+    Type(#[try_hash] Type),
     SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct VariantValue {
     pub name: String,
+    #[try_hash]
     pub value: Option<Box<Value>>,
+    #[try_hash]
     pub ty: Type,
 }
 
@@ -255,8 +257,9 @@ impl Value {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct TypedFunction {
+    #[try_hash]
     pub ty: FnType,
     pub f: Function,
 }
@@ -283,10 +286,11 @@ impl std::fmt::Debug for Function {
 
 pub type NativeFunctionImpl = dyn Fn(FnType, Value) -> eyre::Result<Value> + Send + Sync;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct NativeFunction {
     pub name: String,
     pub r#impl: Parc<NativeFunctionImpl>,
+    #[try_hash]
     pub ty: FnType,
 }
 

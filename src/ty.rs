@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
 pub enum InferredType {
     Unit,
     Bool,
@@ -8,11 +8,11 @@ pub enum InferredType {
     Int64,
     Float64,
     String,
-    Variant(Vec<VariantType>),
-    Tuple(Tuple<Type>),
-    Function(Box<FnType>),
+    Variant(#[try_hash] Vec<VariantType>),
+    Tuple(#[try_hash] Tuple<Type>),
+    Function(#[try_hash] Box<FnType>),
     Template(MaybeCompiledFn),
-    Macro(Box<FnType>),
+    Macro(#[try_hash] Box<FnType>),
     Multiset,
     Ast,
     #[allow(clippy::enum_variant_names)]
@@ -41,12 +41,14 @@ impl From<inference::Var<InferredType>> for Type {
     }
 }
 
-impl std::hash::Hash for Type {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self.0.get() {
-            Some(inferred) => inferred.hash(state),
-            None => panic!("not inferred type can't be hashed"), // TODO use custom hash trait?
+impl TryHash for Type {
+    type Error = eyre::Report;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        match self.inferred() {
+            Ok(ty) => ty.try_hash(hasher).map_err(|e| eyre!(e))?,
+            Err(_) => eyre::bail!("type is not inferred, fail to hash"),
         }
+        Ok(())
     }
 }
 
@@ -61,9 +63,10 @@ impl PartialEq for Type {
 
 impl Eq for Type {}
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
 pub struct VariantType {
     pub name: String,
+    #[try_hash]
     pub value: Option<Box<Type>>,
 }
 
@@ -231,9 +234,11 @@ impl std::fmt::Display for Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
 pub struct FnType {
+    #[try_hash]
     pub arg: Type,
+    #[try_hash]
     pub result: Type,
 }
 

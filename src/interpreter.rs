@@ -379,7 +379,7 @@ impl Kast {
                         .casts
                         .lock()
                         .unwrap()
-                        .cast(value, target)
+                        .cast(value, target)?
                     {
                         Ok(result) => result,
                         Err(value) => eyre::bail!("casting {value} into {target} not implemented"),

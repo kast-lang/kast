@@ -1247,7 +1247,7 @@ impl Kast {
             .casts
             .lock()
             .unwrap()
-            .impl_cast(value, target, r#impl);
+            .impl_cast(value, target, r#impl)?;
         Ok(Compiled::Expr(
             Expr::Constant {
                 value: Value::Unit,

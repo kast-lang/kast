@@ -1,11 +1,28 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use try_hash::TryHash;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Tuple<T> {
     unnamed: Vec<T>,
     named: BTreeMap<String, T>,
     named_order: Vec<String>,
+}
+
+impl<T: TryHash> TryHash for Tuple<T> {
+    type Error = T::Error;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        for unnamed in &self.unnamed {
+            unnamed.try_hash(hasher)?;
+        }
+        for name in &self.named_order {
+            std::hash::Hash::hash(name, hasher);
+            let value = &self.named[name];
+            value.try_hash(hasher)?;
+        }
+        Ok(())
+    }
 }
 
 impl<T> Tuple<T> {

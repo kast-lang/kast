@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 pad-adapter.workspace = true
 thiserror.workspace = true
+try-hash.workspace = true

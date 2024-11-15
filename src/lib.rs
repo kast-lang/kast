@@ -14,6 +14,7 @@ use scope::Scope;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use try_hash::TryHash;
 pub use ty::*;
 pub use value::*;
 

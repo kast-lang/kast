@@ -10,5 +10,9 @@ struct FooStruct {
 enum FooEnum {
     A,
     B(i32),
-    C { foo: FooStruct, idk: String },
+    C {
+        #[try_hash]
+        foo: FooStruct,
+        idk: String,
+    },
 }
