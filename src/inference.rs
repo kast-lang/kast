@@ -39,7 +39,7 @@ impl<T: Sync + Send + Clone + 'static> VarState<T> {
     }
     fn get_root(this: &global_state::Id<Self>) -> global_state::Id<Self> {
         let mut this_value = this.get();
-        match this_value {
+        let result = match this_value {
             VarState::Root { .. } => this.clone(),
             VarState::NotRoot {
                 ref mut closer_to_root,
@@ -48,7 +48,9 @@ impl<T: Sync + Send + Clone + 'static> VarState<T> {
                 *closer_to_root = root.clone();
                 root
             }
-        }
+        };
+        this.set(this_value);
+        result
     }
 }
 
@@ -137,15 +139,10 @@ pub mod global_state {
                 .clone()
         }
         pub fn modify<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-            f(state()
-                .lock()
-                .unwrap()
-                .concrete
-                .entry::<ConcreteState<T>>()
-                .or_default()
-                .vars
-                .get_mut(&self.index)
-                .expect("var not exist???"))
+            let mut value = self.get();
+            let result = f(&mut value);
+            self.set(value);
+            result
         }
     }
 
@@ -166,8 +163,11 @@ impl<T: Inferrable> Var<T> {
         global_state::ptr_eq(&self_root, &other_root)
     }
     pub fn add_check(&self, check: impl Fn(&T) -> eyre::Result<()> + Sync + Send + 'static) {
-        VarState::get_root(&self.state)
-            .modify(|state| state.as_root().checks.push(Arc::new(check)));
+        VarState::get_root(&self.state).modify(|state| {
+            let root = state.as_root();
+            root.checks.push(Arc::new(check));
+            root.run_checks().expect("check failed when adding");
+        });
     }
 }
 
@@ -257,8 +257,19 @@ impl<T: Inferrable> Var<T> {
                 T::clone(&other_value),
             )?)),
         };
+        let common_default_value = if common_value.is_some() {
+            None
+        } else {
+            match (root.default_value.take(), other_root.default_value.take()) {
+                (None, None) => None,
+                (None, Some(value)) => Some(value),
+                (Some(value), None) => Some(value),
+                (Some(a), Some(b)) => T::make_same(T::clone(&a), T::clone(&b)).ok().map(Arc::new),
+            }
+        };
         if thread_rng().gen() {
             other_root.value = common_value;
+            other_root.default_value = common_default_value;
             other_root.checks.append(&mut root.checks);
             other_root.run_checks()?;
             root_locked = VarState::NotRoot {
@@ -266,6 +277,7 @@ impl<T: Inferrable> Var<T> {
             };
         } else {
             root.value = common_value;
+            root.default_value = common_default_value;
             root.checks.append(&mut other_root.checks);
             root.run_checks()?;
             other_root_locked = VarState::NotRoot {

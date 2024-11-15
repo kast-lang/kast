@@ -3,11 +3,31 @@ use std::fmt::Write;
 
 use try_hash::TryHash;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct Tuple<T> {
     unnamed: Vec<T>,
     named: BTreeMap<String, T>,
     named_order: Vec<String>,
+}
+
+impl<T: PartialEq> PartialEq for Tuple<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.unnamed == other.unnamed && self.named == other.named
+    }
+}
+
+impl<T: Eq> Eq for Tuple<T> {}
+
+impl<T: std::hash::Hash> std::hash::Hash for Tuple<T> {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        for unnamed in &self.unnamed {
+            unnamed.hash(hasher);
+        }
+        for (name, value) in &self.named {
+            std::hash::Hash::hash(name, hasher);
+            value.hash(hasher);
+        }
+    }
 }
 
 impl<T: TryHash> TryHash for Tuple<T> {
@@ -16,9 +36,8 @@ impl<T: TryHash> TryHash for Tuple<T> {
         for unnamed in &self.unnamed {
             unnamed.try_hash(hasher)?;
         }
-        for name in &self.named_order {
+        for (name, value) in &self.named {
             std::hash::Hash::hash(name, hasher);
-            let value = &self.named[name];
             value.try_hash(hasher)?;
         }
         Ok(())

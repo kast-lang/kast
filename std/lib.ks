@@ -46,6 +46,6 @@ impl float64 as Parse = (
   .parse = native "parse",
 );
 
-const parse = forall[T] {
+const parse = forall[T :: type] {
   (T as Parse).parse
 };

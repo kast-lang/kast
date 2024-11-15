@@ -1240,10 +1240,11 @@ impl Kast {
         let value = self.eval_ast(value, None).await?;
         let target = self.eval_ast(target, None).await?;
         let mut r#impl: Expr = self.compile(r#impl).await?;
-        r#impl.data_mut().ty.make_same(
-            self.cast_result_ty(|| future::ready(Ok(value.clone())).boxed(), target.clone())
-                .await?,
-        )?;
+        let impl_ty = self
+            .cast_result_ty(|| future::ready(Ok(value.clone())).boxed(), target.clone())
+            .await?;
+        // right now I have a small brain moment
+        r#impl.data_mut().ty.make_same(impl_ty)?;
         let r#impl = self.eval(&r#impl).await?;
         self.cache
             .compiler
@@ -1366,6 +1367,12 @@ impl Kast {
             Value::Template(template) => {
                 let mut kast = self.enter_scope();
                 let value = value().await?;
+                kast.await_compiled(&template)
+                    .await?
+                    .body
+                    .data()
+                    .ty
+                    .expect_inferred(InferredType::Type)?;
                 let ty = kast.call_fn(template, value).await?;
                 ty.expect_type()?
             }
@@ -1382,7 +1389,7 @@ impl Expr<Span> {
             Ok(match self {
                 Expr::Unit { data: span } => Expr::Unit {
                     data: ExprData {
-                        ty: Type::new_not_inferred(), // HUH?? TODO
+                        ty: Type::new_not_inferred_with_default(InferredType::Unit),
                         span,
                     },
                 },
@@ -1391,8 +1398,8 @@ impl Expr<Span> {
                     result,
                     data: span,
                 } => {
-                    // arg.data().ty.expect_inferred(InferredType::Type)?;
-                    // result.data().ty.expect_inferred(InferredType::Type)?;
+                    arg.data().ty.expect_inferred(InferredType::Type)?;
+                    result.data().ty.expect_inferred(InferredType::Type)?;
                     Expr::FunctionType {
                         arg,
                         result,
@@ -1500,14 +1507,46 @@ impl Expr<Span> {
                 },
                 Expr::Tuple { tuple, data: span } => Expr::Tuple {
                     data: ExprData {
-                        ty: InferredType::Tuple({
-                            let mut result = Tuple::empty();
-                            for (name, field) in tuple.as_ref() {
-                                result.add(name, field.data().ty.clone());
-                            }
-                            result
-                        })
-                        .into(),
+                        ty: {
+                            let ty = inference::Var::new_with_default(InferredType::Tuple({
+                                let mut result = Tuple::empty();
+                                for (name, field) in tuple.as_ref() {
+                                    result.add(name, field.data().ty.clone());
+                                }
+                                result
+                            }));
+                            ty.add_check({
+                                let tuple = tuple.clone();
+                                move |inferred| {
+                                    match inferred {
+                                        InferredType::Type => {
+                                            for (_name, field) in tuple.as_ref() {
+                                                field
+                                                    .data()
+                                                    .ty
+                                                    .expect_inferred(InferredType::Type)?;
+                                            }
+                                        }
+                                        InferredType::Tuple(inferred) => {
+                                            for (_name, (original, inferred)) in
+                                                tuple.as_ref().zip(inferred.as_ref())?
+                                            {
+                                                original
+                                                    .data()
+                                                    .ty
+                                                    .clone()
+                                                    .make_same(inferred.clone())?;
+                                            }
+                                        }
+                                        _ => {
+                                            eyre::bail!("tuple inferred to be {inferred}???");
+                                        }
+                                    }
+                                    Ok(())
+                                }
+                            });
+                            ty.into()
+                        },
                         span,
                     },
                     tuple,
@@ -1566,6 +1605,7 @@ impl Expr<Span> {
                         },
                         None,
                     );
+                    // tracing::info!("rec fields = {fields}");
                     Expr::Recursive {
                         data: ExprData {
                             ty: InferredType::Tuple(fields).into(),

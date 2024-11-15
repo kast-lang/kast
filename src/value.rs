@@ -88,19 +88,11 @@ impl Value {
     /// Get this value AS a type
     pub fn expect_type(self) -> Result<Type, ExpectError> {
         match self {
-            Self::Unit => Ok(InferredType::Unit.into()), // TODO this is a hack (maybe, maybe not?)
             Self::Binding(binding) => {
                 binding.ty.expect_inferred(InferredType::Type).unwrap(); // TODO dont unwrap
                 Ok(InferredType::Binding(binding).into())
             }
             Self::Type(ty) => Ok(ty),
-            Self::Tuple(tuple) => {
-                let mut ty = Tuple::empty();
-                for (name, value) in tuple {
-                    ty.add(name, value.expect_type()?);
-                }
-                Ok(InferredType::Tuple(ty).into())
-            }
             _ => Err(ExpectError {
                 value: self,
                 expected: InferredType::Type,

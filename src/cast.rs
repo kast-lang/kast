@@ -36,8 +36,30 @@ impl CastMap {
         Self::default()
     }
     pub fn impl_cast(&mut self, value: Value, target: Value, r#impl: Value) -> eyre::Result<()> {
+        tracing::trace!("impl {value} as {target} = {impl} :: {}", r#impl.ty());
         self.map.insert(Key::new(value, target)?, r#impl);
         Ok(())
+    }
+    #[allow(clippy::only_used_in_recursion)]
+    pub fn cast_to_ty(&self, value: Value) -> eyre::Result<Result<Type, Value>> {
+        Ok(Ok(match value {
+            Value::Unit => InferredType::Unit.into(),
+            Value::Tuple(tuple) => {
+                let mut tuple_ty = Tuple::<Type>::empty();
+                for (name, value) in tuple {
+                    tuple_ty.add(
+                        name,
+                        self.cast_to_ty(value)?
+                            .map_err(|value| eyre!("{value} is not a type"))?,
+                    );
+                }
+                InferredType::Tuple(tuple_ty).into()
+            }
+            _ => match value.expect_type() {
+                Ok(value) => value,
+                Err(e) => return Ok(Err(e.value)),
+            },
+        }))
     }
     pub fn cast(&self, value: Value, target: &Value) -> eyre::Result<Result<Value, Value>> {
         let key = Key::new(value.clone(), target.clone())?;
@@ -45,7 +67,7 @@ impl CastMap {
         match target {
             Value::Type(ty) => match ty.inferred() {
                 Ok(InferredType::Type) => {
-                    return Ok(value.expect_type().map(Value::Type).map_err(|e| e.value))
+                    return self.cast_to_ty(value).map(|result| result.map(Value::Type));
                 }
                 _ => {}
             },

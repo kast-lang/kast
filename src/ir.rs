@@ -177,14 +177,14 @@ impl Expr {
                 }
             }
             Expr::Let {
-                is_const_let,
+                is_const_let: _,
                 pattern,
                 value: _,
                 data: _,
             } => {
-                if !is_const_let {
-                    pattern.collect_bindings(consumer);
-                }
+                // if !is_const_let {
+                pattern.collect_bindings(consumer);
+                // }
             }
             Expr::Use {
                 namespace: _,
@@ -197,9 +197,18 @@ impl Expr {
             }
         }
     }
+}
+
+impl std::borrow::Borrow<Span> for ExprData {
+    fn borrow(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
     pub fn show_short(&self) -> impl std::fmt::Display + '_ {
-        struct Show<'a>(&'a Expr);
-        impl std::fmt::Display for Show<'_> {
+        struct Show<'a, Data>(&'a Expr<Data>);
+        impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
                     Expr::Unit { .. } => write!(f, "unit expr")?,
@@ -228,7 +237,7 @@ impl Expr {
                     Expr::Call { .. } => write!(f, "call expr")?,
                     Expr::Instantiate { .. } => write!(f, "instantiate expr")?,
                 }
-                write!(f, " at {}", self.0.data().span)
+                write!(f, " at {}", self.0.data().borrow())
             }
         }
         Show(self)

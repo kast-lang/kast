@@ -350,13 +350,16 @@ impl Kast {
         Ok(result)
     }
     pub fn eval<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<Value>> {
+        let expected_ty = self.substitute_type_bindings(&expr.data().ty);
         let r#impl = async move {
-            tracing::debug!("evaluating {}", expr.show_short());
+            tracing::trace!("evaluating {}", expr.show_short());
+            tracing::trace!("as {}", expr.data().ty);
             let result = match expr {
-                Expr::Unit { data } => match data.ty.inferred() {
+                Expr::Unit { data } => match data.ty.inferred_or_default()? {
                     Ok(InferredType::Type) => Value::Type(InferredType::Unit.into()),
-                    Ok(InferredType::Unit) | Err(_) => Value::Unit,
+                    Ok(InferredType::Unit) => Value::Unit,
                     Ok(other) => panic!("unit inferred to be not unit but {other}???"),
+                    Err(_) => panic!("unit not inferred"),
                 },
                 Expr::FunctionType {
                     arg,
@@ -468,12 +471,25 @@ impl Kast {
                     }
                     Value::Unit
                 }
-                Expr::Tuple { tuple, data: _ } => {
+                Expr::Tuple { tuple, data } => {
                     let mut result = Tuple::empty();
                     for (name, field) in tuple.as_ref() {
                         result.add(name, self.eval(field).await?);
                     }
-                    Value::Tuple(result)
+                    let result = Value::Tuple(result);
+                    match data.ty.inferred_or_default()? {
+                        Ok(InferredType::Type) => self
+                            .cache
+                            .compiler
+                            .casts
+                            .lock()
+                            .unwrap()
+                            .cast(result, &Value::Type(InferredType::Type.into()))?
+                            .map_err(|tuple| eyre!("{tuple} can not be cast into type"))?,
+                        Ok(InferredType::Tuple(..)) => result,
+                        Ok(ty) => eyre::bail!("tuple expr type inferred as {ty}???"),
+                        Err(_) => eyre::bail!("tuple type could not be inferred???"),
+                    }
                 }
                 Expr::FieldAccess {
                     obj,
@@ -601,6 +617,7 @@ impl Kast {
                 Expr::Native { name, data } => {
                     let actual_type = self.substitute_type_bindings(&data.ty);
                     let name = self.eval(name).await?.expect_string()?;
+                    tracing::trace!("native {name} :: {actual_type}");
                     match self.interpreter.builtins.get(name.as_str()) {
                         Some(builtin) => builtin(actual_type)?,
                         None => eyre::bail!("native {name:?} not found"),
@@ -638,6 +655,14 @@ impl Kast {
                     self.call_fn(template, arg).await?
                 }
             };
+            if result.ty() != expected_ty {
+                eyre::bail!(
+                    "expr expected to be of type {}, but we got {} :: {}",
+                    expected_ty,
+                    result,
+                    result.ty(),
+                );
+            }
             tracing::debug!("finished evaluating {}", expr.show_short());
             tracing::trace!("result = {result}");
             Ok(result)
@@ -650,14 +675,18 @@ impl Kast {
         .boxed()
     }
 
+    pub async fn await_compiled(&mut self, f: &Function) -> eyre::Result<Parc<CompiledFn>> {
+        self.advance_executor();
+        match &*f.compiled.lock().unwrap() {
+            Some(compiled) => Ok(compiled.clone()),
+            None => panic!("function is not compiled yet"),
+        }
+    }
+
     pub async fn call_fn(&mut self, f: Function, arg: Value) -> eyre::Result<Value> {
         let mut new_scope = Scope::new();
         new_scope.parent = Some(f.captured.clone());
-        self.advance_executor();
-        let compiled: Parc<CompiledFn> = match &*f.compiled.lock().unwrap() {
-            Some(compiled) => compiled.clone(),
-            None => panic!("function is not compiled yet"),
-        };
+        let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
         let mut kast = self.with_scope(Parc::new(new_scope));
         kast.bind_pattern_match(&compiled.arg, arg);
         let value = kast.eval(&compiled.body).await?;
