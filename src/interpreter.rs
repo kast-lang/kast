@@ -589,6 +589,10 @@ impl Kast {
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as int64"))?,
                     ),
+                    Ok(InferredType::Float64) => Value::Float64(
+                        raw.parse()
+                            .wrap_err_with(|| format!("Failed to parse {raw:?} as float64"))?,
+                    ),
                     Ok(other) => {
                         eyre::bail!("number literals can not be treated as {other}")
                     }
