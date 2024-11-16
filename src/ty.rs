@@ -1,7 +1,8 @@
 use super::*;
 
+/// Partially inferred type, so we know the shape of it
 #[derive(Debug, Clone, PartialEq, Eq, TryHash)]
-pub enum InferredType {
+pub enum TypeShape {
     Unit,
     Bool,
     Int32,
@@ -22,7 +23,7 @@ pub enum InferredType {
     Binding(Parc<Binding>),
 }
 
-pub type Type = inference::MaybeNotInferred<InferredType>;
+pub type Type = inference::MaybeNotInferred<TypeShape>;
 
 #[derive(Debug, Clone, PartialEq, Eq, TryHash)]
 pub struct VariantType {
@@ -41,10 +42,8 @@ impl std::fmt::Display for VariantType {
     }
 }
 
-impl InferredType {
-    pub fn expect_variant(
-        self,
-    ) -> Result<Vec<VariantType>, ExpectError<InferredType, &'static str>> {
+impl TypeShape {
+    pub fn expect_variant(self) -> Result<Vec<VariantType>, ExpectError<TypeShape, &'static str>> {
         match self {
             Self::Variant(variants) => Ok(variants),
             _ => Err(ExpectError {
@@ -53,9 +52,7 @@ impl InferredType {
             }),
         }
     }
-    pub fn expect_template(
-        self,
-    ) -> Result<MaybeCompiledFn, ExpectError<InferredType, &'static str>> {
+    pub fn expect_template(self) -> Result<MaybeCompiledFn, ExpectError<TypeShape, &'static str>> {
         match self {
             Self::Template(t) => Ok(t),
             _ => Err(ExpectError {
@@ -66,7 +63,7 @@ impl InferredType {
     }
 }
 
-impl Inferrable for InferredType {
+impl Inferrable for TypeShape {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         macro_rules! fail {
             () => {
@@ -130,7 +127,7 @@ impl Inferrable for InferredType {
     }
 }
 
-impl std::fmt::Display for InferredType {
+impl std::fmt::Display for TypeShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unit => write!(f, "()"),
@@ -189,18 +186,18 @@ impl Kast {
     pub fn substitute_type_bindings(&self, ty: &Type) -> Type {
         match ty.inferred() {
             Ok(inferred) => match inferred {
-                InferredType::Unit
-                | InferredType::Bool
-                | InferredType::Int32
-                | InferredType::Int64
-                | InferredType::Float64
-                | InferredType::String
-                | InferredType::Ast
-                | InferredType::Multiset
-                | InferredType::Type
-                | InferredType::SyntaxModule
-                | InferredType::SyntaxDefinition => ty.clone(),
-                InferredType::Variant(variants) => InferredType::Variant(
+                TypeShape::Unit
+                | TypeShape::Bool
+                | TypeShape::Int32
+                | TypeShape::Int64
+                | TypeShape::Float64
+                | TypeShape::String
+                | TypeShape::Ast
+                | TypeShape::Multiset
+                | TypeShape::Type
+                | TypeShape::SyntaxModule
+                | TypeShape::SyntaxDefinition => ty.clone(),
+                TypeShape::Variant(variants) => TypeShape::Variant(
                     variants
                         .iter()
                         .map(|variant| VariantType {
@@ -213,27 +210,27 @@ impl Kast {
                         .collect(),
                 )
                 .into(),
-                InferredType::Tuple(tuple) => {
-                    InferredType::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
+                TypeShape::Tuple(tuple) => {
+                    TypeShape::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
                         .into()
                 }
-                InferredType::Function(f) => InferredType::Function(Box::new(FnType {
+                TypeShape::Function(f) => TypeShape::Function(Box::new(FnType {
                     arg: self.substitute_type_bindings(&f.arg),
                     result: self.substitute_type_bindings(&f.result),
                 }))
                 .into(),
-                InferredType::Template(t) => InferredType::Template(t).into(),
-                InferredType::Macro(f) => InferredType::Macro(Box::new(FnType {
+                TypeShape::Template(t) => TypeShape::Template(t).into(),
+                TypeShape::Macro(f) => TypeShape::Macro(Box::new(FnType {
                     arg: self.substitute_type_bindings(&f.arg),
                     result: self.substitute_type_bindings(&f.result),
                 }))
                 .into(),
-                InferredType::Binding(binding) => {
+                TypeShape::Binding(binding) => {
                     match self.interpreter.get_nowait(binding.name.raw()) {
                         Some(value) => value.expect_type().unwrap_or_else(|e| {
                             panic!("{} expected to be a type: {e}", binding.name.raw())
                         }),
-                        None => InferredType::Binding(binding.clone()).into(),
+                        None => TypeShape::Binding(binding.clone()).into(),
                     }
                 }
             },

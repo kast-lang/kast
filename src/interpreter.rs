@@ -21,30 +21,30 @@ impl State {
             spawned: false,
             builtins: {
                 let mut map = HashMap::<&str, Builtin>::new();
-                let mut insert_ty = |name, ty: InferredType| {
+                let mut insert_ty = |name, ty: TypeShape| {
                     map.insert(
                         name,
                         Box::new(move |expected: Type| {
-                            expected.expect_inferred(InferredType::Type)?;
+                            expected.expect_inferred(TypeShape::Type)?;
                             Ok(Value::Type(ty.clone().into()))
                         }),
                     );
                 };
-                insert_ty("bool", InferredType::Bool);
-                insert_ty("int32", InferredType::Int32);
-                insert_ty("int64", InferredType::Int64);
-                insert_ty("float64", InferredType::Float64);
-                insert_ty("string", InferredType::String);
-                insert_ty("ast", InferredType::Ast);
-                insert_ty("type", InferredType::Type);
+                insert_ty("bool", TypeShape::Bool);
+                insert_ty("int32", TypeShape::Int32);
+                insert_ty("int64", TypeShape::Int64);
+                insert_ty("float64", TypeShape::Float64);
+                insert_ty("string", TypeShape::String);
+                insert_ty("ast", TypeShape::Ast);
+                insert_ty("type", TypeShape::Type);
                 map.insert(
                     "dbg",
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: Type::new_not_inferred(),
-                            result: InferredType::Unit.into(),
+                            result: TypeShape::Unit.into(),
                         };
-                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg".to_owned(),
                             r#impl: (std::sync::Arc::new(|fn_ty: FnType, value: Value| {
@@ -63,10 +63,10 @@ impl State {
                     "panic",
                     Box::new(|expected: Type| {
                         let ty = FnType {
-                            arg: InferredType::String.into(),
-                            result: InferredType::Unit.into(), // TODO never type
+                            arg: TypeShape::String.into(),
+                            result: TypeShape::Unit.into(), // TODO never type
                         };
-                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "panic".to_owned(),
                             r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
@@ -83,19 +83,19 @@ impl State {
                     "parse",
                     Box::new(|expected: Type| {
                         let ty = FnType {
-                            arg: InferredType::String.into(),
+                            arg: TypeShape::String.into(),
                             result: Type::new_not_inferred(),
                         };
-                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "parse".to_owned(),
                             r#impl: (std::sync::Arc::new(|fn_ty: FnType, s: Value| {
                                 let s = s.expect_string()?;
                                 Ok(match fn_ty.result.inferred() {
                                     Ok(ty) => match ty {
-                                        InferredType::Int32 => Value::Int32(s.parse()?),
-                                        InferredType::Int64 => Value::Int64(s.parse()?),
-                                        InferredType::Float64 => Value::Float64(s.parse()?),
+                                        TypeShape::Int32 => Value::Int32(s.parse()?),
+                                        TypeShape::Int64 => Value::Int64(s.parse()?),
+                                        TypeShape::Float64 => Value::Float64(s.parse()?),
                                         _ => eyre::bail!("{ty} is not parseable???"),
                                     },
                                     Err(_) => eyre::bail!("cant parse not inferred type"),
@@ -111,10 +111,10 @@ impl State {
                     "print",
                     Box::new(|expected: Type| {
                         let ty = FnType {
-                            arg: InferredType::String.into(),
-                            result: InferredType::Unit.into(),
+                            arg: TypeShape::String.into(),
+                            result: TypeShape::Unit.into(),
                         };
-                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "print".to_owned(),
                             r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
@@ -133,16 +133,16 @@ impl State {
                     Box::new(|expected: Type| {
                         let operand_type = Type::new_not_inferred();
                         let ty = FnType {
-                            arg: InferredType::Tuple({
+                            arg: TypeShape::Tuple({
                                 let mut args = Tuple::empty();
                                 args.add_named("lhs", operand_type.clone());
                                 args.add_named("rhs", operand_type.clone());
                                 args
                             })
                             .into(),
-                            result: InferredType::Bool.into(),
+                            result: TypeShape::Bool.into(),
                         };
-                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "<".to_owned(),
                             r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
@@ -173,7 +173,7 @@ impl State {
                     Box::new(|expected: Type| {
                         let operand_type = Type::new_not_inferred();
                         let ty = FnType {
-                            arg: InferredType::Tuple({
+                            arg: TypeShape::Tuple({
                                 let mut args = Tuple::empty();
                                 args.add_named("lhs", operand_type.clone());
                                 args.add_named("rhs", operand_type.clone());
@@ -182,7 +182,7 @@ impl State {
                             .into(),
                             result: operand_type,
                         };
-                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "-".to_owned(),
                             r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
@@ -213,7 +213,7 @@ impl State {
                     Box::new(|expected: Type| {
                         let operand_type = Type::new_not_inferred();
                         let ty = FnType {
-                            arg: InferredType::Tuple({
+                            arg: TypeShape::Tuple({
                                 let mut args = Tuple::empty();
                                 args.add_named("lhs", operand_type.clone());
                                 args.add_named("rhs", operand_type.clone());
@@ -222,7 +222,7 @@ impl State {
                             .into(),
                             result: operand_type,
                         };
-                        expected.expect_inferred(InferredType::Function(Box::new(ty.clone())))?;
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "+".to_owned(),
                             r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
@@ -356,8 +356,8 @@ impl Kast {
             tracing::trace!("as {}", expr.data().ty);
             let result = match expr {
                 Expr::Unit { data } => match data.ty.inferred_or_default()? {
-                    Ok(InferredType::Type) => Value::Type(InferredType::Unit.into()),
-                    Ok(InferredType::Unit) => Value::Unit,
+                    Ok(TypeShape::Type) => Value::Type(TypeShape::Unit.into()),
+                    Ok(TypeShape::Unit) => Value::Unit,
                     Ok(other) => panic!("unit inferred to be not unit but {other}???"),
                     Err(_) => panic!("unit not inferred"),
                 },
@@ -368,7 +368,7 @@ impl Kast {
                 } => {
                     let arg = self.eval(arg).await?.expect_type()?;
                     let result = self.eval(result).await?.expect_type()?;
-                    Value::Type(InferredType::Function(Box::new(FnType { arg, result })).into())
+                    Value::Type(TypeShape::Function(Box::new(FnType { arg, result })).into())
                 }
                 Expr::Cast {
                     value,
@@ -434,7 +434,7 @@ impl Kast {
                                         .map(Box::new),
                                 });
                             }
-                            InferredType::Variant(variants).into()
+                            TypeShape::Variant(variants).into()
                         }
                         _ => eyre::bail!("{def} can not be used in newtype"),
                     };
@@ -478,15 +478,15 @@ impl Kast {
                     }
                     let result = Value::Tuple(result);
                     match data.ty.inferred_or_default()? {
-                        Ok(InferredType::Type) => self
+                        Ok(TypeShape::Type) => self
                             .cache
                             .compiler
                             .casts
                             .lock()
                             .unwrap()
-                            .cast(result, &Value::Type(InferredType::Type.into()))?
+                            .cast(result, &Value::Type(TypeShape::Type.into()))?
                             .map_err(|tuple| eyre!("{tuple} can not be cast into type"))?,
-                        Ok(InferredType::Tuple(..)) => result,
+                        Ok(TypeShape::Tuple(..)) => result,
                         Ok(ty) => eyre::bail!("tuple expr type inferred as {ty}???"),
                         Err(_) => eyre::bail!("tuple type could not be inferred???"),
                     }
@@ -597,15 +597,15 @@ impl Kast {
                     _ => value.clone(),
                 },
                 Expr::Number { raw, data } => match data.ty.inferred_or_default()? {
-                    Ok(InferredType::Int32) => Value::Int32(
+                    Ok(TypeShape::Int32) => Value::Int32(
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as int32"))?,
                     ),
-                    Ok(InferredType::Int64) => Value::Int64(
+                    Ok(TypeShape::Int64) => Value::Int64(
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as int64"))?,
                     ),
-                    Ok(InferredType::Float64) => Value::Float64(
+                    Ok(TypeShape::Float64) => Value::Float64(
                         raw.parse()
                             .wrap_err_with(|| format!("Failed to parse {raw:?} as float64"))?,
                     ),

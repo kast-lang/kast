@@ -43,7 +43,7 @@ impl CastMap {
     #[allow(clippy::only_used_in_recursion)]
     pub fn cast_to_ty(&self, value: Value) -> eyre::Result<Result<Type, Value>> {
         Ok(Ok(match value {
-            Value::Unit => InferredType::Unit.into(),
+            Value::Unit => TypeShape::Unit.into(),
             Value::Tuple(tuple) => {
                 let mut tuple_ty = Tuple::<Type>::empty();
                 for (name, value) in tuple {
@@ -53,7 +53,7 @@ impl CastMap {
                             .map_err(|value| eyre!("{value} is not a type"))?,
                     );
                 }
-                InferredType::Tuple(tuple_ty).into()
+                TypeShape::Tuple(tuple_ty).into()
             }
             _ => match value.expect_type() {
                 Ok(value) => value,
@@ -65,7 +65,7 @@ impl CastMap {
         #[allow(clippy::single_match)]
         match target {
             Value::Type(ty) => match ty.inferred() {
-                Ok(InferredType::Type) => {
+                Ok(TypeShape::Type) => {
                     return self.cast_to_ty(value).map(|result| result.map(Value::Type));
                 }
                 _ => {}

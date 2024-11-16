@@ -89,46 +89,44 @@ impl Value {
     pub fn expect_type(self) -> Result<Type, ExpectError> {
         match self {
             Self::Binding(binding) => {
-                binding.ty.expect_inferred(InferredType::Type).unwrap(); // TODO dont unwrap
-                Ok(InferredType::Binding(binding).into())
+                binding.ty.expect_inferred(TypeShape::Type).unwrap(); // TODO dont unwrap
+                Ok(TypeShape::Binding(binding).into())
             }
             Self::Type(ty) => Ok(ty),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::Type,
+                expected: TypeShape::Type,
             }),
         }
     }
     /// Get the type OF this value
     pub fn ty(&self) -> Type {
         match self {
-            Value::Unit => InferredType::Unit.into(),
-            Value::Multiset(_) => InferredType::Multiset.into(),
+            Value::Unit => TypeShape::Unit.into(),
+            Value::Multiset(_) => TypeShape::Multiset.into(),
             Value::Variant(value) => value.ty.clone(),
-            Value::Bool(_) => InferredType::Bool.into(),
-            Value::Int32(_) => InferredType::Int32.into(),
-            Value::Int64(_) => InferredType::Int64.into(),
-            Value::Float64(_) => InferredType::Float64.into(),
-            Value::String(_) => InferredType::String.into(),
-            Value::Tuple(tuple) => {
-                InferredType::Tuple(tuple.as_ref().map(|field| field.ty())).into()
-            }
+            Value::Bool(_) => TypeShape::Bool.into(),
+            Value::Int32(_) => TypeShape::Int32.into(),
+            Value::Int64(_) => TypeShape::Int64.into(),
+            Value::Float64(_) => TypeShape::Float64.into(),
+            Value::String(_) => TypeShape::String.into(),
+            Value::Tuple(tuple) => TypeShape::Tuple(tuple.as_ref().map(|field| field.ty())).into(),
             Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
-            Value::Function(f) => InferredType::Function(Box::new(f.ty.clone())).into(),
-            Value::Template(t) => InferredType::Template(t.compiled.clone()).into(),
-            Value::Macro(f) => InferredType::Macro(Box::new(f.ty.clone())).into(),
-            Value::NativeFunction(f) => InferredType::Function(Box::new(f.ty.clone())).into(),
-            Value::Ast(_) => InferredType::Ast.into(),
-            Value::Type(_) => InferredType::Type.into(),
-            Value::SyntaxModule(_) => InferredType::SyntaxModule.into(),
-            Value::SyntaxDefinition(_) => InferredType::SyntaxDefinition.into(),
+            Value::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
+            Value::Template(t) => TypeShape::Template(t.compiled.clone()).into(),
+            Value::Macro(f) => TypeShape::Macro(Box::new(f.ty.clone())).into(),
+            Value::NativeFunction(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
+            Value::Ast(_) => TypeShape::Ast.into(),
+            Value::Type(_) => TypeShape::Type.into(),
+            Value::SyntaxModule(_) => TypeShape::SyntaxModule.into(),
+            Value::SyntaxDefinition(_) => TypeShape::SyntaxDefinition.into(),
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("{value} is not {expected}")]
-pub struct ExpectError<V = Value, Expected = InferredType> {
+pub struct ExpectError<V = Value, Expected = TypeShape> {
     pub value: V,
     pub expected: Expected,
 }
@@ -157,7 +155,7 @@ impl Value {
             Self::SyntaxDefinition(def) => Ok(def),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::SyntaxModule,
+                expected: TypeShape::SyntaxModule,
             }),
         }
     }
@@ -168,7 +166,7 @@ impl Value {
             Self::SyntaxModule(syntax) => Ok(syntax),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::SyntaxModule,
+                expected: TypeShape::SyntaxModule,
             }),
         }
     }
@@ -177,7 +175,7 @@ impl Value {
             Self::Unit => Ok(()),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::Unit,
+                expected: TypeShape::Unit,
             }),
         }
     }
@@ -186,7 +184,7 @@ impl Value {
             Self::String(s) => Ok(s),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::String,
+                expected: TypeShape::String,
             }),
         }
     }
@@ -195,7 +193,7 @@ impl Value {
             Self::Int32(value) => Ok(value),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::Int32,
+                expected: TypeShape::Int32,
             }),
         }
     }
@@ -204,7 +202,7 @@ impl Value {
             Self::Int64(value) => Ok(value),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::Int64,
+                expected: TypeShape::Int64,
             }),
         }
     }
@@ -213,7 +211,7 @@ impl Value {
             Self::Bool(value) => Ok(value),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::Bool,
+                expected: TypeShape::Bool,
             }),
         }
     }
@@ -222,7 +220,7 @@ impl Value {
             Self::Ast(ast) => Ok(ast),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::Ast,
+                expected: TypeShape::Ast,
             }),
         }
     }
@@ -231,7 +229,7 @@ impl Value {
             Self::Function(f) => Ok(f),
             _ => Err(ExpectError {
                 value: self,
-                expected: InferredType::Function(Box::new(FnType {
+                expected: TypeShape::Function(Box::new(FnType {
                     arg: Type::new_not_inferred(),
                     result: Type::new_not_inferred(),
                 })),
