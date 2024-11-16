@@ -13,8 +13,7 @@ fn test_eq(source: &str, expected_value: Value) {
 }
 
 #[test]
-#[allow(non_snake_case)]
-fn special_for_DevNinYa() {
+fn simple() {
     test_eq("\"hello, world\"", Value::String("hello, world".to_owned()));
     test_eq(
         "const int32 = native \"int32\"; 123 :: int32",
