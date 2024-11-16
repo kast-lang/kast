@@ -22,46 +22,7 @@ pub enum InferredType {
     Binding(Parc<Binding>),
 }
 
-#[derive(Debug, Clone)]
-pub struct Type(inference::Var<InferredType>);
-
-impl From<InferredType> for Type {
-    fn from(value: InferredType) -> Self {
-        Self({
-            let var = inference::Var::new();
-            var.set(value).unwrap();
-            var
-        })
-    }
-}
-
-impl From<inference::Var<InferredType>> for Type {
-    fn from(value: inference::Var<InferredType>) -> Self {
-        Self(value)
-    }
-}
-
-impl TryHash for Type {
-    type Error = eyre::Report;
-    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
-        match self.inferred_or_default()? {
-            Ok(ty) => ty.try_hash(hasher).map_err(|e| eyre!(e))?,
-            Err(_) => eyre::bail!("type is not inferred, fail to hash"),
-        }
-        Ok(())
-    }
-}
-
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        match (self.0.get(), other.0.get()) {
-            (Some(a), Some(b)) => a == b,
-            _ => self.0.is_same_as(&other.0),
-        }
-    }
-}
-
-impl Eq for Type {}
+pub type Type = inference::MaybeNotInferred<InferredType>;
 
 #[derive(Debug, Clone, PartialEq, Eq, TryHash)]
 pub struct VariantType {
@@ -76,36 +37,6 @@ impl std::fmt::Display for VariantType {
         if let Some(value) = &self.value {
             write!(f, " {value}")?;
         }
-        Ok(())
-    }
-}
-
-impl Type {
-    pub fn expect_inferred(&self, ty: InferredType) -> eyre::Result<()> {
-        self.0.set(ty)
-    }
-    pub fn new_not_inferred() -> Self {
-        Self(inference::Var::new())
-    }
-    pub fn new_not_inferred_with_default(default: InferredType) -> Self {
-        Self(inference::Var::new_with_default(default))
-    }
-    /// Get actual value (if it is an inference var)
-    pub fn inferred(&self) -> Result<InferredType, &inference::Var<InferredType>> {
-        self.0.get().map(|value| (*value).clone()).ok_or(&self.0)
-    }
-    /// Get actual value (if it is an inference var)
-    pub fn inferred_or_default(
-        &self,
-    ) -> eyre::Result<Result<InferredType, &inference::Var<InferredType>>> {
-        Ok(self
-            .0
-            .get_or_default()?
-            .map(|value| (*value).clone())
-            .ok_or(&self.0))
-    }
-    pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
-        *self = Inferrable::make_same(self.clone(), other)?;
         Ok(())
     }
 }
@@ -132,13 +63,6 @@ impl InferredType {
                 expected: "template",
             }),
         }
-    }
-}
-
-impl Inferrable for Type {
-    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
-        a.0.make_same(&b.0)?;
-        Ok(a)
     }
 }
 
@@ -234,15 +158,6 @@ impl std::fmt::Display for InferredType {
                 }
                 Ok(())
             }
-        }
-    }
-}
-
-impl std::fmt::Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0.get() {
-            Some(inferred) => inferred.fmt(f),
-            None => write!(f, "<not inferred>"),
         }
     }
 }

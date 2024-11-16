@@ -289,3 +289,91 @@ impl<T: Inferrable> Var<T> {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct MaybeNotInferred<T: Inferrable>(Var<T>);
+
+impl<T: Inferrable> From<T> for MaybeNotInferred<T> {
+    fn from(value: T) -> Self {
+        Self({
+            let var = Var::new();
+            var.set(value).unwrap();
+            var
+        })
+    }
+}
+
+impl<T: Inferrable> From<Var<T>> for MaybeNotInferred<T> {
+    fn from(value: Var<T>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: Inferrable + try_hash::TryHash> try_hash::TryHash for MaybeNotInferred<T>
+where
+    <T as try_hash::TryHash>::Error: std::fmt::Debug + std::fmt::Display + Send + Sync,
+{
+    type Error = eyre::Report;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        match self.inferred_or_default()? {
+            Ok(ty) => ty.try_hash(hasher).map_err(|e| eyre::eyre!(e))?,
+            Err(_) => eyre::bail!("type is not inferred, fail to hash"),
+        }
+        Ok(())
+    }
+}
+
+impl<T: Inferrable + PartialEq> PartialEq for MaybeNotInferred<T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.0.get(), other.0.get()) {
+            (Some(a), Some(b)) => a == b,
+            _ => self.0.is_same_as(&other.0),
+        }
+    }
+}
+
+impl<T: Inferrable + Eq> Eq for MaybeNotInferred<T> {}
+
+impl<T: Inferrable> MaybeNotInferred<T> {
+    pub fn expect_inferred(&self, value: T) -> eyre::Result<()> {
+        self.0.set(value)
+    }
+    pub fn new_not_inferred() -> Self {
+        Self(Var::new())
+    }
+    pub fn new_not_inferred_with_default(default: T) -> Self {
+        Self(Var::new_with_default(default))
+    }
+    /// Get actual value (if it is an inference var)
+    pub fn inferred(&self) -> Result<T, &Var<T>> {
+        self.0.get().map(|value| (*value).clone()).ok_or(&self.0)
+    }
+    /// Get actual value (if it is an inference var)
+    pub fn inferred_or_default(&self) -> eyre::Result<Result<T, &Var<T>>> {
+        Ok(self
+            .0
+            .get_or_default()?
+            .map(|value| (*value).clone())
+            .ok_or(&self.0))
+    }
+    pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
+        *self = Inferrable::make_same(self.clone(), other)?;
+        Ok(())
+    }
+}
+
+impl<T: Inferrable> Inferrable for MaybeNotInferred<T> {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        a.0.make_same(&b.0)?;
+        Ok(a)
+    }
+}
+
+impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.get() {
+            Some(inferred) => inferred.fmt(f),
+            None => write!(f, "<not inferred>"),
+        }
+    }
+}
