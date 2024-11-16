@@ -62,7 +62,6 @@ impl CastMap {
         }))
     }
     pub fn cast(&self, value: Value, target: &Value) -> eyre::Result<Result<Value, Value>> {
-        let key = Key::new(value.clone(), target.clone())?;
         #[allow(clippy::single_match)]
         match target {
             Value::Type(ty) => match ty.inferred() {
@@ -73,6 +72,7 @@ impl CastMap {
             },
             _ => {}
         }
+        let key = Key::new(value.clone(), target.clone())?;
         Ok(self.map.get(&key).cloned().ok_or(value))
     }
 }
