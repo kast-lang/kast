@@ -8,8 +8,17 @@ use std::{
 
 use kast::*;
 
-fn run_repl<H: rustyline::Helper>(
-    helper: H,
+#[cfg(target_arch = "wasm32")]
+fn run_repl(
+    helper: impl repl_helper::AnyHelper,
+    mut handler: impl FnMut(String) -> eyre::Result<()>,
+) -> eyre::Result<()> {
+    todo!()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn run_repl(
+    helper: impl repl_helper::AnyHelper,
     mut handler: impl FnMut(String) -> eyre::Result<()>,
 ) -> eyre::Result<()> {
     let mut rustyline = rustyline::Editor::with_config(
