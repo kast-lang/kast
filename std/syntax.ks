@@ -30,8 +30,7 @@ syntax_module {
   syntax @"builtin macro tuple" <- 4.5 = a ",";
 
   syntax @"builtin macro field" <- 4.75 = "." name "=" value;
-  syntax inline_field <- 4.75 = "." name;
-  syntax inline_typed_field <- 4.75 = "." name "::" type;
+  syntax @"builtin macro field" <- 4.75 = "." name;
 
   # syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
   # syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
@@ -135,6 +134,7 @@ syntax_module {
   syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
   syntax @"builtin macro native" <- 500 = "native" name;
   syntax @"builtin macro import" <- 500 = "import" path;
+  syntax let_infer <- 500 = "_let" pattern;
 
 # syntax @"builtin macro function_def" <- 100000 = "{" body "}";
 
@@ -144,12 +144,10 @@ syntax_module {
 
 # const @"postfix ++" = macro (.x :: ast) => `(x += 1);
 
-  impl syntax pipe_right = macro (.arg = arg, .f = f) => `((let arg = $arg; let f = $f; f arg));
-  impl syntax pipe_left = macro (.f = f, .arg = arg) => `((let f = $f; let arg = $arg; f arg));
+  impl syntax pipe_right = macro (.arg, .f) => `((let arg = $arg; let f = $f; f arg));
+  impl syntax pipe_left = macro (.f, .arg) => `((let f = $f; let arg = $arg; f arg));
 
-  impl syntax inline_field = macro (.name = name) => `(. $name = $name);
-  impl syntax inline_typed_field = macro (.name = name, .type = type) => `(
-  # const inline_typed_field = macro (.name, .type) => `(
-      . $name = $name :: $type
+  impl syntax let_infer = macro (.pattern) => `(
+    (let $pattern = _; $pattern)
   );
 }

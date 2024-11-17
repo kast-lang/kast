@@ -1121,59 +1121,54 @@ impl Kast {
         Ok(Compiled::Expr(quote(self, expr).await?))
     }
     async fn macro_field(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        let (values, span) = get_complex(ast);
-        let [name, value] = values.as_ref().into_named(["name", "value"])?;
-        let name = name
-            .as_ident()
-            .ok_or_else(|| eyre!("{name} is not an ident"))?;
-        Ok(match cty {
-            CompiledType::Expr => Compiled::Expr(
-                Expr::Tuple {
-                    tuple: Tuple::single_named(name, self.compile(value).await?),
-                    data: span,
-                }
-                .init(self)
-                .await?,
-            ),
-            CompiledType::Pattern => Compiled::Pattern(
-                Pattern::Tuple {
-                    tuple: Tuple::single_named(name, self.compile(value).await?),
-                    data: span,
-                }
-                .init()?,
-            ),
-        })
+        self.macro_tuple(cty, ast).await
     }
     async fn macro_tuple(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        let macro_name = match ast {
-            Ast::Complex { definition, .. } => definition.name.as_str(),
-            _ => unreachable!(),
-        };
         let fields = ListCollector {
-            macro_name,
+            macro_name: "builtin macro tuple",
             a: "a",
             b: "b",
         }
         .collect(ast)?;
         let mut tuple = Tuple::empty();
-        let named_field_def_name = "builtin macro field";
         for field in fields {
             match field {
                 Ast::Complex {
                     definition,
                     values,
                     data: _,
-                } if definition.name == named_field_def_name => {
-                    let [name, value] = values
+                } if definition.name == "builtin macro field" => {
+                    let ([name], [value]) = values
                         .as_ref()
-                        .into_named(["name", "value"])
+                        .into_named_opt(["name"], ["value"])
                         .wrap_err_with(|| "field macro wrong args")?;
-                    tuple.add_named(
-                        name.as_ident()
-                            .ok_or_else(|| eyre!("{name} is not an ident"))?
-                            .to_owned(),
-                        self.compile_into(cty, value).await?,
-                    );
+                    let (name, ty): (&Ast, Type) = match name {
+                        Ast::Complex {
+                            definition,
+                            values,
+                            data: _,
+                        } if definition.name == "builtin macro type_ascribe" => {
+                            let [name, ty] = values
+                                .as_ref()
+                                .into_named(["value", "type"])
+                                .wrap_err_with(|| "type ascribe macro wrong args")?;
+                            (
+                                name,
+                                self.eval_ast(ty, Some(TypeShape::Type.into()))
+                                    .await?
+                                    .expect_type()?,
+                            )
+                        }
+                        _ => (name, Type::new_not_inferred()),
+                    };
+                    let value = value.unwrap_or(name);
+                    let name = name
+                        .as_ident()
+                        .ok_or_else(|| eyre!("{name} is not an ident"))?
+                        .to_owned();
+                    let mut compiled = self.compile_into(cty, value).await?;
+                    compiled.ty_mut().make_same(ty)?;
+                    tuple.add_named(name, compiled);
                 }
                 _ => tuple.add_unnamed(self.compile_into(cty, field).await?),
             }
