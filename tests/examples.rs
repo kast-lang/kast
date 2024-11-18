@@ -53,7 +53,7 @@ fn try_test(case: Case<'_>) -> eyre::Result<Value> {
     };
     kast.interpreter
         .contexts
-        .insert(capture_output_context)
+        .insert_runtime(capture_output_context)
         .unwrap();
 
     let value = kast.eval_file(Path::new("examples").join(case.name).with_extension("ks"))?;

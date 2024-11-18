@@ -12,7 +12,7 @@ pub use kast_ast::{Ast, Token};
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
 use scope::Scope;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use try_hash::TryHash;

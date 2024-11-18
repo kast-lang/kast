@@ -20,23 +20,34 @@ impl std::hash::Hash for Key {
     }
 }
 
+// idk how i ended up with this approach
 #[derive(Default, Clone)]
 pub struct State {
-    contexts: HashMap<Key, Value>,
+    runtime_contexts: HashMap<Key, Value>,
+    /// Contexts that are going to be brought in using "with" exprs at runtime
+    compile_contexts: HashSet<Key>,
 }
 
 impl State {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn insert(&mut self, context: Value) -> eyre::Result<()> {
-        let key = Key::new(context.ty())?;
-        self.contexts.insert(key, context);
+    pub fn insert_compile(&mut self, context_ty: Type) -> eyre::Result<()> {
+        let key = Key::new(context_ty)?;
+        // jonathan blow was here
+        // i am innocent
+        self.compile_contexts.insert(key);
         Ok(())
     }
-    pub fn get(&self, ty: Type) -> eyre::Result<Option<Value>> {
+    pub fn insert_runtime(&mut self, context: Value) -> eyre::Result<()> {
+        let key = Key::new(context.ty())?;
+        self.compile_contexts.insert(key.clone()); // TODO maybe not?
+        self.runtime_contexts.insert(key, context);
+        Ok(())
+    }
+    pub fn get_runtime(&self, ty: Type) -> eyre::Result<Option<Value>> {
         let key = Key::new(ty)?;
-        Ok(self.contexts.get(&key).cloned())
+        Ok(self.runtime_contexts.get(&key).cloned())
     }
 }
 
@@ -47,8 +58,27 @@ pub struct ContextsData {
     pub growable: bool,
 }
 
+impl ContextsData {
+    pub fn check_available(&self, state: &State) -> eyre::Result<()> {
+        // When I wrote this code, only God & I understood what it did. Now... only God knows.
+        // Why? Why?! WHY?! OH thats why!
+        for ty in &self.types {
+            if !state.compile_contexts.contains(&Key::new(ty.clone())?) {
+                eyre::bail!("{ty} context is not available");
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Contexts(#[try_hash] inference::MaybeNotInferred<ContextsData>);
+
+impl Contexts {
+    pub fn var(&self) -> &inference::Var<ContextsData> {
+        self.0.var()
+    }
+}
 
 impl TryHash for ContextsData {
     type Error = eyre::Report;

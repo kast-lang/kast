@@ -72,8 +72,10 @@ impl State {
         Self {
             contexts: {
                 let mut contexts = contexts::State::new();
-                contexts.insert(output_context).unwrap();
-                contexts.insert(default_number_type.clone()).unwrap();
+                contexts.insert_runtime(output_context).unwrap();
+                contexts
+                    .insert_runtime(default_number_type.clone())
+                    .unwrap();
                 contexts
             },
             spawned: false,
@@ -510,14 +512,14 @@ impl Kast {
             let result = match expr {
                 Expr::InjectContext { context, data: _ } => {
                     let context = self.eval(context).await?;
-                    self.interpreter.contexts.insert(context)?;
+                    self.interpreter.contexts.insert_runtime(context)?;
                     Value::Unit
                 }
                 Expr::CurrentContext { data } => {
                     let ty = data.ty.clone();
                     self.interpreter
                         .contexts
-                        .get(ty.clone())?
+                        .get_runtime(ty.clone())?
                         .ok_or_else(|| eyre!("{ty} context not available"))?
                 }
                 Expr::Unit { data } => match data.ty.inferred_or_default()? {

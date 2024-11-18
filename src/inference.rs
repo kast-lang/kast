@@ -348,6 +348,9 @@ impl<T: Inferrable + PartialEq> PartialEq for MaybeNotInferred<T> {
 impl<T: Inferrable + Eq> Eq for MaybeNotInferred<T> {}
 
 impl<T: Inferrable> MaybeNotInferred<T> {
+    pub fn var(&self) -> &Var<T> {
+        &self.0
+    }
     pub fn expect_inferred(&self, value: T) -> eyre::Result<()> {
         self.0.set(value)
     }

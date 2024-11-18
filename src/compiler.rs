@@ -1295,9 +1295,14 @@ impl Kast {
         if expr.is_some() {
             todo!();
         }
+        // god pls forgive me the sin of creating kast
+        let context: Expr = self.compile(new_context).await?;
+        self.interpreter
+            .contexts
+            .insert_compile(context.data().ty.clone())?;
         Ok(Compiled::Expr(
             Expr::InjectContext {
-                context: Box::new(self.compile(new_context).await?),
+                context: Box::new(context),
                 data: span,
             }
             .init(self)
@@ -1790,7 +1795,7 @@ impl Expr<Span> {
                             let default_number_type_context = kast
                                 .interpreter
                                 .contexts
-                                .get(default_number_type_context_type)?
+                                .get_runtime(default_number_type_context_type)?
                                 .ok_or_else(|| {
                                     eyre!("default number type context not available")
                                 })?;
@@ -1839,23 +1844,24 @@ impl Expr<Span> {
                         },
                     }
                 }
-                Expr::Call {
-                    f,
-                    arg: args,
-                    data: span,
-                } => {
+                Expr::Call { f, arg, data: span } => {
                     let mut f = f.auto_instantiate(kast).await?;
                     let result_ty = Type::new_not_inferred();
+                    let contexts = Contexts::new_not_inferred();
                     f.data_mut()
                         .ty
                         .expect_inferred(TypeShape::Function(Box::new(FnType {
-                            arg: args.data().ty.clone(),
-                            contexts: Contexts::new_not_inferred(),
+                            arg: arg.data().ty.clone(),
+                            contexts: contexts.clone(),
                             result: result_ty.clone(),
                         })))?;
+                    contexts.var().add_check({
+                        let available_contexts = kast.interpreter.contexts.clone();
+                        move |contexts| contexts.check_available(&available_contexts)
+                    });
                     Expr::Call {
                         f: Box::new(f),
-                        arg: args,
+                        arg,
                         data: ExprData {
                             ty: result_ty,
                             span,
