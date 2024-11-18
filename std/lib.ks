@@ -26,9 +26,9 @@ const dbg = forall[T] {
     output.write <| native "dbg" value;
     output.write " :: ";
     output.write <| native "dbg_type" T;
+    output.write "\n";
   )
 };
-const dbg = forall[T] { native "dbg" :: T -> () };
 
 # TODO `:: type` should be inferred
 const Option = forall[T :: type] { newtype :Some T | :None };

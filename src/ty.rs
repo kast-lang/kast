@@ -200,9 +200,9 @@ impl Inferrable for FnType {
     }
 }
 
-impl Kast {
-    pub fn substitute_type_bindings(&self, ty: &Type) -> Type {
-        match ty.inferred() {
+impl SubstituteBindings for Type {
+    fn substitute_bindings(self, kast: &Kast) -> Self {
+        match self.inferred() {
             Ok(inferred) => match inferred {
                 TypeShape::Unit
                 | TypeShape::Bool
@@ -214,37 +214,31 @@ impl Kast {
                 | TypeShape::Multiset
                 | TypeShape::Type
                 | TypeShape::SyntaxModule
-                | TypeShape::SyntaxDefinition => ty.clone(),
+                | TypeShape::SyntaxDefinition => self.clone(),
                 TypeShape::Variant(variants) => TypeShape::Variant(
                     variants
-                        .iter()
+                        .into_iter()
                         .map(|variant| VariantType {
                             name: variant.name.clone(),
                             value: variant
                                 .value
-                                .as_ref()
-                                .map(|ty| Box::new(self.substitute_type_bindings(ty))),
+                                .map(|ty| Box::new(ty.substitute_bindings(kast))),
                         })
                         .collect(),
                 )
                 .into(),
                 TypeShape::Tuple(tuple) => {
-                    TypeShape::Tuple(tuple.as_ref().map(|ty| self.substitute_type_bindings(ty)))
-                        .into()
+                    TypeShape::Tuple(tuple.map(|ty| ty.substitute_bindings(kast))).into()
                 }
-                TypeShape::Function(f) => TypeShape::Function(Box::new(FnType {
-                    arg: self.substitute_type_bindings(&f.arg),
-                    result: self.substitute_type_bindings(&f.result),
-                }))
-                .into(),
+                TypeShape::Function(f) => {
+                    TypeShape::Function(Box::new((*f).substitute_bindings(kast))).into()
+                }
                 TypeShape::Template(t) => TypeShape::Template(t).into(),
-                TypeShape::Macro(f) => TypeShape::Macro(Box::new(FnType {
-                    arg: self.substitute_type_bindings(&f.arg),
-                    result: self.substitute_type_bindings(&f.result),
-                }))
-                .into(),
+                TypeShape::Macro(f) => {
+                    TypeShape::Macro(Box::new((*f).substitute_bindings(kast))).into()
+                }
                 TypeShape::Binding(binding) => {
-                    match self.interpreter.get_nowait(binding.name.raw()) {
+                    match kast.interpreter.get_nowait(binding.name.raw()) {
                         Some(value) => value.expect_type().unwrap_or_else(|e| {
                             panic!("{} expected to be a type: {e}", binding.name.raw())
                         }),
@@ -252,7 +246,16 @@ impl Kast {
                     }
                 }
             },
-            Err(_var) => ty.clone(),
+            Err(_var) => self,
+        }
+    }
+}
+
+impl SubstituteBindings for FnType {
+    fn substitute_bindings(self, kast: &Kast) -> Self {
+        Self {
+            arg: self.arg.substitute_bindings(kast),
+            result: self.result.substitute_bindings(kast),
         }
     }
 }

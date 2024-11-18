@@ -38,6 +38,10 @@ pub struct Kast {
     cache: Parc<Cache>,
 }
 
+pub trait SubstituteBindings {
+    fn substitute_bindings(self, kast: &Kast) -> Self;
+}
+
 enum ImportMode {
     Normal,
     OnlyStdSyntax,

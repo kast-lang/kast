@@ -1844,8 +1844,12 @@ impl Expr<Span> {
 
                     let mut template_kast = kast.with_scope(Parc::new(Scope::new()));
                     template_kast.bind_pattern_match(&compiled.arg, arg);
-                    let result_ty =
-                        template_kast.substitute_type_bindings(&compiled.body.data().ty);
+                    let result_ty = compiled
+                        .body
+                        .data()
+                        .ty
+                        .clone()
+                        .substitute_bindings(&template_kast);
 
                     Expr::Instantiate {
                         template: template_ir,

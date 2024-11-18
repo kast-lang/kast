@@ -78,8 +78,7 @@ fn test_hello_world() {
 }
 
 #[test]
-#[ignore = "TODO"]
-#[should_panic = "test failure to make sure other tests are actually checking output"]
+#[should_panic = "assertion `left == right` failed\n  left: \"1 :: int32\\n\"\n right: \"0 :: int32\\n\""]
 fn test_import_zero_but_expect_1() {
     test(Case {
         name: "import-zero",
@@ -102,7 +101,7 @@ fn test_mutual_recursion() {
     test(Case {
         name: "mutual-recursion",
         input: "",
-        expect_output: "inside f\ninside g\ninside f\ninside g\n",
+        expect_output: "inside f\n0 :: int32\ninside g\n1 :: int32\ninside f\n2 :: int32\ninside g\n3 :: int32\n",
     });
 }
 

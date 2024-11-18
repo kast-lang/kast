@@ -75,11 +75,31 @@ impl State {
                 insert_ty("type", TypeShape::Type);
                 insert_ty("output", output_context_type.inferred().unwrap());
                 map.insert(
+                    "dbg_type",
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::Type.into(),
+                            result: TypeShape::String.into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "dbg_type".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_fn_ty: FnType, value: Value| {
+                                let value: Type = value.expect_type()?;
+                                Ok(Value::String(value.to_string()))
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "dbg",
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: Type::new_not_inferred(),
-                            result: TypeShape::Unit.into(),
+                            result: TypeShape::String.into(),
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
@@ -87,8 +107,7 @@ impl State {
                             r#impl: (std::sync::Arc::new(|fn_ty: FnType, value: Value| {
                                 let ty = &fn_ty.arg;
                                 assert_eq!(&value.ty(), ty);
-                                println!("{value} :: {ty}");
-                                Ok(Value::Unit)
+                                Ok(Value::String(value.to_string()))
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -387,7 +406,7 @@ impl Kast {
         Ok(result)
     }
     pub fn eval<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<Value>> {
-        let expected_ty = self.substitute_type_bindings(&expr.data().ty);
+        let expected_ty = expr.data().ty.clone().substitute_bindings(self);
         let r#impl = async move {
             tracing::trace!("evaluating {}", expr.show_short());
             tracing::trace!("as {}", expr.data().ty);
@@ -596,7 +615,7 @@ impl Kast {
                     compiled,
                     data: _,
                 } => Value::Function(TypedFunction {
-                    ty: ty.clone(),
+                    ty: ty.clone().substitute_bindings(self),
                     f: Function {
                         id: Id::new(),
                         captured: self.interpreter.scope.clone(),
@@ -642,7 +661,7 @@ impl Kast {
                     value
                 }
                 Expr::Constant { value, data: _ } => match value {
-                    Value::Type(ty) => Value::Type(self.substitute_type_bindings(ty)),
+                    Value::Type(ty) => Value::Type(ty.clone().substitute_bindings(self)),
                     _ => value.clone(),
                 },
                 Expr::Number { raw, data } => match data.ty.inferred_or_default()? {
@@ -664,7 +683,7 @@ impl Kast {
                     Err(_) => eyre::bail!("number literal type could not be inferred"),
                 },
                 Expr::Native { name, data } => {
-                    let actual_type = self.substitute_type_bindings(&data.ty);
+                    let actual_type = data.ty.clone().substitute_bindings(self);
                     let name = self.eval(name).await?.expect_string()?;
                     tracing::trace!("native {name} :: {actual_type}");
                     match self.interpreter.builtins.get(name.as_str()) {
@@ -734,12 +753,13 @@ impl Kast {
                 // TODO
                 Expr::Recursive { .. } => false,
             };
-            if should_check_result_ty && result.ty() != expected_ty {
+            let result_ty = result.ty(); // .substitute_bindings(self); // TODO not needed?
+            if should_check_result_ty && result_ty != expected_ty {
                 eyre::bail!(
                     "expr expected to be of type {}, but we got {} :: {}",
                     expected_ty,
                     result,
-                    result.ty(),
+                    result_ty,
                 );
             }
             tracing::debug!("finished evaluating {}", expr.show_short());
@@ -765,9 +785,10 @@ impl Kast {
     pub async fn call_fn(&mut self, f: Function, arg: Value) -> eyre::Result<Value> {
         let mut new_scope = Scope::new();
         new_scope.parent = Some(f.captured.clone());
-        let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
-        arg.ty().make_same(compiled.arg.data().ty.clone())?;
         let mut kast = self.with_scope(Parc::new(new_scope));
+        let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
+        arg.ty()
+            .make_same(compiled.arg.data().ty.clone().substitute_bindings(&kast))?;
         kast.bind_pattern_match(&compiled.arg, arg);
         let value = kast.eval(&compiled.body).await?;
         Ok(value)
