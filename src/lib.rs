@@ -117,10 +117,13 @@ impl Kast {
     }
 
     fn import_impl(&self, path: impl AsRef<Path>, mode: ImportMode) -> eyre::Result<Value> {
+        let mut path = path.as_ref().to_owned();
         #[cfg(not(target_arch = "wasm32"))]
-        let path = path.as_ref().canonicalize()?;
-        #[cfg(target_arch = "wasm32")]
-        let path = path.as_ref().to_owned();
+        if !path.starts_with(std_path()) {
+            path = path.canonicalize()?;
+        }
+        let path = path;
+
         tracing::trace!("importing {path:?}");
         if let Some(value) = self.cache.imports.lock().unwrap().get(&path) {
             let value = value.clone().ok_or_else(|| eyre!("recursive imports???"))?;
@@ -144,13 +147,14 @@ impl Kast {
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
                         static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
-                        STD.get_file(&path)
+                        STD.get_file(path)
                             .ok_or_else(|| eyre!("file not exist: {path:?}"))?
                             .contents_utf8()
                             .ok_or_else(|| eyre!("{path:?} is not utf8"))?
                             .to_owned()
                     }
-                    Err(_) => std::fs::read_to_string(&path)?,
+                    Err(_) => std::fs::read_to_string(&path)
+                        .wrap_err_with(|| eyre!("failed to read {path:?}"))?,
                 }
             },
             #[cfg(not(feature = "embed-std"))]
