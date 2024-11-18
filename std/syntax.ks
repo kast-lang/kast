@@ -41,9 +41,13 @@ syntax_module {
   syntax @"builtin macro macro" <- 5 = "macro" def;
   syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
-  syntax @"builtin macro merge" <- 6 = "|" a;
-  syntax @"builtin macro merge" <- 6 = a "|" b;
-  syntax @"builtin macro function_def" -> 7 = arg "=>" body;
+  syntax @"builtin macro merge" <- 5.5 = "|" a;
+  syntax @"builtin macro merge" <- 5.5 = a "|" b;
+
+  syntax @"builtin macro template_def" <- 6 = "[" arg "]" "=>" body;
+  syntax @"builtin macro template_def" <- 6 = "forall" "[" arg "]" "{" body "}";
+  syntax @"builtin macro template_def" <- 6 = "forall" "[" arg "]" "where" where "{" body "}";
+  syntax @"builtin macro function_def" -> 6 = arg "=>" body;
 
   syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
   syntax @"builtin macro type_ascribe" <- 7.1 = type "of" value;
@@ -55,9 +59,6 @@ syntax_module {
   syntax @"builtin macro function_type" -> 7.5 = arg "->" result;
   syntax @"builtin macro function_type" -> 7.5 = arg "->" result "with" contexts;
   syntax @"builtin macro function_def" -> 7.5 = arg "->" returns "=>" body;
-
-  syntax @"builtin macro template_def" <- 9 = "forall" "[" arg "]" "{" body "}";
-  syntax @"builtin macro template_def" <- 9 = "forall" "[" arg "]" "where" where "{" body "}";
 
   syntax @"builtin macro if" -> 12.9 = cond "then" then "else" else;
   syntax @"builtin macro match" <- 13 = "match" value "(" branches ")";
