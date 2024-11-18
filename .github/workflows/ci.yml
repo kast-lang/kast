@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: cargo test --workspace --all-features
+      - run: cargo test --workspace --all-features --release
 
   # Check formatting with rustfmt
   formatting:
