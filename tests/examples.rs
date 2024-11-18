@@ -57,6 +57,16 @@ fn test_mutual_recursion() {
 
 #[test]
 
+fn test_context_shadow() {
+    test(Case {
+        name: "context-shadow",
+        input: "",
+        expect_output: "",
+    });
+}
+
+#[test]
+
 fn test_local_syntax() {
     test(Case {
         name: "local-syntax",

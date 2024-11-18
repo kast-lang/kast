@@ -34,7 +34,8 @@ syntax_module {
 
   # syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
   # syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
-  # syntax @"builtin macro current_context" <- 5 = "current" context_type;
+  syntax @"builtin macro with_context" <- 5 = "with" new_context;
+  syntax @"builtin macro current_context" <- 5 = "current" context_type;
   syntax @"builtin macro macro" <- 5 = "macro" def;
   syntax @"builtin macro comptime" <- 5 = "comptime" value;
   syntax @"builtin macro oneof" <- 5 = "oneof" def;

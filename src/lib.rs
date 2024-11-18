@@ -20,6 +20,7 @@ pub use value::*;
 
 mod cast;
 mod compiler;
+mod contexts;
 mod id;
 pub mod inference;
 mod interpreter;

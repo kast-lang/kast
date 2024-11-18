@@ -14,6 +14,13 @@ pub struct MatchBranch {
 
 #[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    InjectContext {
+        context: Box<Expr>,
+        data: Data,
+    },
+    CurrentContext {
+        data: Data,
+    },
     Unit {
         data: Data,
     },
@@ -147,6 +154,8 @@ impl Expr {
     ) {
         match self {
             Expr::Binding { .. }
+            | Expr::InjectContext { .. }
+            | Expr::CurrentContext { .. }
             | Expr::Unit { .. }
             | Expr::Cast { .. }
             | Expr::FunctionType { .. }
@@ -211,6 +220,8 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
         impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::InjectContext { .. } => write!(f, "inject context expr")?,
+                    Expr::CurrentContext { .. } => write!(f, "current context expr")?,
                     Expr::Unit { .. } => write!(f, "unit expr")?,
                     Expr::Cast { .. } => write!(f, "cast expr")?,
                     Expr::FunctionType { .. } => write!(f, "fn type expr")?,
@@ -247,6 +258,8 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::CurrentContext { data, .. }
+        | Expr::InjectContext { data, .. }
         | Expr::Unit { data, .. }
         | Expr::Cast { data, .. }
         | Expr::FunctionType { data, .. }
@@ -275,6 +288,8 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::CurrentContext { data, .. }
+        | Expr::InjectContext { data, .. }
         | Expr::Unit { data, .. }
         | Expr::FunctionType { data, .. }
         | Expr::Cast { data, .. }

@@ -5,6 +5,7 @@ pub struct State {
     pub spawned: bool,
     builtins: Parc<HashMap<&'static str, Builtin>>,
     scope: Parc<Scope>,
+    pub contexts: contexts::State,
 }
 
 type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
@@ -18,6 +19,7 @@ impl State {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
+            contexts: contexts::State::new(),
             spawned: false,
             builtins: {
                 let mut map = HashMap::<&str, Builtin>::new();
@@ -355,6 +357,18 @@ impl Kast {
             tracing::trace!("evaluating {}", expr.show_short());
             tracing::trace!("as {}", expr.data().ty);
             let result = match expr {
+                Expr::InjectContext { context, data: _ } => {
+                    let context = self.eval(context).await?;
+                    self.interpreter.contexts.insert(context)?;
+                    Value::Unit
+                }
+                Expr::CurrentContext { data } => {
+                    let ty = data.ty.clone();
+                    self.interpreter
+                        .contexts
+                        .get(ty.clone())?
+                        .ok_or_else(|| eyre!("{ty} context not available"))?
+                }
                 Expr::Unit { data } => match data.ty.inferred_or_default()? {
                     Ok(TypeShape::Type) => Value::Type(TypeShape::Unit.into()),
                     Ok(TypeShape::Unit) => Value::Unit,
@@ -657,6 +671,8 @@ impl Kast {
             };
             let should_check_result_ty = match expr {
                 Expr::Unit { .. }
+                | Expr::InjectContext { .. }
+                | Expr::CurrentContext { .. }
                 | Expr::FunctionType { .. }
                 | Expr::Cast { .. }
                 | Expr::Is { .. }

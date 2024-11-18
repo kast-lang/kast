@@ -108,6 +108,8 @@ impl Cache {
             macro_is,
             macro_cast,
             macro_impl_cast,
+            macro_with_context,
+            macro_current_context,
         );
         Self {
             builtin_macros,
@@ -1274,6 +1276,46 @@ impl Kast {
             CompiledType::Pattern => Compiled::Pattern(Pattern::Placeholder { data: span }.init()?),
         })
     }
+    async fn macro_with_context(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let ([new_context], [expr]) = values
+            .as_ref()
+            .into_named_opt(["new_context"], ["expr"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        if expr.is_some() {
+            todo!();
+        }
+        Ok(Compiled::Expr(
+            Expr::InjectContext {
+                context: Box::new(self.compile(new_context).await?),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_current_context(
+        &mut self,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let ([], [context_type]) = values
+            .as_ref()
+            .into_named_opt([], ["context_type"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let mut expr = Expr::CurrentContext { data: span }.init(self).await?;
+        if let Some(context_type) = context_type {
+            let ty = self
+                .eval_ast(context_type, Some(TypeShape::Type.into()))
+                .await?
+                .expect_type()?;
+            expr.data_mut().ty.make_same(ty)?;
+        }
+        Ok(Compiled::Expr(expr))
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -1382,6 +1424,22 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::InjectContext {
+                    context,
+                    data: span,
+                } => Expr::InjectContext {
+                    context,
+                    data: ExprData {
+                        ty: TypeShape::Unit.into(),
+                        span,
+                    },
+                },
+                Expr::CurrentContext { data: span } => Expr::CurrentContext {
+                    data: ExprData {
+                        ty: Type::new_not_inferred(),
+                        span,
+                    },
+                },
                 Expr::Unit { data: span } => Expr::Unit {
                     data: ExprData {
                         ty: Type::new_not_inferred_with_default(TypeShape::Unit),
