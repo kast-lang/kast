@@ -10,10 +10,24 @@ const int64 :: type = native "int64";
 const float64 :: type = native "float64";
 const string :: type = native "string";
 
+const output :: type = native "output";
+
 # TODO panic should return never
 const panic :: string -> () = native "panic";
-const print :: string -> () = native "print";
+const print :: string -> () with output = line => (
+  let output = current output;
+  output.write line;
+  output.write "\n";
+);
 
+const dbg = forall[T] {
+  (value :: T) => (
+    let output = current output;
+    output.write <| native "dbg" value;
+    output.write " :: ";
+    output.write <| native "dbg_type" T;
+  )
+};
 const dbg = forall[T] { native "dbg" :: T -> () };
 
 # TODO `:: type` should be inferred

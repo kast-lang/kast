@@ -43,6 +43,24 @@ impl std::fmt::Display for VariantType {
 }
 
 impl TypeShape {
+    pub fn expect_function(self) -> Result<FnType, ExpectError<TypeShape, &'static str>> {
+        match self {
+            Self::Function(ty) => Ok(*ty),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "function",
+            }),
+        }
+    }
+    pub fn expect_tuple(self) -> Result<Tuple<Type>, ExpectError<TypeShape, &'static str>> {
+        match self {
+            Self::Tuple(tuple) => Ok(tuple),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "tuple",
+            }),
+        }
+    }
     pub fn expect_variant(self) -> Result<Vec<VariantType>, ExpectError<TypeShape, &'static str>> {
         match self {
             Self::Variant(variants) => Ok(variants),

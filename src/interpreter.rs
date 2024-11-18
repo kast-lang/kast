@@ -3,7 +3,7 @@ use super::*;
 #[derive(Clone)]
 pub struct State {
     pub spawned: bool,
-    builtins: Parc<HashMap<&'static str, Builtin>>,
+    pub builtins: Parc<HashMap<&'static str, Builtin>>,
     scope: Parc<Scope>,
     pub contexts: contexts::State,
 }
@@ -18,8 +18,42 @@ pub struct CompletionCandidate {
 impl State {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        let (output_context, output_context_type) = {
+            let write_type = FnType {
+                arg: TypeShape::String.into(),
+                result: TypeShape::Unit.into(),
+            };
+            let mut context_type = Tuple::empty();
+            context_type.add_named(
+                "write",
+                TypeShape::Function(Box::new(write_type.clone())).into(),
+            );
+            let context_type = TypeShape::Tuple(context_type).into();
+            let mut context = Tuple::empty();
+            context.add_named(
+                "write",
+                Value::NativeFunction(NativeFunction {
+                    name: "print".to_owned(),
+                    r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
+                        let s = s.expect_string()?;
+                        print!("{s}");
+                        Ok(Value::Unit)
+                    }) as std::sync::Arc<NativeFunctionImpl>)
+                        .into(),
+                    ty: write_type,
+                }),
+            );
+            let context = Value::Tuple(context);
+            assert_eq!(context.ty(), context_type);
+            (context, context_type)
+        };
+
         Self {
-            contexts: contexts::State::new(),
+            contexts: {
+                let mut contexts = contexts::State::new();
+                contexts.insert(output_context).unwrap();
+                contexts
+            },
             spawned: false,
             builtins: {
                 let mut map = HashMap::<&str, Builtin>::new();
@@ -39,6 +73,7 @@ impl State {
                 insert_ty("string", TypeShape::String);
                 insert_ty("ast", TypeShape::Ast);
                 insert_ty("type", TypeShape::Type);
+                insert_ty("output", output_context_type.inferred().unwrap());
                 map.insert(
                     "dbg",
                     Box::new(|expected: Type| {
