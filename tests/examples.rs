@@ -88,6 +88,15 @@ fn test_import_zero_but_expect_1() {
 }
 
 #[test]
+fn test_default_number_type() {
+    test(Case {
+        name: "default-number-type",
+        input: "",
+        expect_output: "123 :: int32\n123 :: int64\n123 :: int32\n123 :: float64\n",
+    });
+}
+
+#[test]
 fn test_import_zero() {
     test(Case {
         name: "import-zero",

@@ -32,12 +32,13 @@ syntax_module {
   syntax @"builtin macro field" <- 4.75 = "." name "=" value;
   syntax @"builtin macro field" <- 4.75 = "." name;
 
+  syntax @"builtin macro comptime" <- 4.9 = "comptime" value;
+
   # syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
   # syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
   syntax @"builtin macro with_context" <- 5 = "with" new_context;
   syntax @"builtin macro current_context" <- 5 = "current" context_type;
   syntax @"builtin macro macro" <- 5 = "macro" def;
-  syntax @"builtin macro comptime" <- 5 = "comptime" value;
   syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
   syntax @"builtin macro merge" <- 6 = "|" a;
@@ -142,6 +143,9 @@ syntax_module {
   syntax @"builtin macro scope" <- 100000 = "(" _ ")";
   syntax @"builtin macro make_unit" <- 100000 = "(" ")";
   syntax @"builtin macro placeholder" <- 100000 = "_";
+  
+  syntax true <- 100000 = "true";
+  syntax false <- 100000 = "false";
 
 # const @"postfix ++" = macro (.x :: ast) => `(x += 1);
 

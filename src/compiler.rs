@@ -60,8 +60,6 @@ pub struct Cache {
     builtin_macros: HashMap<&'static str, BuiltinMacro>,
     syntax_definitions: Mutex<HashMap<Parc<ast::SyntaxDefinition>, std::task::Poll<Value>>>,
     pub casts: Mutex<CastMap>,
-    /// TODO use compile time context
-    default_number_type: TypeShape,
 }
 
 impl Cache {
@@ -110,12 +108,12 @@ impl Cache {
             macro_impl_cast,
             macro_with_context,
             macro_current_context,
+            macro_comptime,
         );
         Self {
             builtin_macros,
             syntax_definitions: Default::default(),
             casts: Default::default(),
-            default_number_type: TypeShape::Int32,
         }
     }
 
@@ -1316,6 +1314,18 @@ impl Kast {
         }
         Ok(Compiled::Expr(expr))
     }
+    async fn macro_comptime(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let value = values
+            .as_ref()
+            .into_single_named("value")
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let value = self.eval_ast(value, None).await?;
+        Ok(Compiled::Expr(
+            Expr::Constant { value, data: span }.init(self).await?,
+        ))
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -1402,7 +1412,7 @@ impl Kast {
     ) -> eyre::Result<Type> {
         Ok(match target {
             Value::Template(template) => {
-                let mut kast = self.enter_scope();
+                let kast = self.enter_scope();
                 let value = value().await?;
                 kast.await_compiled(&template)
                     .await?
@@ -1752,11 +1762,33 @@ impl Expr<Span> {
                     value,
                 },
                 Expr::Number { raw, data: span } => Expr::Number {
-                    raw,
+                    raw: raw.clone(),
                     data: ExprData {
-                        ty: Type::new_not_inferred_with_default(
-                            kast.cache.compiler.default_number_type.clone(),
-                        ),
+                        ty: {
+                            let default_number_type_context_type = kast
+                                .interpreter
+                                .builtins
+                                .get("default_number_type")
+                                .unwrap()(
+                                TypeShape::Type.into()
+                            )?
+                            .expect_type()?;
+                            let default_number_type_context = kast
+                                .interpreter
+                                .contexts
+                                .get(default_number_type_context_type)?
+                                .ok_or_else(|| {
+                                    eyre!("default number type context not available")
+                                })?;
+                            let f = default_number_type_context
+                                .expect_tuple()
+                                .unwrap()
+                                .get_named("default_number_type")
+                                .unwrap()
+                                .clone();
+                            let ty = kast.call(f, Value::String(raw)).await?;
+                            ty.expect_type()?
+                        },
                         span,
                     },
                 },

@@ -66,6 +66,13 @@ impl<T> Tuple<T> {
     pub fn get_named(&self, name: &str) -> Option<&T> {
         self.named.get(name)
     }
+    pub fn take_named(&mut self, name: &str) -> Option<T> {
+        let value = self.named.remove(name);
+        if value.is_some() {
+            self.named_order.retain(|s| s != name);
+        }
+        value
+    }
     pub fn add_unnamed(&mut self, value: T) {
         self.unnamed.push(value);
     }

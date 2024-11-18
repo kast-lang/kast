@@ -4,13 +4,19 @@ const @"syntax" = import "./syntax.ks";
 
 const type = native "type";
 const ast :: type = native "ast";
+
 const bool :: type = native "bool";
+
+impl syntax @"syntax".@"true" = macro _ => `(native "true");
+impl syntax @"syntax".@"false" = macro _ => `(native "false");
+
 const int32 :: type = native "int32";
 const int64 :: type = native "int64";
 const float64 :: type = native "float64";
 const string :: type = native "string";
 
 const output :: type = native "output";
+const default_number_type :: type = native "default_number_type";
 
 # TODO panic should return never
 const panic :: string -> () = native "panic";
@@ -19,6 +25,8 @@ const print :: string -> () with output = line => (
   output.write line;
   output.write "\n";
 );
+
+const contains :: (.s = string, .substring = string) -> bool = native "contains";
 
 const dbg = forall[T] {
   (value :: T) => (

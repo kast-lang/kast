@@ -18,6 +18,25 @@ pub struct CompletionCandidate {
 impl State {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        let default_number_type = {
+            let mut context = Tuple::empty();
+            context.add_named(
+                "default_number_type",
+                Value::NativeFunction(NativeFunction {
+                    name: "default_number_type".to_owned(),
+                    r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
+                        let _s = s.expect_string()?;
+                        Ok(Value::Type(Type::new_not_inferred()))
+                    }) as std::sync::Arc<NativeFunctionImpl>)
+                        .into(),
+                    ty: FnType {
+                        arg: TypeShape::String.into(),
+                        result: TypeShape::Type.into(),
+                    },
+                }),
+            );
+            Value::Tuple(context)
+        };
         let (output_context, output_context_type) = {
             let write_type = FnType {
                 arg: TypeShape::String.into(),
@@ -52,11 +71,24 @@ impl State {
             contexts: {
                 let mut contexts = contexts::State::new();
                 contexts.insert(output_context).unwrap();
+                contexts.insert(default_number_type.clone()).unwrap();
                 contexts
             },
             spawned: false,
             builtins: {
                 let mut map = HashMap::<&str, Builtin>::new();
+                let mut insert_value = |name, value: Value| {
+                    let expected_ty = value.ty().inferred().unwrap();
+                    map.insert(
+                        name,
+                        Box::new(move |expected: Type| {
+                            expected.expect_inferred(expected_ty.clone())?;
+                            Ok(value.clone())
+                        }),
+                    );
+                };
+                insert_value("true", Value::Bool(true));
+                insert_value("false", Value::Bool(false));
                 let mut insert_ty = |name, ty: TypeShape| {
                     map.insert(
                         name,
@@ -74,6 +106,10 @@ impl State {
                 insert_ty("ast", TypeShape::Ast);
                 insert_ty("type", TypeShape::Type);
                 insert_ty("output", output_context_type.inferred().unwrap());
+                insert_ty(
+                    "default_number_type",
+                    default_number_type.ty().inferred().unwrap(),
+                );
                 map.insert(
                     "dbg_type",
                     Box::new(|expected: Type| {
@@ -108,6 +144,35 @@ impl State {
                                 let ty = &fn_ty.arg;
                                 assert_eq!(&value.ty(), ty);
                                 Ok(Value::String(value.to_string()))
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "contains",
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_named("s", TypeShape::String.into());
+                                args.add_named("substring", TypeShape::String.into());
+                                args
+                            })
+                            .into(),
+                            result: TypeShape::Bool.into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "contains".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
+                                let mut args = args.expect_tuple()?;
+                                let s = args.take_named("s").unwrap().expect_string()?;
+                                let substring =
+                                    args.take_named("substring").unwrap().expect_string()?;
+                                Ok(Value::Bool(s.contains(&substring)))
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -707,11 +772,7 @@ impl Kast {
                 Expr::Call { f, arg, data: _ } => {
                     let f = self.eval(f).await?;
                     let arg = self.eval(arg).await?;
-                    match f {
-                        Value::NativeFunction(f) => (f.r#impl)(f.ty.clone(), arg)?,
-                        Value::Function(f) => self.call_fn(f.f, arg).await?,
-                        _ => eyre::bail!("{f} is not a function"),
-                    }
+                    self.call(f, arg).await?
                 }
                 Expr::Instantiate {
                     template,
@@ -774,7 +835,7 @@ impl Kast {
         .boxed()
     }
 
-    pub async fn await_compiled(&mut self, f: &Function) -> eyre::Result<Parc<CompiledFn>> {
+    pub async fn await_compiled(&self, f: &Function) -> eyre::Result<Parc<CompiledFn>> {
         self.advance_executor();
         match &*f.compiled.lock().unwrap() {
             Some(compiled) => Ok(compiled.clone()),
@@ -782,7 +843,15 @@ impl Kast {
         }
     }
 
-    pub async fn call_fn(&mut self, f: Function, arg: Value) -> eyre::Result<Value> {
+    pub async fn call(&self, f: Value, arg: Value) -> eyre::Result<Value> {
+        match f {
+            Value::Function(f) => self.call_fn(f.f, arg).await,
+            Value::NativeFunction(native) => (native.r#impl)(native.ty, arg),
+            _ => eyre::bail!("{f} is not a function"),
+        }
+    }
+
+    pub async fn call_fn(&self, f: Function, arg: Value) -> eyre::Result<Value> {
         let mut new_scope = Scope::new();
         new_scope.parent = Some(f.captured.clone());
         let mut kast = self.with_scope(Parc::new(new_scope));
