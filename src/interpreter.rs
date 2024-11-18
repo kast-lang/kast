@@ -169,7 +169,7 @@ impl State {
                             name: "dbg".to_owned(),
                             r#impl: (std::sync::Arc::new(|fn_ty: FnType, value: Value| {
                                 let ty = &fn_ty.arg;
-                                // assert_eq!(&value.ty(), ty);
+                                assert_eq!(&value.ty(), ty);
                                 Ok(Value::String(value.to_string()))
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
