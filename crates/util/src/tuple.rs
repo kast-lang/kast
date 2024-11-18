@@ -18,6 +18,26 @@ impl<T: PartialEq> PartialEq for Tuple<T> {
 
 impl<T: Eq> Eq for Tuple<T> {}
 
+impl<T: PartialOrd> PartialOrd for Tuple<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.unnamed.partial_cmp(&other.unnamed) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.named.partial_cmp(&other.named)
+    }
+}
+
+impl<T: Ord> Ord for Tuple<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.unnamed.cmp(&other.unnamed) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        self.named.cmp(&other.named)
+    }
+}
+
 impl<T: std::hash::Hash> std::hash::Hash for Tuple<T> {
     fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
         for unnamed in &self.unnamed {

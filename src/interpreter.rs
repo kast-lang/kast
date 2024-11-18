@@ -31,6 +31,7 @@ impl State {
                         .into(),
                     ty: FnType {
                         arg: TypeShape::String.into(),
+                        contexts: Contexts::empty(),
                         result: TypeShape::Type.into(),
                     },
                 }),
@@ -40,6 +41,7 @@ impl State {
         let (output_context, output_context_type) = {
             let write_type = FnType {
                 arg: TypeShape::String.into(),
+                contexts: Contexts::empty(),
                 result: TypeShape::Unit.into(),
             };
             let mut context_type = Tuple::empty();
@@ -106,6 +108,7 @@ impl State {
                 insert_ty("ast", TypeShape::Ast);
                 insert_ty("type", TypeShape::Type);
                 insert_ty("output", output_context_type.inferred().unwrap());
+                // does anyone understand what happened here?
                 insert_ty(
                     "default_number_type",
                     default_number_type.ty().inferred().unwrap(),
@@ -115,6 +118,7 @@ impl State {
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::Type.into(),
+                            contexts: Contexts::empty(),
                             result: TypeShape::String.into(),
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -131,10 +135,31 @@ impl State {
                     }),
                 );
                 map.insert(
+                    "dbg_type_of_value",
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: Type::new_not_inferred(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::String.into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "dbg_type_of_value".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_fn_ty: FnType, value: Value| {
+                                Ok(Value::String(value.ty().to_string()))
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "dbg",
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: Type::new_not_inferred(),
+                            contexts: Contexts::empty(),
                             result: TypeShape::String.into(),
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -142,7 +167,7 @@ impl State {
                             name: "dbg".to_owned(),
                             r#impl: (std::sync::Arc::new(|fn_ty: FnType, value: Value| {
                                 let ty = &fn_ty.arg;
-                                assert_eq!(&value.ty(), ty);
+                                // assert_eq!(&value.ty(), ty);
                                 Ok(Value::String(value.to_string()))
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
@@ -162,6 +187,7 @@ impl State {
                                 args
                             })
                             .into(),
+                            contexts: Contexts::empty(),
                             result: TypeShape::Bool.into(),
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -185,6 +211,7 @@ impl State {
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::String.into(),
+                            contexts: Contexts::empty(),    // TODO panic
                             result: TypeShape::Unit.into(), // TODO never type
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -205,6 +232,7 @@ impl State {
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::String.into(),
+                            contexts: Contexts::empty(), // TODO error
                             result: Type::new_not_inferred(),
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -233,6 +261,7 @@ impl State {
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::String.into(),
+                            contexts: Contexts::empty(),
                             result: TypeShape::Unit.into(),
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -261,6 +290,7 @@ impl State {
                                 args
                             })
                             .into(),
+                            contexts: Contexts::empty(),
                             result: TypeShape::Bool.into(),
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -301,6 +331,7 @@ impl State {
                                 args
                             })
                             .into(),
+                            contexts: Contexts::empty(), // TODO underflow?
                             result: operand_type,
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -341,6 +372,7 @@ impl State {
                                 args
                             })
                             .into(),
+                            contexts: Contexts::empty(), // TODO overflow
                             result: operand_type,
                         };
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
@@ -496,12 +528,24 @@ impl Kast {
                 },
                 Expr::FunctionType {
                     arg,
+                    contexts,
                     result,
                     data: _,
                 } => {
                     let arg = self.eval(arg).await?.expect_type()?;
+                    let contexts = match contexts {
+                        Some(contexts) => self.eval(contexts).await?.into_contexts()?,
+                        None => Contexts::new_not_inferred(),
+                    };
                     let result = self.eval(result).await?.expect_type()?;
-                    Value::Type(TypeShape::Function(Box::new(FnType { arg, result })).into())
+                    Value::Type(
+                        TypeShape::Function(Box::new(FnType {
+                            arg,
+                            contexts,
+                            result,
+                        }))
+                        .into(),
+                    )
                 }
                 Expr::Cast {
                     value,
@@ -557,10 +601,10 @@ impl Kast {
                         Value::Multiset(values) => {
                             let mut variants = Vec::new();
                             for value in values {
-                                let value = value.expect_variant()?;
+                                let variant = value.expect_variant()?;
                                 variants.push(VariantType {
-                                    name: value.name,
-                                    value: value
+                                    name: variant.name,
+                                    value: variant
                                         .value
                                         .map(|value| value.expect_type())
                                         .transpose()?
@@ -569,6 +613,15 @@ impl Kast {
                             }
                             TypeShape::Variant(variants).into()
                         }
+                        Value::Variant(variant) => TypeShape::Variant(vec![VariantType {
+                            name: variant.name,
+                            value: variant
+                                .value
+                                .map(|value| value.expect_type())
+                                .transpose()?
+                                .map(Box::new),
+                        }])
+                        .into(),
                         _ => eyre::bail!("{def} can not be used in newtype"),
                     };
                     Value::Type(ty)
@@ -680,7 +733,11 @@ impl Kast {
                     compiled,
                     data: _,
                 } => Value::Function(TypedFunction {
-                    ty: ty.clone().substitute_bindings(self),
+                    ty: {
+                        let ty = ty.clone().substitute_bindings(self);
+                        tracing::trace!("at {} = {ty} ({})", expr.data().span, expr.data().ty);
+                        ty
+                    },
                     f: Function {
                         id: Id::new(),
                         captured: self.interpreter.scope.clone(),
@@ -815,13 +872,11 @@ impl Kast {
                 Expr::Recursive { .. } => false,
             };
             let result_ty = result.ty(); // .substitute_bindings(self); // TODO not needed?
-            if should_check_result_ty && result_ty != expected_ty {
-                eyre::bail!(
-                    "expr expected to be of type {}, but we got {} :: {}",
-                    expected_ty,
-                    result,
-                    result_ty,
-                );
+            if should_check_result_ty {
+                result_ty
+                    .clone()
+                    .make_same(expected_ty)
+                    .wrap_err("expr evaluated to incorrect type")?;
             }
             tracing::debug!("finished evaluating {}", expr.show_short());
             tracing::trace!("result = {result}");

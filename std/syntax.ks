@@ -67,8 +67,9 @@ syntax_module {
 
   syntax @"builtin macro if" -> 13.1 = cond "?" then ":" else;
 
-  syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" contexts "{" body "}";
+  syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "with" contexts "{" body "}";
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "->" result_type "{" body "}";
+  syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "->" result_type "with" contexts "{" body "}";
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "{" body "}";
 
   syntax implements <- 14 = type "implements" trait;

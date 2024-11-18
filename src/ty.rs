@@ -1,7 +1,7 @@
 use super::*;
 
 /// Partially inferred type, so we know the shape of it
-#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub enum TypeShape {
     Unit,
     Bool,
@@ -15,6 +15,7 @@ pub enum TypeShape {
     Template(MaybeCompiledFn),
     Macro(#[try_hash] Box<FnType>),
     Multiset,
+    Contexts,
     Ast,
     #[allow(clippy::enum_variant_names)]
     Type,
@@ -25,7 +26,7 @@ pub enum TypeShape {
 
 pub type Type = inference::MaybeNotInferred<TypeShape>;
 
-#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct VariantType {
     pub name: String,
     #[try_hash]
@@ -91,6 +92,8 @@ impl Inferrable for TypeShape {
         Ok(match (a.clone(), b.clone()) {
             (Self::Unit, Self::Unit) => Self::Unit,
             (Self::Unit, _) => fail!(),
+            (Self::Contexts, Self::Contexts) => Self::Contexts,
+            (Self::Contexts, _) => fail!(),
             (Self::Bool, Self::Bool) => Self::Bool,
             (Self::Bool, _) => fail!(),
             (Self::Int32, Self::Int32) => Self::Int32,
@@ -148,7 +151,7 @@ impl Inferrable for TypeShape {
 impl std::fmt::Display for TypeShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unit => write!(f, "()"),
+            Self::Unit => write!(f, "unit"),
             Self::Bool => write!(f, "bool"),
             Self::Int32 => write!(f, "int32"),
             Self::Int64 => write!(f, "int64"),
@@ -161,6 +164,7 @@ impl std::fmt::Display for TypeShape {
             Self::Multiset => write!(f, "multiset"),
             Self::Ast => write!(f, "ast"),
             Self::Type => write!(f, "type"),
+            Self::Contexts => write!(f, "contexts"),
             Self::SyntaxModule => write!(f, "syntax module"),
             Self::SyntaxDefinition => write!(f, "syntax definition"),
             Self::Binding(binding) => binding.fmt(f),
@@ -177,17 +181,23 @@ impl std::fmt::Display for TypeShape {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct FnType {
     #[try_hash]
     pub arg: Type,
+    #[try_hash]
+    pub contexts: Contexts,
     #[try_hash]
     pub result: Type,
 }
 
 impl std::fmt::Display for FnType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} -> {}", self.arg, self.result)
+        write!(f, "{} -> {}", self.arg, self.result)?;
+        if !self.contexts.is_empty() {
+            write!(f, " with {}", self.contexts)?;
+        }
+        Ok(())
     }
 }
 
@@ -195,6 +205,7 @@ impl Inferrable for FnType {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Self {
             arg: Inferrable::make_same(a.arg, b.arg)?,
+            contexts: Inferrable::make_same(a.contexts, b.contexts)?,
             result: Inferrable::make_same(a.result, b.result)?,
         })
     }
@@ -212,6 +223,7 @@ impl SubstituteBindings for Type {
                 | TypeShape::String
                 | TypeShape::Ast
                 | TypeShape::Multiset
+                | TypeShape::Contexts
                 | TypeShape::Type
                 | TypeShape::SyntaxModule
                 | TypeShape::SyntaxDefinition => self.clone(),
@@ -255,6 +267,7 @@ impl SubstituteBindings for FnType {
     fn substitute_bindings(self, kast: &Kast) -> Self {
         Self {
             arg: self.arg.substitute_bindings(kast),
+            contexts: self.contexts.substitute_bindings(kast),
             result: self.result.substitute_bindings(kast),
         }
     }

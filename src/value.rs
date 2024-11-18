@@ -16,6 +16,7 @@ pub enum Value {
     Binding(Parc<Binding>),
     Variant(#[try_hash] VariantValue),
     Multiset(#[try_hash] Vec<Value>),
+    Contexts(#[try_hash] Contexts),
     Ast(Ast),
     Type(#[try_hash] Type),
     SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
@@ -61,6 +62,7 @@ impl std::fmt::Display for Value {
                 }
                 Ok(())
             }
+            Value::Contexts(contexts) => contexts.fmt(f),
             Value::Tuple(tuple) => tuple.fmt(f),
             Value::NativeFunction(function) => function.fmt(f),
             Value::Binding(binding) => binding.fmt(f),
@@ -104,6 +106,7 @@ impl Value {
         match self {
             Value::Unit => TypeShape::Unit.into(),
             Value::Multiset(_) => TypeShape::Multiset.into(),
+            Value::Contexts(_) => TypeShape::Contexts.into(),
             Value::Variant(value) => value.ty.clone(),
             Value::Bool(_) => TypeShape::Bool.into(),
             Value::Int32(_) => TypeShape::Int32.into(),
@@ -147,6 +150,17 @@ impl Value {
             _ => Err(ExpectError {
                 value: self,
                 expected: "tuple",
+            }),
+        }
+    }
+    pub fn into_contexts(self) -> Result<Contexts, ExpectError> {
+        match self {
+            Self::Unit => Ok(Contexts::empty()),
+            Self::Contexts(contexts) => Ok(contexts),
+            Self::Type(ty) => Ok(Contexts::from_list([ty])),
+            _ => Err(ExpectError {
+                value: self,
+                expected: TypeShape::Contexts,
             }),
         }
     }
@@ -224,15 +238,12 @@ impl Value {
             }),
         }
     }
-    pub fn expect_function(self) -> Result<TypedFunction, ExpectError> {
+    pub fn expect_function(self) -> Result<TypedFunction, ExpectError<Value, &'static str>> {
         match self {
             Self::Function(f) => Ok(f),
             _ => Err(ExpectError {
                 value: self,
-                expected: TypeShape::Function(Box::new(FnType {
-                    arg: Type::new_not_inferred(),
-                    result: Type::new_not_inferred(),
-                })),
+                expected: "function",
             }),
         }
     }

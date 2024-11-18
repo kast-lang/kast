@@ -26,8 +26,8 @@ pub enum Expr<Data = ExprData> {
     },
     FunctionType {
         arg: Box<Expr>,
+        contexts: Option<Box<Expr>>,
         result: Box<Expr>,
-        // TODO contexts
         data: Data,
     },
     Cast {

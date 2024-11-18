@@ -323,6 +323,19 @@ where
     }
 }
 
+impl<T: Inferrable + PartialOrd> PartialOrd for MaybeNotInferred<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        T::partial_cmp(&*self.0.get()?, &*other.0.get()?)
+    }
+}
+
+impl<T: Inferrable + Ord> Ord for MaybeNotInferred<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other)
+            .expect("cant ord not inferred types")
+    }
+}
+
 impl<T: Inferrable + PartialEq> PartialEq for MaybeNotInferred<T> {
     fn eq(&self, other: &Self) -> bool {
         match (self.0.get(), other.0.get()) {
@@ -337,6 +350,11 @@ impl<T: Inferrable + Eq> Eq for MaybeNotInferred<T> {}
 impl<T: Inferrable> MaybeNotInferred<T> {
     pub fn expect_inferred(&self, value: T) -> eyre::Result<()> {
         self.0.set(value)
+    }
+    pub fn new_set(value: T) -> Self {
+        let var = Var::new();
+        var.set(value).unwrap();
+        Self(var)
     }
     pub fn new_not_inferred() -> Self {
         Self(Var::new())

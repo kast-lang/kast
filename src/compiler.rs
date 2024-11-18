@@ -913,12 +913,21 @@ impl Kast {
                 .expect_type()?,
             None => Type::new_not_inferred(),
         };
-        let _ = contexts; // TODO
+        let contexts = match contexts {
+            Some(contexts) => self
+                .eval_ast(
+                    contexts, None, // TODO Contexts??
+                )
+                .await?
+                .into_contexts()?,
+            None => Contexts::new_not_inferred(),
+        };
         let compiled = inner.compile_fn_body(arg, body, Some(result_type.clone()));
         Ok(Compiled::Expr(
             Expr::Function {
                 ty: FnType {
                     arg: arg_ty,
+                    contexts,
                     result: result_type,
                 },
                 compiled,
@@ -1041,11 +1050,13 @@ impl Kast {
         let ([arg, result], [contexts]) = values
             .as_ref()
             .into_named_opt(["arg", "result"], ["contexts"])?;
-        // TODO
-        let _ = contexts;
         Ok(Compiled::Expr(
             Expr::FunctionType {
                 arg: Box::new(self.compile(arg).await?),
+                contexts: match contexts {
+                    Some(contexts) => Some(Box::new(self.compile(contexts).await?)),
+                    None => None,
+                },
                 result: Box::new(self.compile(result).await?),
                 data: span,
             }
@@ -1458,13 +1469,16 @@ impl Expr<Span> {
                 },
                 Expr::FunctionType {
                     arg,
+                    contexts,
                     result,
                     data: span,
                 } => {
                     arg.data().ty.expect_inferred(TypeShape::Type)?;
+                    // TODO contexts.data().ty.expect_inferred(TypeShape::Contexts)?;
                     result.data().ty.expect_inferred(TypeShape::Type)?;
                     Expr::FunctionType {
                         arg,
+                        contexts,
                         result,
                         data: ExprData {
                             ty: TypeShape::Type.into(),
@@ -1836,6 +1850,7 @@ impl Expr<Span> {
                         .ty
                         .expect_inferred(TypeShape::Function(Box::new(FnType {
                             arg: args.data().ty.clone(),
+                            contexts: Contexts::new_not_inferred(),
                             result: result_ty.clone(),
                         })))?;
                     Expr::Call {

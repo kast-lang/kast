@@ -16,10 +16,12 @@ const float64 :: type = native "float64";
 const string :: type = native "string";
 
 const output :: type = native "output";
+
 const default_number_type :: type = native "default_number_type";
 
 # TODO panic should return never
 const panic :: string -> () = native "panic";
+
 const print :: string -> () with output = line => (
   let output = current output;
   output.write line;
