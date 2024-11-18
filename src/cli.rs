@@ -14,5 +14,10 @@ pub struct Args {
 }
 
 pub fn parse() -> Args {
+    if cfg!(target_arch = "wasm32") {
+        return Args {
+            command: Command::Repl { path: None },
+        };
+    }
     clap::Parser::parse()
 }

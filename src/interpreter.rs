@@ -57,7 +57,7 @@ impl State {
                     name: "print".to_owned(),
                     r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
                         let s = s.expect_string()?;
-                        print!("{s}");
+                        write_stdout(s);
                         Ok(Value::Unit)
                     }) as std::sync::Arc<NativeFunctionImpl>)
                         .into(),
@@ -251,28 +251,6 @@ impl State {
                                     },
                                     Err(_) => eyre::bail!("cant parse not inferred type"),
                                 })
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        }))
-                    }),
-                );
-                map.insert(
-                    "print",
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::String.into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Unit.into(),
-                        };
-                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(Value::NativeFunction(NativeFunction {
-                            name: "print".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
-                                let s = s.expect_string()?;
-                                println!("{s}");
-                                Ok(Value::Unit)
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),

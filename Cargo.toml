@@ -35,6 +35,9 @@ name = "kast"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+embed-std = []
+
 [dependencies]
 getrandom.workspace = true
 clap.workspace = true
@@ -58,6 +61,11 @@ decursion.workspace = true
 event-listener.workspace = true
 try-hash.workspace = true
 anymap3 = "1.0.1"
+include_dir = "0.7.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rustyline.workspace = true

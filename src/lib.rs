@@ -30,6 +30,17 @@ mod scope;
 mod ty;
 mod value;
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+extern "C" {
+    pub fn write_stdout(s: String);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn write_stdout(s: String) {
+    print!("{s}");
+}
+
 #[derive(Clone)]
 pub struct Kast {
     /// Am I a background task? :)
@@ -106,7 +117,10 @@ impl Kast {
     }
 
     fn import_impl(&self, path: impl AsRef<Path>, mode: ImportMode) -> eyre::Result<Value> {
+        #[cfg(not(target_arch = "wasm32"))]
         let path = path.as_ref().canonicalize()?;
+        #[cfg(target_arch = "wasm32")]
+        let path = path.as_ref().to_owned();
         tracing::trace!("importing {path:?}");
         if let Some(value) = self.cache.imports.lock().unwrap().get(&path) {
             let value = value.clone().ok_or_else(|| eyre!("recursive imports???"))?;
@@ -124,6 +138,22 @@ impl Kast {
             ImportMode::FromScratch => Self::from_scratch(Some(self.cache.clone())),
         };
         let source = SourceFile {
+            #[cfg(feature = "embed-std")]
+            contents: {
+                use include_dir::{include_dir, Dir};
+                match path.strip_prefix(std_path()) {
+                    Ok(path) => {
+                        static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
+                        STD.get_file(&path)
+                            .ok_or_else(|| eyre!("file not exist: {path:?}"))?
+                            .contents_utf8()
+                            .ok_or_else(|| eyre!("{path:?} is not utf8"))?
+                            .to_owned()
+                    }
+                    Err(_) => std::fs::read_to_string(&path)?,
+                }
+            },
+            #[cfg(not(feature = "embed-std"))]
             contents: std::fs::read_to_string(&path)?,
             filename: path.clone(),
         };
@@ -157,6 +187,9 @@ impl Kast {
 }
 
 pub fn std_path() -> PathBuf {
+    if cfg!(feature = "embed-std") {
+        return "/embedded-std/".into();
+    }
     match std::env::var_os("KAST_STD") {
         Some(path) => path.into(),
         None => match option_env!("CARGO_MANIFEST_DIR") {

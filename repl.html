@@ -1,0 +1,18 @@
+<html>
+
+<head>
+    <link data-trunk rel="rust" data-cargo-features="embed-std" />
+    <!-- <link data-trunk rel="copy-dir" href="std" /> -->
+</head>
+
+<script>
+    // wasmBindings.eval_source("std.print \"hello, world\"")
+    window.write_stdout = function (s) {
+        console.log(s);
+    };
+    window.write_stderr = function (s) {
+        console.error(s);
+    };
+</script>
+
+</html>

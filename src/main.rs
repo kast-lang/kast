@@ -10,16 +10,32 @@ use kast::*;
 
 #[cfg(target_arch = "wasm32")]
 fn run_repl(
-    helper: impl repl_helper::AnyHelper,
-    mut handler: impl FnMut(String) -> eyre::Result<()>,
+    _helper: impl repl_helper::AnyHelper,
+    mut handler: impl FnMut(String) -> eyre::Result<()> + 'static,
 ) -> eyre::Result<()> {
-    todo!()
+    use wasm_bindgen::prelude::*;
+    static mut HANDLER: Option<Box<dyn FnMut(String)>> = None;
+    unsafe {
+        HANDLER = Some(Box::new(move |source| match handler(source) {
+            Ok(()) => {}
+            Err(e) => write_stderr(format!("{e:?}")),
+        }));
+    }
+    #[wasm_bindgen]
+    extern "C" {
+        fn write_stderr(s: String);
+    }
+    #[wasm_bindgen]
+    pub fn eval_source(source: String) {
+        unsafe { HANDLER.as_mut().unwrap()(source) }
+    }
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn run_repl(
     helper: impl repl_helper::AnyHelper,
-    mut handler: impl FnMut(String) -> eyre::Result<()>,
+    mut handler: impl FnMut(String) -> eyre::Result<()> + 'static,
 ) -> eyre::Result<()> {
     let mut rustyline = rustyline::Editor::with_config(
         rustyline::Config::builder().auto_add_history(true).build(),
@@ -54,11 +70,17 @@ fn run_repl(
 }
 
 fn main() -> eyre::Result<()> {
+    #[cfg(target_arch = "wasm32")]
+    console_error_panic_hook::set_once();
+
+    #[cfg(not(target_arch = "wasm32"))]
     color_eyre::config::HookBuilder::new()
         .display_env_section(false)
         .display_location_section(false)
         .install()?;
+
     tracing_subscriber::fmt::init();
+
     let cli_args = cli::parse();
     match cli_args.command {
         cli::Command::Run { path } => {
@@ -81,7 +103,7 @@ fn main() -> eyre::Result<()> {
                 filename: "std/syntax.ks".into(),
             })?;
             tracing::trace!("{syntax:#?}");
-            run_repl((), |contents| {
+            run_repl((), move |contents| {
                 let source = SourceFile {
                     contents,
                     filename: "<stdin>".into(),
@@ -103,7 +125,7 @@ fn main() -> eyre::Result<()> {
                 kast.interpreter.insert_local(name, value);
             }
             let helper = repl_helper::Helper::new(kast.clone());
-            run_repl(helper, |contents| {
+            run_repl(helper, move |contents| {
                 let snapshot = kast::inference::global_state::snapshot();
                 let source = SourceFile {
                     contents,
