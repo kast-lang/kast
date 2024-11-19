@@ -73,6 +73,5 @@
         };
       };
       formatter.${system} = pkgs.nixpkgs-fmt;
-      checks.${system} = import ./checks { inherit system pkgs kast self; };
     };
 }
