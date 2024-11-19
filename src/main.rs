@@ -8,31 +8,6 @@ use std::{
 
 use kast::*;
 
-#[cfg(target_arch = "wasm32")]
-fn run_repl(
-    _helper: impl repl_helper::AnyHelper,
-    mut handler: impl FnMut(String) -> eyre::Result<()> + 'static,
-) -> eyre::Result<()> {
-    use wasm_bindgen::prelude::*;
-    static mut HANDLER: Option<Box<dyn FnMut(String)>> = None;
-    unsafe {
-        HANDLER = Some(Box::new(move |source| match handler(source) {
-            Ok(()) => {}
-            Err(e) => write_stderr(format!("{e:?}")),
-        }));
-    }
-    #[wasm_bindgen]
-    extern "C" {
-        fn write_stderr(s: String);
-    }
-    #[wasm_bindgen]
-    pub fn eval_source(source: String) {
-        unsafe { HANDLER.as_mut().unwrap()(source) }
-    }
-    Ok(())
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 fn run_repl(
     helper: impl repl_helper::AnyHelper,
     mut handler: impl FnMut(String) -> eyre::Result<()> + 'static,
@@ -70,10 +45,6 @@ fn run_repl(
 }
 
 fn main() -> eyre::Result<()> {
-    #[cfg(target_arch = "wasm32")]
-    console_error_panic_hook::set_once();
-
-    #[cfg(not(target_arch = "wasm32"))]
     color_eyre::config::HookBuilder::new()
         .display_env_section(false)
         .display_location_section(false)

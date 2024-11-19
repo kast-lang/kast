@@ -3,10 +3,6 @@ use colored::Colorize;
 
 pub struct Helper(Arc<Mutex<Kast>>);
 
-#[cfg(target_arch = "wasm32")]
-pub trait AnyHelper {}
-
-#[cfg(not(target_arch = "wasm32"))]
 pub trait AnyHelper: rustyline::Helper {}
 
 impl AnyHelper for () {}
@@ -17,7 +13,6 @@ pub struct CompletionCandidate {
     replacement: String,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl rustyline::completion::Candidate for CompletionCandidate {
     fn display(&self) -> &str {
         &self.display
@@ -27,7 +22,6 @@ impl rustyline::completion::Candidate for CompletionCandidate {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl rustyline::completion::Completer for Helper {
     type Candidate = CompletionCandidate;
     fn complete(
@@ -54,12 +48,10 @@ impl rustyline::completion::Completer for Helper {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl rustyline::hint::Hinter for Helper {
     type Hint = String;
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl rustyline::highlight::Highlighter for Helper {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
         match kast_ast::lex(SourceFile {
@@ -122,10 +114,8 @@ impl rustyline::highlight::Highlighter for Helper {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl rustyline::validate::Validator for Helper {}
 
-#[cfg(not(target_arch = "wasm32"))]
 impl rustyline::Helper for Helper {}
 
 impl Helper {

@@ -24,7 +24,7 @@ impl State {
                 "default_number_type",
                 Value::NativeFunction(NativeFunction {
                     name: "default_number_type".to_owned(),
-                    r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
+                    r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
                         let _s = s.expect_string()?;
                         Ok(Value::Type(Type::new_not_inferred()))
                     }) as std::sync::Arc<NativeFunctionImpl>)
@@ -55,9 +55,9 @@ impl State {
                 "write",
                 Value::NativeFunction(NativeFunction {
                     name: "print".to_owned(),
-                    r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
+                    r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
                         let s = s.expect_string()?;
-                        write_stdout(s);
+                        kast.output.write(s);
                         Ok(Value::Unit)
                     }) as std::sync::Arc<NativeFunctionImpl>)
                         .into(),
@@ -126,7 +126,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg_type".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty: FnType, value: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty: FnType, value: Value| {
                                 let value: Type = value.expect_type()?;
                                 Ok(Value::String(value.to_string()))
                             })
@@ -147,7 +147,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg_type_of_value".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty: FnType, value: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty: FnType, value: Value| {
                                 Ok(Value::String(value.ty().to_string()))
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
@@ -167,7 +167,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg".to_owned(),
-                            r#impl: (std::sync::Arc::new(|fn_ty: FnType, value: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, value: Value| {
                                 let ty = &fn_ty.arg;
                                 assert_eq!(&value.ty(), ty);
                                 Ok(Value::String(value.to_string()))
@@ -195,7 +195,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "contains".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 let mut args = args.expect_tuple()?;
                                 let s = args.take_named("s").unwrap().expect_string()?;
                                 let substring =
@@ -219,7 +219,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "panic".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty, s: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
                                 let s = s.expect_string()?;
                                 Err(eyre!("panic: {s}"))
                             })
@@ -240,7 +240,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "parse".to_owned(),
-                            r#impl: (std::sync::Arc::new(|fn_ty: FnType, s: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, s: Value| {
                                 let s = s.expect_string()?;
                                 Ok(match fn_ty.result.inferred() {
                                     Ok(ty) => match ty {
@@ -276,7 +276,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "<".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
                                 let result = match (&lhs, &rhs) {
                                     (Value::Int32(lhs), Value::Int32(rhs)) => {
@@ -317,7 +317,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "-".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
                                 let result = match (&lhs, &rhs) {
                                     (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
@@ -358,7 +358,7 @@ impl State {
                         expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "+".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_fn_ty, args: Value| {
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
                                 let result = match (&lhs, &rhs) {
                                     (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
@@ -881,7 +881,7 @@ impl Kast {
     pub async fn call(&self, f: Value, arg: Value) -> eyre::Result<Value> {
         match f {
             Value::Function(f) => self.call_fn(f.f, arg).await,
-            Value::NativeFunction(native) => (native.r#impl)(native.ty, arg),
+            Value::NativeFunction(native) => (native.r#impl)(self.clone(), native.ty, arg),
             _ => eyre::bail!("{f} is not a function"),
         }
     }

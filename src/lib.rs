@@ -30,15 +30,8 @@ mod scope;
 mod ty;
 mod value;
 
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen::prelude::wasm_bindgen]
-extern "C" {
-    pub fn write_stdout(s: String);
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn write_stdout(s: String) {
-    print!("{s}");
+pub trait Output: 'static + Sync + Send {
+    fn write(&self, s: String);
 }
 
 #[derive(Clone)]
@@ -48,6 +41,7 @@ pub struct Kast {
     syntax: ast::Syntax,
     pub interpreter: interpreter::State,
     cache: Parc<Cache>,
+    pub output: std::sync::Arc<dyn Output>,
 }
 
 pub trait SubstituteBindings {
@@ -81,6 +75,15 @@ impl Kast {
             syntax: ast::Syntax::empty(),
             interpreter: interpreter::State::new(),
             cache: cache.unwrap_or_default(),
+            output: std::sync::Arc::new({
+                struct DefaultOutput;
+                impl Output for DefaultOutput {
+                    fn write(&self, s: String) {
+                        print!("{s}");
+                    }
+                }
+                DefaultOutput
+            }),
         }
     }
     fn only_std_syntax(cache: Option<Parc<Cache>>) -> Self {

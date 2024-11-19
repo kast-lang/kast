@@ -285,7 +285,7 @@ impl std::fmt::Debug for Function {
     }
 }
 
-pub type NativeFunctionImpl = dyn Fn(FnType, Value) -> eyre::Result<Value> + Send + Sync;
+pub type NativeFunctionImpl = dyn Fn(Kast, FnType, Value) -> eyre::Result<Value> + Send + Sync;
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct NativeFunction {

@@ -12,50 +12,20 @@ struct Case<'a> {
 fn try_test(case: Case<'_>) -> eyre::Result<Value> {
     let mut kast = Kast::new();
 
-    let output = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    struct CaptureOutput {
+        output: std::sync::Arc<std::sync::Mutex<String>>,
+    }
 
-    let capture_output_context = {
-        let context_type = kast.interpreter.builtins["output"](Type::new_not_inferred())
-            .unwrap()
-            .expect_type()
-            .unwrap()
-            .inferred()
-            .unwrap();
-        let write_type = context_type
-            .clone()
-            .expect_tuple()
-            .unwrap()
-            .get_named("write")
-            .unwrap()
-            .inferred()
-            .unwrap()
-            .expect_function()
-            .unwrap();
-        let mut context = Tuple::empty();
-        context.add_named(
-            "write",
-            Value::NativeFunction(NativeFunction {
-                name: "print".to_owned(),
-                r#impl: (std::sync::Arc::new({
-                    let output = output.clone();
-                    move |_fn_ty, s: Value| {
-                        let s = s.expect_string()?;
-                        *output.lock().unwrap() += &s;
-                        Ok(Value::Unit)
-                    }
-                }) as std::sync::Arc<NativeFunctionImpl>)
-                    .into(),
-                ty: write_type,
-            }),
-        );
-        let context = Value::Tuple(context);
-        assert_eq!(context.ty(), context_type.into());
-        context
-    };
-    kast.interpreter
-        .contexts
-        .insert_runtime(capture_output_context)
-        .unwrap();
+    impl Output for CaptureOutput {
+        fn write(&self, s: String) {
+            *self.output.lock().unwrap() += &s;
+        }
+    }
+
+    let output = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    kast.output = std::sync::Arc::new(CaptureOutput {
+        output: output.clone(),
+    });
 
     let path = Path::new("examples").join(case.name).with_extension("ks");
     let value = match case.comment_lines_starting_with {
