@@ -759,7 +759,7 @@ impl Kast {
                     let mut ast_values = Tuple::empty();
                     for (name, value) in values.as_ref().into_iter() {
                         let value = self.eval(value).await?;
-                        let AstValue { value, captured } = value.expect_ast()?;
+                        let AstValue { value, captured: _ } = value.expect_ast()?;
                         ast_values.add(name, value);
                     }
                     let ast = Ast::Complex {
@@ -801,7 +801,7 @@ impl Kast {
                     inner.eval(expr).await?
                 }
                 Expr::Binding { binding, data: _ } => self
-                    .get_binding(&binding)
+                    .get_binding(binding)
                     .await // TODO this should not be async?
                     .ok_or_else(|| eyre!("{:?} not found", binding.name))?
                     .clone(),
