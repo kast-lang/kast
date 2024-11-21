@@ -109,6 +109,11 @@ pub enum Expr<Data = ExprData> {
         arg: Box<Expr>,
         data: Data,
     },
+    CallMacro {
+        r#macro: Box<Expr>,
+        arg: Box<Expr>,
+        data: Data,
+    },
     Scope {
         expr: Box<Expr>,
         data: Data,
@@ -154,6 +159,7 @@ impl Expr {
     ) {
         match self {
             Expr::Binding { .. }
+            | Expr::CallMacro { .. }
             | Expr::InjectContext { .. }
             | Expr::CurrentContext { .. }
             | Expr::Unit { .. }
@@ -220,6 +226,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
         impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::CallMacro { .. } => write!(f, "macro call expr")?,
                     Expr::InjectContext { .. } => write!(f, "inject context expr")?,
                     Expr::CurrentContext { .. } => write!(f, "current context expr")?,
                     Expr::Unit { .. } => write!(f, "unit expr")?,
@@ -258,6 +265,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::CallMacro { data, .. }
         | Expr::CurrentContext { data, .. }
         | Expr::InjectContext { data, .. }
         | Expr::Unit { data, .. }
@@ -288,6 +296,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::CallMacro { data, .. }
         | Expr::CurrentContext { data, .. }
         | Expr::InjectContext { data, .. }
         | Expr::Unit { data, .. }
@@ -340,6 +349,7 @@ impl Name {
 pub struct Binding {
     pub name: Name,
     pub ty: Type,
+    pub hygiene: Hygiene,
 }
 
 impl std::fmt::Display for Binding {

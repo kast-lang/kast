@@ -434,6 +434,50 @@ impl Drop for Kast {
 }
 
 impl Kast {
+    pub async fn get_with_hygiene(&self, name: &str, hygiene: &Hygiene) -> Option<Value> {
+        match hygiene {
+            Hygiene::CallSite | Hygiene::FigureItDefSite => self.interpreter.get(name).await,
+            Hygiene::DefSite(scope) => self.with_scope(scope.clone()).interpreter.get(name).await,
+        }
+    }
+    pub async fn get_binding(&self, binding: &Binding) -> Option<Value> {
+        self.get_with_hygiene(binding.name.raw(), &binding.hygiene)
+            .await
+    }
+    pub fn pattern_match(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
+        let matches = pattern
+            .r#match(value)
+            .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
+        self.insert_pattern_matches(matches);
+        Ok(())
+    }
+    pub fn insert_pattern_matches(
+        &mut self,
+        matches: impl IntoIterator<Item = (Parc<Binding>, Value)>,
+    ) {
+        for (binding, value) in matches {
+            let scope = match &binding.hygiene {
+                Hygiene::FigureItDefSite | Hygiene::CallSite => &self.interpreter.scope,
+                Hygiene::DefSite(scope) => scope,
+            };
+            let name = binding.name.raw();
+            tracing::trace!("insert {name} = {value} into scope {:?}", scope.id);
+            scope.insert(name.to_owned(), value);
+        }
+    }
+    pub fn capture(&self) -> Parc<Scope> {
+        self.interpreter.scope.clone()
+    }
+    pub fn pin_ast(&self, ast: Ast) -> Ast {
+        ast.map_data(|AstData { span, hygiene }| AstData {
+            span,
+            hygiene: match hygiene {
+                Hygiene::FigureItDefSite => Hygiene::DefSite(self.capture()),
+                _ => hygiene,
+            },
+        })
+    }
+
     #[must_use]
     pub fn enter_recursive_scope(&self) -> Self {
         let mut inner = self.clone();
@@ -470,7 +514,14 @@ impl Kast {
     ) -> eyre::Result<Value> {
         let ast = ast::parse(&self.syntax, source)?;
         match ast {
-            Some(ast) => futures_lite::future::block_on(self.eval_ast(&ast, expected_ty)), // TODO
+            Some(ast) => {
+                let ast = ast.map_data(|span| AstData {
+                    span,
+                    hygiene: Hygiene::FigureItDefSite,
+                });
+                // TODO but idr what this todo is about
+                futures_lite::future::block_on(self.eval_ast(&ast, expected_ty))
+            }
             None => Ok(Value::Unit),
         }
     }
@@ -488,6 +539,15 @@ impl Kast {
             tracing::trace!("evaluating {}", expr.show_short());
             tracing::trace!("as {}", expr.data().ty);
             let result = match expr {
+                Expr::CallMacro {
+                    r#macro,
+                    arg,
+                    data: _,
+                } => {
+                    let r#macro = self.eval(r#macro).await?.expect_macro()?;
+                    let arg = self.eval(arg).await?;
+                    self.call_fn(r#macro.f, arg).await?
+                }
                 Expr::InjectContext { context, data: _ } => {
                     let context = self.eval(context).await?;
                     self.interpreter.contexts.insert_runtime(context)?;
@@ -699,13 +759,20 @@ impl Kast {
                     let mut ast_values = Tuple::empty();
                     for (name, value) in values.as_ref().into_iter() {
                         let value = self.eval(value).await?;
-                        let value = value.expect_ast()?;
+                        let AstValue { value, captured } = value.expect_ast()?;
                         ast_values.add(name, value);
                     }
-                    Value::Ast(Ast::Complex {
+                    let ast = Ast::Complex {
                         definition: definition.clone(),
                         values: ast_values,
-                        data: data.span.clone(),
+                        data: AstData {
+                            span: data.span.clone(),
+                            hygiene: Hygiene::CallSite,
+                        },
+                    };
+                    Value::Ast(AstValue {
+                        value: ast,
+                        captured: self.capture(),
                     })
                 }
                 Expr::Function {
@@ -720,13 +787,13 @@ impl Kast {
                     },
                     f: Function {
                         id: Id::new(),
-                        captured: self.interpreter.scope.clone(),
+                        captured: self.capture(),
                         compiled: compiled.clone(),
                     },
                 }),
                 Expr::Template { compiled, data: _ } => Value::Template(Function {
                     id: Id::new(),
-                    captured: self.interpreter.scope.clone(),
+                    captured: self.capture(),
                     compiled: compiled.clone(),
                 }),
                 Expr::Scope { expr, data: _ } => {
@@ -734,8 +801,7 @@ impl Kast {
                     inner.eval(expr).await?
                 }
                 Expr::Binding { binding, data: _ } => self
-                    .interpreter
-                    .get(binding.name.raw())
+                    .get_binding(&binding)
                     .await // TODO this should not be async?
                     .ok_or_else(|| eyre!("{:?} not found", binding.name))?
                     .clone(),
@@ -800,10 +866,7 @@ impl Kast {
                     data: _,
                 } => {
                     let value = self.eval(value).await?;
-                    let matches = pattern
-                        .r#match(value)
-                        .expect("pattern match was not exhaustive???");
-                    self.interpreter.scope.extend(matches);
+                    self.pattern_match(pattern, value)?;
                     Value::Unit
                 }
                 Expr::Call { f, arg, data: _ } => {
@@ -823,6 +886,7 @@ impl Kast {
             };
             let should_check_result_ty = match expr {
                 Expr::Unit { .. }
+                | Expr::CallMacro { .. }
                 | Expr::InjectContext { .. }
                 | Expr::CurrentContext { .. }
                 | Expr::FunctionType { .. }

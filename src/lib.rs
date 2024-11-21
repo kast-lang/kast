@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use cast::*;
+pub use compiler::{Ast, AstData, Hygiene};
 pub use contexts::Contexts;
 use eyre::{eyre, Context as _};
 use futures::future::BoxFuture;
@@ -8,7 +9,7 @@ pub use id::*;
 use inference::Inferrable;
 use ir::*;
 pub use kast_ast as ast;
-pub use kast_ast::{Ast, Token};
+pub use kast_ast::Token;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
 use scope::Scope;

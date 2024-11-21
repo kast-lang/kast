@@ -1,5 +1,37 @@
 use super::*;
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub enum Hygiene {
+    FigureItDefSite,
+    CallSite,
+    DefSite(Parc<Scope>),
+}
+
+impl std::fmt::Debug for Hygiene {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FigureItDefSite => write!(f, "FigureItDefSite"),
+            Self::CallSite => write!(f, "CallSite"),
+            Self::DefSite(..) => write!(f, "DefSite"),
+        }
+    }
+}
+
+// TODO: Use string to fix type infer bug. Important
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct AstData {
+    pub span: Span,
+    pub hygiene: Hygiene,
+}
+
+impl ast::HasSpan for AstData {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+pub type Ast<T = AstData> = ast::Ast<T>;
+
 use std::collections::HashMap;
 
 struct ListCollector<'a> {
@@ -110,6 +142,7 @@ impl Cache {
             macro_current_context,
             macro_comptime,
             macro_compile_ast,
+            macro_call_macro,
         );
         Self {
             builtin_macros,
@@ -202,22 +235,21 @@ impl Compilable for Expr {
     }
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         Ok(match ast {
-            Ast::Simple { token, data: span } => match token {
+            Ast::Simple { token, data } => match token {
                 Token::Ident {
                     raw: _,
                     name,
                     is_raw: _,
                 } => {
                     let value = kast
-                        .interpreter
-                        .get(name.as_str())
+                        .get_with_hygiene(name.as_str(), &data.hygiene)
                         .await
                         .ok_or_else(|| eyre!("{name:?} not found"))?;
                     match value {
                         Value::Binding(binding) => {
                             Expr::Binding {
                                 binding: binding.clone(),
-                                data: span.clone(),
+                                data: data.span.clone(),
                             }
                             .init(kast)
                             .await?
@@ -225,7 +257,7 @@ impl Compilable for Expr {
                         _ => {
                             Expr::Constant {
                                 value: value.clone(),
-                                data: span.clone(),
+                                data: data.span.clone(),
                             }
                             .init(kast)
                             .await?
@@ -239,7 +271,7 @@ impl Compilable for Expr {
                 } => {
                     Expr::Constant {
                         value: Value::String(contents.clone()),
-                        data: span.clone(),
+                        data: data.span.clone(),
                     }
                     .init(kast)
                     .await?
@@ -247,7 +279,7 @@ impl Compilable for Expr {
                 Token::Number { raw } => {
                     Expr::Number {
                         raw: raw.clone(),
-                        data: span.clone(),
+                        data: data.span.clone(),
                     }
                     .init(kast)
                     .await?
@@ -257,7 +289,7 @@ impl Compilable for Expr {
             Ast::Complex {
                 definition,
                 values,
-                data: span,
+                data,
             } => {
                 match kast.cache.compiler.find_macro(definition)? {
                     Macro::Builtin { name, r#impl } => {
@@ -265,7 +297,12 @@ impl Compilable for Expr {
                     }
                     Macro::UserDefined(r#macro) => {
                         let r#macro = r#macro.clone();
-                        let arg = Value::Tuple(values.as_ref().map(|ast| Value::Ast(ast.clone())));
+                        let arg = Value::Tuple(values.as_ref().map(|ast| {
+                            Value::Ast(AstValue {
+                                value: kast.pin_ast(ast.clone()),
+                                captured: kast.capture(),
+                            })
+                        }));
                         // hold on
                         let expanded = kast.call_fn(r#macro, arg).await?;
                         let expanded = match expanded {
@@ -275,7 +312,7 @@ impl Compilable for Expr {
                                 name = definition.name,
                             ),
                         };
-                        kast.compile(&expanded).await?
+                        kast.compile_ast_value(expanded).await?
                     }
                     Macro::Value(value) => {
                         Expr::Call {
@@ -283,7 +320,7 @@ impl Compilable for Expr {
                             f: Box::new(
                                 Expr::Constant {
                                     value: value.clone(),
-                                    data: span.clone(),
+                                    data: data.span.clone(),
                                 }
                                 .init(kast)
                                 .await?,
@@ -297,19 +334,19 @@ impl Compilable for Expr {
                                         }
                                         tuple
                                     },
-                                    data: span.clone(),
+                                    data: data.span.clone(),
                                 }
                                 .init(kast)
                                 .await?,
                             ),
-                            data: span.clone(),
+                            data: data.span.clone(),
                         }
                         .init(kast)
                         .await?
                     } // _ => eyre::bail!("{macro} is not a macro"),
                 }
             }
-            Ast::SyntaxDefinition { def, data: span } => {
+            Ast::SyntaxDefinition { def, data } => {
                 kast.interpreter.insert_syntax(def.clone())?;
                 kast.interpreter
                     .insert_local(&def.name, Value::SyntaxDefinition(def.clone()));
@@ -317,19 +354,19 @@ impl Compilable for Expr {
 
                 Expr::Constant {
                     value: Value::Unit,
-                    data: span.clone(),
+                    data: data.span.clone(),
                 }
                 .init(kast)
                 .await?
             }
-            Ast::FromScratch { next, data: span } => {
+            Ast::FromScratch { next, data } => {
                 // kast.compiler.syntax_definitions.lock().unwrap().clear();
                 if let Some(next) = next {
                     kast.compile(next).await?
                 } else {
                     Expr::Constant {
                         value: Value::Unit,
-                        data: span.clone(),
+                        data: data.span.clone(),
                     }
                     .init(kast)
                     .await?
@@ -351,7 +388,10 @@ impl Compilable for Pattern {
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         tracing::debug!("compiling {}...", ast.show_short());
         let result = match ast {
-            Ast::Simple { token, data: span } => match token {
+            Ast::Simple {
+                token,
+                data: AstData { span, hygiene },
+            } => match token {
                 Token::Ident {
                     raw: _,
                     name,
@@ -360,6 +400,7 @@ impl Compilable for Pattern {
                     binding: Parc::new(Binding {
                         name: Name::new(name),
                         ty: Type::new_not_inferred(),
+                        hygiene: hygiene.clone(),
                     }),
                     data: span.clone(),
                 }
@@ -382,7 +423,12 @@ impl Compilable for Pattern {
                         Self::r#macro(&name, r#impl)(kast, ast).await?
                     }
                     Macro::UserDefined(r#macro) => {
-                        let arg = Value::Tuple(values.as_ref().map(|ast| Value::Ast(ast.clone())));
+                        let arg = Value::Tuple(values.as_ref().map(|ast| {
+                            Value::Ast(AstValue {
+                                value: ast.clone(),
+                                captured: kast.capture(),
+                            })
+                        }));
                         // hold on
                         let expanded = kast.call_fn(r#macro, arg).await?;
                         let expanded = match expanded {
@@ -392,7 +438,7 @@ impl Compilable for Pattern {
                                 name = definition.name,
                             ),
                         };
-                        kast.compile(&expanded).await?
+                        kast.compile_ast_value(expanded).await?
                     }
                     Macro::Value(value) => {
                         eyre::bail!("{value} is not a macro")
@@ -419,9 +465,28 @@ impl Kast {
     }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| {
-            self.interpreter
-                .insert_local(binding.name.raw(), Value::Binding(binding.clone()));
+            self.insert_pattern_matches([(binding.clone(), Value::Binding(binding.clone()))])
         });
+    }
+    async fn compile_ast_value<T: Compilable>(&mut self, value: AstValue) -> eyre::Result<T> {
+        let AstValue {
+            value: ast,
+            captured,
+        } = value;
+        let mut scope = Scope::new();
+        scope.parent = Some(captured);
+        let ast = self.with_scope(Parc::new(scope)).pin_ast(ast);
+        self.compile(&ast).await
+    }
+    async fn compile_ast_value_into(
+        &mut self,
+        ty: CompiledType,
+        value: AstValue,
+    ) -> eyre::Result<Compiled> {
+        Ok(match ty {
+            CompiledType::Expr => Compiled::Expr(self.compile_ast_value(value).await?),
+            CompiledType::Pattern => Compiled::Pattern(self.compile_ast_value(value).await?),
+        })
     }
     pub async fn compile<T: Compilable>(&mut self, ast: &Ast) -> eyre::Result<T> {
         T::compile(self, ast)
@@ -464,7 +529,7 @@ impl Kast {
         let value = Box::new(
             Expr::Constant {
                 value,
-                data: value_ast.data().clone(),
+                data: value_ast.data().span.clone(),
             }
             .init(self)
             .await?,
@@ -549,7 +614,7 @@ impl Kast {
         let (macro_name, span) = match ast {
             Ast::Complex {
                 definition,
-                data: span,
+                data: AstData { span, .. },
                 ..
             } => (definition.name.as_str(), span.clone()),
             _ => unreachable!(),
@@ -719,7 +784,7 @@ impl Kast {
         Ok(Compiled::Expr(
             Expr::Then {
                 list: expr_list,
-                data: ast.data().clone(),
+                data: ast.data().span.clone(),
             }
             .init(self)
             .await?,
@@ -971,6 +1036,7 @@ impl Kast {
             .expect_string()?;
         let path = if path.starts_with('.') {
             ast.data()
+                .span
                 .filename
                 .parent()
                 .expect("no parent dir??")
@@ -1033,6 +1099,25 @@ impl Kast {
         Ok(Compiled::Expr(
             Expr::Call {
                 f: Box::new(f),
+                arg: Box::new(arg),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_call_macro(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        assert_eq!(cty, CompiledType::Expr);
+        let [r#macro, arg] = values
+            .as_ref()
+            .into_named(["macro", "arg"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let r#macro = self.compile(r#macro).await?;
+        let arg = self.compile(arg).await?;
+        Ok(Compiled::Expr(
+            Expr::CallMacro {
+                r#macro: Box::new(r#macro),
                 arg: Box::new(arg),
                 data: span,
             }
@@ -1112,7 +1197,7 @@ impl Kast {
                                     }
                                     result
                                 },
-                                data: data.clone(),
+                                data: data.span.clone(),
                             }
                             .init(kast)
                             .await?
@@ -1120,8 +1205,11 @@ impl Kast {
                     }
                     _ => {
                         Expr::Constant {
-                            value: Value::Ast(ast.clone()),
-                            data: ast.data().clone(),
+                            value: Value::Ast(AstValue {
+                                value: ast.clone(),
+                                captured: kast.capture(), // TODO not sure
+                            }),
+                            data: ast.data().span.clone(),
                         }
                         .init(kast)
                         .await?
@@ -1189,7 +1277,7 @@ impl Kast {
             CompiledType::Expr => Compiled::Expr(
                 Expr::Tuple {
                     tuple: tuple.map(|field| field.expect_expr().unwrap()),
-                    data: ast.data().clone(),
+                    data: ast.data().span.clone(),
                 }
                 .init(self)
                 .await?,
@@ -1197,7 +1285,7 @@ impl Kast {
             CompiledType::Pattern => Compiled::Pattern(
                 Pattern::Tuple {
                     tuple: tuple.map(|field| field.expect_pattern().unwrap()),
-                    data: ast.data().clone(),
+                    data: ast.data().span.clone(),
                 }
                 .init()?,
             ),
@@ -1353,7 +1441,7 @@ impl Kast {
             .eval_ast(value, Some(TypeShape::Ast.into()))
             .await?
             .expect_ast()?;
-        self.compile_into(cty, &ast).await
+        self.compile_ast_value_into(cty, ast).await
     }
 }
 
@@ -1400,8 +1488,8 @@ fn get_complex(ast: &Ast) -> (&Tuple<Ast>, Span) {
         Ast::Complex {
             definition: _,
             values,
-            data: span,
-        } => (values, span.clone()),
+            data,
+        } => (values, data.span.clone()),
         _ => unreachable!(),
     }
 }
@@ -1857,6 +1945,18 @@ impl Expr<Span> {
                         },
                     }
                 }
+                Expr::CallMacro {
+                    r#macro,
+                    arg,
+                    data: span,
+                } => Expr::CallMacro {
+                    r#macro,
+                    arg,
+                    data: ExprData {
+                        ty: TypeShape::Ast.into(),
+                        span,
+                    },
+                },
                 Expr::Call { f, arg, data: span } => {
                     let mut f = f.auto_instantiate(kast).await?;
                     let result_ty = Type::new_not_inferred();

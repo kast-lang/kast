@@ -5,7 +5,7 @@ use super::*;
 pub type Locals = HashMap<String, Value>;
 
 pub struct Scope {
-    id: Id,
+    pub id: Id,
     pub parent: Option<Parc<Scope>>,
     recursive: bool,
     closed: AtomicBool,

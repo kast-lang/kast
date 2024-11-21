@@ -17,10 +17,16 @@ pub enum Value {
     Variant(#[try_hash] VariantValue),
     Multiset(#[try_hash] Vec<Value>),
     Contexts(#[try_hash] Contexts),
-    Ast(Ast),
+    Ast(AstValue),
     Type(#[try_hash] Type),
     SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct AstValue {
+    pub value: Ast,
+    pub captured: Parc<Scope>,
 }
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
@@ -69,7 +75,7 @@ impl std::fmt::Display for Value {
             Value::Function(_function) => write!(f, "<function>"),
             Value::Template(_template) => write!(f, "<template>"),
             Value::Macro(_macro) => write!(f, "<macro>"),
-            Value::Ast(ast) => ast.fmt(f),
+            Value::Ast(AstValue { value, captured: _ }) => value.fmt(f),
             Value::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
@@ -135,6 +141,15 @@ pub struct ExpectError<V = Value, Expected = TypeShape> {
 }
 
 impl Value {
+    pub fn expect_macro(self) -> Result<TypedFunction, ExpectError<Value, &'static str>> {
+        match self {
+            Self::Macro(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "macro",
+            }),
+        }
+    }
     pub fn expect_variant(self) -> Result<VariantValue, ExpectError<Value, &'static str>> {
         match self {
             Self::Variant(value) => Ok(value),
@@ -229,7 +244,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_ast(self) -> Result<Ast, ExpectError> {
+    pub fn expect_ast(self) -> Result<AstValue, ExpectError> {
         match self {
             Self::Ast(ast) => Ok(ast),
             _ => Err(ExpectError {

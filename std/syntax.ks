@@ -120,6 +120,11 @@ syntax_module {
   syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
   syntax @"builtin macro compile_ast" <- 120 = "compile_ast" ast;
 
+  syntax @"builtin macro native" <- 150 = "native" name;
+  syntax @"builtin macro import" <- 150 = "import" path;
+  syntax invoke_macro <- 150 = @"macro" "!" arg;
+  syntax @"builtin macro call_macro" <- 150 = @"macro" "!!" arg;
+
   syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
   syntax @"builtin macro unquote" -> 200 = "$" expr;
   syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
@@ -137,8 +142,6 @@ syntax_module {
   syntax @"builtin macro struct_def" <- 500 = "rec" "{" body "}";
   syntax @"builtin macro struct_def" <- 500 = "struct" "(" body ")";
   syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
-  syntax @"builtin macro native" <- 500 = "native" name;
-  syntax @"builtin macro import" <- 500 = "import" path;
 
   syntax let_infer <- 500 = "_let" pattern;
 
@@ -153,10 +156,4 @@ syntax_module {
 
 # const @"postfix ++" = macro (.x :: ast) => `(x += 1);
 
-  impl syntax pipe_right = macro (.arg, .f) => `((let arg = $arg; let f = $f; f arg));
-  impl syntax pipe_left = macro (.f, .arg) => `((let f = $f; let arg = $arg; f arg));
-
-  impl syntax let_infer = macro (.pattern) => `(
-    (let $pattern = _; $pattern)
-  );
 }

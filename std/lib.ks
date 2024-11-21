@@ -2,6 +2,24 @@ module:
 
 const @"syntax" = import "./syntax.ks";
 
+impl syntax @"syntax".invoke_macro = macro (.@"macro", .arg) => `(
+  compile_ast ($@"macro" !! `($arg))
+);
+
+impl syntax @"syntax".pipe_right = macro (.arg, .f) => `(
+  let arg = $arg;
+  let f = $f;
+  f arg
+);
+impl syntax @"syntax".pipe_left = macro (.f, .arg) => `(
+  let f = $f;
+  let arg = $arg;
+  f arg
+);
+impl syntax @"syntax".let_infer = macro (.pattern) => `(
+  (let $pattern = _; $pattern)
+);
+
 const type = native "type";
 const ast :: type = native "ast";
 

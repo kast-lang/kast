@@ -43,6 +43,28 @@ impl<Data> Ast<Data> {
             | Ast::FromScratch { data, .. } => data,
         }
     }
+    pub fn map_data<NewData>(self, f: impl Fn(Data) -> NewData + Copy) -> Ast<NewData> {
+        match self {
+            Ast::Simple { token, data } => Ast::Simple {
+                token,
+                data: f(data),
+            },
+            Ast::Complex {
+                definition,
+                values,
+                data,
+            } => Ast::Complex {
+                definition,
+                values: values.map(|ast| ast.map_data(f)),
+                data: f(data),
+            },
+            Ast::SyntaxDefinition { def, data } => Ast::SyntaxDefinition { def, data: f(data) },
+            Ast::FromScratch { next, data } => Ast::FromScratch {
+                next: next.map(|ast| Box::new(ast.map_data(f))),
+                data: f(data),
+            },
+        }
+    }
     pub fn as_ident(&self) -> Option<&str> {
         match self {
             Ast::Simple {
@@ -54,10 +76,20 @@ impl<Data> Ast<Data> {
     }
 }
 
-impl Ast {
+pub trait HasSpan {
+    fn span(&self) -> &Span;
+}
+
+impl HasSpan for Span {
+    fn span(&self) -> &Span {
+        self
+    }
+}
+
+impl<Data: HasSpan> Ast<Data> {
     pub fn show_short(&self) -> impl std::fmt::Display + '_ {
-        struct Show<'a>(&'a Ast);
-        impl std::fmt::Display for Show<'_> {
+        struct Show<'a, Data>(&'a Ast<Data>);
+        impl<Data: HasSpan> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
                     Ast::Simple { token, data: _ } => write!(f, "token {token}")?,
@@ -69,14 +101,14 @@ impl Ast {
                     Ast::SyntaxDefinition { def: _, data: _ } => write!(f, "syntax definition")?,
                     Ast::FromScratch { next: _, data: _ } => write!(f, "syntax from scratch")?,
                 }
-                write!(f, " at {}", self.0.data())
+                write!(f, " at {}", self.0.data().span())
             }
         }
         Show(self)
     }
 }
 
-impl std::fmt::Display for Ast {
+impl<Data> std::fmt::Display for Ast<Data> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Ast::Simple { token, data: _ } => write!(f, "{:?}", token.raw()),
