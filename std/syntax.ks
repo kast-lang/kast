@@ -118,6 +118,7 @@ syntax_module {
 
   syntax @"builtin macro typeof" <- 120 = "typeof" expr;
   syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
+  syntax @"builtin macro compile_ast" <- 120 = "compile_ast" ast;
 
   syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
   syntax @"builtin macro unquote" -> 200 = "$" expr;
@@ -138,6 +139,7 @@ syntax_module {
   syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
   syntax @"builtin macro native" <- 500 = "native" name;
   syntax @"builtin macro import" <- 500 = "import" path;
+
   syntax let_infer <- 500 = "_let" pattern;
 
 # syntax @"builtin macro function_def" <- 100000 = "{" body "}";

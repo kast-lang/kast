@@ -109,6 +109,7 @@ impl Cache {
             macro_with_context,
             macro_current_context,
             macro_comptime,
+            macro_compile_ast,
         );
         Self {
             builtin_macros,
@@ -1341,6 +1342,18 @@ impl Kast {
         Ok(Compiled::Expr(
             Expr::Constant { value, data: span }.init(self).await?,
         ))
+    }
+    async fn macro_compile_ast(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, _span) = get_complex(ast);
+        let value = values
+            .as_ref()
+            .into_single_named("ast")
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let ast = self
+            .eval_ast(value, Some(TypeShape::Ast.into()))
+            .await?
+            .expect_ast()?;
+        self.compile_into(cty, &ast).await
     }
 }
 
