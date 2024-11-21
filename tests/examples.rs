@@ -133,6 +133,17 @@ fn test_local_syntax() {
 
 #[test]
 
+fn test_macro_hygiene() {
+    test(Case {
+        name: "macro-hygiene",
+        comment_lines_starting_with: None,
+        input: "",
+        expect_output: "hi\nhello\nhi\nnamed\nnamed\n",
+    });
+}
+
+#[test]
+
 fn test_unsafe() {
     test(Case {
         name: "unsafe",
