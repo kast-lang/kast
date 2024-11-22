@@ -158,9 +158,9 @@ impl<T> Tuple<T> {
             named_order: self.named_order.clone(),
         }
     }
-    pub fn map<U>(self, f: impl Fn(T) -> U) -> Tuple<U> {
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Tuple<U> {
         Tuple {
-            unnamed: self.unnamed.into_iter().map(&f).collect(),
+            unnamed: self.unnamed.into_iter().map(&mut f).collect(),
             named: self
                 .named
                 .into_iter()

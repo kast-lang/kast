@@ -34,7 +34,6 @@ syntax_module {
 
   syntax @"builtin macro comptime" <- 4.9 = "comptime" value;
 
-  # syntax @"builtin macro unwindable_block" <- 5 = "unwindable_block" def;
   # syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
   syntax @"builtin macro with_context" <- 5 = "with" new_context;
   syntax @"builtin macro current_context" <- 5 = "current" context_type;
@@ -142,6 +141,8 @@ syntax_module {
   syntax @"builtin macro struct_def" <- 500 = "rec" "{" body "}";
   syntax @"builtin macro struct_def" <- 500 = "struct" "(" body ")";
   syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
+  syntax @"builtin macro unwindable" <- 500 = "unwindable" name body;
+  syntax @"builtin macro unwind" <- 500 = "unwind" name value;
 
   syntax let_infer <- 500 = "_let" pattern;
 

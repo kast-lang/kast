@@ -534,11 +534,57 @@ impl Kast {
         Ok(result)
     }
     pub fn eval<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<Value>> {
-        let expected_ty = expr.data().ty.clone().substitute_bindings(self);
+        tracing::trace!("evaluating {}", expr.show_short());
+        let expected_ty = expr
+            .data()
+            .ty
+            .clone()
+            .substitute_bindings(self, &mut RecurseCache::new());
+        tracing::trace!("as {expected_ty}");
         let r#impl = async move {
-            tracing::trace!("evaluating {}", expr.show_short());
-            tracing::trace!("as {}", expr.data().ty);
             let result = match expr {
+                Expr::Unwind {
+                    name,
+                    value,
+                    data: _,
+                } => {
+                    let name = self.eval(name).await?.expect_unwind_handle()?;
+                    let value = self.eval(value).await?;
+                    name.sender
+                        .lock()
+                        .unwrap()
+                        .send(value)
+                        .map_err(|async_oneshot::Closed()| eyre!("unwindable channel closed"))?;
+                    future::pending().await
+                }
+                Expr::Unwindable {
+                    name,
+                    body,
+                    data: _,
+                } => {
+                    let (unwind_sender, unwind_receiver) = async_oneshot::oneshot();
+                    let executor = async_executor::Executor::new();
+                    let mut kast = self.enter_scope();
+                    #[allow(clippy::let_and_return)] // lifetime issue otherwise
+                    let result = match executor
+                        .run({
+                            kast.pattern_match(
+                                name,
+                                Value::UnwindHandle(UnwindHandle {
+                                    sender: Parc::new(Mutex::new(unwind_sender)),
+                                    ty: body.data().ty.clone(),
+                                }),
+                            )?;
+                            future::select(kast.eval(body), unwind_receiver)
+                        })
+                        .await
+                    {
+                        future::Either::Left((result, _unwind_reciever)) => result?,
+                        future::Either::Right((result, _body)) => result
+                            .map_err(|async_oneshot::Closed()| eyre!("unwind channel closed???"))?,
+                    };
+                    result
+                }
                 Expr::CallMacro {
                     r#macro,
                     arg,
@@ -781,7 +827,9 @@ impl Kast {
                     data: _,
                 } => Value::Function(TypedFunction {
                     ty: {
-                        let ty = ty.clone().substitute_bindings(self);
+                        let ty = ty
+                            .clone()
+                            .substitute_bindings(self, &mut RecurseCache::new());
                         tracing::trace!("at {} = {ty} ({})", expr.data().span, expr.data().ty);
                         ty
                     },
@@ -829,7 +877,10 @@ impl Kast {
                     value
                 }
                 Expr::Constant { value, data: _ } => match value {
-                    Value::Type(ty) => Value::Type(ty.clone().substitute_bindings(self)),
+                    Value::Type(ty) => Value::Type(
+                        ty.clone()
+                            .substitute_bindings(self, &mut RecurseCache::new()),
+                    ),
                     _ => value.clone(),
                 },
                 Expr::Number { raw, data } => match data.ty.inferred_or_default()? {
@@ -851,7 +902,10 @@ impl Kast {
                     Err(_) => eyre::bail!("number literal type could not be inferred"),
                 },
                 Expr::Native { name, data } => {
-                    let actual_type = data.ty.clone().substitute_bindings(self);
+                    let actual_type = data
+                        .ty
+                        .clone()
+                        .substitute_bindings(self, &mut RecurseCache::new());
                     let name = self.eval(name).await?.expect_string()?;
                     tracing::trace!("native {name} :: {actual_type}");
                     match self.interpreter.builtins.get(name.as_str()) {
@@ -886,6 +940,8 @@ impl Kast {
             };
             let should_check_result_ty = match expr {
                 Expr::Unit { .. }
+                | Expr::Unwind { .. }
+                | Expr::Unwindable { .. }
                 | Expr::CallMacro { .. }
                 | Expr::InjectContext { .. }
                 | Expr::CurrentContext { .. }
@@ -955,17 +1011,17 @@ impl Kast {
         new_scope.parent = Some(f.captured.clone());
         let mut kast = self.with_scope(Parc::new(new_scope));
         let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
-        arg.ty()
-            .make_same(compiled.arg.data().ty.clone().substitute_bindings(&kast))?;
-        kast.bind_pattern_match(&compiled.arg, arg);
+        arg.ty().make_same(
+            compiled
+                .arg
+                .data()
+                .ty
+                .clone()
+                .substitute_bindings(&kast, &mut RecurseCache::new()),
+        )?;
+        kast.pattern_match(&compiled.arg, arg)?;
         let value = kast.eval(&compiled.body).await?;
         Ok(value)
-    }
-
-    pub fn bind_pattern_match(&mut self, pattern: &Pattern, value: Value) {
-        self.interpreter
-            .scope
-            .extend(pattern.r#match(value).expect("???"));
     }
 }
 

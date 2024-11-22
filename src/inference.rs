@@ -101,7 +101,7 @@ pub mod global_state {
 
     #[derive(Clone)]
     pub struct Id<T> {
-        index: usize,
+        pub index: usize,
         phantom_data: PhantomData<T>,
     }
 
@@ -154,6 +154,13 @@ pub mod global_state {
 #[derive(Clone)]
 pub struct Var<T> {
     state: global_state::Id<VarState<T>>,
+}
+
+impl<T> crate::Identifiable for Var<T> {
+    type Id = usize;
+    fn id(&self) -> Self::Id {
+        self.state.index
+    }
 }
 
 impl<T: Inferrable> Var<T> {
@@ -387,6 +394,15 @@ impl<T: Inferrable> Inferrable for MaybeNotInferred<T> {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         a.0.make_same(&b.0)?;
         Ok(a)
+    }
+}
+
+impl<T: Inferrable + crate::ShowShort> crate::ShowShort for MaybeNotInferred<T> {
+    fn show_short(&self) -> &'static str {
+        match self.0.get() {
+            Some(inferred) => inferred.show_short(),
+            None => "<not inferred>",
+        }
     }
 }
 

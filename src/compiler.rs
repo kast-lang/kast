@@ -143,6 +143,8 @@ impl Cache {
             macro_comptime,
             macro_compile_ast,
             macro_call_macro,
+            macro_unwindable,
+            macro_unwind,
         );
         Self {
             builtin_macros,
@@ -489,10 +491,12 @@ impl Kast {
         })
     }
     pub async fn compile<T: Compilable>(&mut self, ast: &Ast) -> eyre::Result<T> {
-        T::compile(self, ast)
+        let result = T::compile(self, ast)
             .boxed()
             .await
-            .wrap_err_with(|| format!("while compiling {}", ast.show_short()))
+            .wrap_err_with(|| format!("while compiling {}", ast.show_short()))?;
+        tracing::trace!("compiled {ast}");
+        Ok(result)
     }
     async fn compile_into(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         Ok(match ty {
@@ -1125,6 +1129,42 @@ impl Kast {
             .await?,
         ))
     }
+    async fn macro_unwindable(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [name, body] = values.as_ref().into_named(["name", "body"])?;
+        let name: Pattern = self.compile(name).await?;
+        let body = {
+            let mut kast = self.enter_scope();
+            kast.inject_bindings(&name);
+            kast.compile(body).await?
+        };
+        Ok(Compiled::Expr(
+            Expr::Unwindable {
+                name,
+                body: Box::new(body),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_unwind(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [name, value] = values.as_ref().into_named(["name", "value"])?;
+        let name: Expr = self.compile(name).await?;
+        let value: Expr = self.compile(value).await?;
+        Ok(Compiled::Expr(
+            Expr::Unwind {
+                name: Box::new(name),
+                value: Box::new(value),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
     /// this function might succeed (no promises)
     async fn macro_function_type(
         &mut self,
@@ -1551,6 +1591,40 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::Unwind {
+                    name,
+                    value,
+                    data: span,
+                } => {
+                    name.data()
+                        .ty
+                        .expect_inferred(TypeShape::UnwindHandle(value.data().ty.clone()))?;
+                    Expr::Unwind {
+                        name,
+                        value,
+                        data: ExprData {
+                            ty: Type::new_not_inferred(), // TODO never
+                            span,
+                        },
+                    }
+                }
+                Expr::Unwindable {
+                    name,
+                    body,
+                    data: span,
+                } => {
+                    name.data()
+                        .ty
+                        .expect_inferred(TypeShape::UnwindHandle(body.data().ty.clone()))?;
+                    Expr::Unwindable {
+                        data: ExprData {
+                            ty: body.data().ty.clone(),
+                            span,
+                        },
+                        name,
+                        body,
+                    }
+                }
                 Expr::InjectContext {
                     context,
                     data: span,
@@ -2009,13 +2083,13 @@ impl Expr<Span> {
                     let arg = kast.clone().eval(&arg_ir).await?;
 
                     let mut template_kast = kast.with_scope(Parc::new(Scope::new()));
-                    template_kast.bind_pattern_match(&compiled.arg, arg);
+                    template_kast.pattern_match(&compiled.arg, arg)?;
                     let result_ty = compiled
                         .body
                         .data()
                         .ty
                         .clone()
-                        .substitute_bindings(&template_kast);
+                        .substitute_bindings(&template_kast, &mut RecurseCache::new());
 
                     Expr::Instantiate {
                         template: template_ir,

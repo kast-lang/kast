@@ -7,10 +7,11 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'kast'",
+            "name": "Debug",
             "cargo": {
                 "args": [
                     "build",
+                    "--no-default-features",
                     "--bin=kast",
                     "--package=kast"
                 ],
@@ -20,31 +21,12 @@
                 }
             },
             "args": [
-                "parse-ast"
+                "repl"
             ],
             "env": {
                 "CARGO_MANIFEST_DIR": "${workspaceFolder}",
                 "RUST_LOG": "kast=trace"
             },
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'kast'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=kast",
-                    "--package=kast"
-                ],
-                "filter": {
-                    "name": "kast",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
             "cwd": "${workspaceFolder}"
         }
     ]

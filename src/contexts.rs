@@ -155,13 +155,13 @@ impl ContextsData {
 }
 
 impl SubstituteBindings for ContextsData {
-    fn substitute_bindings(self, kast: &Kast) -> Self {
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
         Self {
             types: self
                 .types
                 .clone()
                 .into_iter()
-                .map(|ty| ty.substitute_bindings(kast))
+                .map(|ty| ty.substitute_bindings(kast, cache))
                 .collect(),
             growable: self.growable,
         }
@@ -169,9 +169,9 @@ impl SubstituteBindings for ContextsData {
 }
 
 impl SubstituteBindings for Contexts {
-    fn substitute_bindings(self, kast: &Kast) -> Self {
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
         Self(inference::MaybeNotInferred::new_set(
-            self.0.inferred().unwrap().substitute_bindings(kast),
+            self.0.inferred().unwrap().substitute_bindings(kast, cache),
         ))
     }
 }

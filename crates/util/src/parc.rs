@@ -26,6 +26,9 @@ impl<T> Parc<T> {
     pub fn new(value: T) -> Self {
         Self(Arc::new(value))
     }
+    pub fn as_ptr(&self) -> *const T {
+        Arc::as_ptr(&self.0)
+    }
 }
 
 impl<T: ?Sized> std::ops::Deref for Parc<T> {

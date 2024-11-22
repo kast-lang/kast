@@ -21,7 +21,34 @@ pub enum TypeShape {
     Type,
     SyntaxModule,
     SyntaxDefinition,
+    UnwindHandle(#[try_hash] Type),
     Binding(Parc<Binding>),
+}
+
+impl ShowShort for TypeShape {
+    fn show_short(&self) -> &'static str {
+        match self {
+            TypeShape::Unit => "unit",
+            TypeShape::Bool => "bool",
+            TypeShape::Int32 => "int32",
+            TypeShape::Int64 => "int64",
+            TypeShape::Float64 => "float64",
+            TypeShape::String => "string",
+            TypeShape::Variant(_) => "variant",
+            TypeShape::Tuple(_) => "tuple",
+            TypeShape::Function(_) => "function",
+            TypeShape::Template(_) => "template",
+            TypeShape::Macro(_) => "macro",
+            TypeShape::Multiset => "multiset",
+            TypeShape::Contexts => "contexts",
+            TypeShape::Ast => "ast",
+            TypeShape::Type => "type",
+            TypeShape::SyntaxModule => "syntax module",
+            TypeShape::SyntaxDefinition => "syntax def",
+            TypeShape::UnwindHandle(_) => "unwind handle",
+            TypeShape::Binding(_) => "binding",
+        }
+    }
 }
 
 pub type Type = inference::MaybeNotInferred<TypeShape>;
@@ -90,6 +117,10 @@ impl Inferrable for TypeShape {
             };
         }
         Ok(match (a.clone(), b.clone()) {
+            (Self::UnwindHandle(a), Self::UnwindHandle(b)) => {
+                Self::UnwindHandle(Inferrable::make_same(a, b)?)
+            }
+            (Self::UnwindHandle(_), _) => fail!(),
             (Self::Unit, Self::Unit) => Self::Unit,
             (Self::Unit, _) => fail!(),
             (Self::Contexts, Self::Contexts) => Self::Contexts,
@@ -151,6 +182,7 @@ impl Inferrable for TypeShape {
 impl std::fmt::Display for TypeShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::UnwindHandle(ty) => write!(f, "unwindable block handle {ty}"),
             Self::Unit => write!(f, "unit"),
             Self::Bool => write!(f, "bool"),
             Self::Int32 => write!(f, "int32"),
@@ -212,63 +244,72 @@ impl Inferrable for FnType {
 }
 
 impl SubstituteBindings for Type {
-    fn substitute_bindings(self, kast: &Kast) -> Self {
-        match self.inferred() {
-            Ok(inferred) => match inferred {
-                TypeShape::Unit
-                | TypeShape::Bool
-                | TypeShape::Int32
-                | TypeShape::Int64
-                | TypeShape::Float64
-                | TypeShape::String
-                | TypeShape::Ast
-                | TypeShape::Multiset
-                | TypeShape::Contexts
-                | TypeShape::Type
-                | TypeShape::SyntaxModule
-                | TypeShape::SyntaxDefinition => self.clone(),
-                TypeShape::Variant(variants) => TypeShape::Variant(
-                    variants
-                        .into_iter()
-                        .map(|variant| VariantType {
-                            name: variant.name.clone(),
-                            value: variant
-                                .value
-                                .map(|ty| Box::new(ty.substitute_bindings(kast))),
-                        })
-                        .collect(),
-                )
-                .into(),
-                TypeShape::Tuple(tuple) => {
-                    TypeShape::Tuple(tuple.map(|ty| ty.substitute_bindings(kast))).into()
-                }
-                TypeShape::Function(f) => {
-                    TypeShape::Function(Box::new((*f).substitute_bindings(kast))).into()
-                }
-                TypeShape::Template(t) => TypeShape::Template(t).into(),
-                TypeShape::Macro(f) => {
-                    TypeShape::Macro(Box::new((*f).substitute_bindings(kast))).into()
-                }
-                TypeShape::Binding(binding) => {
-                    match kast.interpreter.get_nowait(binding.name.raw()) {
-                        Some(value) => value.expect_type().unwrap_or_else(|e| {
-                            panic!("{} expected to be a type: {e}", binding.name.raw())
-                        }),
-                        None => TypeShape::Binding(binding.clone()).into(),
-                    }
-                }
-            },
-            Err(_var) => self,
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
+        let inferred = match self.inferred() {
+            Ok(inferred) => inferred,
+            Err(_) => {
+                return self;
+            }
+        };
+        if !cache.insert(self.var()) {
+            return self;
         }
+        tracing::trace!("subbing {}", inferred.show_short());
+        let result = match inferred {
+            TypeShape::Unit
+            | TypeShape::Bool
+            | TypeShape::Int32
+            | TypeShape::Int64
+            | TypeShape::Float64
+            | TypeShape::String
+            | TypeShape::Ast
+            | TypeShape::Multiset
+            | TypeShape::Contexts
+            | TypeShape::Type
+            | TypeShape::SyntaxModule
+            | TypeShape::SyntaxDefinition => self.clone(),
+            TypeShape::Variant(variants) => TypeShape::Variant(
+                variants
+                    .into_iter()
+                    .map(|variant| VariantType {
+                        name: variant.name.clone(),
+                        value: variant
+                            .value
+                            .map(|ty| Box::new(ty.substitute_bindings(kast, cache))),
+                    })
+                    .collect(),
+            )
+            .into(),
+            TypeShape::UnwindHandle(ty) => {
+                TypeShape::UnwindHandle(ty.substitute_bindings(kast, cache)).into()
+            }
+            TypeShape::Tuple(tuple) => {
+                TypeShape::Tuple(tuple.map(|ty| ty.substitute_bindings(kast, cache))).into()
+            }
+            TypeShape::Function(f) => {
+                TypeShape::Function(Box::new((*f).substitute_bindings(kast, cache))).into()
+            }
+            TypeShape::Template(t) => TypeShape::Template(t).into(),
+            TypeShape::Macro(f) => {
+                TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache))).into()
+            }
+            TypeShape::Binding(binding) => match kast.interpreter.get_nowait(binding.name.raw()) {
+                Some(value) => value.expect_type().unwrap_or_else(|e| {
+                    panic!("{} expected to be a type: {e}", binding.name.raw())
+                }),
+                None => TypeShape::Binding(binding.clone()).into(),
+            },
+        };
+        result
     }
 }
 
 impl SubstituteBindings for FnType {
-    fn substitute_bindings(self, kast: &Kast) -> Self {
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
         Self {
-            arg: self.arg.substitute_bindings(kast),
-            contexts: self.contexts.substitute_bindings(kast),
-            result: self.result.substitute_bindings(kast),
+            arg: self.arg.substitute_bindings(kast, cache),
+            contexts: self.contexts.substitute_bindings(kast, cache),
+            result: self.result.substitute_bindings(kast, cache),
         }
     }
 }

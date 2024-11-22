@@ -21,6 +21,14 @@ pub enum Value {
     Type(#[try_hash] Type),
     SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
+    UnwindHandle(#[try_hash] UnwindHandle),
+}
+
+#[derive(Clone, PartialEq, Eq, TryHash)]
+pub struct UnwindHandle {
+    pub sender: Parc<Mutex<async_oneshot::Sender<Value>>>,
+    #[try_hash]
+    pub ty: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -82,6 +90,7 @@ impl std::fmt::Display for Value {
             }
             Value::SyntaxModule(_definitions) => write!(f, "<syntax module>"),
             Value::SyntaxDefinition(_definition) => write!(f, "<syntax definition>"),
+            Value::UnwindHandle(_) => write!(f, "<unwind handle>"),
         }
     }
 }
@@ -129,6 +138,7 @@ impl Value {
             Value::Type(_) => TypeShape::Type.into(),
             Value::SyntaxModule(_) => TypeShape::SyntaxModule.into(),
             Value::SyntaxDefinition(_) => TypeShape::SyntaxDefinition.into(),
+            Value::UnwindHandle(handle) => TypeShape::UnwindHandle(handle.ty.clone()).into(),
         }
     }
 }
@@ -141,6 +151,15 @@ pub struct ExpectError<V = Value, Expected = TypeShape> {
 }
 
 impl Value {
+    pub fn expect_unwind_handle(self) -> Result<UnwindHandle, ExpectError<Value, &'static str>> {
+        match self {
+            Self::UnwindHandle(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "unwind handle",
+            }),
+        }
+    }
     pub fn expect_macro(self) -> Result<TypedFunction, ExpectError<Value, &'static str>> {
         match self {
             Self::Macro(value) => Ok(value),

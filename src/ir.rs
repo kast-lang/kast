@@ -14,6 +14,16 @@ pub struct MatchBranch {
 
 #[derive(Debug, Clone)]
 pub enum Expr<Data = ExprData> {
+    Unwindable {
+        name: Pattern,
+        body: Box<Expr>,
+        data: Data,
+    },
+    Unwind {
+        name: Box<Expr>,
+        value: Box<Expr>,
+        data: Data,
+    },
     InjectContext {
         context: Box<Expr>,
         data: Data,
@@ -159,6 +169,8 @@ impl Expr {
     ) {
         match self {
             Expr::Binding { .. }
+            | Expr::Unwind { .. }
+            | Expr::Unwindable { .. }
             | Expr::CallMacro { .. }
             | Expr::InjectContext { .. }
             | Expr::CurrentContext { .. }
@@ -226,6 +238,8 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
         impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Unwind { .. } => write!(f, "unwind expr")?,
+                    Expr::Unwindable { .. } => write!(f, "unwindable expr")?,
                     Expr::CallMacro { .. } => write!(f, "macro call expr")?,
                     Expr::InjectContext { .. } => write!(f, "inject context expr")?,
                     Expr::CurrentContext { .. } => write!(f, "current context expr")?,
@@ -265,6 +279,8 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Unwind { data, .. }
+        | Expr::Unwindable { data, .. }
         | Expr::CallMacro { data, .. }
         | Expr::CurrentContext { data, .. }
         | Expr::InjectContext { data, .. }
@@ -296,6 +312,8 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Unwind { data, .. }
+        | Expr::Unwindable { data, .. }
         | Expr::CallMacro { data, .. }
         | Expr::CurrentContext { data, .. }
         | Expr::InjectContext { data, .. }

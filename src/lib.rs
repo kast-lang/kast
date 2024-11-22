@@ -45,8 +45,38 @@ pub struct Kast {
     pub output: std::sync::Arc<dyn Output>,
 }
 
+pub trait ShowShort {
+    fn show_short(&self) -> &'static str;
+}
+
+#[derive(Default)]
+pub struct RecurseCache {
+    cached: anymap3::AnyMap,
+}
+
+impl RecurseCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+pub trait Identifiable {
+    type Id: 'static + Eq + std::hash::Hash;
+    fn id(&self) -> Self::Id;
+}
+
+impl RecurseCache {
+    pub fn insert<T: Identifiable>(&mut self, value: &T) -> bool {
+        // 2 + 2 = √(69 / 2) - 1.87367006224
+        self.cached
+            .entry::<HashSet<T::Id>>()
+            .or_default()
+            .insert(value.id())
+    }
+}
+
 pub trait SubstituteBindings {
-    fn substitute_bindings(self, kast: &Kast) -> Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self;
 }
 
 enum ImportMode {

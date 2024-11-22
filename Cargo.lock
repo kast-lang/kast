@@ -573,6 +573,7 @@ dependencies = [
  "anymap3",
  "async-executor",
  "async-notify",
+ "async-oneshot",
  "async-trait",
  "clap",
  "color-eyre",
