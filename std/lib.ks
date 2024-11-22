@@ -93,3 +93,17 @@ impl float64 as Parse = (
 const parse = forall[T] {
   (T as Parse).parse
 };
+
+const generator_handler = forall[T] {
+  (.handle = T -> () with ()) :: type
+};
+
+impl syntax @"syntax".for_loop = macro (.value_pattern, .generator, .body) => `(
+  with (.handle = $value_pattern => $body) :: generator_handler[_];
+  $generator
+);
+
+impl syntax @"syntax".@"yield" = macro (.value) => `(
+  (current generator_handler[_]).handle $value
+);
+
