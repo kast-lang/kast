@@ -13,7 +13,7 @@ let generator = fn(()) {
 
 for value in generator() {
 	print value;
-  #if value == "stop" {
-    #break;
-  #}
+  if value == "stop" then (
+    break;
+  );
 };

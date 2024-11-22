@@ -62,8 +62,6 @@ impl ListCollector<'_> {
                             node = a;
                             if let Some(b) = b {
                                 result.push(b);
-                            } else {
-                                break;
                             }
                         }
                         ast::Associativity::Right => {
@@ -72,7 +70,6 @@ impl ListCollector<'_> {
                                 result.push(a);
                             } else {
                                 node = a;
-                                break;
                             }
                         }
                     }

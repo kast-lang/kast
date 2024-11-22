@@ -107,12 +107,43 @@ const generator_handler = forall[T] {
   (.handle = T -> () with ()) :: type
 };
 
+const loop_context = forall[T] {
+  (
+    .@"break" = T -> () with (), # TODO never
+    .@"continue" = () -> () with (),
+  ) :: type
+};
+
 impl syntax @"syntax".for_loop = macro (.value_pattern, .generator, .body) => `(
-  with (.handle = $value_pattern => $body) :: generator_handler[_];
-  $generator
+  unwindable for_loop (
+    let handler = $value_pattern => (
+      const BodyResult = forall[T] { newtype :Break T | :Continue };
+      let body_result :: BodyResult[_] = unwindable body (
+        with (
+          .@"break" = () => unwind body (:Break ()),
+          .@"continue" = () => unwind body (:Continue),
+        ) :: loop_context[()];
+        $body;
+        :Continue
+      );
+      match body_result (
+        | :Break value => unwind for_loop value
+        | :Continue => ()
+      );
+    );
+    with (.handle = handler) :: generator_handler[_];
+    $generator
+  )
 );
 
 impl syntax @"syntax".@"yield" = macro (.value) => `(
   (current generator_handler[_]).handle $value
 );
 
+impl syntax @"syntax".break_without_value = macro _ => `(
+  break ()
+);
+
+impl syntax @"syntax".break_with_value = macro (.value) => `(
+  (current loop_context[_]).@"break" $value
+);
