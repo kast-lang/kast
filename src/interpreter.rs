@@ -3,12 +3,17 @@ use super::*;
 #[derive(Clone)]
 pub struct State {
     pub spawned: bool,
-    pub builtins: Parc<HashMap<&'static str, Builtin>>,
+    pub builtins: Parc<HashMap<String, Builtin>>,
     scope: Parc<Scope>,
     pub contexts: contexts::State,
 }
 
 type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
+
+struct NamedBuiltin {
+    name: String,
+    value: Builtin,
+}
 
 pub struct CompletionCandidate {
     pub name: String,
@@ -80,11 +85,12 @@ impl State {
             },
             spawned: false,
             builtins: {
-                let mut map = HashMap::<&str, Builtin>::new();
-                let mut insert_value = |name, value: Value| {
+                let mut map = HashMap::<String, Builtin>::new();
+
+                let mut insert_value = |name: &str, value: Value| {
                     let expected_ty = value.ty().inferred().unwrap();
                     map.insert(
-                        name,
+                        name.to_owned(),
                         Box::new(move |expected: Type| {
                             expected.expect_inferred(expected_ty.clone())?;
                             Ok(value.clone())
@@ -93,9 +99,10 @@ impl State {
                 };
                 insert_value("true", Value::Bool(true));
                 insert_value("false", Value::Bool(false));
-                let mut insert_ty = |name, ty: TypeShape| {
+
+                let mut insert_ty = |name: &str, ty: TypeShape| {
                     map.insert(
-                        name,
+                        name.to_owned(),
                         Box::new(move |expected: Type| {
                             expected.expect_inferred(TypeShape::Type)?;
                             Ok(Value::Type(ty.clone().into()))
@@ -115,8 +122,9 @@ impl State {
                     "default_number_type",
                     default_number_type.ty().inferred().unwrap(),
                 );
+
                 map.insert(
-                    "dbg_type",
+                    "dbg_type".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::Type.into(),
@@ -137,7 +145,7 @@ impl State {
                     }),
                 );
                 map.insert(
-                    "dbg_type_of_value",
+                    "dbg_type_of_value".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: Type::new_not_inferred(),
@@ -157,7 +165,7 @@ impl State {
                     }),
                 );
                 map.insert(
-                    "dbg",
+                    "dbg".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: Type::new_not_inferred(),
@@ -179,7 +187,7 @@ impl State {
                     }),
                 );
                 map.insert(
-                    "contains",
+                    "contains".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::Tuple({
@@ -209,7 +217,7 @@ impl State {
                     }),
                 );
                 map.insert(
-                    "panic",
+                    "panic".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::String.into(),
@@ -230,7 +238,7 @@ impl State {
                     }),
                 );
                 map.insert(
-                    "parse",
+                    "parse".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
                             arg: TypeShape::String.into(),
@@ -258,129 +266,119 @@ impl State {
                         }))
                     }),
                 );
-                map.insert(
-                    "<",
-                    Box::new(|expected: Type| {
-                        let operand_type = Type::new_not_inferred();
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_named("lhs", operand_type.clone());
-                                args.add_named("rhs", operand_type.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Bool.into(),
-                        };
-                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(Value::NativeFunction(NativeFunction {
-                            name: "<".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
-                                let result = match (&lhs, &rhs) {
-                                    (Value::Int32(lhs), Value::Int32(rhs)) => {
-                                        Value::Bool(lhs < rhs)
-                                    }
-                                    (Value::Int64(lhs), Value::Int64(rhs)) => {
-                                        Value::Bool(lhs < rhs)
-                                    }
-                                    _ => eyre::bail!(
-                                        "< doesnt work for {} and {}",
-                                        lhs.ty(),
-                                        rhs.ty()
-                                    ),
-                                };
-                                Ok(result)
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
+
+                let mut insert_named = |named: NamedBuiltin| {
+                    map.insert(named.name.clone(), named.value);
+                };
+
+                fn binary_op_impl(
+                    name: &str,
+                    result_ty: Option<TypeShape>,
+                    f: impl Fn(Value, Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
+                ) -> NamedBuiltin {
+                    let name = name.to_owned();
+                    NamedBuiltin {
+                        name: name.clone(),
+                        value: Box::new(move |expected: Type| {
+                            let operand_type = Type::new_not_inferred();
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_named("lhs", operand_type.clone());
+                                    args.add_named("rhs", operand_type.clone());
+                                    args
+                                })
                                 .into(),
-                            ty,
-                        }))
-                    }),
-                );
-                map.insert(
-                    "-",
-                    Box::new(|expected: Type| {
-                        let operand_type = Type::new_not_inferred();
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_named("lhs", operand_type.clone());
-                                args.add_named("rhs", operand_type.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(), // TODO underflow?
-                            result: operand_type,
-                        };
-                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(Value::NativeFunction(NativeFunction {
-                            name: "-".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
-                                let result = match (&lhs, &rhs) {
-                                    (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
-                                        lhs.checked_sub(*rhs).ok_or_else(|| eyre!("overflow"))?,
-                                    ),
-                                    (Value::Int64(lhs), Value::Int64(rhs)) => Value::Int64(
-                                        lhs.checked_sub(*rhs).ok_or_else(|| eyre!("overflow"))?,
-                                    ),
-                                    _ => eyre::bail!(
-                                        "+ doesnt work for {} and {}",
+                                contexts: Contexts::empty(), // TODO
+                                result: result_ty.clone().map_or(operand_type, Into::into),
+                            };
+                            expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(Value::NativeFunction(NativeFunction {
+                                name: name.clone(),
+                                r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                    let [lhs, rhs] =
+                                        args.expect_tuple()?.into_named(["lhs", "rhs"])?;
+                                    f(lhs, rhs)
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            }))
+                        }),
+                    }
+                }
+                fn binary_op(
+                    name: &str,
+                    f: impl Fn(Value, Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
+                ) -> NamedBuiltin {
+                    binary_op_impl(name, None, f)
+                }
+
+                fn binary_cmp_op(
+                    name: &str,
+                    f: impl Fn(Value, Value) -> eyre::Result<bool> + Copy + Send + Sync + 'static,
+                ) -> NamedBuiltin {
+                    binary_op_impl(name, Some(TypeShape::Bool), move |lhs, rhs| {
+                        Ok(Value::Bool(f(lhs, rhs)?))
+                    })
+                }
+                macro_rules! binary_cmp_op {
+                    ($op:tt) => {
+                        insert_named(binary_cmp_op(stringify!($op), |lhs, rhs| {
+                            Ok(match (lhs, rhs) {
+                                (Value::Int32(lhs), Value::Int32(rhs)) => lhs $op rhs,
+                                (Value::Int64(lhs), Value::Int64(rhs)) => lhs $op rhs,
+                                (Value::Float64(lhs), Value::Float64(rhs)) => lhs $op rhs,
+                                (Value::String(lhs), Value::String(rhs)) => lhs $op rhs,
+                                (lhs, rhs) => {
+                                    eyre::bail!(
+                                        "{:?} doesnt work for {} and {}",
+                                        stringify!($op),
                                         lhs.ty(),
-                                        rhs.ty()
-                                    ),
-                                };
-                                Ok(result)
+                                        rhs.ty(),
+                                    )
+                                }
                             })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        }))
-                    }),
-                );
-                map.insert(
-                    "+",
-                    Box::new(|expected: Type| {
-                        let operand_type = Type::new_not_inferred();
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_named("lhs", operand_type.clone());
-                                args.add_named("rhs", operand_type.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(), // TODO overflow
-                            result: operand_type,
-                        };
-                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(Value::NativeFunction(NativeFunction {
-                            name: "+".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                let [lhs, rhs] = args.expect_tuple()?.into_named(["lhs", "rhs"])?;
-                                let result = match (&lhs, &rhs) {
-                                    (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(
-                                        lhs.checked_add(*rhs).ok_or_else(|| eyre!("overflow"))?,
-                                    ),
-                                    (Value::Int64(lhs), Value::Int64(rhs)) => Value::Int64(
-                                        lhs.checked_add(*rhs).ok_or_else(|| eyre!("overflow"))?,
-                                    ),
-                                    _ => eyre::bail!(
-                                        "+ doesnt work for {} and {}",
+                        }));
+                    };
+                }
+                binary_cmp_op!(<);
+                binary_cmp_op!(<=);
+                binary_cmp_op!(==);
+                binary_cmp_op!(!=);
+                binary_cmp_op!(>=);
+                binary_cmp_op!(>);
+
+                macro_rules! binary_op {
+                    ($op:tt, $method: ident) => {
+                        insert_named(binary_op(stringify!($op), |lhs, rhs| {
+                            Ok(match (lhs, rhs) {
+                                (Value::Int32(lhs), Value::Int32(rhs)) => {
+                                    Value::Int32(lhs.$method(rhs).ok_or_else(|| eyre!("overflow"))?)
+                                }
+                                (Value::Int64(lhs), Value::Int64(rhs)) => {
+                                    Value::Int64(lhs.$method(rhs).ok_or_else(|| eyre!("overflow"))?)
+                                }
+                                (Value::Float64(lhs), Value::Float64(rhs)) => Value::Float64(
+                                    lhs $op rhs,
+                                ),
+                                (lhs, rhs) => {
+                                    eyre::bail!(
+                                        "{:?} doesnt work for {} and {}",
+                                        stringify!($op),
                                         lhs.ty(),
-                                        rhs.ty()
-                                    ),
-                                };
-                                Ok(result)
+                                        rhs.ty(),
+                                    );
+                                }
                             })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        }))
-                    }),
-                );
+                        }));
+                    };
+                }
+                binary_op!(-, checked_sub);
+                binary_op!(+, checked_add);
+                binary_op!(*, checked_mul);
+                binary_op!(/, checked_div);
+                binary_op!(%, checked_rem);
                 Parc::new(map)
             },
             scope: Parc::new(Scope::new()),

@@ -68,7 +68,16 @@ const Result = forall[.ok :: type, .error :: type] { newtype :Ok ok | :Error err
 # TODO where T: Num or smth
 impl syntax @"syntax".@"op binary +" = forall[T] { native "+" :: (.lhs = T, .rhs = T) -> T };
 impl syntax @"syntax".@"op binary -" = forall[T] { native "-" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary *" = forall[T] { native "*" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary /" = forall[T] { native "/" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary %" = forall[T] { native "%" :: (.lhs = T, .rhs = T) -> T };
+
 impl syntax @"syntax".@"op binary <" = forall[T] { native "<" :: (.lhs = T, .rhs = T) -> bool };
+impl syntax @"syntax".@"op binary <=" = forall[T] { native "<=" :: (.lhs = T, .rhs = T) -> bool };
+impl syntax @"syntax".@"op binary ==" = forall[T] { native "==" :: (.lhs = T, .rhs = T) -> bool };
+impl syntax @"syntax".@"op binary !=" = forall[T] { native "!=" :: (.lhs = T, .rhs = T) -> bool };
+impl syntax @"syntax".@"op binary >=" = forall[T] { native ">=" :: (.lhs = T, .rhs = T) -> bool };
+impl syntax @"syntax".@"op binary >" = forall[T] { native ">" :: (.lhs = T, .rhs = T) -> bool };
 
 const TypeName = (.name = string) as type;
 
