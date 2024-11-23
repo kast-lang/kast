@@ -415,6 +415,7 @@ impl Parser {
             self.skip_comments();
             let peek = self.reader.peek().unwrap();
             let raw = peek.raw();
+            tracing::trace!("peek = {raw}");
             if let Some(next_node) = current_node
                 .next
                 .get(&Edge::Keyword(raw.to_owned()))
@@ -444,6 +445,10 @@ impl Parser {
                 } else {
                     let mut keywords = continuation_keywords.clone();
                     for edge in next_node.next.keys() {
+                        if edge.is_open_bracket() {
+                            // TODO maybe is hack?
+                            continue;
+                        }
                         if let Edge::Keyword(keyword) = edge {
                             keywords.insert(keyword);
                         }

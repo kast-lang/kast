@@ -61,7 +61,7 @@ syntax_module {
   syntax @"builtin macro function_def" -> 7.5 = arg "->" returns "=>" body;
 
   syntax @"builtin macro if" -> 12.9 = cond "then" then "else" else;
-  syntax @"builtin macro match" <- 13 = "match" value "(" branches ")";
+  # syntax @"builtin macro match" <- 13 = "match" value "(" branches ")";
   syntax @"builtin macro match" <- 13 = "match" value "{" branches "}";
   syntax @"builtin macro if" <- 13 = "if" cond "then" then;
   syntax @"builtin macro if" <- 13 = "if" cond "then" then "else" else;

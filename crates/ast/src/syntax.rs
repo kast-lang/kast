@@ -53,12 +53,16 @@ pub enum Edge {
     Keyword(String),
 }
 impl Edge {
-    fn is_open_bracket(&self) -> bool {
+    pub fn is_open_bracket(&self) -> bool {
         match self {
-            Self::Keyword(keyword) => keyword.chars().any(|c| "([{".contains(c)),
+            Self::Keyword(keyword) => is_open_bracket(keyword),
             Self::Value => false,
         }
     }
+}
+
+pub fn is_open_bracket(s: &str) -> bool {
+    s.chars().any(|c| "([{".contains(c))
 }
 
 #[derive(Clone, Debug)]

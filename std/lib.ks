@@ -126,10 +126,10 @@ impl syntax @"syntax".for_loop = macro (.value_pattern, .generator, .body) => `(
         $body;
         :Continue
       );
-      match body_result (
+      match body_result {
         | :Break value => unwind for_loop value
         | :Continue => ()
-      );
+      };
     );
     with (.handle = handler) :: generator_handler[_];
     $generator
