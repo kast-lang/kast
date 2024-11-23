@@ -3,8 +3,14 @@ use std::path::PathBuf;
 #[derive(clap::Subcommand)]
 pub enum Command {
     ParseAst,
-    Repl { path: Option<PathBuf> },
-    Run { path: PathBuf },
+    Repl {
+        path: Option<PathBuf>,
+        #[clap(long)]
+        no_stdlib: bool,
+    },
+    Run {
+        path: PathBuf,
+    },
 }
 
 #[derive(clap::Parser)]
@@ -16,7 +22,10 @@ pub struct Args {
 pub fn parse() -> Args {
     if cfg!(target_arch = "wasm32") {
         return Args {
-            command: Command::Repl { path: None },
+            command: Command::Repl {
+                path: None,
+                no_stdlib: false,
+            },
         };
     }
     clap::Parser::parse()

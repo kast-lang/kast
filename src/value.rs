@@ -17,7 +17,7 @@ pub enum Value {
     Variant(#[try_hash] VariantValue),
     Multiset(#[try_hash] Vec<Value>),
     Contexts(#[try_hash] Contexts),
-    Ast(AstValue),
+    Ast(Ast),
     Type(#[try_hash] Type),
     SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
@@ -30,12 +30,6 @@ pub struct UnwindHandle {
     pub sender: Parc<Mutex<async_oneshot::Sender<Value>>>,
     #[try_hash]
     pub ty: Type,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct AstValue {
-    pub value: Ast,
-    pub captured: Parc<Scope>,
 }
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
@@ -84,7 +78,7 @@ impl std::fmt::Display for Value {
             Value::Function(_function) => write!(f, "<function>"),
             Value::Template(_template) => write!(f, "<template>"),
             Value::Macro(_macro) => write!(f, "<macro>"),
-            Value::Ast(AstValue { value, captured: _ }) => value.fmt(f),
+            Value::Ast(ast) => ast.fmt(f),
             Value::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
@@ -266,7 +260,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_ast(self) -> Result<AstValue, ExpectError> {
+    pub fn expect_ast(self) -> Result<Ast, ExpectError> {
         match self {
             Self::Ast(ast) => Ok(ast),
             _ => Err(ExpectError {
@@ -312,7 +306,7 @@ impl std::ops::Deref for TypedFunction {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub id: Id,
-    pub captured: Parc<Scope>,
+    pub captured: BiScope,
     pub compiled: MaybeCompiledFn,
 }
 

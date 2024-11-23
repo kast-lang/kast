@@ -4,7 +4,6 @@ use super::*;
 pub struct State {
     pub spawned: bool,
     pub builtins: Parc<HashMap<String, Builtin>>,
-    scope: Parc<Scope>,
     pub contexts: contexts::State,
 }
 
@@ -403,11 +402,13 @@ impl State {
                 binary_op!(%, checked_rem);
                 Parc::new(map)
             },
-            scope: Parc::new(Scope::new()),
         }
     }
+}
+
+impl Kast {
     pub fn autocomplete<'a>(&'a self, s: &'a str) -> impl Iterator<Item = CompletionCandidate> {
-        self.scope.inspect(|locals| {
+        self.scope.evaluation.inspect(|locals| {
             locals
                 .iter()
                 .filter_map(move |(name, value)| {
@@ -424,40 +425,17 @@ impl State {
                 .into_iter()
         })
     }
-    pub async fn lookup(&self, name: &str) -> Option<(Symbol, Value)> {
-        self.scope.get_impl(Lookup::Name(name), self.spawned).await
-    }
-    pub async fn lookup_symbol(&self, name: &str) -> Option<Symbol> {
-        self.scope
-            .get_impl(Lookup::Name(name), self.spawned)
-            .await
-            .map(|(symbol, _value)| symbol)
-    }
-    pub async fn get_by_id(&self, id: Id) -> Option<Value> {
-        self.scope
-            .get_impl(Lookup::Id(id), self.spawned)
-            .await
-            .map(|(_symbol, value)| value)
-    }
-    pub async fn get_by_name(&self, name: &str) -> Option<Value> {
-        self.scope
-            .get_impl(Lookup::Name(name), self.spawned)
-            .await
-            .map(|(_symbol, value)| value)
-    }
-    pub fn get_nowait(&self, name: &str) -> Option<Value> {
-        self.scope
-            .get_nowait(Lookup::Name(name))
-            .map(|(_symbol, value)| value)
-    }
-    pub fn insert_local(&mut self, name: Symbol, value: Value) {
-        self.scope.insert(name, value);
-    }
     pub fn scope_syntax_definitions(&self) -> Vec<Parc<ast::SyntaxDefinition>> {
-        self.scope.syntax_definitions.lock().unwrap().clone()
+        self.scope
+            .evaluation
+            .syntax_definitions
+            .lock()
+            .unwrap()
+            .clone()
     }
     pub fn insert_syntax(&mut self, definition: Parc<ast::SyntaxDefinition>) -> eyre::Result<()> {
         self.scope
+            .evaluation
             .syntax_definitions
             .lock()
             .unwrap()
@@ -468,97 +446,55 @@ impl State {
 
 impl Drop for Kast {
     fn drop(&mut self) {
-        self.interpreter.scope.close();
+        self.scope.close();
         self.advance_executor();
     }
 }
 
 impl Kast {
-    pub async fn lookup(&self, name: &str, hygiene: &Hygiene) -> Option<(Symbol, Value)> {
-        match hygiene {
-            Hygiene::CallSite | Hygiene::FigureItDefSite => self.interpreter.lookup(name).await,
-            Hygiene::DefSite(scope) => {
-                self.with_scope(scope.clone())
-                    .interpreter
-                    .lookup(name)
-                    .await
-            }
-        }
-    }
-    pub async fn get_symbol(&self, symbol: &Symbol) -> Option<Value> {
-        self.interpreter.get_by_id(symbol.id()).await
-    }
     pub async fn get_binding(&self, binding: &Binding) -> Option<Value> {
-        self.interpreter.get_by_id(binding.symbol.id()).await
+        self.scope.get(binding).await
     }
     pub fn pattern_match(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
         let matches = pattern
             .r#match(value)
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
-        self.insert_pattern_matches_impl(matches, false);
+        self.insert_pattern_matches(matches);
         Ok(())
     }
-    pub fn insert_pattern_matches_impl(
+    pub fn insert_pattern_matches(
         &mut self,
         matches: impl IntoIterator<Item = (Parc<Binding>, Value)>,
-        compiling: bool,
     ) {
-        // let compiling = false;
-        for (binding, value) in matches {
-            let scope = if !compiling {
-                &self.interpreter.scope
-            } else {
-                match &binding.hygiene {
-                    Hygiene::FigureItDefSite | Hygiene::CallSite => &self.interpreter.scope,
-                    Hygiene::DefSite(scope) => scope,
-                }
-            };
-            let symbol = &binding.symbol;
-            tracing::trace!("insert {symbol} = {value} into scope {:?}", scope.id);
-            scope.insert(symbol.clone(), value);
-        }
+        self.scope.extend(matches);
     }
-    pub fn capture(&self) -> Parc<Scope> {
-        self.interpreter.scope.clone()
-    }
-    pub fn pin_ast(&self, ast: Ast) -> Ast {
-        ast.map_data(|AstData { span, hygiene }| AstData {
-            span,
-            hygiene: match hygiene {
-                Hygiene::FigureItDefSite => Hygiene::DefSite(self.capture()),
-                _ => hygiene,
-            },
-        })
+    pub fn capture(&self) -> BiScope {
+        self.scope.clone()
     }
 
     #[must_use]
     pub fn enter_recursive_scope(&self) -> Self {
-        let mut inner = self.clone();
-        inner.interpreter.scope = Parc::new({
-            let mut scope = Scope::recursive();
-            scope.parent = Some(self.interpreter.scope.clone());
-            scope
-        });
-        inner
+        self.enter_scope_impl(ScopeType::Recursive)
     }
     #[must_use]
     pub fn enter_scope(&self) -> Self {
+        self.enter_scope_impl(ScopeType::NonRecursive)
+    }
+
+    #[must_use]
+    pub fn enter_scope_impl(&self, ty: ScopeType) -> Self {
         let mut inner = self.clone();
-        inner.interpreter.scope = Parc::new({
-            let mut scope = Scope::new();
-            scope.parent = Some(self.interpreter.scope.clone());
-            scope
-        });
+        inner.scope = BiScope::new(ty, Some(self.scope.clone()));
         inner
     }
     #[must_use]
-    pub fn with_scope(&self, scope: Parc<Scope>) -> Self {
+    pub fn with_scope(&self, scope: BiScope) -> Self {
         let mut kast = self.clone();
-        kast.interpreter.scope = scope;
+        kast.scope = scope;
         kast
     }
-    pub fn add_local(&mut self, name: Symbol, value: Value) {
-        self.interpreter.insert_local(name, value);
+    pub fn add_local(&mut self, symbol: Symbol, value: Value) {
+        self.scope.insert_symbol(symbol, value);
     }
     pub fn eval_source(
         &mut self,
@@ -570,7 +506,8 @@ impl Kast {
             Some(ast) => {
                 let ast = ast.map_data(|span| AstData {
                     span,
-                    hygiene: Hygiene::FigureItDefSite,
+                    hygiene: Hygiene::DefSite,
+                    lexical_scope: None,
                 });
                 // TODO but idr what this todo is about
                 futures_lite::future::block_on(self.eval_ast(&ast, expected_ty))
@@ -714,7 +651,7 @@ impl Kast {
                         // TODO no clone value
                         if let Some(matches) = branch.pattern.r#match(value.clone()) {
                             let mut kast = self.enter_scope();
-                            kast.interpreter.scope.extend(matches);
+                            kast.scope.extend(matches);
                             let result = kast.eval(&branch.body).await?;
                             break 'result result;
                         }
@@ -728,7 +665,7 @@ impl Kast {
                 } => {
                     let value = self.eval(value).await?;
                     if let Some(matches) = pattern.r#match(value) {
-                        self.interpreter.scope.extend(matches);
+                        self.scope.extend(matches);
                         Value::Bool(true)
                     } else {
                         Value::Bool(false)
@@ -843,14 +780,17 @@ impl Kast {
                     let mut inner = self.enter_recursive_scope();
                     inner.eval(body).await?.expect_unit()?;
                     let mut fields = Tuple::empty();
-                    inner.interpreter.scope.inspect(|locals| {
-                        for (name, value) in locals.iter() {
-                            fields.add_named(name.name(), value.clone());
-                        }
-                    });
+                    for scope in [&inner.scope.evaluation, &inner.scope.lexical] {
+                        scope.inspect(|locals| {
+                            for (name, value) in locals.iter() {
+                                fields.add_named(name.name(), value.clone());
+                            }
+                        });
+                    }
                     Value::Tuple(fields)
                 }
                 Expr::Ast {
+                    expr_root,
                     definition,
                     values,
                     data,
@@ -858,21 +798,22 @@ impl Kast {
                     let mut ast_values = Tuple::empty();
                     for (name, value) in values.as_ref().into_iter() {
                         let value = self.eval(value).await?;
-                        let AstValue { value, captured: _ } = value.expect_ast()?;
+                        let value = value.expect_ast()?;
                         ast_values.add(name, value);
                     }
-                    let ast = Ast::Complex {
+                    let mut ast = Ast::Complex {
                         definition: definition.clone(),
                         values: ast_values,
                         data: AstData {
                             span: data.span.clone(),
-                            hygiene: Hygiene::CallSite,
+                            hygiene: Hygiene::DefSite,
+                            lexical_scope: None,
                         },
                     };
-                    Value::Ast(AstValue {
-                        value: ast,
-                        captured: self.capture(),
-                    })
+                    if *expr_root {
+                        ast = self.preserve_lexical_scope(&ast);
+                    }
+                    Value::Ast(ast)
                 }
                 Expr::Function {
                     ty,
@@ -904,12 +845,7 @@ impl Kast {
                 Expr::Binding { binding, data: _ } => self
                     .get_binding(binding)
                     .await // TODO this should not be async?
-                    .ok_or_else(|| {
-                        if self.interpreter.get_nowait(binding.symbol.name()).is_some() {
-                            tracing::error!("{:?} exists by different id????", binding.symbol);
-                        }
-                        eyre!("{:?} not found", binding.symbol)
-                    })?
+                    .ok_or_else(|| eyre!("{:?} not found", binding.symbol))?
                     .clone(),
                 Expr::If {
                     condition,
@@ -1065,9 +1001,10 @@ impl Kast {
     }
 
     pub async fn call_fn(&self, f: Function, arg: Value) -> eyre::Result<Value> {
-        let mut new_scope = Scope::new();
-        new_scope.parent = Some(f.captured.clone());
-        let mut kast = self.with_scope(Parc::new(new_scope));
+        let mut kast = self.with_scope(BiScope::new(
+            ScopeType::NonRecursive,
+            Some(f.captured.clone()),
+        ));
         let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
         arg.ty().make_same(
             compiled

@@ -299,13 +299,14 @@ impl SubstituteBindings for Type {
             TypeShape::Macro(f) => {
                 TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache))).into()
             }
-            TypeShape::Binding(binding) => match kast.interpreter.get_nowait(binding.symbol.name())
-            {
-                Some(value) => value.expect_type().unwrap_or_else(|e| {
-                    panic!("{} expected to be a type: {e}", binding.symbol.name())
-                }),
-                None => TypeShape::Binding(binding.clone()).into(),
-            },
+            TypeShape::Binding(binding) => {
+                match kast.scope.get(&binding).now_or_never().flatten() {
+                    Some(value) => value.expect_type().unwrap_or_else(|e| {
+                        panic!("{} expected to be a type: {e}", binding.symbol.name())
+                    }),
+                    None => TypeShape::Binding(binding.clone()).into(),
+                }
+            }
         };
         result
     }

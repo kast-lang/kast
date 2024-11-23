@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use biscope::*;
 use cast::*;
 pub use compiler::{Ast, AstData, Hygiene};
 pub use contexts::Contexts;
@@ -13,7 +14,7 @@ pub use kast_ast as ast;
 pub use kast_ast::Token;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
-use scope::{Lookup, Scope};
+use scope::{Lookup, Scope, ScopeType};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -21,6 +22,7 @@ use try_hash::TryHash;
 pub use ty::*;
 pub use value::*;
 
+mod biscope;
 mod cast;
 mod compiler;
 mod contexts;
@@ -42,6 +44,7 @@ pub struct Kast {
     executor: Parc<async_executor::Executor<'static>>,
     syntax: ast::Syntax,
     pub interpreter: interpreter::State,
+    scope: BiScope,
     cache: Parc<Cache>,
     pub output: std::sync::Arc<dyn Output>,
 }
@@ -105,6 +108,7 @@ impl Kast {
         Self {
             executor: Parc::new(async_executor::Executor::new()),
             syntax: ast::Syntax::empty(),
+            scope: BiScope::new(ScopeType::NonRecursive, None),
             interpreter: interpreter::State::new(),
             cache: cache.unwrap_or_default(),
             output: std::sync::Arc::new({
@@ -137,6 +141,9 @@ impl Kast {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self::new_normal(None)
+    }
+    pub fn new_nostdlib() -> Self {
+        Self::only_std_syntax(None)
     }
     fn new_normal(cache: Option<Parc<Cache>>) -> Self {
         let mut kast = Self::only_std_syntax(cache);

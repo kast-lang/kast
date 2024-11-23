@@ -98,8 +98,9 @@ impl<T> Tuple<T> {
     }
     pub fn add_named(&mut self, name: impl Into<String>, value: T) {
         let name: String = name.into();
-        self.named_order.push(name.clone());
-        self.named.insert(name, value);
+        if self.named.insert(name.clone(), value).is_none() {
+            self.named_order.push(name.clone());
+        }
     }
     pub fn add(&mut self, name: Option<String>, value: T) {
         match name {

@@ -37,7 +37,6 @@ impl rustyline::completion::Completer for Helper {
         let part = &line[start..pos];
         let kast = self.0.lock().unwrap();
         let completions = kast
-            .interpreter
             .autocomplete(part)
             .map(|candidate| CompletionCandidate {
                 display: format!("{} :: {}", candidate.name, candidate.ty),

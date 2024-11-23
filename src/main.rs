@@ -87,8 +87,11 @@ fn main() -> eyre::Result<()> {
                 Ok(())
             })?;
         }
-        cli::Command::Repl { path } => {
-            let kast = Arc::new(Mutex::new(Kast::new()));
+        cli::Command::Repl { path, no_stdlib } => {
+            let kast = Arc::new(Mutex::new(match no_stdlib {
+                false => Kast::new(),
+                true => Kast::new_nostdlib(),
+            }));
             if let Some(path) = path {
                 let name = path.file_stem().unwrap().to_str().unwrap();
                 let mut kast = kast.lock().unwrap();

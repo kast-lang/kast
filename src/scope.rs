@@ -29,10 +29,16 @@ impl Locals {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum ScopeType {
+    NonRecursive,
+    Recursive,
+}
+
 pub struct Scope {
     pub id: Id,
     pub parent: Option<Parc<Scope>>,
-    recursive: bool,
+    pub ty: ScopeType,
     closed: AtomicBool,
     closed_event: event_listener::Event,
     pub syntax_definitions: Mutex<Vec<Parc<ast::SyntaxDefinition>>>,
@@ -42,8 +48,11 @@ pub struct Scope {
 impl Drop for Scope {
     fn drop(&mut self) {
         if !*self.closed.get_mut() {
-            if self.recursive {
-                panic!("recursive scope should be closed manually to advance executor");
+            match self.ty {
+                ScopeType::Recursive => {
+                    panic!("recursive scope should be closed manually to advance executor")
+                }
+                ScopeType::NonRecursive => {}
             }
             self.close();
         }
@@ -66,25 +75,18 @@ impl std::fmt::Display for Lookup<'_> {
 }
 
 impl Scope {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self::new_impl(false)
-    }
-    fn new_impl(recursive: bool) -> Self {
+    pub fn new(ty: ScopeType, parent: Option<Parc<Self>>) -> Self {
         let id = Id::new();
-        tracing::trace!("new scope {id:?} (recursive={recursive:?})");
+        tracing::trace!("new scope {id:?} (ty={ty:?})");
         Self {
             id,
-            parent: None,
-            recursive,
+            parent,
+            ty,
             closed: AtomicBool::new(false),
             closed_event: event_listener::Event::new(),
             syntax_definitions: Default::default(),
             locals: Mutex::new(Locals::new()),
         }
-    }
-    pub fn recursive() -> Self {
-        Self::new_impl(true)
     }
     pub fn close(&self) {
         tracing::trace!("close scope {:?}", self.id);
@@ -97,14 +99,6 @@ impl Scope {
     pub fn insert(&self, name: Symbol, value: Value) {
         self.locals.lock().unwrap().insert(name, value);
     }
-    pub fn extend(&self, values: impl IntoIterator<Item = (Parc<Binding>, Value)>) {
-        for (binding, value) in values {
-            self.insert(binding.symbol.clone(), value);
-        }
-    }
-    pub fn get_nowait(&self, lookup: Lookup<'_>) -> Option<(Symbol, Value)> {
-        self.get_impl(lookup, false).now_or_never().unwrap()
-    }
     pub fn get_impl<'a>(
         &'a self,
         lookup: Lookup<'a>,
@@ -115,12 +109,15 @@ impl Scope {
             loop {
                 let was_closed = self.closed.load(std::sync::atomic::Ordering::Relaxed);
                 if let Some(result) = self.locals.lock().unwrap().get(lookup).cloned() {
-                    tracing::trace!("found {lookup} in resursive={:?}", self.recursive);
+                    tracing::trace!("found {lookup} in ty={:?}", self.ty);
                     return Some(result);
                 }
-                if !self.recursive {
-                    tracing::trace!("non recursive not found {lookup}");
-                    break;
+                match self.ty {
+                    ScopeType::NonRecursive => {
+                        tracing::trace!("non recursive not found {lookup}");
+                        break;
+                    }
+                    ScopeType::Recursive => {}
                 }
                 if was_closed {
                     break;

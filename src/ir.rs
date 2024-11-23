@@ -147,6 +147,7 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Ast {
+        expr_root: bool,
         definition: Parc<ast::SyntaxDefinition>,
         values: Tuple<Expr>,
         data: Data,
