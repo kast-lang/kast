@@ -351,9 +351,18 @@ pub struct Name {
     id: Id,
 }
 
+impl std::fmt::Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.raw)
+    }
+}
+
 impl Name {
     pub fn raw(&self) -> &str {
         &self.raw
+    }
+    pub fn id(&self) -> Id {
+        self.id
     }
     pub fn new(name: impl Into<String>) -> Self {
         Self {

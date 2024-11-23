@@ -389,9 +389,9 @@ impl State {
             locals
                 .iter()
                 .filter_map(move |(name, value)| {
-                    if name.contains(s) {
+                    if name.raw().contains(s) {
                         Some(CompletionCandidate {
-                            name: name.clone(),
+                            name: name.raw().to_owned(),
                             ty: value.ty(),
                         })
                     } else {
@@ -402,14 +402,17 @@ impl State {
                 .into_iter()
         })
     }
-    pub async fn get(&self, name: &str) -> Option<Value> {
-        self.scope.get_impl(name, self.spawned).await
+    pub async fn get_by_id(&self, id: Id) -> Option<Value> {
+        self.scope.get_impl(Lookup::Id(id), self.spawned).await
+    }
+    pub async fn get_by_name(&self, name: &str) -> Option<Value> {
+        self.scope.get_impl(Lookup::Name(name), self.spawned).await
     }
     pub fn get_nowait(&self, name: &str) -> Option<Value> {
-        self.scope.get_nowait(name)
+        self.scope.get_nowait(Lookup::Name(name))
     }
-    pub fn insert_local(&mut self, name: &str, value: Value) {
-        self.scope.insert(name.to_owned(), value);
+    pub fn insert_local(&mut self, name: Name, value: Value) {
+        self.scope.insert(name, value);
     }
     pub fn scope_syntax_definitions(&self) -> Vec<Parc<ast::SyntaxDefinition>> {
         self.scope.syntax_definitions.lock().unwrap().clone()
@@ -434,33 +437,44 @@ impl Drop for Kast {
 impl Kast {
     pub async fn get_with_hygiene(&self, name: &str, hygiene: &Hygiene) -> Option<Value> {
         match hygiene {
-            Hygiene::CallSite | Hygiene::FigureItDefSite => self.interpreter.get(name).await,
-            Hygiene::DefSite(scope) => self.with_scope(scope.clone()).interpreter.get(name).await,
+            Hygiene::CallSite | Hygiene::FigureItDefSite => {
+                self.interpreter.get_by_name(name).await
+            }
+            Hygiene::DefSite(scope) => {
+                self.with_scope(scope.clone())
+                    .interpreter
+                    .get_by_name(name)
+                    .await
+            }
         }
     }
     pub async fn get_binding(&self, binding: &Binding) -> Option<Value> {
-        self.get_with_hygiene(binding.name.raw(), &binding.hygiene)
-            .await
+        self.interpreter.get_by_id(binding.name.id()).await
     }
     pub fn pattern_match(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
         let matches = pattern
             .r#match(value)
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
-        self.insert_pattern_matches(matches);
+        self.insert_pattern_matches_impl(matches, false);
         Ok(())
     }
-    pub fn insert_pattern_matches(
+    pub fn insert_pattern_matches_impl(
         &mut self,
         matches: impl IntoIterator<Item = (Parc<Binding>, Value)>,
+        compiling: bool,
     ) {
         for (binding, value) in matches {
-            let scope = match &binding.hygiene {
-                Hygiene::FigureItDefSite | Hygiene::CallSite => &self.interpreter.scope,
-                Hygiene::DefSite(scope) => scope,
+            let scope = if !compiling {
+                &self.interpreter.scope
+            } else {
+                match &binding.hygiene {
+                    Hygiene::FigureItDefSite | Hygiene::CallSite => &self.interpreter.scope,
+                    Hygiene::DefSite(scope) => scope,
+                }
             };
-            let name = binding.name.raw();
+            let name = &binding.name;
             tracing::trace!("insert {name} = {value} into scope {:?}", scope.id);
-            scope.insert(name.to_owned(), value);
+            scope.insert(name.clone(), value);
         }
     }
     pub fn capture(&self) -> Parc<Scope> {
@@ -502,8 +516,8 @@ impl Kast {
         kast.interpreter.scope = scope;
         kast
     }
-    pub fn add_local(&mut self, name: &str, value: Value) {
-        self.interpreter.scope.insert(name.to_owned(), value);
+    pub fn add_local(&mut self, name: Name, value: Value) {
+        self.interpreter.insert_local(name, value);
     }
     pub fn eval_source(
         &mut self,
@@ -734,7 +748,7 @@ impl Kast {
                         Value::Tuple(namespace) => {
                             for (name, value) in namespace.into_iter() {
                                 let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
-                                self.add_local(name.as_str(), value);
+                                self.add_local(Name::new(name), value);
                             }
                         }
                         _ => eyre::bail!("{namespace} is not a namespace"),
@@ -789,8 +803,8 @@ impl Kast {
                     inner.eval(body).await?.expect_unit()?;
                     let mut fields = Tuple::empty();
                     inner.interpreter.scope.inspect(|locals| {
-                        for (name, value) in locals {
-                            fields.add_named(name.clone(), value.clone());
+                        for (name, value) in locals.iter() {
+                            fields.add_named(name.raw(), value.clone());
                         }
                     });
                     Value::Tuple(fields)
@@ -849,7 +863,12 @@ impl Kast {
                 Expr::Binding { binding, data: _ } => self
                     .get_binding(binding)
                     .await // TODO this should not be async?
-                    .ok_or_else(|| eyre!("{:?} not found", binding.name))?
+                    .ok_or_else(|| {
+                        if self.interpreter.get_nowait(binding.name.raw()).is_some() {
+                            tracing::error!("{:?} exists by different id????", binding.name);
+                        }
+                        eyre!("{:?} not found", binding.name)
+                    })?
                     .clone(),
                 Expr::If {
                     condition,

@@ -2,7 +2,38 @@ use std::sync::atomic::AtomicBool;
 
 use super::*;
 
-pub type Locals = HashMap<String, Value>;
+#[derive(Default)]
+pub struct Locals {
+    // TODO insertion order
+    names: std::collections::BTreeMap<String, Name>,
+    id_by_name: HashMap<String, Id>,
+    by_id: HashMap<Id, Value>,
+}
+
+impl Locals {
+    fn new() -> Self {
+        Self::default()
+    }
+    fn insert(&mut self, name: Name, value: Value) {
+        self.id_by_name.insert(name.raw().to_owned(), name.id());
+        self.by_id.insert(name.id(), value);
+        self.names.insert(name.raw().to_owned(), name);
+    }
+    fn get(&self, lookup: Lookup<'_>) -> Option<&Value> {
+        let id: Id = match lookup {
+            Lookup::Name(name) => *self.id_by_name.get(name)?,
+            Lookup::Id(id) => id,
+        };
+        self.by_id.get(&id)
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (&Name, &Value)> + '_ {
+        self.names.iter().map(|(s, name)| {
+            let id = self.id_by_name.get(s).unwrap();
+            let value = self.by_id.get(id).unwrap();
+            (name, value)
+        })
+    }
+}
 
 pub struct Scope {
     pub id: Id,
@@ -21,6 +52,21 @@ impl Drop for Scope {
                 panic!("recursive scope should be closed manually to advance executor");
             }
             self.close();
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum Lookup<'a> {
+    Name(&'a str),
+    Id(Id),
+}
+
+impl std::fmt::Display for Lookup<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Lookup::Name(name) => write!(f, "{name:?}"),
+            Lookup::Id(id) => write!(f, "id#{id}"),
         }
     }
 }
@@ -54,28 +100,32 @@ impl Scope {
     pub fn inspect<R>(&self, f: impl FnOnce(&Locals) -> R) -> R {
         f(&self.locals.lock().unwrap())
     }
-    pub fn insert(&self, name: String, value: Value) {
+    pub fn insert(&self, name: Name, value: Value) {
         self.locals.lock().unwrap().insert(name, value);
     }
     pub fn extend(&self, values: impl IntoIterator<Item = (Parc<Binding>, Value)>) {
         for (binding, value) in values {
-            self.insert(binding.name.raw().to_owned(), value);
+            self.insert(binding.name.clone(), value);
         }
     }
-    pub fn get_nowait(&self, name: &str) -> Option<Value> {
-        self.get_impl(name, false).now_or_never().unwrap()
+    pub fn get_nowait(&self, lookup: Lookup<'_>) -> Option<Value> {
+        self.get_impl(lookup, false).now_or_never().unwrap()
     }
-    pub fn get_impl<'a>(&'a self, name: &'a str, do_await: bool) -> BoxFuture<'a, Option<Value>> {
-        tracing::trace!("looking for {name:?} in {:?}", self.id);
+    pub fn get_impl<'a>(
+        &'a self,
+        lookup: Lookup<'a>,
+        do_await: bool,
+    ) -> BoxFuture<'a, Option<Value>> {
+        tracing::trace!("looking for {lookup} in {:?}", self.id);
         async move {
             loop {
                 let was_closed = self.closed.load(std::sync::atomic::Ordering::Relaxed);
-                if let Some(value) = self.locals.lock().unwrap().get(name).cloned() {
-                    tracing::trace!("found {name:?} in resursive={:?}", self.recursive);
+                if let Some(value) = self.locals.lock().unwrap().get(lookup).cloned() {
+                    tracing::trace!("found {lookup} in resursive={:?}", self.recursive);
                     return Some(value);
                 }
                 if !self.recursive {
-                    tracing::trace!("non recursive not found {name:?}");
+                    tracing::trace!("non recursive not found {lookup}");
                     break;
                 }
                 if was_closed {
@@ -86,10 +136,10 @@ impl Scope {
                 }
                 // TODO maybe wait for the name, not entire scope?
                 self.closed_event.listen().await;
-                tracing::trace!("continuing searching for {name:?}");
+                tracing::trace!("continuing searching for {lookup}");
             }
             if let Some(parent) = &self.parent {
-                if let Some(value) = parent.get_impl(name, do_await).await {
+                if let Some(value) = parent.get_impl(lookup, do_await).await {
                     return Some(value);
                 }
             }

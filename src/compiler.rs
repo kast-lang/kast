@@ -348,7 +348,7 @@ impl Compilable for Expr {
             Ast::SyntaxDefinition { def, data } => {
                 kast.interpreter.insert_syntax(def.clone())?;
                 kast.interpreter
-                    .insert_local(&def.name, Value::SyntaxDefinition(def.clone()));
+                    .insert_local(Name::new(&def.name), Value::SyntaxDefinition(def.clone()));
                 kast.cache.compiler.register_syntax(def);
 
                 Expr::Constant {
@@ -456,15 +456,17 @@ impl Kast {
     fn inject_conditional_bindings(&mut self, expr: &Expr, condition: bool) {
         expr.collect_bindings(
             &mut |binding| {
-                self.interpreter
-                    .insert_local(binding.name.raw(), Value::Binding(binding.clone()));
+                self.add_local(binding.name.clone(), Value::Binding(binding.clone()));
             },
             Some(condition),
         );
     }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| {
-            self.insert_pattern_matches([(binding.clone(), Value::Binding(binding.clone()))])
+            self.insert_pattern_matches_impl(
+                [(binding.clone(), Value::Binding(binding.clone()))],
+                true,
+            )
         });
     }
     async fn compile_ast_value<T: Compilable>(&mut self, value: AstValue) -> eyre::Result<T> {
@@ -1059,7 +1061,7 @@ impl Kast {
             Value::Tuple(namespace) => {
                 for (name, value) in namespace.into_iter() {
                     let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
-                    self.add_local(name.as_str(), value);
+                    self.add_local(Name::new(name), value);
                 }
             }
             _ => eyre::bail!("{namespace} is not a namespace"),

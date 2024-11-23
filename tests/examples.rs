@@ -172,7 +172,7 @@ fn test_fibonacci() {
     let module = kast
         .import(Path::new("examples").join(name).with_extension("ks"))
         .expect("Failed to import the test");
-    kast.interpreter.insert_local("test", module);
+    kast.add_local(kast::Name::new("test"), module);
     let mut test_fib = |n: usize, answer: i32| {
         let value = kast
             .eval_source(

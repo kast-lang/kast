@@ -11,3 +11,9 @@ impl Id {
         Self(NEXT_ID.fetch_add(1, SeqCst))
     }
 }
+
+impl std::fmt::Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}

@@ -7,12 +7,13 @@ use futures::future::BoxFuture;
 use futures::prelude::*;
 pub use id::*;
 use inference::Inferrable;
+pub use ir::Name;
 use ir::*;
 pub use kast_ast as ast;
 pub use kast_ast::Token;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
-use scope::Scope;
+use scope::{Lookup, Scope};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -142,7 +143,7 @@ impl Kast {
         let std = kast
             .import_impl(std_path().join("lib.ks"), ImportMode::OnlyStdSyntax)
             .expect("std lib import failed");
-        kast.add_local("std", std);
+        kast.add_local(Name::new("std"), std);
         kast
     }
 
