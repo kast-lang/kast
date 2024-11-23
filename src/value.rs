@@ -22,6 +22,7 @@ pub enum Value {
     SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
     UnwindHandle(#[try_hash] UnwindHandle),
+    Symbol(Symbol),
 }
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
@@ -91,6 +92,7 @@ impl std::fmt::Display for Value {
             Value::SyntaxModule(_definitions) => write!(f, "<syntax module>"),
             Value::SyntaxDefinition(_definition) => write!(f, "<syntax definition>"),
             Value::UnwindHandle(_) => write!(f, "<unwind handle>"),
+            Value::Symbol(symbol) => write!(f, "symbol {symbol}"),
         }
     }
 }
@@ -139,6 +141,7 @@ impl Value {
             Value::SyntaxModule(_) => TypeShape::SyntaxModule.into(),
             Value::SyntaxDefinition(_) => TypeShape::SyntaxDefinition.into(),
             Value::UnwindHandle(handle) => TypeShape::UnwindHandle(handle.ty.clone()).into(),
+            Value::Symbol(_) => TypeShape::Symbol.into(),
         }
     }
 }

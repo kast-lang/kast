@@ -240,8 +240,8 @@ impl Compilable for Expr {
                     name,
                     is_raw: _,
                 } => {
-                    let value = kast
-                        .get_with_hygiene(name.as_str(), &data.hygiene)
+                    let (_symbol, value) = kast
+                        .lookup(name, &data.hygiene)
                         .await
                         .ok_or_else(|| eyre!("{name:?} not found"))?;
                     match value {
@@ -348,7 +348,7 @@ impl Compilable for Expr {
             Ast::SyntaxDefinition { def, data } => {
                 kast.interpreter.insert_syntax(def.clone())?;
                 kast.interpreter
-                    .insert_local(Name::new(&def.name), Value::SyntaxDefinition(def.clone()));
+                    .insert_local(Symbol::new(&def.name), Value::SyntaxDefinition(def.clone()));
                 kast.cache.compiler.register_syntax(def);
 
                 Expr::Constant {
@@ -395,15 +395,21 @@ impl Compilable for Pattern {
                     raw: _,
                     name,
                     is_raw: _,
-                } => Pattern::Binding {
-                    binding: Parc::new(Binding {
-                        name: Name::new(name),
-                        ty: Type::new_not_inferred(),
-                        hygiene: hygiene.clone(),
-                    }),
-                    data: span.clone(),
+                } => {
+                    // let (symbol, _value) = kast
+                    //     .lookup(name.as_str(), hygiene)
+                    //     .await
+                    //     .unwrap_or_else(|| Symbol::new(name));
+                    Pattern::Binding {
+                        binding: Parc::new(Binding {
+                            symbol: Symbol::new(name),
+                            ty: Type::new_not_inferred(),
+                            hygiene: hygiene.clone(),
+                        }),
+                        data: span.clone(),
+                    }
+                    .init()?
                 }
-                .init()?,
                 Token::String {
                     raw: _,
                     contents: _,
@@ -456,17 +462,17 @@ impl Kast {
     fn inject_conditional_bindings(&mut self, expr: &Expr, condition: bool) {
         expr.collect_bindings(
             &mut |binding| {
-                self.add_local(binding.name.clone(), Value::Binding(binding.clone()));
+                self.inject_binding(&binding);
             },
             Some(condition),
         );
     }
+    fn inject_binding(&mut self, binding: &Parc<Binding>) {
+        self.insert_pattern_matches_impl([(binding.clone(), Value::Binding(binding.clone()))], true)
+    }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| {
-            self.insert_pattern_matches_impl(
-                [(binding.clone(), Value::Binding(binding.clone()))],
-                true,
-            )
+            self.inject_binding(&binding);
         });
     }
     async fn compile_ast_value<T: Compilable>(&mut self, value: AstValue) -> eyre::Result<T> {
@@ -1061,7 +1067,7 @@ impl Kast {
             Value::Tuple(namespace) => {
                 for (name, value) in namespace.into_iter() {
                     let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
-                    self.add_local(Name::new(name), value);
+                    self.add_local(Symbol::new(name), value);
                 }
             }
             _ => eyre::bail!("{namespace} is not a namespace"),
@@ -1854,7 +1860,7 @@ impl Expr<Span> {
                     let mut fields = Tuple::empty();
                     body.collect_bindings(
                         &mut |binding| {
-                            fields.add_named(binding.name.raw().to_owned(), binding.ty.clone());
+                            fields.add_named(binding.symbol.name().to_owned(), binding.ty.clone());
                         },
                         None,
                     );

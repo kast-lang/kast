@@ -7,7 +7,7 @@ use futures::future::BoxFuture;
 use futures::prelude::*;
 pub use id::*;
 use inference::Inferrable;
-pub use ir::Name;
+pub use ir::Symbol;
 use ir::*;
 pub use kast_ast as ast;
 pub use kast_ast::Token;
@@ -143,7 +143,7 @@ impl Kast {
         let std = kast
             .import_impl(std_path().join("lib.ks"), ImportMode::OnlyStdSyntax)
             .expect("std lib import failed");
-        kast.add_local(Name::new("std"), std);
+        kast.add_local(Symbol::new("std"), std);
         kast
     }
 

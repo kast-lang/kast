@@ -93,7 +93,7 @@ fn main() -> eyre::Result<()> {
                 let name = path.file_stem().unwrap().to_str().unwrap();
                 let mut kast = kast.lock().unwrap();
                 let value = kast.eval_file(&path).expect("Failed to eval file");
-                kast.add_local(kast::Name::new(name), value);
+                kast.add_local(kast::Symbol::new(name), value);
             }
             let helper = repl_helper::Helper::new(kast.clone());
             run_repl(helper, move |contents| {

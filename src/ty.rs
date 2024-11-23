@@ -23,6 +23,7 @@ pub enum TypeShape {
     SyntaxDefinition,
     UnwindHandle(#[try_hash] Type),
     Binding(Parc<Binding>),
+    Symbol,
 }
 
 impl ShowShort for TypeShape {
@@ -47,6 +48,7 @@ impl ShowShort for TypeShape {
             TypeShape::SyntaxDefinition => "syntax def",
             TypeShape::UnwindHandle(_) => "unwind handle",
             TypeShape::Binding(_) => "binding",
+            TypeShape::Symbol => "symbol",
         }
     }
 }
@@ -175,6 +177,8 @@ impl Inferrable for TypeShape {
                 }
             }
             (Self::Variant(_), _) => fail!(),
+            (Self::Symbol, Self::Symbol) => Self::Symbol,
+            (Self::Symbol, _) => fail!(),
         })
     }
 }
@@ -209,6 +213,7 @@ impl std::fmt::Display for TypeShape {
                 }
                 Ok(())
             }
+            Self::Symbol => write!(f, "symbol"),
         }
     }
 }
@@ -266,6 +271,7 @@ impl SubstituteBindings for Type {
             | TypeShape::Multiset
             | TypeShape::Contexts
             | TypeShape::Type
+            | TypeShape::Symbol
             | TypeShape::SyntaxModule
             | TypeShape::SyntaxDefinition => self.clone(),
             TypeShape::Variant(variants) => TypeShape::Variant(
@@ -293,9 +299,10 @@ impl SubstituteBindings for Type {
             TypeShape::Macro(f) => {
                 TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache))).into()
             }
-            TypeShape::Binding(binding) => match kast.interpreter.get_nowait(binding.name.raw()) {
+            TypeShape::Binding(binding) => match kast.interpreter.get_nowait(binding.symbol.name())
+            {
                 Some(value) => value.expect_type().unwrap_or_else(|e| {
-                    panic!("{} expected to be a type: {e}", binding.name.raw())
+                    panic!("{} expected to be a type: {e}", binding.symbol.name())
                 }),
                 None => TypeShape::Binding(binding.clone()).into(),
             },

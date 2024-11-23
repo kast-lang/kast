@@ -5,33 +5,27 @@ use super::*;
 #[derive(Default)]
 pub struct Locals {
     // TODO insertion order
-    names: std::collections::BTreeMap<String, Name>,
     id_by_name: HashMap<String, Id>,
-    by_id: HashMap<Id, Value>,
+    by_id: HashMap<Id, (Symbol, Value)>,
 }
 
 impl Locals {
     fn new() -> Self {
         Self::default()
     }
-    fn insert(&mut self, name: Name, value: Value) {
-        self.id_by_name.insert(name.raw().to_owned(), name.id());
-        self.by_id.insert(name.id(), value);
-        self.names.insert(name.raw().to_owned(), name);
+    fn insert(&mut self, name: Symbol, value: Value) {
+        self.id_by_name.insert(name.name().to_owned(), name.id());
+        self.by_id.insert(name.id(), (name, value));
     }
-    fn get(&self, lookup: Lookup<'_>) -> Option<&Value> {
+    fn get(&self, lookup: Lookup<'_>) -> Option<&(Symbol, Value)> {
         let id: Id = match lookup {
             Lookup::Name(name) => *self.id_by_name.get(name)?,
             Lookup::Id(id) => id,
         };
         self.by_id.get(&id)
     }
-    pub fn iter(&self) -> impl Iterator<Item = (&Name, &Value)> + '_ {
-        self.names.iter().map(|(s, name)| {
-            let id = self.id_by_name.get(s).unwrap();
-            let value = self.by_id.get(id).unwrap();
-            (name, value)
-        })
+    pub fn iter(&self) -> impl Iterator<Item = &(Symbol, Value)> + '_ {
+        self.by_id.values()
     }
 }
 
@@ -100,29 +94,29 @@ impl Scope {
     pub fn inspect<R>(&self, f: impl FnOnce(&Locals) -> R) -> R {
         f(&self.locals.lock().unwrap())
     }
-    pub fn insert(&self, name: Name, value: Value) {
+    pub fn insert(&self, name: Symbol, value: Value) {
         self.locals.lock().unwrap().insert(name, value);
     }
     pub fn extend(&self, values: impl IntoIterator<Item = (Parc<Binding>, Value)>) {
         for (binding, value) in values {
-            self.insert(binding.name.clone(), value);
+            self.insert(binding.symbol.clone(), value);
         }
     }
-    pub fn get_nowait(&self, lookup: Lookup<'_>) -> Option<Value> {
+    pub fn get_nowait(&self, lookup: Lookup<'_>) -> Option<(Symbol, Value)> {
         self.get_impl(lookup, false).now_or_never().unwrap()
     }
     pub fn get_impl<'a>(
         &'a self,
         lookup: Lookup<'a>,
         do_await: bool,
-    ) -> BoxFuture<'a, Option<Value>> {
+    ) -> BoxFuture<'a, Option<(Symbol, Value)>> {
         tracing::trace!("looking for {lookup} in {:?}", self.id);
         async move {
             loop {
                 let was_closed = self.closed.load(std::sync::atomic::Ordering::Relaxed);
-                if let Some(value) = self.locals.lock().unwrap().get(lookup).cloned() {
+                if let Some(result) = self.locals.lock().unwrap().get(lookup).cloned() {
                     tracing::trace!("found {lookup} in resursive={:?}", self.recursive);
-                    return Some(value);
+                    return Some(result);
                 }
                 if !self.recursive {
                     tracing::trace!("non recursive not found {lookup}");

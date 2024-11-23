@@ -116,6 +116,7 @@ impl State {
                 insert_ty("string", TypeShape::String);
                 insert_ty("ast", TypeShape::Ast);
                 insert_ty("type", TypeShape::Type);
+                insert_ty("symbol", TypeShape::Symbol);
                 insert_ty("output", output_context_type.inferred().unwrap());
                 // does anyone understand what happened here?
                 insert_ty(
@@ -266,6 +267,27 @@ impl State {
                         }))
                     }),
                 );
+                map.insert(
+                    "gensym".to_owned(),
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::String.into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::Symbol.into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "gensym".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, name: Value| {
+                                let name = name.expect_string()?;
+                                Ok(Value::Symbol(Symbol::new(name)))
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
 
                 let mut insert_named = |named: NamedBuiltin| {
                     map.insert(named.name.clone(), named.value);
@@ -389,9 +411,9 @@ impl State {
             locals
                 .iter()
                 .filter_map(move |(name, value)| {
-                    if name.raw().contains(s) {
+                    if name.name().contains(s) {
                         Some(CompletionCandidate {
-                            name: name.raw().to_owned(),
+                            name: name.name().to_owned(),
                             ty: value.ty(),
                         })
                     } else {
@@ -402,16 +424,33 @@ impl State {
                 .into_iter()
         })
     }
-    pub async fn get_by_id(&self, id: Id) -> Option<Value> {
-        self.scope.get_impl(Lookup::Id(id), self.spawned).await
-    }
-    pub async fn get_by_name(&self, name: &str) -> Option<Value> {
+    pub async fn lookup(&self, name: &str) -> Option<(Symbol, Value)> {
         self.scope.get_impl(Lookup::Name(name), self.spawned).await
     }
-    pub fn get_nowait(&self, name: &str) -> Option<Value> {
-        self.scope.get_nowait(Lookup::Name(name))
+    pub async fn lookup_symbol(&self, name: &str) -> Option<Symbol> {
+        self.scope
+            .get_impl(Lookup::Name(name), self.spawned)
+            .await
+            .map(|(symbol, _value)| symbol)
     }
-    pub fn insert_local(&mut self, name: Name, value: Value) {
+    pub async fn get_by_id(&self, id: Id) -> Option<Value> {
+        self.scope
+            .get_impl(Lookup::Id(id), self.spawned)
+            .await
+            .map(|(_symbol, value)| value)
+    }
+    pub async fn get_by_name(&self, name: &str) -> Option<Value> {
+        self.scope
+            .get_impl(Lookup::Name(name), self.spawned)
+            .await
+            .map(|(_symbol, value)| value)
+    }
+    pub fn get_nowait(&self, name: &str) -> Option<Value> {
+        self.scope
+            .get_nowait(Lookup::Name(name))
+            .map(|(_symbol, value)| value)
+    }
+    pub fn insert_local(&mut self, name: Symbol, value: Value) {
         self.scope.insert(name, value);
     }
     pub fn scope_syntax_definitions(&self) -> Vec<Parc<ast::SyntaxDefinition>> {
@@ -435,21 +474,22 @@ impl Drop for Kast {
 }
 
 impl Kast {
-    pub async fn get_with_hygiene(&self, name: &str, hygiene: &Hygiene) -> Option<Value> {
+    pub async fn lookup(&self, name: &str, hygiene: &Hygiene) -> Option<(Symbol, Value)> {
         match hygiene {
-            Hygiene::CallSite | Hygiene::FigureItDefSite => {
-                self.interpreter.get_by_name(name).await
-            }
+            Hygiene::CallSite | Hygiene::FigureItDefSite => self.interpreter.lookup(name).await,
             Hygiene::DefSite(scope) => {
                 self.with_scope(scope.clone())
                     .interpreter
-                    .get_by_name(name)
+                    .lookup(name)
                     .await
             }
         }
     }
+    pub async fn get_symbol(&self, symbol: &Symbol) -> Option<Value> {
+        self.interpreter.get_by_id(symbol.id()).await
+    }
     pub async fn get_binding(&self, binding: &Binding) -> Option<Value> {
-        self.interpreter.get_by_id(binding.name.id()).await
+        self.interpreter.get_by_id(binding.symbol.id()).await
     }
     pub fn pattern_match(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
         let matches = pattern
@@ -463,6 +503,7 @@ impl Kast {
         matches: impl IntoIterator<Item = (Parc<Binding>, Value)>,
         compiling: bool,
     ) {
+        // let compiling = false;
         for (binding, value) in matches {
             let scope = if !compiling {
                 &self.interpreter.scope
@@ -472,9 +513,9 @@ impl Kast {
                     Hygiene::DefSite(scope) => scope,
                 }
             };
-            let name = &binding.name;
-            tracing::trace!("insert {name} = {value} into scope {:?}", scope.id);
-            scope.insert(name.clone(), value);
+            let symbol = &binding.symbol;
+            tracing::trace!("insert {symbol} = {value} into scope {:?}", scope.id);
+            scope.insert(symbol.clone(), value);
         }
     }
     pub fn capture(&self) -> Parc<Scope> {
@@ -516,7 +557,7 @@ impl Kast {
         kast.interpreter.scope = scope;
         kast
     }
-    pub fn add_local(&mut self, name: Name, value: Value) {
+    pub fn add_local(&mut self, name: Symbol, value: Value) {
         self.interpreter.insert_local(name, value);
     }
     pub fn eval_source(
@@ -748,7 +789,7 @@ impl Kast {
                         Value::Tuple(namespace) => {
                             for (name, value) in namespace.into_iter() {
                                 let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
-                                self.add_local(Name::new(name), value);
+                                self.add_local(Symbol::new(name), value);
                             }
                         }
                         _ => eyre::bail!("{namespace} is not a namespace"),
@@ -804,7 +845,7 @@ impl Kast {
                     let mut fields = Tuple::empty();
                     inner.interpreter.scope.inspect(|locals| {
                         for (name, value) in locals.iter() {
-                            fields.add_named(name.raw(), value.clone());
+                            fields.add_named(name.name(), value.clone());
                         }
                     });
                     Value::Tuple(fields)
@@ -864,10 +905,10 @@ impl Kast {
                     .get_binding(binding)
                     .await // TODO this should not be async?
                     .ok_or_else(|| {
-                        if self.interpreter.get_nowait(binding.name.raw()).is_some() {
-                            tracing::error!("{:?} exists by different id????", binding.name);
+                        if self.interpreter.get_nowait(binding.symbol.name()).is_some() {
+                            tracing::error!("{:?} exists by different id????", binding.symbol);
                         }
-                        eyre!("{:?} not found", binding.name)
+                        eyre!("{:?} not found", binding.symbol)
                     })?
                     .clone(),
                 Expr::If {

@@ -259,7 +259,9 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
                     Expr::Template { .. } => write!(f, "template expr")?,
                     Expr::Scope { .. } => write!(f, "scope expr")?,
                     Expr::If { .. } => write!(f, "if expr")?,
-                    Expr::Binding { binding, data: _ } => write!(f, "binding {:?}", binding.name)?,
+                    Expr::Binding { binding, data: _ } => {
+                        write!(f, "binding {:?}", binding.symbol)?
+                    }
                     Expr::Then { .. } => write!(f, "then expr")?,
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
                     Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
@@ -346,27 +348,27 @@ impl<Data> Expr<Data> {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct Name {
-    raw: String,
+pub struct Symbol {
+    name: String,
     id: Id,
 }
 
-impl std::fmt::Display for Name {
+impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.raw)
+        write!(f, "{:?}", self.name)
     }
 }
 
-impl Name {
-    pub fn raw(&self) -> &str {
-        &self.raw
+impl Symbol {
+    pub fn name(&self) -> &str {
+        &self.name
     }
     pub fn id(&self) -> Id {
         self.id
     }
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            raw: name.into(),
+            name: name.into(),
             id: Id::new(),
         }
     }
@@ -374,14 +376,14 @@ impl Name {
 
 #[derive(Debug)]
 pub struct Binding {
-    pub name: Name,
+    pub symbol: Symbol,
     pub ty: Type,
     pub hygiene: Hygiene,
 }
 
 impl std::fmt::Display for Binding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<binding {:?}>", self.name.raw())
+        write!(f, "<binding {:?}>", self.symbol.name())
     }
 }
 
