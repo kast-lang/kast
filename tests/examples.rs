@@ -144,6 +144,17 @@ fn test_macro_hygiene() {
 
 #[test]
 
+fn ast_nested_scope() {
+    test(Case {
+        name: "ast-nested-scope",
+        comment_lines_starting_with: None,
+        input: "",
+        expect_output: "hi\n",
+    });
+}
+
+#[test]
+
 fn test_unsafe() {
     test(Case {
         name: "unsafe",
