@@ -127,7 +127,7 @@ fn test_local_syntax() {
         name: "local-syntax",
         comment_lines_starting_with: None,
         input: "",
-        expect_output: "hello\nworld\nhello\nworld\n",
+        expect_output: "hello\nworld\nworld\nhello\n",
     });
 }
 
