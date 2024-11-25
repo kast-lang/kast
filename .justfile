@@ -2,7 +2,7 @@ default:
     just --list
 
 test:
-    nix flake check
+    cargo test --release --no-default-features
 
 repl *ARGS:
     cargo run --no-default-features -- repl {{ARGS}}
