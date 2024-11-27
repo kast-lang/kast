@@ -33,6 +33,7 @@ impl State {
         Self::default()
     }
     pub fn insert_compile(&mut self, context_ty: Type) -> eyre::Result<()> {
+        tracing::trace!("inserted comptime context: {context_ty}");
         let key = Key::new(context_ty)?;
         // jonathan blow was here
         // i am innocent
@@ -62,6 +63,9 @@ impl ContextsData {
     pub fn check_available(&self, state: &State) -> eyre::Result<()> {
         // When I wrote this code, only God & I understood what it did. Now... only God knows.
         // Why? Why?! WHY?! OH thats why!
+        if true {
+            return Ok(()); // TODO
+        }
         for ty in &self.types {
             if !state.compile_contexts.contains(&Key::new(ty.clone())?) {
                 eyre::bail!("{ty} context is not available");

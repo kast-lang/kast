@@ -1446,6 +1446,8 @@ impl Kast {
         self.interpreter
             .contexts
             .insert_compile(context.data().ty.clone())?;
+        // no context
+        // I wish I had done this in LUA
         Ok(Compiled::Expr(
             Expr::InjectContext {
                 context: Box::new(context),
@@ -2066,6 +2068,7 @@ impl Expr<Span> {
                             result: result_ty.clone(),
                         })))?;
                     contexts.var().add_check({
+                        // TODO remove this in future builds
                         let available_contexts = kast.interpreter.contexts.clone();
                         move |contexts| contexts.check_available(&available_contexts)
                     });
