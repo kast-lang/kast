@@ -19,7 +19,7 @@ impl BiScope {
             lexical: Parc::new(Scope::new(ty, lexical_parent)),
         }
     }
-    fn hygienic_scope(&self, hygiene: Hygiene) -> &Parc<Scope> {
+    pub fn hygienic_scope(&self, hygiene: Hygiene) -> &Parc<Scope> {
         match hygiene {
             Hygiene::CallSite => &self.evaluation,
             Hygiene::DefSite => &self.lexical,
@@ -36,22 +36,22 @@ impl BiScope {
             .await
     }
     pub async fn get(&self, binding: &Binding) -> Option<Value> {
-        self.hygienic_scope(binding.hygiene)
+        // self.hygienic_scope(binding.hygiene)
+        self.evaluation
             .get_impl(Lookup::Id(binding.symbol.id()), false) // TODO kast.spawned?
             .await
             .map(|(_symbol, value)| value)
     }
-    pub fn insert(&self, binding: &Binding, value: Value) {
-        self.hygienic_scope(binding.hygiene)
-            .insert(binding.symbol.clone(), value);
+    fn insert_runtime(&self, binding: &Binding, value: Value) {
+        self.evaluation.insert(binding.symbol.clone(), value);
     }
     pub fn insert_symbol(&self, symbol: Symbol, value: Value) {
         self.evaluation.insert(symbol.clone(), value.clone());
         self.lexical.insert(symbol, value)
     }
-    pub fn extend(&self, values: impl IntoIterator<Item = (Parc<Binding>, Value)>) {
+    pub fn extend_runtime(&self, values: impl IntoIterator<Item = (Parc<Binding>, Value)>) {
         for (binding, value) in values {
-            self.insert(&binding, value);
+            self.insert_runtime(&binding, value);
         }
     }
     pub fn close(&self) {

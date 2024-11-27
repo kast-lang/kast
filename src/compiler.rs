@@ -468,7 +468,13 @@ impl Kast {
         );
     }
     fn inject_binding(&mut self, binding: &Parc<Binding>) {
-        self.scope.insert(binding, Value::Binding(binding.clone()));
+        self.scope
+            .hygienic_scope(binding.hygiene)
+            .insert(binding.symbol.clone(), Value::Binding(binding.clone()));
+        // TODO unnamed into callsite? (evaluation scope)
+        self.scope
+            .evaluation
+            .insert(binding.symbol.clone(), Value::Binding(binding.clone()));
     }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| {
@@ -531,6 +537,16 @@ impl Kast {
         let value = self
             .eval_ast(value_ast, Some(pattern.data().ty.clone()))
             .await?;
+
+        let matches = pattern
+            .r#match(value.clone())
+            .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
+        for (binding, value) in matches {
+            self.scope
+                .hygienic_scope(binding.hygiene)
+                .insert(binding.symbol.clone(), value);
+        }
+
         let value = Box::new(
             Expr::Constant {
                 value,
@@ -539,17 +555,6 @@ impl Kast {
             .init(self)
             .await?,
         );
-        self.eval(
-            &Expr::Let {
-                is_const_let: false,
-                pattern: pattern.clone(),
-                value: value.clone(),
-                data: span.clone(),
-            }
-            .init(self)
-            .await?,
-        )
-        .await?;
         Ok(Compiled::Expr(
             Expr::Let {
                 is_const_let: true,
@@ -956,8 +961,8 @@ impl Kast {
                     Ok(())
                 }
                 .map_err(|err: eyre::Report| {
+                    let err = err.wrap_err("Failed to compile fn");
                     tracing::error!("{err:?}");
-                    panic!("{err:?}")
                 })
             })
             .detach();

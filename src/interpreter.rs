@@ -459,14 +459,8 @@ impl Kast {
         let matches = pattern
             .r#match(value)
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
-        self.insert_pattern_matches(matches);
+        self.scope.extend_runtime(matches);
         Ok(())
-    }
-    pub fn insert_pattern_matches(
-        &mut self,
-        matches: impl IntoIterator<Item = (Parc<Binding>, Value)>,
-    ) {
-        self.scope.extend(matches);
     }
     pub fn capture(&self) -> BiScope {
         self.scope.clone()
@@ -651,7 +645,7 @@ impl Kast {
                         // TODO no clone value
                         if let Some(matches) = branch.pattern.r#match(value.clone()) {
                             let mut kast = self.enter_scope();
-                            kast.scope.extend(matches);
+                            kast.scope.extend_runtime(matches);
                             let result = kast.eval(&branch.body).await?;
                             break 'result result;
                         }
@@ -665,7 +659,7 @@ impl Kast {
                 } => {
                     let value = self.eval(value).await?;
                     if let Some(matches) = pattern.r#match(value) {
-                        self.scope.extend(matches);
+                        self.scope.extend_runtime(matches);
                         Value::Bool(true)
                     } else {
                         Value::Bool(false)
