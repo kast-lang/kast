@@ -2,7 +2,6 @@ use super::*;
 
 #[derive(Clone)]
 pub struct State {
-    pub spawned: bool,
     pub builtins: Parc<HashMap<String, Builtin>>,
     pub contexts: contexts::State,
 }
@@ -82,7 +81,6 @@ impl State {
                     .unwrap();
                 contexts
             },
-            spawned: false,
             builtins: {
                 let mut map = HashMap::<String, Builtin>::new();
 
@@ -408,7 +406,7 @@ impl State {
 
 impl Kast {
     pub fn autocomplete<'a>(&'a self, s: &'a str) -> impl Iterator<Item = CompletionCandidate> {
-        self.scope.evaluation.inspect(|locals| {
+        self.scopes.interpreter.inspect(|locals| {
             locals
                 .iter()
                 .filter_map(move |(name, value)| {
@@ -426,17 +424,17 @@ impl Kast {
         })
     }
     pub fn scope_syntax_definitions(&self) -> Vec<Parc<ast::SyntaxDefinition>> {
-        self.scope
-            .evaluation
-            .syntax_definitions
+        self.scopes
+            .interpreter
+            .syntax_definitions()
             .lock()
             .unwrap()
             .clone()
     }
     pub fn insert_syntax(&mut self, definition: Parc<ast::SyntaxDefinition>) -> eyre::Result<()> {
-        self.scope
-            .evaluation
-            .syntax_definitions
+        self.scopes
+            .interpreter
+            .syntax_definitions()
             .lock()
             .unwrap()
             .push(definition);
@@ -446,24 +444,23 @@ impl Kast {
 
 impl Drop for Kast {
     fn drop(&mut self) {
-        self.scope.close();
+        self.scopes.close();
         self.advance_executor();
     }
 }
 
 impl Kast {
-    pub async fn get_binding(&self, binding: &Binding) -> Option<Value> {
-        self.scope.get(binding).await
-    }
     pub fn pattern_match(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
         let matches = pattern
             .r#match(value)
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
-        self.scope.extend_runtime(matches);
+        for (binding, value) in matches {
+            self.scopes.interpreter.insert(&binding.symbol, value);
+        }
         Ok(())
     }
-    pub fn capture(&self) -> BiScope {
-        self.scope.clone()
+    pub fn capture(&self) -> Scopes {
+        self.scopes.clone()
     }
 
     #[must_use]
@@ -478,17 +475,18 @@ impl Kast {
     #[must_use]
     pub fn enter_scope_impl(&self, ty: ScopeType) -> Self {
         let mut inner = self.clone();
-        inner.scope = BiScope::new(ty, Some(self.scope.clone()));
+        inner.scopes = Scopes::new(ty, Some(self.scopes.clone()));
         inner
     }
     #[must_use]
-    pub fn with_scope(&self, scope: BiScope) -> Self {
+    pub fn with_scopes(&self, scope: Scopes) -> Self {
         let mut kast = self.clone();
-        kast.scope = scope;
+        kast.scopes = scope;
         kast
     }
     pub fn add_local(&mut self, symbol: Symbol, value: Value) {
-        self.scope.insert_symbol(symbol, value);
+        // self.scopes.interpreter.insert(&symbol, value);
+        self.scopes.compiler.insert(symbol.name(), value);
     }
     pub fn eval_source(
         &mut self,
@@ -501,7 +499,7 @@ impl Kast {
                 let ast = ast.map_data(|span| AstData {
                     span,
                     hygiene: Hygiene::DefSite,
-                    lexical_scope: None,
+                    def_site: None,
                 });
                 // TODO but idr what this todo is about
                 futures_lite::future::block_on(self.eval_ast(&ast, expected_ty))
@@ -645,7 +643,9 @@ impl Kast {
                         // TODO no clone value
                         if let Some(matches) = branch.pattern.r#match(value.clone()) {
                             let mut kast = self.enter_scope();
-                            kast.scope.extend_runtime(matches);
+                            for (binding, value) in matches {
+                                kast.scopes.interpreter.insert(&binding.symbol, value);
+                            }
                             let result = kast.eval(&branch.body).await?;
                             break 'result result;
                         }
@@ -659,7 +659,9 @@ impl Kast {
                 } => {
                     let value = self.eval(value).await?;
                     if let Some(matches) = pattern.r#match(value) {
-                        self.scope.extend_runtime(matches);
+                        for (binding, value) in matches {
+                            self.scopes.interpreter.insert(&binding.symbol, value);
+                        }
                         Value::Bool(true)
                     } else {
                         Value::Bool(false)
@@ -774,13 +776,11 @@ impl Kast {
                     let mut inner = self.enter_recursive_scope();
                     inner.eval(body).await?.expect_unit()?;
                     let mut fields = Tuple::empty();
-                    for scope in [&inner.scope.evaluation, &inner.scope.lexical] {
-                        scope.inspect(|locals| {
-                            for (name, value) in locals.iter() {
-                                fields.add_named(name.name(), value.clone());
-                            }
-                        });
-                    }
+                    inner.scopes.interpreter.inspect(|locals| {
+                        for (name, value) in locals.iter() {
+                            fields.add_named(name.name(), value.clone());
+                        }
+                    });
                     Value::Tuple(fields)
                 }
                 Expr::Ast {
@@ -788,6 +788,8 @@ impl Kast {
                     definition,
                     values,
                     data,
+                    hygiene,
+                    def_site,
                 } => {
                     let mut ast_values = Tuple::empty();
                     for (name, value) in values.as_ref().into_iter() {
@@ -800,12 +802,12 @@ impl Kast {
                         values: ast_values,
                         data: AstData {
                             span: data.span.clone(),
-                            hygiene: Hygiene::DefSite,
-                            lexical_scope: None,
+                            hygiene: *hygiene,
+                            def_site: def_site.clone(),
                         },
                     };
                     if *expr_root {
-                        ast = self.preserve_lexical_scope(&ast);
+                        ast = self.set_def_site(&ast);
                     }
                     Value::Ast(ast)
                 }
@@ -837,8 +839,9 @@ impl Kast {
                     inner.eval(expr).await?
                 }
                 Expr::Binding { binding, data: _ } => self
-                    .get_binding(binding)
-                    .await // TODO this should not be async?
+                    .scopes
+                    .interpreter
+                    .get(&binding.symbol)
                     .ok_or_else(|| eyre!("{:?} not found", binding.symbol))?
                     .clone(),
                 Expr::If {
@@ -995,7 +998,7 @@ impl Kast {
     }
 
     pub async fn call_fn(&self, f: Function, arg: Value) -> eyre::Result<Value> {
-        let mut kast = self.with_scope(BiScope::new(
+        let mut kast = self.with_scopes(Scopes::new(
             ScopeType::NonRecursive,
             Some(f.captured.clone()),
         ));

@@ -1,18 +1,18 @@
 use super::*;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ExprData {
     pub ty: Type,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MatchBranch {
     pub pattern: Pattern,
     pub body: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Expr<Data = ExprData> {
     Unwindable {
         name: Pattern,
@@ -150,11 +150,12 @@ pub enum Expr<Data = ExprData> {
         expr_root: bool,
         definition: Parc<ast::SyntaxDefinition>,
         values: Tuple<Expr>,
+        hygiene: Hygiene,
+        def_site: Option<CompilerScope>,
         data: Data,
     },
 }
 
-#[derive(Debug)]
 pub struct CompiledFn {
     pub arg: Pattern,
     pub body: Expr,
@@ -375,11 +376,10 @@ impl Symbol {
     }
 }
 
-#[derive(Debug)]
 pub struct Binding {
     pub symbol: Symbol,
     pub ty: Type,
-    pub hygiene: Hygiene,
+    pub compiler_scope: CompilerScope,
 }
 
 impl std::fmt::Display for Binding {
@@ -388,13 +388,13 @@ impl std::fmt::Display for Binding {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PatternData {
     pub ty: Type,
     pub span: Span,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Pattern<Data = PatternData> {
     /// matches anything
     Placeholder {

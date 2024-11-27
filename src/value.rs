@@ -78,7 +78,13 @@ impl std::fmt::Display for Value {
             Value::Function(_function) => write!(f, "<function>"),
             Value::Template(_template) => write!(f, "<template>"),
             Value::Macro(_macro) => write!(f, "<macro>"),
-            Value::Ast(ast) => ast.fmt(f),
+            Value::Ast(ast) => {
+                write!(f, "{ast}")?;
+                if let Some(scope) = &ast.data().def_site {
+                    write!(f, " with def site id={}", scope.id())?;
+                }
+                Ok(())
+            }
             Value::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
@@ -306,7 +312,7 @@ impl std::ops::Deref for TypedFunction {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub id: Id,
-    pub captured: BiScope,
+    pub captured: Scopes,
     pub compiled: MaybeCompiledFn,
 }
 

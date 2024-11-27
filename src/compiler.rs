@@ -2,14 +2,12 @@ use super::*;
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub enum Hygiene {
-    CallSite,
     DefSite,
 }
 
 impl std::fmt::Debug for Hygiene {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CallSite => write!(f, "CallSite"),
             Self::DefSite => write!(f, "DefSite"),
         }
     }
@@ -20,7 +18,7 @@ impl std::fmt::Debug for Hygiene {
 pub struct AstData {
     pub span: Span,
     pub hygiene: Hygiene,
-    pub lexical_scope: Option<Parc<Scope>>,
+    pub def_site: Option<CompilerScope>,
 }
 
 impl ast::HasSpan for AstData {
@@ -239,8 +237,10 @@ impl Compilable for Expr {
                     name,
                     is_raw: _,
                 } => {
-                    let (_symbol, value) = kast
-                        .lookup(name, data.hygiene)
+                    let value = kast
+                        .scopes
+                        .compiler
+                        .lookup(name, data.hygiene, kast.spawned)
                         .await
                         .ok_or_else(|| eyre!("{name:?} not found"))?;
                     match value {
@@ -297,7 +297,7 @@ impl Compilable for Expr {
                         let arg = Value::Tuple(
                             values
                                 .as_ref()
-                                .map(|ast| Value::Ast(kast.preserve_lexical_scope(ast))),
+                                .map(|ast| Value::Ast(kast.set_def_site(ast))),
                         );
                         // hold on
                         let expanded = kast.call_fn(r#macro, arg).await?;
@@ -389,7 +389,7 @@ impl Compilable for Pattern {
                     AstData {
                         span,
                         hygiene,
-                        lexical_scope: _,
+                        def_site: _,
                     },
             } => match token {
                 Token::Ident {
@@ -405,7 +405,9 @@ impl Compilable for Pattern {
                         binding: Parc::new(Binding {
                             symbol: Symbol::new(name),
                             ty: Type::new_not_inferred(),
-                            hygiene: *hygiene,
+                            compiler_scope: match hygiene {
+                                Hygiene::DefSite => kast.scopes.compiler.clone(),
+                            },
                         }),
                         data: span.clone(),
                     }
@@ -432,7 +434,7 @@ impl Compilable for Pattern {
                         let arg = Value::Tuple(
                             values
                                 .as_ref()
-                                .map(|ast| Value::Ast(kast.preserve_lexical_scope(ast))),
+                                .map(|ast| Value::Ast(kast.set_def_site(ast))),
                         );
                         // hold on
                         let expanded = kast.call_fn(r#macro, arg).await?;
@@ -468,34 +470,31 @@ impl Kast {
         );
     }
     fn inject_binding(&mut self, binding: &Parc<Binding>) {
-        self.scope
-            .hygienic_scope(binding.hygiene)
-            .insert(binding.symbol.clone(), Value::Binding(binding.clone()));
-        // TODO unnamed into callsite? (evaluation scope)
-        self.scope
-            .evaluation
-            .insert(binding.symbol.clone(), Value::Binding(binding.clone()));
+        binding
+            .compiler_scope
+            .insert(binding.symbol.name(), Value::Binding(binding.clone()));
+        self.scopes
+            .interpreter
+            .insert(&binding.symbol, Value::Binding(binding.clone()));
     }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| {
             self.inject_binding(&binding);
         });
     }
-    pub fn preserve_lexical_scope(&self, ast: &Ast) -> Ast {
+    pub fn set_def_site(&self, ast: &Ast) -> Ast {
         let mut ast = ast.clone();
-        let lexical_scope = &mut ast.data_mut().lexical_scope;
-        if lexical_scope.is_none() {
-            *lexical_scope = Some(self.scope.lexical.clone());
+        // println!("set def site of {ast}???");
+        let def_site = &mut ast.data_mut().def_site;
+        if def_site.is_none() {
+            *def_site = Some(self.scopes.compiler.clone());
+            // println!("set def site of {ast} = {:?}", self.scopes.compiler.id());
         }
         ast
     }
     pub async fn compile<T: Compilable>(&mut self, ast: &Ast) -> eyre::Result<T> {
-        let mut kast = match &ast.data().lexical_scope {
-            Some(scope) => {
-                let mut biscope = self.scope.clone();
-                biscope.lexical = Parc::new(Scope::new(scope.ty, Some(scope.clone())));
-                self.with_scope(biscope)
-            }
+        let mut kast = match &ast.data().def_site {
+            Some(scope) => self.with_scopes(self.scopes.enter_def_site(scope.clone())),
             None => self.clone(),
         };
         let result = T::compile(&mut kast, ast)
@@ -542,9 +541,7 @@ impl Kast {
             .r#match(value.clone())
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
-            self.scope
-                .hygienic_scope(binding.hygiene)
-                .insert(binding.symbol.clone(), value);
+            self.scopes.compiler.insert(binding.symbol.name(), value);
         }
 
         let value = Box::new(
@@ -975,11 +972,11 @@ impl Kast {
             .as_ref()
             .into_named_opt(["body"], ["arg", "contexts", "result_type"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let mut inner = self.enter_scope();
         let arg: Pattern = match arg {
-            Some(arg) => self.compile(arg).await?,
+            Some(arg) => inner.compile(arg).await?,
             None => Pattern::Unit { data: span.clone() }.init()?,
         };
-        let mut inner = self.enter_scope();
         self.inject_bindings(&arg);
         let arg_ty = arg.data().ty.clone();
         let result_type = match result_type {
@@ -1019,6 +1016,7 @@ impl Kast {
             .as_ref()
             .into_unnamed()
             .wrap_err_with(|| "Macro received incorrect arguments")?;
+        tracing::trace!("compiling scoped: {expr}");
         Ok(match cty {
             CompiledType::Expr => {
                 let expr = self.enter_scope().compile(expr).await?;
@@ -1125,6 +1123,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let r#macro = self.compile(r#macro).await?;
         let arg = self.compile(arg).await?;
+        // println!("evaled = {:?}", self.eval(&arg).await.unwrap());
         Ok(Compiled::Expr(
             Expr::CallMacro {
                 r#macro: Box::new(r#macro),
@@ -1228,7 +1227,12 @@ impl Kast {
                     Ast::Complex {
                         definition,
                         values,
-                        data,
+                        data:
+                            AstData {
+                                span,
+                                hygiene,
+                                def_site,
+                            },
                     } => {
                         if definition.name == "builtin macro unquote" {
                             let expr = values
@@ -1248,7 +1252,9 @@ impl Kast {
                                     }
                                     result
                                 },
-                                data: data.span.clone(),
+                                hygiene: *hygiene,
+                                def_site: def_site.clone(),
+                                data: span.clone(),
                             }
                             .init(kast)
                             .await?
@@ -1257,7 +1263,7 @@ impl Kast {
                     _ => {
                         Expr::Constant {
                             value: Value::Ast(match expr_root {
-                                true => kast.preserve_lexical_scope(ast),
+                                true => kast.set_def_site(ast),
                                 false => ast.clone(),
                             }),
                             data: ast.data().span.clone(),
@@ -1844,6 +1850,8 @@ impl Expr<Span> {
                     expr_root,
                     definition,
                     values,
+                    hygiene,
+                    def_site,
                     data: span,
                 } => {
                     for value in values.values() {
@@ -1858,6 +1866,8 @@ impl Expr<Span> {
                         },
                         definition,
                         values,
+                        hygiene,
+                        def_site,
                     }
                 }
                 Expr::Recursive {
@@ -2096,7 +2106,7 @@ impl Expr<Span> {
                     let arg = kast.clone().eval(&arg_ir).await?;
 
                     let mut template_kast =
-                        kast.with_scope(BiScope::new(ScopeType::NonRecursive, None));
+                        kast.with_scopes(Scopes::new(ScopeType::NonRecursive, None));
                     template_kast.pattern_match(&compiled.arg, arg)?;
                     let result_ty = compiled
                         .body

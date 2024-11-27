@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use biscope::*;
 use cast::*;
 pub use compiler::{Ast, AstData, Hygiene};
 pub use contexts::Contexts;
@@ -14,7 +13,7 @@ pub use kast_ast as ast;
 pub use kast_ast::Token;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
-use scope::{Lookup, Scope, ScopeType};
+use scopes::*;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -22,7 +21,6 @@ use try_hash::TryHash;
 pub use ty::*;
 pub use value::*;
 
-mod biscope;
 mod cast;
 mod compiler;
 mod contexts;
@@ -30,7 +28,7 @@ mod id;
 pub mod inference;
 mod interpreter;
 mod ir;
-mod scope;
+mod scopes;
 mod ty;
 mod value;
 
@@ -44,7 +42,8 @@ pub struct Kast {
     executor: Parc<async_executor::Executor<'static>>,
     syntax: ast::Syntax,
     pub interpreter: interpreter::State,
-    scope: BiScope,
+    spawned: bool,
+    scopes: Scopes,
     cache: Parc<Cache>,
     pub output: std::sync::Arc<dyn Output>,
 }
@@ -106,9 +105,10 @@ impl Default for Cache {
 impl Kast {
     fn from_scratch(cache: Option<Parc<Cache>>) -> Self {
         Self {
+            spawned: false,
             executor: Parc::new(async_executor::Executor::new()),
             syntax: ast::Syntax::empty(),
-            scope: BiScope::new(ScopeType::NonRecursive, None),
+            scopes: Scopes::new(ScopeType::NonRecursive, None),
             interpreter: interpreter::State::new(),
             cache: cache.unwrap_or_default(),
             output: std::sync::Arc::new({
@@ -223,7 +223,7 @@ impl Kast {
 
     fn spawn_clone(&self) -> Self {
         let mut kast = self.clone();
-        kast.interpreter.spawned = true;
+        kast.spawned = true;
         kast
     }
 

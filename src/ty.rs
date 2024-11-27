@@ -1,7 +1,7 @@
 use super::*;
 
 /// Partially inferred type, so we know the shape of it
-#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub enum TypeShape {
     Unit,
     Bool,
@@ -24,6 +24,12 @@ pub enum TypeShape {
     UnwindHandle(#[try_hash] Type),
     Binding(Parc<Binding>),
     Symbol,
+}
+
+impl std::fmt::Debug for TypeShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
 }
 
 impl ShowShort for TypeShape {
@@ -299,15 +305,14 @@ impl SubstituteBindings for Type {
             TypeShape::Macro(f) => {
                 TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache))).into()
             }
-            TypeShape::Binding(binding) => {
-                match kast.scope.get(&binding).now_or_never().flatten() {
-                    Some(value) => value.expect_type().unwrap_or_else(|e| {
-                        panic!("{} expected to be a type: {e}", binding.symbol.name())
-                    }),
-                    None => TypeShape::Binding(binding.clone()).into(),
-                }
-            }
+            TypeShape::Binding(binding) => match kast.scopes.interpreter.get(&binding.symbol) {
+                Some(value) => value.expect_type().unwrap_or_else(|e| {
+                    panic!("{} expected to be a type: {e}", binding.symbol.name())
+                }),
+                None => TypeShape::Binding(binding.clone()).into(),
+            },
         };
+        tracing::trace!("subbed as {result}");
         result
     }
 }
