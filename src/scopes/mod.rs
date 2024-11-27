@@ -1,3 +1,5 @@
+use std::sync::{atomic::AtomicUsize, Arc};
+
 use super::*;
 
 mod scope;
@@ -51,16 +53,37 @@ impl CompilerScope {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Scopes {
     pub id: Id,
     /// we get values for symbols by id
     pub interpreter: InterpreterScope,
     /// we get values by names
     pub compiler: CompilerScope,
+    refcount: Arc<AtomicUsize>,
+    is_weak: bool,
+}
+
+impl Clone for Scopes {
+    fn clone(&self) -> Self {
+        self.clone_impl(false)
+    }
 }
 
 impl Scopes {
+    fn clone_impl(&self, is_weak: bool) -> Self {
+        let is_weak = self.is_weak || is_weak;
+        if !is_weak {
+            self.refcount
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        Self {
+            id: self.id,
+            interpreter: self.interpreter.clone(),
+            compiler: self.compiler.clone(),
+            is_weak,
+            refcount: self.refcount.clone(),
+        }
+    }
     pub fn new(ty: ScopeType, parent: Option<Scopes>) -> Self {
         let (iparent, cparent) = match parent {
             Some(parent) => (
@@ -73,6 +96,8 @@ impl Scopes {
             id: Id::new(),
             interpreter: InterpreterScope(Parc::new(Scope::new(ty, iparent))),
             compiler: CompilerScope(Parc::new(Scope::new(ty, cparent))),
+            is_weak: false,
+            refcount: Arc::new(AtomicUsize::new(1)),
         }
     }
     pub fn enter_def_site(&self, def_site: CompilerScope) -> Self {
@@ -82,10 +107,25 @@ impl Scopes {
             interpreter: self.interpreter.clone(),
             compiler: def_site,
             // compiler: CompilerScope(Parc::new(Scope::new(self.interpreter.0.ty, Some(def_site.0)))),
+            is_weak: true,
+            refcount: self.refcount.clone(),
         }
     }
-    pub fn close(&self) {
-        self.interpreter.0.close();
-        self.compiler.0.close();
+    pub fn weak_ref(&self) -> Self {
+        self.clone_impl(true)
+    }
+}
+
+impl Drop for Scopes {
+    fn drop(&mut self) {
+        if !self.is_weak
+            && self
+                .refcount
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst)
+                == 1
+        {
+            self.interpreter.0.close();
+            self.compiler.0.close();
+        }
     }
 }

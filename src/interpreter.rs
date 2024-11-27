@@ -444,7 +444,6 @@ impl Kast {
 
 impl Drop for Kast {
     fn drop(&mut self) {
-        self.scopes.close();
         self.advance_executor();
     }
 }
@@ -459,8 +458,8 @@ impl Kast {
         }
         Ok(())
     }
-    pub fn capture(&self) -> Scopes {
-        self.scopes.clone()
+    pub fn capture(&self) -> Parc<Scopes> {
+        Parc::new(self.scopes.weak_ref())
     }
 
     #[must_use]
@@ -1000,7 +999,7 @@ impl Kast {
     pub async fn call_fn(&self, f: Function, arg: Value) -> eyre::Result<Value> {
         let mut kast = self.with_scopes(Scopes::new(
             ScopeType::NonRecursive,
-            Some(f.captured.clone()),
+            Some((*f.captured).clone()),
         ));
         let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
         arg.ty().make_same(

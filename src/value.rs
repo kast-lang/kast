@@ -312,7 +312,7 @@ impl std::ops::Deref for TypedFunction {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub id: Id,
-    pub captured: Scopes,
+    pub captured: Parc<Scopes>,
     pub compiled: MaybeCompiledFn,
 }
 

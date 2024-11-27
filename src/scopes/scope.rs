@@ -120,6 +120,7 @@ impl Scope {
                     ScopeType::Recursive => {}
                 }
                 if was_closed {
+                    tracing::trace!("not found in recursive - was closed");
                     break;
                 }
                 if !do_await {
