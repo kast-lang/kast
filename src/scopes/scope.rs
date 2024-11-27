@@ -43,6 +43,7 @@ pub struct Scope {
     closed_event: event_listener::Event,
     pub syntax_definitions: Mutex<Vec<Parc<ast::SyntaxDefinition>>>,
     locals: Mutex<Locals>,
+    pub contexts: Mutex<contexts::State>,
 }
 
 impl Drop for Scope {
@@ -86,6 +87,7 @@ impl Scope {
             closed_event: event_listener::Event::new(),
             syntax_definitions: Default::default(),
             locals: Mutex::new(Locals::new()),
+            contexts: Mutex::new(contexts::State::empty()),
         }
     }
     pub fn close(&self) {

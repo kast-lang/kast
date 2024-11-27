@@ -21,16 +21,77 @@ impl std::hash::Hash for Key {
 }
 
 // idk how i ended up with this approach
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct State {
     runtime_contexts: HashMap<Key, Value>,
     /// Contexts that are going to be brought in using "with" exprs at runtime
     compile_contexts: HashSet<Key>,
 }
 
+pub fn default_number_type() -> Value {
+    let mut context = Tuple::empty();
+    context.add_named(
+        "default_number_type",
+        Value::NativeFunction(NativeFunction {
+            name: "default_number_type".to_owned(),
+            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
+                let _s = s.expect_string()?;
+                Ok(Value::Type(Type::new_not_inferred()))
+            }) as std::sync::Arc<NativeFunctionImpl>)
+                .into(),
+            ty: FnType {
+                arg: TypeShape::String.into(),
+                contexts: Contexts::empty(),
+                result: TypeShape::Type.into(),
+            },
+        }),
+    );
+    Value::Tuple(context)
+}
+
+pub fn output_context() -> Value {
+    let write_type = FnType {
+        arg: TypeShape::String.into(),
+        contexts: Contexts::empty(),
+        result: TypeShape::Unit.into(),
+    };
+    let mut context_type = Tuple::empty();
+    context_type.add_named(
+        "write",
+        TypeShape::Function(Box::new(write_type.clone())).into(),
+    );
+    let context_type = TypeShape::Tuple(context_type).into();
+    let mut context = Tuple::empty();
+    context.add_named(
+        "write",
+        Value::NativeFunction(NativeFunction {
+            name: "print".to_owned(),
+            r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
+                let s = s.expect_string()?;
+                kast.output.write(s);
+                Ok(Value::Unit)
+            }) as std::sync::Arc<NativeFunctionImpl>)
+                .into(),
+            ty: write_type,
+        }),
+    );
+    let context = Value::Tuple(context);
+    assert_eq!(context.ty(), context_type);
+    context
+}
+
 impl State {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn empty() -> Self {
+        Self {
+            runtime_contexts: Default::default(),
+            compile_contexts: Default::default(),
+        }
+    }
+    pub fn default() -> Self {
+        let mut contexts = Self::empty();
+        contexts.insert_runtime(output_context()).unwrap();
+        contexts.insert_runtime(default_number_type()).unwrap();
+        contexts
     }
     pub fn insert_compile(&mut self, context_ty: Type) -> eyre::Result<()> {
         tracing::trace!("inserted comptime context: {context_ty}");

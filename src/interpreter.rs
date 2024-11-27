@@ -3,7 +3,6 @@ use super::*;
 #[derive(Clone)]
 pub struct State {
     pub builtins: Parc<HashMap<String, Builtin>>,
-    pub contexts: contexts::State,
 }
 
 type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
@@ -21,66 +20,7 @@ pub struct CompletionCandidate {
 impl State {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        let default_number_type = {
-            let mut context = Tuple::empty();
-            context.add_named(
-                "default_number_type",
-                Value::NativeFunction(NativeFunction {
-                    name: "default_number_type".to_owned(),
-                    r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
-                        let _s = s.expect_string()?;
-                        Ok(Value::Type(Type::new_not_inferred()))
-                    }) as std::sync::Arc<NativeFunctionImpl>)
-                        .into(),
-                    ty: FnType {
-                        arg: TypeShape::String.into(),
-                        contexts: Contexts::empty(),
-                        result: TypeShape::Type.into(),
-                    },
-                }),
-            );
-            Value::Tuple(context)
-        };
-        let (output_context, output_context_type) = {
-            let write_type = FnType {
-                arg: TypeShape::String.into(),
-                contexts: Contexts::empty(),
-                result: TypeShape::Unit.into(),
-            };
-            let mut context_type = Tuple::empty();
-            context_type.add_named(
-                "write",
-                TypeShape::Function(Box::new(write_type.clone())).into(),
-            );
-            let context_type = TypeShape::Tuple(context_type).into();
-            let mut context = Tuple::empty();
-            context.add_named(
-                "write",
-                Value::NativeFunction(NativeFunction {
-                    name: "print".to_owned(),
-                    r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
-                        let s = s.expect_string()?;
-                        kast.output.write(s);
-                        Ok(Value::Unit)
-                    }) as std::sync::Arc<NativeFunctionImpl>)
-                        .into(),
-                    ty: write_type,
-                }),
-            );
-            let context = Value::Tuple(context);
-            assert_eq!(context.ty(), context_type);
-            (context, context_type)
-        };
-
         Self {
-            contexts: {
-                let mut contexts = contexts::State::new();
-                contexts.insert_runtime(output_context).unwrap();
-                contexts
-                    .insert_runtime(default_number_type.clone())
-                    .unwrap();
-                contexts
-            },
             builtins: {
                 let mut map = HashMap::<String, Builtin>::new();
 
@@ -114,11 +54,14 @@ impl State {
                 insert_ty("ast", TypeShape::Ast);
                 insert_ty("type", TypeShape::Type);
                 insert_ty("symbol", TypeShape::Symbol);
-                insert_ty("output", output_context_type.inferred().unwrap());
+                insert_ty(
+                    "output",
+                    contexts::output_context().ty().inferred().unwrap(),
+                );
                 // does anyone understand what happened here?
                 insert_ty(
                     "default_number_type",
-                    default_number_type.ty().inferred().unwrap(),
+                    contexts::default_number_type().ty().inferred().unwrap(),
                 );
 
                 map.insert(
@@ -577,14 +520,19 @@ impl Kast {
                 }
                 Expr::InjectContext { context, data: _ } => {
                     let context = self.eval(context).await?;
-                    self.interpreter.contexts.insert_runtime(context)?;
+                    self.scopes
+                        .interpreter
+                        .contexts()
+                        .lock()
+                        .unwrap()
+                        .insert_runtime(context)?;
                     Value::Unit
                 }
                 Expr::CurrentContext { data } => {
                     let ty = data.ty.clone();
-                    self.interpreter
-                        .contexts
-                        .get_runtime(ty.clone())?
+                    self.scopes
+                        .interpreter
+                        .get_runtime_context(ty.clone())?
                         .ok_or_else(|| eyre!("{ty} context not available"))?
                 }
                 Expr::Unit { data } => match data.ty.inferred_or_default()? {

@@ -1443,8 +1443,11 @@ impl Kast {
         }
         // god pls forgive me the sin of creating kast
         let context: Expr = self.compile(new_context).await?;
-        self.interpreter
-            .contexts
+        self.scopes
+            .interpreter
+            .contexts()
+            .lock()
+            .unwrap()
             .insert_compile(context.data().ty.clone())?;
         // no context
         // I wish I had done this in LUA
@@ -1711,8 +1714,17 @@ impl Expr<Span> {
                     let mut result_ty = Type::new_not_inferred();
                     let mut value_ty = value.data().ty.clone();
                     for branch in &branches {
-                        value_ty.make_same(branch.pattern.data().ty.clone())?;
-                        result_ty.make_same(branch.body.data().ty.clone())?;
+                        // println!("{} ++ {}", branch.pattern.data().ty, value_ty);
+                        value_ty
+                            .make_same(branch.pattern.data().ty.clone())
+                            .wrap_err_with(|| {
+                                eyre!("match branch pattern at {}", branch.pattern.data().span)
+                            })?;
+                        result_ty
+                            .make_same(branch.body.data().ty.clone())
+                            .wrap_err_with(|| {
+                                eyre!("match branch body at {}", branch.pattern.data().span)
+                            })?;
                     }
                     Expr::Match {
                         value,
@@ -1993,9 +2005,9 @@ impl Expr<Span> {
                             )?
                             .expect_type()?;
                             let default_number_type_context = kast
+                                .scopes
                                 .interpreter
-                                .contexts
-                                .get_runtime(default_number_type_context_type)?
+                                .get_runtime_context(default_number_type_context_type)?
                                 .ok_or_else(|| {
                                     eyre!("default number type context not available")
                                 })?;
@@ -2067,11 +2079,9 @@ impl Expr<Span> {
                             contexts: contexts.clone(),
                             result: result_ty.clone(),
                         })))?;
-                    contexts.var().add_check({
-                        // TODO remove this in future builds
-                        let available_contexts = kast.interpreter.contexts.clone();
-                        move |contexts| contexts.check_available(&available_contexts)
-                    });
+                    // TODO remove this in future builds
+                    // ^ this comment is fake
+                    // TODO check contexts
                     Expr::Call {
                         f: Box::new(f),
                         arg,

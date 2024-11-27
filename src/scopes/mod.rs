@@ -11,6 +11,22 @@ pub use scope::{Locals, ScopeType};
 pub struct InterpreterScope(Parc<Scope>);
 
 impl InterpreterScope {
+    pub fn contexts(&self) -> &Mutex<contexts::State> {
+        &self.0.contexts
+    }
+    pub fn get_runtime_context(&self, ty: Type) -> eyre::Result<Option<Value>> {
+        let mut scope = &self.0;
+        loop {
+            tracing::trace!("Looking for context {ty} in scope {:?}", scope.id);
+            if let Some(context) = scope.contexts.lock().unwrap().get_runtime(ty.clone())? {
+                return Ok(Some(context));
+            }
+            scope = match &scope.parent {
+                Some(parent) => parent,
+                None => return Ok(None),
+            }
+        }
+    }
     pub fn insert(&self, symbol: &Symbol, value: Value) {
         self.0.insert(symbol.clone(), value);
     }
