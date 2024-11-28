@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use cast::*;
 pub use compiler::{Ast, AstData, Hygiene};
 pub use contexts::Contexts;
+use executor::Executor;
 use eyre::{eyre, Context as _};
 use futures::future::BoxFuture;
 use futures::prelude::*;
@@ -22,8 +23,10 @@ pub use ty::*;
 pub use value::*;
 
 mod cast;
+mod comments;
 mod compiler;
 mod contexts;
+mod executor;
 mod id;
 pub mod inference;
 mod interpreter;
@@ -39,10 +42,10 @@ pub trait Output: 'static + Sync + Send {
 #[derive(Clone)]
 pub struct Kast {
     /// Am I a background task? :)
-    executor: Parc<async_executor::Executor<'static>>,
+    executor: Executor,
     syntax: ast::Syntax,
     pub interpreter: interpreter::State,
-    spawned: bool,
+    spawn_id: Id,
     scopes: Scopes,
     cache: Parc<Cache>,
     pub output: std::sync::Arc<dyn Output>,
@@ -104,11 +107,12 @@ impl Default for Cache {
 
 impl Kast {
     fn from_scratch(cache: Option<Parc<Cache>>) -> Self {
+        let spawn_id = Id::new();
         Self {
-            spawned: false,
-            executor: Parc::new(async_executor::Executor::new()),
+            spawn_id,
+            executor: Executor::new(),
             syntax: ast::Syntax::empty(),
-            scopes: Scopes::new(ScopeType::NonRecursive, None),
+            scopes: Scopes::new(spawn_id, ScopeType::NonRecursive, None),
             interpreter: interpreter::State::new(),
             cache: cache.unwrap_or_default(),
             output: std::sync::Arc::new({
@@ -122,36 +126,36 @@ impl Kast {
             }),
         }
     }
-    fn only_std_syntax(cache: Option<Parc<Cache>>) -> Self {
+    fn only_std_syntax(cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
         let mut kast = Self::from_scratch(cache);
         let syntax = kast
             .import_impl(std_path().join("syntax.ks"), ImportMode::FromScratch)
-            .expect("failed to import std syntax")
+            .wrap_err("failed to import std syntax")?
             .expect_syntax_module()
-            .expect("std/syntax.ks must evaluate to syntax");
+            .wrap_err("std/syntax.ks must evaluate to syntax")?;
         for definition in &*syntax {
             tracing::trace!("std syntax: {}", definition.name);
             kast.cache.compiler.register_syntax(definition);
             kast.syntax
                 .insert(definition.clone())
-                .expect("Failed to add std syntax");
+                .wrap_err("Failed to add std syntax")?;
         }
-        kast
+        Ok(kast)
     }
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new() -> eyre::Result<Self> {
         Self::new_normal(None)
     }
-    pub fn new_nostdlib() -> Self {
+    pub fn new_nostdlib() -> eyre::Result<Self> {
         Self::only_std_syntax(None)
     }
-    fn new_normal(cache: Option<Parc<Cache>>) -> Self {
-        let mut kast = Self::only_std_syntax(cache);
+    fn new_normal(cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
+        let mut kast = Self::only_std_syntax(cache)?;
         let std = kast
             .import_impl(std_path().join("lib.ks"), ImportMode::OnlyStdSyntax)
-            .expect("std lib import failed");
+            .wrap_err("std lib import failed")?;
         kast.add_local(Symbol::new("std"), std);
-        kast
+        Ok(kast)
     }
 
     pub fn import(&self, path: impl AsRef<Path>) -> eyre::Result<Value> {
@@ -178,8 +182,8 @@ impl Kast {
             .unwrap()
             .insert(path.clone(), None);
         let mut kast = match mode {
-            ImportMode::Normal => Self::new_normal(Some(self.cache.clone())),
-            ImportMode::OnlyStdSyntax => Self::only_std_syntax(Some(self.cache.clone())),
+            ImportMode::Normal => Self::new_normal(Some(self.cache.clone()))?,
+            ImportMode::OnlyStdSyntax => Self::only_std_syntax(Some(self.cache.clone()))?,
             ImportMode::FromScratch => Self::from_scratch(Some(self.cache.clone())),
         };
         let source = SourceFile {
@@ -223,12 +227,8 @@ impl Kast {
 
     fn spawn_clone(&self) -> Self {
         let mut kast = self.clone();
-        kast.spawned = true;
+        kast.spawn_id = Id::new();
         kast
-    }
-
-    fn advance_executor(&self) {
-        while self.executor.try_tick() {}
     }
 }
 

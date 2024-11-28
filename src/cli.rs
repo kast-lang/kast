@@ -10,6 +10,8 @@ pub enum Command {
     },
     Run {
         path: PathBuf,
+        #[clap(long)]
+        no_stdlib: bool,
     },
 }
 

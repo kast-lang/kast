@@ -55,8 +55,12 @@ fn main() -> eyre::Result<()> {
 
     let cli_args = cli::parse();
     match cli_args.command {
-        cli::Command::Run { path } => {
-            let mut kast = Kast::new();
+        cli::Command::Run { path, no_stdlib } => {
+            let mut kast = match no_stdlib {
+                true => Kast::new_nostdlib(),
+                false => Kast::new(),
+            }
+            .unwrap();
             let value = kast.eval_source(
                 SourceFile {
                     contents: std::fs::read_to_string(&path)?,
@@ -89,10 +93,13 @@ fn main() -> eyre::Result<()> {
             })?;
         }
         cli::Command::Repl { path, no_stdlib } => {
-            let kast = Arc::new(Mutex::new(match no_stdlib {
-                false => Kast::new(),
-                true => Kast::new_nostdlib(),
-            }));
+            let kast = Arc::new(Mutex::new(
+                match no_stdlib {
+                    false => Kast::new(),
+                    true => Kast::new_nostdlib(),
+                }
+                .unwrap(),
+            ));
             if let Some(path) = path {
                 let name = path.file_stem().unwrap().to_str().unwrap();
                 let mut kast = kast.lock().unwrap();

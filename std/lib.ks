@@ -154,3 +154,28 @@ impl syntax @"syntax".break_without_value = macro _ => `(
 impl syntax @"syntax".break_with_value = macro (.value) => `(
   (current loop_context[_]).@"break" $value
 );
+
+#trait Iterator {
+#    type Item;
+#    fn next(&mut self) -> Option<<Self as Iterator>::Item>;
+#}
+
+/*
+const Iterator = forall[Self] {
+    .Item = type,
+    .next = Self -> (Self as Iterator).Item,
+};
+
+/*
+const generator = forall[Self] {
+    rec (
+        let item = type;
+        let generate = Self -> () with generator_handler[item];
+    )
+};
+
+impl string as generator = (
+    .item = char,
+    .generate :: string -> () with generator_handler[char] = native "iterate_over_string",
+);
+*/

@@ -24,7 +24,7 @@ impl InterpreterScope {
     pub fn get(&self, symbol: &Symbol) -> Option<Value> {
         let (_symbol, value) = self
             .0
-            .get_impl(Lookup::Id(symbol.id()), false)
+            .get_impl(Lookup::Id(symbol.id()), None)
             .now_or_never()
             .unwrap()?;
         Some(value)
@@ -42,11 +42,11 @@ impl CompilerScope {
         tracing::trace!("inserting {name:?} into {:?}", self.0.id);
         self.0.insert(Symbol::new(name), value);
     }
-    pub async fn lookup(&self, name: &str, hygiene: Hygiene, do_await: bool) -> Option<Value> {
+    pub async fn lookup(&self, name: &str, hygiene: Hygiene, spawn_id: Id) -> Option<Value> {
         tracing::trace!("lookup {name:?} in {:?}", self.0.id);
         match hygiene {
             Hygiene::DefSite => {
-                let (_symbol, value) = self.0.get_impl(Lookup::Name(name), do_await).await?;
+                let (_symbol, value) = self.0.get_impl(Lookup::Name(name), Some(spawn_id)).await?;
                 Some(value)
             }
         }
@@ -84,7 +84,7 @@ impl Scopes {
             refcount: self.refcount.clone(),
         }
     }
-    pub fn new(ty: ScopeType, parent: Option<Scopes>) -> Self {
+    pub fn new(spawn_id: Id, ty: ScopeType, parent: Option<Scopes>) -> Self {
         let (iparent, cparent) = match parent {
             Some(parent) => (
                 Some(parent.interpreter.0.clone()),
@@ -94,8 +94,8 @@ impl Scopes {
         };
         Self {
             id: Id::new(),
-            interpreter: InterpreterScope(Parc::new(Scope::new(ty, iparent))),
-            compiler: CompilerScope(Parc::new(Scope::new(ty, cparent))),
+            interpreter: InterpreterScope(Parc::new(Scope::new(spawn_id, ty, iparent))),
+            compiler: CompilerScope(Parc::new(Scope::new(spawn_id, ty, cparent))),
             is_weak: false,
             refcount: Arc::new(AtomicUsize::new(1)),
         }

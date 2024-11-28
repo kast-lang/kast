@@ -394,7 +394,7 @@ impl Kast {
 
 impl Drop for Kast {
     fn drop(&mut self) {
-        self.advance_executor();
+        let _ = self.executor.advance();
     }
 }
 
@@ -421,10 +421,11 @@ impl Kast {
         self.enter_scope_impl(ScopeType::NonRecursive)
     }
 
+    // This language sucks more than writing Assembly
     #[must_use]
     pub fn enter_scope_impl(&self, ty: ScopeType) -> Self {
         let mut inner = self.clone();
-        inner.scopes = Scopes::new(ty, Some(self.scopes.clone()));
+        inner.scopes = Scopes::new(self.spawn_id, ty, Some(self.scopes.clone()));
         inner.interpreter.contexts = Parc::new(Mutex::new(
             self.interpreter.contexts.lock().unwrap().clone(),
         ));
@@ -940,10 +941,10 @@ impl Kast {
     }
 
     pub async fn await_compiled(&self, f: &Function) -> eyre::Result<Parc<CompiledFn>> {
-        self.advance_executor();
+        self.executor.advance()?;
         match &*f.compiled.lock().unwrap() {
             Some(compiled) => Ok(compiled.clone()),
-            None => panic!("function is not compiled yet"),
+            None => eyre::bail!("function is not compiled yet"),
         }
     }
 
@@ -957,6 +958,7 @@ impl Kast {
 
     pub async fn call_fn(&self, f: Function, arg: Value) -> eyre::Result<Value> {
         let mut kast = self.with_scopes(Scopes::new(
+            self.spawn_id,
             ScopeType::NonRecursive,
             Some((*f.captured).clone()),
         ));

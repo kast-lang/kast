@@ -37,6 +37,7 @@ pub enum ScopeType {
 
 pub struct Scope {
     pub id: Id,
+    pub spawn_id: Id,
     pub parent: Option<Parc<Scope>>,
     pub ty: ScopeType,
     closed: AtomicBool,
@@ -75,11 +76,12 @@ impl std::fmt::Display for Lookup<'_> {
 }
 
 impl Scope {
-    pub fn new(ty: ScopeType, parent: Option<Parc<Self>>) -> Self {
+    pub fn new(spawn_id: Id, ty: ScopeType, parent: Option<Parc<Self>>) -> Self {
         let id = Id::new();
         tracing::trace!("new scope {id:?} (ty={ty:?})");
         Self {
             id,
+            spawn_id,
             parent,
             ty,
             closed: AtomicBool::new(false),
@@ -102,14 +104,14 @@ impl Scope {
     pub fn get_impl<'a>(
         &'a self,
         lookup: Lookup<'a>,
-        do_await: bool,
+        spawn_id: Option<Id>,
     ) -> BoxFuture<'a, Option<(Symbol, Value)>> {
-        tracing::trace!("looking for {lookup} in {:?}", self.id);
+        tracing::trace!("looking for {lookup} in {:?} (ty={:?})", self.id, self.ty);
         async move {
             loop {
                 let was_closed = self.closed.load(std::sync::atomic::Ordering::Relaxed);
                 if let Some(result) = self.locals.lock().unwrap().get(lookup).cloned() {
-                    tracing::trace!("found {lookup} in ty={:?}", self.ty);
+                    tracing::trace!("found {lookup}");
                     return Some(result);
                 }
                 match self.ty {
@@ -123,7 +125,8 @@ impl Scope {
                     tracing::trace!("not found in recursive - was closed");
                     break;
                 }
-                if !do_await {
+                if spawn_id.map_or(true, |spawn_id| spawn_id == self.spawn_id) {
+                    tracing::trace!("not awaiting (same spawn id) - break");
                     break;
                 }
                 // TODO maybe wait for the name, not entire scope?
@@ -131,7 +134,7 @@ impl Scope {
                 tracing::trace!("continuing searching for {lookup}");
             }
             if let Some(parent) = &self.parent {
-                if let Some(value) = parent.get_impl(lookup, do_await).await {
+                if let Some(value) = parent.get_impl(lookup, spawn_id).await {
                     return Some(value);
                 }
             }

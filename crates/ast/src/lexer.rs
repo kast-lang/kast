@@ -108,7 +108,8 @@ impl Lexer {
         self.skip_whitespace();
         let start = self.reader.position();
         let token = [
-            Self::read_comment,
+            Self::read_simple_comment,
+            Self::read_long_comment,
             Self::read_string,
             Self::read_ident,
             Self::read_number,
@@ -190,7 +191,30 @@ impl Lexer {
 }
 
 impl Lexer {
-    fn read_comment(&mut self) -> Result<Option<Token>> {
+    fn read_long_comment(&mut self) -> Result<Option<Token>> {
+        if self.reader.peek() != Some(&'/') {
+            return Ok(None);
+        }
+        if self.reader.peek2() != Some(&'*') {
+            return Ok(None);
+        }
+        let raw = self.start_recording();
+        self.skip_char('/')?;
+        self.skip_char('*')?;
+        let mut prev = ['?', '?']; // just some random symbol
+        Ok(Some(Token::Comment {
+            contents: self.read_while(|c| {
+                if prev == ['*', '/'] {
+                    return false;
+                }
+                let [_prev1, prev2] = prev;
+                prev = [prev2, c];
+                true
+            })?,
+            raw: self.stop_recording(raw),
+        }))
+    }
+    fn read_simple_comment(&mut self) -> Result<Option<Token>> {
         if self.reader.peek() != Some(&'#') {
             return Ok(None);
         }

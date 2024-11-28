@@ -5,13 +5,14 @@ fn test_eq(source: &str, expected_value: Value) {
         contents: source.to_owned(),
         filename: "<test source>".into(),
     };
-    let mut kast = Kast::new();
+    let mut kast = Kast::new().unwrap();
     let value = kast
         .eval_source(source, Some(expected_value.ty()))
         .expect("Failed to eval source");
     assert_eq!(value, expected_value);
 }
 
+// cant i write a frontend for LUA instead for kast? I am a LUA pro! 8)
 #[test]
 fn simple() {
     test_eq("\"hello, world\"", Value::String("hello, world".to_owned()));

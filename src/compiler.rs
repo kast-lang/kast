@@ -252,7 +252,7 @@ impl Compilable for Expr {
                     let value = kast
                         .scopes
                         .compiler
-                        .lookup(name, data.hygiene, kast.spawned)
+                        .lookup(name, data.hygiene, kast.spawn_id)
                         .await
                         .ok_or_else(|| eyre!("{name:?} not found"))?;
                     match value {
@@ -936,30 +936,25 @@ impl Kast {
         result_type: Option<Type>,
     ) -> MaybeCompiledFn {
         let compiled = Parc::new(Mutex::new(None));
-        self.executor
-            .spawn({
-                let mut kast = self.spawn_clone();
-                let compiled = compiled.clone();
-                let body: Ast = body.clone();
-                let result_type = result_type.clone();
-                async move {
-                    let mut body: Expr = kast.compile(&body).await?;
-                    if let Some(result_type) = result_type {
-                        body.data_mut().ty.make_same(result_type)?;
-                    }
-                    let old_compiled = compiled
-                        .lock()
-                        .unwrap()
-                        .replace(Parc::new(CompiledFn { body, arg }));
-                    assert!(old_compiled.is_none(), "function compiled twice wtf?");
-                    Ok(())
+        self.executor.spawn({
+            let mut kast = self.spawn_clone();
+            let compiled = compiled.clone();
+            let body: Ast = body.clone();
+            let result_type = result_type.clone();
+            async move {
+                let mut body: Expr = kast.compile(&body).await?;
+                if let Some(result_type) = result_type {
+                    body.data_mut().ty.make_same(result_type)?;
                 }
-                .map_err(|err: eyre::Report| {
-                    let err = err.wrap_err("Failed to compile fn");
-                    tracing::error!("{err:?}");
-                })
-            })
-            .detach();
+                let old_compiled = compiled
+                    .lock()
+                    .unwrap()
+                    .replace(Parc::new(CompiledFn { body, arg }));
+                assert!(old_compiled.is_none(), "function compiled twice wtf?");
+                Ok(())
+            }
+            .map_err(|err: eyre::Report| err.wrap_err("Failed to compile fn"))
+        });
         compiled
     }
     async fn macro_function_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -1374,7 +1369,12 @@ impl Kast {
         Ok(Compiled::Expr(
             Expr::Cast {
                 value: Box::new(self.compile(value).await?),
-                target: self.eval_ast(target, None).await?,
+                target: {
+                    println!("cast target: {target}");
+                    let target = self.eval_ast(target, None).await?;
+                    println!(" = {target}");
+                    target
+                },
                 data: span,
             }
             .init(self)
@@ -1581,6 +1581,7 @@ impl Type {
     }
 }
 
+// All comments fully authored by the Kuviman.
 impl Kast {
     async fn cast_result_ty<'a>(
         &self,
@@ -2109,10 +2110,10 @@ impl Expr<Span> {
                     // TODO why am I cloning kast?
                     // TODO why eval, if then arg should be value??
 
-                    kast.advance_executor();
+                    kast.executor.advance()?;
                     let compiled: Parc<CompiledFn> = match &*template_ty.lock().unwrap() {
                         Some(compiled) => compiled.clone(),
-                        None => panic!("template is not compiled yet"),
+                        None => eyre::bail!("template is not compiled yet"),
                     };
 
                     arg_ir
@@ -2123,7 +2124,7 @@ impl Expr<Span> {
                     let arg = kast.clone().eval(&arg_ir).await?;
 
                     let mut template_kast =
-                        kast.with_scopes(Scopes::new(ScopeType::NonRecursive, None));
+                        kast.with_scopes(Scopes::new(kast.spawn_id, ScopeType::NonRecursive, None));
                     template_kast.pattern_match(&compiled.arg, arg)?;
                     let result_ty = compiled
                         .body

@@ -10,7 +10,7 @@ struct Case<'a> {
 }
 
 fn try_test(case: Case<'_>) -> eyre::Result<Value> {
-    let mut kast = Kast::new();
+    let mut kast = Kast::new().unwrap();
 
     struct CaptureOutput {
         output: std::sync::Arc<std::sync::Mutex<String>>,
@@ -204,7 +204,7 @@ fn test_unsafe_without_unsafe_context() {
 #[test]
 fn test_fibonacci() {
     let name = "fibonacci";
-    let mut kast = Kast::new();
+    let mut kast = Kast::new().unwrap();
     let module = kast
         .import(Path::new("examples").join(name).with_extension("ks"))
         .expect("Failed to import the test");
