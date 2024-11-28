@@ -3,6 +3,7 @@ use super::*;
 #[derive(Clone)]
 pub struct State {
     pub builtins: Parc<HashMap<String, Builtin>>,
+    pub contexts: Parc<Mutex<contexts::State>>,
 }
 
 type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
@@ -21,6 +22,7 @@ impl State {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
+            contexts: Parc::new(Mutex::new(contexts::State::default())),
             builtins: {
                 let mut map = HashMap::<String, Builtin>::new();
 
@@ -418,6 +420,9 @@ impl Kast {
     pub fn enter_scope_impl(&self, ty: ScopeType) -> Self {
         let mut inner = self.clone();
         inner.scopes = Scopes::new(ty, Some(self.scopes.clone()));
+        inner.interpreter.contexts = Parc::new(Mutex::new(
+            self.interpreter.contexts.lock().unwrap().clone(),
+        ));
         inner
     }
     #[must_use]
@@ -520,9 +525,8 @@ impl Kast {
                 }
                 Expr::InjectContext { context, data: _ } => {
                     let context = self.eval(context).await?;
-                    self.scopes
-                        .interpreter
-                        .contexts()
+                    self.interpreter
+                        .contexts
                         .lock()
                         .unwrap()
                         .insert_runtime(context)?;
@@ -530,9 +534,11 @@ impl Kast {
                 }
                 Expr::CurrentContext { data } => {
                     let ty = data.ty.clone();
-                    self.scopes
-                        .interpreter
-                        .get_runtime_context(ty.clone())?
+                    self.interpreter
+                        .contexts
+                        .lock()
+                        .unwrap()
+                        .get_runtime(ty.clone())?
                         .ok_or_else(|| eyre!("{ty} context not available"))?
                 }
                 Expr::Unit { data } => match data.ty.inferred_or_default()? {

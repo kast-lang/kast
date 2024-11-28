@@ -108,11 +108,7 @@ impl Kast {
             spawned: false,
             executor: Parc::new(async_executor::Executor::new()),
             syntax: ast::Syntax::empty(),
-            scopes: {
-                let scopes = Scopes::new(ScopeType::NonRecursive, None);
-                *scopes.interpreter.contexts().lock().unwrap() = contexts::State::default();
-                scopes
-            },
+            scopes: Scopes::new(ScopeType::NonRecursive, None),
             interpreter: interpreter::State::new(),
             cache: cache.unwrap_or_default(),
             output: std::sync::Arc::new({

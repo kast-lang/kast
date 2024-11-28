@@ -1443,9 +1443,8 @@ impl Kast {
         }
         // god pls forgive me the sin of creating kast
         let context: Expr = self.compile(new_context).await?;
-        self.scopes
-            .interpreter
-            .contexts()
+        self.interpreter
+            .contexts
             .lock()
             .unwrap()
             .insert_compile(context.data().ty.clone())?;
@@ -2005,9 +2004,11 @@ impl Expr<Span> {
                             )?
                             .expect_type()?;
                             let default_number_type_context = kast
-                                .scopes
                                 .interpreter
-                                .get_runtime_context(default_number_type_context_type)?
+                                .contexts
+                                .lock()
+                                .unwrap()
+                                .get_runtime(default_number_type_context_type)?
                                 .ok_or_else(|| {
                                     eyre!("default number type context not available")
                                 })?;
