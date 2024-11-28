@@ -7,6 +7,7 @@ pub enum Value {
     Int32(i32),
     Int64(i64),
     Float64(OrderedFloat<f64>),
+    Char(char),
     String(String),
     Tuple(#[try_hash] Tuple<Value>),
     Function(#[try_hash] TypedFunction),
@@ -54,12 +55,13 @@ impl std::fmt::Display for VariantValue {
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unit => write!(f, "()"),
-            Self::Variant(value) => write!(f, "{value}"),
+            Value::Unit => write!(f, "()"),
+            Value::Variant(value) => write!(f, "{value}"),
             Value::Bool(value) => value.fmt(f),
             Value::Int32(value) => value.fmt(f),
             Value::Int64(value) => value.fmt(f),
             Value::Float64(value) => value.fmt(f),
+            Value::Char(c) => write!(f, "{c:?}"),
             Value::String(s) => write!(f, "{s:?}"),
             Value::Multiset(values) => {
                 for (index, value) in values.iter().enumerate() {
@@ -129,6 +131,7 @@ impl Value {
             Value::Int32(_) => TypeShape::Int32.into(),
             Value::Int64(_) => TypeShape::Int64.into(),
             Value::Float64(_) => TypeShape::Float64.into(),
+            Value::Char(_) => TypeShape::Char.into(),
             Value::String(_) => TypeShape::String.into(),
             Value::Tuple(tuple) => TypeShape::Tuple(tuple.as_ref().map(|field| field.ty())).into(),
             Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?

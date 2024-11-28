@@ -31,6 +31,7 @@ impl syntax @"syntax".@"false" = macro _ => `(native "false");
 const int32 :: type = native "int32";
 const int64 :: type = native "int64";
 const float64 :: type = native "float64";
+const char :: type = native "char";
 const string :: type = native "string";
 
 const output :: type = native "output";
@@ -138,7 +139,7 @@ impl syntax @"syntax".for_loop = macro (.value_pattern, .generator, .body) => `(
       };
     );
     with (.handle = handler) :: generator_handler[_];
-    $generator
+    $generator;
   )
 );
 

@@ -8,6 +8,7 @@ pub enum TypeShape {
     Int32,
     Int64,
     Float64,
+    Char,
     String,
     Variant(#[try_hash] Vec<VariantType>),
     Tuple(#[try_hash] Tuple<Type>),
@@ -40,6 +41,7 @@ impl ShowShort for TypeShape {
             TypeShape::Int32 => "int32",
             TypeShape::Int64 => "int64",
             TypeShape::Float64 => "float64",
+            TypeShape::Char => "char",
             TypeShape::String => "string",
             TypeShape::Variant(_) => "variant",
             TypeShape::Tuple(_) => "tuple",
@@ -141,6 +143,8 @@ impl Inferrable for TypeShape {
             (Self::Int64, _) => fail!(),
             (Self::Float64, Self::Float64) => Self::Float64,
             (Self::Float64, _) => fail!(),
+            (Self::Char, Self::Char) => Self::Char,
+            (Self::Char, _) => fail!(),
             (Self::String, Self::String) => Self::String,
             (Self::String, _) => fail!(),
             (Self::Tuple(a), Self::Tuple(b)) => {
@@ -198,6 +202,7 @@ impl std::fmt::Display for TypeShape {
             Self::Int32 => write!(f, "int32"),
             Self::Int64 => write!(f, "int64"),
             Self::Float64 => write!(f, "float64"),
+            Self::Char => write!(f, "char"),
             Self::String => write!(f, "string"),
             Self::Tuple(tuple) => tuple.fmt(f),
             Self::Function(ty) => ty.fmt(f),
@@ -272,6 +277,7 @@ impl SubstituteBindings for Type {
             | TypeShape::Int32
             | TypeShape::Int64
             | TypeShape::Float64
+            | TypeShape::Char
             | TypeShape::String
             | TypeShape::Ast
             | TypeShape::Multiset

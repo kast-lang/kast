@@ -37,11 +37,17 @@ struct ListCollector<'a> {
     b: &'a str,
 }
 
+struct ListCollected<'a> {
+    list: Vec<&'a Ast>,
+    all_binary: bool,
+}
+
 impl ListCollector<'_> {
-    fn collect<'a>(&self, ast: &'a Ast) -> eyre::Result<Vec<&'a Ast>> {
+    fn collect<'a>(&self, ast: &'a Ast) -> eyre::Result<ListCollected<'a>> {
         let mut result = Vec::new();
         let mut node = ast;
         let mut reverse = false;
+        let mut all_binary = true;
         loop {
             match node {
                 Ast::Complex {
@@ -53,6 +59,9 @@ impl ListCollector<'_> {
                         .as_ref()
                         .into_named_opt([self.a], [self.b])
                         .wrap_err_with(|| "Macro received incorrect arguments")?;
+                    if b.is_none() {
+                        all_binary = false;
+                    }
                     match definition.associativity {
                         ast::Associativity::Left => {
                             reverse = true;
@@ -78,7 +87,10 @@ impl ListCollector<'_> {
         if reverse {
             result.reverse();
         }
-        Ok(result)
+        Ok(ListCollected {
+            list: result,
+            all_binary,
+        })
     }
 }
 
@@ -608,7 +620,10 @@ impl Kast {
             } => (definition.name.as_str(), span.clone()),
             _ => unreachable!(),
         };
-        let value_asts = ListCollector {
+        let ListCollected {
+            list: value_asts,
+            all_binary: _,
+        } = ListCollector {
             macro_name,
             a: "a",
             b: "b",
@@ -686,7 +701,10 @@ impl Kast {
             .as_ref()
             .into_named(["value", "branches"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let branch_asts = ListCollector {
+        let ListCollected {
+            list: branch_asts,
+            all_binary: _,
+        } = ListCollector {
             macro_name: "builtin macro merge",
             a: "a",
             b: "b",
@@ -753,7 +771,10 @@ impl Kast {
             _ => unreachable!(),
         };
         assert_eq!(cty, CompiledType::Expr);
-        let ast_list = ListCollector {
+        let ListCollected {
+            list: ast_list,
+            all_binary,
+        } = ListCollector {
             macro_name,
             a: "a",
             b: "b",
@@ -763,14 +784,16 @@ impl Kast {
         for ast in ast_list {
             expr_list.push(self.compile(ast).await?);
         }
-        Ok(Compiled::Expr(
-            Expr::Then {
-                list: expr_list,
-                data: ast.data().span.clone(),
-            }
-            .init(self)
-            .await?,
-        ))
+        let expr = Expr::Then {
+            list: expr_list,
+            data: ast.data().span.clone(),
+        }
+        .init(self)
+        .await?;
+        if !all_binary {
+            expr.data().ty.expect_inferred(TypeShape::Unit)?;
+        }
+        Ok(Compiled::Expr(expr))
     }
     async fn macro_impl_syntax(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
@@ -1254,7 +1277,10 @@ impl Kast {
         self.macro_tuple(cty, ast).await
     }
     async fn macro_tuple(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        let fields = ListCollector {
+        let ListCollected {
+            list: fields,
+            all_binary: _,
+        } = ListCollector {
             macro_name: "builtin macro tuple",
             a: "a",
             b: "b",

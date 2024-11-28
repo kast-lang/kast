@@ -52,6 +52,7 @@ impl State {
                 insert_ty("int32", TypeShape::Int32);
                 insert_ty("int64", TypeShape::Int64);
                 insert_ty("float64", TypeShape::Float64);
+                insert_ty("char", TypeShape::Char);
                 insert_ty("string", TypeShape::String);
                 insert_ty("ast", TypeShape::Ast);
                 insert_ty("type", TypeShape::Type);
