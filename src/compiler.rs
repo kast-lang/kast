@@ -749,13 +749,13 @@ impl Kast {
             .as_ref()
             .into_named_opt(["cond", "then"], ["else"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let cond: Expr = self.compile(cond).await?;
+        let mut then_scope = self.enter_scope();
+        let cond: Expr = then_scope.compile(cond).await?;
         Ok(Compiled::Expr(
             Expr::If {
                 then_case: {
-                    let mut kast = self.enter_scope();
-                    kast.inject_conditional_bindings(&cond, true);
-                    Box::new(kast.compile(then_case).await?)
+                    then_scope.inject_conditional_bindings(&cond, true);
+                    Box::new(then_scope.compile(then_case).await?)
                 },
                 else_case: match else_case {
                     Some(else_case) => Some({

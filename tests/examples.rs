@@ -135,6 +135,16 @@ fn test_context_shadow() {
 }
 
 #[test]
+fn test_is() {
+    test(Case {
+        name: "is",
+        comment_lines: None,
+        input: "",
+        expect_output: "69 :: int32\nNone\nfalse :: bool\n",
+    });
+}
+
+#[test]
 
 fn test_local_syntax() {
     test(Case {
