@@ -60,6 +60,10 @@ impl State {
                     "output",
                     contexts::output_context().ty().inferred().unwrap(),
                 );
+                insert_ty(
+                    "filesystem",
+                    contexts::default_file_system().ty().inferred().unwrap(),
+                );
                 // does anyone understand what happened here?
                 insert_ty(
                     "default_number_type",

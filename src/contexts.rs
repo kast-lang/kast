@@ -28,6 +28,28 @@ pub struct State {
     compile_contexts: HashSet<Key>,
 }
 
+pub fn default_file_system() -> Value {
+    let mut context = Tuple::empty();
+    context.add_named(
+        "read_file",
+        Value::NativeFunction(NativeFunction {
+            name: "read_file".into(),
+            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, path: Value| {
+                let path = path.expect_string()?;
+                let contents = std::fs::read_to_string(path)?;
+                Ok(Value::String(contents))
+            }) as std::sync::Arc<NativeFunctionImpl>)
+                .into(),
+            ty: FnType {
+                arg: TypeShape::String.into(),
+                contexts: Contexts::empty(),
+                result: TypeShape::String.into(),
+            },
+        }),
+    );
+    Value::Tuple(context)
+}
+
 pub fn default_number_type() -> Value {
     let mut context = Tuple::empty();
     context.add_named(
@@ -91,6 +113,7 @@ impl State {
         let mut contexts = Self::empty();
         contexts.insert_runtime(output_context()).unwrap();
         contexts.insert_runtime(default_number_type()).unwrap();
+        contexts.insert_runtime(default_file_system()).unwrap();
         contexts
     }
     pub fn insert_compile(&mut self, context_ty: Type) -> eyre::Result<()> {

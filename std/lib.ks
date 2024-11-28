@@ -46,6 +46,12 @@ const print :: string -> () with output = line => (
   output.write "\n";
 );
 
+const filesystem :: type = native "filesystem";
+
+const read_file :: string -> string with filesystem = fn (path) {
+    (current filesystem).read_file path
+};
+
 const contains :: (.s = string, .substring = string) -> bool = native "contains";
 
 const dbg = forall[T] {
