@@ -38,6 +38,7 @@ fn try_test(case: Case<'_>) -> eyre::Result<Value> {
                             continue;
                         }
                         result += line;
+                        result.push('\n');
                     }
                     result
                 },
@@ -189,7 +190,6 @@ fn test_unsafe() {
 }
 
 #[test]
-#[ignore = "TODO"]
 #[should_panic = "context is not available"]
 
 fn test_unsafe_without_unsafe_context() {
@@ -197,7 +197,7 @@ fn test_unsafe_without_unsafe_context() {
         name: "unsafe",
         comment_lines: Some(Box::new(|line| line.trim().starts_with("with"))),
         input: "",
-        expect_output: "hello\n",
+        expect_output: "",
     });
 }
 

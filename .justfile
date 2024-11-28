@@ -1,8 +1,8 @@
 default:
     just --list
 
-test:
-    cargo test --release --no-default-features
+test *ARGS:
+    cargo test --release --no-default-features -- {{ARGS}}
 
 repl *ARGS:
     cargo run --no-default-features -- repl {{ARGS}}

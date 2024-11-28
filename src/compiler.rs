@@ -2056,6 +2056,10 @@ impl Expr<Span> {
                     // TODO remove this in future builds
                     // ^ this comment is fake
                     // TODO check contexts
+                    contexts.var().add_check({
+                        let current_contexts = kast.interpreter.contexts.clone();
+                        move |contexts| contexts.check_available(&current_contexts.lock().unwrap())
+                    });
                     Expr::Call {
                         f: Box::new(f),
                         arg,

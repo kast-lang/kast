@@ -124,9 +124,6 @@ impl ContextsData {
     pub fn check_available(&self, state: &State) -> eyre::Result<()> {
         // When I wrote this code, only God & I understood what it did. Now... only God knows.
         // Why? Why?! WHY?! OH thats why!
-        if true {
-            return Ok(()); // TODO
-        }
         for ty in &self.types {
             if !state.compile_contexts.contains(&Key::new(ty.clone())?) {
                 eyre::bail!("{ty} context is not available");
