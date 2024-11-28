@@ -397,18 +397,22 @@ impl Compilable for Pattern {
                     name,
                     is_raw: _,
                 } => {
-                    // let (symbol, _value) = kast
-                    //     .lookup(name.as_str(), hygiene)
-                    //     .await
-                    //     .unwrap_or_else(|| Symbol::new(name));
+                    let compiler_scope = match hygiene {
+                        Hygiene::DefSite => kast.scopes.compiler.clone(),
+                    };
+                    let binding = Parc::new(Binding {
+                        symbol: Symbol::new(name),
+                        ty: Type::new_not_inferred(),
+                        compiler_scope,
+                    });
+                    binding
+                        .compiler_scope
+                        .insert(name, Value::Binding(binding.clone()));
+                    kast.scopes
+                        .interpreter
+                        .insert(&binding.symbol, Value::Binding(binding.clone()));
                     Pattern::Binding {
-                        binding: Parc::new(Binding {
-                            symbol: Symbol::new(name),
-                            ty: Type::new_not_inferred(),
-                            compiler_scope: match hygiene {
-                                Hygiene::DefSite => kast.scopes.compiler.clone(),
-                            },
-                        }),
+                        binding,
                         data: span.clone(),
                     }
                     .init()?
@@ -461,27 +465,6 @@ impl Compilable for Pattern {
 }
 
 impl Kast {
-    fn inject_conditional_bindings(&mut self, expr: &Expr, condition: bool) {
-        expr.collect_bindings(
-            &mut |binding| {
-                self.inject_binding(&binding);
-            },
-            Some(condition),
-        );
-    }
-    fn inject_binding(&mut self, binding: &Parc<Binding>) {
-        binding
-            .compiler_scope
-            .insert(binding.symbol.name(), Value::Binding(binding.clone()));
-        self.scopes
-            .interpreter
-            .insert(&binding.symbol, Value::Binding(binding.clone()));
-    }
-    fn inject_bindings(&mut self, pattern: &Pattern) {
-        pattern.collect_bindings(&mut |binding| {
-            self.inject_binding(&binding);
-        });
-    }
     pub fn set_def_site(&self, ast: &Ast) -> Ast {
         let mut ast = ast.clone();
         // println!("set def site of {ast}???");
@@ -570,9 +553,8 @@ impl Kast {
             .as_ref()
             .into_named(["pattern", "value"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let pattern: Pattern = self.compile(pattern).await?;
         let value: Expr = self.compile(value).await?;
-        self.inject_bindings(&pattern);
+        let pattern: Pattern = self.compile(pattern).await?;
         Ok(Compiled::Expr(
             Expr::Let {
                 is_const_let: false,
@@ -719,14 +701,11 @@ impl Kast {
                     data: _,
                 } if definition.name == "builtin macro function_def" => {
                     let [arg, body] = values.as_ref().into_named(["arg", "body"])?;
-                    let arg = self.compile(arg).await?;
+                    let mut kast = self.enter_scope();
+                    let pattern = kast.compile(arg).await?;
                     branches.push(MatchBranch {
-                        body: {
-                            let mut kast = self.enter_scope();
-                            kast.inject_bindings(&arg);
-                            kast.compile(body).await?
-                        },
-                        pattern: arg,
+                        body: kast.compile(body).await?,
+                        pattern,
                     });
                 }
                 _ => eyre::bail!("match branches wrong syntax"),
@@ -753,15 +732,11 @@ impl Kast {
         let cond: Expr = then_scope.compile(cond).await?;
         Ok(Compiled::Expr(
             Expr::If {
-                then_case: {
-                    then_scope.inject_conditional_bindings(&cond, true);
-                    Box::new(then_scope.compile(then_case).await?)
-                },
+                then_case: Box::new(then_scope.compile(then_case).await?),
                 else_case: match else_case {
                     Some(else_case) => Some({
                         let mut kast = self.enter_scope();
-                        kast.inject_conditional_bindings(&cond, false);
-                        Box::new(self.compile(else_case).await?)
+                        Box::new(kast.compile(else_case).await?)
                     }),
                     None => None,
                 },
@@ -895,10 +870,9 @@ impl Kast {
             .into_named_opt(["arg", "body"], ["where"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let _ = r#where; // TODO
-        let arg: Pattern = self.compile(arg).await?;
 
         let mut inner = self.enter_scope();
-        self.inject_bindings(&arg);
+        let arg: Pattern = inner.compile(arg).await?;
         let compiled = inner.compile_fn_body(arg, body, None);
         Ok(Compiled::Expr(
             Expr::Template {
@@ -977,7 +951,6 @@ impl Kast {
             Some(arg) => inner.compile(arg).await?,
             None => Pattern::Unit { data: span.clone() }.init()?,
         };
-        self.inject_bindings(&arg);
         let arg_ty = arg.data().ty.clone();
         let result_type = match result_type {
             Some(ast) => inner
@@ -1138,11 +1111,11 @@ impl Kast {
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
         let [name, body] = values.as_ref().into_named(["name", "body"])?;
-        let name: Pattern = self.compile(name).await?;
-        let body = {
+        let (name, body) = {
             let mut kast = self.enter_scope();
-            kast.inject_bindings(&name);
-            kast.compile(body).await?
+            let name: Pattern = kast.compile(name).await?;
+            let body = kast.compile(body).await?;
+            (name, body)
         };
         Ok(Compiled::Expr(
             Expr::Unwindable {
