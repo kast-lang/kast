@@ -417,12 +417,6 @@ impl Compilable for Pattern {
                         ty: Type::new_not_inferred(),
                         compiler_scope,
                     });
-                    binding
-                        .compiler_scope
-                        .insert(name, Value::Binding(binding.clone()));
-                    kast.scopes
-                        .interpreter
-                        .insert(&binding.symbol, Value::Binding(binding.clone()));
                     Pattern::Binding {
                         binding,
                         data: span.clone(),
@@ -477,6 +471,27 @@ impl Compilable for Pattern {
 }
 
 impl Kast {
+    fn inject_conditional_bindings(&mut self, expr: &Expr, condition: bool) {
+        expr.collect_bindings(
+            &mut |binding| {
+                self.inject_binding(&binding);
+            },
+            Some(condition),
+        );
+    }
+    fn inject_binding(&mut self, binding: &Parc<Binding>) {
+        binding
+            .compiler_scope
+            .insert(binding.symbol.name(), Value::Binding(binding.clone()));
+        self.scopes
+            .interpreter
+            .insert(&binding.symbol, Value::Binding(binding.clone()));
+    }
+    fn inject_bindings(&mut self, pattern: &Pattern) {
+        pattern.collect_bindings(&mut |binding| {
+            self.inject_binding(&binding);
+        });
+    }
     pub fn set_def_site(&self, ast: &Ast) -> Ast {
         let mut ast = ast.clone();
         // println!("set def site of {ast}???");
@@ -565,8 +580,9 @@ impl Kast {
             .as_ref()
             .into_named(["pattern", "value"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let value: Expr = self.compile(value).await?;
         let pattern: Pattern = self.compile(pattern).await?;
+        let value: Expr = self.compile(value).await?;
+        self.inject_bindings(&pattern);
         Ok(Compiled::Expr(
             Expr::Let {
                 is_const_let: false,
@@ -722,7 +738,11 @@ impl Kast {
                     let mut kast = self.enter_scope();
                     let pattern = kast.compile(arg).await?;
                     branches.push(MatchBranch {
-                        body: kast.compile(body).await?,
+                        body: {
+                            let mut kast = kast.enter_scope();
+                            kast.inject_bindings(&pattern);
+                            kast.compile(body).await?
+                        },
                         pattern,
                     });
                 }
@@ -750,11 +770,15 @@ impl Kast {
         let cond: Expr = then_scope.compile(cond).await?;
         Ok(Compiled::Expr(
             Expr::If {
-                then_case: Box::new(then_scope.compile(then_case).await?),
+                then_case: {
+                    then_scope.inject_conditional_bindings(&cond, true);
+                    Box::new(then_scope.compile(then_case).await?)
+                },
                 else_case: match else_case {
                     Some(else_case) => Some({
-                        let mut kast = self.enter_scope();
-                        Box::new(kast.compile(else_case).await?)
+                        let mut else_scope = self.enter_scope();
+                        else_scope.inject_conditional_bindings(&cond, false);
+                        Box::new(else_scope.compile(else_case).await?)
                     }),
                     None => None,
                 },
@@ -896,6 +920,7 @@ impl Kast {
 
         let mut inner = self.enter_scope();
         let arg: Pattern = inner.compile(arg).await?;
+        inner.inject_bindings(&arg);
         let compiled = inner.compile_fn_body(arg, body, None);
         Ok(Compiled::Expr(
             Expr::Template {
@@ -969,6 +994,7 @@ impl Kast {
             Some(arg) => inner.compile(arg).await?,
             None => Pattern::Unit { data: span.clone() }.init()?,
         };
+        inner.inject_bindings(&arg);
         let arg_ty = arg.data().ty.clone();
         let result_type = match result_type {
             Some(ast) => inner
@@ -1132,6 +1158,7 @@ impl Kast {
         let (name, body) = {
             let mut kast = self.enter_scope();
             let name: Pattern = kast.compile(name).await?;
+            kast.inject_bindings(&name);
             let body = kast.compile(body).await?;
             (name, body)
         };
