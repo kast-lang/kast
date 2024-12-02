@@ -1397,9 +1397,9 @@ impl Kast {
             Expr::Cast {
                 value: Box::new(self.compile(value).await?),
                 target: {
-                    println!("cast target: {target}");
+                    tracing::trace!("cast target: {target}");
                     let target = self.eval_ast(target, None).await?;
-                    println!(" = {target}");
+                    tracing::trace!(" = {target}");
                     target
                 },
                 data: span,
