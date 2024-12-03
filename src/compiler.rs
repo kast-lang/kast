@@ -1638,16 +1638,22 @@ impl Kast {
     async fn macro_list(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
-        let values = values.as_ref().into_single_named("values")?;
-        let ListCollected {
-            list: values_asts,
-            all_binary: _,
-        } = ListCollector {
-            macro_name: "builtin macro tuple",
-            a: "a",
-            b: "b",
-        }
-        .collect(values)?;
+        let ([], [values]) = values.as_ref().into_named_opt([], ["values"])?;
+        let values_asts = match values {
+            Some(values) => {
+                let ListCollected {
+                    list: values_asts,
+                    all_binary: _,
+                } = ListCollector {
+                    macro_name: "builtin macro tuple",
+                    a: "a",
+                    b: "b",
+                }
+                .collect(values)?;
+                values_asts
+            }
+            None => vec![],
+        };
         let mut values = Vec::new();
         for value_ast in values_asts {
             values.push(self.compile(value_ast).await?);

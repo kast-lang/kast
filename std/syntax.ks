@@ -150,6 +150,7 @@ syntax_module {
 # syntax @"builtin macro function_def" <- 100000 = "{" body "}";
 
   syntax @"builtin macro list" <- 100000 = "list" "[" values "]";
+  syntax @"builtin macro list" <- 100000 = "list" "[" "]";
   syntax @"builtin macro scope" <- 100000 = "(" _ ")";
   syntax @"builtin macro make_unit" <- 100000 = "(" ")";
   syntax @"builtin macro placeholder" <- 100000 = "_";
