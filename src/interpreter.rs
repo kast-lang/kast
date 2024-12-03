@@ -2,7 +2,6 @@ use super::*;
 
 #[derive(Clone)]
 pub struct State {
-    pub builtins: Parc<HashMap<String, Builtin>>,
     pub contexts: Parc<Mutex<contexts::State>>,
 }
 
@@ -18,13 +17,16 @@ pub struct CompletionCandidate {
     pub ty: Type,
 }
 
-impl State {
-    #[allow(clippy::new_without_default)]
+pub struct Cache {
+    pub builtins: HashMap<String, Builtin>,
+    pub set_natives: Parc<Mutex<HashMap<String, Value>>>,
+}
+
+impl Cache {
     pub fn new() -> Self {
         let set_natives: Parc<Mutex<HashMap<String, Value>>> =
             Parc::new(Mutex::new(HashMap::new()));
         Self {
-            contexts: Parc::new(Mutex::new(contexts::State::default())),
             builtins: {
                 let mut map = HashMap::<String, Builtin>::new();
 
@@ -176,6 +178,65 @@ impl State {
                     }),
                 );
                 map.insert(
+                    "list_iter".to_owned(),
+                    Box::new({
+                        let set_natives = set_natives.clone();
+                        move |expected: Type| {
+                            let set_natives = set_natives.clone();
+                            let elem_ty = Type::new_not_inferred();
+                            let ty = FnType {
+                                arg: TypeShape::List(elem_ty).into(),
+                                contexts: Contexts::new_not_inferred(), // TODO generator_handler
+                                result: TypeShape::Unit.into(),
+                            };
+                            expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(Value::NativeFunction(NativeFunction {
+                                name: "list_iter".to_owned(),
+                                r#impl: (std::sync::Arc::new(
+                                    move |kast: Kast, _fn_ty: FnType, value: Value| {
+                                        let set_natives = set_natives.clone();
+                                        async move {
+                                            let value = value.expect_list()?;
+                                            let generator_handler = set_natives
+                                                .lock()
+                                                .unwrap()
+                                                .get("generator_handler")
+                                                .ok_or_else(|| eyre!("generator_handler not set"))?
+                                                .clone();
+                                            let generator_handler = kast
+                                                .instantiate(
+                                                    generator_handler,
+                                                    Value::Type(value.element_ty),
+                                                )
+                                                .await?
+                                                .expect_type()?;
+                                            let handler = kast
+                                                .interpreter
+                                                .contexts
+                                                .lock()
+                                                .unwrap()
+                                                .get_runtime(generator_handler)?
+                                                .ok_or_else(|| eyre!("no handler"))?
+                                                .expect_tuple()?;
+                                            let handler = handler
+                                                .get_named("handle")
+                                                .ok_or_else(|| eyre!("wut"))?;
+                                            for elem in value.values {
+                                                kast.call(handler.clone(), elem).await?;
+                                            }
+                                            Ok(Value::Unit)
+                                        }
+                                        .boxed()
+                                    },
+                                )
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            }))
+                        }
+                    }),
+                );
+                map.insert(
                     "chars".to_owned(),
                     Box::new({
                         let set_natives = set_natives.clone();
@@ -269,6 +330,32 @@ impl State {
                                 ty,
                             }))
                         }
+                    }),
+                );
+                map.insert(
+                    "list_length".to_owned(),
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::List(Type::new_not_inferred()).into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::Int32.into(), // TODO usize?
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "list_length".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, list: Value| {
+                                async move {
+                                    let list = list.expect_list()?;
+                                    Ok(Value::Int32(list.values.len().try_into().map_err(|e| {
+                                        eyre!("list length doesnt fit in int32: {e}")
+                                    })?))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
                     }),
                 );
                 map.insert(
@@ -532,13 +619,24 @@ impl State {
                         }));
                     };
                 }
+                // I am even worse in other things
                 binary_op!(-, checked_sub);
                 binary_op!(+, checked_add);
                 binary_op!(*, checked_mul);
                 binary_op!(/, checked_div);
                 binary_op!(%, checked_rem);
-                Parc::new(map)
+                map
             },
+            set_natives,
+        }
+    }
+}
+
+impl State {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            contexts: Parc::new(Mutex::new(contexts::State::default())),
         }
     }
 }
@@ -1095,7 +1193,7 @@ impl Kast {
                         .substitute_bindings(self, &mut RecurseCache::new());
                     let name = self.eval(name).await?.expect_string()?;
                     tracing::trace!("native {name} :: {actual_type}");
-                    match self.interpreter.builtins.get(name.as_str()) {
+                    match self.cache.interpreter.builtins.get(name.as_str()) {
                         Some(builtin) => builtin(actual_type)?,
                         None => eyre::bail!("native {name:?} not found"),
                     }

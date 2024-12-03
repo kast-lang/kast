@@ -162,6 +162,12 @@ const push_char :: (string, char) -> string = native "push_char";
 const list_push = forall[T] {
     native "list_push" :: (list[T], T) -> list[T]
 };
+const list_length = forall[T] {
+    native "list_length" :: list[T] -> int32
+};
+const list_iter = forall[T] {
+    native "list_iter" :: list[T] -> () with generator_handler[T]
+};
 
 #trait Iterator {
 #    type Item;

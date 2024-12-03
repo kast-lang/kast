@@ -93,6 +93,7 @@ enum ImportMode {
 }
 
 struct Cache {
+    interpreter: interpreter::Cache,
     compiler: compiler::Cache,
     imports: Mutex<HashMap<PathBuf, Option<Value>>>,
 }
@@ -100,6 +101,7 @@ struct Cache {
 impl Default for Cache {
     fn default() -> Self {
         Self {
+            interpreter: interpreter::Cache::new(),
             compiler: compiler::Cache::new(),
             imports: Default::default(),
         }

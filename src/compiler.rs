@@ -2228,6 +2228,7 @@ impl Expr<Span> {
                     data: ExprData {
                         ty: {
                             let default_number_type_context_type = kast
+                                .cache
                                 .interpreter
                                 .builtins
                                 .get("default_number_type")
