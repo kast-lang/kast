@@ -10,6 +10,7 @@ pub enum TypeShape {
     Float64,
     Char,
     String,
+    List(#[try_hash] Type),
     Variant(#[try_hash] Vec<VariantType>),
     Tuple(#[try_hash] Tuple<Type>),
     Function(#[try_hash] Box<FnType>),
@@ -43,6 +44,7 @@ impl ShowShort for TypeShape {
             TypeShape::Float64 => "float64",
             TypeShape::Char => "char",
             TypeShape::String => "string",
+            TypeShape::List(_) => "list",
             TypeShape::Variant(_) => "variant",
             TypeShape::Tuple(_) => "tuple",
             TypeShape::Function(_) => "function",
@@ -147,6 +149,8 @@ impl Inferrable for TypeShape {
             (Self::Char, _) => fail!(),
             (Self::String, Self::String) => Self::String,
             (Self::String, _) => fail!(),
+            (Self::List(a), Self::List(b)) => Self::List(Inferrable::make_same(a, b)?),
+            (Self::List(_), _) => fail!(),
             (Self::Tuple(a), Self::Tuple(b)) => {
                 let mut result = Tuple::empty();
                 for (name, (a, b)) in a.zip(b)?.into_iter() {
@@ -204,6 +208,7 @@ impl std::fmt::Display for TypeShape {
             Self::Float64 => write!(f, "float64"),
             Self::Char => write!(f, "char"),
             Self::String => write!(f, "string"),
+            Self::List(ty) => write!(f, "list[{ty}]"),
             Self::Tuple(tuple) => tuple.fmt(f),
             Self::Function(ty) => ty.fmt(f),
             Self::Template(_template) => write!(f, "template"),
@@ -286,6 +291,7 @@ impl SubstituteBindings for Type {
             | TypeShape::Symbol
             | TypeShape::SyntaxModule
             | TypeShape::SyntaxDefinition => self.clone(),
+            TypeShape::List(a) => TypeShape::List(a.substitute_bindings(kast, cache)).into(),
             TypeShape::Variant(variants) => TypeShape::Variant(
                 variants
                     .into_iter()

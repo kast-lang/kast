@@ -9,6 +9,12 @@ pub enum Value {
     Float64(OrderedFloat<f64>),
     Char(char),
     String(String),
+    List {
+        #[try_hash]
+        values: Vec<Value>,
+        #[try_hash]
+        element_ty: Type,
+    },
     Tuple(#[try_hash] Tuple<Value>),
     Function(#[try_hash] TypedFunction),
     Template(Function),
@@ -63,6 +69,20 @@ impl std::fmt::Display for Value {
             Value::Float64(value) => value.fmt(f),
             Value::Char(c) => write!(f, "{c:?}"),
             Value::String(s) => write!(f, "{s:?}"),
+            Value::List {
+                values,
+                element_ty: _,
+            } => {
+                write!(f, "[")?;
+                for (index, value) in values.iter().enumerate() {
+                    if index != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{value}")?;
+                }
+                write!(f, "]")?;
+                Ok(())
+            }
             Value::Multiset(values) => {
                 for (index, value) in values.iter().enumerate() {
                     if index != 0 {
@@ -133,6 +153,10 @@ impl Value {
             Value::Float64(_) => TypeShape::Float64.into(),
             Value::Char(_) => TypeShape::Char.into(),
             Value::String(_) => TypeShape::String.into(),
+            Value::List {
+                values: _,
+                element_ty,
+            } => TypeShape::List(element_ty.clone()).into(),
             Value::Tuple(tuple) => TypeShape::Tuple(tuple.as_ref().map(|field| field.ty())).into(),
             Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             Value::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),

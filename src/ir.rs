@@ -14,6 +14,10 @@ pub struct MatchBranch {
 
 #[derive(Clone)]
 pub enum Expr<Data = ExprData> {
+    List {
+        values: Vec<Expr>,
+        data: Data,
+    },
     Unwindable {
         name: Pattern,
         body: Box<Expr>,
@@ -171,6 +175,7 @@ impl Expr {
     ) {
         match self {
             Expr::Binding { .. }
+            | Expr::List { .. }
             | Expr::Unwind { .. }
             | Expr::Unwindable { .. }
             | Expr::CallMacro { .. }
@@ -241,6 +246,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
                     Expr::Unwind { .. } => write!(f, "unwind expr")?,
+                    Expr::List { .. } => write!(f, "list expr")?,
                     Expr::Unwindable { .. } => write!(f, "unwindable expr")?,
                     Expr::CallMacro { .. } => write!(f, "macro call expr")?,
                     Expr::InjectContext { .. } => write!(f, "inject context expr")?,
@@ -284,6 +290,7 @@ impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
         | Expr::Unwind { data, .. }
+        | Expr::List { data, .. }
         | Expr::Unwindable { data, .. }
         | Expr::CallMacro { data, .. }
         | Expr::CurrentContext { data, .. }
@@ -316,6 +323,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::List { data, .. }
         | Expr::Unwind { data, .. }
         | Expr::Unwindable { data, .. }
         | Expr::CallMacro { data, .. }

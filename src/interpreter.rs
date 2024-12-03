@@ -478,6 +478,28 @@ impl Kast {
         tracing::trace!("as {expected_ty}");
         let r#impl = async move {
             let result = match expr {
+                Expr::List {
+                    values: values_exprs,
+                    data,
+                } => match data.ty.inferred_or_default()? {
+                    Ok(TypeShape::Type) => {
+                        #[allow(clippy::needless_borrowed_reference)]
+                        let &[ref element_ty] = values_exprs
+                            .as_slice()
+                            .try_into()
+                            .map_err(|_e| eyre!("list type must be a list of single element"))?;
+                        let element_ty: Type = self.eval(element_ty).await?.expect_type()?;
+                        Value::Type(TypeShape::List(element_ty).into())
+                    }
+                    Ok(TypeShape::List(element_ty)) => {
+                        let mut values = Vec::new();
+                        for value_expr in values_exprs {
+                            values.push(self.eval(value_expr).await?);
+                        }
+                        Value::List { values, element_ty }
+                    }
+                    _ => eyre::bail!("list expr enferred to be {}", data.ty),
+                },
                 Expr::Unwind {
                     name,
                     value,
@@ -890,6 +912,7 @@ impl Kast {
             };
             let should_check_result_ty = match expr {
                 Expr::Unit { .. }
+                | Expr::List { .. }
                 | Expr::Unwind { .. }
                 | Expr::Unwindable { .. }
                 | Expr::CallMacro { .. }

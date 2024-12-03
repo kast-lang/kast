@@ -151,6 +151,7 @@ impl Cache {
             macro_call_macro,
             macro_unwindable,
             macro_unwind,
+            macro_list,
         );
         Self {
             builtin_macros,
@@ -1530,6 +1531,27 @@ impl Kast {
             .expect_ast()?;
         self.compile_into(cty, &ast).await
     }
+    async fn macro_list(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let values = values.as_ref().into_single_named("values")?;
+        let ListCollected {
+            list: values_asts,
+            all_binary: _,
+        } = ListCollector {
+            macro_name: "builtin macro tuple",
+            a: "a",
+            b: "b",
+        }
+        .collect(values)?;
+        let mut values = Vec::new();
+        for value_ast in values_asts {
+            values.push(self.compile(value_ast).await?);
+        }
+        Ok(Compiled::Expr(
+            Expr::List { values, data: span }.init(self).await?,
+        ))
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -1639,6 +1661,28 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::List { values, data: span } => {
+                    let mut element_ty = Type::new_not_inferred();
+                    for value in &values {
+                        element_ty.make_same(value.data().ty.clone())?;
+                    }
+                    let ty =
+                        Type::new_not_inferred_with_default(TypeShape::List(element_ty.clone()));
+                    ty.var().add_check(move |inferred| {
+                        match inferred {
+                            TypeShape::Type => {}
+                            TypeShape::List(inferred_elem_ty) => {
+                                inferred_elem_ty.clone().make_same(element_ty.clone())?
+                            }
+                            _ => eyre::bail!("list expr inferred as {inferred}"),
+                        }
+                        Ok(())
+                    });
+                    Expr::List {
+                        values,
+                        data: ExprData { ty, span },
+                    }
+                }
                 Expr::Unwind {
                     name,
                     value,
