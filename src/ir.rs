@@ -14,6 +14,11 @@ pub struct MatchBranch {
 
 #[derive(Clone)]
 pub enum Expr<Data = ExprData> {
+    Assign {
+        pattern: Pattern,
+        value: Box<Expr>,
+        data: Data,
+    },
     List {
         values: Vec<Expr>,
         data: Data,
@@ -176,6 +181,7 @@ impl Expr {
         match self {
             Expr::Binding { .. }
             | Expr::List { .. }
+            | Expr::Assign { .. }
             | Expr::Unwind { .. }
             | Expr::Unwindable { .. }
             | Expr::CallMacro { .. }
@@ -245,6 +251,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
         impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Assign { .. } => write!(f, "assign expr")?,
                     Expr::Unwind { .. } => write!(f, "unwind expr")?,
                     Expr::List { .. } => write!(f, "list expr")?,
                     Expr::Unwindable { .. } => write!(f, "unwindable expr")?,
@@ -289,6 +296,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::Binding { data, .. }
+        | Expr::Assign { data, .. }
         | Expr::Unwind { data, .. }
         | Expr::List { data, .. }
         | Expr::Unwindable { data, .. }
@@ -323,6 +331,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::Binding { data, .. }
+        | Expr::Assign { data, .. }
         | Expr::List { data, .. }
         | Expr::Unwind { data, .. }
         | Expr::Unwindable { data, .. }
@@ -387,12 +396,18 @@ impl Symbol {
 pub struct Binding {
     pub symbol: Symbol,
     pub ty: Type,
+    pub mutable: bool,
     pub compiler_scope: CompilerScope,
 }
 
 impl std::fmt::Display for Binding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<binding {:?}>", self.symbol.name())
+        write!(
+            f,
+            "<binding {:?} {:?}>",
+            self.symbol.name(),
+            self.symbol.id(),
+        )
     }
 }
 

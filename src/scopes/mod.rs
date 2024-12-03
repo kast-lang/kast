@@ -11,6 +11,14 @@ pub use scope::{Locals, ScopeType};
 pub struct InterpreterScope(Parc<Scope>);
 
 impl InterpreterScope {
+    pub fn mutate(&self, symbol: &Symbol, value: Value) {
+        self.0
+            .lookup(Lookup::Id(symbol.id()), None, |_symbol, place| {
+                *place = value;
+            })
+            .now_or_never()
+            .unwrap();
+    }
     pub fn insert(&self, symbol: &Symbol, value: Value) {
         self.0.insert(symbol.clone(), value);
     }
@@ -24,7 +32,7 @@ impl InterpreterScope {
     pub fn get(&self, symbol: &Symbol) -> Option<Value> {
         let (_symbol, value) = self
             .0
-            .get_impl(Lookup::Id(symbol.id()), None)
+            .get_cloned(Lookup::Id(symbol.id()), None)
             .now_or_never()
             .unwrap()?;
         Some(value)
@@ -46,7 +54,10 @@ impl CompilerScope {
         tracing::trace!("lookup {name:?} in {:?}", self.0.id);
         match hygiene {
             Hygiene::DefSite => {
-                let (_symbol, value) = self.0.get_impl(Lookup::Name(name), Some(spawn_id)).await?;
+                let (_symbol, value) = self
+                    .0
+                    .get_cloned(Lookup::Name(name), Some(spawn_id))
+                    .await?;
                 Some(value)
             }
         }

@@ -23,7 +23,7 @@ syntax_module {
   syntax @"builtin macro impl_syntax" <- 4 = "impl" "syntax" def "=" impl;
   syntax @"builtin macro let" <- 4 = "let" pattern "=" value;
   syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
-  # syntax @"builtin macro assign" <- 4 = pattern "=" value;
+  syntax @"builtin macro assign" <- 4 = pattern "=" value;
 
   syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
 

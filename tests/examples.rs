@@ -81,6 +81,16 @@ fn test_import_zero_but_expect_1() {
 }
 
 #[test]
+fn test_mut() {
+    test(Case {
+        name: "mut",
+        comment_lines: None,
+        input: "",
+        expect_output: "hello\nworld\n",
+    });
+}
+
+#[test]
 fn test_default_number_type() {
     test(Case {
         name: "default-number-type",

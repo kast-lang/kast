@@ -31,6 +31,21 @@ pub type Ast<T = AstData> = ast::Ast<T>;
 
 use std::collections::HashMap;
 
+#[derive(Clone)]
+pub struct State {
+    bindings_mutable: bool,
+    use_existing_bindings: bool,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            bindings_mutable: false,
+            use_existing_bindings: false,
+        }
+    }
+}
+
 struct ListCollector<'a> {
     macro_name: &'a str,
     a: &'a str,
@@ -152,6 +167,8 @@ impl Cache {
             macro_unwindable,
             macro_unwind,
             macro_list,
+            macro_mutable_pattern,
+            macro_assign,
         );
         Self {
             builtin_macros,
@@ -413,11 +430,25 @@ impl Compilable for Pattern {
                     let compiler_scope = match hygiene {
                         Hygiene::DefSite => kast.scopes.compiler.clone(),
                     };
-                    let binding = Parc::new(Binding {
-                        symbol: Symbol::new(name),
-                        ty: Type::new_not_inferred(),
-                        compiler_scope,
-                    });
+                    let binding = if kast.compiler.use_existing_bindings {
+                        let value = kast
+                            .scopes
+                            .compiler
+                            .lookup(name, *hygiene, kast.spawn_id)
+                            .await
+                            .ok_or_else(|| eyre!("{name:?} not found"))?;
+                        match value {
+                            Value::Binding(binding) => binding,
+                            _ => eyre::bail!("{name:?} is not a binding"),
+                        }
+                    } else {
+                        Parc::new(Binding {
+                            symbol: Symbol::new(name),
+                            ty: Type::new_not_inferred(),
+                            mutable: kast.compiler.bindings_mutable,
+                            compiler_scope,
+                        })
+                    };
                     Pattern::Binding {
                         binding,
                         data: span.clone(),
@@ -1531,6 +1562,37 @@ impl Kast {
             .expect_ast()?;
         self.compile_into(cty, &ast).await
     }
+    async fn macro_mutable_pattern(
+        &mut self,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        let (values, _span) = get_complex(ast);
+        let pattern = values.as_ref().into_single_named("pattern")?;
+        let mut kast = self.clone();
+        kast.compiler.bindings_mutable = true;
+        kast.compile_into(cty, pattern).await
+    }
+    async fn macro_assign(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [pattern, value] = values.as_ref().into_named(["pattern", "value"])?;
+        let pattern: Pattern = {
+            let mut kast = self.clone();
+            kast.compiler.use_existing_bindings = true;
+            kast.compile(pattern).await?
+        };
+        let value: Expr = self.compile(value).await?;
+        Ok(Compiled::Expr(
+            Expr::Assign {
+                pattern,
+                value: Box::new(value),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
     async fn macro_list(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
@@ -1661,6 +1723,25 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::Assign {
+                    pattern,
+                    value,
+                    data: span,
+                } => {
+                    pattern
+                        .data()
+                        .ty
+                        .clone()
+                        .make_same(value.data().ty.clone())?;
+                    Expr::Assign {
+                        pattern,
+                        value,
+                        data: ExprData {
+                            ty: TypeShape::Unit.into(),
+                            span,
+                        },
+                    }
+                }
                 Expr::List { values, data: span } => {
                     let mut element_ty = Type::new_not_inferred();
                     for value in &values {

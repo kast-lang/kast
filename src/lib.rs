@@ -45,6 +45,7 @@ pub struct Kast {
     executor: Executor,
     syntax: ast::Syntax,
     pub interpreter: interpreter::State,
+    compiler: compiler::State,
     spawn_id: Id,
     scopes: Scopes,
     cache: Parc<Cache>,
@@ -114,6 +115,7 @@ impl Kast {
             syntax: ast::Syntax::empty(),
             scopes: Scopes::new(spawn_id, ScopeType::NonRecursive, None),
             interpreter: interpreter::State::new(),
+            compiler: compiler::State::new(),
             cache: cache.unwrap_or_default(),
             output: std::sync::Arc::new({
                 struct DefaultOutput;

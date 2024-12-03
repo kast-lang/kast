@@ -399,6 +399,16 @@ impl Drop for Kast {
 }
 
 impl Kast {
+    /// Assign to existing bindings
+    pub fn pattern_match_assign(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
+        let matches = pattern
+            .r#match(value)
+            .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
+        for (binding, value) in matches {
+            self.scopes.interpreter.mutate(&binding.symbol, value);
+        }
+        Ok(())
+    }
     pub fn pattern_match(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
         let matches = pattern
             .r#match(value)
@@ -885,6 +895,15 @@ impl Kast {
                         None => eyre::bail!("native {name:?} not found"),
                     }
                 }
+                Expr::Assign {
+                    pattern,
+                    value,
+                    data: _,
+                } => {
+                    let value = self.eval(value).await?;
+                    self.pattern_match_assign(pattern, value)?;
+                    Value::Unit
+                }
                 Expr::Let {
                     is_const_let: _,
                     pattern,
@@ -934,6 +953,7 @@ impl Kast {
                 | Expr::Number { .. }
                 | Expr::Native { .. }
                 | Expr::Let { .. }
+                | Expr::Assign { .. }
                 | Expr::Call { .. }
                 | Expr::Scope { .. }
                 | Expr::Function { .. }
