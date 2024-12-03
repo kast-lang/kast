@@ -643,6 +643,22 @@ impl Kast {
         tracing::trace!("as {expected_ty}");
         let r#impl = async move {
             let result = match expr {
+                Expr::And { lhs, rhs, data: _ } => {
+                    let lhs = self.eval(lhs).await?.expect_bool()?;
+                    if lhs {
+                        self.eval(rhs).await?
+                    } else {
+                        Value::Bool(false)
+                    }
+                }
+                Expr::Or { lhs, rhs, data: _ } => {
+                    let lhs = self.eval(lhs).await?.expect_bool()?;
+                    if !lhs {
+                        self.eval(rhs).await?
+                    } else {
+                        Value::Bool(true)
+                    }
+                }
                 Expr::List {
                     values: values_exprs,
                     data,
@@ -1086,6 +1102,8 @@ impl Kast {
             };
             let should_check_result_ty = match expr {
                 Expr::Unit { .. }
+                | Expr::And { .. }
+                | Expr::Or { .. }
                 | Expr::List { .. }
                 | Expr::Unwind { .. }
                 | Expr::Unwindable { .. }

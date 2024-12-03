@@ -83,8 +83,8 @@ syntax_module {
   syntax catch_impl <- 16 = expr "catch" e "{" catch_block "}";
   syntax catch_impl <- 16 = expr "catch" e "(" catch_block ")";
 
-  syntax @"builtin fn or" <- 17 = lhs "or" rhs;
-  syntax @"builtin fn and" <- 18 = lhs "and" rhs;
+  syntax @"builtin macro or" <- 17 = lhs "or" rhs;
+  syntax @"builtin macro and" <- 18 = lhs "and" rhs;
 
   syntax @"builtin macro is" <- 18.5 = value "is" pattern;
 

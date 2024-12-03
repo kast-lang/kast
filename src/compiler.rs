@@ -169,6 +169,8 @@ impl Cache {
             macro_list,
             macro_mutable_pattern,
             macro_assign,
+            macro_and,
+            macro_or,
         );
         Self {
             builtin_macros,
@@ -1585,6 +1587,34 @@ impl Kast {
         kast.compiler.bindings_mutable = true;
         kast.compile_into(cty, pattern).await
     }
+    async fn macro_or(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [lhs, rhs] = values.as_ref().into_named(["lhs", "rhs"])?;
+        Ok(Compiled::Expr(
+            Expr::Or {
+                lhs: Box::new(self.compile(lhs).await?),
+                rhs: Box::new(self.compile(rhs).await?),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_and(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let [lhs, rhs] = values.as_ref().into_named(["lhs", "rhs"])?;
+        Ok(Compiled::Expr(
+            Expr::And {
+                lhs: Box::new(self.compile(lhs).await?),
+                rhs: Box::new(self.compile(rhs).await?),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
     async fn macro_assign(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
@@ -1735,6 +1765,38 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::And {
+                    lhs,
+                    rhs,
+                    data: span,
+                } => {
+                    lhs.data().ty.expect_inferred(TypeShape::Bool)?;
+                    rhs.data().ty.expect_inferred(TypeShape::Bool)?;
+                    Expr::And {
+                        lhs,
+                        rhs,
+                        data: ExprData {
+                            ty: TypeShape::Bool.into(),
+                            span,
+                        },
+                    }
+                }
+                Expr::Or {
+                    lhs,
+                    rhs,
+                    data: span,
+                } => {
+                    lhs.data().ty.expect_inferred(TypeShape::Bool)?;
+                    rhs.data().ty.expect_inferred(TypeShape::Bool)?;
+                    Expr::Or {
+                        lhs,
+                        rhs,
+                        data: ExprData {
+                            ty: TypeShape::Bool.into(),
+                            span,
+                        },
+                    }
+                }
                 Expr::Assign {
                     pattern,
                     value,
