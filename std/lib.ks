@@ -72,7 +72,13 @@ const Either = forall[.left :: type, .right :: type] { newtype :Left left | :Rig
 
 const Result = forall[.ok :: type, .error :: type] { newtype :Ok ok | :Error error };
 
+
+const @"unary +" = forall[T] { (x :: T) => x };
+const @"unary -" = forall[T] { native "unary -" :: T -> T };
+
 # TODO where T: Num or smth
+impl syntax @"syntax".@"op unary +" = macro (x,) => `(@"unary +" $x);
+impl syntax @"syntax".@"op unary -" = macro (x,) => `(@"unary -" $x);
 impl syntax @"syntax".@"op binary +" = forall[T] { native "+" :: (.lhs = T, .rhs = T) -> T };
 impl syntax @"syntax".@"op binary -" = forall[T] { native "-" :: (.lhs = T, .rhs = T) -> T };
 impl syntax @"syntax".@"op binary *" = forall[T] { native "*" :: (.lhs = T, .rhs = T) -> T };

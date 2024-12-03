@@ -551,6 +551,33 @@ impl Cache {
                     map.insert(named.name.clone(), named.value);
                 };
 
+                fn unary_op(
+                    name: &str,
+                    f: impl Fn(Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
+                ) -> NamedBuiltin {
+                    let name = name.to_owned();
+                    NamedBuiltin {
+                        name: name.clone(),
+                        value: Box::new(move |expected: Type| {
+                            let ty = Type::new_not_inferred();
+                            let ty = FnType {
+                                arg: ty.clone(),
+                                contexts: Contexts::empty(), // TODO
+                                result: ty.clone(),
+                            };
+                            expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(Value::NativeFunction(NativeFunction {
+                                name: name.clone(),
+                                r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, arg: Value| {
+                                    async move { f(arg) }.boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            }))
+                        }),
+                    }
+                }
                 fn binary_op_impl(
                     name: &str,
                     result_ty: Option<TypeShape>,
@@ -633,6 +660,14 @@ impl Cache {
                 binary_cmp_op!(!=);
                 binary_cmp_op!(>=);
                 binary_cmp_op!(>);
+                insert_named(unary_op("unary -", |value| {
+                    Ok(match value {
+                        Value::Int32(value) => Value::Int32(-value),
+                        Value::Int64(value) => Value::Int64(-value),
+                        Value::Float64(value) => Value::Float64(-value),
+                        _ => eyre::bail!("unary - doesnt work for {}", value.ty()),
+                    })
+                }));
 
                 macro_rules! binary_op {
                     ($op:tt, $method: ident) => {

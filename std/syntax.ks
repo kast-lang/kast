@@ -98,8 +98,8 @@ syntax_module {
   syntax @"builtin macro cast" <- 20 = value "as" target;
   #syntax @"builtin macro check_impl" <- 21 = value "impl" trait;
 
-  syntax @"op unary +" <- 25 = "+" x;
-  syntax @"op unary -" <- 25 = "-" x;
+  syntax @"op unary +" <- 25 = "+" _;
+  syntax @"op unary -" <- 25 = "-" _;
   syntax @"op binary +" <- 25 = lhs "+" rhs;
   syntax @"op binary -" <- 25 = lhs "-" rhs;
 
