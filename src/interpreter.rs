@@ -21,6 +21,8 @@ pub struct CompletionCandidate {
 impl State {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
+        let set_natives: Parc<Mutex<HashMap<String, Value>>> =
+            Parc::new(Mutex::new(HashMap::new()));
         Self {
             contexts: Parc::new(Mutex::new(contexts::State::default())),
             builtins: {
@@ -83,8 +85,11 @@ impl State {
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg_type".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty: FnType, value: Value| {
-                                let value: Type = value.expect_type()?;
-                                Ok(Value::String(value.to_string()))
+                                async move {
+                                    let value: Type = value.expect_type()?;
+                                    Ok(Value::String(value.to_string()))
+                                }
+                                .boxed()
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -104,7 +109,7 @@ impl State {
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg_type_of_value".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty: FnType, value: Value| {
-                                Ok(Value::String(value.ty().to_string()))
+                                async move { Ok(Value::String(value.ty().to_string())) }.boxed()
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -124,9 +129,12 @@ impl State {
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "dbg".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, value: Value| {
-                                let ty = &fn_ty.arg;
-                                assert_eq!(&value.ty(), ty);
-                                Ok(Value::String(value.to_string()))
+                                async move {
+                                    let ty = &fn_ty.arg;
+                                    assert_eq!(&value.ty(), ty);
+                                    Ok(Value::String(value.to_string()))
+                                }
+                                .boxed()
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -152,11 +160,144 @@ impl State {
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "contains".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                let mut args = args.expect_tuple()?;
-                                let s = args.take_named("s").unwrap().expect_string()?;
-                                let substring =
-                                    args.take_named("substring").unwrap().expect_string()?;
-                                Ok(Value::Bool(s.contains(&substring)))
+                                async move {
+                                    let mut args = args.expect_tuple()?;
+                                    let s = args.take_named("s").unwrap().expect_string()?;
+                                    let substring =
+                                        args.take_named("substring").unwrap().expect_string()?;
+                                    Ok(Value::Bool(s.contains(&substring)))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "chars".to_owned(),
+                    Box::new({
+                        let set_natives = set_natives.clone();
+                        move |expected: Type| {
+                            let set_natives = set_natives.clone();
+                            let ty = FnType {
+                                arg: TypeShape::String.into(),
+                                contexts: Contexts::new_not_inferred(), // TODO generator_handler
+                                result: TypeShape::Unit.into(),
+                            };
+                            expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(Value::NativeFunction(NativeFunction {
+                                name: "chars".to_owned(),
+                                r#impl: (std::sync::Arc::new(
+                                    move |kast: Kast, _fn_ty: FnType, value: Value| {
+                                        let set_natives = set_natives.clone();
+                                        async move {
+                                            let value = value.expect_string()?;
+                                            let generator_handler = set_natives
+                                                .lock()
+                                                .unwrap()
+                                                .get("generator_handler")
+                                                .ok_or_else(|| eyre!("generator_handler not set"))?
+                                                .clone();
+                                            let generator_handler = kast
+                                                .instantiate(
+                                                    generator_handler,
+                                                    Value::Type(TypeShape::Char.into()),
+                                                )
+                                                .await?
+                                                .expect_type()?;
+                                            let handler = kast
+                                                .interpreter
+                                                .contexts
+                                                .lock()
+                                                .unwrap()
+                                                .get_runtime(generator_handler)?
+                                                .ok_or_else(|| eyre!("no handler"))?
+                                                .expect_tuple()?;
+                                            let handler = handler
+                                                .get_named("handle")
+                                                .ok_or_else(|| eyre!("wut"))?;
+                                            for c in value.chars() {
+                                                kast.call(handler.clone(), Value::Char(c)).await?;
+                                            }
+                                            Ok(Value::Unit)
+                                        }
+                                        .boxed()
+                                    },
+                                )
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            }))
+                        }
+                    }),
+                );
+                map.insert(
+                    "set_native".to_owned(),
+                    Box::new({
+                        let set_natives = set_natives.clone();
+                        move |expected: Type| {
+                            let set_natives = set_natives.clone();
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_named("name", TypeShape::String.into());
+                                    args.add_named("value", Type::new_not_inferred());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Unit.into(),
+                            };
+                            expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(Value::NativeFunction(NativeFunction {
+                                name: "set_native".to_owned(),
+                                r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                    let set_natives = set_natives.clone();
+                                    async move {
+                                        let [name, value] =
+                                            args.expect_tuple()?.into_named(["name", "value"])?;
+                                        let name = name.expect_string()?;
+                                        set_natives.lock().unwrap().insert(name, value);
+                                        Ok(Value::Unit)
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            }))
+                        }
+                    }),
+                );
+                map.insert(
+                    "push_char".to_owned(),
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_unnamed(TypeShape::String.into());
+                                args.add_unnamed(TypeShape::Char.into());
+                                args
+                            })
+                            .into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::String.into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "push_char".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                async move {
+                                    let [s, c] = args.expect_tuple()?.into_unnamed()?;
+                                    let s = s.expect_string()?;
+                                    let c = c.expect_char()?;
+                                    let mut result = s;
+                                    result.push(c);
+                                    Ok(Value::String(result))
+                                }
+                                .boxed()
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -176,8 +317,11 @@ impl State {
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "panic".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
-                                let s = s.expect_string()?;
-                                Err(eyre!("panic: {s}"))
+                                async move {
+                                    let s = s.expect_string()?;
+                                    Err(eyre!("panic: {s}"))
+                                }
+                                .boxed()
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -197,16 +341,19 @@ impl State {
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "parse".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, s: Value| {
-                                let s = s.expect_string()?;
-                                Ok(match fn_ty.result.inferred() {
-                                    Ok(ty) => match ty {
-                                        TypeShape::Int32 => Value::Int32(s.parse()?),
-                                        TypeShape::Int64 => Value::Int64(s.parse()?),
-                                        TypeShape::Float64 => Value::Float64(s.parse()?),
-                                        _ => eyre::bail!("{ty} is not parseable???"),
-                                    },
-                                    Err(_) => eyre::bail!("cant parse not inferred type"),
-                                })
+                                async move {
+                                    let s = s.expect_string()?;
+                                    Ok(match fn_ty.result.inferred() {
+                                        Ok(ty) => match ty {
+                                            TypeShape::Int32 => Value::Int32(s.parse()?),
+                                            TypeShape::Int64 => Value::Int64(s.parse()?),
+                                            TypeShape::Float64 => Value::Float64(s.parse()?),
+                                            _ => eyre::bail!("{ty} is not parseable???"),
+                                        },
+                                        Err(_) => eyre::bail!("cant parse not inferred type"),
+                                    })
+                                }
+                                .boxed()
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -226,8 +373,11 @@ impl State {
                         Ok(Value::NativeFunction(NativeFunction {
                             name: "gensym".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, name: Value| {
-                                let name = name.expect_string()?;
-                                Ok(Value::Symbol(Symbol::new(name)))
+                                async move {
+                                    let name = name.expect_string()?;
+                                    Ok(Value::Symbol(Symbol::new(name)))
+                                }
+                                .boxed()
                             })
                                 as std::sync::Arc<NativeFunctionImpl>)
                                 .into(),
@@ -265,9 +415,12 @@ impl State {
                             Ok(Value::NativeFunction(NativeFunction {
                                 name: name.clone(),
                                 r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
-                                    let [lhs, rhs] =
-                                        args.expect_tuple()?.into_named(["lhs", "rhs"])?;
-                                    f(lhs, rhs)
+                                    async move {
+                                        let [lhs, rhs] =
+                                            args.expect_tuple()?.into_named(["lhs", "rhs"])?;
+                                        f(lhs, rhs)
+                                    }
+                                    .boxed()
                                 })
                                     as std::sync::Arc<NativeFunctionImpl>)
                                     .into(),
@@ -295,9 +448,11 @@ impl State {
                     ($op:tt) => {
                         insert_named(binary_cmp_op(stringify!($op), |lhs, rhs| {
                             Ok(match (lhs, rhs) {
+                                (Value::Bool(lhs), Value::Bool(rhs)) => lhs $op rhs,
                                 (Value::Int32(lhs), Value::Int32(rhs)) => lhs $op rhs,
                                 (Value::Int64(lhs), Value::Int64(rhs)) => lhs $op rhs,
                                 (Value::Float64(lhs), Value::Float64(rhs)) => lhs $op rhs,
+                                (Value::Char(lhs), Value::Char(rhs)) => lhs $op rhs,
                                 (Value::String(lhs), Value::String(rhs)) => lhs $op rhs,
                                 (lhs, rhs) => {
                                     eyre::bail!(
@@ -924,9 +1079,9 @@ impl Kast {
                     arg,
                     data: _,
                 } => {
-                    let template = self.eval(template).await?.expect_template()?;
+                    let template = self.eval(template).await?;
                     let arg = self.eval(arg).await?;
-                    self.call_fn(template, arg).await?
+                    self.instantiate(template, arg).await?
                 }
             };
             let should_check_result_ty = match expr {
@@ -991,10 +1146,16 @@ impl Kast {
         }
     }
 
+    pub async fn instantiate(&self, template: Value, arg: Value) -> eyre::Result<Value> {
+        let template = template.expect_template()?;
+        // TODO memoization
+        self.call_fn(template, arg).await
+    }
+
     pub async fn call(&self, f: Value, arg: Value) -> eyre::Result<Value> {
         match f {
             Value::Function(f) => self.call_fn(f.f, arg).await,
-            Value::NativeFunction(native) => (native.r#impl)(self.clone(), native.ty, arg),
+            Value::NativeFunction(native) => (native.r#impl)(self.clone(), native.ty, arg).await,
             _ => eyre::bail!("{f} is not a function"),
         }
     }

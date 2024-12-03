@@ -257,6 +257,15 @@ impl Value {
             }),
         }
     }
+    pub fn expect_char(self) -> Result<char, ExpectError> {
+        match self {
+            Self::Char(c) => Ok(c),
+            _ => Err(ExpectError {
+                value: self,
+                expected: TypeShape::Char,
+            }),
+        }
+    }
     pub fn expect_string(self) -> Result<String, ExpectError> {
         match self {
             Self::String(s) => Ok(s),
@@ -349,7 +358,8 @@ impl std::fmt::Debug for Function {
     }
 }
 
-pub type NativeFunctionImpl = dyn Fn(Kast, FnType, Value) -> eyre::Result<Value> + Send + Sync;
+pub type NativeFunctionImpl =
+    dyn Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync;
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct NativeFunction {

@@ -111,8 +111,9 @@ const parse = forall[T] {
 };
 
 const generator_handler = forall[T] {
-  (.handle = T -> () with ()) :: type
+    (.handle = T -> () with ()) :: type
 };
+native "set_native" (.name = "generator_handler", .value = generator_handler);
 
 const loop_context = forall[T] {
   (
@@ -154,6 +155,9 @@ impl syntax @"syntax".break_without_value = macro _ => `(
 impl syntax @"syntax".break_with_value = macro (.value) => `(
   (current loop_context[_]).@"break" $value
 );
+
+const chars :: string -> () with generator_handler[char] = native "chars";
+const push_char :: (string, char) -> string = native "push_char";
 
 #trait Iterator {
 #    type Item;

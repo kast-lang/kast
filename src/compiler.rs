@@ -295,10 +295,22 @@ impl Compilable for Expr {
                 Token::String {
                     raw: _,
                     contents,
-                    typ: _,
+                    typ,
                 } => {
                     Expr::Constant {
-                        value: Value::String(contents.clone()),
+                        value: match typ {
+                            ast::StringType::SingleQuoted => Value::Char({
+                                let mut chars = contents.chars();
+                                let c = chars
+                                    .next()
+                                    .ok_or_else(|| eyre!("char literal has no content"))?;
+                                if chars.next().is_some() {
+                                    eyre::bail!("char literal has more than one char");
+                                }
+                                c
+                            }),
+                            ast::StringType::DoubleQuoted => Value::String(contents.clone()),
+                        },
                         data: data.span.clone(),
                     }
                     .init(kast)

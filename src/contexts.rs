@@ -35,9 +35,12 @@ pub fn default_file_system() -> Value {
         Value::NativeFunction(NativeFunction {
             name: "read_file".into(),
             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, path: Value| {
-                let path = path.expect_string()?;
-                let contents = std::fs::read_to_string(path)?;
-                Ok(Value::String(contents))
+                async move {
+                    let path = path.expect_string()?;
+                    let contents = std::fs::read_to_string(path)?;
+                    Ok(Value::String(contents))
+                }
+                .boxed()
             }) as std::sync::Arc<NativeFunctionImpl>)
                 .into(),
             ty: FnType {
@@ -57,8 +60,11 @@ pub fn default_number_type() -> Value {
         Value::NativeFunction(NativeFunction {
             name: "default_number_type".to_owned(),
             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
-                let _s = s.expect_string()?;
-                Ok(Value::Type(Type::new_not_inferred()))
+                async move {
+                    let _s = s.expect_string()?;
+                    Ok(Value::Type(Type::new_not_inferred()))
+                }
+                .boxed()
             }) as std::sync::Arc<NativeFunctionImpl>)
                 .into(),
             ty: FnType {
@@ -89,9 +95,12 @@ pub fn output_context() -> Value {
         Value::NativeFunction(NativeFunction {
             name: "print".to_owned(),
             r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
-                let s = s.expect_string()?;
-                kast.output.write(s);
-                Ok(Value::Unit)
+                async move {
+                    let s = s.expect_string()?;
+                    kast.output.write(s);
+                    Ok(Value::Unit)
+                }
+                .boxed()
             }) as std::sync::Arc<NativeFunctionImpl>)
                 .into(),
             ty: write_type,
