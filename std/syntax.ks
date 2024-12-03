@@ -17,7 +17,7 @@ syntax_module {
   # syntax continue_impl <- 2 = "continue";
   syntax yield <- 2 = "yield" value;
 
-  # syntax loop_impl <- 3 = "loop" "{" body "}";
+  syntax @"loop" <- 3 = "loop" "{" body "}";
   syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
   syntax @"builtin macro impl_cast" <- 4 = "impl" value "as" target "=" impl;
   syntax @"builtin macro impl_syntax" <- 4 = "impl" "syntax" def "=" impl;

@@ -128,6 +128,27 @@ const loop_context = forall[T] {
   ) :: type
 };
 
+impl syntax @"syntax".@"loop" = macro (.body) => `(
+  unwindable for_loop (
+    let body = () => (
+      const BodyResult = forall[T] { newtype :Break T | :Continue };
+      let body_result :: BodyResult[_] = unwindable body (
+        with (
+          .@"break" = () => unwind body (:Break ()),
+          .@"continue" = () => unwind body (:Continue),
+        ) :: loop_context[()];
+        $body;
+        :Continue
+      );
+      match body_result {
+        | :Break value => unwind for_loop value
+        | :Continue => ()
+      };
+    );
+    native "loop" body
+  )
+);
+
 impl syntax @"syntax".for_loop = macro (.value_pattern, .generator, .body) => `(
   unwindable for_loop (
     let handler = $value_pattern => (

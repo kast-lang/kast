@@ -178,6 +178,39 @@ impl Cache {
                     }),
                 );
                 map.insert(
+                    "loop".to_owned(),
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::Function(Box::new(FnType {
+                                arg: TypeShape::Unit.into(),
+                                contexts: Contexts::new_not_inferred(),
+                                result: TypeShape::Unit.into(),
+                            }))
+                            .into(),
+                            contexts: Contexts::new_not_inferred(),
+                            result: Type::new_not_inferred(), // TODO never
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "loop".to_owned(),
+                            r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, body: Value| {
+                                async move {
+                                    loop {
+                                        kast.call(body.clone(), Value::Unit).await?;
+                                    }
+                                    // rust is stupid
+                                    #[allow(unreachable_code)]
+                                    Ok(Value::Unit)
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "list_iter".to_owned(),
                     Box::new({
                         let set_natives = set_natives.clone();
@@ -1355,10 +1388,11 @@ impl Kast {
             };
             let result_ty = result.ty(); // .substitute_bindings(self); // TODO not needed?
             if should_check_result_ty {
-                result_ty
-                    .clone()
-                    .make_same(expected_ty)
-                    .wrap_err("expr evaluated to incorrect type")?;
+                if let Err(e) = result_ty.clone().make_same(expected_ty.clone()) {
+                    tracing::error!("expected {expected_ty}");
+                    tracing::error!("result is {result_ty}");
+                    eyre::bail!("expr evaluated to incorrent type: {e}");
+                }
             }
             tracing::debug!("finished evaluating {}", expr.show_short());
             tracing::trace!("result = {result}");
