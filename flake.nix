@@ -28,6 +28,7 @@
               root = ./.;
               include = [
                 "crates"
+                "std"
                 "src"
                 "Cargo.toml"
                 "Cargo.lock"
