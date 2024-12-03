@@ -9,12 +9,7 @@ pub enum Value {
     Float64(OrderedFloat<f64>),
     Char(char),
     String(String),
-    List {
-        #[try_hash]
-        values: Vec<Value>,
-        #[try_hash]
-        element_ty: Type,
-    },
+    List(#[try_hash] ListValue),
     Tuple(#[try_hash] Tuple<Value>),
     Function(#[try_hash] TypedFunction),
     Template(Function),
@@ -30,6 +25,14 @@ pub enum Value {
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
     UnwindHandle(#[try_hash] UnwindHandle),
     Symbol(Symbol),
+}
+
+#[derive(Clone, PartialEq, Eq, TryHash)]
+pub struct ListValue {
+    #[try_hash]
+    pub values: Vec<Value>,
+    #[try_hash]
+    pub element_ty: Type,
 }
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
@@ -58,6 +61,20 @@ impl std::fmt::Display for VariantValue {
     }
 }
 
+impl std::fmt::Display for ListValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[")?;
+        for (index, value) in self.values.iter().enumerate() {
+            if index != 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{value}")?;
+        }
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -69,20 +86,7 @@ impl std::fmt::Display for Value {
             Value::Float64(value) => value.fmt(f),
             Value::Char(c) => write!(f, "{c:?}"),
             Value::String(s) => write!(f, "{s:?}"),
-            Value::List {
-                values,
-                element_ty: _,
-            } => {
-                write!(f, "[")?;
-                for (index, value) in values.iter().enumerate() {
-                    if index != 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{value}")?;
-                }
-                write!(f, "]")?;
-                Ok(())
-            }
+            Value::List(list) => list.fmt(f),
             Value::Multiset(values) => {
                 for (index, value) in values.iter().enumerate() {
                     if index != 0 {
@@ -153,10 +157,7 @@ impl Value {
             Value::Float64(_) => TypeShape::Float64.into(),
             Value::Char(_) => TypeShape::Char.into(),
             Value::String(_) => TypeShape::String.into(),
-            Value::List {
-                values: _,
-                element_ty,
-            } => TypeShape::List(element_ty.clone()).into(),
+            Value::List(list) => TypeShape::List(list.element_ty.clone()).into(),
             Value::Tuple(tuple) => TypeShape::Tuple(tuple.as_ref().map(|field| field.ty())).into(),
             Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             Value::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
@@ -254,6 +255,15 @@ impl Value {
             _ => Err(ExpectError {
                 value: self,
                 expected: TypeShape::Unit,
+            }),
+        }
+    }
+    pub fn expect_list(self) -> Result<ListValue, ExpectError> {
+        match self {
+            Self::List(list) => Ok(list),
+            _ => Err(ExpectError {
+                value: self,
+                expected: TypeShape::List(Type::new_not_inferred()),
             }),
         }
     }

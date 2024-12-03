@@ -159,6 +159,10 @@ impl syntax @"syntax".break_with_value = macro (.value) => `(
 const chars :: string -> () with generator_handler[char] = native "chars";
 const push_char :: (string, char) -> string = native "push_char";
 
+const list_push = forall[T] {
+    native "list_push" :: (list[T], T) -> list[T]
+};
+
 #trait Iterator {
 #    type Item;
 #    fn next(&mut self) -> Option<<Self as Iterator>::Item>;
