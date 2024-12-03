@@ -333,6 +333,46 @@ impl Cache {
                     }),
                 );
                 map.insert(
+                    "list_get".to_owned(),
+                    Box::new(|expected: Type| {
+                        let elem_ty = Type::new_not_inferred();
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut tuple = Tuple::empty();
+                                tuple.add_unnamed(TypeShape::List(elem_ty.clone()).into());
+                                tuple.add_unnamed(TypeShape::Int32.into()); // TODO usize?
+                                tuple
+                            })
+                            .into(),
+                            contexts: Contexts::empty(),
+                            result: elem_ty,
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "list_get".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                async move {
+                                    let [list, index] = args.expect_tuple()?.into_unnamed()?;
+                                    let list = list.expect_list()?;
+                                    let index = index.expect_int32()?;
+                                    Ok(list
+                                        .values
+                                        .get(
+                                            usize::try_from(index)
+                                                .map_err(|e| eyre!("incorrect index: {e}"))?,
+                                        )
+                                        .ok_or_else(|| eyre!("list index out of bounds"))?
+                                        .clone())
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "list_length".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {

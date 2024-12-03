@@ -168,6 +168,9 @@ const list_length = forall[T] {
 const list_iter = forall[T] {
     native "list_iter" :: list[T] -> () with generator_handler[T]
 };
+const list_get = forall[T] {
+    native "list_get" :: (list[T], int32) -> T
+};
 
 #trait Iterator {
 #    type Item;
