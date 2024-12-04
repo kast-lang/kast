@@ -113,6 +113,7 @@ syntax_module {
   syntax @"op prefix ++" <- 100 = "++" x;
   syntax @"op postfix --" <- 100 = x "--";
   syntax @"op prefix --" <- 100 = "--" x;
+  syntax @"not" <- 100 = "not" _;
 
   syntax @"builtin macro call" <- 100 = f arg;
 

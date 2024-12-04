@@ -92,6 +92,9 @@ impl syntax @"syntax".@"op binary !=" = forall[T] { native "!=" :: (.lhs = T, .r
 impl syntax @"syntax".@"op binary >=" = forall[T] { native ">=" :: (.lhs = T, .rhs = T) -> bool };
 impl syntax @"syntax".@"op binary >" = forall[T] { native ">" :: (.lhs = T, .rhs = T) -> bool };
 
+const @"not" = native "not" :: bool -> bool;
+impl syntax @"syntax".@"not" = macro (e,) => `(@"not" $e);
+
 const TypeName = (.name = string) as type;
 
 impl int32 as TypeName = (.name = "int32");

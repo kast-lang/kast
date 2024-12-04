@@ -701,6 +701,12 @@ impl Cache {
                         _ => eyre::bail!("unary - doesnt work for {}", value.ty()),
                     })
                 }));
+                insert_named(unary_op("not", |value| {
+                    Ok(match value {
+                        Value::Bool(x) => Value::Bool(!x),
+                        _ => eyre::bail!("not doesnt work for {}", value.ty()),
+                    })
+                }));
 
                 macro_rules! binary_op {
                     ($op:tt, $method: ident) => {
