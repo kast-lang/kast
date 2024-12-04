@@ -3,6 +3,7 @@ use super::*;
 #[derive(Clone)]
 pub struct State {
     pub contexts: Parc<Mutex<contexts::State>>,
+    pub check_types: bool,
 }
 
 type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
@@ -821,6 +822,7 @@ impl State {
     pub fn new() -> Self {
         Self {
             contexts: Parc::new(Mutex::new(contexts::State::default())),
+            check_types: cfg!(debug_assertions), // TODO add option to configure in cli
         }
     }
 }
@@ -951,12 +953,15 @@ impl Kast {
     }
     pub fn eval<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<Value>> {
         tracing::trace!("evaluating {}", expr.show_short());
-        let expected_ty = expr
-            .data()
-            .ty
-            .clone()
-            .substitute_bindings(self, &mut RecurseCache::new());
-        tracing::trace!("as {expected_ty}");
+        let expected_ty = self.interpreter.check_types.then(|| {
+            let ty = expr
+                .data()
+                .ty
+                .clone()
+                .substitute_bindings(self, &mut RecurseCache::new());
+            tracing::trace!("as {ty}");
+            ty
+        });
         let r#impl = async move {
             let result = match expr {
                 Expr::And { lhs, rhs, data: _ } => {
@@ -1425,49 +1430,51 @@ impl Kast {
                     self.instantiate(template, arg).await?
                 }
             };
-            let should_check_result_ty = match expr {
-                Expr::Unit { .. }
-                | Expr::And { .. }
-                | Expr::Or { .. }
-                | Expr::List { .. }
-                | Expr::Unwind { .. }
-                | Expr::Unwindable { .. }
-                | Expr::CallMacro { .. }
-                | Expr::InjectContext { .. }
-                | Expr::CurrentContext { .. }
-                | Expr::FunctionType { .. }
-                | Expr::Cast { .. }
-                | Expr::Is { .. }
-                | Expr::Match { .. }
-                | Expr::Newtype { .. }
-                | Expr::Variant { .. }
-                | Expr::MakeMultiset { .. }
-                | Expr::Use { .. }
-                | Expr::FieldAccess { .. }
-                | Expr::Binding { .. }
-                | Expr::If { .. }
-                | Expr::Then { .. }
-                | Expr::Constant { .. }
-                | Expr::Number { .. }
-                | Expr::Native { .. }
-                | Expr::Let { .. }
-                | Expr::Assign { .. }
-                | Expr::Call { .. }
-                | Expr::Scope { .. }
-                | Expr::Function { .. }
-                | Expr::Template { .. }
-                | Expr::Instantiate { .. }
-                | Expr::Tuple { .. }
-                | Expr::Ast { .. } => true,
-                // TODO
-                Expr::Recursive { .. } => false,
-            };
-            let result_ty = result.ty(); // .substitute_bindings(self); // TODO not needed?
-            if should_check_result_ty {
-                if let Err(e) = result_ty.clone().make_same(expected_ty.clone()) {
-                    tracing::error!("expected {expected_ty}");
-                    tracing::error!("result is {result_ty}");
-                    eyre::bail!("expr evaluated to incorrent type: {e}");
+            if let Some(expected_ty) = expected_ty {
+                let should_check_result_ty = match expr {
+                    Expr::Unit { .. }
+                    | Expr::And { .. }
+                    | Expr::Or { .. }
+                    | Expr::List { .. }
+                    | Expr::Unwind { .. }
+                    | Expr::Unwindable { .. }
+                    | Expr::CallMacro { .. }
+                    | Expr::InjectContext { .. }
+                    | Expr::CurrentContext { .. }
+                    | Expr::FunctionType { .. }
+                    | Expr::Cast { .. }
+                    | Expr::Is { .. }
+                    | Expr::Match { .. }
+                    | Expr::Newtype { .. }
+                    | Expr::Variant { .. }
+                    | Expr::MakeMultiset { .. }
+                    | Expr::Use { .. }
+                    | Expr::FieldAccess { .. }
+                    | Expr::Binding { .. }
+                    | Expr::If { .. }
+                    | Expr::Then { .. }
+                    | Expr::Constant { .. }
+                    | Expr::Number { .. }
+                    | Expr::Native { .. }
+                    | Expr::Let { .. }
+                    | Expr::Assign { .. }
+                    | Expr::Call { .. }
+                    | Expr::Scope { .. }
+                    | Expr::Function { .. }
+                    | Expr::Template { .. }
+                    | Expr::Instantiate { .. }
+                    | Expr::Tuple { .. }
+                    | Expr::Ast { .. } => true,
+                    // TODO
+                    Expr::Recursive { .. } => false,
+                };
+                let result_ty = result.ty(); // .substitute_bindings(self); // TODO not needed?
+                if should_check_result_ty {
+                    if let Err(e) = result_ty.clone().make_same(expected_ty.clone()) {
+                        tracing::error!("expected {expected_ty}");
+                        tracing::error!("result is {result_ty}");
+                        eyre::bail!("expr evaluated to incorrent type: {e}");
+                    }
                 }
             }
             tracing::debug!("finished evaluating {}", expr.show_short());
