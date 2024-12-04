@@ -190,6 +190,7 @@ impl syntax @"syntax".@"continue" = macro _ => `(
   (current loop_context[()]).@"continue" () # TODO infer loop context arg
 );
 
+const char_ord :: char -> int32 = native "char_ord";
 const chars :: string -> () with generator_handler[char] = native "chars";
 const push_char :: (string, char) -> string = native "push_char";
 

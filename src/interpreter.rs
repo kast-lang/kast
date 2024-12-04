@@ -500,6 +500,30 @@ impl Cache {
                     }),
                 );
                 map.insert(
+                    "char_ord".to_owned(),
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::Char.into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::Int32.into(), // TODO UInt32?
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "char_ord".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                async move {
+                                    let c = args.expect_char()?;
+                                    Ok(Value::Int32(u32::from(c).try_into()?))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "panic".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
