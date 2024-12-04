@@ -60,13 +60,7 @@ fn main() -> eyre::Result<()> {
                 false => Kast::new(),
             }
             .unwrap();
-            let value = kast.eval_source(
-                SourceFile {
-                    contents: std::fs::read_to_string(&path)?,
-                    filename: path,
-                },
-                None,
-            )?;
+            let value = kast.eval_file(path)?;
             match value {
                 Value::Unit => {}
                 _ => tracing::info!("evaluated to {value}"),

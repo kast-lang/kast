@@ -199,6 +199,8 @@ const list_get = forall[T] {
     native "list_get" :: (list[T], int32) -> T
 };
 
+const exec_mode = native "exec_mode";
+
 #trait Iterator {
 #    type Item;
 #    fn next(&mut self) -> Option<<Self as Iterator>::Item>;

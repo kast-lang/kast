@@ -733,6 +733,52 @@ impl Cache {
                 binary_op!(*, checked_mul);
                 binary_op!(/, checked_div);
                 binary_op!(%, checked_rem);
+
+                {
+                    let exec_mode_ty = TypeShape::Variant(vec![
+                        VariantType {
+                            name: "Run".to_owned(),
+                            value: None,
+                        },
+                        VariantType {
+                            name: "Import".to_owned(),
+                            value: None,
+                        },
+                    ]);
+                    map.insert(
+                        "exec_mode".to_owned(),
+                        Box::new(move |expected: Type| {
+                            let exec_mode_ty = exec_mode_ty.clone();
+                            let ty = FnType {
+                                arg: TypeShape::Unit.into(),
+                                contexts: Contexts::empty(),
+                                result: exec_mode_ty.clone().into(),
+                            };
+                            expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(Value::NativeFunction(NativeFunction {
+                                name: "exec_mode".to_owned(),
+                                r#impl: (std::sync::Arc::new(move |kast: Kast, _fn_ty, _: Value| {
+                                    let exec_mode_ty = exec_mode_ty.clone();
+                                    async move {
+                                        Ok(Value::Variant(VariantValue {
+                                            name: match kast.exec_mode {
+                                                ExecMode::Run => "Run".into(),
+                                                ExecMode::Import => "Import".into(),
+                                            },
+                                            value: None,
+                                            ty: exec_mode_ty.clone().into(),
+                                        }))
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            }))
+                        }),
+                    );
+                };
+
                 map
             },
             set_natives,

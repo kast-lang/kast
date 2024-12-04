@@ -39,6 +39,12 @@ pub trait Output: 'static + Sync + Send {
     fn write(&self, s: String);
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum ExecMode {
+    Run,
+    Import,
+}
+
 #[derive(Clone)]
 pub struct Kast {
     /// Am I a background task? :)
@@ -50,6 +56,7 @@ pub struct Kast {
     scopes: Scopes,
     cache: Parc<Cache>,
     pub output: std::sync::Arc<dyn Output>,
+    exec_mode: ExecMode,
 }
 
 pub trait ShowShort {
@@ -128,6 +135,7 @@ impl Kast {
                 }
                 DefaultOutput
             }),
+            exec_mode: ExecMode::Run,
         }
     }
     fn only_std_syntax(cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
@@ -211,6 +219,7 @@ impl Kast {
             contents: std::fs::read_to_string(&path)?,
             filename: path.clone(),
         };
+        kast.exec_mode = ExecMode::Import;
         let value = kast.eval_source(source, None)?;
         self.cache
             .imports
