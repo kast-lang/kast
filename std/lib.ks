@@ -152,6 +152,12 @@ impl syntax @"syntax".@"loop" = macro (.body) => `(
   )
 );
 
+impl syntax @"syntax".@"while" = macro (.cond, .body) => `(
+    loop {
+        if $cond then $body else (break);
+    }
+);
+
 impl syntax @"syntax".for_loop = macro (.value_pattern, .generator, .body) => `(
   unwindable for_loop (
     let handler = $value_pattern => (
