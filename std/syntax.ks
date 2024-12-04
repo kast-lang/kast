@@ -26,6 +26,12 @@ syntax_module {
   syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
   syntax @"builtin macro assign" <- 4 = pattern "=" value;
 
+  syntax @"op +=" <- 4 = target "+=" value;
+  syntax @"op -=" <- 4 = target "-=" value;
+  syntax @"op *=" <- 4 = target "*=" value;
+  syntax @"op /=" <- 4 = target "/=" value;
+  syntax @"op %=" <- 4 = target "%=" value;
+
   syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
 
   syntax @"builtin macro tuple" <- 4.5 = a "," b;

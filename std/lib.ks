@@ -92,6 +92,12 @@ impl syntax @"syntax".@"op binary !=" = forall[T] { native "!=" :: (.lhs = T, .r
 impl syntax @"syntax".@"op binary >=" = forall[T] { native ">=" :: (.lhs = T, .rhs = T) -> bool };
 impl syntax @"syntax".@"op binary >" = forall[T] { native ">" :: (.lhs = T, .rhs = T) -> bool };
 
+impl syntax @"syntax".@"op +=" = macro (.target, .value) => `($target = $target + $value);
+impl syntax @"syntax".@"op -=" = macro (.target, .value) => `($target = $target - $value);
+impl syntax @"syntax".@"op *=" = macro (.target, .value) => `($target = $target * $value);
+impl syntax @"syntax".@"op /=" = macro (.target, .value) => `($target = $target / $value);
+impl syntax @"syntax".@"op %=" = macro (.target, .value) => `($target = $target % $value);
+
 const @"not" = native "not" :: bool -> bool;
 impl syntax @"syntax".@"not" = macro (e,) => `(@"not" $e);
 
