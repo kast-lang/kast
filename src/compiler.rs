@@ -1007,7 +1007,7 @@ impl Kast {
         result_type: Option<Type>,
     ) -> MaybeCompiledFn {
         let compiled = Parc::new(Mutex::new(None));
-        self.executor.spawn({
+        self.cache.executor.spawn({
             let mut kast = self.spawn_clone();
             let compiled = compiled.clone();
             let body: Ast = body.clone();
@@ -2343,7 +2343,7 @@ impl Expr<Span> {
                     // TODO why am I cloning kast?
                     // TODO why eval, if then arg should be value??
 
-                    kast.executor.advance()?;
+                    kast.cache.executor.advance()?;
                     let compiled: Parc<CompiledFn> = match &*template_ty.lock().unwrap() {
                         Some(compiled) => compiled.clone(),
                         None => eyre::bail!("template is not compiled yet"),

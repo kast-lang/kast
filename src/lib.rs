@@ -48,8 +48,7 @@ enum ExecMode {
 #[derive(Clone)]
 pub struct Kast {
     /// Am I a background task? :)
-    executor: Executor,
-    syntax: ast::Syntax,
+    syntax: Parc<ast::Syntax>,
     pub interpreter: interpreter::State,
     compiler: compiler::State,
     spawn_id: Id,
@@ -100,6 +99,7 @@ enum ImportMode {
 }
 
 struct Cache {
+    executor: Executor,
     interpreter: interpreter::Cache,
     compiler: compiler::Cache,
     imports: Mutex<HashMap<PathBuf, Option<Value>>>,
@@ -111,6 +111,7 @@ impl Default for Cache {
             interpreter: interpreter::Cache::new(),
             compiler: compiler::Cache::new(),
             imports: Default::default(),
+            executor: Executor::new(),
         }
     }
 }
@@ -120,8 +121,7 @@ impl Kast {
         let spawn_id = Id::new();
         Self {
             spawn_id,
-            executor: Executor::new(),
-            syntax: ast::Syntax::empty(),
+            syntax: Parc::new(ast::Syntax::empty()),
             scopes: Scopes::new(spawn_id, ScopeType::NonRecursive, None),
             interpreter: interpreter::State::new(),
             compiler: compiler::State::new(),
@@ -145,13 +145,15 @@ impl Kast {
             .wrap_err("failed to import std syntax")?
             .expect_syntax_module()
             .wrap_err("std/syntax.ks must evaluate to syntax")?;
+        let mut new_syntax: ast::Syntax = (*kast.syntax).clone();
         for definition in &*syntax {
             tracing::trace!("std syntax: {}", definition.name);
             kast.cache.compiler.register_syntax(definition);
-            kast.syntax
+            new_syntax
                 .insert(definition.clone())
                 .wrap_err("Failed to add std syntax")?;
         }
+        kast.syntax = Parc::new(new_syntax);
         Ok(kast)
     }
     #[allow(clippy::new_without_default)]

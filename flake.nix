@@ -57,6 +57,7 @@
             rust-toolchain
             rust-analyzer
             just
+            cargo-flamegraph
           ];
           shellHook = ''
             echo Hello from Kast devshell

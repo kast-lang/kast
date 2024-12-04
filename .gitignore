@@ -5,3 +5,5 @@
 /dist/
 /target/
 /test.ks
+/flamegraph.svg
+/perf.data*

@@ -867,7 +867,7 @@ impl Kast {
 
 impl Drop for Kast {
     fn drop(&mut self) {
-        let _ = self.executor.advance();
+        let _ = self.cache.executor.advance();
     }
 }
 
@@ -1490,7 +1490,7 @@ impl Kast {
     }
 
     pub async fn await_compiled(&self, f: &Function) -> eyre::Result<Parc<CompiledFn>> {
-        self.executor.advance()?;
+        self.cache.executor.advance()?;
         match &*f.compiled.lock().unwrap() {
             Some(compiled) => Ok(compiled.clone()),
             None => eyre::bail!("function is not compiled yet"),
