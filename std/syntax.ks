@@ -14,7 +14,7 @@ syntax_module {
   # syntax return <- 2 = "return" value;
   syntax break_with_value <- 2 = "break" value;
   syntax break_without_value <- 2 = "break";
-  # syntax continue_impl <- 2 = "continue";
+  syntax continue <- 2 = "continue";
   syntax yield <- 2 = "yield" value;
 
   syntax @"loop" <- 3 = "loop" "{" body "}";

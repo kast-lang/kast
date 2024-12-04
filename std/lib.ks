@@ -186,6 +186,10 @@ impl syntax @"syntax".break_with_value = macro (.value) => `(
   (current loop_context[_]).@"break" $value
 );
 
+impl syntax @"syntax".@"continue" = macro _ => `(
+  (current loop_context[()]).@"continue" () # TODO infer loop context arg
+);
+
 const chars :: string -> () with generator_handler[char] = native "chars";
 const push_char :: (string, char) -> string = native "push_char";
 
