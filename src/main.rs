@@ -53,8 +53,7 @@ fn main() -> eyre::Result<()> {
 
     tracing_subscriber::fmt::init();
 
-    let cli_args = cli::parse();
-    match cli_args.command {
+    match cli::parse().command() {
         cli::Command::Run { path, no_stdlib } => {
             let mut kast = match no_stdlib {
                 true => Kast::new_nostdlib(),
