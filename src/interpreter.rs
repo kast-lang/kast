@@ -20,6 +20,7 @@ pub struct CompletionCandidate {
 
 pub struct Cache {
     pub builtins: HashMap<String, Builtin>,
+    #[allow(dead_code)]
     pub set_natives: Parc<Mutex<HashMap<String, Value>>>,
 }
 
