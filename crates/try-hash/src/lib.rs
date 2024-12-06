@@ -32,3 +32,10 @@ impl<T: TryHash> TryHash for Vec<T> {
         Ok(())
     }
 }
+
+impl<T: TryHash> TryHash for std::sync::Arc<T> {
+    type Error = T::Error;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        T::try_hash(self, hasher)
+    }
+}

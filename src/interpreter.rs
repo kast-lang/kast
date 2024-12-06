@@ -256,8 +256,8 @@ impl Cache {
                                             let handler = handler
                                                 .get_named("handle")
                                                 .ok_or_else(|| eyre!("wut"))?;
-                                            for elem in value.values {
-                                                kast.call(handler.clone(), elem).await?;
+                                            for elem in value.values.iter() {
+                                                kast.call(handler.clone(), elem.clone()).await?;
                                             }
                                             Ok(Value::Unit)
                                         }
@@ -460,10 +460,13 @@ impl Cache {
                                     let index = index.expect_int32()?;
                                     let index: usize = index.try_into()?;
                                     let mut result = list;
-                                    *result
-                                        .values
-                                        .get_mut(index)
-                                        .ok_or_else(|| eyre!("out of bounds"))? = new_value;
+                                    result.values = std::sync::Arc::new({
+                                        let mut list: Vec<Value> = (*result.values).clone();
+                                        *list
+                                            .get_mut(index)
+                                            .ok_or_else(|| eyre!("out of bounds"))? = new_value;
+                                        list
+                                    });
                                     Ok(Value::List(result))
                                 }
                                 .boxed()
@@ -497,7 +500,11 @@ impl Cache {
                                     let [list, new_elem] = args.expect_tuple()?.into_unnamed()?;
                                     let list = list.expect_list()?;
                                     let mut result = list;
-                                    result.values.push(new_elem);
+                                    result.values = std::sync::Arc::new({
+                                        let mut list: Vec<Value> = (*result.values).clone();
+                                        list.push(new_elem);
+                                        list
+                                    });
                                     Ok(Value::List(result))
                                 }
                                 .boxed()
@@ -1048,7 +1055,10 @@ impl Kast {
                             for value_expr in values_exprs {
                                 values.push(self.eval(value_expr).await?);
                             }
-                            Value::List(ListValue { values, element_ty })
+                            Value::List(ListValue {
+                                values: std::sync::Arc::new(values),
+                                element_ty,
+                            })
                         }
                         _ => eyre::bail!("list expr enferred to be {}", data.ty),
                     }

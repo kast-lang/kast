@@ -29,8 +29,9 @@ pub enum Value {
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct ListValue {
+    /// TODO dont Arc
     #[try_hash]
-    pub values: Vec<Value>,
+    pub values: std::sync::Arc<Vec<Value>>,
     #[try_hash]
     pub element_ty: Type,
 }
