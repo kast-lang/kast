@@ -434,6 +434,47 @@ impl Cache {
                     }),
                 );
                 map.insert(
+                    "list_set".to_owned(),
+                    Box::new(|expected: Type| {
+                        let elem_ty = Type::new_not_inferred();
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_unnamed(TypeShape::List(elem_ty.clone()).into());
+                                args.add_unnamed(TypeShape::Int32.into());
+                                args.add_unnamed(elem_ty.clone());
+                                args
+                            })
+                            .into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::List(elem_ty.clone()).into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "list_set".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                async move {
+                                    let [list, index, new_value] =
+                                        args.expect_tuple()?.into_unnamed()?;
+                                    let list = list.expect_list()?;
+                                    let index = index.expect_int32()?;
+                                    let index: usize = index.try_into()?;
+                                    let mut result = list;
+                                    *result
+                                        .values
+                                        .get_mut(index)
+                                        .ok_or_else(|| eyre!("out of bounds"))? = new_value;
+                                    Ok(Value::List(result))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "list_push".to_owned(),
                     Box::new(|expected: Type| {
                         let elem_ty = Type::new_not_inferred();
