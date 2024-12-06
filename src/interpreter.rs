@@ -740,8 +740,8 @@ impl Cache {
                     })
                 }
                 macro_rules! binary_cmp_op {
-                    ($op:tt) => {
-                        insert_named(binary_cmp_op(stringify!($op), |lhs, rhs| {
+                    ($op:tt, $name:ident) => {
+                        fn $name(lhs: Value, rhs: Value) -> eyre::Result<bool> {
                             Ok(match (lhs, rhs) {
                                 (Value::Bool(lhs), Value::Bool(rhs)) => lhs $op rhs,
                                 (Value::Int32(lhs), Value::Int32(rhs)) => lhs $op rhs,
@@ -749,6 +749,14 @@ impl Cache {
                                 (Value::Float64(lhs), Value::Float64(rhs)) => lhs $op rhs,
                                 (Value::Char(lhs), Value::Char(rhs)) => lhs $op rhs,
                                 (Value::String(lhs), Value::String(rhs)) => lhs $op rhs,
+                                (Value::Tuple(lhs), Value::Tuple(rhs)) => 'result: {
+                                    for (_name, (lhs, rhs)) in lhs.zip(rhs).unwrap() {
+                                        if lhs != rhs {
+                                            break 'result $name(lhs, rhs)?;
+                                        }
+                                    }
+                                    stringify!($op).contains('=')
+                                },
                                 (lhs, rhs) => {
                                     eyre::bail!(
                                         "{:?} doesnt work for {} and {}",
@@ -758,15 +766,16 @@ impl Cache {
                                     )
                                 }
                             })
-                        }));
+                        }
+                        insert_named(binary_cmp_op(stringify!($op), $name));
                     };
                 }
-                binary_cmp_op!(<);
-                binary_cmp_op!(<=);
-                binary_cmp_op!(==);
-                binary_cmp_op!(!=);
-                binary_cmp_op!(>=);
-                binary_cmp_op!(>);
+                binary_cmp_op!(<, lt);
+                binary_cmp_op!(<=, le);
+                binary_cmp_op!(==, eq);
+                binary_cmp_op!(!=, ne);
+                binary_cmp_op!(>=, gt);
+                binary_cmp_op!(>, ge);
                 insert_named(unary_op("unary -", |value| {
                     Ok(match value {
                         Value::Int32(value) => Value::Int32(-value),
