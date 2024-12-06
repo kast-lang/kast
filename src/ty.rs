@@ -272,9 +272,10 @@ impl SubstituteBindings for Type {
                 return self;
             }
         };
-        if !cache.insert(self.var()) {
-            return self;
+        if let Some(result) = cache.get(self.var()) {
+            return result;
         }
+        cache.insert(self.var(), self.clone());
         tracing::trace!("subbing {}", inferred.show_short());
         let result = match inferred {
             TypeShape::Unit
@@ -324,6 +325,7 @@ impl SubstituteBindings for Type {
                 None => TypeShape::Binding(binding.clone()).into(),
             },
         };
+        cache.insert(self.var(), result.clone());
         tracing::trace!("subbed as {result}");
         result
     }

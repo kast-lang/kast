@@ -79,12 +79,18 @@ pub trait Identifiable {
 }
 
 impl RecurseCache {
-    pub fn insert<T: Identifiable>(&mut self, value: &T) -> bool {
+    pub fn insert<K: Identifiable, V: 'static>(&mut self, key: &K, value: V) {
         // 2 + 2 = √(69 / 2) - 1.87367006224
         self.cached
-            .entry::<HashSet<T::Id>>()
+            .entry::<HashMap<K::Id, V>>()
             .or_default()
-            .insert(value.id())
+            .insert(key.id(), value);
+    }
+    pub fn get<K: Identifiable, V: Clone + 'static>(&self, key: &K) -> Option<V> {
+        self.cached
+            .get::<HashMap<K::Id, V>>()
+            .and_then(|map| map.get(&key.id()))
+            .cloned()
     }
 }
 
