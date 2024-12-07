@@ -51,15 +51,31 @@ fn main() -> eyre::Result<()> {
         .display_location_section(false)
         .install()?;
 
-    tracing_subscriber::fmt::init();
+    let log_level = {
+        use tracing_subscriber::{filter, fmt, prelude::*, reload};
+        let (filter, reload_handle) = reload::Layer::new(filter::LevelFilter::WARN);
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt::Layer::default())
+            .init();
+        reload_handle
+    };
+    let cli_args = cli::parse();
+    let target_log_level = cli_args.log;
+    let init_log_level = move || {
+        log_level
+            .modify(|filter| *filter = target_log_level)
+            .unwrap();
+    };
 
-    match cli::parse().command() {
+    match cli_args.command() {
         cli::Command::Run { path, no_stdlib } => {
             let mut kast = match no_stdlib {
                 true => Kast::new_nostdlib(),
                 false => Kast::new(),
             }
             .unwrap();
+            init_log_level();
             let value = kast.eval_file(path)?;
             match value {
                 Value::Unit => {}
@@ -93,6 +109,7 @@ fn main() -> eyre::Result<()> {
                 }
                 .unwrap(),
             ));
+            init_log_level();
             if let Some(path) = path {
                 let name = path.file_stem().unwrap().to_str().unwrap();
                 let mut kast = kast.lock().unwrap();

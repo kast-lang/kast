@@ -18,6 +18,8 @@ pub enum Command {
 #[derive(clap::Parser)]
 #[clap(args_conflicts_with_subcommands = true)]
 pub struct Args {
+    #[clap(long, default_value = "info")]
+    pub log: tracing_subscriber::filter::LevelFilter,
     pub path: Option<PathBuf>,
     #[clap(subcommand)]
     pub command: Option<Command>,
@@ -44,6 +46,7 @@ impl Args {
 pub fn parse() -> Args {
     if cfg!(target_arch = "wasm32") {
         return Args {
+            log: tracing_subscriber::filter::LevelFilter::WARN,
             path: None,
             command: None,
         };
