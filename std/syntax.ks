@@ -134,9 +134,6 @@ syntax_module {
   syntax @"builtin macro call_macro" <- 150 = @"macro" "!!" arg;
 
   syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
-  syntax @"builtin macro unquote" -> 200 = "$" expr;
-  syntax @"builtin macro unquote" -> 200 = "$" "(" expr ")";
-
   #syntax @"builtin macro variant" <- 250 = type ":" name value;
   #syntax @"builtin macro variant" <- 250 = type ":" name;
   syntax @"builtin macro variant" <- 250 = ":" name value;
@@ -152,6 +149,9 @@ syntax_module {
   syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
   syntax @"builtin macro unwindable" <- 500 = "unwindable" name body;
   syntax @"builtin macro unwind" <- 500 = "unwind" name value;
+
+  syntax @"builtin macro unquote" -> 500 = "$" expr;
+  syntax @"builtin macro unquote" -> 500 = "$" "(" expr ")";
 
   syntax let_infer <- 500 = "_let" pattern;
 
