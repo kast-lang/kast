@@ -65,6 +65,11 @@ const dbg = forall[T] {
   )
 };
 
+# TODO T: randomizable
+const random = forall[T] {
+    native "random" :: (.min = T, .max = T) -> T
+};
+
 # TODO `:: type` should be inferred
 const Option = forall[T :: type] { newtype :Some T | :None };
 

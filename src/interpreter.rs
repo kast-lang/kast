@@ -598,6 +598,59 @@ impl Cache {
                     }),
                 );
                 map.insert(
+                    "random".to_owned(),
+                    Box::new(|expected: Type| {
+                        let value_ty = Type::new_not_inferred();
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_named("min", value_ty.clone());
+                                args.add_named("max", value_ty.clone());
+                                args
+                            })
+                            .into(),
+                            contexts: Contexts::empty(), // TODO rng
+                            result: value_ty,
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "random".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, args: Value| {
+                                async move {
+                                    use rand::prelude::*;
+                                    let [min, max] =
+                                        args.expect_tuple()?.into_named(["min", "max"])?;
+                                    Ok(match fn_ty.result.inferred() {
+                                        Ok(ty) => match ty {
+                                            TypeShape::Int32 => {
+                                                let min = min.expect_int32()?;
+                                                let max = max.expect_int32()?;
+                                                Value::Int32(thread_rng().gen_range(min..=max))
+                                            }
+                                            TypeShape::Int64 => {
+                                                let min = min.expect_int64()?;
+                                                let max = max.expect_int64()?;
+                                                Value::Int64(thread_rng().gen_range(min..=max))
+                                            }
+                                            TypeShape::Float64 => {
+                                                let min = min.expect_float64()?;
+                                                let max = max.expect_float64()?;
+                                                Value::Float64(thread_rng().gen_range(min..=max))
+                                            }
+                                            _ => eyre::bail!("{ty} is not rngable???"),
+                                        },
+                                        Err(_) => eyre::bail!("cant parse not inferred type"),
+                                    })
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
                     "parse".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {

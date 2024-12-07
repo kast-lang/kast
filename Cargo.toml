@@ -22,7 +22,7 @@ futures-lite = "2"
 event-listener = "5"
 # https://github.com/rust-random/rand#wasm-support
 getrandom = { version = "0.2", features = ["js"] }
-ordered-float = "4"
+ordered-float = { version = "4", features = ["rand"] }
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }

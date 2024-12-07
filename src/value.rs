@@ -304,6 +304,15 @@ impl Value {
             }),
         }
     }
+    pub fn expect_float64(self) -> Result<OrderedFloat<f64>, ExpectError> {
+        match self {
+            Self::Float64(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: TypeShape::Float64,
+            }),
+        }
+    }
     pub fn expect_bool(self) -> Result<bool, ExpectError> {
         match self {
             Self::Bool(value) => Ok(value),
