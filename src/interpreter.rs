@@ -1133,7 +1133,10 @@ impl Kast {
                     Value::Unit
                 }
                 Expr::CurrentContext { data } => {
-                    let ty = data.ty.clone();
+                    let ty = data
+                        .ty
+                        .clone()
+                        .substitute_bindings(self, &mut RecurseCache::new());
                     self.interpreter
                         .contexts
                         .lock()
