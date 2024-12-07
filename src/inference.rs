@@ -408,9 +408,36 @@ impl<T: Inferrable + crate::ShowShort> crate::ShowShort for MaybeNotInferred<T> 
 
 impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0.get() {
-            Some(inferred) => inferred.fmt(f),
-            None => write!(f, "<not inferred>"),
-        }
+        thread_local! { static CACHE: std::cell::RefCell<(usize, Option<crate::RecurseCache>)> = Default::default(); }
+        let cached = CACHE.with_borrow_mut(|(level, cache)| {
+            if *level == 0 {
+                assert!(cache.is_none());
+                *cache = Some(crate::RecurseCache::new());
+            }
+            *level += 1;
+            let cache = cache.as_mut().unwrap();
+            match cache.get::<_, ()>(self.var()) {
+                Some(_cached) => true,
+                None => {
+                    cache.insert(self.var(), ());
+                    false
+                }
+            }
+        });
+        let result = if cached {
+            write!(f, "<recursive>")
+        } else {
+            match self.0.get() {
+                Some(inferred) => inferred.fmt(f),
+                None => write!(f, "<not inferred>"),
+            }
+        };
+        CACHE.with_borrow_mut(|(level, cache)| {
+            *level -= 1;
+            if *level == 0 {
+                assert!(cache.take().is_some());
+            }
+        });
+        result
     }
 }
