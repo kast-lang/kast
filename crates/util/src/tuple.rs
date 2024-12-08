@@ -328,6 +328,7 @@ impl<T> Tuple<T> {
             optional,
         })
     }
+    /// let [a, b, c] = tuple.into_unnamed()
     pub fn into_unnamed<const N: usize>(self) -> Result<[T; N], IntoFixedError> {
         Ok(self.into_fixed([], [])?.unnamed)
     }

@@ -169,12 +169,15 @@ impl<T: Inferrable> Var<T> {
         let other_root = VarState::get_root(&other.state);
         global_state::ptr_eq(&self_root, &other_root)
     }
-    pub fn add_check(&self, check: impl Fn(&T) -> eyre::Result<()> + Sync + Send + 'static) {
+    pub fn add_check(
+        &self,
+        check: impl Fn(&T) -> eyre::Result<()> + Sync + Send + 'static,
+    ) -> eyre::Result<()> {
         VarState::get_root(&self.state).modify(|state| {
             let root = state.as_root();
             root.checks.push(Arc::new(check));
-            root.run_checks().expect("check failed when adding");
-        });
+            root.run_checks()
+        })
     }
 }
 
@@ -358,7 +361,7 @@ impl<T: Inferrable> MaybeNotInferred<T> {
     pub fn var(&self) -> &Var<T> {
         &self.0
     }
-    pub fn expect_inferred(&self, value: T) -> eyre::Result<()> {
+    pub fn infer_as(&self, value: T) -> eyre::Result<()> {
         self.0.set(value)
     }
     pub fn new_set(value: T) -> Self {
@@ -371,6 +374,9 @@ impl<T: Inferrable> MaybeNotInferred<T> {
     }
     pub fn new_not_inferred_with_default(default: T) -> Self {
         Self(Var::new_with_default(default))
+    }
+    pub fn expect_inferred(&self) -> eyre::Result<T> {
+        self.inferred().map_err(|_| eyre::eyre!("var not inferred"))
     }
     /// Get actual value (if it is an inference var)
     pub fn inferred(&self) -> Result<T, &Var<T>> {

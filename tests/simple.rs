@@ -15,20 +15,23 @@ fn test_eq(source: &str, expected_value: Value) {
 // cant i write a frontend for LUA instead for kast? I am a LUA pro! 8)
 #[test]
 fn simple() {
-    test_eq("\"hello, world\"", Value::String("hello, world".to_owned()));
+    test_eq(
+        "\"hello, world\"",
+        ValueShape::String("hello, world".to_owned()).into(),
+    );
     test_eq(
         "const int32 = native \"int32\"; 123 :: int32",
-        Value::Int32(123),
+        ValueShape::Int32(123).into(),
     );
-    test_eq("\"hello\" |> std.dbg", Value::Unit);
-    test_eq("2 + 2", Value::Int32(4));
-    test_eq("2 + 2", Value::Int64(4));
+    test_eq("\"hello\" |> std.dbg", ValueShape::Unit.into());
+    test_eq("2 + 2", ValueShape::Int32(4).into());
+    test_eq("2 + 2", ValueShape::Int64(4).into());
     test_eq(
         "use std.*; (:Some 123 :: Option[int32]) is :Some _",
-        Value::Bool(true),
+        ValueShape::Bool(true).into(),
     );
     test_eq(
         "use std.*; let foo = (a :: int32, b) => a + b; foo (parse \"123\", parse \"456\")",
-        Value::Int32(579),
+        ValueShape::Int32(579).into(),
     );
 }

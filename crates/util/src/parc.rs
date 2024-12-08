@@ -71,3 +71,9 @@ impl<T: ?Sized> std::hash::Hash for Parc<T> {
         Arc::as_ptr(&self.0).hash(state)
     }
 }
+
+impl<T: ?Sized + std::fmt::Display> std::fmt::Display for Parc<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        T::fmt(self, f)
+    }
+}

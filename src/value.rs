@@ -1,7 +1,7 @@
 use super::*;
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
-pub enum Value {
+pub enum ValueShape {
     Unit,
     Bool(bool),
     Int32(i32),
@@ -26,6 +26,46 @@ pub enum Value {
     UnwindHandle(#[try_hash] UnwindHandle),
     Symbol(Symbol),
     HashMap(#[try_hash] HashMapValue),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
+pub struct Value {
+    #[try_hash]
+    pub actual: inference::MaybeNotInferred<ValueShape>,
+    #[try_hash]
+    pub ty: Type,
+}
+
+impl Value {
+    pub fn new_not_inferred() -> Self {
+        Self::new_not_inferred_of_ty(Type::new_not_inferred())
+    }
+    pub fn new_not_inferred_of_ty(ty: Type) -> Self {
+        Self {
+            actual: inference::MaybeNotInferred::new_not_inferred(),
+            ty,
+        }
+        .init()
+        .unwrap()
+    }
+    fn init(self) -> eyre::Result<Self> {
+        // println!("initializing {self:?}");
+        let value = self.actual.clone();
+        // TODO
+        match value.inferred() {
+            Ok(ValueShape::Binding(_)) => {}
+            _ => {
+                self.ty.var().add_check(move |ty| {
+                    if let Some(shape) = ty.infer_value_shape() {
+                        value.infer_as(shape)?;
+                    }
+                    Ok(())
+                })?;
+            }
+        }
+        // println!("done");
+        Ok(self)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -76,6 +116,12 @@ pub struct VariantValue {
     pub ty: Type,
 }
 
+impl std::fmt::Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.actual.fmt(f)
+    }
+}
+
 impl std::fmt::Display for VariantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, ":{}", self.name)?;
@@ -100,19 +146,19 @@ impl std::fmt::Display for ListValue {
     }
 }
 
-impl std::fmt::Display for Value {
+impl std::fmt::Display for ValueShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Unit => write!(f, "()"),
-            Value::Variant(value) => write!(f, "{value}"),
-            Value::Bool(value) => value.fmt(f),
-            Value::Int32(value) => value.fmt(f),
-            Value::Int64(value) => value.fmt(f),
-            Value::Float64(value) => value.fmt(f),
-            Value::Char(c) => write!(f, "{c:?}"),
-            Value::String(s) => write!(f, "{s:?}"),
-            Value::List(list) => list.fmt(f),
-            Value::Multiset(values) => {
+            ValueShape::Unit => write!(f, "()"),
+            ValueShape::Variant(value) => write!(f, "{value}"),
+            ValueShape::Bool(value) => value.fmt(f),
+            ValueShape::Int32(value) => value.fmt(f),
+            ValueShape::Int64(value) => value.fmt(f),
+            ValueShape::Float64(value) => value.fmt(f),
+            ValueShape::Char(c) => write!(f, "{c:?}"),
+            ValueShape::String(s) => write!(f, "{s:?}"),
+            ValueShape::List(list) => list.fmt(f),
+            ValueShape::Multiset(values) => {
                 for (index, value) in values.iter().enumerate() {
                     if index != 0 {
                         write!(f, " ")?;
@@ -122,29 +168,29 @@ impl std::fmt::Display for Value {
                 }
                 Ok(())
             }
-            Value::Contexts(contexts) => contexts.fmt(f),
-            Value::Tuple(tuple) => tuple.fmt(f),
-            Value::NativeFunction(function) => function.fmt(f),
-            Value::Binding(binding) => binding.fmt(f),
-            Value::Function(_function) => write!(f, "<function>"),
-            Value::Template(_template) => write!(f, "<template>"),
-            Value::Macro(_macro) => write!(f, "<macro>"),
-            Value::Ast(ast) => {
+            ValueShape::Contexts(contexts) => contexts.fmt(f),
+            ValueShape::Tuple(tuple) => tuple.fmt(f),
+            ValueShape::NativeFunction(function) => function.fmt(f),
+            ValueShape::Binding(binding) => binding.fmt(f),
+            ValueShape::Function(_function) => write!(f, "<function>"),
+            ValueShape::Template(_template) => write!(f, "<template>"),
+            ValueShape::Macro(_macro) => write!(f, "<macro>"),
+            ValueShape::Ast(ast) => {
                 write!(f, "{ast}")?;
                 if let Some(scope) = &ast.data().def_site {
                     write!(f, " with def site id={}", scope.id())?;
                 }
                 Ok(())
             }
-            Value::Type(ty) => {
+            ValueShape::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
             }
-            Value::SyntaxModule(_definitions) => write!(f, "<syntax module>"),
-            Value::SyntaxDefinition(_definition) => write!(f, "<syntax definition>"),
-            Value::UnwindHandle(_) => write!(f, "<unwind handle>"),
-            Value::Symbol(symbol) => write!(f, "symbol {symbol}"),
-            Value::HashMap(map) => map.fmt(f),
+            ValueShape::SyntaxModule(_definitions) => write!(f, "<syntax module>"),
+            ValueShape::SyntaxDefinition(_definition) => write!(f, "<syntax definition>"),
+            ValueShape::UnwindHandle(_) => write!(f, "<unwind handle>"),
+            ValueShape::Symbol(symbol) => write!(f, "symbol {symbol}"),
+            ValueShape::HashMap(map) => map.fmt(f),
         }
     }
 }
@@ -163,7 +209,7 @@ impl std::fmt::Display for HashMapValue {
     }
 }
 
-impl std::fmt::Debug for Value {
+impl std::fmt::Debug for ValueShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self, f)
     }
@@ -171,10 +217,37 @@ impl std::fmt::Debug for Value {
 
 impl Value {
     /// Get this value AS a type
+    pub fn expect_type(self) -> eyre::Result<Type> {
+        self.ty.infer_as(TypeShape::Type)?;
+        Ok(match self.actual.inferred() {
+            Ok(inferred) => inferred.expect_type()?,
+            Err(var) => {
+                unreachable!()
+            }
+        })
+    }
+    pub fn expect_inferred(&self) -> eyre::Result<ValueShape> {
+        self.actual.expect_inferred()
+    }
+}
+
+impl From<ValueShape> for Value {
+    fn from(value: ValueShape) -> Self {
+        Value {
+            ty: value.ty(),
+            actual: inference::MaybeNotInferred::new_set(value),
+        }
+        .init()
+        .unwrap()
+    }
+}
+
+impl ValueShape {
+    /// Get this value AS a type
     pub fn expect_type(self) -> Result<Type, ExpectError> {
         match self {
             Self::Binding(binding) => {
-                binding.ty.expect_inferred(TypeShape::Type).unwrap(); // TODO dont unwrap
+                binding.ty.infer_as(TypeShape::Type).unwrap(); // TODO dont unwrap
                 Ok(TypeShape::Binding(binding).into())
             }
             Self::Type(ty) => Ok(ty),
@@ -184,46 +257,59 @@ impl Value {
             }),
         }
     }
-    /// Get the type OF this value
     pub fn ty(&self) -> Type {
         match self {
-            Value::Unit => TypeShape::Unit.into(),
-            Value::Multiset(_) => TypeShape::Multiset.into(),
-            Value::Contexts(_) => TypeShape::Contexts.into(),
-            Value::Variant(value) => value.ty.clone(),
-            Value::Bool(_) => TypeShape::Bool.into(),
-            Value::Int32(_) => TypeShape::Int32.into(),
-            Value::Int64(_) => TypeShape::Int64.into(),
-            Value::Float64(_) => TypeShape::Float64.into(),
-            Value::Char(_) => TypeShape::Char.into(),
-            Value::String(_) => TypeShape::String.into(),
-            Value::List(list) => TypeShape::List(list.element_ty.clone()).into(),
-            Value::Tuple(tuple) => TypeShape::Tuple(tuple.as_ref().map(|field| field.ty())).into(),
-            Value::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
-            Value::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
-            Value::Template(t) => TypeShape::Template(t.compiled.clone()).into(),
-            Value::Macro(f) => TypeShape::Macro(Box::new(f.ty.clone())).into(),
-            Value::NativeFunction(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
-            Value::Ast(_) => TypeShape::Ast.into(),
-            Value::Type(_) => TypeShape::Type.into(),
-            Value::SyntaxModule(_) => TypeShape::SyntaxModule.into(),
-            Value::SyntaxDefinition(_) => TypeShape::SyntaxDefinition.into(),
-            Value::UnwindHandle(handle) => TypeShape::UnwindHandle(handle.ty.clone()).into(),
-            Value::Symbol(_) => TypeShape::Symbol.into(),
-            Value::HashMap(map) => TypeShape::HashMap(map.ty.clone()).into(),
+            ValueShape::Unit => TypeShape::Unit.into(),
+            ValueShape::Multiset(_) => TypeShape::Multiset.into(),
+            ValueShape::Contexts(_) => TypeShape::Contexts.into(),
+            ValueShape::Variant(value) => value.ty.clone(),
+            ValueShape::Bool(_) => TypeShape::Bool.into(),
+            ValueShape::Int32(_) => TypeShape::Int32.into(),
+            ValueShape::Int64(_) => TypeShape::Int64.into(),
+            ValueShape::Float64(_) => TypeShape::Float64.into(),
+            ValueShape::Char(_) => TypeShape::Char.into(),
+            ValueShape::String(_) => TypeShape::String.into(),
+            ValueShape::List(list) => TypeShape::List(list.element_ty.clone()).into(),
+            ValueShape::Tuple(tuple) => {
+                TypeShape::Tuple(tuple.as_ref().map(|field| field.ty())).into()
+            }
+            ValueShape::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
+            ValueShape::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
+            ValueShape::Template(t) => TypeShape::Template(t.compiled.clone()).into(),
+            ValueShape::Macro(f) => TypeShape::Macro(Box::new(f.ty.clone())).into(),
+            ValueShape::NativeFunction(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
+            ValueShape::Ast(_) => TypeShape::Ast.into(),
+            ValueShape::Type(_) => TypeShape::Type.into(),
+            ValueShape::SyntaxModule(_) => TypeShape::SyntaxModule.into(),
+            ValueShape::SyntaxDefinition(_) => TypeShape::SyntaxDefinition.into(),
+            ValueShape::UnwindHandle(handle) => TypeShape::UnwindHandle(handle.ty.clone()).into(),
+            ValueShape::Symbol(_) => TypeShape::Symbol.into(),
+            ValueShape::HashMap(map) => TypeShape::HashMap(map.ty.clone()).into(),
         }
+    }
+}
+
+impl Value {
+    pub fn inferred(&self) -> Option<ValueShape> {
+        self.actual.inferred().ok()
+    }
+    /// Get the type OF this value
+    pub fn ty(&self) -> Type {
+        self.ty.clone()
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("{value} is not {expected}")]
-pub struct ExpectError<V = Value, Expected = TypeShape> {
+pub struct ExpectError<V = ValueShape, Expected = TypeShape> {
     pub value: V,
     pub expected: Expected,
 }
 
-impl Value {
-    pub fn expect_unwind_handle(self) -> Result<UnwindHandle, ExpectError<Value, &'static str>> {
+impl ValueShape {
+    pub fn expect_unwind_handle(
+        self,
+    ) -> Result<UnwindHandle, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::UnwindHandle(value) => Ok(value),
             _ => Err(ExpectError {
@@ -232,7 +318,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_macro(self) -> Result<TypedFunction, ExpectError<Value, &'static str>> {
+    pub fn expect_macro(self) -> Result<TypedFunction, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Macro(value) => Ok(value),
             _ => Err(ExpectError {
@@ -241,7 +327,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_variant(self) -> Result<VariantValue, ExpectError<Value, &'static str>> {
+    pub fn expect_variant(self) -> Result<VariantValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Variant(value) => Ok(value),
             _ => Err(ExpectError {
@@ -250,7 +336,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_hash_map(self) -> Result<HashMapValue, ExpectError<Value, &'static str>> {
+    pub fn expect_hash_map(self) -> Result<HashMapValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::HashMap(map) => Ok(map),
             _ => Err(ExpectError {
@@ -259,7 +345,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_tuple(self) -> Result<Tuple<Value>, ExpectError<Value, &'static str>> {
+    pub fn expect_tuple(self) -> Result<Tuple<Value>, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Tuple(tuple) => Ok(tuple),
             _ => Err(ExpectError {
@@ -381,7 +467,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_function(self) -> Result<TypedFunction, ExpectError<Value, &'static str>> {
+    pub fn expect_function(self) -> Result<TypedFunction, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Function(f) => Ok(f),
             _ => Err(ExpectError {
@@ -390,7 +476,7 @@ impl Value {
             }),
         }
     }
-    pub fn expect_template(self) -> Result<Function, ExpectError<Value, &'static str>> {
+    pub fn expect_template(self) -> Result<Function, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Template(f) => Ok(f),
             _ => Err(ExpectError {
@@ -448,5 +534,129 @@ impl std::fmt::Debug for NativeFunction {
 impl std::fmt::Display for NativeFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
+    }
+}
+
+impl Inferrable for ListValue {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        if a.values.len() != b.values.len() {
+            eyre::bail!("list length differ");
+        }
+        let element_ty = Inferrable::make_same(a.element_ty, b.element_ty)?;
+        Ok(Self {
+            values: std::sync::Arc::new(
+                a.values
+                    .iter()
+                    .cloned()
+                    .zip(b.values.iter().cloned())
+                    .map(|(a, b)| Inferrable::make_same(a, b))
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+            element_ty,
+        })
+    }
+}
+
+impl Inferrable for Value {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        Ok(Self {
+            actual: Inferrable::make_same(a.actual, b.actual)?,
+            ty: Inferrable::make_same(a.ty, b.ty)?,
+        })
+    }
+}
+
+impl Inferrable for ValueShape {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        macro_rules! fail {
+            () => {
+                eyre::bail!("expected value {a}, got {b}")
+            };
+        }
+        Ok(match (a.clone(), b.clone()) {
+            (ValueShape::Binding(binding), ValueShape::Type(ty))
+            | (ValueShape::Type(ty), ValueShape::Binding(binding)) => match ty.inferred() {
+                Err(_) => ValueShape::Type(TypeShape::Binding(binding).into()),
+                Ok(_) => eyre::bail!("{binding} inferred as type {ty}????"),
+            },
+
+            (ValueShape::Unit, ValueShape::Unit) => ValueShape::Unit,
+            (ValueShape::Unit, _) => fail!(),
+            (ValueShape::Bool(a), ValueShape::Bool(b)) if a == b => ValueShape::Bool(a),
+            (ValueShape::Bool(_), _) => fail!(),
+            (ValueShape::Int32(a), ValueShape::Int32(b)) if a == b => ValueShape::Int32(a),
+            (ValueShape::Int32(_), _) => fail!(),
+            (ValueShape::Int64(a), ValueShape::Int64(b)) if a == b => ValueShape::Int64(a),
+            (ValueShape::Int64(_), _) => fail!(),
+            (ValueShape::Float64(a), ValueShape::Float64(b)) if a == b => ValueShape::Float64(a),
+            (ValueShape::Float64(_), _) => fail!(),
+            (ValueShape::Char(a), ValueShape::Char(b)) if a == b => ValueShape::Char(a),
+            (ValueShape::Char(_), _) => fail!(),
+            (ValueShape::String(a), ValueShape::String(b)) if a == b => ValueShape::String(a),
+            (ValueShape::String(_), _) => fail!(),
+            (ValueShape::List(a), ValueShape::List(b)) => {
+                ValueShape::List(Inferrable::make_same(a, b)?)
+            }
+            (ValueShape::List(_), _) => fail!(),
+            (ValueShape::Tuple(a), ValueShape::Tuple(b)) => {
+                let mut result = Tuple::empty();
+                for (name, (a, b)) in a.zip(b)?.into_iter() {
+                    let value = Inferrable::make_same(a, b)?;
+                    result.add(name, value);
+                }
+                ValueShape::Tuple(result)
+            }
+            (ValueShape::Tuple(_), _) => fail!(),
+            (ValueShape::Function(_), _) => fail!(),
+            (ValueShape::Template(_), _) => fail!(),
+            (ValueShape::Macro(_), _) => fail!(),
+            (ValueShape::NativeFunction(_), _) => fail!(),
+            (ValueShape::Binding(_), _) => fail!(),
+            (ValueShape::Variant(_), _) => fail!(),
+            (ValueShape::Multiset(_), _) => fail!(),
+            (ValueShape::Contexts(_), _) => fail!(),
+            (ValueShape::Ast(_), _) => fail!(),
+            (ValueShape::Type(a), ValueShape::Type(b)) => {
+                ValueShape::Type(Inferrable::make_same(a, b)?)
+            }
+            (ValueShape::Type(_), _) => fail!(),
+            (ValueShape::SyntaxModule(_), _) => fail!(),
+            (ValueShape::SyntaxDefinition(_), _) => fail!(),
+            (ValueShape::UnwindHandle(_), _) => fail!(),
+            (ValueShape::Symbol(_), _) => fail!(),
+            (ValueShape::HashMap(_), _) => fail!(),
+        })
+    }
+}
+
+impl TypeShape {
+    pub fn infer_value_shape(&self) -> Option<ValueShape> {
+        Some(match self {
+            TypeShape::Unit => ValueShape::Unit,
+            TypeShape::Bool => return None,
+            TypeShape::Int32 => return None,
+            TypeShape::Int64 => return None,
+            TypeShape::Float64 => return None,
+            TypeShape::Char => return None,
+            TypeShape::String => return None,
+            TypeShape::List(_) => return None,
+            TypeShape::Variant(_) => return None,
+            TypeShape::Tuple(tuple) => {
+                ValueShape::Tuple(tuple.clone().map(Value::new_not_inferred_of_ty))
+            }
+            TypeShape::Function(_) => return None,
+            TypeShape::Template(_) => return None,
+            TypeShape::Macro(_) => return None,
+            TypeShape::Multiset => return None,
+            TypeShape::Contexts => return None,
+            TypeShape::Ast => return None,
+            TypeShape::Type => ValueShape::Type(Type::new_not_inferred()),
+            TypeShape::SyntaxModule => return None,
+            TypeShape::SyntaxDefinition => return None,
+            TypeShape::UnwindHandle(_) => return None,
+            TypeShape::Binding(_) => return None,
+            TypeShape::Symbol => return None,
+            TypeShape::HashMap(_) => return None,
+        })
     }
 }

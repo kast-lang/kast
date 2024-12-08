@@ -20,9 +20,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [
-                "repl"
-            ],
+            "args": [],
             "env": {
                 "CARGO_MANIFEST_DIR": "${workspaceFolder}",
                 "RUST_LOG": "kast=trace"

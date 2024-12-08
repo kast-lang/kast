@@ -257,7 +257,6 @@ impl string as generator = (
 
 const collections = include "./collections/_mod.ks";
 
-
 const HashMap = forall[K :: type, V :: type] {
     native "HashMap" (K, V) :: type
 };
@@ -274,5 +273,5 @@ const HashMap_size = forall[K :: type, V :: type] {
     native "HashMap.size" :: HashMap[K, V] -> int32
 };
 const HashMap_iter = forall[K :: type, V :: type] {
-    native "HashMap.iter" :: HashMap[K, V] -> () with generator_handler[K, V]
+    native "HashMap.iter" :: HashMap[K, V] -> () # with generator_handler[K, V]
 };

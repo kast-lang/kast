@@ -216,8 +216,8 @@ impl Cache {
                         }
                         std::task::Poll::Ready(value) => value,
                     };
-                    match r#macro {
-                        Value::Macro(f) => Macro::UserDefined(f.f.clone()),
+                    match r#macro.expect_inferred()? {
+                        ValueShape::Macro(f) => Macro::UserDefined(f.f.clone()),
                         _ => Macro::Value(r#macro.clone()),
                     }
                 } else {
@@ -284,8 +284,8 @@ impl Compilable for Expr {
                         .lookup(name, data.hygiene, kast.spawn_id)
                         .await
                         .ok_or_else(|| eyre!("{name:?} not found"))?;
-                    match value {
-                        Value::Binding(binding) => {
+                    match value.inferred() {
+                        Some(ValueShape::Binding(binding)) => {
                             Expr::Binding {
                                 binding: binding.clone(),
                                 data: data.span.clone(),
@@ -310,7 +310,7 @@ impl Compilable for Expr {
                 } => {
                     Expr::Constant {
                         value: match typ {
-                            ast::StringType::SingleQuoted => Value::Char({
+                            ast::StringType::SingleQuoted => ValueShape::Char({
                                 let mut chars = contents.chars();
                                 let c = chars
                                     .next()
@@ -319,8 +319,11 @@ impl Compilable for Expr {
                                     eyre::bail!("char literal has more than one char");
                                 }
                                 c
-                            }),
-                            ast::StringType::DoubleQuoted => Value::String(contents.clone()),
+                            })
+                            .into(),
+                            ast::StringType::DoubleQuoted => {
+                                ValueShape::String(contents.clone()).into()
+                            }
                         },
                         data: data.span.clone(),
                     }
@@ -347,15 +350,16 @@ impl Compilable for Expr {
                         Self::r#macro(&name, r#impl)(kast, ast).await?
                     }
                     Macro::UserDefined(r#macro) => {
-                        let arg = Value::Tuple(
+                        let arg = ValueShape::Tuple(
                             values
                                 .as_ref()
-                                .map(|ast| Value::Ast(kast.set_def_site(ast))),
-                        );
+                                .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into()),
+                        )
+                        .into();
                         // hold on
                         let expanded = kast.call_fn(r#macro, arg).await?;
-                        let expanded = match expanded {
-                            Value::Ast(ast) => ast,
+                        let expanded = match expanded.expect_inferred()? {
+                            ValueShape::Ast(ast) => ast,
                             _ => eyre::bail!(
                                 "macro {name} did not expand to an ast, but to {expanded}",
                                 name = definition.name,
@@ -397,11 +401,14 @@ impl Compilable for Expr {
             }
             Ast::SyntaxDefinition { def, data } => {
                 kast.insert_syntax(def.clone())?;
-                kast.add_local(Symbol::new(&def.name), Value::SyntaxDefinition(def.clone()));
+                kast.add_local(
+                    Symbol::new(&def.name),
+                    ValueShape::SyntaxDefinition(def.clone()).into(),
+                );
                 kast.cache.compiler.register_syntax(def);
 
                 Expr::Constant {
-                    value: Value::Unit,
+                    value: ValueShape::Unit.into(),
                     data: data.span.clone(),
                 }
                 .init(kast)
@@ -413,7 +420,7 @@ impl Compilable for Expr {
                     kast.compile(next).await?
                 } else {
                     Expr::Constant {
-                        value: Value::Unit,
+                        value: ValueShape::Unit.into(),
                         data: data.span.clone(),
                     }
                     .init(kast)
@@ -460,8 +467,8 @@ impl Compilable for Pattern {
                             .lookup(name, *hygiene, kast.spawn_id)
                             .await
                             .ok_or_else(|| eyre!("{name:?} not found"))?;
-                        match value {
-                            Value::Binding(binding) => binding,
+                        match value.inferred() {
+                            Some(ValueShape::Binding(binding)) => binding,
                             _ => eyre::bail!("{name:?} is not a binding"),
                         }
                     } else {
@@ -496,15 +503,16 @@ impl Compilable for Pattern {
                         Self::r#macro(&name, r#impl)(kast, ast).await?
                     }
                     Macro::UserDefined(r#macro) => {
-                        let arg = Value::Tuple(
+                        let arg = ValueShape::Tuple(
                             values
                                 .as_ref()
-                                .map(|ast| Value::Ast(kast.set_def_site(ast))),
-                        );
+                                .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into()),
+                        )
+                        .into();
                         // hold on
                         let expanded = kast.call_fn(r#macro, arg).await?;
-                        let expanded = match expanded {
-                            Value::Ast(ast) => ast,
+                        let expanded = match expanded.expect_inferred()? {
+                            ValueShape::Ast(ast) => ast,
                             _ => eyre::bail!(
                                 "macro {name} did not expand to an ast, but to {expanded}",
                                 name = definition.name,
@@ -535,12 +543,13 @@ impl Kast {
         );
     }
     fn inject_binding(&mut self, binding: &Parc<Binding>) {
-        binding
-            .compiler_scope
-            .insert(binding.symbol.name(), Value::Binding(binding.clone()));
+        binding.compiler_scope.insert(
+            binding.symbol.name(),
+            ValueShape::Binding(binding.clone()).into(),
+        );
         self.scopes
             .interpreter
-            .insert(&binding.symbol, Value::Binding(binding.clone()));
+            .insert(&binding.symbol, ValueShape::Binding(binding.clone()).into());
     }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| {
@@ -870,7 +879,7 @@ impl Kast {
         .init(self)
         .await?;
         if !all_binary {
-            expr.data().ty.expect_inferred(TypeShape::Unit)?;
+            expr.data().ty.infer_as(TypeShape::Unit)?;
         }
         Ok(Compiled::Expr(expr))
     }
@@ -884,6 +893,7 @@ impl Kast {
         let def = self
             .eval_ast(def, Some(TypeShape::SyntaxDefinition.into()))
             .await?
+            .expect_inferred()?
             .expect_syntax_definition()?;
         tracing::trace!("defined syntax {:?}", def.name);
         let r#impl = self.eval_ast(r#impl, None).await?; // TODO should be a macro?
@@ -895,7 +905,7 @@ impl Kast {
             .insert(def, std::task::Poll::Ready(r#impl)); // TODO check previous value?
         Ok(Compiled::Expr(
             Expr::Constant {
-                value: Value::Unit,
+                value: ValueShape::Unit.into(),
                 data: span,
             }
             .init(self)
@@ -917,10 +927,11 @@ impl Kast {
         inner
             .eval_ast(body, Some(TypeShape::Unit.into()))
             .await?
+            .expect_inferred()?
             .expect_unit()?;
         Ok(Compiled::Expr(
             Expr::Constant {
-                value: Value::SyntaxModule(Parc::new(inner.scope_syntax_definitions())),
+                value: ValueShape::SyntaxModule(Parc::new(inner.scope_syntax_definitions())).into(),
                 data: span,
             }
             .init(self)
@@ -954,10 +965,10 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         // TODO expect some type here?
         let def = self.eval_ast(def, None).await?;
-        let def = def.expect_function()?;
+        let def = def.expect_inferred()?.expect_function()?;
         Ok(Compiled::Expr(
             Expr::Constant {
-                value: Value::Macro(def),
+                value: ValueShape::Macro(def).into(),
                 data: span,
             }
             .init(self)
@@ -1064,6 +1075,7 @@ impl Kast {
                     contexts, None, // TODO Contexts??
                 )
                 .await?
+                .expect_inferred()?
                 .into_contexts()?,
             None => Contexts::new_not_inferred(),
         };
@@ -1113,6 +1125,7 @@ impl Kast {
                 Some(TypeShape::String.into()),
             )
             .await?
+            .expect_inferred()?
             .expect_string()?;
         let path = if path.starts_with('.') {
             ast.data()
@@ -1138,6 +1151,7 @@ impl Kast {
                 Some(TypeShape::String.into()),
             )
             .await?
+            .expect_inferred()?
             .expect_string()?;
         let path = if path.starts_with('.') {
             ast.data()
@@ -1159,8 +1173,8 @@ impl Kast {
         let (values, span) = get_complex(ast);
         let namespace = values.as_ref().into_single_named("namespace")?;
         let namespace: Value = self.eval_ast(namespace, None).await?;
-        match namespace.clone() {
-            Value::Tuple(namespace) => {
+        match namespace.inferred() {
+            Some(ValueShape::Tuple(namespace)) => {
                 for (name, value) in namespace.into_iter() {
                     let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
                     self.add_local(Symbol::new(name), value);
@@ -1360,10 +1374,11 @@ impl Kast {
                     }
                     _ => {
                         Expr::Constant {
-                            value: Value::Ast(match expr_root {
+                            value: ValueShape::Ast(match expr_root {
                                 true => kast.set_def_site(ast),
                                 false => ast.clone(),
-                            }),
+                            })
+                            .into(),
                             data: ast.data().span.clone(),
                         }
                         .init(kast)
@@ -1512,7 +1527,7 @@ impl Kast {
             .impl_cast(value, target, r#impl)?;
         Ok(Compiled::Expr(
             Expr::Constant {
-                value: Value::Unit,
+                value: ValueShape::Unit.into(),
                 data: span,
             }
             .init(self)
@@ -1528,7 +1543,7 @@ impl Kast {
         Ok(match cty {
             CompiledType::Expr => Compiled::Expr(
                 Expr::Constant {
-                    value: Value::Type(Type::new_not_inferred()), // TODO not necessarily a type
+                    value: Value::new_not_inferred(),
                     data: span,
                 }
                 .init(self)
@@ -1607,6 +1622,7 @@ impl Kast {
         let ast = self
             .eval_ast(value, Some(TypeShape::Ast.into()))
             .await?
+            .expect_inferred()?
             .expect_ast()?;
         self.compile_into(cty, &ast).await
     }
@@ -1769,7 +1785,8 @@ impl Type {
                     eyre::bail!("variant {name} not found in type {ty}")
                 }
             }
-        });
+        })
+        .expect("checks failed");
         var.into()
     }
 }
@@ -1781,8 +1798,8 @@ impl Kast {
         value: impl FnOnce() -> BoxFuture<'a, eyre::Result<Value>>,
         target: Value,
     ) -> eyre::Result<Type> {
-        Ok(match target {
-            Value::Template(template) => {
+        Ok(match target.inferred() {
+            Some(ValueShape::Template(template)) => {
                 let kast = self.enter_scope();
                 let value = value().await?;
                 kast.await_compiled(&template.compiled)
@@ -1790,11 +1807,11 @@ impl Kast {
                     .body
                     .data()
                     .ty
-                    .expect_inferred(TypeShape::Type)?;
+                    .infer_as(TypeShape::Type)?;
                 let ty = kast.call_fn(template, value).await?;
                 ty.expect_type()?
             }
-            Value::Type(ty) => ty,
+            Some(ValueShape::Type(ty)) => ty,
             _ => eyre::bail!("casting to {} is not possible", target.ty()),
         })
     }
@@ -1810,8 +1827,8 @@ impl Expr<Span> {
                     rhs,
                     data: span,
                 } => {
-                    lhs.data().ty.expect_inferred(TypeShape::Bool)?;
-                    rhs.data().ty.expect_inferred(TypeShape::Bool)?;
+                    lhs.data().ty.infer_as(TypeShape::Bool)?;
+                    rhs.data().ty.infer_as(TypeShape::Bool)?;
                     Expr::And {
                         lhs,
                         rhs,
@@ -1826,8 +1843,8 @@ impl Expr<Span> {
                     rhs,
                     data: span,
                 } => {
-                    lhs.data().ty.expect_inferred(TypeShape::Bool)?;
-                    rhs.data().ty.expect_inferred(TypeShape::Bool)?;
+                    lhs.data().ty.infer_as(TypeShape::Bool)?;
+                    rhs.data().ty.infer_as(TypeShape::Bool)?;
                     Expr::Or {
                         lhs,
                         rhs,
@@ -1872,7 +1889,7 @@ impl Expr<Span> {
                             _ => eyre::bail!("list expr inferred as {inferred}"),
                         }
                         Ok(())
-                    });
+                    })?;
                     Expr::List {
                         values,
                         data: ExprData { ty, span },
@@ -1885,7 +1902,7 @@ impl Expr<Span> {
                 } => {
                     name.data()
                         .ty
-                        .expect_inferred(TypeShape::UnwindHandle(value.data().ty.clone()))?;
+                        .infer_as(TypeShape::UnwindHandle(value.data().ty.clone()))?;
                     Expr::Unwind {
                         name,
                         value,
@@ -1902,7 +1919,7 @@ impl Expr<Span> {
                 } => {
                     name.data()
                         .ty
-                        .expect_inferred(TypeShape::UnwindHandle(body.data().ty.clone()))?;
+                        .infer_as(TypeShape::UnwindHandle(body.data().ty.clone()))?;
                     Expr::Unwindable {
                         data: ExprData {
                             ty: body.data().ty.clone(),
@@ -1940,9 +1957,9 @@ impl Expr<Span> {
                     result,
                     data: span,
                 } => {
-                    arg.data().ty.expect_inferred(TypeShape::Type)?;
+                    arg.data().ty.infer_as(TypeShape::Type)?;
                     // TODO contexts.data().ty.expect_inferred(TypeShape::Contexts)?;
-                    result.data().ty.expect_inferred(TypeShape::Type)?;
+                    result.data().ty.infer_as(TypeShape::Type)?;
                     Expr::FunctionType {
                         arg,
                         contexts,
@@ -2069,12 +2086,13 @@ impl Expr<Span> {
                                 result
                             }));
                             ty.add_check({
+                                // TODO this is the todo you are looking for
                                 let tuple = tuple.clone();
                                 move |inferred| {
                                     match inferred {
                                         TypeShape::Type => {
                                             for (_name, field) in tuple.as_ref() {
-                                                field.data().ty.expect_inferred(TypeShape::Type)?;
+                                                field.data().ty.infer_as(TypeShape::Type)?;
                                             }
                                         }
                                         TypeShape::Tuple(inferred) => {
@@ -2094,7 +2112,7 @@ impl Expr<Span> {
                                     }
                                     Ok(())
                                 }
-                            });
+                            })?;
                             ty.into()
                         },
                         span,
@@ -2135,7 +2153,7 @@ impl Expr<Span> {
                 } => {
                     for value in values.values() {
                         // TODO clone???
-                        value.data().ty.expect_inferred(TypeShape::Ast)?;
+                        value.data().ty.infer_as(TypeShape::Ast)?;
                     }
                     Expr::Ast {
                         expr_root,
@@ -2153,7 +2171,7 @@ impl Expr<Span> {
                     mut body,
                     data: span,
                 } => {
-                    body.data_mut().ty.expect_inferred(TypeShape::Unit)?;
+                    body.data_mut().ty.infer_as(TypeShape::Unit)?;
                     let mut fields = Tuple::empty();
                     body.collect_bindings(
                         &mut |binding| {
@@ -2237,7 +2255,7 @@ impl Expr<Span> {
                     let mut last = None;
                     for expr in &mut list {
                         if let Some(prev) = last.replace(expr) {
-                            prev.data_mut().ty.expect_inferred(TypeShape::Unit)?;
+                            prev.data_mut().ty.infer_as(TypeShape::Unit)?;
                         }
                     }
                     let result_ty =
@@ -2280,12 +2298,14 @@ impl Expr<Span> {
                                     eyre!("default number type context not available")
                                 })?;
                             let f = default_number_type_context
+                                .expect_inferred()
+                                .unwrap()
                                 .expect_tuple()
                                 .unwrap()
                                 .get_named("default_number_type")
                                 .unwrap()
                                 .clone();
-                            let ty = kast.call(f, Value::String(raw)).await?;
+                            let ty = kast.call(f, ValueShape::String(raw).into()).await?;
                             ty.expect_type()?
                         },
                         span,
@@ -2295,7 +2315,7 @@ impl Expr<Span> {
                     mut name,
                     data: span,
                 } => {
-                    name.data_mut().ty.expect_inferred(TypeShape::String)?;
+                    name.data_mut().ty.infer_as(TypeShape::String)?;
                     Expr::Native {
                         name,
                         data: ExprData {
@@ -2342,7 +2362,7 @@ impl Expr<Span> {
                     let contexts = Contexts::new_not_inferred();
                     f.data_mut()
                         .ty
-                        .expect_inferred(TypeShape::Function(Box::new(FnType {
+                        .infer_as(TypeShape::Function(Box::new(FnType {
                             arg: arg.data().ty.clone(),
                             contexts: contexts.clone(),
                             result: result_ty.clone(),
@@ -2426,7 +2446,7 @@ impl Expr {
             result = Expr::Instantiate {
                 arg: Box::new(
                     Expr::Constant {
-                        value: Value::Type(Type::new_not_inferred()), // TODO not only type
+                        value: Value::new_not_inferred(),
                         data: data.span.clone(),
                     }
                     .init(kast)

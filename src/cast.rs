@@ -42,9 +42,9 @@ impl CastMap {
     }
     #[allow(clippy::only_used_in_recursion)]
     pub fn cast_to_ty(&self, value: Value) -> eyre::Result<Result<Type, Value>> {
-        Ok(Ok(match value {
-            Value::Unit => TypeShape::Unit.into(),
-            Value::Tuple(tuple) => {
+        Ok(Ok(match value.expect_inferred()? {
+            ValueShape::Unit => TypeShape::Unit.into(),
+            ValueShape::Tuple(tuple) => {
                 let mut tuple_ty = Tuple::<Type>::empty();
                 for (name, value) in tuple {
                     tuple_ty.add(
@@ -55,18 +55,24 @@ impl CastMap {
                 }
                 TypeShape::Tuple(tuple_ty).into()
             }
-            _ => match value.expect_type() {
+            ValueShape::Binding(binding) => {
+                binding.ty.infer_as(TypeShape::Type)?;
+                TypeShape::Binding(binding).into()
+            }
+            inferred => match inferred.expect_type() {
                 Ok(value) => value,
-                Err(e) => return Ok(Err(e.value)),
+                Err(e) => return Ok(Err(value)),
             },
         }))
     }
     pub fn cast(&self, value: Value, target: &Value) -> eyre::Result<Result<Value, Value>> {
         #[allow(clippy::single_match)]
-        match target {
-            Value::Type(ty) => match ty.inferred() {
+        match target.expect_inferred()? {
+            ValueShape::Type(ty) => match ty.inferred() {
                 Ok(TypeShape::Type) => {
-                    return self.cast_to_ty(value).map(|result| result.map(Value::Type));
+                    return self
+                        .cast_to_ty(value)
+                        .map(|result| result.map(ValueShape::Type).map(Into::into));
                 }
                 _ => {}
             },

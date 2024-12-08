@@ -1,16 +1,14 @@
 use std.*;
 
-const StringStringMap = HashMap[string, _];
-
-let mut map :: StringStringMap = HashMap_new[_, _] ();
-map = HashMap_insert[_, _] (map, "hello", "world");
-map = HashMap_insert[_, _] (map, "second", "2");
+let mut map = HashMap_new ();
+map = HashMap_insert (map, "hello", "world");
+map = HashMap_insert (map, "second", "2");
 dbg map;
-dbg (HashMap_size[_, _] map);
-dbg (HashMap_get[_, _] (map, "hello"));
-dbg (HashMap_get[_, _] (map, "world"));
+dbg (HashMap_size map);
+dbg (HashMap_get (map, "hello"));
+dbg (HashMap_get (map, "world"));
 
-for key :: string, value :: string in HashMap_iter[_, _] map {
+for key :: string, value :: string in HashMap_iter map {
     dbg key;
     dbg value;
 };

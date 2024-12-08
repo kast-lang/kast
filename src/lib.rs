@@ -149,6 +149,7 @@ impl Kast {
         let syntax = kast
             .import_impl(std_path().join("syntax.ks"), ImportMode::FromScratch)
             .wrap_err("failed to import std syntax")?
+            .expect_inferred()?
             .expect_syntax_module()
             .wrap_err("std/syntax.ks must evaluate to syntax")?;
         let mut new_syntax: ast::Syntax = (*kast.syntax).clone();

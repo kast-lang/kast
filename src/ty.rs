@@ -141,7 +141,7 @@ impl Inferrable for TypeShape {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         macro_rules! fail {
             () => {
-                eyre::bail!("expected {a}, got {b}")
+                eyre::bail!("expected type {a}, got {b}")
             };
         }
         Ok(match (a.clone(), b.clone()) {
@@ -350,7 +350,7 @@ impl SubstituteBindings for Type {
                 TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache))).into()
             }
             TypeShape::Binding(binding) => match kast.scopes.interpreter.get(&binding.symbol) {
-                Some(value) => value.expect_type().unwrap_or_else(|e| {
+                Some(value) => value.inferred().unwrap().expect_type().unwrap_or_else(|e| {
                     panic!("{} expected to be a type: {e}", binding.symbol.name())
                 }),
                 None => TypeShape::Binding(binding.clone()).into(),
