@@ -190,6 +190,17 @@ fn ast_nested_scope() {
 
 #[test]
 
+fn test_hash_map() {
+    test(Case {
+        name: "hash_map",
+        comment_lines: None,
+        input: "",
+        expect_output: include_str!("hash_map.output"),
+    });
+}
+
+#[test]
+
 fn test_unsafe() {
     test(Case {
         name: "unsafe",
