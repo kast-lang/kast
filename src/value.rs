@@ -25,6 +25,30 @@ pub enum Value {
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
     UnwindHandle(#[try_hash] UnwindHandle),
     Symbol(Symbol),
+    HashMap(#[try_hash] HashMapValue),
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct HashableValue(pub Value);
+
+impl std::hash::Hash for HashableValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.try_hash(state).expect("failed to hash");
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct HashMapValue {
+    pub values: Parc<HashMap<HashableValue, Value>>,
+    pub ty: HashMapType,
+}
+
+impl TryHash for HashMapValue {
+    type Error = eyre::Report;
+
+    fn try_hash(&self, _hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        eyre::bail!("hashmaps are not hashable")
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
@@ -120,7 +144,22 @@ impl std::fmt::Display for Value {
             Value::SyntaxDefinition(_definition) => write!(f, "<syntax definition>"),
             Value::UnwindHandle(_) => write!(f, "<unwind handle>"),
             Value::Symbol(symbol) => write!(f, "symbol {symbol}"),
+            Value::HashMap(map) => map.fmt(f),
         }
+    }
+}
+
+impl std::fmt::Display for HashMapValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HashMap[")?;
+        for (index, (key, value)) in self.values.iter().enumerate() {
+            if index != 0 {
+                write!(f, ", ")?;
+            }
+            let HashableValue(key) = key;
+            write!(f, "{key} = {value}")?;
+        }
+        write!(f, "]")
     }
 }
 
@@ -171,6 +210,7 @@ impl Value {
             Value::SyntaxDefinition(_) => TypeShape::SyntaxDefinition.into(),
             Value::UnwindHandle(handle) => TypeShape::UnwindHandle(handle.ty.clone()).into(),
             Value::Symbol(_) => TypeShape::Symbol.into(),
+            Value::HashMap(map) => TypeShape::HashMap(map.ty.clone()).into(),
         }
     }
 }
@@ -210,6 +250,15 @@ impl Value {
             }),
         }
     }
+    pub fn expect_hash_map(self) -> Result<HashMapValue, ExpectError<Value, &'static str>> {
+        match self {
+            Self::HashMap(map) => Ok(map),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "HashMap",
+            }),
+        }
+    }
     pub fn expect_tuple(self) -> Result<Tuple<Value>, ExpectError<Value, &'static str>> {
         match self {
             Self::Tuple(tuple) => Ok(tuple),
@@ -224,6 +273,7 @@ impl Value {
             Self::Unit => Ok(Contexts::empty()),
             Self::Contexts(contexts) => Ok(contexts),
             Self::Type(ty) => Ok(Contexts::from_list([ty])),
+            Self::Binding(binding) => Ok(Contexts::from_list([TypeShape::Binding(binding).into()])),
             _ => Err(ExpectError {
                 value: self,
                 expected: TypeShape::Contexts,

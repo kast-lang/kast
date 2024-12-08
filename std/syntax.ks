@@ -130,6 +130,7 @@ syntax_module {
 
   syntax @"builtin macro native" <- 150 = "native" name;
   syntax @"builtin macro import" <- 150 = "import" path;
+  syntax @"builtin macro include" <- 150 = "include" path;
   syntax invoke_macro <- 150 = @"macro" "!" arg;
   syntax @"builtin macro call_macro" <- 150 = @"macro" "!!" arg;
 

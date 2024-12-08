@@ -156,10 +156,10 @@ pub struct Var<T> {
     state: global_state::Id<VarState<T>>,
 }
 
-impl<T> crate::Identifiable for Var<T> {
+impl<T: Sync + Send + Clone + 'static> crate::Identifiable for Var<T> {
     type Id = usize;
     fn id(&self) -> Self::Id {
-        self.state.index
+        VarState::get_root(&self.state).index
     }
 }
 

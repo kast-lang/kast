@@ -26,6 +26,7 @@ pub enum TypeShape {
     UnwindHandle(#[try_hash] Type),
     Binding(Parc<Binding>),
     Symbol,
+    HashMap(#[try_hash] HashMapType),
 }
 
 impl std::fmt::Debug for TypeShape {
@@ -59,11 +60,26 @@ impl ShowShort for TypeShape {
             TypeShape::UnwindHandle(_) => "unwind handle",
             TypeShape::Binding(_) => "binding",
             TypeShape::Symbol => "symbol",
+            TypeShape::HashMap(_) => "hash_map",
         }
     }
 }
 
 pub type Type = inference::MaybeNotInferred<TypeShape>;
+
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
+pub struct HashMapType {
+    #[try_hash]
+    pub key: Type,
+    #[try_hash]
+    pub value: Type,
+}
+
+impl std::fmt::Display for HashMapType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HashMap[{}, {}]", self.key, self.value)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct VariantType {
@@ -193,6 +209,11 @@ impl Inferrable for TypeShape {
             (Self::Variant(_), _) => fail!(),
             (Self::Symbol, Self::Symbol) => Self::Symbol,
             (Self::Symbol, _) => fail!(),
+            (Self::HashMap(a), Self::HashMap(b)) => Self::HashMap(HashMapType {
+                key: Inferrable::make_same(a.key, b.key)?,
+                value: Inferrable::make_same(a.value, b.value)?,
+            }),
+            (Self::HashMap(_), _) => fail!(),
         })
     }
 }
@@ -230,6 +251,7 @@ impl std::fmt::Display for TypeShape {
                 Ok(())
             }
             Self::Symbol => write!(f, "symbol"),
+            Self::HashMap(map) => map.fmt(f),
         }
     }
 }
@@ -261,6 +283,15 @@ impl Inferrable for FnType {
             contexts: Inferrable::make_same(a.contexts, b.contexts)?,
             result: Inferrable::make_same(a.result, b.result)?,
         })
+    }
+}
+
+impl SubstituteBindings for HashMapType {
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
+        Self {
+            key: self.key.substitute_bindings(kast, cache),
+            value: self.value.substitute_bindings(kast, cache),
+        }
     }
 }
 
@@ -324,6 +355,9 @@ impl SubstituteBindings for Type {
                 }),
                 None => TypeShape::Binding(binding.clone()).into(),
             },
+            TypeShape::HashMap(map) => {
+                TypeShape::HashMap(map.substitute_bindings(kast, cache)).into()
+            }
         };
         cache.insert(self.var(), result.clone());
         tracing::trace!("subbed as {result}");

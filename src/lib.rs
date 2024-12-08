@@ -182,6 +182,39 @@ impl Kast {
         self.import_impl(path, ImportMode::Normal)
     }
 
+    // I am conviced that even stone plates offer
+    // a better DX (developer experience) than rust + cargo
+    pub fn include(&self, path: impl AsRef<Path>) -> eyre::Result<Option<Ast>> {
+        let mut path = path.as_ref().to_owned();
+        #[cfg(not(target_arch = "wasm32"))]
+        if !path.starts_with(std_path()) {
+            path = path.canonicalize()?;
+        }
+        let path = path;
+        let source = SourceFile {
+            #[cfg(feature = "embed-std")]
+            contents: {
+                use include_dir::{include_dir, Dir};
+                match path.strip_prefix(std_path()) {
+                    Ok(path) => {
+                        static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
+                        STD.get_file(path)
+                            .ok_or_else(|| eyre!("file not exist: {path:?}"))?
+                            .contents_utf8()
+                            .ok_or_else(|| eyre!("{path:?} is not utf8"))?
+                            .to_owned()
+                    }
+                    Err(_) => std::fs::read_to_string(&path)
+                        .wrap_err_with(|| eyre!("failed to read {path:?}"))?,
+                }
+            },
+            #[cfg(not(feature = "embed-std"))]
+            contents: std::fs::read_to_string(&path)?,
+            filename: path.clone(),
+        };
+        Ok(ast::parse(&self.syntax, source)?.map(compiler::init_ast))
+    }
+
     fn import_impl(&self, path: impl AsRef<Path>, mode: ImportMode) -> eyre::Result<Value> {
         let mut path = path.as_ref().to_owned();
         #[cfg(not(target_arch = "wasm32"))]
@@ -206,29 +239,9 @@ impl Kast {
             ImportMode::OnlyStdSyntax => Self::only_std_syntax(Some(self.cache.clone()))?,
             ImportMode::FromScratch => Self::from_scratch(Some(self.cache.clone())),
         };
-        let source = SourceFile {
-            #[cfg(feature = "embed-std")]
-            contents: {
-                use include_dir::{include_dir, Dir};
-                match path.strip_prefix(std_path()) {
-                    Ok(path) => {
-                        static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
-                        STD.get_file(path)
-                            .ok_or_else(|| eyre!("file not exist: {path:?}"))?
-                            .contents_utf8()
-                            .ok_or_else(|| eyre!("{path:?} is not utf8"))?
-                            .to_owned()
-                    }
-                    Err(_) => std::fs::read_to_string(&path)
-                        .wrap_err_with(|| eyre!("failed to read {path:?}"))?,
-                }
-            },
-            #[cfg(not(feature = "embed-std"))]
-            contents: std::fs::read_to_string(&path)?,
-            filename: path.clone(),
-        };
+        let source = self.include(&path)?;
         kast.exec_mode = ExecMode::Import;
-        let value = kast.eval_source(source, None)?;
+        let value = futures_lite::future::block_on(kast.eval_ast_opt(&source, None))?;
         self.cache
             .imports
             .lock()

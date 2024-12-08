@@ -272,8 +272,8 @@ impl SubstituteBindings for Contexts {
 
 impl Inferrable for ContextsData {
     fn make_same(mut a: Self, mut b: Self) -> eyre::Result<Self> {
-        a.extend_with(&b)?;
-        b.extend_with(&a)?;
+        // a.extend_with(&b)?;
+        // b.extend_with(&a)?;
         Ok(Self {
             types: a.types,
             growable: a.growable && b.growable,

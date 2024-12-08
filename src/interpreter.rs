@@ -147,6 +147,277 @@ impl Cache {
                     }),
                 );
                 map.insert(
+                    "HashMap".to_owned(),
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_unnamed(TypeShape::Type.into());
+                                args.add_unnamed(TypeShape::Type.into());
+                                args
+                            })
+                            .into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::Type.into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "HashMap".to_owned(),
+                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                async move {
+                                    let [key, value] = args.expect_tuple()?.into_unnamed()?;
+                                    Ok(Value::Type(
+                                        TypeShape::HashMap(HashMapType {
+                                            key: key.expect_type()?,
+                                            value: value.expect_type()?,
+                                        })
+                                        .into(),
+                                    ))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "HashMap.new".to_owned(),
+                    Box::new(|expected: Type| {
+                        let key_ty = Type::new_not_inferred();
+                        let value_ty = Type::new_not_inferred();
+                        let ty = FnType {
+                            arg: TypeShape::Unit.into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::HashMap(HashMapType {
+                                key: key_ty.clone(),
+                                value: value_ty.clone(),
+                            })
+                            .into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "HashMap.new".to_owned(),
+                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                let key_ty = key_ty.clone();
+                                let value_ty = value_ty.clone();
+                                async move {
+                                    args.expect_unit()?;
+                                    Ok(Value::HashMap(HashMapValue {
+                                        values: Parc::new(HashMap::new()),
+                                        ty: HashMapType {
+                                            key: key_ty.clone(),
+                                            value: value_ty.clone(),
+                                        },
+                                    }))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "HashMap.insert".to_owned(),
+                    Box::new(|expected: Type| {
+                        let key_ty = Type::new_not_inferred();
+                        let value_ty = Type::new_not_inferred();
+                        let map_type: Type = TypeShape::HashMap(HashMapType {
+                            key: key_ty.clone(),
+                            value: value_ty.clone(),
+                        })
+                        .into();
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_unnamed(map_type.clone());
+                                args.add_unnamed(key_ty.clone());
+                                args.add_unnamed(value_ty.clone());
+                                args
+                            })
+                            .into(),
+                            contexts: Contexts::empty(),
+                            result: map_type.clone(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "HashMap.insert".to_owned(),
+                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                async move {
+                                    let [map, key, value] = args.expect_tuple()?.into_unnamed()?;
+                                    let mut map = map.expect_hash_map()?;
+                                    map.values = Parc::new({
+                                        #[allow(clippy::mutable_key_type)]
+                                        let mut values = (*map.values).clone(); // TODO
+                                        values.insert(HashableValue(key), value);
+                                        values
+                                    });
+                                    Ok(Value::HashMap(map))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "HashMap.size".to_owned(),
+                    Box::new(|expected: Type| {
+                        let key_ty = Type::new_not_inferred();
+                        let value_ty = Type::new_not_inferred();
+                        let map_type: Type = TypeShape::HashMap(HashMapType {
+                            key: key_ty.clone(),
+                            value: value_ty.clone(),
+                        })
+                        .into();
+                        let ty = FnType {
+                            arg: map_type.clone(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::Int32.into(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "HashMap.size".to_owned(),
+                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                async move {
+                                    let map = args.expect_hash_map()?;
+                                    Ok(Value::Int32(map.values.len().try_into()?))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "HashMap.get".to_owned(),
+                    Box::new(|expected: Type| {
+                        let key_ty = Type::new_not_inferred();
+                        let value_ty = Type::new_not_inferred();
+                        let map_type: Type = TypeShape::HashMap(HashMapType {
+                            key: key_ty.clone(),
+                            value: value_ty.clone(),
+                        })
+                        .into();
+                        let result_ty = Type::new_not_inferred();
+                        let ty = FnType {
+                            arg: TypeShape::Tuple({
+                                let mut args = Tuple::empty();
+                                args.add_unnamed(map_type.clone());
+                                args.add_unnamed(key_ty.clone());
+                                args
+                            })
+                            .into(),
+                            contexts: Contexts::empty(),
+                            // result: value_ty.clone(),
+                            result: result_ty.clone(),
+                        };
+                        expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(Value::NativeFunction(NativeFunction {
+                            name: "HashMap.get".to_owned(),
+                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                let result_ty = result_ty.clone();
+                                async move {
+                                    let [map, key] = args.expect_tuple()?.into_unnamed()?;
+                                    let map = map.expect_hash_map()?;
+                                    let value = map.values.get(&HashableValue(key)).cloned();
+                                    Ok(Value::Variant(VariantValue {
+                                        name: match value {
+                                            Some(_) => "Some",
+                                            None => "None",
+                                        }
+                                        .to_owned(),
+                                        value: value.map(Box::new),
+                                        ty: result_ty,
+                                    }))
+                                }
+                                .boxed()
+                            })
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        }))
+                    }),
+                );
+                map.insert(
+                    "HashMap.iter".to_owned(),
+                    Box::new({
+                        let set_natives = set_natives.clone();
+                        move |expected: Type| {
+                            let ty = FnType {
+                                arg: Type::new_not_inferred(),
+                                contexts: Contexts::empty(), // TODO generator_handler
+                                result: TypeShape::Unit.into(),
+                            };
+                            expected.expect_inferred(TypeShape::Function(Box::new(ty.clone())))?;
+                            let set_natives = set_natives.clone();
+                            Ok(Value::NativeFunction(NativeFunction {
+                                name: "HashMap.iter".to_owned(),
+                                r#impl: (std::sync::Arc::new(
+                                    move |kast: Kast, _fn_ty: FnType, value: Value| {
+                                        let set_natives = set_natives.clone();
+                                        async move {
+                                            let map = value.expect_hash_map()?;
+                                            let generator_handler = set_natives
+                                                .lock()
+                                                .unwrap()
+                                                .get("generator_handler")
+                                                .ok_or_else(|| eyre!("generator_handler not set"))?
+                                                .clone();
+                                            let generator_handler = kast
+                                                .instantiate(
+                                                    generator_handler,
+                                                    Value::Type(
+                                                        TypeShape::Tuple({
+                                                            let mut tuple = Tuple::empty();
+                                                            tuple.add_unnamed(map.ty.key.clone());
+                                                            tuple.add_unnamed(map.ty.value.clone());
+                                                            tuple
+                                                        })
+                                                        .into(),
+                                                    ),
+                                                )
+                                                .await?
+                                                .expect_type()?;
+                                            let handler = kast
+                                                .interpreter
+                                                .contexts
+                                                .lock()
+                                                .unwrap()
+                                                .get_runtime(generator_handler)?
+                                                .ok_or_else(|| eyre!("no handler"))?
+                                                .expect_tuple()?;
+                                            let handler = handler
+                                                .get_named("handle")
+                                                .ok_or_else(|| eyre!("wut"))?;
+                                            for (key, value) in map.values.iter() {
+                                                let HashableValue(key) = key;
+                                                let mut tuple = Tuple::empty();
+                                                tuple.add_unnamed(key.clone());
+                                                tuple.add_unnamed(value.clone());
+                                                kast.call(handler.clone(), Value::Tuple(tuple))
+                                                    .await?;
+                                            }
+                                            Ok(Value::Unit)
+                                        }
+                                        .boxed()
+                                    },
+                                )
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            }))
+                        }
+                    }),
+                );
+                map.insert(
                     "contains".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
@@ -1043,14 +1314,20 @@ impl Kast {
         let ast = ast::parse(&self.syntax, source)?;
         match ast {
             Some(ast) => {
-                let ast = ast.map_data(|span| AstData {
-                    span,
-                    hygiene: Hygiene::DefSite,
-                    def_site: None,
-                });
+                let ast = compiler::init_ast(ast);
                 // TODO but idr what this todo is about
                 futures_lite::future::block_on(self.eval_ast(&ast, expected_ty))
             }
+            None => Ok(Value::Unit),
+        }
+    }
+    pub async fn eval_ast_opt(
+        &mut self,
+        ast: &Option<Ast>,
+        expected_ty: Option<Type>,
+    ) -> eyre::Result<Value> {
+        match ast {
+            Some(ast) => self.eval_ast(ast, expected_ty).await,
             None => Ok(Value::Unit),
         }
     }
@@ -1606,11 +1883,15 @@ impl Kast {
         .boxed()
     }
 
-    pub async fn await_compiled(&self, f: &Function) -> eyre::Result<Parc<CompiledFn>> {
-        self.cache.executor.advance()?;
-        match &*f.compiled.lock().unwrap() {
-            Some(compiled) => Ok(compiled.clone()),
-            None => eyre::bail!("function is not compiled yet"),
+    pub async fn await_compiled(&self, f: &MaybeCompiledFn) -> eyre::Result<Parc<CompiledFn>> {
+        loop {
+            self.cache.executor.advance()?;
+            match &*f.lock().unwrap() {
+                Some(compiled) => return Ok(compiled.clone()),
+                None => {
+                    // eyre::bail!("function is not compiled yet")
+                }
+            }
         }
     }
 
@@ -1634,7 +1915,7 @@ impl Kast {
             ScopeType::NonRecursive,
             Some((*f.captured).clone()),
         ));
-        let compiled: Parc<CompiledFn> = self.await_compiled(&f).await?;
+        let compiled: Parc<CompiledFn> = self.await_compiled(&f.compiled).await?;
         arg.ty().make_same(
             compiled
                 .arg

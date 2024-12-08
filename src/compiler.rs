@@ -29,6 +29,14 @@ impl ast::HasSpan for AstData {
 
 pub type Ast<T = AstData> = ast::Ast<T>;
 
+pub fn init_ast(ast: Ast<Span>) -> Ast {
+    ast.map_data(|span| AstData {
+        span,
+        hygiene: Hygiene::DefSite,
+        def_site: None,
+    })
+}
+
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -153,6 +161,7 @@ impl Cache {
             macro_syntax_module,
             macro_impl_syntax,
             macro_import,
+            macro_include,
             macro_template_def,
             macro_instantiate_template,
             macro_placeholder,
@@ -1120,6 +1129,31 @@ impl Kast {
             Expr::Constant { value, data: span }.init(self).await?,
         ))
     }
+    async fn macro_include(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Expr);
+        let (values, span) = get_complex(ast);
+        let path = self
+            .eval_ast(
+                values.as_ref().into_single_named("path")?,
+                Some(TypeShape::String.into()),
+            )
+            .await?
+            .expect_string()?;
+        let path = if path.starts_with('.') {
+            ast.data()
+                .span
+                .filename
+                .parent()
+                .expect("no parent dir??")
+                .join(path)
+        } else {
+            todo!("absolute include")
+        };
+        Ok(match self.include(path)? {
+            Some(ast) => self.compile_into(cty, &ast).await?,
+            None => Compiled::Expr(Expr::Unit { data: span }.init(self).await?),
+        })
+    }
     async fn macro_use(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
@@ -1751,7 +1785,7 @@ impl Kast {
             Value::Template(template) => {
                 let kast = self.enter_scope();
                 let value = value().await?;
-                kast.await_compiled(&template)
+                kast.await_compiled(&template.compiled)
                     .await?
                     .body
                     .data()
@@ -2343,11 +2377,7 @@ impl Expr<Span> {
                     // TODO why am I cloning kast?
                     // TODO why eval, if then arg should be value??
 
-                    kast.cache.executor.advance()?;
-                    let compiled: Parc<CompiledFn> = match &*template_ty.lock().unwrap() {
-                        Some(compiled) => compiled.clone(),
-                        None => eyre::bail!("template is not compiled yet"),
-                    };
+                    let compiled = kast.await_compiled(&template_ty).await?;
 
                     arg_ir
                         .data()
