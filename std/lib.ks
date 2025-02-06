@@ -275,3 +275,7 @@ const HashMap_size = forall[K :: type, V :: type] {
 const HashMap_iter = forall[K :: type, V :: type] {
     native "HashMap.iter" :: HashMap[K, V] -> () # with generator_handler[K, V]
 };
+
+const time = rec (
+    let now :: () -> float64 = native "time.now";
+);

@@ -151,6 +151,33 @@ impl Cache {
                     }),
                 );
                 map.insert(
+                    "time.now".to_owned(),
+                    Box::new(|expected: Type| {
+                        let ty = FnType {
+                            arg: TypeShape::Unit.into(),
+                            contexts: Contexts::empty(),
+                            result: TypeShape::Float64.into(),
+                        };
+                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                        Ok(ValueShape::NativeFunction(NativeFunction {
+                            name: "time.now".to_owned(),
+                            r#impl: (std::sync::Arc::new(
+                                |kast: Kast, _fn_ty: FnType, _value: Value| {
+                                    async move {
+                                        let now: f64 = kast.cache.start.elapsed().as_secs_f64();
+                                        Ok(ValueShape::Float64(now.into()).into())
+                                    }
+                                    .boxed()
+                                },
+                            )
+                                as std::sync::Arc<NativeFunctionImpl>)
+                                .into(),
+                            ty,
+                        })
+                        .into())
+                    }),
+                );
+                map.insert(
                     "HashMap".to_owned(),
                     Box::new(|expected: Type| {
                         let ty = FnType {
