@@ -91,17 +91,8 @@ pub enum Expr<Data = ExprData> {
         namespace: Box<Expr>,
         data: Data,
     },
-    FieldAccess {
-        obj: Box<Expr>,
-        field: String,
-        data: Data,
-    },
     Recursive {
         body: Box<Expr>,
-        data: Data,
-    },
-    Binding {
-        binding: Parc<Binding>,
         data: Data,
     },
     If {
@@ -173,6 +164,45 @@ pub enum Expr<Data = ExprData> {
         def_site: Option<CompilerScope>,
         data: Data,
     },
+    ReadPlace {
+        place: PlaceExpr,
+        data: Data,
+    },
+}
+
+#[derive(Clone)]
+pub enum PlaceExpr<Data = ExprData> {
+    Binding {
+        binding: Parc<Binding>,
+        data: Data,
+    },
+    FieldAccess {
+        obj: Box<PlaceExpr>,
+        field: String,
+        data: Data,
+    },
+    Temporary {
+        value: Box<Expr>,
+        data: Data,
+    },
+}
+
+impl PlaceExpr {
+    pub fn new_temp(e: Expr) -> Self {
+        PlaceExpr::Temporary {
+            data: e.data().clone(),
+            value: Box::new(e),
+        }
+    }
+}
+
+impl From<PlaceExpr> for Expr {
+    fn from(place: PlaceExpr) -> Self {
+        Self::ReadPlace {
+            data: place.data().clone(),
+            place,
+        }
+    }
 }
 
 pub struct CompiledFn {
@@ -189,8 +219,7 @@ impl Expr {
         condition: Option<bool>,
     ) {
         match self {
-            Expr::Binding { .. }
-            | Expr::And { .. }
+            Expr::And { .. }
             | Expr::Or { .. }
             | Expr::List { .. }
             | Expr::Assign { .. }
@@ -207,13 +236,13 @@ impl Expr {
             | Expr::MakeMultiset { .. }
             | Expr::Variant { .. }
             | Expr::Tuple { .. }
-            | Expr::FieldAccess { .. }
             | Expr::Recursive { .. }
             | Expr::Function { .. }
             | Expr::Template { .. }
             | Expr::Scope { .. }
             | Expr::Constant { .. }
             | Expr::Number { .. }
+            | Expr::ReadPlace { .. }
             | Expr::Native { .. }
             | Expr::Ast { .. }
             | Expr::Call { .. }
@@ -257,6 +286,44 @@ impl std::borrow::Borrow<Span> for ExprData {
     }
 }
 
+impl<Data> PlaceExpr<Data> {
+    pub fn data(&self) -> &Data {
+        match self {
+            Self::Temporary { data, .. }
+            | PlaceExpr::Binding { data, .. }
+            | PlaceExpr::FieldAccess { data, .. } => data,
+        }
+    }
+    pub fn data_mut(&mut self) -> &mut Data {
+        match self {
+            Self::Temporary { data, .. }
+            | PlaceExpr::Binding { data, .. }
+            | PlaceExpr::FieldAccess { data, .. } => data,
+        }
+    }
+}
+
+impl<Data: std::borrow::Borrow<Span>> PlaceExpr<Data> {
+    pub fn show_short(&self) -> impl std::fmt::Display + '_ {
+        struct Show<'a, Data>(&'a PlaceExpr<Data>);
+        impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.0 {
+                    PlaceExpr::Temporary { value, data: _ } => {
+                        write!(f, "temporary {}", value.show_short())?
+                    }
+                    PlaceExpr::Binding { binding, data: _ } => {
+                        write!(f, "binding {:?}", binding.symbol)?
+                    }
+                    PlaceExpr::FieldAccess { .. } => write!(f, "field access expr")?,
+                }
+                write!(f, " at {}", self.0.data().borrow())
+            }
+        }
+        Show(self)
+    }
+}
+
 impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
     pub fn show_short(&self) -> impl std::fmt::Display + '_ {
         struct Show<'a, Data>(&'a Expr<Data>);
@@ -282,15 +349,11 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
                     Expr::Variant { .. } => write!(f, "variant expr")?,
                     Expr::Use { .. } => write!(f, "use expr")?,
                     Expr::Tuple { .. } => write!(f, "tuple expr")?,
-                    Expr::FieldAccess { .. } => write!(f, "field access expr")?,
                     Expr::Recursive { .. } => write!(f, "recursive expr")?,
                     Expr::Function { .. } => write!(f, "function expr")?,
                     Expr::Template { .. } => write!(f, "template expr")?,
                     Expr::Scope { .. } => write!(f, "scope expr")?,
                     Expr::If { .. } => write!(f, "if expr")?,
-                    Expr::Binding { binding, data: _ } => {
-                        write!(f, "binding {:?}", binding.symbol)?
-                    }
                     Expr::Then { .. } => write!(f, "then expr")?,
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
                     Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
@@ -299,6 +362,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
                     Expr::Let { .. } => write!(f, "let expr")?,
                     Expr::Call { .. } => write!(f, "call expr")?,
                     Expr::Instantiate { .. } => write!(f, "instantiate expr")?,
+                    Expr::ReadPlace { .. } => write!(f, "readref expr")?,
                 }
                 write!(f, " at {}", self.0.data().borrow())
             }
@@ -309,8 +373,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
-        let (Expr::Binding { data, .. }
-        | Expr::And { data, .. }
+        let (Expr::And { data, .. }
         | Expr::Or { data, .. }
         | Expr::Assign { data, .. }
         | Expr::Unwind { data, .. }
@@ -329,7 +392,6 @@ impl<Data> Expr<Data> {
         | Expr::Variant { data, .. }
         | Expr::Use { data, .. }
         | Expr::Tuple { data, .. }
-        | Expr::FieldAccess { data, .. }
         | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
@@ -342,12 +404,12 @@ impl<Data> Expr<Data> {
         | Expr::Native { data, .. }
         | Expr::Let { data, .. }
         | Expr::Call { data, .. }
+        | Expr::ReadPlace { data, .. }
         | Expr::Instantiate { data, .. }) = self;
         data
     }
     pub fn data_mut(&mut self) -> &mut Data {
-        let (Expr::Binding { data, .. }
-        | Expr::And { data, .. }
+        let (Expr::And { data, .. }
         | Expr::Or { data, .. }
         | Expr::Assign { data, .. }
         | Expr::List { data, .. }
@@ -366,7 +428,6 @@ impl<Data> Expr<Data> {
         | Expr::Variant { data, .. }
         | Expr::Use { data, .. }
         | Expr::Tuple { data, .. }
-        | Expr::FieldAccess { data, .. }
         | Expr::Ast { data, .. }
         | Expr::Recursive { data, .. }
         | Expr::Function { data, .. }
@@ -379,6 +440,7 @@ impl<Data> Expr<Data> {
         | Expr::Let { data, .. }
         | Expr::Call { data, .. }
         | Expr::If { data, .. }
+        | Expr::ReadPlace { data, .. }
         | Expr::Instantiate { data, .. }) = self;
         data
     }
@@ -386,7 +448,7 @@ impl<Data> Expr<Data> {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Symbol {
-    name: String,
+    name: std::sync::Arc<str>,
     id: Id,
 }
 
@@ -405,7 +467,7 @@ impl Symbol {
     }
     pub fn new(name: impl Into<String>) -> Self {
         Self {
-            name: name.into(),
+            name: name.into().into(),
             id: Id::new(),
         }
     }

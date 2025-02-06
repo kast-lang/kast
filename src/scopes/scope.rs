@@ -6,7 +6,7 @@ use super::*;
 pub struct Locals {
     // TODO insertion order
     id_by_name: HashMap<String, Id>,
-    by_id: HashMap<Id, (Symbol, Value)>,
+    by_id: HashMap<Id, (Symbol, OwnedPlace)>,
 }
 
 impl Locals {
@@ -15,25 +15,17 @@ impl Locals {
     }
     fn insert(&mut self, name: Symbol, value: Value) {
         self.id_by_name.insert(name.name().to_owned(), name.id());
-        self.by_id.insert(name.id(), (name, value));
+        self.by_id.insert(name.id(), (name, OwnedPlace::new(value)));
     }
     #[allow(dead_code)]
-    fn get(&self, lookup: Lookup<'_>) -> Option<&(Symbol, Value)> {
+    fn get(&self, lookup: Lookup<'_>) -> Option<&(Symbol, OwnedPlace)> {
         let id: Id = match lookup {
             Lookup::Name(name) => *self.id_by_name.get(name)?,
             Lookup::Id(id) => id,
         };
         self.by_id.get(&id)
     }
-    /// TODO (&Symbol, &mut Value)
-    fn get_mut(&mut self, lookup: Lookup<'_>) -> Option<&mut (Symbol, Value)> {
-        let id: Id = match lookup {
-            Lookup::Name(name) => *self.id_by_name.get(name)?,
-            Lookup::Id(id) => id,
-        };
-        self.by_id.get_mut(&id)
-    }
-    pub fn iter(&self) -> impl Iterator<Item = &(Symbol, Value)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = &(Symbol, OwnedPlace)> + '_ {
         self.by_id.values()
     }
 }
@@ -111,30 +103,19 @@ impl Scope {
         tracing::trace!("insert into {:?} {:?} = {:?}", self.id, name, value);
         self.locals.lock().unwrap().insert(name, value);
     }
-    pub async fn get_cloned<'a>(
+    pub fn lookup<'a>(
         &'a self,
         lookup: Lookup<'a>,
         spawn_id: Option<Id>,
-    ) -> Option<(Symbol, Value)> {
-        self.lookup(lookup, spawn_id, |symbol, value| {
-            (symbol.clone(), value.clone())
-        })
-        .await
-    }
-    pub fn lookup<'a, R>(
-        &'a self,
-        lookup: Lookup<'a>,
-        spawn_id: Option<Id>,
-        f: impl FnOnce(&Symbol, &mut Value) -> R + Send + 'a,
-    ) -> BoxFuture<'a, Option<R>> {
+    ) -> BoxFuture<'a, Option<(Symbol, PlaceRef)>> {
         tracing::trace!("looking for {lookup} in {:?} (ty={:?})", self.id, self.ty);
         async move {
             loop {
                 let was_closed = self.closed.load(std::sync::atomic::Ordering::Relaxed);
-                if let Some((symbol, value)) = self.locals.lock().unwrap().get_mut(lookup) {
+                if let Some((symbol, place)) = self.locals.lock().unwrap().get(lookup) {
                     tracing::trace!("found {lookup}");
-                    tracing::trace!("found in {:?} {:?} = {:?}", self.id, symbol, value);
-                    return Some(f(symbol, value));
+                    // tracing::trace!("found in {:?} {:?} = {:?}", self.id, symbol, place);
+                    return Some((symbol.clone(), place.get_ref()));
                 }
                 match self.ty {
                     ScopeType::NonRecursive => {
@@ -156,8 +137,8 @@ impl Scope {
                 tracing::trace!("continuing searching for {lookup}");
             }
             if let Some(parent) = &self.parent {
-                if let Some(value) = parent.lookup(lookup, spawn_id, f).await {
-                    return Some(value);
+                if let Some(result) = parent.lookup(lookup, spawn_id).await {
+                    return Some(result);
                 }
             }
             None

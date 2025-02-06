@@ -46,7 +46,7 @@ impl CastMap {
             ValueShape::Unit => TypeShape::Unit.into(),
             ValueShape::Tuple(tuple) => {
                 let mut tuple_ty = Tuple::<Type>::empty();
-                for (name, value) in tuple {
+                for (name, value) in tuple.into_values() {
                     tuple_ty.add(
                         name,
                         self.cast_to_ty(value)?

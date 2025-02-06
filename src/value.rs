@@ -10,7 +10,7 @@ pub enum ValueShape {
     Char(char),
     String(String),
     List(#[try_hash] ListValue),
-    Tuple(#[try_hash] Tuple<Value>),
+    Tuple(#[try_hash] TupleValue),
     Function(#[try_hash] TypedFunction),
     Template(Function),
     Macro(#[try_hash] TypedFunction),
@@ -26,6 +26,211 @@ pub enum ValueShape {
     UnwindHandle(#[try_hash] UnwindHandle),
     Symbol(Symbol),
     HashMap(#[try_hash] HashMapValue),
+    Ref(PlaceRef),
+}
+
+#[derive(Clone, TryHash, PartialEq, Eq)]
+pub struct TupleValue(#[try_hash] pub Tuple<OwnedPlace>);
+
+impl std::ops::Deref for TupleValue {
+    type Target = Tuple<OwnedPlace>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Tuple<Value>> for TupleValue {
+    fn from(values: Tuple<Value>) -> Self {
+        Self(values.map(OwnedPlace::new))
+    }
+}
+
+impl TupleValue {
+    pub fn new(values: Tuple<Value>) -> Self {
+        values.into()
+    }
+    pub fn into_values(self) -> Tuple<Value> {
+        self.0.map(|place| place.into_value().unwrap())
+    }
+}
+
+impl std::fmt::Display for TupleValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+pub struct OwnedPlace(Parc<Place>);
+
+impl std::ops::Deref for OwnedPlace {
+    type Target = Place;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq for OwnedPlace {
+    fn eq(&self, other: &Self) -> bool {
+        *self.0.state.lock().unwrap() == *other.0.state.lock().unwrap()
+    }
+}
+
+impl Eq for OwnedPlace {}
+
+impl TryHash for OwnedPlace {
+    type Error = <PlaceState as TryHash>::Error;
+    fn try_hash(&self, state: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        self.0.state.lock().unwrap().try_hash(state)
+    }
+}
+
+impl Clone for OwnedPlace {
+    fn clone(&self) -> Self {
+        Self(Parc::new(Place::new_state(
+            self.0.state.lock().unwrap().clone(),
+        )))
+    }
+}
+
+impl std::fmt::Display for OwnedPlace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl OwnedPlace {
+    pub fn new(value: Value) -> Self {
+        Self(Parc::new(Place {
+            id: Id::new(),
+            ty: value.ty(),
+            state: Mutex::new(PlaceState::Occupied(value)),
+        }))
+    }
+    pub fn into_value(self) -> Result<Value, PlaceError> {
+        self.0.take_value()
+    }
+    pub fn get_ref(&self) -> PlaceRef {
+        PlaceRef {
+            place: self.0.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct PlaceRef {
+    pub place: Parc<Place>,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum PlaceError {
+    #[error("place is uninitialized")]
+    Unintialized,
+    #[error("place has been moved out")]
+    MovedOut,
+}
+
+// nothing is going to work
+impl PlaceRef {
+    pub fn inspect<R>(&self, f: impl FnOnce(&Value) -> R) -> Result<R, PlaceError> {
+        self.place.inspect(f)
+    }
+    pub fn claim_value(&self) -> Result<Value, PlaceError> {
+        self.place.clone_value()
+        // self.place.take_value()
+    }
+    pub fn clone_value(&self) -> Result<Value, PlaceError> {
+        self.place.clone_value()
+    }
+    pub fn assign(&self, new_value: Value) {
+        self.place.assign(new_value)
+    }
+}
+
+impl std::fmt::Display for PlaceRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "&{}", self.place.id)
+    }
+}
+
+pub struct Place {
+    pub id: Id,
+    pub ty: Type,
+    pub state: Mutex<PlaceState>,
+}
+
+impl Place {
+    pub fn new(value: Value) -> Self {
+        Self::new_state(PlaceState::Occupied(value))
+    }
+    pub fn new_state(state: PlaceState) -> Self {
+        Self {
+            id: Id::new(),
+            ty: state.ty().unwrap_or_else(Type::new_not_inferred),
+            state: Mutex::new(state),
+        }
+    }
+    pub fn inspect<R>(&self, f: impl FnOnce(&Value) -> R) -> Result<R, PlaceError> {
+        Ok(f(self.state.lock().unwrap().get()?))
+    }
+    pub fn take_value(&self) -> Result<Value, PlaceError> {
+        Ok(self.state.lock().unwrap().take()?.clone())
+    }
+    pub fn clone_value(&self) -> Result<Value, PlaceError> {
+        Ok(self.state.lock().unwrap().get()?.clone())
+    }
+    pub fn assign(&self, new_value: Value) {
+        self.state.lock().unwrap().assign(new_value)
+    }
+}
+
+impl std::fmt::Display for Place {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &*self.state.lock().unwrap() {
+            PlaceState::Unintialized => write!(f, "<uninitialized>"),
+            PlaceState::Occupied(value) => value.fmt(f),
+            PlaceState::MovedOut => write!(f, "<moved out>"),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, TryHash)]
+pub enum PlaceState {
+    Unintialized,
+    // This place is taken
+    Occupied(#[try_hash] Value),
+    MovedOut,
+}
+
+impl PlaceState {
+    pub fn ty(&self) -> Option<Type> {
+        match self {
+            PlaceState::Occupied(value) => Some(value.ty()),
+            PlaceState::Unintialized | PlaceState::MovedOut => None,
+        }
+    }
+    pub fn assign(&mut self, new_value: Value) {
+        *self = Self::Occupied(new_value);
+    }
+    pub fn get(&self) -> Result<&Value, PlaceError> {
+        match self {
+            PlaceState::Unintialized => Err(PlaceError::Unintialized),
+            PlaceState::Occupied(value) => Ok(value),
+            PlaceState::MovedOut => Err(PlaceError::MovedOut),
+        }
+    }
+    pub fn take(&mut self) -> Result<Value, PlaceError> {
+        match self {
+            PlaceState::Unintialized => Err(PlaceError::Unintialized),
+            PlaceState::MovedOut => Err(PlaceError::MovedOut),
+            PlaceState::Occupied(_) => {
+                let PlaceState::Occupied(value) = std::mem::replace(self, PlaceState::MovedOut)
+                else {
+                    unreachable!()
+                };
+                Ok(value)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryHash)]
@@ -191,6 +396,7 @@ impl std::fmt::Display for ValueShape {
             ValueShape::UnwindHandle(_) => write!(f, "<unwind handle>"),
             ValueShape::Symbol(symbol) => write!(f, "symbol {symbol}"),
             ValueShape::HashMap(map) => map.fmt(f),
+            ValueShape::Ref(r) => r.fmt(f),
         }
     }
 }
@@ -271,7 +477,7 @@ impl ValueShape {
             ValueShape::String(_) => TypeShape::String.into(),
             ValueShape::List(list) => TypeShape::List(list.element_ty.clone()).into(),
             ValueShape::Tuple(tuple) => {
-                TypeShape::Tuple(tuple.as_ref().map(|field| field.ty())).into()
+                TypeShape::Tuple(tuple.as_ref().map(|field| field.ty.clone())).into()
             }
             ValueShape::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             ValueShape::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
@@ -285,6 +491,7 @@ impl ValueShape {
             ValueShape::UnwindHandle(handle) => TypeShape::UnwindHandle(handle.ty.clone()).into(),
             ValueShape::Symbol(_) => TypeShape::Symbol.into(),
             ValueShape::HashMap(map) => TypeShape::HashMap(map.ty.clone()).into(),
+            ValueShape::Ref(r) => TypeShape::Ref(r.place.ty.clone()).into(),
         }
     }
 }
@@ -345,7 +552,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_tuple(self) -> Result<Tuple<Value>, ExpectError<ValueShape, &'static str>> {
+    pub fn expect_tuple(self) -> Result<TupleValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Tuple(tuple) => Ok(tuple),
             _ => Err(ExpectError {
@@ -446,6 +653,15 @@ impl ValueShape {
             _ => Err(ExpectError {
                 value: self,
                 expected: TypeShape::Float64,
+            }),
+        }
+    }
+    pub fn expect_ref(self) -> Result<PlaceRef, ExpectError<ValueShape, &'static str>> {
+        match self {
+            Self::Ref(r) => Ok(r),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "reference",
             }),
         }
     }
@@ -600,11 +816,11 @@ impl Inferrable for ValueShape {
             (ValueShape::List(_), _) => fail!(),
             (ValueShape::Tuple(a), ValueShape::Tuple(b)) => {
                 let mut result = Tuple::empty();
-                for (name, (a, b)) in a.zip(b)?.into_iter() {
+                for (name, (a, b)) in a.into_values().zip(b.into_values())?.into_iter() {
                     let value = Inferrable::make_same(a, b)?;
                     result.add(name, value);
                 }
-                ValueShape::Tuple(result)
+                ValueShape::Tuple(result.into())
             }
             (ValueShape::Tuple(_), _) => fail!(),
             (ValueShape::Function(_), _) => fail!(),
@@ -625,6 +841,8 @@ impl Inferrable for ValueShape {
             (ValueShape::UnwindHandle(_), _) => fail!(),
             (ValueShape::Symbol(_), _) => fail!(),
             (ValueShape::HashMap(_), _) => fail!(),
+            (ValueShape::Ref(a), ValueShape::Ref(b)) if a == b => ValueShape::Ref(a),
+            (ValueShape::Ref(_), _) => fail!(),
         })
     }
 }
@@ -642,7 +860,7 @@ impl TypeShape {
             TypeShape::List(_) => return None,
             TypeShape::Variant(_) => return None,
             TypeShape::Tuple(tuple) => {
-                ValueShape::Tuple(tuple.clone().map(Value::new_not_inferred_of_ty))
+                ValueShape::Tuple(tuple.clone().map(Value::new_not_inferred_of_ty).into())
             }
             TypeShape::Function(_) => return None,
             TypeShape::Template(_) => return None,
@@ -657,6 +875,7 @@ impl TypeShape {
             TypeShape::Binding(_) => return None,
             TypeShape::Symbol => return None,
             TypeShape::HashMap(_) => return None,
+            TypeShape::Ref(_) => return None,
         })
     }
 }

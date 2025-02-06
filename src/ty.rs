@@ -27,6 +27,7 @@ pub enum TypeShape {
     Binding(Parc<Binding>),
     Symbol,
     HashMap(#[try_hash] HashMapType),
+    Ref(#[try_hash] Type),
 }
 
 impl std::fmt::Debug for TypeShape {
@@ -61,6 +62,7 @@ impl ShowShort for TypeShape {
             TypeShape::Binding(_) => "binding",
             TypeShape::Symbol => "symbol",
             TypeShape::HashMap(_) => "hash_map",
+            TypeShape::Ref(_) => "&",
         }
     }
 }
@@ -214,6 +216,8 @@ impl Inferrable for TypeShape {
                 value: Inferrable::make_same(a.value, b.value)?,
             }),
             (Self::HashMap(_), _) => fail!(),
+            (Self::Ref(a), Self::Ref(b)) => Self::Ref(Inferrable::make_same(a, b)?),
+            (Self::Ref(_), _) => fail!(),
         })
     }
 }
@@ -252,6 +256,7 @@ impl std::fmt::Display for TypeShape {
             }
             Self::Symbol => write!(f, "symbol"),
             Self::HashMap(map) => map.fmt(f),
+            Self::Ref(ty) => write!(f, "&{ty}"),
         }
     }
 }
@@ -350,14 +355,21 @@ impl SubstituteBindings for Type {
                 TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache))).into()
             }
             TypeShape::Binding(binding) => match kast.scopes.interpreter.get(&binding.symbol) {
-                Some(value) => value.inferred().unwrap().expect_type().unwrap_or_else(|e| {
-                    panic!("{} expected to be a type: {e}", binding.symbol.name())
-                }),
+                Some(value) => value
+                    .clone_value()
+                    .unwrap()
+                    .inferred()
+                    .unwrap()
+                    .expect_type()
+                    .unwrap_or_else(|e| {
+                        panic!("{} expected to be a type: {e}", binding.symbol.name())
+                    }),
                 None => TypeShape::Binding(binding.clone()).into(),
             },
             TypeShape::HashMap(map) => {
                 TypeShape::HashMap(map.substitute_bindings(kast, cache)).into()
             }
+            TypeShape::Ref(ty) => TypeShape::Ref(ty.substitute_bindings(kast, cache)).into(),
         };
         cache.insert(self.var(), result.clone());
         tracing::trace!("subbed as {result}");

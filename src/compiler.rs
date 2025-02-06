@@ -242,10 +242,16 @@ enum Macro {
 pub trait Compilable: Sized {
     const CTY: CompiledType;
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self>;
+    async fn compile_call(
+        kast: &mut Kast,
+        f: Value,
+        args: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Self>;
     fn r#macro(
         macro_name: &str,
         f: BuiltinMacro,
-    ) -> impl for<'a> Fn(&'a mut Kast, &'a Ast) -> BoxFuture<'a, eyre::Result<Self>> {
+    ) -> impl for<'a> Fn(&'a mut Kast, &'a Ast) -> BoxFuture<'a, eyre::Result<Self>> + Send {
         move |kast, ast| {
             let macro_name = macro_name.to_owned();
             async move {
@@ -258,7 +264,167 @@ pub trait Compilable: Sized {
             .boxed()
         }
     }
+    async fn expand_macros(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
+        let Ast::Complex {
+            definition,
+            values,
+            data,
+        } = ast
+        else {
+            unreachable!()
+        };
+        Ok(match kast.cache.compiler.find_macro(definition)? {
+            Macro::Builtin { name, r#impl } => Self::r#macro(&name, r#impl)(kast, ast).await?,
+            Macro::UserDefined(r#macro) => {
+                let arg = ValueShape::Tuple(
+                    values
+                        .as_ref()
+                        .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into())
+                        .into(),
+                )
+                .into();
+                // hold on
+                let expanded = kast.call_fn(r#macro, arg).await?;
+                let expanded = match expanded.expect_inferred()? {
+                    ValueShape::Ast(ast) => ast,
+                    _ => eyre::bail!(
+                        "macro {name} did not expand to an ast, but to {expanded}",
+                        name = definition.name,
+                    ),
+                };
+                kast.compile(&expanded).await?
+            }
+            Macro::Value(value) => {
+                Self::compile_call(kast, value, values, data.span.clone()).await?
+            } // _ => eyre::bail!("{macro} is not a macro"),
+        })
+    }
     fn from_compiled(compiled: Compiled) -> Self;
+}
+
+enum SimpleExpr {
+    Place(PlaceExpr),
+    Expr(Expr),
+}
+
+impl From<SimpleExpr> for PlaceExpr {
+    fn from(value: SimpleExpr) -> Self {
+        match value {
+            SimpleExpr::Place(e) => e,
+            SimpleExpr::Expr(e) => PlaceExpr::new_temp(e),
+        }
+    }
+}
+impl From<SimpleExpr> for Expr {
+    fn from(value: SimpleExpr) -> Self {
+        match value {
+            SimpleExpr::Place(e) => e.into(),
+            SimpleExpr::Expr(e) => e,
+        }
+    }
+}
+
+impl SimpleExpr {
+    async fn compile(kast: &mut Kast, token: &Token, data: &AstData) -> eyre::Result<Self> {
+        Ok(match token {
+            Token::Ident {
+                raw: _,
+                name,
+                is_raw: _,
+            } => {
+                let value = kast
+                    .scopes
+                    .compiler
+                    .lookup(name, data.hygiene, kast.spawn_id)
+                    .await
+                    .ok_or_else(|| eyre!("{name:?} not found"))?;
+                match value.inferred() {
+                    Some(ValueShape::Binding(binding)) => SimpleExpr::Place(
+                        PlaceExpr::Binding {
+                            binding: binding.clone(),
+                            data: data.span.clone(),
+                        }
+                        .init(kast)
+                        .await?,
+                    ),
+                    _ => SimpleExpr::Expr(
+                        Expr::Constant {
+                            value: value.clone(),
+                            data: data.span.clone(),
+                        }
+                        .init(kast)
+                        .await?,
+                    ),
+                }
+            }
+            Token::String {
+                raw: _,
+                contents,
+                typ,
+            } => SimpleExpr::Expr(
+                Expr::Constant {
+                    value: match typ {
+                        ast::StringType::SingleQuoted => ValueShape::Char({
+                            let mut chars = contents.chars();
+                            let c = chars
+                                .next()
+                                .ok_or_else(|| eyre!("char literal has no content"))?;
+                            if chars.next().is_some() {
+                                eyre::bail!("char literal has more than one char");
+                            }
+                            c
+                        })
+                        .into(),
+                        ast::StringType::DoubleQuoted => {
+                            ValueShape::String(contents.clone()).into()
+                        }
+                    },
+                    data: data.span.clone(),
+                }
+                .init(kast)
+                .await?,
+            ),
+            Token::Number { raw } => SimpleExpr::Expr(
+                Expr::Number {
+                    raw: raw.clone(),
+                    data: data.span.clone(),
+                }
+                .init(kast)
+                .await?,
+            ),
+            Token::Comment { .. } | Token::Punctuation { .. } | Token::Eof => unreachable!(),
+        })
+    }
+}
+
+#[async_trait]
+impl Compilable for PlaceExpr {
+    const CTY: CompiledType = CompiledType::PlaceExpr;
+    fn from_compiled(compiled: Compiled) -> Self {
+        match compiled {
+            Compiled::PlaceExpr(e) => e,
+            _ => unreachable!(),
+        }
+    }
+    async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
+        Ok(match ast {
+            kast_ast::Ast::Simple { token, data } => {
+                SimpleExpr::compile(kast, token, data).await?.into()
+            }
+            kast_ast::Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
+            kast_ast::Ast::SyntaxDefinition { .. } | kast_ast::Ast::FromScratch { .. } => {
+                eyre::bail!("not a place expr")
+            }
+        })
+    }
+    async fn compile_call(
+        _kast: &mut Kast,
+        f: Value,
+        _args: &Tuple<Ast>,
+        _span: Span,
+    ) -> eyre::Result<Self> {
+        eyre::bail!("{f} is not a macro")
+    }
 }
 
 #[async_trait]
@@ -267,138 +433,48 @@ impl Compilable for Expr {
     fn from_compiled(compiled: Compiled) -> Self {
         match compiled {
             Compiled::Expr(e) => e,
-            Compiled::Pattern(_) => unreachable!(),
+            _ => unreachable!(),
         }
+    }
+    async fn compile_call(
+        kast: &mut Kast,
+        f: Value,
+        args: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Self> {
+        Ok(Expr::Call {
+            // TODO not constant?
+            f: Box::new(
+                Expr::Constant {
+                    value: f.clone(),
+                    data: span.clone(),
+                }
+                .init(kast)
+                .await?,
+            ),
+            arg: Box::new(
+                Expr::Tuple {
+                    tuple: {
+                        let mut tuple = Tuple::empty();
+                        for (name, field) in args.as_ref() {
+                            tuple.add(name, kast.compile(field).await?);
+                        }
+                        tuple
+                    },
+                    data: span.clone(),
+                }
+                .init(kast)
+                .await?,
+            ),
+            data: span,
+        }
+        .init(kast)
+        .await?)
     }
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         Ok(match ast {
-            Ast::Simple { token, data } => match token {
-                Token::Ident {
-                    raw: _,
-                    name,
-                    is_raw: _,
-                } => {
-                    let value = kast
-                        .scopes
-                        .compiler
-                        .lookup(name, data.hygiene, kast.spawn_id)
-                        .await
-                        .ok_or_else(|| eyre!("{name:?} not found"))?;
-                    match value.inferred() {
-                        Some(ValueShape::Binding(binding)) => {
-                            Expr::Binding {
-                                binding: binding.clone(),
-                                data: data.span.clone(),
-                            }
-                            .init(kast)
-                            .await?
-                        }
-                        _ => {
-                            Expr::Constant {
-                                value: value.clone(),
-                                data: data.span.clone(),
-                            }
-                            .init(kast)
-                            .await?
-                        }
-                    }
-                }
-                Token::String {
-                    raw: _,
-                    contents,
-                    typ,
-                } => {
-                    Expr::Constant {
-                        value: match typ {
-                            ast::StringType::SingleQuoted => ValueShape::Char({
-                                let mut chars = contents.chars();
-                                let c = chars
-                                    .next()
-                                    .ok_or_else(|| eyre!("char literal has no content"))?;
-                                if chars.next().is_some() {
-                                    eyre::bail!("char literal has more than one char");
-                                }
-                                c
-                            })
-                            .into(),
-                            ast::StringType::DoubleQuoted => {
-                                ValueShape::String(contents.clone()).into()
-                            }
-                        },
-                        data: data.span.clone(),
-                    }
-                    .init(kast)
-                    .await?
-                }
-                Token::Number { raw } => {
-                    Expr::Number {
-                        raw: raw.clone(),
-                        data: data.span.clone(),
-                    }
-                    .init(kast)
-                    .await?
-                }
-                Token::Comment { .. } | Token::Punctuation { .. } | Token::Eof => unreachable!(),
-            },
-            Ast::Complex {
-                definition,
-                values,
-                data,
-            } => {
-                match kast.cache.compiler.find_macro(definition)? {
-                    Macro::Builtin { name, r#impl } => {
-                        Self::r#macro(&name, r#impl)(kast, ast).await?
-                    }
-                    Macro::UserDefined(r#macro) => {
-                        let arg = ValueShape::Tuple(
-                            values
-                                .as_ref()
-                                .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into()),
-                        )
-                        .into();
-                        // hold on
-                        let expanded = kast.call_fn(r#macro, arg).await?;
-                        let expanded = match expanded.expect_inferred()? {
-                            ValueShape::Ast(ast) => ast,
-                            _ => eyre::bail!(
-                                "macro {name} did not expand to an ast, but to {expanded}",
-                                name = definition.name,
-                            ),
-                        };
-                        kast.compile(&expanded).await?
-                    }
-                    Macro::Value(value) => {
-                        Expr::Call {
-                            // TODO not constant?
-                            f: Box::new(
-                                Expr::Constant {
-                                    value: value.clone(),
-                                    data: data.span.clone(),
-                                }
-                                .init(kast)
-                                .await?,
-                            ),
-                            arg: Box::new(
-                                Expr::Tuple {
-                                    tuple: {
-                                        let mut tuple = Tuple::empty();
-                                        for (name, field) in values.as_ref() {
-                                            tuple.add(name, kast.compile(field).await?);
-                                        }
-                                        tuple
-                                    },
-                                    data: data.span.clone(),
-                                }
-                                .init(kast)
-                                .await?,
-                            ),
-                            data: data.span.clone(),
-                        }
-                        .init(kast)
-                        .await?
-                    } // _ => eyre::bail!("{macro} is not a macro"),
-                }
-            }
+            Ast::Simple { token, data } => SimpleExpr::compile(kast, token, data).await?.into(),
+            Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
             Ast::SyntaxDefinition { def, data } => {
                 kast.insert_syntax(def.clone())?;
                 kast.add_local(
@@ -436,9 +512,17 @@ impl Compilable for Pattern {
     const CTY: CompiledType = CompiledType::Pattern;
     fn from_compiled(compiled: Compiled) -> Self {
         match compiled {
-            Compiled::Expr(_) => unreachable!(),
             Compiled::Pattern(p) => p,
+            _ => unreachable!(),
         }
+    }
+    async fn compile_call(
+        kast: &mut Kast,
+        f: Value,
+        args: &Tuple<Ast>,
+        span: Span,
+    ) -> eyre::Result<Self> {
+        eyre::bail!("{f} is not a macro")
     }
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         tracing::debug!("compiling {}...", ast.show_short());
@@ -493,38 +577,7 @@ impl Compilable for Pattern {
                 Token::Number { raw: _ } => todo!(),
                 Token::Comment { .. } | Token::Punctuation { .. } | Token::Eof => unreachable!(),
             },
-            Ast::Complex {
-                definition,
-                values,
-                data: _,
-            } => {
-                match kast.cache.compiler.find_macro(definition)? {
-                    Macro::Builtin { name, r#impl } => {
-                        Self::r#macro(&name, r#impl)(kast, ast).await?
-                    }
-                    Macro::UserDefined(r#macro) => {
-                        let arg = ValueShape::Tuple(
-                            values
-                                .as_ref()
-                                .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into()),
-                        )
-                        .into();
-                        // hold on
-                        let expanded = kast.call_fn(r#macro, arg).await?;
-                        let expanded = match expanded.expect_inferred()? {
-                            ValueShape::Ast(ast) => ast,
-                            _ => eyre::bail!(
-                                "macro {name} did not expand to an ast, but to {expanded}",
-                                name = definition.name,
-                            ),
-                        };
-                        kast.compile(&expanded).await?
-                    }
-                    Macro::Value(value) => {
-                        eyre::bail!("{value} is not a macro")
-                    }
-                }
-            }
+            Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
             Ast::SyntaxDefinition { def: _, data: _ } => todo!(),
             Ast::FromScratch { next: _, data: _ } => todo!(),
         };
@@ -582,6 +635,7 @@ impl Kast {
         Ok(match ty {
             CompiledType::Expr => Compiled::Expr(self.compile(ast).await?),
             CompiledType::Pattern => Compiled::Pattern(self.compile(ast).await?),
+            CompiledType::PlaceExpr => Compiled::PlaceExpr(self.compile(ast).await?),
         })
     }
     async fn macro_type_ascribe(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -718,6 +772,7 @@ impl Kast {
                 Compiled::Expr(Expr::MakeMultiset { values, data: span }.init(self).await?)
             }
             CompiledType::Pattern => todo!(),
+            CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
         })
     }
     async fn macro_variant(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -738,6 +793,7 @@ impl Kast {
             ),
         };
         Ok(match cty {
+            CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::Expr => Compiled::Expr({
                 let mut expr = Expr::Variant {
                     name: name.to_owned(),
@@ -1102,6 +1158,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         tracing::trace!("compiling scoped: {expr}");
         Ok(match cty {
+            CompiledType::PlaceExpr => Compiled::PlaceExpr(self.compile(expr).await?),
             CompiledType::Expr => {
                 let expr = self.enter_scope().compile(expr).await?;
                 Compiled::Expr(
@@ -1175,7 +1232,7 @@ impl Kast {
         let namespace: Value = self.eval_ast(namespace, None).await?;
         match namespace.inferred() {
             Some(ValueShape::Tuple(namespace)) => {
-                for (name, value) in namespace.into_iter() {
+                for (name, value) in namespace.into_values().into_iter() {
                     let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
                     self.add_local(Symbol::new(name), value);
                 }
@@ -1202,6 +1259,7 @@ impl Kast {
         let (values, span) = get_complex(ast);
         let [] = values.as_ref().into_named([])?;
         Ok(match cty {
+            CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::Pattern => Compiled::Pattern(Pattern::Unit { data: span }.init()?),
             CompiledType::Expr => Compiled::Expr(Expr::Unit { data: span }.init(self).await?),
         })
@@ -1308,15 +1366,18 @@ impl Kast {
         ))
     }
     async fn macro_field_access(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        if cty == CompiledType::Expr {
+            return Ok(Compiled::Expr(self.compile::<PlaceExpr>(ast).await?.into()));
+        }
+        assert_eq!(cty, CompiledType::PlaceExpr);
         let (values, span) = get_complex(ast);
         let [obj, field] = values.as_ref().into_named(["obj", "field"])?;
         let field = field
             .as_ident()
             .ok_or_else(|| eyre!("field expected to be an identifier, got {field}"))?;
         // My hair is very crusty today
-        Ok(Compiled::Expr(
-            Expr::FieldAccess {
+        Ok(Compiled::PlaceExpr(
+            PlaceExpr::FieldAccess {
                 obj: Box::new(self.compile(obj).await?),
                 field: field.to_owned(),
                 data: span,
@@ -1447,6 +1508,7 @@ impl Kast {
             }
         }
         Ok(match cty {
+            CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::Expr => Compiled::Expr(
                 Expr::Tuple {
                     tuple: tuple.map(|field| field.expect_expr().unwrap()),
@@ -1482,6 +1544,11 @@ impl Kast {
         ))
     }
     async fn macro_cast(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        if cty == CompiledType::PlaceExpr {
+            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                self.compile(ast).await?,
+            )));
+        }
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
         let [value, target] = values
@@ -1541,6 +1608,7 @@ impl Kast {
             .into_named([])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         Ok(match cty {
+            CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::Expr => Compiled::Expr(
                 Expr::Constant {
                     value: Value::new_not_inferred(),
@@ -1585,6 +1653,12 @@ impl Kast {
         cty: CompiledType,
         ast: &Ast,
     ) -> eyre::Result<Compiled> {
+        // TODO should be place expr?
+        if cty == CompiledType::PlaceExpr {
+            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                self.compile(ast).await?,
+            )));
+        }
         assert_eq!(cty, CompiledType::Expr);
         let (values, span) = get_complex(ast);
         let ([], [context_type]) = values
@@ -1717,11 +1791,13 @@ impl Kast {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CompiledType {
     Expr,
+    PlaceExpr,
     Pattern,
 }
 
 pub enum Compiled {
     Expr(Expr),
+    PlaceExpr(PlaceExpr),
     Pattern(Pattern),
 }
 
@@ -1729,19 +1805,26 @@ impl Compiled {
     fn ty_mut(&mut self) -> &mut Type {
         match self {
             Compiled::Expr(e) => &mut e.data_mut().ty,
+            Compiled::PlaceExpr(e) => &mut e.data_mut().ty,
             Compiled::Pattern(p) => &mut p.data_mut().ty,
         }
     }
     fn expect_expr(self) -> Option<Expr> {
         match self {
             Compiled::Expr(e) => Some(e),
-            Compiled::Pattern(_) => None,
+            _ => None,
+        }
+    }
+    fn expect_place_expr(self) -> Option<PlaceExpr> {
+        match self {
+            Self::PlaceExpr(e) => Some(e),
+            _ => None,
         }
     }
     fn expect_pattern(self) -> Option<Pattern> {
         match self {
-            Compiled::Expr(_) => None,
             Compiled::Pattern(p) => Some(p),
+            _ => None,
         }
     }
 }
@@ -1817,11 +1900,69 @@ impl Kast {
     }
 }
 
+impl PlaceExpr<Span> {
+    pub fn init(self, _kast: &Kast) -> BoxFuture<'_, eyre::Result<PlaceExpr>> {
+        let r#impl = async {
+            Ok(match self {
+                PlaceExpr::Temporary { value, data: span } => PlaceExpr::Temporary {
+                    data: ExprData {
+                        ty: value.data().ty.clone(),
+                        span,
+                    },
+                    value,
+                },
+                PlaceExpr::Binding {
+                    binding,
+                    data: span,
+                } => PlaceExpr::Binding {
+                    data: ExprData {
+                        ty: binding.ty.clone(),
+                        span,
+                    },
+                    binding,
+                },
+                PlaceExpr::FieldAccess {
+                    obj,
+                    field,
+                    data: span,
+                } => PlaceExpr::FieldAccess {
+                    data: ExprData {
+                        ty: match obj.data().ty.inferred() {
+                            Ok(inferred_ty) => match &inferred_ty {
+                                TypeShape::Tuple(fields) => match fields.get_named(&field) {
+                                    Some(field_ty) => field_ty.clone(),
+                                    None => {
+                                        eyre::bail!("{inferred_ty} does not have field {field:?}")
+                                    }
+                                },
+                                TypeShape::SyntaxModule => TypeShape::SyntaxDefinition.into(),
+                                _ => eyre::bail!("can not get fields of type {inferred_ty}"),
+                            },
+                            Err(_) => todo!("lazy inferring field access type"),
+                        },
+                        span,
+                    },
+                    obj,
+                    field,
+                },
+            })
+        };
+        r#impl.boxed()
+    }
+}
+
 impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::ReadPlace { place, data: span } => Expr::ReadPlace {
+                    data: ExprData {
+                        ty: place.data().ty.clone(),
+                        span,
+                    },
+                    place,
+                },
                 Expr::And {
                     lhs,
                     rhs,
@@ -1974,19 +2115,21 @@ impl Expr<Span> {
                     value,
                     target,
                     data: span,
-                } => Expr::Cast {
-                    target: target.clone(),
-                    data: ExprData {
-                        ty: kast
-                            .cast_result_ty(
-                                || async { kast.enter_scope().eval(&value).await }.boxed(),
-                                target,
-                            )
-                            .await?,
-                        span,
-                    },
-                    value, // TODO not evaluate twice if template?
-                },
+                } => {
+                    Expr::Cast {
+                        target: target.clone(),
+                        data: ExprData {
+                            ty: kast
+                                .cast_result_ty(
+                                    || async { kast.enter_scope().eval(&value).await }.boxed(),
+                                    target,
+                                )
+                                .await?,
+                            span,
+                        },
+                        value, // TODO not evaluate twice if template?
+                    }
+                }
                 // programming in brainfuck -- I don't want to do that, it's not that painful...
                 Expr::Match {
                     value,
@@ -2119,30 +2262,6 @@ impl Expr<Span> {
                     },
                     tuple,
                 },
-                Expr::FieldAccess {
-                    obj,
-                    field,
-                    data: span,
-                } => Expr::FieldAccess {
-                    data: ExprData {
-                        ty: match obj.data().ty.inferred() {
-                            Ok(inferred_ty) => match &inferred_ty {
-                                TypeShape::Tuple(fields) => match fields.get_named(&field) {
-                                    Some(field_ty) => field_ty.clone(),
-                                    None => {
-                                        eyre::bail!("{inferred_ty} does not have field {field:?}")
-                                    }
-                                },
-                                TypeShape::SyntaxModule => TypeShape::SyntaxDefinition.into(),
-                                _ => eyre::bail!("can not get fields of type {inferred_ty}"),
-                            },
-                            Err(_) => todo!("lazy inferring field access type"),
-                        },
-                        span,
-                    },
-                    obj,
-                    field,
-                },
                 Expr::Ast {
                     expr_root,
                     definition,
@@ -2216,16 +2335,6 @@ impl Expr<Span> {
                         span,
                     },
                     expr,
-                },
-                Expr::Binding {
-                    binding,
-                    data: span,
-                } => Expr::Binding {
-                    data: ExprData {
-                        ty: binding.ty.clone(),
-                        span,
-                    },
-                    binding,
                 },
                 Expr::If {
                     condition,
@@ -2302,6 +2411,7 @@ impl Expr<Span> {
                                 .unwrap()
                                 .expect_tuple()
                                 .unwrap()
+                                .into_values()
                                 .get_named("default_number_type")
                                 .unwrap()
                                 .clone();

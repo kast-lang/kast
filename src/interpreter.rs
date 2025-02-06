@@ -196,8 +196,11 @@ impl Cache {
                             name: "HashMap".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let [key, value] =
-                                        args.expect_inferred()?.expect_tuple()?.into_unnamed()?;
+                                    let [key, value] = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .into_values()
+                                        .into_unnamed()?;
                                     Ok(ValueShape::Type(
                                         TypeShape::HashMap(HashMapType {
                                             key: key.expect_type()?,
@@ -283,8 +286,11 @@ impl Cache {
                             name: "HashMap.insert".to_owned(),
                             r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let [map, key, value] =
-                                        args.expect_inferred()?.expect_tuple()?.into_unnamed()?;
+                                    let [map, key, value] = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .into_values()
+                                        .into_unnamed()?;
                                     let mut map = map.expect_inferred()?.expect_hash_map()?;
                                     map.values = Parc::new({
                                         #[allow(clippy::mutable_key_type)]
@@ -364,8 +370,11 @@ impl Cache {
                             r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
                                 let result_ty = result_ty.clone();
                                 async move {
-                                    let [map, key] =
-                                        args.expect_inferred()?.expect_tuple()?.into_unnamed()?;
+                                    let [map, key] = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .into_values()
+                                        .into_unnamed()?;
                                     let map = map.expect_inferred()?.expect_hash_map()?;
                                     let value = map.values.get(&HashableValue(key)).cloned();
                                     Ok(ValueShape::Variant(VariantValue {
@@ -437,7 +446,9 @@ impl Cache {
                                                 .get_runtime(generator_handler)?
                                                 .ok_or_else(|| eyre!("no handler"))?
                                                 .expect_inferred()?
-                                                .expect_tuple()?;
+                                                .expect_tuple()?
+                                                .into_values();
+                                            // oh shit
                                             let handler = handler
                                                 .get_named("handle")
                                                 .ok_or_else(|| eyre!("wut"))?;
@@ -448,7 +459,7 @@ impl Cache {
                                                 tuple.add_unnamed(value.clone());
                                                 kast.call(
                                                     handler.clone(),
-                                                    ValueShape::Tuple(tuple).into(),
+                                                    ValueShape::Tuple(tuple.into()).into(),
                                                 )
                                                 .await?;
                                             }
@@ -484,7 +495,8 @@ impl Cache {
                             name: "contains".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let mut args = args.expect_inferred()?.expect_tuple()?;
+                                    let mut args =
+                                        args.expect_inferred()?.expect_tuple()?.into_values();
                                     let s = args
                                         .take_named("s")
                                         .unwrap()
@@ -581,7 +593,8 @@ impl Cache {
                                                 .get_runtime(generator_handler)?
                                                 .ok_or_else(|| eyre!("no handler"))?
                                                 .expect_inferred()?
-                                                .expect_tuple()?;
+                                                .expect_tuple()?
+                                                .into_values();
                                             let handler = handler
                                                 .get_named("handle")
                                                 .ok_or_else(|| eyre!("wut"))?;
@@ -641,7 +654,8 @@ impl Cache {
                                                 .get_runtime(generator_handler)?
                                                 .ok_or_else(|| eyre!("no handler"))?
                                                 .expect_inferred()?
-                                                .expect_tuple()?;
+                                                .expect_tuple()?
+                                                .into_values();
                                             let handler = handler
                                                 .get_named("handle")
                                                 .ok_or_else(|| eyre!("wut"))?;
@@ -691,6 +705,7 @@ impl Cache {
                                         let [name, value] = args
                                             .expect_inferred()?
                                             .expect_tuple()?
+                                            .into_values()
                                             .into_named(["name", "value"])?;
                                         let name = name.expect_inferred()?.expect_string()?;
                                         set_natives.lock().unwrap().insert(name, value);
@@ -726,8 +741,11 @@ impl Cache {
                             name: "list_get".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let [list, index] =
-                                        args.expect_inferred()?.expect_tuple()?.into_unnamed()?;
+                                    let [list, index] = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .into_values()
+                                        .into_unnamed()?;
                                     let list = list.expect_inferred()?.expect_list()?;
                                     let index = index.expect_inferred()?.expect_int32()?;
                                     Ok(list
@@ -797,8 +815,11 @@ impl Cache {
                             name: "list_set".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let [list, index, new_value] =
-                                        args.expect_inferred()?.expect_tuple()?.into_unnamed()?;
+                                    let [list, index, new_value] = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .into_values()
+                                        .into_unnamed()?;
                                     let list = list.expect_inferred()?.expect_list()?;
                                     let index = index.expect_inferred()?.expect_int32()?;
                                     let index: usize = index.try_into()?;
@@ -841,8 +862,11 @@ impl Cache {
                             name: "list_push".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let [list, new_elem] =
-                                        args.expect_inferred()?.expect_tuple()?.into_unnamed()?;
+                                    let [list, new_elem] = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .into_values()
+                                        .into_unnamed()?;
                                     let list = list.expect_inferred()?.expect_list()?;
                                     let mut result = list;
                                     result.values = std::sync::Arc::new({
@@ -880,8 +904,11 @@ impl Cache {
                             name: "push_char".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let [s, c] =
-                                        args.expect_inferred()?.expect_tuple()?.into_unnamed()?;
+                                    let [s, c] = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .into_values()
+                                        .into_unnamed()?;
                                     let s = s.expect_inferred()?.expect_string()?;
                                     let c = c.expect_inferred()?.expect_char()?;
                                     let mut result = s;
@@ -971,6 +998,7 @@ impl Cache {
                                     let [min, max] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .into_values()
                                         .into_named(["min", "max"])?;
                                     let min = min.expect_inferred()?;
                                     let max = max.expect_inferred()?;
@@ -1127,6 +1155,7 @@ impl Cache {
                                         let [lhs, rhs] = args
                                             .expect_inferred()?
                                             .expect_tuple()?
+                                            .into_values()
                                             .into_named(["lhs", "rhs"])?;
                                         f(lhs, rhs)
                                     }
@@ -1168,7 +1197,7 @@ impl Cache {
                                 (ValueShape::Char(lhs), ValueShape::Char(rhs)) => lhs $op rhs,
                                 (ValueShape::String(lhs), ValueShape::String(rhs)) => lhs $op rhs,
                                 (ValueShape::Tuple(lhs), ValueShape::Tuple(rhs)) => 'result: {
-                                    for (_name, (lhs, rhs)) in lhs.zip(rhs).unwrap() {
+                                    for (_name, (lhs, rhs)) in lhs.into_values().zip(rhs.into_values()).unwrap() {
                                         if lhs != rhs {
                                             break 'result $name(lhs, rhs)?;
                                         }
@@ -1310,11 +1339,11 @@ impl Kast {
         self.scopes.interpreter.inspect(|locals| {
             locals
                 .iter()
-                .filter_map(move |(name, value)| {
+                .filter_map(move |(name, place)| {
                     if name.name().contains(s) {
                         Some(CompletionCandidate {
                             name: name.name().to_owned(),
-                            ty: value.ty(),
+                            ty: place.ty.clone(),
                         })
                     } else {
                         None
@@ -1356,7 +1385,11 @@ impl Kast {
             .r#match(value)
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
-            self.scopes.interpreter.mutate(&binding.symbol, value);
+            self.scopes
+                .interpreter
+                .get(&binding.symbol)
+                .expect("not found???")
+                .assign(value);
         }
         Ok(())
     }
@@ -1435,6 +1468,64 @@ impl Kast {
         let result = self.eval(&expr).await?;
         Ok(result)
     }
+    pub fn eval_place<'a>(
+        &'a mut self,
+        expr: &'a PlaceExpr,
+    ) -> BoxFuture<'a, eyre::Result<PlaceRef>> {
+        tracing::trace!("evaluating {}", expr.show_short());
+        let r#impl = async move {
+            let result: PlaceRef = match expr {
+                PlaceExpr::Temporary { value, data: _ } => {
+                    let value = self.eval(value).await?;
+                    OwnedPlace::new(value).get_ref()
+                }
+                PlaceExpr::Binding { binding, data: _ } => self
+                    .scopes
+                    .interpreter
+                    .get(&binding.symbol)
+                    .ok_or_else(|| eyre!("{:?} not found", binding.symbol))?,
+                PlaceExpr::FieldAccess {
+                    obj,
+                    field,
+                    data: _,
+                } => {
+                    let obj = self.eval_place(obj).await?;
+                    obj.inspect(|obj| {
+                        Ok(match obj.expect_inferred()? {
+                            ValueShape::Tuple(TupleValue(fields)) => {
+                                match fields.get_named(field) {
+                                    Some(place) => place.get_ref(),
+                                    None => eyre::bail!("{obj} does not have field {field:?}"),
+                                }
+                            }
+                            // TODO should this be making a temporary?
+                            ValueShape::SyntaxModule(definitions) => OwnedPlace::new(
+                                ValueShape::SyntaxDefinition(
+                                    definitions
+                                        .iter() // TODO store a map? iteration is slow?
+                                        .find(|def| def.name == *field)
+                                        .ok_or_else(|| {
+                                            eyre!("syntax def {field:?} not found in syntax module")
+                                        })?
+                                        .clone(),
+                                )
+                                .into(),
+                            )
+                            .get_ref(),
+                            _ => eyre::bail!("{obj} is not smth that has fields"),
+                        })
+                    })??
+                }
+            };
+            Ok::<_, eyre::Report>(result)
+        };
+        async {
+            r#impl
+                .await
+                .wrap_err_with(|| format!("while evaluating {}", expr.show_short()))
+        }
+        .boxed()
+    }
     pub fn eval<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<Value>> {
         tracing::trace!("evaluating {}", expr.show_short());
         let expected_ty = self.interpreter.check_types.then(|| {
@@ -1448,6 +1539,13 @@ impl Kast {
         });
         let r#impl = async move {
             let result = match expr {
+                Expr::ReadPlace {
+                    place: reference,
+                    data: _,
+                } => {
+                    let place = self.eval_place(reference).await?;
+                    place.claim_value()?
+                }
                 Expr::And { lhs, rhs, data: _ } => {
                     let lhs = self.eval(lhs).await?.expect_inferred()?.expect_bool()?;
                     if lhs {
@@ -1718,7 +1816,7 @@ impl Kast {
                     let namespace = self.eval(namespace).await?;
                     match namespace.expect_inferred()? {
                         ValueShape::Tuple(namespace) => {
-                            for (name, value) in namespace.into_iter() {
+                            for (name, value) in namespace.into_values().into_iter() {
                                 let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
                                 self.add_local(Symbol::new(name), value);
                             }
@@ -1732,7 +1830,7 @@ impl Kast {
                     for (name, field) in tuple.as_ref() {
                         result.add(name, self.eval(field).await?);
                     }
-                    let result = ValueShape::Tuple(result).into();
+                    let result = ValueShape::Tuple(result.into()).into();
                     match data.ty.inferred_or_default()? {
                         Ok(TypeShape::Type) => self
                             .cache
@@ -1747,40 +1845,16 @@ impl Kast {
                         Err(_) => eyre::bail!("tuple type could not be inferred???"),
                     }
                 }
-                Expr::FieldAccess {
-                    obj,
-                    field,
-                    data: _,
-                } => {
-                    let obj = self.eval(obj).await?;
-                    match obj.expect_inferred()? {
-                        ValueShape::Tuple(fields) => match fields.get_named(field) {
-                            Some(field_value) => field_value.clone(),
-                            None => eyre::bail!("{obj} does not have field {field:?}"),
-                        },
-                        ValueShape::SyntaxModule(definitions) => ValueShape::SyntaxDefinition(
-                            definitions
-                                .iter() // TODO store a map? iteration is slow?
-                                .find(|def| def.name == *field)
-                                .ok_or_else(|| {
-                                    eyre!("syntax def {field:?} not found in syntax module")
-                                })?
-                                .clone(),
-                        )
-                        .into(),
-                        _ => eyre::bail!("{obj} is not smth that has fields"),
-                    }
-                }
                 Expr::Recursive { body, data: _ } => {
                     let mut inner = self.enter_recursive_scope();
                     inner.eval(body).await?.expect_inferred()?.expect_unit()?;
                     let mut fields = Tuple::empty();
                     inner.scopes.interpreter.inspect(|locals| {
-                        for (name, value) in locals.iter() {
-                            fields.add_named(name.name(), value.clone());
+                        for (name, place) in locals.iter() {
+                            fields.add_named(name.name(), place.clone());
                         }
                     });
-                    ValueShape::Tuple(fields).into()
+                    ValueShape::Tuple(TupleValue(fields)).into()
                 }
                 Expr::Ast {
                     expr_root,
@@ -1839,12 +1913,6 @@ impl Kast {
                     let mut inner = self.enter_scope();
                     inner.eval(expr).await?
                 }
-                Expr::Binding { binding, data: _ } => self
-                    .scopes
-                    .interpreter
-                    .get(&binding.symbol)
-                    .ok_or_else(|| eyre!("{:?} not found", binding.symbol))?
-                    .clone(),
                 Expr::If {
                     condition,
                     then_case,
@@ -1967,8 +2035,6 @@ impl Kast {
                     | Expr::Variant { .. }
                     | Expr::MakeMultiset { .. }
                     | Expr::Use { .. }
-                    | Expr::FieldAccess { .. }
-                    | Expr::Binding { .. }
                     | Expr::If { .. }
                     | Expr::Then { .. }
                     | Expr::Constant { .. }
@@ -1982,6 +2048,7 @@ impl Kast {
                     | Expr::Template { .. }
                     | Expr::Instantiate { .. }
                     | Expr::Tuple { .. }
+                    | Expr::ReadPlace { .. }
                     | Expr::Ast { .. } => true,
                     // TODO
                     Expr::Recursive { .. } => false,
@@ -2100,7 +2167,7 @@ impl Pattern {
                     data: _,
                 } => {
                     let value = match value.inferred() {
-                        Some(ValueShape::Tuple(value)) => value,
+                        Some(ValueShape::Tuple(value)) => value.into_values(),
                         _ => {
                             let pattern = pattern.as_ref().map(|_| "_");
                             panic!("trying to pattern match tuple {pattern}, but got {value}");
