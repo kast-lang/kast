@@ -8,7 +8,7 @@ repl *ARGS:
     just run repl {{ARGS}}
 
 run *ARGS:
-    cargo run --no-default-features -- {{ARGS}}
+    cargo run --quiet --no-default-features -- {{ARGS}}
 
 serve:
     cd website && zola serve

@@ -221,7 +221,7 @@ impl Value {
         self.ty.infer_as(TypeShape::Type)?;
         Ok(match self.actual.inferred() {
             Ok(inferred) => inferred.expect_type()?,
-            Err(var) => {
+            Err(_var) => {
                 unreachable!()
             }
         })

@@ -61,7 +61,7 @@ impl CastMap {
             }
             inferred => match inferred.expect_type() {
                 Ok(value) => value,
-                Err(e) => return Ok(Err(value)),
+                Err(_e) => return Ok(Err(value)),
             },
         }))
     }
