@@ -44,6 +44,11 @@ impl CastMap {
     pub fn cast_to_ty(&self, value: Value) -> eyre::Result<Result<Type, Value>> {
         Ok(Ok(match value.expect_inferred()? {
             ValueShape::Unit => TypeShape::Unit.into(),
+            ValueShape::Ref(place) => TypeShape::Ref(
+                self.cast_to_ty(place.claim_value()?)?
+                    .map_err(|value| eyre!("{value} is not a type"))?,
+            )
+            .into(),
             ValueShape::Tuple(tuple) => {
                 let mut tuple_ty = Tuple::<Type>::empty();
                 for (name, value) in tuple.into_values() {

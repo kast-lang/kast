@@ -124,6 +124,8 @@ syntax_module {
 
   syntax @"builtin macro call" <- 100 = f arg;
 
+  syntax @"builtin macro ref" <- 110 = "&" place;
+
   syntax @"builtin macro typeof" <- 120 = "typeof" expr;
   syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
   syntax @"builtin macro compile_ast" <- 120 = "compile_ast" ast;

@@ -180,6 +180,7 @@ impl Cache {
             macro_assign,
             macro_and,
             macro_or,
+            macro_ref,
         );
         Self {
             builtin_macros,
@@ -586,6 +587,19 @@ impl Compilable for Pattern {
     }
 }
 
+macro_rules! assert_expr {
+    ($this:expr, $cty:expr, $ast:expr) => {
+        let cty = $cty;
+        let ast = $ast;
+        if cty == CompiledType::PlaceExpr {
+            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                $this.compile(ast).await?,
+            )));
+        }
+        assert_eq!(cty, CompiledType::Expr);
+    };
+}
+
 impl Kast {
     fn inject_conditional_bindings(&mut self, expr: &Expr, condition: bool) {
         expr.collect_bindings(
@@ -713,7 +727,7 @@ impl Kast {
         ))
     }
     async fn macro_native(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let name = values
             .as_ref()
@@ -730,7 +744,7 @@ impl Kast {
         ))
     }
     async fn macro_newtype(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let def = values
             .as_ref()
@@ -831,7 +845,7 @@ impl Kast {
     /// Kappa
     /// NoKappa
     async fn macro_match(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [value, branches] = values
             .as_ref()
@@ -880,7 +894,7 @@ impl Kast {
         ))
     }
     async fn macro_if(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let ([cond, then_case], [else_case]) = values
             .as_ref()
@@ -914,7 +928,7 @@ impl Kast {
             Ast::Complex { definition, .. } => definition.name.as_str(),
             _ => unreachable!(),
         };
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let ListCollected {
             list: ast_list,
             all_binary,
@@ -974,7 +988,7 @@ impl Kast {
         ast: &Ast,
     ) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let body = values
             .as_ref()
             .into_single_named("body")
@@ -996,7 +1010,7 @@ impl Kast {
     }
     async fn macro_struct_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let body = values
             .as_ref()
             .into_single_named("body")
@@ -1014,7 +1028,7 @@ impl Kast {
     }
     async fn macro_macro(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let def = values
             .as_ref()
             .into_single_named("def")
@@ -1033,7 +1047,7 @@ impl Kast {
     }
     async fn macro_template_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let ([arg, body], [r#where]) = values
             .as_ref()
             .into_named_opt(["arg", "body"], ["where"])
@@ -1059,7 +1073,7 @@ impl Kast {
         ast: &Ast,
     ) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let [template, arg] = values
             .as_ref()
             .into_named(["template", "arg"])
@@ -1106,7 +1120,7 @@ impl Kast {
     }
     async fn macro_function_def(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let ([body], [arg, contexts, result_type]) = values
             .as_ref()
             .into_named_opt(["body"], ["arg", "contexts", "result_type"])
@@ -1174,7 +1188,7 @@ impl Kast {
         })
     }
     async fn macro_import(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let path = self
             .eval_ast(
@@ -1200,7 +1214,7 @@ impl Kast {
         ))
     }
     async fn macro_include(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let path = self
             .eval_ast(
@@ -1266,7 +1280,7 @@ impl Kast {
     }
     async fn macro_call(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let [f, arg] = values
             .as_ref()
             .into_named(["f", "arg"])
@@ -1285,7 +1299,7 @@ impl Kast {
     }
     async fn macro_call_macro(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let [r#macro, arg] = values
             .as_ref()
             .into_named(["macro", "arg"])
@@ -1304,7 +1318,7 @@ impl Kast {
         ))
     }
     async fn macro_unwindable(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [name, body] = values.as_ref().into_named(["name", "body"])?;
         let (name, body) = {
@@ -1325,7 +1339,7 @@ impl Kast {
         ))
     }
     async fn macro_unwind(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [name, value] = values.as_ref().into_named(["name", "value"])?;
         let name: Expr = self.compile(name).await?;
@@ -1346,7 +1360,7 @@ impl Kast {
         cty: CompiledType,
         ast: &Ast,
     ) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let ([arg, result], [contexts]) = values
             .as_ref()
@@ -1387,7 +1401,7 @@ impl Kast {
         ))
     }
     async fn macro_quote(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, _span) = get_complex(ast);
         let expr = values.as_ref().into_single_named("expr")?;
         fn quote<'a>(
@@ -1528,7 +1542,7 @@ impl Kast {
     }
     async fn macro_is(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let [value, pattern] = values
             .as_ref()
             .into_named(["value", "pattern"])
@@ -1544,12 +1558,7 @@ impl Kast {
         ))
     }
     async fn macro_cast(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        if cty == CompiledType::PlaceExpr {
-            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
-                self.compile(ast).await?,
-            )));
-        }
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [value, target] = values
             .as_ref()
@@ -1571,7 +1580,7 @@ impl Kast {
         ))
     }
     async fn macro_impl_cast(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [value, target, r#impl] = values
             .as_ref()
@@ -1621,7 +1630,7 @@ impl Kast {
         })
     }
     async fn macro_with_context(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let ([new_context], [expr]) = values
             .as_ref()
@@ -1653,13 +1662,7 @@ impl Kast {
         cty: CompiledType,
         ast: &Ast,
     ) -> eyre::Result<Compiled> {
-        // TODO should be place expr?
-        if cty == CompiledType::PlaceExpr {
-            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
-                self.compile(ast).await?,
-            )));
-        }
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let ([], [context_type]) = values
             .as_ref()
@@ -1676,7 +1679,7 @@ impl Kast {
         Ok(Compiled::Expr(expr))
     }
     async fn macro_comptime(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let value = values
             .as_ref()
@@ -1712,7 +1715,7 @@ impl Kast {
         kast.compile_into(cty, pattern).await
     }
     async fn macro_or(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [lhs, rhs] = values.as_ref().into_named(["lhs", "rhs"])?;
         Ok(Compiled::Expr(
@@ -1726,7 +1729,7 @@ impl Kast {
         ))
     }
     async fn macro_and(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [lhs, rhs] = values.as_ref().into_named(["lhs", "rhs"])?;
         Ok(Compiled::Expr(
@@ -1740,7 +1743,7 @@ impl Kast {
         ))
     }
     async fn macro_assign(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [pattern, value] = values.as_ref().into_named(["pattern", "value"])?;
         let pattern: Pattern = {
@@ -1759,8 +1762,21 @@ impl Kast {
             .await?,
         ))
     }
+    async fn macro_ref(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_expr!(self, cty, ast);
+        let (values, span) = get_complex(ast);
+        let place = values.as_ref().into_single_named("place")?;
+        Ok(Compiled::Expr(
+            Expr::Ref {
+                place: self.compile(place).await?,
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
     async fn macro_list(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let ([], [values]) = values.as_ref().into_named_opt([], ["values"])?;
         let values_asts = match values {
@@ -1956,6 +1972,24 @@ impl Expr<Span> {
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let r#impl = async {
             Ok(match self {
+                Expr::Ref { place, data: span } => {
+                    let place_ty = place.data().ty.clone();
+                    let ty = Type::new_not_inferred_with_default(TypeShape::Ref(place_ty.clone()));
+                    ty.var().add_check(move |inferred| {
+                        match inferred {
+                            TypeShape::Type => {}
+                            TypeShape::Ref(inferred_inner_ty) => {
+                                inferred_inner_ty.clone().make_same(place_ty.clone())?
+                            }
+                            _ => eyre::bail!("ref expr inferred as {inferred}"),
+                        }
+                        Ok(())
+                    })?;
+                    Expr::Ref {
+                        data: ExprData { ty, span },
+                        place,
+                    }
+                }
                 Expr::ReadPlace { place, data: span } => Expr::ReadPlace {
                     data: ExprData {
                         ty: place.data().ty.clone(),

@@ -14,6 +14,10 @@ pub struct MatchBranch {
 
 #[derive(Clone)]
 pub enum Expr<Data = ExprData> {
+    Ref {
+        place: PlaceExpr,
+        data: Data,
+    },
     And {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
@@ -219,7 +223,8 @@ impl Expr {
         condition: Option<bool>,
     ) {
         match self {
-            Expr::And { .. }
+            Expr::Ref { .. }
+            | Expr::And { .. }
             | Expr::Or { .. }
             | Expr::List { .. }
             | Expr::Assign { .. }
@@ -330,6 +335,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
         impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Ref { .. } => write!(f, "ref expr")?,
                     Expr::And { .. } => write!(f, "and expr")?,
                     Expr::Or { .. } => write!(f, "or expr")?,
                     Expr::Assign { .. } => write!(f, "assign expr")?,
@@ -374,6 +380,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 impl<Data> Expr<Data> {
     pub fn data(&self) -> &Data {
         let (Expr::And { data, .. }
+        | Expr::Ref { data, .. }
         | Expr::Or { data, .. }
         | Expr::Assign { data, .. }
         | Expr::Unwind { data, .. }
@@ -410,6 +417,7 @@ impl<Data> Expr<Data> {
     }
     pub fn data_mut(&mut self) -> &mut Data {
         let (Expr::And { data, .. }
+        | Expr::Ref { data, .. }
         | Expr::Or { data, .. }
         | Expr::Assign { data, .. }
         | Expr::List { data, .. }

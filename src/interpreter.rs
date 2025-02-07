@@ -1539,11 +1539,26 @@ impl Kast {
         });
         let r#impl = async move {
             let result = match expr {
-                Expr::ReadPlace {
-                    place: reference,
-                    data: _,
-                } => {
-                    let place = self.eval_place(reference).await?;
+                Expr::Ref { place, data } => {
+                    let ref_ty: Type = data
+                        .ty
+                        .inferred_or_default()?
+                        .map_err(|_| eyre!("ref expr type not inferred"))?
+                        .into();
+                    match ref_ty.inferred().ok().unwrap() {
+                        TypeShape::Type => {
+                            let inner_ty =
+                                self.eval_place(place).await?.claim_value()?.expect_type()?;
+                            ValueShape::Type(TypeShape::Ref(inner_ty).into()).into()
+                        }
+                        TypeShape::Ref { .. } => {
+                            ValueShape::Ref(self.eval_place(place).await?).into()
+                        }
+                        inferred => eyre::bail!("ref inferred to be {inferred}"),
+                    }
+                }
+                Expr::ReadPlace { place, data: _ } => {
+                    let place = self.eval_place(place).await?;
                     place.claim_value()?
                 }
                 Expr::And { lhs, rhs, data: _ } => {
@@ -2019,6 +2034,7 @@ impl Kast {
             if let Some(expected_ty) = expected_ty {
                 let should_check_result_ty = match expr {
                     Expr::Unit { .. }
+                    | Expr::Ref { .. }
                     | Expr::And { .. }
                     | Expr::Or { .. }
                     | Expr::List { .. }
