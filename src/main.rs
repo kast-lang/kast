@@ -82,24 +82,37 @@ fn main() -> eyre::Result<()> {
                 _ => tracing::info!("evaluated to {value}"),
             }
         }
-        cli::Command::ParseAst => {
+        cli::Command::ParseAst { path, interactive } => {
             let syntax = ast::read_syntax(SourceFile {
                 contents: std::fs::read_to_string(std_path().join("syntax.ks")).unwrap(),
                 filename: "std/syntax.ks".into(),
             })?;
             tracing::trace!("{syntax:#?}");
-            run_repl((), move |contents| {
+            if let Some(source) = path {
                 let source = SourceFile {
-                    contents,
-                    filename: "<stdin>".into(),
+                    contents: std::fs::read_to_string(&source).unwrap(),
+                    filename: source,
                 };
-                let ast = ast::parse(&syntax, source)?;
+                let ast = kast_ast::parse(&syntax, source)?;
                 match ast {
                     None => println!("<nothing>"),
                     Some(ast) => println!("{ast:#}"),
                 }
-                Ok(())
-            })?;
+            }
+            if interactive {
+                run_repl((), move |contents| {
+                    let source = SourceFile {
+                        contents,
+                        filename: "<stdin>".into(),
+                    };
+                    let ast = ast::parse(&syntax, source)?;
+                    match ast {
+                        None => println!("<nothing>"),
+                        Some(ast) => println!("{ast:#}"),
+                    }
+                    Ok(())
+                })?;
+            }
         }
         cli::Command::Repl { path, no_stdlib } => {
             let kast = Arc::new(Mutex::new(
