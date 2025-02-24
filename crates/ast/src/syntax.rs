@@ -1,6 +1,9 @@
 use super::*;
 use noisy_float::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Priority(R64);
@@ -22,6 +25,7 @@ pub enum SyntaxDefinitionPart {
     Keyword(String),
     UnnamedBinding,
     NamedBinding(String),
+    Group(Parc<Mutex<Group>>),
 }
 
 #[derive(Debug)]

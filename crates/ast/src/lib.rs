@@ -1,12 +1,15 @@
 use std::{borrow::Cow, collections::HashSet};
 
 use decursion::FutureExt;
+use group::PartsAccumulator;
 use kast_util::*;
 
+mod group;
 mod lexer;
 mod peek2;
 mod syntax;
 
+pub use group::Group;
 pub use lexer::{is_punctuation, lex, StringType, Token};
 pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefinitionPart};
 
@@ -244,20 +247,30 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
     if reader.next().map(|spanned| spanned.token.raw().to_owned()) != Some("=".to_owned()) {
         return error!("expected a =");
     }
-    let mut parts = Vec::new();
+    let mut parts = PartsAccumulator::new();
+    // let mut parts = Vec::new();
     let mut end = None;
     while let Some(token) = reader.peek() {
-        parts.push(match &token.token {
+        match &token.token {
             Token::Ident { name, .. } => {
                 if name == "_" {
-                    SyntaxDefinitionPart::UnnamedBinding
+                    parts.insert_unnamed_binding();
                 } else {
-                    SyntaxDefinitionPart::NamedBinding(name.clone())
+                    parts.insert_named_binding(name.clone());
                 }
             }
-            Token::String { contents, .. } => SyntaxDefinitionPart::Keyword(contents.clone()),
+            Token::String { contents, .. } => {
+                parts.insert_keyword(contents.clone());
+            }
+            Token::Punctuation { raw } if raw == "[" => {
+                parts.insert_group()?;
+            }
+            Token::Punctuation { raw } if raw == "]" => {
+                // TODO over here 3
+                parts.close_group(todo!());
+            }
             _ => break,
-        });
+        }
         end = Some(reader.next().unwrap().span.end);
     }
     Ok((
@@ -608,6 +621,10 @@ fn assign_progress(
                         .into_value()
                         .ok_or_else(|| error_fmt!("expected a value"))?,
                 );
+            }
+            // TODO over here 4
+            SyntaxDefinitionPart::Group(group) => {
+                result.add_named(group.name, group.quantifier.into());
             }
         }
     }
