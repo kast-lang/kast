@@ -252,22 +252,41 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
     let mut end = None;
     while let Some(token) = reader.peek() {
         match &token.token {
+            // Named or unnamed binding
             Token::Ident { name, .. } => {
                 if name == "_" {
-                    parts.insert_unnamed_binding();
+                    parts.insert()?.unnamed_binding();
                 } else {
-                    parts.insert_named_binding(name.clone());
+                    parts.insert()?.named_binding(name);
                 }
             }
+            // Keyword
             Token::String { contents, .. } => {
-                parts.insert_keyword(contents.clone());
+                parts.insert()?.keyword(contents.clone());
             }
+            // Start named group
             Token::Punctuation { raw } if raw == "[" => {
-                parts.insert_group()?;
+                parts.insert()?.named_group()?;
             }
-            Token::Punctuation { raw } if raw == "]" => {
-                // TODO over here 3
-                parts.close_group(todo!());
+            // Start unnamed group
+            Token::Punctuation { raw } if raw == "(" => {
+                parts.insert()?.unnamed_group();
+            }
+            // Close named or unnamed group (PartsAccumulator knows which one)
+            Token::Punctuation { raw } if raw == "]" || raw == ")" => {
+                parts.close_group();
+            }
+            // Assign zero-or-one/option quantifier `?` to the preceding group
+            Token::Punctuation { raw } if raw == "?" => {
+                parts.assign_quantifier(group::Quantifier::ZeroOrOne)?;
+            }
+            // Assign one-or-more quantifier `+` to the preceding group
+            Token::Punctuation { raw } if raw == "+" => {
+                parts.assign_quantifier(group::Quantifier::OneOrMore)?;
+            }
+            // Assign zero-or-more quantifier `*` to the preceding group
+            Token::Punctuation { raw } if raw == "*" => {
+                parts.assign_quantifier(group::Quantifier::ZeroOrMore)?;
             }
             _ => break,
         }
@@ -278,7 +297,7 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
             name,
             priority,
             associativity,
-            parts,
+            parts: parts.finish()?,
         }),
         Span {
             start,
@@ -587,6 +606,7 @@ impl Parser {
     }
 }
 
+// TODO here
 fn assign_progress(
     definition: &SyntaxDefinition,
     values: impl IntoIterator<Item = ProgressPart>,
@@ -622,9 +642,9 @@ fn assign_progress(
                         .ok_or_else(|| error_fmt!("expected a value"))?,
                 );
             }
-            // TODO over here 4
+            // TODO
             SyntaxDefinitionPart::Group(group) => {
-                result.add_named(group.name, group.quantifier.into());
+                todo!()
             }
         }
     }
