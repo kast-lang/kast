@@ -268,13 +268,17 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
             Token::Punctuation { raw } if raw == "[" => {
                 parts.insert()?.named_group()?;
             }
+            // Close named group
+            Token::Punctuation { raw } if raw == "]" => {
+                parts.close_group(group::GroupTag::Named)?;
+            }
             // Start unnamed group
             Token::Punctuation { raw } if raw == "(" => {
                 parts.insert()?.unnamed_group();
             }
-            // Close named or unnamed group (PartsAccumulator knows which one)
-            Token::Punctuation { raw } if raw == "]" || raw == ")" => {
-                parts.close_group();
+            // Close unnamed group
+            Token::Punctuation { raw } if raw == ")" => {
+                parts.close_group(group::GroupTag::Unnamed)?;
             }
             // Assign zero-or-one/option quantifier `?` to the preceding group
             Token::Punctuation { raw } if raw == "?" => {

@@ -17,6 +17,12 @@ use kast_util::*;
 // }
 
 #[derive(Debug)]
+pub enum GroupTag {
+    Named,
+    Unnamed,
+}
+
+#[derive(Debug)]
 pub enum Quantifier {
     /// `rest[";" expr]`
     /// Note: only exists for ease of implementation, not a valid quantifier
@@ -57,6 +63,14 @@ impl Group {
             quantifier: Quantifier::One,
             sub_parts: Vec::new(),
         }
+    }
+
+    pub fn is_named(&self) -> bool {
+        self.name.is_some()
+    }
+
+    pub fn is_unnamed(&self) -> bool {
+        self.name.is_none()
     }
 }
 
@@ -149,11 +163,24 @@ impl PartsAccumulator {
     /// Close a group (match the `[` or `(` that marked the opening of a group)
     ///
     /// This fails in only one way, which is when its called while we are not in any groups
-    pub fn close_group(&mut self) -> Result<(), ()> {
+    pub fn close_group(&mut self, tag: GroupTag) -> Result<()> {
         let current = &mut self.current;
         (current.group, current.previous) = match (&current.group, &current.previous) {
-            (None, None) => return Err(()),
-            (Some(_), None) => (None, None),
+            (None, None) => {
+                return error!("unexpected symbol to close group when there are no groups open")
+            }
+            (Some(current_group), None) => {
+                let group = current_group.lock().unwrap();
+                if group.is_named() && !matches!(tag, GroupTag::Named) {
+                    return error!("mismatch of tokens, named group `[` cannot be closed with `)`");
+                } else if group.is_unnamed() && !matches!(tag, GroupTag::Unnamed) {
+                    return error!(
+                        "mismatch of tokens, unnamed group `(` cannot be closed with `]`"
+                    );
+                } else {
+                    (None, None)
+                }
+            }
             (Some(_), Some(previous)) => (
                 Some(previous.group.clone().expect("unreachable")),
                 previous.previous.clone(),
