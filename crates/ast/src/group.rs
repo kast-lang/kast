@@ -22,7 +22,7 @@ pub enum GroupTag {
     Unnamed,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Quantifier {
     /// `rest[";" expr]`
     /// Note: only exists for ease of implementation, not a valid quantifier
@@ -44,6 +44,32 @@ pub struct Group {
     pub name: Option<String>,
     pub quantifier: Quantifier,
     sub_parts: Vec<SyntaxDefinitionPart>,
+}
+
+impl PartialEq for Group {
+    fn eq(&self, other: &Self) -> bool {
+        use std::ops::Deref;
+        use SyntaxDefinitionPart::{Keyword, NamedBinding, UnnamedBinding};
+
+        self.name == other.name
+            && self.quantifier == other.quantifier
+            && self
+                .sub_parts
+                .iter()
+                .zip(other.sub_parts.iter())
+                .try_for_each(|(a, b)| match (a, b) {
+                    (Keyword(a), Keyword(b)) if a == b => Some(()),
+                    (UnnamedBinding, UnnamedBinding) => Some(()),
+                    (NamedBinding(a), NamedBinding(b)) if a == b => Some(()),
+                    (SyntaxDefinitionPart::Group(a), SyntaxDefinitionPart::Group(b)) => {
+                        let a = a.deref().lock().unwrap();
+                        let b = b.deref().lock().unwrap();
+                        (*a == *b).then_some(())
+                    }
+                    _ => None,
+                })
+                .is_some()
+    }
 }
 
 impl Group {
@@ -97,7 +123,7 @@ impl TryInsertGroup for Vec<SyntaxDefinitionPart> {
                 self.push(SyntaxDefinitionPart::Group(group.clone()));
                 Ok(group)
             }
-            None | Some(_) => error!("syntax groups should be preceded with their name"),
+            None | Some(_) => error!("named groups (`[ ... ]`) should be preceded with their name"),
         }
     }
 
@@ -160,11 +186,15 @@ impl PartsAccumulator {
         }
     }
 
-    /// Close a group (match the `[` or `(` that marked the opening of a group)
+    /// Close a group (match the `[` or `(` that marked the opening of a group with a `]` or `)`
+    /// respectively)
     ///
     /// This fails in only one way, which is when its called while we are not in any groups
     pub fn close_group(&mut self, tag: GroupTag) -> Result<()> {
         let current = &mut self.current;
+        if self.unassigned_group {
+            return error!("unexpected token encountered when expecting quantifier for group");
+        }
         (current.group, current.previous) = match (&current.group, &current.previous) {
             (None, None) => {
                 return error!("unexpected symbol to close group when there are no groups open")
@@ -204,7 +234,7 @@ impl PartsAccumulator {
                 "unexpected symbol: quantifiers are only allowed after named/unnamed groups"
             );
         }
-
+        self.unassigned_group = false;
         match &self.current.group {
             Some(group) => {
                 let group = group.lock().unwrap(); // temporary value
@@ -348,5 +378,135 @@ impl<'a> PartsAccumulatorInserter<'a> {
     pub fn named_binding(&mut self, name: impl Into<String>) {
         self.inner
             .insert_non_group_part(SyntaxDefinitionPart::NamedBinding(name.into()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        group::{Group, Quantifier},
+        lexer::Result,
+        read_syntax, Syntax, SyntaxDefinition, SyntaxDefinitionPart,
+    };
+    use kast_util::{Error, Parc, SourceFile};
+    use std::sync::{Arc, Mutex};
+
+    use Quantifier::*;
+    use SyntaxDefinitionPart::{Keyword, NamedBinding};
+
+    fn make_syntax(source: impl Into<String>) -> Result<Syntax, Error> {
+        let syntax = read_syntax(SourceFile {
+            contents: source.into(),
+            filename: "<stdin>".into(),
+        })?;
+        Ok(syntax)
+    }
+
+    fn group_ptr(group: super::Group) -> SyntaxDefinitionPart {
+        SyntaxDefinitionPart::Group(Parc::new(Mutex::new(group)))
+    }
+
+    fn test<'a>(source: impl Into<&'a str>, expected_parts: Vec<SyntaxDefinitionPart>) {
+        let parts;
+        {
+            let syntax = make_syntax(String::from("syntax foo <- 10 = ") + source.into()).unwrap();
+            parts = Arc::from(
+                syntax
+                    .root_with_start_value
+                    .finish
+                    .as_ref()
+                    .unwrap()
+                    .clone(),
+            );
+            // so that Parc held by `syntax` gets dropped
+        }
+        let parts: SyntaxDefinition = Arc::into_inner(parts).unwrap();
+        let parts = parts.parts;
+        assert_eq!(parts.len(), expected_parts.len());
+
+        assert_eq!(
+            &Group {
+                name: None,
+                quantifier: One,
+                sub_parts: parts,
+            },
+            &Group {
+                name: None,
+                quantifier: One,
+                sub_parts: expected_parts,
+            }
+        );
+    }
+
+    #[test]
+    fn group_named() {
+        test(
+            r#"fields [ key ":" value ]?"#,
+            vec![group_ptr(Group {
+                name: Some("fields".into()),
+                quantifier: ZeroOrOne,
+                sub_parts: vec![
+                    NamedBinding("key".into()),
+                    Keyword(":".into()),
+                    NamedBinding("value".into()),
+                ],
+            })],
+        );
+    }
+
+    #[test]
+    fn group_unnamed() {
+        test(
+            r#"( keys ":" values )?"#,
+            vec![group_ptr(Group {
+                name: None,
+                quantifier: ZeroOrOne,
+                sub_parts: vec![
+                    NamedBinding("keys".into()),
+                    Keyword(":".into()),
+                    NamedBinding("values".into()),
+                ],
+            })],
+        );
+    }
+
+    #[test]
+    fn group_named_nested() {
+        test(
+            r#"hashTableFields[ bucket "=>" values[ value "," ]* ]?"#,
+            vec![group_ptr(Group {
+                name: Some("hashTableFields".into()),
+                quantifier: ZeroOrOne,
+                sub_parts: vec![
+                    NamedBinding("bucket".into()),
+                    Keyword("=>".into()),
+                    group_ptr(Group {
+                        name: Some("values".into()),
+                        quantifier: ZeroOrMore,
+                        sub_parts: vec![NamedBinding("value".into()), Keyword(",".into())],
+                    }),
+                ],
+            })],
+        );
+    }
+
+    #[test]
+    fn group_unnamed_nested() {
+        test(
+            r#"( buckets "=>" ( values "," )* )?"#,
+            vec![group_ptr(Group {
+                name: None,
+                quantifier: ZeroOrOne,
+                sub_parts: vec![
+                    NamedBinding("buckets".into()),
+                    Keyword("=>".into()),
+                    group_ptr(Group {
+                        name: None,
+                        quantifier: ZeroOrMore,
+                        sub_parts: vec![NamedBinding("values".into()), Keyword(",".into())],
+                    }),
+                ],
+            })],
+        );
     }
 }

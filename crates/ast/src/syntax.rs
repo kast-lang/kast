@@ -148,6 +148,7 @@ impl Syntax {
                 SyntaxDefinitionPart::UnnamedBinding | SyntaxDefinitionPart::NamedBinding(_) => {
                     Edge::Value
                 }
+                SyntaxDefinitionPart::Group(_) => todo!(),
             };
             let is_open_bracket = edge.is_open_bracket();
             let next_node = current_node
