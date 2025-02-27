@@ -1,4 +1,7 @@
-use std::sync::Mutex;
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Mutex,
+};
 
 use crate::{lexer::Result, SyntaxDefinitionPart};
 use kast_util::*;
@@ -107,29 +110,42 @@ pub struct PartsAccumulator {
     unassigned_group: bool,
 }
 
-trait TryInsertGroup {
-    fn try_insert_named_group(&mut self) -> Result<Parc<Mutex<Group>>>;
-    fn insert_unnamed_group(&mut self) -> Parc<Mutex<Group>>;
-    // fn assign_quantifier(&mut self, quantifier: Quantifier) -> Result<()>;
+enum RelativeParts<G = Group, V = Vec<SyntaxDefinitionPart>> {
+    AsGroup(G),
+    AsVec(V),
 }
 
-impl TryInsertGroup for Vec<SyntaxDefinitionPart> {
-    fn try_insert_named_group(&mut self) -> Result<Parc<Mutex<Group>>> {
-        match &self.last() {
+impl<G, V> RelativeParts<G, V>
+where
+    G: Deref<Target = Group> + DerefMut, // TODO check if any connection between AsMut and AsRef that can be exploited since Group doesn't need to be borrowed mutably because interior mutability
+    V: Deref<Target = Vec<SyntaxDefinitionPart>> + DerefMut,
+{
+    pub fn try_push_named_group(&mut self) -> Result<Parc<Mutex<Group>>> {
+        let parts = match self {
+            RelativeParts::AsGroup(group) => &mut group.deref_mut().sub_parts,
+            RelativeParts::AsVec(vec) => vec.deref_mut(),
+        };
+        match &parts.deref_mut().last() {
             Some(SyntaxDefinitionPart::NamedBinding(name)) => {
                 let name = name.clone();
-                _ = self.pop();
+                _ = parts.pop();
                 let group = Parc::new(Mutex::new(Group::named(name)));
-                self.push(SyntaxDefinitionPart::Group(group.clone()));
+                parts.push(SyntaxDefinitionPart::Group(group.clone()));
                 Ok(group)
             }
-            None | Some(_) => error!("named groups (`[ ... ]`) should be preceded with their name"),
+            None | Some(_) => {
+                error!("named groups (`[ ... ]`) should be preceded with their name")
+            }
         }
     }
 
-    fn insert_unnamed_group(&mut self) -> Parc<Mutex<Group>> {
+    pub fn push_unnamed_group(&mut self) -> Parc<Mutex<Group>> {
+        let parts = match self {
+            RelativeParts::AsGroup(group) => &mut group.deref_mut().sub_parts,
+            RelativeParts::AsVec(vec) => vec.deref_mut(),
+        };
         let group = Parc::new(Mutex::new(Group::unnamed()));
-        self.push(SyntaxDefinitionPart::Group(group.clone()));
+        parts.push(SyntaxDefinitionPart::Group(group.clone()));
         group
     }
 }
@@ -283,15 +299,13 @@ impl<'a> PartsAccumulatorInserter<'a> {
         let current = &mut self.inner.current;
         (current.group, current.previous) = match (&current.group, &current.previous) {
             (None, None) => {
-                let group = self.inner.parts.insert_unnamed_group();
+                let group = RelativeParts::<&mut Group, _>::AsVec(&mut self.inner.parts)
+                    .push_unnamed_group();
                 (Some(group), None)
             }
             (Some(current_group), None) => {
-                let new_group = current_group
-                    .lock()
-                    .unwrap()
-                    .sub_parts
-                    .insert_unnamed_group();
+                let new_group = RelativeParts::<_, &mut _>::AsGroup(current_group.lock().unwrap())
+                    .push_unnamed_group();
                 (
                     Some(new_group),
                     Some(Parc::new(GroupPtr {
@@ -301,11 +315,8 @@ impl<'a> PartsAccumulatorInserter<'a> {
                 )
             }
             (Some(current_group), Some(previous)) => {
-                let new_group = current_group
-                    .lock()
-                    .unwrap()
-                    .sub_parts
-                    .insert_unnamed_group();
+                let new_group = RelativeParts::<_, &mut _>::AsGroup(current_group.lock().unwrap())
+                    .push_unnamed_group();
                 (
                     Some(new_group),
                     Some(Parc::new(GroupPtr {
@@ -326,15 +337,13 @@ impl<'a> PartsAccumulatorInserter<'a> {
         let current = &mut self.inner.current;
         (current.group, current.previous) = match (&current.group, &current.previous) {
             (None, None) => {
-                let group = self.inner.parts.try_insert_named_group()?;
+                let group = RelativeParts::<&mut Group, _>::AsVec(&mut self.inner.parts)
+                    .try_push_named_group()?;
                 (Some(group), None)
             }
             (Some(current_group), None) => {
-                let new_group = current_group
-                    .lock()
-                    .unwrap()
-                    .sub_parts
-                    .try_insert_named_group()?;
+                let new_group = RelativeParts::<_, &mut _>::AsGroup(current_group.lock().unwrap())
+                    .try_push_named_group()?;
                 (
                     Some(new_group),
                     Some(Parc::new(GroupPtr {
@@ -344,11 +353,8 @@ impl<'a> PartsAccumulatorInserter<'a> {
                 )
             }
             (Some(current_group), Some(previous)) => {
-                let new_group = current_group
-                    .lock()
-                    .unwrap()
-                    .sub_parts
-                    .try_insert_named_group()?;
+                let new_group = RelativeParts::<_, &mut _>::AsGroup(current_group.lock().unwrap())
+                    .try_push_named_group()?;
                 (
                     Some(new_group),
                     Some(Parc::new(GroupPtr {
