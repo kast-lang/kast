@@ -15,6 +15,7 @@ pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefini
 
 use lexer::*;
 use syntax::{BindingPower, Edge};
+use tracing::trace;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ast<Data = Span> {
@@ -251,6 +252,7 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
     // let mut parts = Vec::new();
     let mut end = None;
     while let Some(token) = reader.peek() {
+        trace!("Encountered token `{}`", token.raw(),);
         match &token.token {
             // Named or unnamed binding
             Token::Ident { name, .. } => {
@@ -294,6 +296,7 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
             }
             _ => break,
         }
+        trace!("Parts now: `{:?}`", parts.parts);
         end = Some(reader.next().unwrap().span.end);
     }
     Ok((
