@@ -296,7 +296,7 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
             }
             _ => break,
         }
-        trace!("Parts now: `{:?}`", parts.parts);
+        trace!("Parts now: `{:?}`", parts.root);
         end = Some(reader.next().unwrap().span.end);
     }
     Ok((
@@ -650,7 +650,7 @@ fn assign_progress(
                 );
             }
             // TODO
-            SyntaxDefinitionPart::Group(group) => {
+            SyntaxDefinitionPart::GroupBinding(_group) => {
                 todo!()
             }
         }

@@ -20,12 +20,12 @@ pub enum Associativity {
     Right,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SyntaxDefinitionPart {
     Keyword(String),
     UnnamedBinding,
     NamedBinding(String),
-    Group(Parc<Mutex<Group>>),
+    GroupBinding(Parc<Mutex<Group>>),
 }
 
 #[derive(Debug)]
@@ -148,7 +148,7 @@ impl Syntax {
                 SyntaxDefinitionPart::UnnamedBinding | SyntaxDefinitionPart::NamedBinding(_) => {
                     Edge::Value
                 }
-                SyntaxDefinitionPart::Group(_) => todo!(),
+                SyntaxDefinitionPart::GroupBinding(_) => todo!(),
             };
             let is_open_bracket = edge.is_open_bracket();
             let next_node = current_node
