@@ -1,5 +1,5 @@
 use std::{
-    ops::{Deref, DerefMut},
+    borrow::{Borrow, BorrowMut},
     sync::Mutex,
 };
 
@@ -12,22 +12,6 @@ use SyntaxDefinitionPart::*;
 pub enum GroupTag {
     Named,
     Unnamed,
-}
-
-#[derive(Debug)]
-pub struct Dereffer<T>(T);
-
-impl<T> Deref for Dereffer<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Dereffer<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,7 +33,7 @@ pub enum Quantifier {
 /// A group of syntax-defintion parts that has a quantifier indicating how many occurences should be
 /// parsed
 #[derive(Debug)]
-pub struct Group<V = Dereffer<Vec<SyntaxDefinitionPart>>> {
+pub struct Group<V = Vec<SyntaxDefinitionPart>> {
     pub name: Option<String>,
     pub quantifier: Quantifier,
     sub_parts: V,
@@ -57,22 +41,23 @@ pub struct Group<V = Dereffer<Vec<SyntaxDefinitionPart>>> {
 
 impl<V> PartialEq for Group<V>
 where
-    V: Deref<Target = Vec<SyntaxDefinitionPart>>,
+    V: Borrow<Vec<SyntaxDefinitionPart>>,
 {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
             && self.quantifier == other.quantifier
             && self
                 .sub_parts
+                .borrow()
                 .iter()
-                .zip(other.sub_parts.iter())
+                .zip(other.sub_parts.borrow().iter())
                 .try_for_each(|(a, b)| match (a, b) {
                     (Keyword(a), Keyword(b)) if a == b => Some(()),
                     (UnnamedBinding, UnnamedBinding) => Some(()),
                     (NamedBinding(a), NamedBinding(b)) if a == b => Some(()),
                     (GroupBinding(a), GroupBinding(b)) => {
-                        let a = a.deref().lock().unwrap();
-                        let b = b.deref().lock().unwrap();
+                        let a: &Group = &a.lock().unwrap();
+                        let b: &Group = &b.lock().unwrap();
                         (*a == *b).then_some(())
                     }
                     _ => None,
@@ -87,7 +72,7 @@ impl Group {
         Group {
             name: Some(name.into()),
             quantifier: Quantifier::One,
-            sub_parts: Dereffer(Vec::new()),
+            sub_parts: Vec::new(),
         }
     }
 
@@ -96,7 +81,7 @@ impl Group {
         Group {
             name: None,
             quantifier: Quantifier::One,
-            sub_parts: Dereffer(Vec::new()),
+            sub_parts: Vec::new(),
         }
     }
 }
@@ -121,15 +106,17 @@ pub struct PartsAccumulator {
 
 impl<V> Group<V>
 where
-    V: Deref<Target = Vec<SyntaxDefinitionPart>> + DerefMut,
+    V: BorrowMut<Vec<SyntaxDefinitionPart>>,
 {
     pub fn try_push_named_group(&mut self) -> Result<Parc<Mutex<Group>>> {
-        match &self.sub_parts.deref_mut().last() {
+        match &self.sub_parts.borrow_mut().last() {
             Some(SyntaxDefinitionPart::NamedBinding(name)) => {
                 let name = name.clone();
-                _ = self.sub_parts.pop();
+                _ = self.sub_parts.borrow_mut().pop();
                 let group = Parc::new(Mutex::new(Group::named(name)));
-                self.sub_parts.push(GroupBinding(group.clone()));
+                self.sub_parts
+                    .borrow_mut()
+                    .push(GroupBinding(group.clone()));
                 Ok(group)
             }
             None | Some(_) => {
@@ -140,7 +127,9 @@ where
 
     pub fn push_unnamed_group(&mut self) -> Parc<Mutex<Group>> {
         let group = Parc::new(Mutex::new(Group::unnamed()));
-        self.sub_parts.push(GroupBinding(group.clone()));
+        self.sub_parts
+            .borrow_mut()
+            .push(GroupBinding(group.clone()));
         group
     }
 }
@@ -161,9 +150,8 @@ pub enum RevLinkedList<Item> {
     },
 }
 
-pub(crate) struct GroupPtr<V = Dereffer<Vec<SyntaxDefinitionPart>>>(
-    pub RevLinkedList<Parc<Mutex<Group<V>>>>,
-);
+// Wrapping instead of aliasing because might send RevLinkedList to different crate in the future
+pub(crate) struct GroupPtr<V = Vec<SyntaxDefinitionPart>>(pub RevLinkedList<Parc<Mutex<Group<V>>>>);
 
 impl<V> GroupPtr<V> {
     pub fn step_out(&mut self) -> Result<Parc<Mutex<Group<V>>>> {
@@ -412,8 +400,6 @@ mod tests {
     use Quantifier::*;
     use SyntaxDefinitionPart::*;
 
-    use super::Dereffer;
-
     fn group_ptr(group: super::Group) -> SyntaxDefinitionPart {
         GroupBinding(Parc::new(Mutex::new(group)))
     }
@@ -438,12 +424,12 @@ mod tests {
             &Group {
                 name: None,
                 quantifier: One,
-                sub_parts: Dereffer(parts),
+                sub_parts: parts,
             },
             &Group {
                 name: None,
                 quantifier: One,
-                sub_parts: Dereffer(expected_parts),
+                sub_parts: expected_parts,
             }
         );
     }
@@ -455,11 +441,11 @@ mod tests {
             vec![group_ptr(Group {
                 name: Some("fields".into()),
                 quantifier: ZeroOrOne,
-                sub_parts: Dereffer(vec![
+                sub_parts: vec![
                     NamedBinding("key".into()),
                     Keyword(":".into()),
                     NamedBinding("value".into()),
-                ]),
+                ],
             })],
         );
     }
@@ -471,11 +457,11 @@ mod tests {
             vec![group_ptr(Group {
                 name: None,
                 quantifier: ZeroOrOne,
-                sub_parts: Dereffer(vec![
+                sub_parts: vec![
                     NamedBinding("keys".into()),
                     Keyword(":".into()),
                     NamedBinding("values".into()),
-                ]),
+                ],
             })],
         );
     }
@@ -487,18 +473,15 @@ mod tests {
             vec![group_ptr(Group {
                 name: Some("hashTableFields".into()),
                 quantifier: ZeroOrOne,
-                sub_parts: Dereffer(vec![
+                sub_parts: vec![
                     NamedBinding("bucket".into()),
                     Keyword("=>".into()),
                     group_ptr(Group {
                         name: Some("values".into()),
                         quantifier: ZeroOrMore,
-                        sub_parts: Dereffer(vec![
-                            NamedBinding("value".into()),
-                            Keyword(",".into()),
-                        ]),
+                        sub_parts: vec![NamedBinding("value".into()), Keyword(",".into())],
                     }),
-                ]),
+                ],
             })],
         );
     }
@@ -510,18 +493,15 @@ mod tests {
             vec![group_ptr(Group {
                 name: None,
                 quantifier: ZeroOrOne,
-                sub_parts: Dereffer(vec![
+                sub_parts: vec![
                     NamedBinding("buckets".into()),
                     Keyword("=>".into()),
                     group_ptr(Group {
                         name: None,
                         quantifier: ZeroOrMore,
-                        sub_parts: Dereffer(vec![
-                            NamedBinding("values".into()),
-                            Keyword(",".into()),
-                        ]),
+                        sub_parts: vec![NamedBinding("values".into()), Keyword(",".into())],
                     }),
-                ]),
+                ],
             })],
         );
     }
