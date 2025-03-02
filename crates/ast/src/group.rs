@@ -39,53 +39,6 @@ pub struct Group<V = Vec<SyntaxDefinitionPart>> {
     sub_parts: V,
 }
 
-impl<V> PartialEq for Group<V>
-where
-    V: Borrow<Vec<SyntaxDefinitionPart>>,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.quantifier == other.quantifier
-            && self
-                .sub_parts
-                .borrow()
-                .iter()
-                .zip(other.sub_parts.borrow().iter())
-                .try_for_each(|(a, b)| match (a, b) {
-                    (Keyword(a), Keyword(b)) if a == b => Some(()),
-                    (UnnamedBinding, UnnamedBinding) => Some(()),
-                    (NamedBinding(a), NamedBinding(b)) if a == b => Some(()),
-                    (GroupBinding(a), GroupBinding(b)) => {
-                        let a: &Group = &a.lock().unwrap();
-                        let b: &Group = &b.lock().unwrap();
-                        (*a == *b).then_some(())
-                    }
-                    _ => None,
-                })
-                .is_some()
-    }
-}
-
-impl Group {
-    /// Create a new named group `fields[key ":" value]*`
-    pub fn named(name: impl Into<String>) -> Self {
-        Group {
-            name: Some(name.into()),
-            quantifier: Quantifier::One,
-            sub_parts: Vec::new(),
-        }
-    }
-
-    /// Create a new unnamed group `("->" returns)?`
-    pub fn unnamed() -> Self {
-        Group {
-            name: None,
-            quantifier: Quantifier::One,
-            sub_parts: Vec::new(),
-        }
-    }
-}
-
 impl<V> Group<V> {
     pub fn is_named(&self) -> bool {
         self.name.is_some()
@@ -94,14 +47,6 @@ impl<V> Group<V> {
     pub fn is_unnamed(&self) -> bool {
         self.name.is_none()
     }
-}
-
-/// A type to read the parts of a syntax-definition and accordingly nest when groups are read
-pub struct PartsAccumulator {
-    pub(crate) root: Parc<Mutex<Group>>,
-    ptr: GroupPtr,
-    // If in the future quantifiers are allowed for every type of part, simply remove this field
-    unassigned_group: bool,
 }
 
 impl<V> Group<V>
@@ -131,6 +76,53 @@ where
             .borrow_mut()
             .push(GroupBinding(group.clone()));
         group
+    }
+}
+
+impl Group {
+    /// Create a new named group `fields[key ":" value]*`
+    pub fn named(name: impl Into<String>) -> Self {
+        Group {
+            name: Some(name.into()),
+            quantifier: Quantifier::One,
+            sub_parts: Vec::new(),
+        }
+    }
+
+    /// Create a new unnamed group `("->" returns)?`
+    pub fn unnamed() -> Self {
+        Group {
+            name: None,
+            quantifier: Quantifier::One,
+            sub_parts: Vec::new(),
+        }
+    }
+}
+
+impl<V> PartialEq for Group<V>
+where
+    V: Borrow<Vec<SyntaxDefinitionPart>>,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.quantifier == other.quantifier
+            && self
+                .sub_parts
+                .borrow()
+                .iter()
+                .zip(other.sub_parts.borrow().iter())
+                .try_for_each(|(a, b)| match (a, b) {
+                    (Keyword(a), Keyword(b)) if a == b => Some(()),
+                    (UnnamedBinding, UnnamedBinding) => Some(()),
+                    (NamedBinding(a), NamedBinding(b)) if a == b => Some(()),
+                    (GroupBinding(a), GroupBinding(b)) => {
+                        let a: &Group = &a.lock().unwrap();
+                        let b: &Group = &b.lock().unwrap();
+                        (*a == *b).then_some(())
+                    }
+                    _ => None,
+                })
+                .is_some()
     }
 }
 
@@ -207,6 +199,14 @@ impl<V> GroupPtr<V> {
             } => group.clone(),
         }
     }
+}
+
+/// A type to read the parts of a syntax-definition and accordingly nest when groups are read
+pub struct PartsAccumulator {
+    pub(crate) root: Parc<Mutex<Group>>,
+    ptr: GroupPtr,
+    // If in the future the `One` quantifier is allowed for groups, remove this field
+    unassigned_group: bool,
 }
 
 impl PartsAccumulator {
