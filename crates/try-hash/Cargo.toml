@@ -2,6 +2,9 @@
 name = "kast-try-hash"
 version = "0.1.0"
 edition = "2021"
+description = "Failable Hash trait"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 try-hash-derive.path = "derive"

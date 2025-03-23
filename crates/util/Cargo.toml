@@ -2,6 +2,9 @@
 name = "kast-util"
 version = "0.1.0"
 edition = "2021"
+description = "Utilities for kast"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 pad-adapter.workspace = true

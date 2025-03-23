@@ -1,6 +1,10 @@
 [workspace]
 members = ["crates/*"]
 
+[workspace.package]
+license = "MIT"
+repository = "https://github.com/kast-lang/kast"
+
 [workspace.dependencies]
 clap = { version = "4.5.18", features = ["derive"] }
 eyre = "0.6.12"
@@ -35,6 +39,9 @@ try-hash = { package = "kast-try-hash", version = "0.1", path = "crates/try-hash
 name = "kast"
 version = "0.1.0"
 edition = "2021"
+description = "kast programming language"
+license.workspace = true
+repository.workspace = true
 
 [profile.release]
 debug = true

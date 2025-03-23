@@ -2,5 +2,8 @@
 name = "kast-refmap"
 version = "0.1.0"
 edition = "2021"
+description = "map where keys are references - not values behind references"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]

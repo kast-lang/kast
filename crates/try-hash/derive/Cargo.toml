@@ -2,6 +2,9 @@
 name = "try-hash-derive"
 version = "0.1.0"
 edition = "2021"
+description = "Failable Hash trait (derive macros)"
+license.workspace = true
+repository.workspace = true
 
 [lib]
 proc-macro = true
