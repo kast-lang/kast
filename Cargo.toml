@@ -24,12 +24,12 @@ event-listener = "5"
 getrandom = { version = "0.2", features = ["js"] }
 ordered-float = { version = "4", features = ["rand"] }
 
-kast-util = { path = "crates/util" }
-kast-ast = { path = "crates/ast" }
+kast-util = { version = "0.1", path = "crates/util" }
+kast-ast = { version = "0.1", path = "crates/ast" }
 
-decursion = { git = "https://github.com/kuviman/decursion" }
-refmap = { path = "crates/refmap" }
-try-hash = { path = "crates/try-hash" }
+decursion = "0.1"
+refmap = { package = "kast-refmap", version = "0.1", path = "crates/refmap" }
+try-hash = { package = "kast-try-hash", version = "0.1", path = "crates/try-hash" }
 
 [package]
 name = "kast"
