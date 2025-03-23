@@ -7,4 +7,4 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-try-hash-derive.path = "derive"
+try-hash-derive = { package = "kast-try-hash-derive", version = "0.1", path = "derive" }

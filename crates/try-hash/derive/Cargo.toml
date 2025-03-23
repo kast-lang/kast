@@ -1,5 +1,5 @@
 [package]
-name = "try-hash-derive"
+name = "kast-try-hash-derive"
 version = "0.1.0"
 edition = "2021"
 description = "Failable Hash trait (derive macros)"
