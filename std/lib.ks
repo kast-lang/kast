@@ -212,14 +212,11 @@ const char_ord :: char -> int32 = native "char_ord";
 const chars :: string -> () with generator_handler[char] = native "chars";
 const push_char :: (string, char) -> string = native "push_char";
 
-const list_mut_push = forall[T] {
-    native "list_mut_push" :: (&list[T], T) -> ()
-};
 const list_push = forall[T] {
-    native "list_push" :: (list[T], T) -> list[T]
+    native "list_push" :: (&list[T], T) -> ()
 };
 const list_set = forall[T] {
-    native "list_set" :: (list[T], int32, T) -> list[T]
+    native "list_set" :: (&list[T], int32, T) -> ()
 };
 const list_length = forall[T] {
     native "list_length" :: list[T] -> int32

@@ -63,7 +63,7 @@ pub fn default_number_type() -> Value {
             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
                 async move {
                     let _s = s.expect_inferred()?.expect_string()?;
-                    Ok(ValueShape::Type(Type::new_not_inferred()).into())
+                    Ok(ValueShape::Type(Type::new_not_inferred("default number type")).into())
                 }
                 .boxed()
             }) as std::sync::Arc<NativeFunctionImpl>)

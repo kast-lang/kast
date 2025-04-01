@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use kast_try_hash as try_hash;
+
 #[derive(try_hash::TryHash)]
 struct FooStruct {
     a: i32,

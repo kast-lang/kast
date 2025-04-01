@@ -217,7 +217,7 @@ impl Cache {
                         }
                         std::task::Poll::Ready(value) => value,
                     };
-                    match r#macro.expect_inferred()? {
+                    match r#macro.clone().expect_inferred()? {
                         ValueShape::Macro(f) => Macro::UserDefined(f.f.clone()),
                         _ => Macro::Value(r#macro.clone()),
                     }
@@ -286,7 +286,7 @@ pub trait Compilable: Sized {
                 .into();
                 // hold on
                 let expanded = kast.call_fn(r#macro, arg).await?;
-                let expanded = match expanded.expect_inferred()? {
+                let expanded = match expanded.clone().expect_inferred()? {
                     ValueShape::Ast(ast) => ast,
                     _ => eyre::bail!(
                         "macro {name} did not expand to an ast, but to {expanded}",
@@ -339,7 +339,7 @@ impl SimpleExpr {
                     .lookup(name, data.hygiene, kast.spawn_id)
                     .await
                     .ok_or_else(|| eyre!("{name:?} not found"))?;
-                match value.inferred() {
+                match value.clone().inferred() {
                     Some(ValueShape::Binding(binding)) => SimpleExpr::Place(
                         PlaceExpr::Binding {
                             binding: binding.clone(),
@@ -559,7 +559,7 @@ impl Compilable for Pattern {
                     } else {
                         Parc::new(Binding {
                             symbol: Symbol::new(name),
-                            ty: Type::new_not_inferred(),
+                            ty: Type::new_not_inferred(&format!("{name} at {span}")),
                             mutable: kast.compiler.bindings_mutable,
                             compiler_scope,
                         })
@@ -1137,7 +1137,7 @@ impl Kast {
                 .eval_ast(ast, Some(TypeShape::Type.into()))
                 .await?
                 .expect_type()?,
-            None => Type::new_not_inferred(),
+            None => Type::new_not_inferred(&format!("result type of fn at {span}")),
         };
         let contexts = match contexts {
             Some(contexts) => self
@@ -1244,7 +1244,7 @@ impl Kast {
         let (values, span) = get_complex(ast);
         let namespace = values.as_ref().into_single_named("namespace")?;
         let namespace: Value = self.eval_ast(namespace, None).await?;
-        match namespace.inferred() {
+        match namespace.clone().inferred() {
             Some(ValueShape::Tuple(namespace)) => {
                 for (name, value) in namespace.into_values().into_iter() {
                     let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
@@ -1490,7 +1490,7 @@ impl Kast {
                         .as_ref()
                         .into_named_opt(["name"], ["value"])
                         .wrap_err_with(|| "field macro wrong args")?;
-                    let (name, ty): (&Ast, Type) = match name {
+                    let (name, ty): (&Ast, Option<Type>) = match name {
                         Ast::Complex {
                             definition,
                             values,
@@ -1502,19 +1502,26 @@ impl Kast {
                                 .wrap_err_with(|| "type ascribe macro wrong args")?;
                             (
                                 name,
-                                self.eval_ast(ty, Some(TypeShape::Type.into()))
-                                    .await?
-                                    .expect_type()?,
+                                Some(
+                                    self.eval_ast(ty, Some(TypeShape::Type.into()))
+                                        .await?
+                                        .expect_type()?,
+                                ),
                             )
                         }
-                        _ => (name, Type::new_not_inferred()),
+                        _ => (name, None),
                     };
                     let value = value.unwrap_or(name);
+                    let name_span = name.data().span.clone();
                     let name = name
                         .as_ident()
                         .ok_or_else(|| eyre!("{name} is not an ident"))?
                         .to_owned();
                     let mut compiled = self.compile_into(cty, value).await?;
+                    let ty = match ty {
+                        Some(ty) => ty,
+                        None => Type::new_not_inferred(&format!("Field {name} at {name_span}")),
+                    };
                     compiled.ty_mut().make_same(ty)?;
                     tuple.add_named(name, compiled);
                 }
@@ -1620,7 +1627,7 @@ impl Kast {
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::Expr => Compiled::Expr(
                 Expr::Constant {
-                    value: Value::new_not_inferred(),
+                    value: Value::new_not_inferred(&format!("placeholder at {span}")),
                     data: span,
                 }
                 .init(self)
@@ -1863,13 +1870,13 @@ fn get_complex(ast: &Ast) -> (&Tuple<Ast>, Span) {
 }
 
 impl Type {
-    fn infer_variant(name: String, value_ty: Option<Type>) -> Type {
-        let var = inference::Var::new();
+    fn infer_variant(description: &str, name: String, value_ty: Option<Type>) -> Type {
+        let var = inference::Var::new(description);
         var.add_check(move |ty: &TypeShape| {
             let variants = ty.clone().expect_variant()?;
             match variants.iter().find(|variant| variant.name == name) {
                 Some(variant) => match (&variant.value, &value_ty) {
-                    (None, None) => Ok(()),
+                    (None, None) => Ok(inference::CheckResult::Completed),
                     (None, Some(_)) => {
                         eyre::bail!("variant {name} did not expect a value")
                     }
@@ -1877,7 +1884,8 @@ impl Type {
                         eyre::bail!("variant {name} expected a value")
                     }
                     (Some(expected_ty), Some(actual_ty)) => {
-                        expected_ty.clone().make_same(actual_ty.clone())
+                        expected_ty.clone().make_same(actual_ty.clone())?;
+                        Ok(inference::CheckResult::Completed)
                     }
                 },
                 None => {
@@ -1897,7 +1905,7 @@ impl Kast {
         value: impl FnOnce() -> BoxFuture<'a, eyre::Result<Value>>,
         target: Value,
     ) -> eyre::Result<Type> {
-        Ok(match target.inferred() {
+        Ok(match target.clone().inferred() {
             Some(ValueShape::Template(template)) => {
                 let kast = self.enter_scope();
                 let value = value().await?;
@@ -1974,16 +1982,21 @@ impl Expr<Span> {
             Ok(match self {
                 Expr::Ref { place, data: span } => {
                     let place_ty = place.data().ty.clone();
-                    let ty = Type::new_not_inferred_with_default(TypeShape::Ref(place_ty.clone()));
+                    let ty = Type::new_not_inferred_with_default(
+                        &format!("& expr at {span}"),
+                        TypeShape::Ref(place_ty.clone()),
+                    );
                     ty.var().add_check(move |inferred| {
                         match inferred {
-                            TypeShape::Type => {}
+                            TypeShape::Type => {
+                                place_ty.clone().make_same(TypeShape::Type.into())?;
+                            }
                             TypeShape::Ref(inferred_inner_ty) => {
                                 inferred_inner_ty.clone().make_same(place_ty.clone())?
                             }
                             _ => eyre::bail!("ref expr inferred as {inferred}"),
                         }
-                        Ok(())
+                        Ok(inference::CheckResult::Completed)
                     })?;
                     Expr::Ref {
                         data: ExprData { ty, span },
@@ -2049,21 +2062,26 @@ impl Expr<Span> {
                     }
                 }
                 Expr::List { values, data: span } => {
-                    let mut element_ty = Type::new_not_inferred();
+                    let mut element_ty =
+                        Type::new_not_inferred(&format!("element type of list expr at {span}"));
                     for value in &values {
                         element_ty.make_same(value.data().ty.clone())?;
                     }
-                    let ty =
-                        Type::new_not_inferred_with_default(TypeShape::List(element_ty.clone()));
+                    let ty = Type::new_not_inferred_with_default(
+                        &format!("list expr at {span}"),
+                        TypeShape::List(element_ty.clone()),
+                    );
                     ty.var().add_check(move |inferred| {
                         match inferred {
-                            TypeShape::Type => {}
+                            TypeShape::Type => {
+                                element_ty.clone().make_same(TypeShape::Type.into())?;
+                            }
                             TypeShape::List(inferred_elem_ty) => {
                                 inferred_elem_ty.clone().make_same(element_ty.clone())?
                             }
                             _ => eyre::bail!("list expr inferred as {inferred}"),
                         }
-                        Ok(())
+                        Ok(inference::CheckResult::Completed)
                     })?;
                     Expr::List {
                         values,
@@ -2082,7 +2100,7 @@ impl Expr<Span> {
                         name,
                         value,
                         data: ExprData {
-                            ty: Type::new_not_inferred(), // TODO never
+                            ty: Type::new_not_inferred(&format!("unwind expr at {span}")), // TODO never
                             span,
                         },
                     }
@@ -2116,13 +2134,16 @@ impl Expr<Span> {
                 },
                 Expr::CurrentContext { data: span } => Expr::CurrentContext {
                     data: ExprData {
-                        ty: Type::new_not_inferred(),
+                        ty: Type::new_not_inferred(&format!("current expr at {span}")),
                         span,
                     },
                 },
                 Expr::Unit { data: span } => Expr::Unit {
                     data: ExprData {
-                        ty: Type::new_not_inferred_with_default(TypeShape::Unit),
+                        ty: Type::new_not_inferred_with_default(
+                            &format!("unit expr at {span}"),
+                            TypeShape::Unit,
+                        ),
                         span,
                     },
                 },
@@ -2170,7 +2191,7 @@ impl Expr<Span> {
                     branches,
                     data: span,
                 } => {
-                    let mut result_ty = Type::new_not_inferred();
+                    let mut result_ty = Type::new_not_inferred(&format!("match expr at {span}"));
                     let mut value_ty = value.data().ty.clone();
                     for branch in &branches {
                         // println!("{} ++ {}", branch.pattern.data().ty, value_ty);
@@ -2237,7 +2258,7 @@ impl Expr<Span> {
                         name: name.clone(),
                         value,
                         data: ExprData {
-                            ty: Type::infer_variant(name, value_ty),
+                            ty: Type::infer_variant(&format!("variant at {span}"), name, value_ty),
                             span,
                         },
                     }
@@ -2255,13 +2276,16 @@ impl Expr<Span> {
                 Expr::Tuple { tuple, data: span } => Expr::Tuple {
                     data: ExprData {
                         ty: {
-                            let ty = inference::Var::new_with_default(TypeShape::Tuple({
-                                let mut result = Tuple::empty();
-                                for (name, field) in tuple.as_ref() {
-                                    result.add(name, field.data().ty.clone());
-                                }
-                                result
-                            }));
+                            let ty = inference::Var::new_with_default(
+                                &format!("tuple at {span}"),
+                                TypeShape::Tuple({
+                                    let mut result = Tuple::empty();
+                                    for (name, field) in tuple.as_ref() {
+                                        result.add(name, field.data().ty.clone());
+                                    }
+                                    result
+                                }),
+                            );
                             ty.add_check({
                                 // TODO this is the todo you are looking for
                                 let tuple = tuple.clone();
@@ -2287,7 +2311,7 @@ impl Expr<Span> {
                                             eyre::bail!("tuple inferred to be {inferred}???");
                                         }
                                     }
-                                    Ok(())
+                                    Ok(inference::CheckResult::Completed)
                                 }
                             })?;
                             ty.into()
@@ -2463,7 +2487,7 @@ impl Expr<Span> {
                     Expr::Native {
                         name,
                         data: ExprData {
-                            ty: Type::new_not_inferred(),
+                            ty: Type::new_not_inferred(&format!("native at {span}")),
                             span,
                         },
                     }
@@ -2502,7 +2526,7 @@ impl Expr<Span> {
                 },
                 Expr::Call { f, arg, data: span } => {
                     let mut f = f.auto_instantiate(kast).await?;
-                    let result_ty = Type::new_not_inferred();
+                    let result_ty = Type::new_not_inferred(&format!("call at {span}"));
                     let contexts = Contexts::new_not_inferred();
                     f.data_mut()
                         .ty
@@ -2590,7 +2614,10 @@ impl Expr {
             result = Expr::Instantiate {
                 arg: Box::new(
                     Expr::Constant {
-                        value: Value::new_not_inferred(),
+                        value: Value::new_not_inferred(&format!(
+                            "auto instantiate arg in {}",
+                            data.span,
+                        )),
                         data: data.span.clone(),
                     }
                     .init(kast)
@@ -2619,14 +2646,14 @@ impl Pattern<Span> {
                     name: name.clone(),
                     value,
                     data: PatternData {
-                        ty: Type::infer_variant(name, value_ty),
+                        ty: Type::infer_variant(&format!("variant at {span}"), name, value_ty),
                         span,
                     },
                 }
             }
             Pattern::Placeholder { data: span } => Pattern::Placeholder {
                 data: PatternData {
-                    ty: Type::new_not_inferred(),
+                    ty: Type::new_not_inferred(&format!("_ at {span}")),
                     span,
                 },
             },

@@ -144,6 +144,9 @@ impl PlaceRef {
     pub fn assign(&self, new_value: Value) {
         self.place.assign(new_value)
     }
+    pub fn mutate<R>(&self, f: impl FnOnce(&mut ValueShape) -> R) -> eyre::Result<R> {
+        self.place.mutate(f)
+    }
 }
 
 impl std::fmt::Display for PlaceRef {
@@ -158,6 +161,7 @@ pub struct Place {
     pub state: Mutex<PlaceState>,
 }
 
+// this wouldnt be so much code if i would code it in assembly
 impl Place {
     pub fn new(value: Value) -> Self {
         Self::new_state(PlaceState::Occupied(value))
@@ -165,7 +169,9 @@ impl Place {
     pub fn new_state(state: PlaceState) -> Self {
         Self {
             id: Id::new(),
-            ty: state.ty().unwrap_or_else(Type::new_not_inferred),
+            ty: state
+                .ty()
+                .unwrap_or_else(|| Type::new_not_inferred("place type")),
             state: Mutex::new(state),
         }
     }
@@ -180,6 +186,9 @@ impl Place {
     }
     pub fn assign(&self, new_value: Value) {
         self.state.lock().unwrap().assign(new_value)
+    }
+    pub fn mutate<R>(&self, f: impl FnOnce(&mut ValueShape) -> R) -> eyre::Result<R> {
+        Ok(f(self.state.lock().unwrap().get_mut()?))
     }
 }
 
@@ -218,6 +227,13 @@ impl PlaceState {
             PlaceState::MovedOut => Err(PlaceError::MovedOut),
         }
     }
+    pub fn get_mut(&mut self) -> eyre::Result<&mut ValueShape> {
+        match self {
+            PlaceState::Unintialized => Err(PlaceError::Unintialized)?,
+            PlaceState::Occupied(value) => Ok(value.mutate()?),
+            PlaceState::MovedOut => Err(PlaceError::MovedOut)?,
+        }
+    }
     pub fn take(&mut self) -> Result<Value, PlaceError> {
         match self {
             PlaceState::Unintialized => Err(PlaceError::Unintialized),
@@ -234,37 +250,55 @@ impl PlaceState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, TryHash)]
+enum ValueImpl {
+    Inferrable(#[try_hash] inference::MaybeNotInferred<ValueShape>),
+    NonInferrable(#[try_hash] ValueShape),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
 pub struct Value {
     #[try_hash]
-    pub actual: inference::MaybeNotInferred<ValueShape>,
+    r#impl: ValueImpl,
     #[try_hash]
     pub ty: Type,
 }
 
 impl Value {
-    pub fn new_not_inferred() -> Self {
-        Self::new_not_inferred_of_ty(Type::new_not_inferred())
+    pub fn new_not_inferred(description: &str) -> Self {
+        Self::new_not_inferred_of_ty(
+            description,
+            Type::new_not_inferred(&format!("type of: {description}")),
+        )
     }
-    pub fn new_not_inferred_of_ty(ty: Type) -> Self {
+    pub fn new_not_inferred_of_ty(description: &str, ty: Type) -> Self {
         Self {
-            actual: inference::MaybeNotInferred::new_not_inferred(),
+            r#impl: ValueImpl::Inferrable(inference::MaybeNotInferred::new_not_inferred(
+                description,
+            )),
             ty,
         }
         .init()
         .unwrap()
     }
+
+    pub fn mutate(&mut self) -> eyre::Result<&mut ValueShape> {
+        match &mut self.r#impl {
+            ValueImpl::Inferrable(_) => eyre::bail!("trying to mutate inferrable"),
+            ValueImpl::NonInferrable(value) => Ok(value),
+        }
+    }
+
     fn init(self) -> eyre::Result<Self> {
         // println!("initializing {self:?}");
-        let value = self.actual.clone();
-        // TODO
-        match value.inferred() {
-            Ok(ValueShape::Binding(_)) => {}
-            _ => {
+        match &self.r#impl {
+            ValueImpl::NonInferrable(_) => {}
+            ValueImpl::Inferrable(inferrable) => {
+                let inferrable = inferrable.clone();
                 self.ty.var().add_check(move |ty| {
                     if let Some(shape) = ty.infer_value_shape() {
-                        value.infer_as(shape)?;
+                        inferrable.infer_as(shape)?;
                     }
-                    Ok(())
+                    Ok(inference::CheckResult::Completed)
                 })?;
             }
         }
@@ -298,9 +332,8 @@ impl TryHash for HashMapValue {
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct ListValue {
-    /// TODO dont Arc
     #[try_hash]
-    pub values: std::sync::Arc<Vec<Value>>,
+    pub values: Vec<Value>,
     #[try_hash]
     pub element_ty: Type,
 }
@@ -323,7 +356,10 @@ pub struct VariantValue {
 
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.actual.fmt(f)
+        match &self.r#impl {
+            ValueImpl::Inferrable(value) => value.fmt(f),
+            ValueImpl::NonInferrable(value) => value.fmt(f),
+        }
     }
 }
 
@@ -425,15 +461,21 @@ impl Value {
     /// Get this value AS a type
     pub fn expect_type(self) -> eyre::Result<Type> {
         self.ty.infer_as(TypeShape::Type)?;
-        Ok(match self.actual.inferred() {
-            Ok(inferred) => inferred.expect_type()?,
-            Err(_var) => {
-                unreachable!()
-            }
+        Ok(match self.r#impl {
+            ValueImpl::Inferrable(inferrable) => match inferrable.inferred() {
+                Ok(inferred) => inferred.expect_type()?,
+                Err(_var) => {
+                    unreachable!()
+                }
+            },
+            ValueImpl::NonInferrable(value) => value.expect_type()?,
         })
     }
-    pub fn expect_inferred(&self) -> eyre::Result<ValueShape> {
-        self.actual.expect_inferred()
+    pub fn expect_inferred(self) -> eyre::Result<ValueShape> {
+        match self.r#impl {
+            ValueImpl::Inferrable(inferrable) => inferrable.expect_inferred(),
+            ValueImpl::NonInferrable(value) => Ok(value),
+        }
     }
 }
 
@@ -441,7 +483,7 @@ impl From<ValueShape> for Value {
     fn from(value: ValueShape) -> Self {
         Value {
             ty: value.ty(),
-            actual: inference::MaybeNotInferred::new_set(value),
+            r#impl: ValueImpl::NonInferrable(value),
         }
         .init()
         .unwrap()
@@ -497,8 +539,11 @@ impl ValueShape {
 }
 
 impl Value {
-    pub fn inferred(&self) -> Option<ValueShape> {
-        self.actual.inferred().ok()
+    pub fn inferred(self) -> Option<ValueShape> {
+        match self.r#impl {
+            ValueImpl::Inferrable(inferrable) => inferrable.inferred().ok(),
+            ValueImpl::NonInferrable(value) => Some(value),
+        }
     }
     /// Get the type OF this value
     pub fn ty(&self) -> Type {
@@ -602,12 +647,21 @@ impl ValueShape {
             }),
         }
     }
+    pub fn expect_list_mut(&mut self) -> Result<&mut ListValue, ExpectError> {
+        match self {
+            Self::List(list) => Ok(list),
+            _ => Err(ExpectError {
+                value: self.clone(),
+                expected: TypeShape::List(Type::new_not_inferred("whatever")),
+            }),
+        }
+    }
     pub fn expect_list(self) -> Result<ListValue, ExpectError> {
         match self {
             Self::List(list) => Ok(list),
             _ => Err(ExpectError {
                 value: self,
-                expected: TypeShape::List(Type::new_not_inferred()),
+                expected: TypeShape::List(Type::new_not_inferred("whatever")),
             }),
         }
     }
@@ -760,14 +814,12 @@ impl Inferrable for ListValue {
         }
         let element_ty = Inferrable::make_same(a.element_ty, b.element_ty)?;
         Ok(Self {
-            values: std::sync::Arc::new(
-                a.values
-                    .iter()
-                    .cloned()
-                    .zip(b.values.iter().cloned())
-                    .map(|(a, b)| Inferrable::make_same(a, b))
-                    .collect::<Result<Vec<_>, _>>()?,
-            ),
+            values: a
+                .values
+                .into_iter()
+                .zip(b.values.into_iter())
+                .map(|(a, b)| Inferrable::make_same(a, b))
+                .collect::<Result<Vec<_>, _>>()?,
             element_ty,
         })
     }
@@ -776,7 +828,22 @@ impl Inferrable for ListValue {
 impl Inferrable for Value {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Self {
-            actual: Inferrable::make_same(a.actual, b.actual)?,
+            r#impl: ValueImpl::Inferrable(match (a.r#impl, b.r#impl) {
+                (ValueImpl::Inferrable(a), ValueImpl::Inferrable(b)) => {
+                    Inferrable::make_same(a, b)?
+                }
+                (ValueImpl::Inferrable(a), ValueImpl::NonInferrable(b)) => {
+                    a.infer_as(b)?;
+                    a
+                }
+                (ValueImpl::NonInferrable(a), ValueImpl::Inferrable(b)) => {
+                    b.infer_as(a)?;
+                    b
+                }
+                (ValueImpl::NonInferrable(_), ValueImpl::NonInferrable(_)) => {
+                    eyre::bail!("inferring non inferrables???")
+                }
+            }),
             ty: Inferrable::make_same(a.ty, b.ty)?,
         })
     }
@@ -859,16 +926,21 @@ impl TypeShape {
             TypeShape::String => return None,
             TypeShape::List(_) => return None,
             TypeShape::Variant(_) => return None,
-            TypeShape::Tuple(tuple) => {
-                ValueShape::Tuple(tuple.clone().map(Value::new_not_inferred_of_ty).into())
-            }
+            TypeShape::Tuple(tuple) => ValueShape::Tuple(
+                tuple
+                    .clone()
+                    .map(|ty| Value::new_not_inferred_of_ty("inferred field value shape", ty))
+                    .into(),
+            ),
             TypeShape::Function(_) => return None,
             TypeShape::Template(_) => return None,
             TypeShape::Macro(_) => return None,
             TypeShape::Multiset => return None,
             TypeShape::Contexts => return None,
             TypeShape::Ast => return None,
-            TypeShape::Type => ValueShape::Type(Type::new_not_inferred()),
+            TypeShape::Type => {
+                ValueShape::Type(Type::new_not_inferred("inferred value shape for type"))
+            }
             TypeShape::SyntaxModule => return None,
             TypeShape::SyntaxDefinition => return None,
             TypeShape::UnwindHandle(_) => return None,

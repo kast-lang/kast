@@ -2,20 +2,31 @@ use std::sync::{Arc, Mutex};
 
 use rand::{thread_rng, Rng};
 
-type Check<T> = Arc<dyn Fn(&T) -> eyre::Result<()> + Send + Sync>;
+type Check<T> = Arc<dyn Fn(&T) -> eyre::Result<CheckResult> + Send + Sync>;
 
 #[derive(Clone)]
 struct Data<T> {
+    description: Arc<str>,
     value: Option<Arc<T>>,
     default_value: Option<Arc<T>>,
     checks: Vec<Check<T>>,
 }
 
 impl<T> Data<T> {
-    fn run_checks(&self) -> eyre::Result<()> {
+    fn run_checks(&mut self) -> eyre::Result<()> {
+        // println!("running checks for {:?}", self.description);
         if let Some(value) = &self.value {
-            for check in &self.checks {
-                check(value)?;
+            let mut completed = Vec::new();
+            for (index, check) in self.checks.iter().enumerate() {
+                match check(value)? {
+                    CheckResult::RunAgain => {}
+                    CheckResult::Completed => {
+                        completed.push(index);
+                    }
+                }
+            }
+            for idx in completed.into_iter().rev() {
+                self.checks.remove(idx);
             }
         }
         Ok(())
@@ -163,6 +174,13 @@ impl<T: Sync + Send + Clone + 'static> crate::Identifiable for Var<T> {
     }
 }
 
+#[must_use]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum CheckResult {
+    RunAgain,
+    Completed,
+}
+
 impl<T: Inferrable> Var<T> {
     pub fn is_same_as(&self, other: &Self) -> bool {
         let self_root = VarState::get_root(&self.state);
@@ -171,7 +189,7 @@ impl<T: Inferrable> Var<T> {
     }
     pub fn add_check(
         &self,
-        check: impl Fn(&T) -> eyre::Result<()> + Sync + Send + 'static,
+        check: impl Fn(&T) -> eyre::Result<CheckResult> + Sync + Send + 'static,
     ) -> eyre::Result<()> {
         VarState::get_root(&self.state).modify(|state| {
             let root = state.as_root();
@@ -198,9 +216,10 @@ pub trait Inferrable: Clone + Send + Sync + 'static {
 
 impl<T: Inferrable> Var<T> {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new(description: &str) -> Self {
         Self {
             state: global_state::Id::new(VarState::Root(Data {
+                description: description.into(),
                 value: None,
                 default_value: None,
                 checks: Vec::new(),
@@ -208,9 +227,10 @@ impl<T: Inferrable> Var<T> {
         }
     }
     #[allow(clippy::new_without_default)]
-    pub fn new_with_default(default: T) -> Self {
+    pub fn new_with_default(description: &str, default: T) -> Self {
         Self {
             state: global_state::Id::new(VarState::Root(Data {
+                description: description.into(),
                 value: None,
                 default_value: Some(Arc::new(default)),
                 checks: Vec::new(),
@@ -306,7 +326,7 @@ pub struct MaybeNotInferred<T: Inferrable>(Var<T>);
 impl<T: Inferrable> From<T> for MaybeNotInferred<T> {
     fn from(value: T) -> Self {
         Self({
-            let var = Var::new();
+            let var = Var::new("already inferred");
             var.set(value).unwrap();
             var
         })
@@ -365,15 +385,15 @@ impl<T: Inferrable> MaybeNotInferred<T> {
         self.0.set(value)
     }
     pub fn new_set(value: T) -> Self {
-        let var = Var::new();
+        let var = Var::new("set");
         var.set(value).unwrap();
         Self(var)
     }
-    pub fn new_not_inferred() -> Self {
-        Self(Var::new())
+    pub fn new_not_inferred(description: &str) -> Self {
+        Self(Var::new(description))
     }
-    pub fn new_not_inferred_with_default(default: T) -> Self {
-        Self(Var::new_with_default(default))
+    pub fn new_not_inferred_with_default(description: &str, default: T) -> Self {
+        Self(Var::new_with_default(description, default))
     }
     pub fn expect_inferred(&self) -> eyre::Result<T> {
         self.inferred().map_err(|_| eyre::eyre!("var not inferred"))

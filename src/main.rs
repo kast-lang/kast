@@ -77,7 +77,7 @@ fn main() -> eyre::Result<()> {
             .unwrap();
             init_log_level();
             let value = kast.eval_file(path)?;
-            match value.inferred() {
+            match value.clone().inferred() {
                 Some(ValueShape::Unit) => {}
                 _ => tracing::info!("evaluated to {value}"),
             }
