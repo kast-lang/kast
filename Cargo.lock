@@ -302,7 +302,8 @@ checksum = "22ec99545bb0ed0ea7bb9b8e1e9122ea386ff8a48c0922e43f36d45ab09e0e80"
 [[package]]
 name = "decursion"
 version = "0.1.0"
-source = "git+https://github.com/kuviman/decursion#fcd6c48b1b40481755465ba4ad5abb65ddb0c98c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e06630e778c626361f8a8143fc11b0024a7e0558cbc253fa6b45ab3ef727cd52"
 dependencies = [
  "async-oneshot",
  "futures",
@@ -587,15 +588,15 @@ dependencies = [
  "getrandom",
  "include_dir",
  "kast-ast",
+ "kast-refmap",
+ "kast-try-hash",
  "kast-util",
  "ordered-float",
  "rand",
- "refmap",
  "rustyline",
  "thiserror",
  "tracing",
  "tracing-subscriber",
- "try-hash",
  "wasm-bindgen",
 ]
 
@@ -610,12 +611,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "kast-refmap"
+version = "0.1.0"
+
+[[package]]
+name = "kast-try-hash"
+version = "0.1.0"
+dependencies = [
+ "kast-try-hash-derive",
+]
+
+[[package]]
+name = "kast-try-hash-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "kast-util"
 version = "0.1.0"
 dependencies = [
+ "kast-try-hash",
  "pad-adapter",
  "thiserror",
- "try-hash",
 ]
 
 [[package]]
@@ -835,10 +856,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "refmap"
-version = "0.1.0"
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1027,22 +1044,6 @@ dependencies = [
  "thread_local",
  "tracing-core",
  "tracing-log",
-]
-
-[[package]]
-name = "try-hash"
-version = "0.1.0"
-dependencies = [
- "try-hash-derive",
-]
-
-[[package]]
-name = "try-hash-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
