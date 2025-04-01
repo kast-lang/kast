@@ -1,4 +1,4 @@
-use std;
+use std.*;
 
 let run_once = fn (.quit, .first) {
     let picked :: int32 = random (.min = 1, .max = 10);
@@ -12,7 +12,7 @@ let run_once = fn (.quit, .first) {
     loop {
         let s = input();
         if s == "exit" then (
-            let _ = unwind (.token = quit, .value = "quitted");
+            let _ = unwind quit "quitted";
         );
         let guessed = s |> parse;
         if guessed == picked then (
@@ -28,13 +28,13 @@ let run_once = fn (.quit, .first) {
 };
 
 let main = fn (void) {
-    let result = unwindable_block fn(quit) {
+    let result = unwindable quit (
         run_once (.quit, .first = true);
         loop {
             run_once (.quit, .first = false);
         };
         "not quitted"
-    };
+    );
     print result;
 };
 
