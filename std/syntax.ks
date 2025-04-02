@@ -114,7 +114,7 @@ syntax_module {
   syntax @"op binary /" <- 40 = lhs "/" rhs;
   syntax @"op binary %" <- 40 = lhs "%" rhs;
 
-  syntax @"op binary ^" -> 60 = lhs "^" rhs;
+  # syntax @"op binary ^" -> 60 = lhs "^" rhs;
 
   syntax @"op postfix ++" <- 100 = x "++";
   syntax @"op prefix ++" <- 100 = "++" x;
@@ -124,7 +124,8 @@ syntax_module {
 
   syntax @"builtin macro call" <- 100 = f arg;
 
-  syntax @"builtin macro ref" <- 110 = "&" place;
+  syntax @"builtin macro ref" -> 110 = "&" place;
+  syntax @"builtin macro deref" <- 115 = ref "^";
 
   syntax @"builtin macro typeof" <- 120 = "typeof" expr;
   syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;

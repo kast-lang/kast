@@ -187,6 +187,7 @@ impl Cache {
             macro_and,
             macro_or,
             macro_ref,
+            macro_deref,
         );
         Self {
             builtin_macros,
@@ -420,7 +421,7 @@ impl Compilable for PlaceExpr {
             }
             kast_ast::Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
             kast_ast::Ast::SyntaxDefinition { .. } | kast_ast::Ast::FromScratch { .. } => {
-                eyre::bail!("not a place expr")
+                PlaceExpr::new_temp(kast.compile(ast).await?)
             }
         })
     }
@@ -665,7 +666,7 @@ impl Kast {
             .into_named(["value", "type"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let ty = self
-            .eval_ast(ty, Some(TypeShape::Type.into()))
+            .eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
             .await
             .wrap_err_with(|| "Failed to evaluate the type")?
             .expect_type()?;
@@ -682,7 +683,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let pattern: Pattern = self.compile(pattern).await?;
         let value = self
-            .eval_ast(value_ast, Some(pattern.data().ty.clone()))
+            .eval_ast::<Value>(value_ast, Some(pattern.data().ty.clone()))
             .await?;
 
         let matches = pattern
@@ -712,8 +713,8 @@ impl Kast {
         ))
     }
     async fn macro_let(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_expr!(self, ty, ast);
         let (values, span) = get_complex(ast);
-        assert_eq!(ty, CompiledType::Expr);
         let [pattern, value] = values
             .as_ref()
             .into_named(["pattern", "value"])
@@ -807,7 +808,7 @@ impl Kast {
         let ty = match ty {
             None => None,
             Some(ty) => Some(
-                self.eval_ast(ty, Some(TypeShape::Type.into()))
+                self.eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
                     .await?
                     .expect_type()?,
             ),
@@ -961,13 +962,13 @@ impl Kast {
     }
     async fn macro_impl_syntax(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         let (values, span) = get_complex(ast);
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let [def, r#impl] = values
             .as_ref()
             .into_named(["def", "impl"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let def = self
-            .eval_ast(def, Some(TypeShape::SyntaxDefinition.into()))
+            .eval_ast::<Value>(def, Some(TypeShape::SyntaxDefinition.into()))
             .await?
             .expect_inferred()?
             .expect_syntax_definition()?;
@@ -1001,7 +1002,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let mut inner = self.enter_recursive_scope();
         inner
-            .eval_ast(body, Some(TypeShape::Unit.into()))
+            .eval_ast::<Value>(body, Some(TypeShape::Unit.into()))
             .await?
             .expect_inferred()?
             .expect_unit()?;
@@ -1040,7 +1041,7 @@ impl Kast {
             .into_single_named("def")
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         // TODO expect some type here?
-        let def = self.eval_ast(def, None).await?;
+        let def = self.eval_ast::<Value>(def, None).await?;
         let def = def.expect_inferred()?.expect_function()?;
         Ok(Compiled::Expr(
             Expr::Constant {
@@ -1140,14 +1141,14 @@ impl Kast {
         let arg_ty = arg.data().ty.clone();
         let result_type = match result_type {
             Some(ast) => inner
-                .eval_ast(ast, Some(TypeShape::Type.into()))
+                .eval_ast::<Value>(ast, Some(TypeShape::Type.into()))
                 .await?
                 .expect_type()?,
             None => Type::new_not_inferred(&format!("result type of fn at {span}")),
         };
         let contexts = match contexts {
             Some(contexts) => self
-                .eval_ast(
+                .eval_ast::<Value>(
                     contexts, None, // TODO Contexts??
                 )
                 .await?
@@ -1197,7 +1198,7 @@ impl Kast {
         assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let path = self
-            .eval_ast(
+            .eval_ast::<Value>(
                 values.as_ref().into_single_named("path")?,
                 Some(TypeShape::String.into()),
             )
@@ -1223,7 +1224,7 @@ impl Kast {
         assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let path = self
-            .eval_ast(
+            .eval_ast::<Value>(
                 values.as_ref().into_single_named("path")?,
                 Some(TypeShape::String.into()),
             )
@@ -1246,7 +1247,7 @@ impl Kast {
         })
     }
     async fn macro_use(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_eq!(cty, CompiledType::Expr);
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let namespace = values.as_ref().into_single_named("namespace")?;
         let namespace: Value = self.eval_ast(namespace, None).await?;
@@ -1509,7 +1510,7 @@ impl Kast {
                             (
                                 name,
                                 Some(
-                                    self.eval_ast(ty, Some(TypeShape::Type.into()))
+                                    self.eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
                                         .await?
                                         .expect_type()?,
                                 ),
@@ -1599,8 +1600,8 @@ impl Kast {
             .as_ref()
             .into_named(["value", "target", "impl"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let value = self.eval_ast(value, None).await?;
-        let target = self.eval_ast(target, None).await?;
+        let value = self.eval_ast::<Value>(value, None).await?;
+        let target = self.eval_ast::<Value>(target, None).await?;
         let mut r#impl: Expr = self.compile(r#impl).await?;
         let impl_ty = self
             .cast_result_ty(|| future::ready(Ok(value.clone())).boxed(), target.clone())
@@ -1684,7 +1685,7 @@ impl Kast {
         let mut expr = Expr::CurrentContext { data: span }.init(self).await?;
         if let Some(context_type) = context_type {
             let ty = self
-                .eval_ast(context_type, Some(TypeShape::Type.into()))
+                .eval_ast::<Value>(context_type, Some(TypeShape::Type.into()))
                 .await?
                 .expect_type()?;
             expr.data_mut().ty.make_same(ty)?;
@@ -1710,7 +1711,7 @@ impl Kast {
             .into_single_named("ast")
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let ast = self
-            .eval_ast(value, Some(TypeShape::Ast.into()))
+            .eval_ast::<Value>(value, Some(TypeShape::Ast.into()))
             .await?
             .expect_inferred()?
             .expect_ast()?;
@@ -1782,6 +1783,22 @@ impl Kast {
         Ok(Compiled::Expr(
             Expr::Ref {
                 place: self.compile(place).await?,
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_deref(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        if cty == CompiledType::Expr {
+            return Ok(Compiled::Expr(self.compile::<PlaceExpr>(ast).await?.into()));
+        }
+        assert_eq!(cty, CompiledType::PlaceExpr);
+        let (values, span) = get_complex(ast);
+        let r#ref = values.as_ref().into_single_named("ref")?;
+        Ok(Compiled::PlaceExpr(
+            PlaceExpr::Deref {
+                r#ref: Box::new(self.compile(r#ref).await?),
                 data: span,
             }
             .init(self)
@@ -1934,6 +1951,18 @@ impl PlaceExpr<Span> {
     pub fn init(self, _kast: &Kast) -> BoxFuture<'_, eyre::Result<PlaceExpr>> {
         let r#impl = async {
             Ok(match self {
+                PlaceExpr::Deref { r#ref, data: span } => {
+                    let value_ty = Type::new_not_inferred(&format!("deref at {span}"));
+                    r#ref
+                        .data()
+                        .ty
+                        .clone()
+                        .make_same(TypeShape::Ref(value_ty.clone()).into())?;
+                    PlaceExpr::Deref {
+                        r#ref,
+                        data: ExprData { ty: value_ty, span },
+                    }
+                }
                 PlaceExpr::Temporary { value, data: span } => PlaceExpr::Temporary {
                     data: ExprData {
                         ty: value.data().ty.clone(),

@@ -244,7 +244,7 @@ impl Kast {
         };
         let source = self.include(&path)?;
         kast.exec_mode = ExecMode::Import;
-        let value = futures_lite::future::block_on(kast.eval_ast_opt(&source, None))?;
+        let value = futures_lite::future::block_on(kast.eval_ast_opt::<Value>(&source, None))?;
         self.cache
             .imports
             .lock()

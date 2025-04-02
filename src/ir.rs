@@ -193,6 +193,10 @@ pub enum PlaceExpr<Data = ExprData> {
         value: Box<Expr>,
         data: Data,
     },
+    Deref {
+        r#ref: Box<Expr>,
+        data: Data,
+    },
 }
 
 impl PlaceExpr {
@@ -298,14 +302,16 @@ impl std::borrow::Borrow<Span> for ExprData {
 impl<Data> PlaceExpr<Data> {
     pub fn data(&self) -> &Data {
         match self {
-            Self::Temporary { data, .. }
+            Self::Deref { data, .. }
+            | Self::Temporary { data, .. }
             | PlaceExpr::Binding { data, .. }
             | PlaceExpr::FieldAccess { data, .. } => data,
         }
     }
     pub fn data_mut(&mut self) -> &mut Data {
         match self {
-            Self::Temporary { data, .. }
+            Self::Deref { data, .. }
+            | Self::Temporary { data, .. }
             | PlaceExpr::Binding { data, .. }
             | PlaceExpr::FieldAccess { data, .. } => data,
         }
@@ -325,6 +331,7 @@ impl<Data: std::borrow::Borrow<Span>> PlaceExpr<Data> {
                         write!(f, "binding {:?}", binding.symbol)?
                     }
                     PlaceExpr::FieldAccess { .. } => write!(f, "field access expr")?,
+                    PlaceExpr::Deref { .. } => write!(f, "deref expr")?,
                 }
                 write!(f, " at {}", self.0.data().borrow())
             }

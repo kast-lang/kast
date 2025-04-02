@@ -1387,6 +1387,29 @@ impl Drop for Kast {
     }
 }
 
+pub trait SomeExprResult {
+    fn unit() -> Self;
+    fn from_ref(r#ref: PlaceRef, kast: &Kast) -> Self;
+}
+
+impl SomeExprResult for Value {
+    fn unit() -> Self {
+        ValueShape::Unit.into()
+    }
+    fn from_ref(r#ref: PlaceRef, kast: &Kast) -> Self {
+        r#ref.claim_value(kast).expect("Failed to claim")
+    }
+}
+
+impl SomeExprResult for PlaceRef {
+    fn unit() -> Self {
+        PlaceRef::new_temp(ValueShape::Unit.into())
+    }
+    fn from_ref(r#ref: PlaceRef, _kast: &Kast) -> Self {
+        r#ref
+    }
+}
+
 impl Kast {
     /// Assign to existing bindings
     pub fn pattern_match_assign(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
@@ -1444,38 +1467,43 @@ impl Kast {
         // self.scopes.interpreter.insert(&symbol, value);
         self.scopes.compiler.insert(symbol.name(), value);
     }
-    pub fn eval_source(
+    pub fn eval_source<R: SomeExprResult>(
         &mut self,
         source: SourceFile,
         expected_ty: Option<Type>,
-    ) -> eyre::Result<Value> {
+    ) -> eyre::Result<R> {
         let ast = ast::parse(&self.syntax, source)?;
         match ast {
             Some(ast) => {
+                // sounds like a hack
                 let ast = compiler::init_ast(ast);
                 // TODO but idr what this todo is about
                 futures_lite::future::block_on(self.eval_ast(&ast, expected_ty))
             }
-            None => Ok(ValueShape::Unit.into()),
+            None => Ok(R::unit()),
         }
     }
-    pub async fn eval_ast_opt(
+    pub async fn eval_ast_opt<R: SomeExprResult>(
         &mut self,
         ast: &Option<Ast>,
         expected_ty: Option<Type>,
-    ) -> eyre::Result<Value> {
+    ) -> eyre::Result<R> {
         match ast {
             Some(ast) => self.eval_ast(ast, expected_ty).await,
-            None => Ok(ValueShape::Unit.into()),
+            None => Ok(R::unit()),
         }
     }
-    pub async fn eval_ast(&mut self, ast: &Ast, expected_ty: Option<Type>) -> eyre::Result<Value> {
-        let mut expr: Expr = self.compile(ast).await?;
+    pub async fn eval_ast<R: SomeExprResult>(
+        &mut self,
+        ast: &Ast,
+        expected_ty: Option<Type>,
+    ) -> eyre::Result<R> {
+        let mut expr: PlaceExpr = self.compile(ast).await?;
         if let Some(ty) = expected_ty {
             expr.data_mut().ty.make_same(ty)?;
         }
-        let result = self.eval(&expr).await?;
-        Ok(result)
+        let result = self.eval_place(&expr).await?;
+        Ok(R::from_ref(result, self))
     }
     pub fn eval_place<'a>(
         &'a mut self,
@@ -1525,6 +1553,9 @@ impl Kast {
                             _ => eyre::bail!("{obj} is not smth that has fields"),
                         })
                     })??
+                }
+                PlaceExpr::Deref { r#ref, data: _ } => {
+                    self.eval(r#ref).await?.expect_inferred()?.expect_ref()?
                 }
             };
             Ok::<_, eyre::Report>(result)

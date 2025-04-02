@@ -121,6 +121,14 @@ pub struct PlaceRef {
     pub place: Parc<Place>,
 }
 
+impl PlaceRef {
+    pub fn new_temp(value: Value) -> Self {
+        Self {
+            place: Parc::new(Place::new(value)),
+        }
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum PlaceError {
     #[error("place is uninitialized")]
@@ -129,14 +137,40 @@ pub enum PlaceError {
     MovedOut,
 }
 
-// nothing is going to work
-impl PlaceRef {
-    pub fn inspect<R>(&self, f: impl FnOnce(&Value) -> R) -> Result<R, PlaceError> {
-        self.place.inspect(f)
-    }
-    pub fn claim_value(&self, kast: &Kast) -> eyre::Result<Value> {
+impl Kast {
+    pub fn is_copy(&self, ty: &Type) -> eyre::Result<bool> {
+        if let Ok(ty) = ty.inferred() {
+            let is_copy: Option<bool> = match ty {
+                TypeShape::Unit
+                | TypeShape::Bool
+                | TypeShape::Int32
+                | TypeShape::Int64
+                | TypeShape::Float64
+                | TypeShape::Type
+                | TypeShape::Ref(_)
+                | TypeShape::Symbol
+                | TypeShape::Char => Some(true),
+                TypeShape::String | TypeShape::List(_) | TypeShape::HashMap(_) => Some(false),
+                TypeShape::Variant(_) => None,
+                TypeShape::Tuple(_) => None,
+                TypeShape::Function(_) => None,
+                TypeShape::Template(_) => None,
+                TypeShape::Macro(_) => None,
+                TypeShape::Multiset => None,
+                TypeShape::Contexts => None,
+                TypeShape::Ast => None,
+                TypeShape::SyntaxModule => None,
+                TypeShape::SyntaxDefinition => None,
+                TypeShape::UnwindHandle(_) => None,
+                TypeShape::Binding(_) => None,
+                TypeShape::NewType { .. } => None,
+            };
+            if let Some(result) = is_copy {
+                return Ok(result);
+            }
+        }
         // this part is kinda like redstone
-        let copy_trait = kast
+        let copy_trait = self
             .cache
             .interpreter
             .set_natives
@@ -146,22 +180,30 @@ impl PlaceRef {
             .cloned();
         let Some(copy_trait) = copy_trait else {
             // Before Copy is defined everything is Copy
-            return Ok(self.place.clone_value()?);
+            // TODO maybe not needed because of logic above?
+            return Ok(true);
         };
-        let place_ty = &self.place.ty;
-
-        let ty_is_copy = kast
+        Ok(self
             .cache
             .compiler
             .casts
             .lock()
             .unwrap()
-            .cast(ValueShape::Type(place_ty.clone()).into(), &copy_trait)?
-            .is_ok();
-        // println!("{place_ty} is copy = {ty_is_copy}");
-        Ok(match ty_is_copy {
-            true => self.place.clone_value()?,
-            false => self.place.take_value()?,
+            .cast(ValueShape::Type(ty.clone()).into(), &copy_trait)?
+            .is_ok())
+    }
+}
+
+// nothing is going to work
+impl PlaceRef {
+    pub fn inspect<R>(&self, f: impl FnOnce(&Value) -> R) -> Result<R, PlaceError> {
+        self.place.inspect(f)
+    }
+    pub fn claim_value(&self, kast: &Kast) -> eyre::Result<Value> {
+        Ok(if kast.is_copy(&self.place.ty)? {
+            self.place.clone_value()?
+        } else {
+            self.place.take_value()?
         })
     }
     pub fn clone_value(&self) -> Result<Value, PlaceError> {

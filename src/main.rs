@@ -123,14 +123,16 @@ fn main() -> eyre::Result<()> {
                     contents,
                     filename: "<stdin>".into(),
                 };
-                let value = match kast.lock().unwrap().eval_source(source, None) {
+                let value: PlaceRef = match kast.lock().unwrap().eval_source(source, None) {
                     Ok(value) => value,
                     Err(e) => {
                         kast::inference::global_state::revert(snapshot);
                         return Err(e);
                     }
                 };
-                println!("{} :: {}", value, value.ty());
+                value.inspect(|value| {
+                    println!("{} :: {}", value, value.ty());
+                })?;
                 Ok(())
             })?;
         }
