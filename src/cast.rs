@@ -42,14 +42,15 @@ impl CastMap {
     }
     #[allow(clippy::only_used_in_recursion)]
     pub fn cast_to_ty(&self, value: Value) -> eyre::Result<Result<Type, Value>> {
-        // TODO no clone?
+        // TODO no clone
         Ok(Ok(match value.clone().expect_inferred()? {
             ValueShape::Unit => TypeShape::Unit.into(),
-            ValueShape::Ref(place) => TypeShape::Ref(
-                self.cast_to_ty(place.claim_value()?)?
-                    .map_err(|value| eyre!("{value} is not a type"))?,
-            )
-            .into(),
+            // TODO check is this useful?
+            // ValueShape::Ref(place) => TypeShape::Ref(
+            //     self.cast_to_ty(place.claim_value()?)?
+            //         .map_err(|value| eyre!("{value} is not a type"))?,
+            // )
+            // .into(),
             ValueShape::Tuple(tuple) => {
                 let mut tuple_ty = Tuple::<Type>::empty();
                 for (name, value) in tuple.into_values() {

@@ -588,10 +588,12 @@ dependencies = [
  "getrandom",
  "include_dir",
  "kast-ast",
+ "kast-derive-macros",
  "kast-refmap",
  "kast-try-hash",
  "kast-util",
  "ordered-float",
+ "pad-adapter",
  "rand",
  "rustyline",
  "thiserror",
@@ -608,6 +610,15 @@ dependencies = [
  "kast-util",
  "noisy_float",
  "tracing",
+]
+
+[[package]]
+name = "kast-derive-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

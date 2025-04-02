@@ -1557,8 +1557,11 @@ impl Kast {
                         .into();
                     match ref_ty.inferred().ok().unwrap() {
                         TypeShape::Type => {
-                            let inner_ty =
-                                self.eval_place(place).await?.claim_value()?.expect_type()?;
+                            let inner_ty = self
+                                .eval_place(place)
+                                .await?
+                                .claim_value(self)?
+                                .expect_type()?;
                             ValueShape::Type(TypeShape::Ref(inner_ty).into()).into()
                         }
                         TypeShape::Ref { .. } => {
@@ -1569,7 +1572,7 @@ impl Kast {
                 }
                 Expr::ReadPlace { place, data: _ } => {
                     let place = self.eval_place(place).await?;
-                    place.claim_value()?
+                    place.claim_value(self)?
                 }
                 Expr::And { lhs, rhs, data: _ } => {
                     let lhs = self.eval(lhs).await?.expect_inferred()?.expect_bool()?;

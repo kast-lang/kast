@@ -134,9 +134,35 @@ impl PlaceRef {
     pub fn inspect<R>(&self, f: impl FnOnce(&Value) -> R) -> Result<R, PlaceError> {
         self.place.inspect(f)
     }
-    pub fn claim_value(&self) -> Result<Value, PlaceError> {
-        self.place.clone_value()
-        // self.place.take_value()
+    pub fn claim_value(&self, kast: &Kast) -> eyre::Result<Value> {
+        // this part is kinda like redstone
+        let copy_trait = kast
+            .cache
+            .interpreter
+            .set_natives
+            .lock()
+            .unwrap()
+            .get("Copy")
+            .cloned();
+        let Some(copy_trait) = copy_trait else {
+            // Before Copy is defined everything is Copy
+            return Ok(self.place.clone_value()?);
+        };
+        let place_ty = &self.place.ty;
+
+        let ty_is_copy = kast
+            .cache
+            .compiler
+            .casts
+            .lock()
+            .unwrap()
+            .cast(ValueShape::Type(place_ty.clone()).into(), &copy_trait)?
+            .is_ok();
+        // println!("{place_ty} is copy = {ty_is_copy}");
+        Ok(match ty_is_copy {
+            true => self.place.clone_value()?,
+            false => self.place.take_value()?,
+        })
     }
     pub fn clone_value(&self) -> Result<Value, PlaceError> {
         self.place.clone_value()
@@ -948,6 +974,7 @@ impl TypeShape {
             TypeShape::Symbol => return None,
             TypeShape::HashMap(_) => return None,
             TypeShape::Ref(_) => return None,
+            TypeShape::NewType { .. } => return None,
         })
     }
 }

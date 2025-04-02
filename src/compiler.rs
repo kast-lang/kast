@@ -13,6 +13,12 @@ impl std::fmt::Debug for Hygiene {
     }
 }
 
+impl std::fmt::Display for Hygiene {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 // TODO: Use string to fix type infer bug. Important
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct AstData {

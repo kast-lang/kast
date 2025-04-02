@@ -78,7 +78,6 @@ const Either = forall[.left :: type, .right :: type] { newtype :Left left | :Rig
 
 const Result = forall[.ok :: type, .error :: type] { newtype :Ok ok | :Error error };
 
-
 const @"unary +" = forall[T] { (x :: T) => x };
 const @"unary -" = forall[T] { native "unary -" :: T -> T };
 
@@ -110,6 +109,17 @@ impl syntax @"syntax".@"not" = macro (e,) => `(@"not" $e);
 const TypeName = (.name = string) as type;
 
 impl int32 as TypeName = (.name = "int32");
+
+const Copy = forall[Self :: type] { () };
+
+native "set_native" (.name = "Copy", .value = Copy);
+
+impl int32 as Copy = ();
+impl int64 as Copy = ();
+impl float64 as Copy = ();
+impl bool as Copy = ();
+impl char as Copy = ();
+impl type as Copy = ();
 
 const Parse = forall[Self] {
     .parse = string -> Self,

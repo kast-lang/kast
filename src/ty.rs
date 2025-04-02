@@ -28,6 +28,11 @@ pub enum TypeShape {
     Symbol,
     HashMap(#[try_hash] HashMapType),
     Ref(#[try_hash] Type),
+    NewType {
+        id: Id,
+        #[try_hash]
+        inner: Type,
+    },
 }
 
 impl std::fmt::Debug for TypeShape {
@@ -63,6 +68,7 @@ impl ShowShort for TypeShape {
             TypeShape::Symbol => "symbol",
             TypeShape::HashMap(_) => "hash_map",
             TypeShape::Ref(_) => "&",
+            TypeShape::NewType { .. } => "newtype",
         }
     }
 }
@@ -218,6 +224,20 @@ impl Inferrable for TypeShape {
             (Self::HashMap(_), _) => fail!(),
             (Self::Ref(a), Self::Ref(b)) => Self::Ref(Inferrable::make_same(a, b)?),
             (Self::Ref(_), _) => fail!(),
+            (
+                Self::NewType {
+                    id: id_a,
+                    inner: inner_a,
+                },
+                Self::NewType {
+                    id: id_b,
+                    inner: inner_b,
+                },
+            ) if id_a == id_b => Self::NewType {
+                id: id_a,
+                inner: Inferrable::make_same(inner_a, inner_b)?,
+            },
+            (Self::NewType { .. }, _) => fail!(),
         })
     }
 }
@@ -257,6 +277,7 @@ impl std::fmt::Display for TypeShape {
             Self::Symbol => write!(f, "symbol"),
             Self::HashMap(map) => map.fmt(f),
             Self::Ref(ty) => write!(f, "&{ty}"),
+            Self::NewType { id, inner } => write!(f, "newtype({id}, {inner})"),
         }
     }
 }
@@ -370,6 +391,7 @@ impl SubstituteBindings for Type {
                 TypeShape::HashMap(map.substitute_bindings(kast, cache)).into()
             }
             TypeShape::Ref(ty) => TypeShape::Ref(ty.substitute_bindings(kast, cache)).into(),
+            TypeShape::NewType { .. } => self.clone(), // TODO maybe need to sub?
         };
         cache.insert(self.var(), result.clone());
         tracing::trace!("subbed as {result}");

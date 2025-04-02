@@ -6,13 +6,13 @@ pub struct ExprData {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, derive_macros::ExprDisplay)]
 pub struct MatchBranch {
     pub pattern: Pattern,
     pub body: Expr,
 }
 
-#[derive(Clone)]
+#[derive(Clone, derive_macros::ExprDisplay)]
 pub enum Expr<Data = ExprData> {
     Ref {
         place: PlaceExpr,
@@ -144,10 +144,12 @@ pub enum Expr<Data = ExprData> {
     },
     Function {
         ty: FnType,
+        #[display(skip)]
         compiled: MaybeCompiledFn,
         data: Data,
     },
     Template {
+        #[display(skip)]
         compiled: MaybeCompiledFn,
         data: Data,
     },
@@ -162,9 +164,11 @@ pub enum Expr<Data = ExprData> {
     },
     Ast {
         expr_root: bool,
+        #[display(skip)]
         definition: Parc<ast::SyntaxDefinition>,
         values: Tuple<Expr>,
         hygiene: Hygiene,
+        #[display(skip)]
         def_site: Option<CompilerScope>,
         data: Data,
     },
@@ -174,7 +178,7 @@ pub enum Expr<Data = ExprData> {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, derive_macros::ExprDisplay)]
 pub enum PlaceExpr<Data = ExprData> {
     Binding {
         binding: Parc<Binding>,
@@ -505,7 +509,7 @@ pub struct PatternData {
     pub span: Span,
 }
 
-#[derive(Clone)]
+#[derive(Clone, derive_macros::ExprDisplay)]
 pub enum Pattern<Data = PatternData> {
     /// matches anything
     Placeholder {

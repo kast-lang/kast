@@ -51,6 +51,8 @@ default = ["embed-std"]
 embed-std = []
 
 [dependencies]
+derive-macros = { package = "kast-derive-macros", path = "crates/derive-macros", version = "0.1" }
+pad-adapter.workspace = true
 getrandom.workspace = true
 clap.workspace = true
 eyre.workspace = true
