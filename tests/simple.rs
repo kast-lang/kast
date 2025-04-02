@@ -7,7 +7,7 @@ fn test_eq(source: &str, expected_value: Value) {
     };
     let mut kast = Kast::new().unwrap();
     let value = kast
-        .eval_source(source, Some(expected_value.ty()))
+        .eval_source::<Value>(source, Some(expected_value.ty()))
         .expect("Failed to eval source");
     assert_eq!(value, expected_value);
 }
