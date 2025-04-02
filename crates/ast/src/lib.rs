@@ -1,17 +1,21 @@
 use std::{borrow::Cow, collections::HashSet};
 
 use decursion::FutureExt;
+use group::PartsAccumulator;
 use kast_util::*;
 
+mod group;
 mod lexer;
 mod peek2;
 mod syntax;
 
+pub use group::Group;
 pub use lexer::{is_punctuation, lex, StringType, Token};
 pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefinitionPart};
 
 use lexer::*;
 use syntax::{BindingPower, Edge};
+use tracing::trace;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ast<Data = Span> {
@@ -244,20 +248,55 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
     if reader.next().map(|spanned| spanned.token.raw().to_owned()) != Some("=".to_owned()) {
         return error!("expected a =");
     }
-    let mut parts = Vec::new();
+    let mut parts = PartsAccumulator::new();
+    // let mut parts = Vec::new();
     let mut end = None;
     while let Some(token) = reader.peek() {
-        parts.push(match &token.token {
+        trace!("Encountered token `{}`", token.raw(),);
+        match &token.token {
+            // Named or unnamed binding
             Token::Ident { name, .. } => {
                 if name == "_" {
-                    SyntaxDefinitionPart::UnnamedBinding
+                    parts.insert()?.unnamed_binding();
                 } else {
-                    SyntaxDefinitionPart::NamedBinding(name.clone())
+                    parts.insert()?.named_binding(name);
                 }
             }
-            Token::String { contents, .. } => SyntaxDefinitionPart::Keyword(contents.clone()),
+            // Keyword
+            Token::String { contents, .. } => {
+                parts.insert()?.keyword(contents.clone());
+            }
+            // Start named group
+            Token::Punctuation { raw } if raw == "[" => {
+                parts.insert()?.named_group()?;
+            }
+            // Close named group
+            Token::Punctuation { raw } if raw == "]" => {
+                parts.close_group(group::GroupTag::Named)?;
+            }
+            // Start unnamed group
+            Token::Punctuation { raw } if raw == "(" => {
+                parts.insert()?.unnamed_group();
+            }
+            // Close unnamed group
+            Token::Punctuation { raw } if raw == ")" => {
+                parts.close_group(group::GroupTag::Unnamed)?;
+            }
+            // Assign zero-or-one/option quantifier `?` to the preceding group
+            Token::Punctuation { raw } if raw == "?" => {
+                parts.assign_quantifier(group::Quantifier::ZeroOrOne)?;
+            }
+            // Assign one-or-more quantifier `+` to the preceding group
+            Token::Punctuation { raw } if raw == "+" => {
+                parts.assign_quantifier(group::Quantifier::OneOrMore)?;
+            }
+            // Assign zero-or-more quantifier `*` to the preceding group
+            Token::Punctuation { raw } if raw == "*" => {
+                parts.assign_quantifier(group::Quantifier::ZeroOrMore)?;
+            }
             _ => break,
-        });
+        }
+        trace!("Parts now: `{:?}`", parts.root);
         end = Some(reader.next().unwrap().span.end);
     }
     Ok((
@@ -265,7 +304,7 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
             name,
             priority,
             associativity,
-            parts,
+            parts: parts.finish()?,
         }),
         Span {
             start,
@@ -574,6 +613,7 @@ impl Parser {
     }
 }
 
+// TODO here
 fn assign_progress(
     definition: &SyntaxDefinition,
     values: impl IntoIterator<Item = ProgressPart>,
@@ -608,6 +648,10 @@ fn assign_progress(
                         .into_value()
                         .ok_or_else(|| error_fmt!("expected a value"))?,
                 );
+            }
+            // TODO
+            SyntaxDefinitionPart::GroupBinding(_group) => {
+                todo!()
             }
         }
     }

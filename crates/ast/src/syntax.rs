@@ -1,6 +1,9 @@
 use super::*;
 use noisy_float::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Priority(R64);
@@ -17,11 +20,12 @@ pub enum Associativity {
     Right,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SyntaxDefinitionPart {
     Keyword(String),
     UnnamedBinding,
     NamedBinding(String),
+    GroupBinding(Parc<Mutex<Group>>),
 }
 
 #[derive(Debug)]
@@ -144,6 +148,7 @@ impl Syntax {
                 SyntaxDefinitionPart::UnnamedBinding | SyntaxDefinitionPart::NamedBinding(_) => {
                     Edge::Value
                 }
+                SyntaxDefinitionPart::GroupBinding(_) => todo!(),
             };
             let is_open_bracket = edge.is_open_bracket();
             let next_node = current_node

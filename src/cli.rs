@@ -2,7 +2,11 @@ use std::path::PathBuf;
 
 #[derive(clap::Subcommand)]
 pub enum Command {
-    ParseAst,
+    ParseAst {
+        path: Option<PathBuf>,
+        #[clap(short, long, default_value_t = false)]
+        interactive: bool,
+    },
     Repl {
         path: Option<PathBuf>,
         #[clap(long)]
