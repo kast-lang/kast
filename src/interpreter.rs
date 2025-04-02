@@ -850,9 +850,9 @@ impl Cache {
                     }),
                 );
                 map.insert(
-                    "list_mut_push".to_owned(),
+                    "list_push".to_owned(),
                     Box::new(|expected: Type| {
-                        let elem_ty = Type::new_not_inferred("list_mut_push elem_ty");
+                        let elem_ty = Type::new_not_inferred("list_push elem_ty");
                         let ty = FnType {
                             arg: TypeShape::Tuple({
                                 let mut args = Tuple::empty();
@@ -868,7 +868,7 @@ impl Cache {
                         };
                         expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "list_mut_push".to_owned(),
+                            name: "list_push".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
                                     let [list_ref, new_elem] = args
