@@ -234,7 +234,7 @@ fn test_fibonacci() {
     kast.add_local(kast::Symbol::new("test"), module);
     let mut test_fib = |n: usize, answer: i32| {
         let value = kast
-            .eval_source(
+            .eval_source::<Value>(
                 SourceFile {
                     contents: format!("test.fib {n}"),
                     filename: "<test>".into(),
