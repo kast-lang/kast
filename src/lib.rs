@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity, clippy::needless_question_mark)]
+
 use async_trait::async_trait;
 use cast::*;
 pub use compiler::{Ast, AstData, Hygiene};

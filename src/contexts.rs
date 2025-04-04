@@ -98,9 +98,10 @@ pub fn output_context() -> Value {
             name: "print".to_owned(),
             r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
                 async move {
-                    let s = s.expect_inferred()?.expect_ref()?.inspect(|s| {
+                    s.expect_inferred()?.expect_ref()?.inspect(|s| {
                         s.expect_inferred_ref(|value| {
-                            Ok::<_, eyre::Report>(kast.output.write(value.expect_string()?))
+                            kast.output.write(value.expect_string()?);
+                            Ok::<_, eyre::Report>(())
                         })
                     })???;
                     Ok(ValueShape::Unit.into())

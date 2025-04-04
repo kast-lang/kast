@@ -2053,7 +2053,6 @@ impl Kast {
                     Err(_) => eyre::bail!("number literal type could not be inferred"),
                 },
                 Expr::String { token, data } => {
-                    let string_type = token.typ;
                     fn make_string(
                         token: &kast_ast::StringToken,
                         ty: &Type,

@@ -558,10 +558,10 @@ impl Compilable for Pattern {
         }
     }
     async fn compile_call(
-        kast: &mut Kast,
+        _kast: &mut Kast,
         f: Value,
-        args: &Tuple<Ast>,
-        span: Span,
+        _args: &Tuple<Ast>,
+        _span: Span,
     ) -> eyre::Result<Self> {
         eyre::bail!("{f} is not a macro")
     }
@@ -1878,6 +1878,7 @@ impl Compiled {
             _ => None,
         }
     }
+    #[allow(dead_code)]
     fn expect_place_expr(self) -> Option<PlaceExpr> {
         match self {
             Self::PlaceExpr(e) => Some(e),

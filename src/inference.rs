@@ -35,6 +35,7 @@ impl<T: Inferrable> DefaultValue<T> {
 
 #[derive(Clone)]
 struct Data<T> {
+    #[allow(dead_code)]
     description: Arc<str>,
     value: Option<Arc<T>>,
     default_value: DefaultValue<T>,
