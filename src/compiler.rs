@@ -188,6 +188,7 @@ impl Cache {
             macro_or,
             macro_ref,
             macro_deref,
+            macro_ref_pattern,
         );
         Self {
             builtin_macros,
@@ -515,6 +516,57 @@ impl Compilable for Expr {
     }
 }
 
+async fn compile_ident_pattern(
+    kast: &mut Kast,
+    ident_ast: &Ast,
+    bind_mode: PatternBindMode,
+) -> eyre::Result<Pattern> {
+    let Ast::Simple {
+        token:
+            kast_ast::Token::Ident {
+                raw: _,
+                name,
+                is_raw: _,
+            },
+        data: AstData {
+            span,
+            hygiene,
+            def_site: _,
+        },
+    } = ident_ast
+    else {
+        eyre::bail!("expected identifier");
+    };
+    let compiler_scope = match hygiene {
+        Hygiene::DefSite => kast.scopes.compiler.clone(),
+    };
+    let binding = if kast.compiler.use_existing_bindings {
+        let value = kast
+            .scopes
+            .compiler
+            .lookup(name, *hygiene, kast.spawn_id)
+            .await
+            .ok_or_else(|| eyre!("{name:?} not found"))?;
+        match value.inferred() {
+            Some(ValueShape::Binding(binding)) => binding,
+            _ => eyre::bail!("{name:?} is not a binding"),
+        }
+    } else {
+        Parc::new(Binding {
+            symbol: Symbol::new(name),
+            ty: Type::new_not_inferred(&format!("{name} at {span}")),
+            mutable: kast.compiler.bindings_mutable,
+            compiler_scope,
+        })
+    };
+    Ok(Pattern::Binding {
+        binding,
+        bind_mode,
+        data: span.clone(),
+    }
+    .init()?)
+}
+
 #[async_trait]
 impl Compilable for Pattern {
     const CTY: CompiledType = CompiledType::Pattern;
@@ -535,47 +587,9 @@ impl Compilable for Pattern {
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         tracing::debug!("compiling {}...", ast.show_short());
         let result = match ast {
-            Ast::Simple {
-                token,
-                data:
-                    AstData {
-                        span,
-                        hygiene,
-                        def_site: _,
-                    },
-            } => match token {
-                Token::Ident {
-                    raw: _,
-                    name,
-                    is_raw: _,
-                } => {
-                    let compiler_scope = match hygiene {
-                        Hygiene::DefSite => kast.scopes.compiler.clone(),
-                    };
-                    let binding = if kast.compiler.use_existing_bindings {
-                        let value = kast
-                            .scopes
-                            .compiler
-                            .lookup(name, *hygiene, kast.spawn_id)
-                            .await
-                            .ok_or_else(|| eyre!("{name:?} not found"))?;
-                        match value.inferred() {
-                            Some(ValueShape::Binding(binding)) => binding,
-                            _ => eyre::bail!("{name:?} is not a binding"),
-                        }
-                    } else {
-                        Parc::new(Binding {
-                            symbol: Symbol::new(name),
-                            ty: Type::new_not_inferred(&format!("{name} at {span}")),
-                            mutable: kast.compiler.bindings_mutable,
-                            compiler_scope,
-                        })
-                    };
-                    Pattern::Binding {
-                        binding,
-                        data: span.clone(),
-                    }
-                    .init()?
+            Ast::Simple { token, data: _ } => match token {
+                Token::Ident { .. } => {
+                    compile_ident_pattern(kast, ast, PatternBindMode::Claim).await?
                 }
                 Token::String {
                     raw: _,
@@ -686,21 +700,22 @@ impl Kast {
             .eval_ast::<Value>(value_ast, Some(pattern.data().ty.clone()))
             .await?;
 
+        // TODO don't clone value
         let matches = pattern
-            .r#match(value.clone())
+            .r#match(OwnedPlace::new(value.clone()).get_ref(), self)?
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
             self.scopes.compiler.insert(binding.symbol.name(), value);
         }
 
-        let value = Box::new(
+        let value = Box::new(PlaceExpr::new_temp(
             Expr::Constant {
                 value,
                 data: value_ast.data().span.clone(),
             }
             .init(self)
             .await?,
-        );
+        ));
         Ok(Compiled::Expr(
             Expr::Let {
                 is_const_let: true,
@@ -720,7 +735,7 @@ impl Kast {
             .into_named(["pattern", "value"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let pattern: Pattern = self.compile(pattern).await?;
-        let value: Expr = self.compile(value).await?;
+        let value: PlaceExpr = self.compile(value).await?;
         self.inject_bindings(&pattern);
         Ok(Compiled::Expr(
             Expr::Let {
@@ -797,6 +812,11 @@ impl Kast {
         })
     }
     async fn macro_variant(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        if cty == CompiledType::PlaceExpr {
+            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                self.compile(ast).await?,
+            )));
+        }
         let (values, span) = get_complex(ast);
         let ([name], [ty, value]) = values
             .as_ref()
@@ -1204,7 +1224,8 @@ impl Kast {
             )
             .await?
             .expect_inferred()?
-            .expect_string()?;
+            .expect_string()?
+            .to_owned();
         let path = if path.starts_with('.') {
             ast.data()
                 .span
@@ -1230,7 +1251,8 @@ impl Kast {
             )
             .await?
             .expect_inferred()?
-            .expect_string()?;
+            .expect_string()?
+            .to_owned();
         let path = if path.starts_with('.') {
             ast.data()
                 .span
@@ -1476,6 +1498,11 @@ impl Kast {
         self.macro_tuple(cty, ast).await
     }
     async fn macro_tuple(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        if cty == CompiledType::PlaceExpr {
+            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                self.compile(ast).await?,
+            )));
+        }
         let ListCollected {
             list: fields,
             all_binary: _,
@@ -1765,7 +1792,7 @@ impl Kast {
             kast.compiler.use_existing_bindings = true;
             kast.compile(pattern).await?
         };
-        let value: Expr = self.compile(value).await?;
+        let value: PlaceExpr = self.compile(value).await?;
         Ok(Compiled::Expr(
             Expr::Assign {
                 pattern,
@@ -1774,6 +1801,14 @@ impl Kast {
             }
             .init(self)
             .await?,
+        ))
+    }
+    async fn macro_ref_pattern(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_eq!(cty, CompiledType::Pattern);
+        let (values, _span) = get_complex(ast);
+        let ident = values.as_ref().into_single_named("ident")?;
+        Ok(Compiled::Pattern(
+            compile_ident_pattern(self, ident, PatternBindMode::Ref).await?,
         ))
     }
     async fn macro_ref(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -2504,6 +2539,7 @@ impl Expr<Span> {
                                 .unwrap()
                                 .expect_tuple()
                                 .unwrap()
+                                .clone()
                                 .into_values()
                                 .get_named("default_number_type")
                                 .unwrap()
@@ -2611,7 +2647,7 @@ impl Expr<Span> {
 
                     let mut template_kast =
                         kast.with_scopes(Scopes::new(kast.spawn_id, ScopeType::NonRecursive, None));
-                    template_kast.pattern_match(&compiled.arg, arg)?;
+                    template_kast.pattern_match(&compiled.arg, OwnedPlace::new(arg).get_ref())?;
                     let result_ty = compiled
                         .body
                         .data()
@@ -2700,12 +2736,21 @@ impl Pattern<Span> {
             },
             Pattern::Binding {
                 binding,
+                bind_mode,
                 data: span,
             } => Pattern::Binding {
                 data: PatternData {
-                    ty: binding.ty.clone(),
+                    ty: match bind_mode {
+                        PatternBindMode::Claim => binding.ty.clone(),
+                        PatternBindMode::Ref => {
+                            let ty = Type::new_not_inferred("ref match");
+                            binding.ty.infer_as(TypeShape::Ref(ty.clone()))?;
+                            ty
+                        }
+                    },
                     span,
                 },
+                bind_mode,
                 binding,
             },
             Pattern::Tuple { tuple, data: span } => Pattern::Tuple {

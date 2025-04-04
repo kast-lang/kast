@@ -36,7 +36,7 @@ pub fn default_file_system() -> Value {
             name: "read_file".into(),
             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, path: Value| {
                 async move {
-                    let path = path.expect_inferred()?.expect_string()?;
+                    let path = path.expect_inferred()?.expect_string()?.to_owned();
                     let contents = std::fs::read_to_string(path)?;
                     Ok(ValueShape::String(contents).into())
                 }
@@ -81,7 +81,7 @@ pub fn default_number_type() -> Value {
 
 pub fn output_context() -> Value {
     let write_type = FnType {
-        arg: TypeShape::String.into(),
+        arg: TypeShape::Ref(TypeShape::String.into()).into(),
         contexts: Contexts::empty(),
         result: TypeShape::Unit.into(),
     };
@@ -98,8 +98,11 @@ pub fn output_context() -> Value {
             name: "print".to_owned(),
             r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
                 async move {
-                    let s = s.expect_inferred()?.expect_string()?;
-                    kast.output.write(s);
+                    let s = s.expect_inferred()?.expect_ref()?.inspect(|s| {
+                        s.expect_inferred_ref(|value| {
+                            Ok::<_, eyre::Report>(kast.output.write(value.expect_string()?))
+                        })
+                    })???;
                     Ok(ValueShape::Unit.into())
                 }
                 .boxed()

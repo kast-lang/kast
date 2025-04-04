@@ -123,6 +123,7 @@ syntax_module {
   syntax @"not" <- 100 = "not" _;
 
   syntax @"builtin macro call" <- 100 = f arg;
+  syntax @"builtin macro ref_pattern" <- 100 = "ref" ident;
 
   syntax @"builtin macro ref" -> 110 = "&" place;
   syntax @"builtin macro deref" <- 115 = ref "^";

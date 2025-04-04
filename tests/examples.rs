@@ -18,8 +18,8 @@ fn try_test(case: Case<'_>) -> eyre::Result<Value> {
     }
 
     impl Output for CaptureOutput {
-        fn write(&self, s: String) {
-            *self.output.lock().unwrap() += &s;
+        fn write(&self, s: &str) {
+            *self.output.lock().unwrap() += s;
         }
     }
 

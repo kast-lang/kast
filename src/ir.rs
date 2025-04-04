@@ -30,7 +30,7 @@ pub enum Expr<Data = ExprData> {
     },
     Assign {
         pattern: Pattern,
-        value: Box<Expr>,
+        value: Box<PlaceExpr>,
         data: Data,
     },
     List {
@@ -69,12 +69,12 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Is {
-        value: Box<Expr>,
+        value: Box<PlaceExpr>,
         pattern: Pattern,
         data: Data,
     },
     Match {
-        value: Box<Expr>,
+        value: Box<PlaceExpr>,
         branches: Vec<MatchBranch>,
         data: Data,
     },
@@ -117,6 +117,12 @@ pub enum Expr<Data = ExprData> {
         raw: String,
         data: Data,
     },
+    // TODO
+    // String {
+    //     raw: String,
+    //     contents: String,
+    //     data: Data,
+    // },
     Native {
         /// Name - expr that should evaluate to a string
         name: Box<Expr>,
@@ -125,7 +131,7 @@ pub enum Expr<Data = ExprData> {
     Let {
         is_const_let: bool,
         pattern: Pattern,
-        value: Box<Expr>,
+        value: Box<PlaceExpr>,
         data: Data,
     },
     Call {
@@ -516,6 +522,19 @@ pub struct PatternData {
     pub span: Span,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum PatternBindMode {
+    Claim,
+    Ref,
+    // RefMut,
+}
+
+impl std::fmt::Display for PatternBindMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 #[derive(Clone, derive_macros::ExprDisplay)]
 pub enum Pattern<Data = PatternData> {
     /// matches anything
@@ -527,6 +546,7 @@ pub enum Pattern<Data = PatternData> {
     },
     Binding {
         binding: Parc<Binding>,
+        bind_mode: PatternBindMode,
         data: Data,
     },
     Tuple {
@@ -561,7 +581,11 @@ impl<Data> Pattern<Data> {
         match self {
             Self::Placeholder { data: _ } => {}
             Self::Unit { data: _ } => {}
-            Self::Binding { binding, data: _ } => consumer(binding.clone()),
+            Self::Binding {
+                binding,
+                bind_mode: _,
+                data: _,
+            } => consumer(binding.clone()),
             Self::Tuple { tuple, data: _ } => {
                 for field in tuple.values() {
                     field.collect_bindings(consumer);

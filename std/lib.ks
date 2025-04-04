@@ -41,10 +41,10 @@ const default_number_type :: type = native "default_number_type";
 # TODO panic should return never
 const panic :: string -> () = native "panic";
 
-const print :: string -> () with output = line => (
+const print :: &string -> () with output = line => (
     let output = current output;
     output.write line;
-    output.write "\n";
+    output.write &"\n";
 );
 
 const filesystem :: type = native "filesystem";
@@ -59,9 +59,9 @@ const dbg = forall[T] {
     (value :: T) => (
         let output = current output;
         output.write <| native "dbg" value;
-        output.write " :: ";
+        output.write &" :: ";
         output.write <| native "dbg_type" T;
-        output.write "\n";
+        output.write &"\n";
     )
 };
 

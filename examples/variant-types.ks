@@ -2,16 +2,16 @@ use std.*;
 
 let value = :Some "hello" :: Option[string];
 
-if value is :Some value then (
-  print "some";
-  print value;
+if value is :Some (ref value) then (
+  print &"some";
+  print (value :: &string);
 );
 
 match value {
   | :Some _ => (
-    print "some";
+    print &"some";
   )
-  | :None => print "none"
+  | :None => print &"none"
 };
 
 const either_type :: type = Either[.left = int32, .right = string];
@@ -19,8 +19,8 @@ let value_left = either_type of :Left 123;
 let value_right :: either_type = :Right "right value";
 let check_either = (value :: either_type) => (
     match value {
-        | :Left value => print "left"
-        | :Right value => print value
+        | :Left value => print &"left"
+        | :Right value => print &value
     }
 );
 check_either value_left;
@@ -30,7 +30,7 @@ const result_type :: type = Result[.ok = (), .error = string];
 let unwrap = (result :: result_type) => (
     match result {
         | :Ok value => (
-            print "unwrapped successfully";
+            print &"unwrapped successfully";
             value
         )
         | :Error error => panic error

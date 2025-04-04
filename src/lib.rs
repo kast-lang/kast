@@ -36,7 +36,7 @@ mod ty;
 mod value;
 
 pub trait Output: 'static + Sync + Send {
-    fn write(&self, s: String);
+    fn write(&self, s: &str);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -137,7 +137,7 @@ impl Kast {
             output: std::sync::Arc::new({
                 struct DefaultOutput;
                 impl Output for DefaultOutput {
-                    fn write(&self, s: String) {
+                    fn write(&self, s: &str) {
                         print!("{s}");
                     }
                 }

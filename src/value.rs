@@ -60,6 +60,7 @@ impl std::fmt::Display for TupleValue {
     }
 }
 
+// TODO impl Drop
 pub struct OwnedPlace(Parc<Place>);
 
 impl std::ops::Deref for OwnedPlace {
@@ -153,8 +154,8 @@ impl Kast {
                 TypeShape::String | TypeShape::List(_) | TypeShape::HashMap(_) => Some(false),
                 TypeShape::Variant(_) => None,
                 TypeShape::Tuple(_) => None,
-                TypeShape::Function(_) => None,
-                TypeShape::Template(_) => None,
+                TypeShape::Function(_) => Some(true),
+                TypeShape::Template(_) => Some(true),
                 TypeShape::Macro(_) => None,
                 TypeShape::Multiset => None,
                 TypeShape::Contexts => None,
@@ -417,7 +418,7 @@ pub struct UnwindHandle {
 pub struct VariantValue {
     pub name: String,
     #[try_hash]
-    pub value: Option<Box<Value>>,
+    pub value: Option<OwnedPlace>,
     #[try_hash]
     pub ty: Type,
 }
@@ -545,6 +546,12 @@ impl Value {
             ValueImpl::NonInferrable(value) => Ok(value),
         }
     }
+    pub fn expect_inferred_ref<R>(&self, f: impl FnOnce(&ValueShape) -> R) -> eyre::Result<R> {
+        Ok(match &self.r#impl {
+            ValueImpl::Inferrable(inferrable) => f(&inferrable.expect_inferred()?),
+            ValueImpl::NonInferrable(value) => f(value),
+        })
+    }
 }
 
 impl From<ValueShape> for Value {
@@ -647,11 +654,11 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_variant(self) -> Result<VariantValue, ExpectError<ValueShape, &'static str>> {
+    pub fn expect_variant(&self) -> Result<&VariantValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Variant(value) => Ok(value),
             _ => Err(ExpectError {
-                value: self,
+                value: self.clone(),
                 expected: "variant",
             }),
         }
@@ -665,11 +672,11 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_tuple(self) -> Result<TupleValue, ExpectError<ValueShape, &'static str>> {
+    pub fn expect_tuple(&self) -> Result<&TupleValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Tuple(tuple) => Ok(tuple),
             _ => Err(ExpectError {
-                value: self,
+                value: self.clone(),
                 expected: "tuple",
             }),
         }
@@ -742,11 +749,11 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_string(self) -> Result<String, ExpectError> {
+    pub fn expect_string(&self) -> Result<&str, ExpectError> {
         match self {
             Self::String(s) => Ok(s),
             _ => Err(ExpectError {
-                value: self,
+                value: self.clone(),
                 expected: TypeShape::String,
             }),
         }

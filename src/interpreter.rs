@@ -199,6 +199,7 @@ impl Cache {
                                     let [key, value] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone()
                                         .into_values()
                                         .into_unnamed()?;
                                     Ok(ValueShape::Type(
@@ -289,6 +290,7 @@ impl Cache {
                                     let [map, key, value] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone()
                                         .into_values()
                                         .into_unnamed()?;
                                     let mut map = map.expect_inferred()?.expect_hash_map()?;
@@ -374,6 +376,7 @@ impl Cache {
                                     let [map, key] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone() // TODO no clone - take ref
                                         .into_values()
                                         .into_unnamed()?;
                                     let map = map.expect_inferred()?.expect_hash_map()?;
@@ -384,7 +387,7 @@ impl Cache {
                                             None => "None",
                                         }
                                         .to_owned(),
-                                        value: value.map(Box::new),
+                                        value: value.map(OwnedPlace::new),
                                         ty: result_ty,
                                     })
                                     .into())
@@ -448,6 +451,7 @@ impl Cache {
                                                 .ok_or_else(|| eyre!("no handler"))?
                                                 .expect_inferred()?
                                                 .expect_tuple()?
+                                                .clone()
                                                 .into_values();
                                             // oh shit
                                             let handler = handler
@@ -496,18 +500,24 @@ impl Cache {
                             name: "contains".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let mut args =
-                                        args.expect_inferred()?.expect_tuple()?.into_values();
+                                    let mut args = args
+                                        .expect_inferred()?
+                                        .expect_tuple()?
+                                        .clone()
+                                        .into_values();
+                                    // TODO do not to_owned
                                     let s = args
                                         .take_named("s")
                                         .unwrap()
                                         .expect_inferred()?
-                                        .expect_string()?;
+                                        .expect_string()?
+                                        .to_owned();
                                     let substring = args
                                         .take_named("substring")
                                         .unwrap()
                                         .expect_inferred()?
-                                        .expect_string()?;
+                                        .expect_string()?
+                                        .to_owned();
                                     Ok(ValueShape::Bool(s.contains(&substring)).into())
                                 }
                                 .boxed()
@@ -595,6 +605,7 @@ impl Cache {
                                                 .ok_or_else(|| eyre!("no handler"))?
                                                 .expect_inferred()?
                                                 .expect_tuple()?
+                                                .clone()
                                                 .into_values();
                                             let handler = handler
                                                 .get_named("handle")
@@ -633,7 +644,11 @@ impl Cache {
                                     move |kast: Kast, _fn_ty: FnType, value: Value| {
                                         let set_natives = set_natives.clone();
                                         async move {
-                                            let value = value.expect_inferred()?.expect_string()?;
+                                            // TODO use ref
+                                            let value = value
+                                                .expect_inferred()?
+                                                .expect_string()?
+                                                .to_owned();
                                             let generator_handler = set_natives
                                                 .lock()
                                                 .unwrap()
@@ -656,6 +671,7 @@ impl Cache {
                                                 .ok_or_else(|| eyre!("no handler"))?
                                                 .expect_inferred()?
                                                 .expect_tuple()?
+                                                .clone()
                                                 .into_values();
                                             let handler = handler
                                                 .get_named("handle")
@@ -709,9 +725,11 @@ impl Cache {
                                         let [name, value] = args
                                             .expect_inferred()?
                                             .expect_tuple()?
+                                            .clone()
                                             .into_values()
                                             .into_named(["name", "value"])?;
-                                        let name = name.expect_inferred()?.expect_string()?;
+                                        let name =
+                                            name.expect_inferred()?.expect_string()?.to_owned();
                                         set_natives.lock().unwrap().insert(name, value);
                                         Ok(ValueShape::Unit.into())
                                     }
@@ -748,6 +766,7 @@ impl Cache {
                                     let [list, index] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone()
                                         .into_values()
                                         .into_unnamed()?;
                                     let list = list.expect_inferred()?.expect_list()?;
@@ -825,6 +844,7 @@ impl Cache {
                                     let [list, index, new_value] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone()
                                         .into_values()
                                         .into_unnamed()?;
                                     let list_ref = list.expect_inferred()?.expect_ref()?;
@@ -874,6 +894,7 @@ impl Cache {
                                     let [list_ref, new_elem] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone()
                                         .into_values()
                                         .into_unnamed()?;
                                     let list_ref = list_ref.expect_inferred()?.expect_ref()?;
@@ -915,9 +936,10 @@ impl Cache {
                                     let [s, c] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone()
                                         .into_values()
                                         .into_unnamed()?;
-                                    let s = s.expect_inferred()?.expect_string()?;
+                                    let s = s.expect_inferred()?.expect_string()?.to_owned();
                                     let c = c.expect_inferred()?.expect_char()?;
                                     let mut result = s;
                                     result.push(c);
@@ -970,7 +992,7 @@ impl Cache {
                             name: "panic".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
                                 async move {
-                                    let s = s.expect_inferred()?.expect_string()?;
+                                    let s = s.expect_inferred()?.expect_string()?.to_owned();
                                     Err(eyre!("panic: {s}"))
                                 }
                                 .boxed()
@@ -1006,6 +1028,7 @@ impl Cache {
                                     let [min, max] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
+                                        .clone()
                                         .into_values()
                                         .into_named(["min", "max"])?;
                                     let min = min.expect_inferred()?;
@@ -1056,7 +1079,8 @@ impl Cache {
                             name: "parse".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, s: Value| {
                                 async move {
-                                    let s = s.expect_inferred()?.expect_string()?;
+                                    // TODO ref
+                                    let s = s.expect_inferred()?.expect_string()?.to_owned();
                                     Ok(match fn_ty.result.inferred() {
                                         Ok(ty) => Value::from(match ty {
                                             TypeShape::Int32 => ValueShape::Int32(s.parse()?),
@@ -1089,7 +1113,7 @@ impl Cache {
                             name: "gensym".to_owned(),
                             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, name: Value| {
                                 async move {
-                                    let name = name.expect_inferred()?.expect_string()?;
+                                    let name = name.expect_inferred()?.expect_string()?.to_owned();
                                     Ok(ValueShape::Symbol(Symbol::new(name)).into())
                                 }
                                 .boxed()
@@ -1164,6 +1188,7 @@ impl Cache {
                                         let [lhs, rhs] = args
                                             .expect_inferred()?
                                             .expect_tuple()?
+                                            .clone()
                                             .into_values()
                                             .into_named(["lhs", "rhs"])?;
                                         f(lhs, rhs)
@@ -1412,9 +1437,9 @@ impl SomeExprResult for PlaceRef {
 
 impl Kast {
     /// Assign to existing bindings
-    pub fn pattern_match_assign(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
+    pub fn pattern_match_assign(&mut self, pattern: &Pattern, place: PlaceRef) -> eyre::Result<()> {
         let matches = pattern
-            .r#match(value)
+            .r#match(place, self)?
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
             self.scopes
@@ -1425,9 +1450,9 @@ impl Kast {
         }
         Ok(())
     }
-    pub fn pattern_match(&mut self, pattern: &Pattern, value: Value) -> eyre::Result<()> {
+    pub fn pattern_match(&mut self, pattern: &Pattern, place: PlaceRef) -> eyre::Result<()> {
         let matches = pattern
-            .r#match(value)
+            .r#match(place, self)?
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
             self.scopes.interpreter.insert(&binding.symbol, value);
@@ -1683,11 +1708,14 @@ impl Kast {
                         .run({
                             kast.pattern_match(
                                 name,
-                                ValueShape::UnwindHandle(UnwindHandle {
-                                    sender: Parc::new(Mutex::new(unwind_sender)),
-                                    ty: body.data().ty.clone(),
-                                })
-                                .into(),
+                                OwnedPlace::new(
+                                    ValueShape::UnwindHandle(UnwindHandle {
+                                        sender: Parc::new(Mutex::new(unwind_sender)),
+                                        ty: body.data().ty.clone(),
+                                    })
+                                    .into(),
+                                )
+                                .get_ref(),
                             )?;
                             future::select(kast.eval(body), unwind_receiver)
                         })
@@ -1788,10 +1816,9 @@ impl Kast {
                     branches,
                     data: _,
                 } => 'result: {
-                    let value = self.eval(value).await?;
+                    let value: PlaceRef = self.eval_place(value).await?;
                     for branch in branches {
-                        // TODO no clone value
-                        if let Some(matches) = branch.pattern.r#match(value.clone()) {
+                        if let Some(matches) = branch.pattern.r#match(value.clone(), self)? {
                             let mut kast = self.enter_scope();
                             for (binding, value) in matches {
                                 kast.scopes.interpreter.insert(&binding.symbol, value);
@@ -1807,8 +1834,8 @@ impl Kast {
                     pattern,
                     data: _,
                 } => {
-                    let value = self.eval(value).await?;
-                    if let Some(matches) = pattern.r#match(value) {
+                    let value = self.eval_place(value).await?;
+                    if let Some(matches) = pattern.r#match(value, self)? {
                         for (binding, value) in matches {
                             self.scopes.interpreter.insert(&binding.symbol, value);
                         }
@@ -1823,12 +1850,12 @@ impl Kast {
                         ValueShape::Multiset(values) => {
                             let mut variants = Vec::new();
                             for value in values {
-                                let variant = value.expect_inferred()?.expect_variant()?;
+                                let variant = value.expect_inferred()?.expect_variant()?.clone();
                                 variants.push(VariantType {
                                     name: variant.name,
                                     value: variant
                                         .value
-                                        .map(|value| value.expect_type())
+                                        .map(|value| value.into_value()?.expect_type())
                                         .transpose()?
                                         .map(Box::new),
                                 });
@@ -1839,7 +1866,7 @@ impl Kast {
                             name: variant.name,
                             value: variant
                                 .value
-                                .map(|value| value.expect_type())
+                                .map(|value| value.into_value()?.expect_type())
                                 .transpose()?
                                 .map(Box::new),
                         }])
@@ -1862,7 +1889,7 @@ impl Kast {
                     };
                     ValueShape::Variant(VariantValue {
                         name: name.clone(),
-                        value: value.map(Box::new),
+                        value: value.map(OwnedPlace::new),
                         ty: data.ty.clone(),
                     })
                     .into()
@@ -2030,7 +2057,12 @@ impl Kast {
                         .ty
                         .clone()
                         .substitute_bindings(self, &mut RecurseCache::new());
-                    let name = self.eval(name).await?.expect_inferred()?.expect_string()?;
+                    let name = self
+                        .eval(name)
+                        .await?
+                        .expect_inferred()?
+                        .expect_string()?
+                        .to_owned();
                     tracing::trace!("native {name} :: {actual_type}");
                     match self.cache.interpreter.builtins.get(name.as_str()) {
                         Some(builtin) => builtin(actual_type)?,
@@ -2042,7 +2074,7 @@ impl Kast {
                     value,
                     data: _,
                 } => {
-                    let value = self.eval(value).await?;
+                    let value = self.eval_place(value).await?;
                     self.pattern_match_assign(pattern, value)?;
                     ValueShape::Unit.into()
                 }
@@ -2052,7 +2084,7 @@ impl Kast {
                     value,
                     data: _,
                 } => {
-                    let value = self.eval(value).await?;
+                    let value = self.eval_place(value).await?;
                     self.pattern_match(pattern, value)?;
                     ValueShape::Unit.into()
                 }
@@ -2173,76 +2205,104 @@ impl Kast {
                 .clone()
                 .substitute_bindings(&kast, &mut RecurseCache::new()),
         )?;
-        kast.pattern_match(&compiled.arg, arg)?;
+        kast.pattern_match(&compiled.arg, OwnedPlace::new(arg).get_ref())?;
         let value = kast.eval(&compiled.body).await?;
         Ok(value)
     }
 }
 
 impl Pattern {
-    pub fn r#match(&self, value: Value) -> Option<Vec<(Parc<Binding>, Value)>> {
+    pub fn r#match(
+        &self,
+        place: PlaceRef,
+        kast: &Kast,
+    ) -> eyre::Result<Option<Vec<(Parc<Binding>, Value)>>> {
         let mut result = Vec::new();
         fn match_impl(
+            kast: &Kast,
             pattern: &Pattern,
-            value: Value,
+            place: PlaceRef,
             matches: &mut Vec<(Parc<Binding>, Value)>,
-        ) -> Option<()> {
+        ) -> eyre::Result<Option<()>> {
             match pattern {
                 Pattern::Placeholder { data: _ } => {}
                 Pattern::Unit { data: _ } => {
-                    assert_eq!(value, ValueShape::Unit.into());
+                    place.inspect(|value| assert_eq!(*value, ValueShape::Unit.into()))?;
                 }
-                Pattern::Binding { binding, data: _ } => {
-                    matches.push((binding.clone(), value));
+                Pattern::Binding {
+                    binding,
+                    bind_mode,
+                    data: _,
+                } => {
+                    matches.push((
+                        binding.clone(),
+                        match bind_mode {
+                            PatternBindMode::Claim => place.claim_value(kast)?,
+                            PatternBindMode::Ref => ValueShape::Ref(place).into(),
+                        },
+                    ));
                 }
                 Pattern::Variant {
-                    name,
+                    name: name_pattern,
                     value: value_pattern,
                     data: _,
                 } => {
-                    let value = value
-                        .expect_inferred()
-                        .expect("matching not inferred value with variant???")
-                        .expect_variant()
-                        .expect("matching non variant with variant???");
-                    if value.name == *name {
-                        match (value_pattern, value.value) {
+                    let (actual_name, actual_value) = place.inspect(|value| {
+                        value
+                            .expect_inferred_ref(|value| {
+                                let variant = value
+                                    .expect_variant()
+                                    .expect("matching non variant with variant???");
+                                (
+                                    variant.name.clone(),
+                                    variant.value.as_ref().map(|place| place.get_ref()),
+                                )
+                            })
+                            .expect("matching not inferred value with variant???")
+                    })?;
+                    if actual_name == *name_pattern {
+                        match (value_pattern, actual_value) {
                             (None, None) => {}
                             (Some(_), None) => panic!("pattern expected a value"),
                             (None, Some(_)) => panic!("pattern did not expect a value"),
                             (Some(value_pattern), Some(value)) => {
-                                match_impl(value_pattern, *value, matches)?
+                                if match_impl(kast, value_pattern, value, matches)?.is_none() {
+                                    return Ok(None);
+                                }
                             }
                         }
                     } else {
-                        return None;
+                        return Ok(None);
                     }
                 }
                 Pattern::Tuple {
                     tuple: pattern,
                     data: _,
                 } => {
-                    // TODO no clone?
-                    let value = match value.clone().inferred() {
-                        Some(ValueShape::Tuple(value)) => value.into_values(),
-                        _ => {
-                            let pattern = pattern.as_ref().map(|_| "_");
-                            panic!("trying to pattern match tuple {pattern}, but got {value}");
-                        }
-                    };
+                    let value: Tuple<PlaceRef> = place.inspect(|value| {
+                        value.expect_inferred_ref(|value| {
+                            value
+                                .expect_tuple()
+                                .expect("trying to pattern match tuple, but got not a tuple")
+                                .0
+                                .as_ref()
+                                .map(|place| place.get_ref())
+                        })
+                    })??;
                     for (_, (field_pattern, field_value)) in pattern
                         .as_ref()
                         .zip(value)
                         .expect("pattern is incorrect structure")
                         .into_iter()
                     {
-                        match_impl(field_pattern, field_value, matches)?;
+                        if match_impl(kast, field_pattern, field_value, matches)?.is_none() {
+                            return Ok(None);
+                        }
                     }
                 }
             }
-            Some(())
+            Ok(Some(()))
         }
-        match_impl(self, value, &mut result)?;
-        Some(result)
+        Ok(match_impl(kast, self, place, &mut result)?.map(|()| result))
     }
 }
