@@ -117,12 +117,11 @@ pub enum Expr<Data = ExprData> {
         raw: String,
         data: Data,
     },
-    // TODO
-    // String {
-    //     raw: String,
-    //     contents: String,
-    //     data: Data,
-    // },
+    String {
+        #[display(skip)]
+        token: kast_ast::StringToken,
+        data: Data,
+    },
     Native {
         /// Name - expr that should evaluate to a string
         name: Box<Expr>,
@@ -261,6 +260,7 @@ impl Expr {
             | Expr::Scope { .. }
             | Expr::Constant { .. }
             | Expr::Number { .. }
+            | Expr::String { .. }
             | Expr::ReadPlace { .. }
             | Expr::Native { .. }
             | Expr::Ast { .. }
@@ -380,6 +380,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
                     Expr::Then { .. } => write!(f, "then expr")?,
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
                     Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
+                    Expr::String { token, data: _ } => write!(f, "string literal {:?}", token.raw)?,
                     Expr::Native { name: _, data: _ } => write!(f, "native expr")?,
                     Expr::Ast { .. } => write!(f, "ast expr")?,
                     Expr::Let { .. } => write!(f, "let expr")?,
@@ -425,6 +426,7 @@ impl<Data> Expr<Data> {
         | Expr::If { data, .. }
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
+        | Expr::String { data, .. }
         | Expr::Native { data, .. }
         | Expr::Let { data, .. }
         | Expr::Call { data, .. }
@@ -461,6 +463,7 @@ impl<Data> Expr<Data> {
         | Expr::Then { data, .. }
         | Expr::Constant { data, .. }
         | Expr::Number { data, .. }
+        | Expr::String { data, .. }
         | Expr::Native { data, .. }
         | Expr::Let { data, .. }
         | Expr::Call { data, .. }

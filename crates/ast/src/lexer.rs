@@ -10,6 +10,13 @@ pub enum StringType {
     DoubleQuoted,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StringToken {
+    pub raw: String,
+    pub contents: String,
+    pub typ: StringType,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token {
@@ -21,11 +28,7 @@ pub enum Token {
     Punctuation {
         raw: String,
     },
-    String {
-        raw: String,
-        contents: String,
-        typ: StringType,
-    },
+    String(StringToken),
     Number {
         raw: String,
     },
@@ -47,7 +50,7 @@ impl Token {
         match self {
             Token::Ident { raw, .. } => raw,
             Token::Punctuation { raw } => raw,
-            Token::String { raw, .. } => raw,
+            Token::String(StringToken { raw, .. }) => raw,
             Token::Number { raw } => raw,
             Token::Comment { raw, .. } => raw,
             Token::Eof => "<EOF>".to_owned(),
@@ -57,7 +60,7 @@ impl Token {
         match self {
             Token::Ident { raw, .. } => raw,
             Token::Punctuation { raw } => raw,
-            Token::String { raw, .. } => raw,
+            Token::String(StringToken { raw, .. }) => raw,
             Token::Number { raw } => raw,
             Token::Comment { raw, .. } => raw,
             Token::Eof => "<EOF>",
@@ -275,11 +278,11 @@ impl Lexer {
             }
         }
         self.skip_char(quote_char)?;
-        Ok(Some(Token::String {
+        Ok(Some(Token::String(StringToken {
             raw: self.stop_recording(raw),
             contents,
             typ,
-        }))
+        })))
     }
     fn read_ident(&mut self) -> Result<Option<Token>> {
         let peeked = match self.reader.peek() {
@@ -290,7 +293,8 @@ impl Lexer {
             '@' => {
                 let raw = self.start_recording();
                 self.next().unwrap();
-                let Some(Token::String { contents: name, .. }) = self.read_string()? else {
+                let Some(Token::String(StringToken { contents: name, .. })) = self.read_string()?
+                else {
                     return error!("Expected a string token after '@' for raw identifier");
                 };
                 Ok(Some(Token::Ident {
@@ -335,7 +339,7 @@ impl Lexer {
         Ok(Some(Token::Number { raw }))
     }
     fn read_punctuation(&mut self) -> Result<Option<Token>> {
-        let is_single_punctuation = |c: char| "(){}[]".contains(c);
+        let is_single_punctuation = |c: char| "(){}[]&^".contains(c);
         let is_single_char_punctuation = |c: char| ";".contains(c);
         match self.reader.peek() {
             Some(&first) if is_punctuation(first) => {

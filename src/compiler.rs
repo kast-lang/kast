@@ -366,28 +366,9 @@ impl SimpleExpr {
                     ),
                 }
             }
-            Token::String {
-                raw: _,
-                contents,
-                typ,
-            } => SimpleExpr::Expr(
-                Expr::Constant {
-                    value: match typ {
-                        ast::StringType::SingleQuoted => ValueShape::Char({
-                            let mut chars = contents.chars();
-                            let c = chars
-                                .next()
-                                .ok_or_else(|| eyre!("char literal has no content"))?;
-                            if chars.next().is_some() {
-                                eyre::bail!("char literal has more than one char");
-                            }
-                            c
-                        })
-                        .into(),
-                        ast::StringType::DoubleQuoted => {
-                            ValueShape::String(contents.clone()).into()
-                        }
-                    },
+            Token::String(token) => SimpleExpr::Expr(
+                Expr::String {
+                    token: token.clone(),
                     data: data.span.clone(),
                 }
                 .init(kast)
@@ -591,11 +572,7 @@ impl Compilable for Pattern {
                 Token::Ident { .. } => {
                     compile_ident_pattern(kast, ast, PatternBindMode::Claim).await?
                 }
-                Token::String {
-                    raw: _,
-                    contents: _,
-                    typ: _,
-                } => todo!(),
+                Token::String { .. } => todo!(),
                 Token::Number { raw: _ } => todo!(),
                 Token::Comment { .. } | Token::Punctuation { .. } | Token::Eof => unreachable!(),
             },
@@ -1652,6 +1629,11 @@ impl Kast {
         ))
     }
     async fn macro_placeholder(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        if cty == CompiledType::PlaceExpr {
+            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                self.compile(ast).await?,
+            )));
+        }
         let (values, span) = get_complex(ast);
         let [] = values
             .as_ref()
@@ -2549,6 +2531,53 @@ impl Expr<Span> {
                         },
                         span,
                     },
+                },
+                Expr::String { token, data: span } => Expr::String {
+                    data: ExprData {
+                        ty: {
+                            let token_typ = token.typ;
+                            let ty = Type::new_not_inferred_with_default(
+                                "string token",
+                                match token_typ {
+                                    kast_ast::StringType::SingleQuoted => TypeShape::Char,
+                                    kast_ast::StringType::DoubleQuoted => TypeShape::String,
+                                },
+                            );
+                            #[derive(Copy, Clone)]
+                            struct Checker {
+                                token_typ: kast_ast::StringType,
+                            }
+                            impl Checker {
+                                fn check(
+                                    self,
+                                    ty: &TypeShape,
+                                ) -> eyre::Result<inference::CheckResult>
+                                {
+                                    let token_typ = self.token_typ;
+                                    match ty {
+                                        TypeShape::Char
+                                            if token_typ == kast_ast::StringType::SingleQuoted => {}
+                                        TypeShape::String
+                                            if token_typ == kast_ast::StringType::DoubleQuoted => {}
+                                        TypeShape::Ref(inner) => {
+                                            inner.var().add_check(move |ty| self.check(ty))?;
+                                        }
+                                        _ => {
+                                            eyre::bail!(
+                                                "{token_typ:?} string literal inferred as {ty}"
+                                            )
+                                        }
+                                    }
+                                    Ok(inference::CheckResult::Completed)
+                                }
+                            }
+                            ty.var()
+                                .add_check(move |ty| Checker { token_typ }.check(ty))?;
+                            ty
+                        },
+                        span,
+                    },
+                    token,
                 },
                 Expr::Native {
                     mut name,

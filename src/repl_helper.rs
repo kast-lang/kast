@@ -69,7 +69,7 @@ impl rustyline::highlight::Highlighter for Helper {
                     let colored_token = match token.token {
                         Token::Ident { raw, .. } => raw.underline(),
                         Token::Punctuation { raw, .. } => raw.normal(),
-                        Token::String { raw, .. } => raw.green(),
+                        Token::String(kast_ast::StringToken { raw, .. }) => raw.green(),
                         Token::Number { raw, .. } => raw.italic(),
                         Token::Comment { raw, .. } => raw.dimmed(),
                         Token::Eof => break,

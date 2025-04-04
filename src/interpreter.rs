@@ -2052,6 +2052,50 @@ impl Kast {
                     }
                     Err(_) => eyre::bail!("number literal type could not be inferred"),
                 },
+                Expr::String { token, data } => {
+                    let string_type = token.typ;
+                    fn make_string(
+                        token: &kast_ast::StringToken,
+                        ty: &Type,
+                    ) -> eyre::Result<Value> {
+                        let string_type = token.typ;
+                        Ok(match ty.inferred_or_default()? {
+                            Ok(ty) => match ty {
+                                TypeShape::Char if string_type == ast::StringType::SingleQuoted => {
+                                    ValueShape::Char({
+                                        let mut chars = token.contents.chars();
+                                        let c = chars
+                                            .next()
+                                            .ok_or_else(|| eyre!("char literal has no content"))?;
+                                        if chars.next().is_some() {
+                                            eyre::bail!("char literal has more than one char");
+                                        }
+                                        c
+                                    })
+                                }
+                                TypeShape::String
+                                    if string_type == ast::StringType::DoubleQuoted =>
+                                {
+                                    ValueShape::String(token.contents.clone())
+                                }
+                                TypeShape::Ref(inner) => {
+                                    let value = make_string(token, &inner)?;
+                                    ValueShape::Ref(PlaceRef::new_temp(value))
+                                }
+                                other => eyre::bail!(
+                                    "{string_type:?} string literals can not be treated as {other}"
+                                ),
+                            },
+                            Err(_) => {
+                                eyre::bail!(
+                                    "{string_type:?} string literal type could not be inferred"
+                                )
+                            }
+                        }
+                        .into())
+                    }
+                    make_string(token, &data.ty)?
+                }
                 Expr::Native { name, data } => {
                     let actual_type = data
                         .ty
@@ -2127,6 +2171,7 @@ impl Kast {
                     | Expr::Then { .. }
                     | Expr::Constant { .. }
                     | Expr::Number { .. }
+                    | Expr::String { .. }
                     | Expr::Native { .. }
                     | Expr::Let { .. }
                     | Expr::Assign { .. }

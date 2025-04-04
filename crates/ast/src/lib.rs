@@ -7,7 +7,7 @@ mod lexer;
 mod peek2;
 mod syntax;
 
-pub use lexer::{is_punctuation, lex, StringType, Token};
+pub use lexer::{is_punctuation, lex, SpannedToken, StringToken, StringType, Token};
 pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefinitionPart};
 
 use lexer::*;
@@ -233,7 +233,7 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
         _ => return error!("expected associativity (<- or ->)"),
     };
     let priority = match reader.next().expect("expected a priority").token {
-        Token::Number { raw } | Token::String { contents: raw, .. } => {
+        Token::Number { raw } | Token::String(StringToken { contents: raw, .. }) => {
             Priority::new(match raw.parse() {
                 Ok(number) => number,
                 Err(e) => return error!("failed to parse priority: {e}"),
@@ -255,7 +255,9 @@ fn read_syntax_def(reader: &mut peek2::Reader<SpannedToken>) -> Result<(ParsedSy
                     SyntaxDefinitionPart::NamedBinding(name.clone())
                 }
             }
-            Token::String { contents, .. } => SyntaxDefinitionPart::Keyword(contents.clone()),
+            Token::String(StringToken { contents, .. }) => {
+                SyntaxDefinitionPart::Keyword(contents.clone())
+            }
             _ => break,
         });
         end = Some(reader.next().unwrap().span.end);
