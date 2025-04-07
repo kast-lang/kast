@@ -58,9 +58,9 @@ const contains :: (.s = string, .substring = string) -> bool = native "contains"
 const dbg = forall[T] {
     (value :: T) => (
         let output = current output;
-        output.write <| native "dbg" value;
+        output.write <| &(native "dbg" value);
         output.write &" :: ";
-        output.write <| native "dbg_type" T;
+        output.write <| &(native "dbg_type" T);
         output.write &"\n";
     )
 };
@@ -274,16 +274,16 @@ const HashMap_new = forall[K :: type, V :: type] {
     native "HashMap.new" :: () -> HashMap[K, V]
 };
 const HashMap_insert = forall[K :: type, V :: type] {
-    native "HashMap.insert" :: (HashMap[K, V], K, V) -> HashMap[K, V]
+    native "HashMap.insert" :: (&HashMap[K, V], K, V) -> ()
 };
 const HashMap_get = forall[K :: type, V :: type] {
-    native "HashMap.get" :: (HashMap[K, V], K) -> Option[V]
+    native "HashMap.get" :: (&HashMap[K, V], K) -> Option[&V]
 };
 const HashMap_size = forall[K :: type, V :: type] {
-    native "HashMap.size" :: HashMap[K, V] -> int32
+    native "HashMap.size" :: &HashMap[K, V] -> int32
 };
-const HashMap_iter = forall[K :: type, V :: type] {
-    native "HashMap.iter" :: HashMap[K, V] -> () # with generator_handler[K, V]
+const HashMap_into_iter = forall[K :: type, V :: type] {
+    native "HashMap.into_iter" :: HashMap[K, V] -> () # with generator_handler[K, V]
 };
 
 const time = rec (

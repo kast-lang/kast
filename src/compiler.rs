@@ -408,12 +408,14 @@ impl Compilable for PlaceExpr {
         })
     }
     async fn compile_call(
-        _kast: &mut Kast,
+        kast: &mut Kast,
         f: Value,
-        _args: &Tuple<Ast>,
-        _span: Span,
+        args: &Tuple<Ast>,
+        span: Span,
     ) -> eyre::Result<Self> {
-        eyre::bail!("{f} is not a macro")
+        Ok(Self::new_temp(
+            Expr::compile_call(kast, f, args, span).await?,
+        ))
     }
 }
 
@@ -1408,13 +1410,13 @@ impl Kast {
     }
     async fn macro_quote(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_expr!(self, cty, ast);
-        let (values, _span) = get_complex(ast);
+        let (values, span) = get_complex(ast);
         let expr = values.as_ref().into_single_named("expr")?;
         fn quote<'a>(
             kast: &'a mut Kast,
             expr_root: bool,
             ast: &'a Ast,
-        ) -> BoxFuture<'a, eyre::Result<Expr>> {
+        ) -> BoxFuture<'a, eyre::Result<PlaceExpr>> {
             async move {
                 Ok(match ast {
                     Ast::Complex {
@@ -1434,26 +1436,28 @@ impl Kast {
                                 .wrap_err_with(|| "wrong args to unquote")?;
                             kast.compile(expr).await?
                         } else {
-                            Expr::Ast {
-                                expr_root,
-                                definition: definition.clone(),
-                                values: {
-                                    let mut result = Tuple::empty();
-                                    for (name, value) in values.as_ref().into_iter() {
-                                        let value = quote(kast, false, value).boxed().await?;
-                                        result.add(name, value);
-                                    }
-                                    result
-                                },
-                                hygiene: *hygiene,
-                                def_site: def_site.clone(),
-                                data: span.clone(),
-                            }
-                            .init(kast)
-                            .await?
+                            PlaceExpr::new_temp(
+                                Expr::Ast {
+                                    expr_root,
+                                    definition: definition.clone(),
+                                    values: {
+                                        let mut result = Tuple::empty();
+                                        for (name, value) in values.as_ref().into_iter() {
+                                            let value = quote(kast, false, value).boxed().await?;
+                                            result.add(name, value);
+                                        }
+                                        result
+                                    },
+                                    hygiene: *hygiene,
+                                    def_site: def_site.clone(),
+                                    data: span.clone(),
+                                }
+                                .init(kast)
+                                .await?,
+                            )
                         }
                     }
-                    _ => {
+                    _ => PlaceExpr::new_temp(
                         Expr::Constant {
                             value: ValueShape::Ast(match expr_root {
                                 true => kast.set_def_site(ast),
@@ -1463,13 +1467,21 @@ impl Kast {
                             data: ast.data().span.clone(),
                         }
                         .init(kast)
-                        .await?
-                    }
+                        .await?,
+                    ),
                 })
             }
             .boxed()
         }
-        Ok(Compiled::Expr(quote(self, true, expr).await?))
+        Ok(Compiled::Expr(
+            // TODO `($x) moves x
+            Expr::ReadPlace {
+                place: quote(self, true, expr).await?,
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
     }
     async fn macro_field(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         self.macro_tuple(cty, ast).await

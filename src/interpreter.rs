@@ -243,7 +243,7 @@ impl Cache {
                                 async move {
                                     args.expect_inferred()?.expect_unit()?;
                                     Ok(ValueShape::HashMap(HashMapValue {
-                                        values: Parc::new(HashMap::new()),
+                                        values: HashMap::new(),
                                         ty: HashMapType {
                                             key: key_ty.clone(),
                                             value: value_ty.clone(),
@@ -273,14 +273,14 @@ impl Cache {
                         let ty = FnType {
                             arg: TypeShape::Tuple({
                                 let mut args = Tuple::empty();
-                                args.add_unnamed(map_type.clone());
+                                args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
                                 args.add_unnamed(key_ty.clone());
                                 args.add_unnamed(value_ty.clone());
                                 args
                             })
                             .into(),
                             contexts: Contexts::empty(),
-                            result: map_type.clone(),
+                            result: TypeShape::Unit.into(),
                         };
                         expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                         Ok(ValueShape::NativeFunction(NativeFunction {
@@ -293,14 +293,14 @@ impl Cache {
                                         .clone()
                                         .into_values()
                                         .into_unnamed()?;
-                                    let mut map = map.expect_inferred()?.expect_hash_map()?;
-                                    map.values = Parc::new({
-                                        #[allow(clippy::mutable_key_type)]
-                                        let mut values = (*map.values).clone(); // TODO
-                                        values.insert(HashableValue(key), value);
-                                        values
-                                    });
-                                    Ok(ValueShape::HashMap(map).into())
+                                    let map = map.expect_inferred()?.expect_ref()?;
+                                    map.mutate(|map| {
+                                        let map = map.expect_hash_map_mut()?;
+                                        map.values
+                                            .insert(HashableValue(key), OwnedPlace::new(value));
+                                        Ok::<_, eyre::Report>(())
+                                    })??;
+                                    Ok(ValueShape::Unit.into())
                                 }
                                 .boxed()
                             })
@@ -322,7 +322,7 @@ impl Cache {
                         })
                         .into();
                         let ty = FnType {
-                            arg: map_type.clone(),
+                            arg: TypeShape::Ref(map_type.clone()).into(),
                             contexts: Contexts::empty(),
                             result: TypeShape::Int32.into(),
                         };
@@ -331,8 +331,14 @@ impl Cache {
                             name: "HashMap.size".to_owned(),
                             r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
                                 async move {
-                                    let map = args.expect_inferred()?.expect_hash_map()?;
-                                    Ok(ValueShape::Int32(map.values.len().try_into()?).into())
+                                    let map = args.expect_inferred()?.expect_ref()?;
+                                    // TODO just inspect
+                                    let size = map.mutate(|map| {
+                                        Ok::<_, eyre::Report>(
+                                            map.expect_hash_map_mut()?.values.len(),
+                                        )
+                                    })??;
+                                    Ok(ValueShape::Int32(size.try_into()?).into())
                                 }
                                 .boxed()
                             })
@@ -358,13 +364,13 @@ impl Cache {
                         let ty = FnType {
                             arg: TypeShape::Tuple({
                                 let mut args = Tuple::empty();
-                                args.add_unnamed(map_type.clone());
+                                args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
                                 args.add_unnamed(key_ty.clone());
                                 args
                             })
                             .into(),
                             contexts: Contexts::empty(),
-                            // result: value_ty.clone(),
+                            // TODO use Option
                             result: result_ty.clone(),
                         };
                         expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
@@ -376,18 +382,28 @@ impl Cache {
                                     let [map, key] = args
                                         .expect_inferred()?
                                         .expect_tuple()?
-                                        .clone() // TODO no clone - take ref
+                                        .clone()
                                         .into_values()
                                         .into_unnamed()?;
-                                    let map = map.expect_inferred()?.expect_hash_map()?;
-                                    let value = map.values.get(&HashableValue(key)).cloned();
+                                    let map = map.expect_inferred()?.expect_ref()?;
+                                    // TODO inspect
+                                    let value_ref: Option<PlaceRef> = map.mutate(|map| {
+                                        let map = map.expect_hash_map_mut()?;
+                                        Ok::<_, eyre::Report>(
+                                            map.values
+                                                .get(&HashableValue(key))
+                                                .map(|place| place.get_ref()),
+                                        )
+                                    })??;
                                     Ok(ValueShape::Variant(VariantValue {
-                                        name: match value {
+                                        name: match value_ref {
                                             Some(_) => "Some",
                                             None => "None",
                                         }
                                         .to_owned(),
-                                        value: value.map(OwnedPlace::new),
+                                        value: value_ref.map(|value_ref| {
+                                            OwnedPlace::new(ValueShape::Ref(value_ref).into())
+                                        }),
                                         ty: result_ty,
                                     })
                                     .into())
@@ -402,19 +418,19 @@ impl Cache {
                     }),
                 );
                 map.insert(
-                    "HashMap.iter".to_owned(),
+                    "HashMap.into_iter".to_owned(),
                     Box::new({
                         let set_natives = set_natives.clone();
                         move |expected: Type| {
                             let ty = FnType {
-                                arg: Type::new_not_inferred("HashMap.iter arg"),
+                                arg: Type::new_not_inferred("HashMap.into_iter arg"),
                                 contexts: Contexts::empty(), // TODO generator_handler
                                 result: TypeShape::Unit.into(),
                             };
                             expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                             let set_natives = set_natives.clone();
                             Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: "HashMap.iter".to_owned(),
+                                name: "HashMap.into_iter".to_owned(),
                                 r#impl: (std::sync::Arc::new(
                                     move |kast: Kast, _fn_ty: FnType, value: Value| {
                                         let set_natives = set_natives.clone();
@@ -457,11 +473,11 @@ impl Cache {
                                             let handler = handler
                                                 .get_named("handle")
                                                 .ok_or_else(|| eyre!("wut"))?;
-                                            for (key, value) in map.values.iter() {
+                                            for (key, value) in map.values.into_iter() {
                                                 let HashableValue(key) = key;
                                                 let mut tuple = Tuple::empty();
-                                                tuple.add_unnamed(key.clone());
-                                                tuple.add_unnamed(value.clone());
+                                                tuple.add_unnamed(key);
+                                                tuple.add_unnamed(value.into_value()?);
                                                 kast.call(
                                                     handler.clone(),
                                                     ValueShape::Tuple(tuple.into()).into(),
@@ -1412,17 +1428,17 @@ impl Drop for Kast {
     }
 }
 
-pub trait SomeExprResult {
+pub trait SomeExprResult: Sized {
     fn unit() -> Self;
-    fn from_ref(r#ref: PlaceRef, kast: &Kast) -> Self;
+    fn from_ref(r#ref: PlaceRef, kast: &Kast) -> eyre::Result<Self>;
 }
 
 impl SomeExprResult for Value {
     fn unit() -> Self {
         ValueShape::Unit.into()
     }
-    fn from_ref(r#ref: PlaceRef, kast: &Kast) -> Self {
-        r#ref.claim_value(kast).expect("Failed to claim")
+    fn from_ref(r#ref: PlaceRef, kast: &Kast) -> eyre::Result<Self> {
+        r#ref.claim_value(kast)
     }
 }
 
@@ -1430,8 +1446,8 @@ impl SomeExprResult for PlaceRef {
     fn unit() -> Self {
         PlaceRef::new_temp(ValueShape::Unit.into())
     }
-    fn from_ref(r#ref: PlaceRef, _kast: &Kast) -> Self {
-        r#ref
+    fn from_ref(r#ref: PlaceRef, _kast: &Kast) -> eyre::Result<Self> {
+        Ok(r#ref)
     }
 }
 
@@ -1528,7 +1544,7 @@ impl Kast {
             expr.data_mut().ty.make_same(ty)?;
         }
         let result = self.eval_place(&expr).await?;
-        Ok(R::from_ref(result, self))
+        Ok(R::from_ref(result, self)?)
     }
     pub fn eval_place<'a>(
         &'a mut self,
@@ -1948,7 +1964,10 @@ impl Kast {
                 } => {
                     let mut ast_values = Tuple::empty();
                     for (name, value) in values.as_ref().into_iter() {
-                        let value = self.eval(value).await?;
+                        let value = self
+                            .eval_place(value)
+                            .await?
+                            .inspect(|value| value.clone())?;
                         let value = value.expect_inferred()?.expect_ast()?;
                         ast_values.add(name, value);
                     }
@@ -2207,13 +2226,11 @@ impl Kast {
     }
 
     pub async fn await_compiled(&self, f: &MaybeCompiledFn) -> eyre::Result<Parc<CompiledFn>> {
-        loop {
-            self.cache.executor.advance()?;
-            match &*f.lock().unwrap() {
-                Some(compiled) => return Ok(compiled.clone()),
-                None => {
-                    // eyre::bail!("function is not compiled yet")
-                }
+        self.cache.executor.advance()?;
+        match &*f.lock().unwrap() {
+            Some(compiled) => Ok(compiled.clone()),
+            None => {
+                eyre::bail!("function is not compiled yet")
             }
         }
     }

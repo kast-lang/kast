@@ -171,7 +171,7 @@ pub enum Expr<Data = ExprData> {
         expr_root: bool,
         #[display(skip)]
         definition: Parc<ast::SyntaxDefinition>,
-        values: Tuple<Expr>,
+        values: Tuple<PlaceExpr>,
         hygiene: Hygiene,
         #[display(skip)]
         def_site: Option<CompilerScope>,

@@ -4,7 +4,7 @@ const let_hello = macro _ => `(
   let hello = "hello";
   print hello;
 ); 
-const let_named = macro name => `(
+const let_named = macro (name :: ast) => `(
   let $name = "named";
   print $name;
 );

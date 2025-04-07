@@ -153,10 +153,17 @@ impl Kast {
                 | TypeShape::Char => Some(true),
                 TypeShape::String | TypeShape::List(_) | TypeShape::HashMap(_) => Some(false),
                 TypeShape::Variant(_) => None,
-                TypeShape::Tuple(_) => None,
+                TypeShape::Tuple(tuple) => {
+                    for field in tuple.values() {
+                        if !self.is_copy(field)? {
+                            return Ok(false);
+                        }
+                    }
+                    Some(true)
+                }
                 TypeShape::Function(_) => Some(true),
                 TypeShape::Template(_) => Some(true),
-                TypeShape::Macro(_) => None,
+                TypeShape::Macro(_) => Some(true),
                 TypeShape::Multiset => None,
                 TypeShape::Contexts => None,
                 TypeShape::Ast => None,
@@ -201,6 +208,12 @@ impl PlaceRef {
         self.place.inspect(f)
     }
     pub fn claim_value(&self, kast: &Kast) -> eyre::Result<Value> {
+        if let Some(cloned_inferrable) = self.place.inspect(|value| match value.r#impl {
+            ValueImpl::Inferrable(_) => Some(value.clone()),
+            ValueImpl::NonInferrable(_) => None,
+        })? {
+            return Ok(cloned_inferrable);
+        };
         Ok(if kast.is_copy(&self.place.ty)? {
             self.place.clone_value()?
         } else {
@@ -387,7 +400,7 @@ impl std::hash::Hash for HashableValue {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct HashMapValue {
-    pub values: Parc<HashMap<HashableValue, Value>>,
+    pub values: HashMap<HashableValue, OwnedPlace>,
     pub ty: HashMapType,
 }
 
@@ -501,7 +514,10 @@ impl std::fmt::Display for ValueShape {
             ValueShape::UnwindHandle(_) => write!(f, "<unwind handle>"),
             ValueShape::Symbol(symbol) => write!(f, "symbol {symbol}"),
             ValueShape::HashMap(map) => map.fmt(f),
-            ValueShape::Ref(r) => r.fmt(f),
+            ValueShape::Ref(r) => {
+                write!(f, "&")?;
+                r.inspect(|value| value.fmt(f)).expect("tried to fmt ref")
+            }
         }
     }
 }
@@ -663,11 +679,22 @@ impl ValueShape {
             }),
         }
     }
+    pub fn expect_hash_map_mut(
+        &mut self,
+    ) -> Result<&mut HashMapValue, ExpectError<ValueShape, &'static str>> {
+        match self {
+            Self::HashMap(map) => Ok(map),
+            _ => Err(ExpectError {
+                value: self.clone(),
+                expected: "HashMap",
+            }),
+        }
+    }
     pub fn expect_hash_map(self) -> Result<HashMapValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::HashMap(map) => Ok(map),
             _ => Err(ExpectError {
-                value: self,
+                value: self.clone(),
                 expected: "HashMap",
             }),
         }
