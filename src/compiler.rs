@@ -2540,7 +2540,13 @@ impl Expr<Span> {
                                 .unwrap()
                                 .clone();
                             let ty = kast.call(f, ValueShape::String(raw).into()).await?;
-                            ty.expect_type()?
+                            let ty = ty.expect_type()?;
+                            match ty.inferred() {
+                                Ok(inferred) => {
+                                    Type::new_not_inferred_with_default("number literal", inferred)
+                                }
+                                Err(_) => ty,
+                            }
                         },
                         span,
                     },

@@ -101,7 +101,11 @@ fn main() -> eyre::Result<()> {
                 Ok(())
             })?;
         }
-        cli::Command::Repl { path, no_stdlib } => {
+        cli::Command::Repl {
+            path,
+            no_stdlib,
+            prerun,
+        } => {
             let kast = Arc::new(Mutex::new(
                 match no_stdlib {
                     false => Kast::new(),
@@ -115,6 +119,20 @@ fn main() -> eyre::Result<()> {
                 let mut kast = kast.lock().unwrap();
                 let value = kast.eval_file(&path).expect("Failed to eval file");
                 kast.add_local(kast::Symbol::new(name), value);
+            }
+            {
+                let prerun =
+                    prerun.unwrap_or("use std.*; with default_number_type_based_on_dot;".into());
+                kast.lock()
+                    .unwrap()
+                    .eval_source::<Value>(
+                        SourceFile {
+                            contents: prerun,
+                            filename: "<prerun>".into(),
+                        },
+                        Some(TypeShape::Unit.into()),
+                    )
+                    .expect("Failed to eval prerun");
             }
             let helper = repl_helper::Helper::new(kast.clone());
             run_repl(helper, move |contents| {

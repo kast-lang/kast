@@ -7,6 +7,8 @@ pub enum Command {
         path: Option<PathBuf>,
         #[clap(long)]
         no_stdlib: bool,
+        #[clap(long)]
+        prerun: Option<String>,
     },
     Run {
         path: PathBuf,
@@ -37,6 +39,7 @@ impl Args {
                 None => Command::Repl {
                     path: None,
                     no_stdlib: false,
+                    prerun: None,
                 },
             },
         }

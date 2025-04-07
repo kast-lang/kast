@@ -37,6 +37,15 @@ const string :: type = native "string";
 const output :: type = native "output";
 
 const default_number_type :: type = native "default_number_type";
+let default_number_type_based_on_dot :: default_number_type = (
+    # TODO should return Option[type]
+    .default_number_type = s => (
+      if contains (.s, .substring=".") then
+        float64
+      else
+        int32
+    ),
+);
 
 # TODO panic should return never
 const panic :: string -> () = native "panic";
