@@ -650,9 +650,10 @@ impl Kast {
             .insert(&binding.symbol, ValueShape::Binding(binding.clone()).into());
     }
     fn inject_bindings(&mut self, pattern: &Pattern) {
-        pattern.collect_bindings(&mut |binding| {
-            self.inject_binding(&binding);
-        });
+        pattern.collect_bindings(&mut |binding| self.inject_binding(&binding));
+    }
+    fn inject_assignee_bindings(&mut self, assignee: &AssigneeExpr) {
+        assignee.collect_new_bindings(&mut |binding| self.inject_binding(&binding));
     }
     pub fn set_def_site(&self, ast: &Ast) -> Ast {
         let mut ast = ast.clone();
@@ -699,9 +700,9 @@ impl Kast {
         value.ty_mut().make_same(ty)?;
         Ok(value)
     }
-    async fn macro_const_let(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+    async fn macro_const_let(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
-        assert_eq!(ty, CompiledType::Expr);
         let [pattern, value_ast] = values
             .as_ref()
             .into_named(["pattern", "value"])
@@ -731,7 +732,7 @@ impl Kast {
             Expr::Let {
                 is_const_let: true,
                 pattern,
-                value,
+                value: Some(value),
                 data: span,
             }
             .init(self)
@@ -739,13 +740,17 @@ impl Kast {
         ))
     }
     async fn macro_let(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        if cty == CompiledType::PlaceExpr {
+            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                self.compile(ast).await?,
+            )));
+        }
         let (values, span) = get_complex(ast);
         let pattern = values
             .as_ref()
             .into_single_named("pattern")
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let pattern: Pattern = self.compile(pattern).await?;
-        self.inject_bindings(&pattern);
         Ok(match cty {
             CompiledType::AssigneeExpr => Compiled::AssigneeExpr(
                 AssigneeExpr::Let {
@@ -755,6 +760,19 @@ impl Kast {
                 .init(self)
                 .await?,
             ),
+            CompiledType::Expr => {
+                self.inject_bindings(&pattern);
+                Compiled::Expr(
+                    Expr::Let {
+                        is_const_let: false,
+                        pattern,
+                        value: None,
+                        data: span,
+                    }
+                    .init(self)
+                    .await?,
+                )
+            }
             _ => eyre::bail!("must be assignee"),
         })
     }
@@ -772,7 +790,7 @@ impl Kast {
             Expr::Let {
                 is_const_let: false,
                 pattern,
-                value: Box::new(value),
+                value: Some(Box::new(value)),
                 data: span,
             }
             .init(self)
@@ -1853,11 +1871,9 @@ impl Kast {
         assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
         let [assignee, value] = values.as_ref().into_named(["assignee", "value"])?;
-        let assignee: AssigneeExpr = {
-            let mut kast = self.clone();
-            kast.compile(assignee).await?
-        };
+        let assignee: AssigneeExpr = self.compile(assignee).await?;
         let value: PlaceExpr = self.compile(value).await?;
+        self.inject_assignee_bindings(&assignee);
         Ok(Compiled::Expr(
             Expr::Assign {
                 assignee,
@@ -2746,10 +2762,12 @@ impl Expr<Span> {
                     mut value,
                     data: span,
                 } => {
-                    pattern
-                        .data_mut()
-                        .ty
-                        .make_same(value.data_mut().ty.clone())?;
+                    if let Some(value) = &mut value {
+                        pattern
+                            .data_mut()
+                            .ty
+                            .make_same(value.data_mut().ty.clone())?;
+                    }
                     Expr::Let {
                         is_const_let,
                         pattern,

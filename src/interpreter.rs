@@ -2175,8 +2175,24 @@ impl Kast {
                     value,
                     data: _,
                 } => {
-                    let value = self.eval_place(value).await?;
-                    self.pattern_match(pattern, value)?;
+                    match value {
+                        Some(value) => {
+                            let value = self.eval_place(value).await?;
+                            self.pattern_match(pattern, value)?;
+                        }
+                        None => {
+                            pattern.collect_bindings(&mut |binding| {
+                                tracing::trace!(
+                                    "{:?} = <uninitialized> :: {}",
+                                    binding.symbol,
+                                    binding.ty,
+                                );
+                                self.scopes
+                                    .interpreter
+                                    .insert_uninitialized(&binding.symbol, binding.ty.clone());
+                            });
+                        }
+                    }
                     ValueShape::Unit.into()
                 }
                 Expr::Call { f, arg, data: _ } => {

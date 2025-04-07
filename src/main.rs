@@ -148,9 +148,18 @@ fn main() -> eyre::Result<()> {
                         return Err(e);
                     }
                 };
-                value.inspect(|value| {
+                match value.inspect(|value| {
                     println!("{} :: {}", value, value.ty());
-                })?;
+                }) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        let e = match e {
+                            PlaceError::Unintialized => "uninitialized",
+                            PlaceError::MovedOut => "moved out",
+                        };
+                        println!("<{e}> :: {}", value.place.ty);
+                    }
+                };
                 Ok(())
             })?;
         }

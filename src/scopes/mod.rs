@@ -14,6 +14,9 @@ impl InterpreterScope {
     pub fn insert(&self, symbol: &Symbol, value: Value) {
         self.0.insert(symbol.clone(), value);
     }
+    pub fn insert_uninitialized(&self, symbol: &Symbol, ty: Type) {
+        self.0.insert_uninitialized(symbol.clone(), ty);
+    }
     /// TODO dont expose Locals?
     pub fn inspect<R>(&self, f: impl FnOnce(&Locals) -> R) -> R {
         self.0.inspect(f)

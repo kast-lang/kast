@@ -130,7 +130,7 @@ pub enum Expr<Data = ExprData> {
     Let {
         is_const_let: bool,
         pattern: Pattern,
-        value: Box<PlaceExpr>,
+        value: Option<Box<PlaceExpr>>,
         data: Data,
     },
     Call {
@@ -262,7 +262,6 @@ impl Expr {
             | Expr::And { .. }
             | Expr::Or { .. }
             | Expr::List { .. }
-            | Expr::Assign { .. }
             | Expr::Unwind { .. }
             | Expr::Unwindable { .. }
             | Expr::CallMacro { .. }
@@ -307,6 +306,13 @@ impl Expr {
                 // if !is_const_let {
                 pattern.collect_bindings(consumer);
                 // }
+            }
+            Expr::Assign {
+                assignee,
+                value: _,
+                data: _,
+            } => {
+                assignee.collect_new_bindings(consumer);
             }
             Expr::Use {
                 namespace: _,
@@ -363,6 +369,19 @@ impl<Data> AssigneeExpr<Data> {
             | AssigneeExpr::Tuple { data, .. }
             | AssigneeExpr::Place { data, .. }
             | AssigneeExpr::Let { data, .. } => data,
+        }
+    }
+    pub fn collect_new_bindings(&self, consumer: &mut impl FnMut(Parc<Binding>)) {
+        match self {
+            AssigneeExpr::Placeholder { data: _ } => {}
+            AssigneeExpr::Unit { data: _ } => {}
+            AssigneeExpr::Tuple { tuple, data: _ } => {
+                for field in tuple.values() {
+                    field.collect_new_bindings(consumer);
+                }
+            }
+            AssigneeExpr::Place { place: _, data: _ } => {}
+            AssigneeExpr::Let { pattern, data: _ } => pattern.collect_bindings(consumer),
         }
     }
 }

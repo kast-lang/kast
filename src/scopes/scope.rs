@@ -13,9 +13,15 @@ impl Locals {
     fn new() -> Self {
         Self::default()
     }
-    fn insert(&mut self, name: Symbol, value: Value) {
+    fn insert_place(&mut self, name: Symbol, place: OwnedPlace) {
         self.id_by_name.insert(name.name().to_owned(), name.id());
-        self.by_id.insert(name.id(), (name, OwnedPlace::new(value)));
+        self.by_id.insert(name.id(), (name, place));
+    }
+    fn insert(&mut self, name: Symbol, value: Value) {
+        self.insert_place(name, OwnedPlace::new(value));
+    }
+    fn insert_uninitialized(&mut self, name: Symbol, ty: Type) {
+        self.insert_place(name, OwnedPlace::new_uninitialized(ty));
     }
     #[allow(dead_code)]
     fn get(&self, lookup: Lookup<'_>) -> Option<&(Symbol, OwnedPlace)> {
@@ -102,6 +108,14 @@ impl Scope {
     pub fn insert(&self, name: Symbol, value: Value) {
         tracing::trace!("insert into {:?} {:?} = {:?}", self.id, name, value);
         self.locals.lock().unwrap().insert(name, value);
+    }
+    pub fn insert_uninitialized(&self, name: Symbol, ty: Type) {
+        tracing::trace!(
+            "insert into {:?} {:?} = <uninitialized of {ty}>",
+            self.id,
+            name,
+        );
+        self.locals.lock().unwrap().insert_uninitialized(name, ty);
     }
     pub fn lookup<'a>(
         &'a self,

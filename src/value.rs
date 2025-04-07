@@ -101,11 +101,17 @@ impl std::fmt::Display for OwnedPlace {
 
 impl OwnedPlace {
     pub fn new(value: Value) -> Self {
+        Self::new_impl(value.ty(), PlaceState::Occupied(value))
+    }
+    fn new_impl(ty: Type, inner: PlaceState) -> Self {
         Self(Parc::new(Place {
             id: Id::new(),
-            ty: value.ty(),
-            state: Mutex::new(PlaceState::Occupied(value)),
+            ty,
+            state: Mutex::new(inner),
         }))
+    }
+    pub fn new_uninitialized(ty: Type) -> Self {
+        Self::new_impl(ty, PlaceState::Unintialized)
     }
     pub fn into_value(self) -> Result<Value, PlaceError> {
         self.0.take_value()
