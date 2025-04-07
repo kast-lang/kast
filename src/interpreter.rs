@@ -649,7 +649,7 @@ impl Cache {
                         move |expected: Type| {
                             let set_natives = set_natives.clone();
                             let ty = FnType {
-                                arg: TypeShape::String.into(),
+                                arg: TypeShape::Ref(TypeShape::String.into()).into(),
                                 contexts: Contexts::new_not_inferred(), // TODO generator_handler
                                 result: TypeShape::Unit.into(),
                             };
@@ -660,11 +660,7 @@ impl Cache {
                                     move |kast: Kast, _fn_ty: FnType, value: Value| {
                                         let set_natives = set_natives.clone();
                                         async move {
-                                            // TODO use ref
-                                            let value = value
-                                                .expect_inferred()?
-                                                .expect_string()?
-                                                .to_owned();
+                                            let value = value.expect_inferred()?.expect_ref()?;
                                             let generator_handler = set_natives
                                                 .lock()
                                                 .unwrap()
@@ -692,6 +688,16 @@ impl Cache {
                                             let handler = handler
                                                 .get_named("handle")
                                                 .ok_or_else(|| eyre!("wut"))?;
+                                            // TODO not clone
+                                            let value = value.inspect(|value| {
+                                                value
+                                                    .clone()
+                                                    .expect_inferred()
+                                                    .unwrap()
+                                                    .expect_string()
+                                                    .unwrap()
+                                                    .to_owned()
+                                            })?;
                                             for c in value.chars() {
                                                 kast.call(
                                                     handler.clone(),
@@ -1452,19 +1458,42 @@ impl SomeExprResult for PlaceRef {
 }
 
 impl Kast {
-    /// Assign to existing bindings
-    pub fn pattern_match_assign(&mut self, pattern: &Pattern, place: PlaceRef) -> eyre::Result<()> {
-        let matches = pattern
-            .r#match(place, self)?
-            .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
-        for (binding, value) in matches {
-            self.scopes
-                .interpreter
-                .get(&binding.symbol)
-                .expect("not found???")
-                .assign(value);
-        }
-        Ok(())
+    pub fn assign<'a>(
+        &'a mut self,
+        assignee: &'a AssigneeExpr,
+        value: PlaceRef,
+    ) -> BoxFuture<'a, eyre::Result<()>> {
+        let r#impl = async move {
+            match assignee {
+                AssigneeExpr::Placeholder { data: _ } => {}
+                AssigneeExpr::Unit { data: _ } => {}
+                AssigneeExpr::Tuple { tuple, data: _ } => {
+                    let value = value.inspect(|value| {
+                        value.expect_inferred_ref(|value| {
+                            Ok::<_, eyre::Report>(
+                                value
+                                    .expect_tuple()?
+                                    .0
+                                    .as_ref()
+                                    .map(|place| place.get_ref()),
+                            )
+                        })
+                    })???;
+                    for (_field_name, (field_assignee, field_value)) in tuple.as_ref().zip(value)? {
+                        self.assign(field_assignee, field_value).await?;
+                    }
+                }
+                AssigneeExpr::Place { place, data: _ } => {
+                    let place = self.eval_place(place).await?;
+                    place.assign(value.claim_value(self)?);
+                }
+                AssigneeExpr::Let { pattern, data: _ } => {
+                    self.pattern_match(pattern, value)?;
+                }
+            }
+            Ok(())
+        };
+        r#impl.boxed()
     }
     pub fn pattern_match(&mut self, pattern: &Pattern, place: PlaceRef) -> eyre::Result<()> {
         let matches = pattern
@@ -2132,12 +2161,12 @@ impl Kast {
                     }
                 }
                 Expr::Assign {
-                    pattern,
+                    assignee,
                     value,
                     data: _,
                 } => {
                     let value = self.eval_place(value).await?;
-                    self.pattern_match_assign(pattern, value)?;
+                    self.assign(assignee, value).await?;
                     ValueShape::Unit.into()
                 }
                 Expr::Let {

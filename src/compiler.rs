@@ -48,14 +48,12 @@ use std::collections::HashMap;
 #[derive(Clone)]
 pub struct State {
     bindings_mutable: bool,
-    use_existing_bindings: bool,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
             bindings_mutable: false,
-            use_existing_bindings: false,
         }
     }
 }
@@ -145,6 +143,7 @@ impl Cache {
             macro_native,
             macro_type_ascribe,
             macro_const_let,
+            macro_let_assign,
             macro_let,
             macro_call,
             macro_then,
@@ -311,29 +310,29 @@ pub trait Compilable: Sized {
     fn from_compiled(compiled: Compiled) -> Self;
 }
 
-enum SimpleExpr {
+enum SingleTokenExpr {
     Place(PlaceExpr),
     Expr(Expr),
 }
 
-impl From<SimpleExpr> for PlaceExpr {
-    fn from(value: SimpleExpr) -> Self {
+impl From<SingleTokenExpr> for PlaceExpr {
+    fn from(value: SingleTokenExpr) -> Self {
         match value {
-            SimpleExpr::Place(e) => e,
-            SimpleExpr::Expr(e) => PlaceExpr::new_temp(e),
+            SingleTokenExpr::Place(e) => e,
+            SingleTokenExpr::Expr(e) => PlaceExpr::new_temp(e),
         }
     }
 }
-impl From<SimpleExpr> for Expr {
-    fn from(value: SimpleExpr) -> Self {
+impl From<SingleTokenExpr> for Expr {
+    fn from(value: SingleTokenExpr) -> Self {
         match value {
-            SimpleExpr::Place(e) => e.into(),
-            SimpleExpr::Expr(e) => e,
+            SingleTokenExpr::Place(e) => e.into(),
+            SingleTokenExpr::Expr(e) => e,
         }
     }
 }
 
-impl SimpleExpr {
+impl SingleTokenExpr {
     async fn compile(kast: &mut Kast, token: &Token, data: &AstData) -> eyre::Result<Self> {
         Ok(match token {
             Token::Ident {
@@ -348,7 +347,7 @@ impl SimpleExpr {
                     .await
                     .ok_or_else(|| eyre!("{name:?} not found"))?;
                 match value.clone().inferred() {
-                    Some(ValueShape::Binding(binding)) => SimpleExpr::Place(
+                    Some(ValueShape::Binding(binding)) => SingleTokenExpr::Place(
                         PlaceExpr::Binding {
                             binding: binding.clone(),
                             data: data.span.clone(),
@@ -356,7 +355,7 @@ impl SimpleExpr {
                         .init(kast)
                         .await?,
                     ),
-                    _ => SimpleExpr::Expr(
+                    _ => SingleTokenExpr::Expr(
                         Expr::Constant {
                             value: value.clone(),
                             data: data.span.clone(),
@@ -366,7 +365,7 @@ impl SimpleExpr {
                     ),
                 }
             }
-            Token::String(token) => SimpleExpr::Expr(
+            Token::String(token) => SingleTokenExpr::Expr(
                 Expr::String {
                     token: token.clone(),
                     data: data.span.clone(),
@@ -374,7 +373,7 @@ impl SimpleExpr {
                 .init(kast)
                 .await?,
             ),
-            Token::Number { raw } => SimpleExpr::Expr(
+            Token::Number { raw } => SingleTokenExpr::Expr(
                 Expr::Number {
                     raw: raw.clone(),
                     data: data.span.clone(),
@@ -399,7 +398,7 @@ impl Compilable for PlaceExpr {
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         Ok(match ast {
             kast_ast::Ast::Simple { token, data } => {
-                SimpleExpr::compile(kast, token, data).await?.into()
+                SingleTokenExpr::compile(kast, token, data).await?.into()
             }
             kast_ast::Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
             kast_ast::Ast::SyntaxDefinition { .. } | kast_ast::Ast::FromScratch { .. } => {
@@ -416,6 +415,49 @@ impl Compilable for PlaceExpr {
         Ok(Self::new_temp(
             Expr::compile_call(kast, f, args, span).await?,
         ))
+    }
+}
+
+impl TryFrom<SingleTokenExpr> for AssigneeExpr {
+    type Error = eyre::Report;
+    fn try_from(value: SingleTokenExpr) -> Result<Self, Self::Error> {
+        Ok(match value {
+            SingleTokenExpr::Place(e) => Self::Place {
+                data: e.data().clone(),
+                place: e,
+            },
+            SingleTokenExpr::Expr(_) => eyre::bail!("expected assignee expr"),
+        })
+    }
+}
+
+#[async_trait]
+impl Compilable for AssigneeExpr {
+    const CTY: CompiledType = CompiledType::AssigneeExpr;
+    fn from_compiled(compiled: Compiled) -> Self {
+        match compiled {
+            Compiled::AssigneeExpr(e) => e,
+            _ => unreachable!(),
+        }
+    }
+    async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
+        Ok(match ast {
+            kast_ast::Ast::Simple { token, data } => SingleTokenExpr::compile(kast, token, data)
+                .await?
+                .try_into()?,
+            kast_ast::Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
+            kast_ast::Ast::SyntaxDefinition { .. } | kast_ast::Ast::FromScratch { .. } => {
+                eyre::bail!("expected assignee expr");
+            }
+        })
+    }
+    async fn compile_call(
+        _kast: &mut Kast,
+        _f: Value,
+        _args: &Tuple<Ast>,
+        _span: Span,
+    ) -> eyre::Result<Self> {
+        eyre::bail!("expected assignee expr")
     }
 }
 
@@ -465,7 +507,9 @@ impl Compilable for Expr {
     }
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         Ok(match ast {
-            Ast::Simple { token, data } => SimpleExpr::compile(kast, token, data).await?.into(),
+            Ast::Simple { token, data } => {
+                SingleTokenExpr::compile(kast, token, data).await?.into()
+            }
             Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
             Ast::SyntaxDefinition { def, data } => {
                 kast.insert_syntax(def.clone())?;
@@ -523,25 +567,12 @@ async fn compile_ident_pattern(
     let compiler_scope = match hygiene {
         Hygiene::DefSite => kast.scopes.compiler.clone(),
     };
-    let binding = if kast.compiler.use_existing_bindings {
-        let value = kast
-            .scopes
-            .compiler
-            .lookup(name, *hygiene, kast.spawn_id)
-            .await
-            .ok_or_else(|| eyre!("{name:?} not found"))?;
-        match value.inferred() {
-            Some(ValueShape::Binding(binding)) => binding,
-            _ => eyre::bail!("{name:?} is not a binding"),
-        }
-    } else {
-        Parc::new(Binding {
-            symbol: Symbol::new(name),
-            ty: Type::new_not_inferred(&format!("{name} at {span}")),
-            mutable: kast.compiler.bindings_mutable,
-            compiler_scope,
-        })
-    };
+    let binding = Parc::new(Binding {
+        symbol: Symbol::new(name),
+        ty: Type::new_not_inferred(&format!("{name} at {span}")),
+        mutable: kast.compiler.bindings_mutable,
+        compiler_scope,
+    });
     Ok(Pattern::Binding {
         binding,
         bind_mode,
@@ -650,6 +681,7 @@ impl Kast {
             CompiledType::Expr => Compiled::Expr(self.compile(ast).await?),
             CompiledType::Pattern => Compiled::Pattern(self.compile(ast).await?),
             CompiledType::PlaceExpr => Compiled::PlaceExpr(self.compile(ast).await?),
+            CompiledType::AssigneeExpr => Compiled::AssigneeExpr(self.compile(ast).await?),
         })
     }
     async fn macro_type_ascribe(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -706,7 +738,27 @@ impl Kast {
             .await?,
         ))
     }
-    async fn macro_let(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+    async fn macro_let(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        let (values, span) = get_complex(ast);
+        let pattern = values
+            .as_ref()
+            .into_single_named("pattern")
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let pattern: Pattern = self.compile(pattern).await?;
+        self.inject_bindings(&pattern);
+        Ok(match cty {
+            CompiledType::AssigneeExpr => Compiled::AssigneeExpr(
+                AssigneeExpr::Let {
+                    pattern,
+                    data: span,
+                }
+                .init(self)
+                .await?,
+            ),
+            _ => eyre::bail!("must be assignee"),
+        })
+    }
+    async fn macro_let_assign(&mut self, ty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_expr!(self, ty, ast);
         let (values, span) = get_complex(ast);
         let [pattern, value] = values
@@ -788,6 +840,7 @@ impl Kast {
             }
             CompiledType::Pattern => todo!(),
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
+            CompiledType::AssigneeExpr => eyre::bail!("not assignee"),
         })
     }
     async fn macro_variant(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -814,6 +867,7 @@ impl Kast {
         };
         Ok(match cty {
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
+            CompiledType::AssigneeExpr => eyre::bail!("not assignee"),
             CompiledType::Expr => Compiled::Expr({
                 let mut expr = Expr::Variant {
                     name: name.to_owned(),
@@ -1177,7 +1231,9 @@ impl Kast {
             .into_unnamed()
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         tracing::trace!("compiling scoped: {expr}");
+        // TODO probably need to enter scope in all cases?
         Ok(match cty {
+            CompiledType::AssigneeExpr => Compiled::AssigneeExpr(self.compile(expr).await?),
             CompiledType::PlaceExpr => Compiled::PlaceExpr(self.compile(expr).await?),
             CompiledType::Expr => {
                 let expr = self.enter_scope().compile(expr).await?;
@@ -1281,7 +1337,12 @@ impl Kast {
         let (values, span) = get_complex(ast);
         let [] = values.as_ref().into_named([])?;
         Ok(match cty {
-            CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
+            CompiledType::AssigneeExpr => {
+                Compiled::AssigneeExpr(AssigneeExpr::Unit { data: span }.init(self).await?)
+            }
+            CompiledType::PlaceExpr => Compiled::PlaceExpr(PlaceExpr::new_temp(
+                Expr::Unit { data: span }.init(self).await?,
+            )),
             CompiledType::Pattern => Compiled::Pattern(Pattern::Unit { data: span }.init()?),
             CompiledType::Expr => Compiled::Expr(Expr::Unit { data: span }.init(self).await?),
         })
@@ -1552,6 +1613,14 @@ impl Kast {
             }
         }
         Ok(match cty {
+            CompiledType::AssigneeExpr => Compiled::AssigneeExpr(
+                AssigneeExpr::Tuple {
+                    tuple: tuple.map(|field| field.expect_assignee_expr().unwrap()),
+                    data: ast.data().span.clone(),
+                }
+                .init(self)
+                .await?,
+            ),
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::Expr => Compiled::Expr(
                 Expr::Tuple {
@@ -1652,6 +1721,9 @@ impl Kast {
             .into_named([])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         Ok(match cty {
+            CompiledType::AssigneeExpr => {
+                Compiled::AssigneeExpr(AssigneeExpr::Placeholder { data: span }.init(self).await?)
+            }
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::Expr => Compiled::Expr(
                 Expr::Constant {
@@ -1780,16 +1852,15 @@ impl Kast {
     async fn macro_assign(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_expr!(self, cty, ast);
         let (values, span) = get_complex(ast);
-        let [pattern, value] = values.as_ref().into_named(["pattern", "value"])?;
-        let pattern: Pattern = {
+        let [assignee, value] = values.as_ref().into_named(["assignee", "value"])?;
+        let assignee: AssigneeExpr = {
             let mut kast = self.clone();
-            kast.compiler.use_existing_bindings = true;
-            kast.compile(pattern).await?
+            kast.compile(assignee).await?
         };
         let value: PlaceExpr = self.compile(value).await?;
         Ok(Compiled::Expr(
             Expr::Assign {
-                pattern,
+                assignee,
                 value: Box::new(value),
                 data: span,
             }
@@ -1867,10 +1938,12 @@ impl Kast {
 pub enum CompiledType {
     Expr,
     PlaceExpr,
+    AssigneeExpr,
     Pattern,
 }
 
 pub enum Compiled {
+    AssigneeExpr(AssigneeExpr),
     Expr(Expr),
     PlaceExpr(PlaceExpr),
     Pattern(Pattern),
@@ -1879,6 +1952,7 @@ pub enum Compiled {
 impl Compiled {
     fn ty_mut(&mut self) -> &mut Type {
         match self {
+            Compiled::AssigneeExpr(e) => &mut e.data_mut().ty,
             Compiled::Expr(e) => &mut e.data_mut().ty,
             Compiled::PlaceExpr(e) => &mut e.data_mut().ty,
             Compiled::Pattern(p) => &mut p.data_mut().ty,
@@ -1887,6 +1961,12 @@ impl Compiled {
     fn expect_expr(self) -> Option<Expr> {
         match self {
             Compiled::Expr(e) => Some(e),
+            _ => None,
+        }
+    }
+    fn expect_assignee_expr(self) -> Option<AssigneeExpr> {
+        match self {
+            Compiled::AssigneeExpr(e) => Some(e),
             _ => None,
         }
     }
@@ -1974,6 +2054,55 @@ impl Kast {
             Some(ValueShape::Type(ty)) => ty,
             _ => eyre::bail!("casting to {} is not possible", target.ty()),
         })
+    }
+}
+
+impl AssigneeExpr<Span> {
+    /// Initialize expr data
+    pub fn init(self, _kast: &Kast) -> BoxFuture<'_, eyre::Result<AssigneeExpr>> {
+        let r#impl = async {
+            Ok(match self {
+                Self::Placeholder { data: span } => AssigneeExpr::Placeholder {
+                    data: ExprData {
+                        ty: Type::new_not_inferred("placeholder assignee"),
+                        span,
+                    },
+                },
+                Self::Unit { data: span } => AssigneeExpr::Unit {
+                    data: ExprData {
+                        ty: TypeShape::Unit.into(),
+                        span,
+                    },
+                },
+                // NOTE: We should increase the activation watermark on stream
+                Self::Tuple { tuple, data: span } => AssigneeExpr::Tuple {
+                    data: ExprData {
+                        ty: TypeShape::Tuple(tuple.as_ref().map(|field| field.data().ty.clone()))
+                            .into(),
+                        span,
+                    },
+                    tuple,
+                },
+                Self::Place { place, data: span } => AssigneeExpr::Place {
+                    data: ExprData {
+                        ty: place.data().ty.clone(),
+                        span,
+                    },
+                    place,
+                },
+                Self::Let {
+                    pattern,
+                    data: span,
+                } => AssigneeExpr::Let {
+                    data: ExprData {
+                        ty: pattern.data().ty.clone(),
+                        span,
+                    },
+                    pattern,
+                },
+            })
+        };
+        r#impl.boxed()
     }
 }
 
@@ -2108,17 +2237,17 @@ impl Expr<Span> {
                     }
                 }
                 Expr::Assign {
-                    pattern,
+                    assignee,
                     value,
                     data: span,
                 } => {
-                    pattern
+                    assignee
                         .data()
                         .ty
                         .clone()
                         .make_same(value.data().ty.clone())?;
                     Expr::Assign {
-                        pattern,
+                        assignee,
                         value,
                         data: ExprData {
                             ty: TypeShape::Unit.into(),

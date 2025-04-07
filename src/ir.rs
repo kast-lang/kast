@@ -29,7 +29,7 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Assign {
-        pattern: Pattern,
+        assignee: AssigneeExpr,
         value: Box<PlaceExpr>,
         data: Data,
     },
@@ -184,6 +184,28 @@ pub enum Expr<Data = ExprData> {
 }
 
 #[derive(Clone, derive_macros::ExprDisplay)]
+pub enum AssigneeExpr<Data = ExprData> {
+    Placeholder {
+        data: Data,
+    },
+    Unit {
+        data: Data,
+    },
+    Tuple {
+        tuple: Tuple<AssigneeExpr>,
+        data: Data,
+    },
+    Place {
+        place: PlaceExpr,
+        data: Data,
+    },
+    Let {
+        pattern: Pattern,
+        data: Data,
+    },
+}
+
+#[derive(Clone, derive_macros::ExprDisplay)]
 pub enum PlaceExpr<Data = ExprData> {
     Binding {
         binding: Parc<Binding>,
@@ -320,6 +342,27 @@ impl<Data> PlaceExpr<Data> {
             | Self::Temporary { data, .. }
             | PlaceExpr::Binding { data, .. }
             | PlaceExpr::FieldAccess { data, .. } => data,
+        }
+    }
+}
+
+impl<Data> AssigneeExpr<Data> {
+    pub fn data(&self) -> &Data {
+        match self {
+            AssigneeExpr::Placeholder { data, .. }
+            | AssigneeExpr::Unit { data, .. }
+            | AssigneeExpr::Tuple { data, .. }
+            | AssigneeExpr::Place { data, .. }
+            | AssigneeExpr::Let { data, .. } => data,
+        }
+    }
+    pub fn data_mut(&mut self) -> &mut Data {
+        match self {
+            AssigneeExpr::Placeholder { data, .. }
+            | AssigneeExpr::Unit { data, .. }
+            | AssigneeExpr::Tuple { data, .. }
+            | AssigneeExpr::Place { data, .. }
+            | AssigneeExpr::Let { data, .. } => data,
         }
     }
 }

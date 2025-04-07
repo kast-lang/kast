@@ -228,7 +228,7 @@ impl syntax @"syntax".@"continue" = macro _ => `(
 );
 
 const char_ord :: char -> int32 = native "char_ord";
-const chars :: string -> () with generator_handler[char] = native "chars";
+const chars :: &string -> () with generator_handler[char] = native "chars";
 const push_char :: (string, char) -> string = native "push_char";
 
 const list_push = forall[T] {

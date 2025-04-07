@@ -22,15 +22,18 @@ syntax_module {
   syntax for_loop <- 3 = "for" value_pattern "in" generator "{" body "}";
   syntax @"builtin macro impl_cast" <- 4 = "impl" value "as" target "=" impl;
   syntax @"builtin macro impl_syntax" <- 4 = "impl" "syntax" def "=" impl;
-  syntax @"builtin macro let" <- 4 = "let" pattern "=" value;
+  syntax @"builtin macro let_assign" <- 4 = "let" pattern "=" value;
   syntax @"builtin macro const_let" <- 4 = "const" pattern "=" value;
-  syntax @"builtin macro assign" <- 4 = pattern "=" value;
+  syntax @"builtin macro assign" <- 4 = assignee "=" value;
 
   syntax @"op +=" <- 4 = target "+=" value;
   syntax @"op -=" <- 4 = target "-=" value;
   syntax @"op *=" <- 4 = target "*=" value;
   syntax @"op /=" <- 4 = target "/=" value;
   syntax @"op %=" <- 4 = target "%=" value;
+
+  # TODO
+  # syntax @"builtin macro let" <- 4.1 = "let" pattern;
 
   syntax @"builtin macro newtype" <- 4.3 = "newtype" def;
 

@@ -160,3 +160,12 @@ fn test_complex_math() {
         }),
     );
 }
+
+#[test]
+fn test_very_long_file() {
+    let mut source = String::new();
+    for _ in 0..1_000 {
+        source += "a;"
+    }
+    test_case(&source, |result| assert!(result.is_ok()));
+}
