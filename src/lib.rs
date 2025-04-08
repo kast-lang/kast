@@ -127,7 +127,7 @@ enum ImportMode {
 }
 
 struct Cache {
-    start: std::time::Instant,
+    start: batbox_time::Instant,
     executor: Executor,
     interpreter: interpreter::Cache,
     compiler: compiler::Cache,
@@ -137,7 +137,7 @@ struct Cache {
 impl Default for Cache {
     fn default() -> Self {
         Self {
-            start: std::time::Instant::now(),
+            start: batbox_time::Instant::now(),
             interpreter: interpreter::Cache::new(),
             compiler: compiler::Cache::new(),
             imports: Default::default(),
