@@ -148,7 +148,7 @@ fn main() -> eyre::Result<()> {
                         return Err(e);
                     }
                 };
-                let place = place_ref.read();
+                let place = place_ref.read()?;
                 let ty = place.ty().unwrap_or_else(|| place_ref.place.ty.clone());
                 println!("{} :: {}", *place, ty);
                 Ok(())

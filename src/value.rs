@@ -1,7 +1,3 @@
-use parking_lot::{
-    MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
-};
-
 use super::*;
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
@@ -79,7 +75,7 @@ impl std::ops::Deref for OwnedPlace {
 
 impl PartialEq for OwnedPlace {
     fn eq(&self, other: &Self) -> bool {
-        *self.0.state.read() == *other.0.state.read()
+        *self.0.read().expect("can't read for eq") == *other.0.read().expect("can't read for eq")
     }
 }
 
@@ -88,13 +84,18 @@ impl Eq for OwnedPlace {}
 impl TryHash for OwnedPlace {
     type Error = <PlaceState as TryHash>::Error;
     fn try_hash(&self, state: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
-        self.0.state.read().try_hash(state)
+        self.0
+            .read()
+            .expect("can't read for hashing")
+            .try_hash(state)
     }
 }
 
 impl Clone for OwnedPlace {
     fn clone(&self) -> Self {
-        Self(Parc::new(Place::new_state(self.0.state.read().clone())))
+        Self(Parc::new(Place::new_state(
+            self.0.read().expect("can't read for clone").clone(),
+        )))
     }
 }
 
@@ -112,13 +113,13 @@ impl OwnedPlace {
         Self(Parc::new(Place {
             id: Id::new(),
             ty,
-            state: RwLock::new(inner),
+            state: tokio::sync::RwLock::new(inner),
         }))
     }
     pub fn new_uninitialized(ty: Type) -> Self {
         Self::new_impl(ty, PlaceState::Unintialized)
     }
-    pub fn into_value(self) -> Result<Value, PlaceError> {
+    pub fn into_value(self) -> eyre::Result<Value> {
         self.0.take_value()
     }
     pub fn get_ref(&self) -> PlaceRef {
@@ -215,7 +216,7 @@ impl Kast {
 
 // nothing is going to work
 impl PlaceRef {
-    pub fn read(&self) -> PlaceReadGuard<'_, PlaceState> {
+    pub fn read(&self) -> eyre::Result<PlaceReadGuard<'_, PlaceState>> {
         self.place.read()
     }
     pub fn write(&self) -> eyre::Result<PlaceWriteGuard<'_, PlaceState>> {
@@ -240,10 +241,10 @@ impl PlaceRef {
             self.place.take_value()?
         })
     }
-    pub fn clone_value(&self) -> Result<Value, PlaceError> {
+    pub fn clone_value(&self) -> eyre::Result<Value> {
         self.place.clone_value()
     }
-    pub fn assign(&self, new_value: Value) {
+    pub fn assign(&self, new_value: Value) -> eyre::Result<()> {
         self.place.assign(new_value)
     }
 }
@@ -257,10 +258,10 @@ impl std::fmt::Display for PlaceRef {
 pub struct Place {
     pub id: Id,
     pub ty: Type,
-    pub state: RwLock<PlaceState>,
+    pub state: tokio::sync::RwLock<PlaceState>,
 }
 
-pub struct PlaceReadGuard<'a, T>(MappedRwLockReadGuard<'a, T>);
+pub struct PlaceReadGuard<'a, T>(tokio::sync::RwLockReadGuard<'a, T>);
 
 impl<T> std::ops::Deref for PlaceReadGuard<'_, T> {
     type Target = T;
@@ -269,7 +270,7 @@ impl<T> std::ops::Deref for PlaceReadGuard<'_, T> {
     }
 }
 
-pub struct PlaceWriteGuard<'a, T>(MappedRwLockWriteGuard<'a, T>);
+pub struct PlaceWriteGuard<'a, T>(tokio::sync::RwLockMappedWriteGuard<'a, T>);
 
 impl<T> std::ops::Deref for PlaceWriteGuard<'_, T> {
     type Target = T;
@@ -295,46 +296,54 @@ impl Place {
             ty: state
                 .ty()
                 .unwrap_or_else(|| Type::new_not_inferred("place type")),
-            state: RwLock::new(state),
+            state: tokio::sync::RwLock::new(state),
         }
     }
-    pub fn read(&self) -> PlaceReadGuard<'_, PlaceState> {
-        PlaceReadGuard(RwLockReadGuard::map(self.state.read(), |x| x))
+    pub fn read(&self) -> eyre::Result<PlaceReadGuard<'_, PlaceState>> {
+        Ok(PlaceReadGuard(tokio::sync::RwLockReadGuard::map(
+            self.state
+                .try_read()
+                .map_err(|_| eyre!("already borrowed mutably"))?,
+            |x| x,
+        )))
     }
     pub fn write(&self) -> eyre::Result<PlaceWriteGuard<'_, PlaceState>> {
-        Ok(PlaceWriteGuard(RwLockWriteGuard::map(
-            self.state.write(),
+        Ok(PlaceWriteGuard(tokio::sync::RwLockWriteGuard::map(
+            self.state
+                .try_write()
+                .map_err(|_| eyre!("already borrowed"))?,
             |x| x,
         )))
     }
     pub fn read_value(&self) -> eyre::Result<PlaceReadGuard<'_, Value>> {
-        let state = self.state.read();
-        match RwLockReadGuard::try_map(state, |state| state.get().ok()) {
+        let guard = self.read()?;
+        match tokio::sync::RwLockReadGuard::try_map(guard.0, |state| state.get().ok()) {
             Ok(result) => Ok(PlaceReadGuard(result)),
-            Err(state) => Err(state.get().unwrap_err().into()),
+            Err(guard) => Err(guard.get().unwrap_err().into()),
         }
     }
     pub fn write_value(&self) -> eyre::Result<PlaceWriteGuard<'_, ValueShape>> {
-        let state = self.state.write();
-        match RwLockWriteGuard::try_map(state, |state| state.get_mut().ok()) {
+        let guard = self.write()?;
+        match tokio::sync::RwLockMappedWriteGuard::try_map(guard.0, |state| state.get_mut().ok()) {
             Ok(result) => Ok(PlaceWriteGuard(result)),
-            Err(state) => Err(state.get().unwrap_err().into()),
+            Err(guard) => Err(guard.get().unwrap_err().into()),
         }
     }
-    pub fn take_value(&self) -> Result<Value, PlaceError> {
-        Ok(self.state.write().take()?.clone())
+    pub fn take_value(&self) -> eyre::Result<Value> {
+        Ok(self.write()?.take()?.clone())
     }
-    pub fn clone_value(&self) -> Result<Value, PlaceError> {
-        Ok(self.state.read().get()?.clone())
+    pub fn clone_value(&self) -> eyre::Result<Value> {
+        Ok(self.read()?.get()?.clone())
     }
-    pub fn assign(&self, new_value: Value) {
-        self.state.write().assign(new_value)
+    pub fn assign(&self, new_value: Value) -> eyre::Result<()> {
+        self.write()?.assign(new_value);
+        Ok(())
     }
 }
 
 impl std::fmt::Display for Place {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &*self.state.read() {
+        match &*self.read().expect("Failed to read for Display") {
             PlaceState::Unintialized => write!(f, "<uninitialized>"),
             PlaceState::Occupied(value) => value.fmt(f),
             PlaceState::MovedOut => write!(f, "<moved out>"),
@@ -585,7 +594,7 @@ impl std::fmt::Display for ValueShape {
             // copying strings will not work, ever
             ValueShape::Ref(r) => {
                 write!(f, "&")?;
-                r.read().fmt(f)
+                r.read().expect("failed to read for Display &").fmt(f)
             }
         }
     }

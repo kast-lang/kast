@@ -678,13 +678,9 @@ impl Cache {
                                             let handler = handler
                                                 .get_named("handle")
                                                 .ok_or_else(|| eyre!("wut"))?;
-                                            let value = {
-                                                let value = value.read_value()?;
-                                                let value = value.as_inferred()?;
-                                                let value = value.as_str()?;
-                                                // TODO figure out how to not clone
-                                                value.to_owned()
-                                            };
+                                            let value = value.read_value()?;
+                                            let value = value.as_inferred()?;
+                                            let value = value.as_str()?;
                                             for c in value.chars() {
                                                 kast.call(
                                                     handler.clone(),
@@ -1470,7 +1466,7 @@ impl Kast {
                 }
                 AssigneeExpr::Place { place, data: _ } => {
                     let place = self.eval_place(place).await?;
-                    place.assign(value.claim_value(self)?);
+                    place.assign(value.claim_value(self)?)?;
                 }
                 AssigneeExpr::Let { pattern, data: _ } => {
                     self.pattern_match(pattern, value)?;
