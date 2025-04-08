@@ -43,7 +43,7 @@ impl CastMap {
     #[allow(clippy::only_used_in_recursion)]
     pub fn cast_to_ty(&self, value: Value) -> eyre::Result<Result<Type, Value>> {
         // TODO no clone
-        Ok(Ok(match value.clone().expect_inferred()? {
+        Ok(Ok(match value.clone().into_inferred()? {
             ValueShape::Unit => TypeShape::Unit.into(),
             // TODO check is this useful?
             // ValueShape::Ref(place) => TypeShape::Ref(
@@ -74,7 +74,7 @@ impl CastMap {
     }
     pub fn cast(&self, value: Value, target: &Value) -> eyre::Result<Result<Value, Value>> {
         #[allow(clippy::single_match)]
-        match target.clone().expect_inferred()? {
+        match target.clone().into_inferred()? {
             ValueShape::Type(ty) => match ty.inferred() {
                 Ok(TypeShape::Type) => {
                     return self

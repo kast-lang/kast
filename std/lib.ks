@@ -35,6 +35,13 @@ const char :: type = native "char";
 const string :: type = native "string";
 
 const output :: type = native "output";
+# const output :: type = (
+#     .write = &string -> (),
+# );
+const input :: type = (
+    .read_line = () -> string with (),
+);
+native "set_native" (.name = "input", .value = input);
 
 const default_number_type :: type = native "default_number_type";
 let default_number_type_based_on_dot :: default_number_type = (
@@ -54,6 +61,10 @@ const print :: &string -> () with output = line => (
     let output = current output;
     output.write line;
     output.write &"\n";
+);
+
+const read_line :: () -> string with input = () => (
+    (current input).read_line ()
 );
 
 const filesystem :: type = native "filesystem";
@@ -99,12 +110,18 @@ impl syntax @"syntax".@"op binary *" = forall[T] { native "*" :: (.lhs = T, .rhs
 impl syntax @"syntax".@"op binary /" = forall[T] { native "/" :: (.lhs = T, .rhs = T) -> T };
 impl syntax @"syntax".@"op binary %" = forall[T] { native "%" :: (.lhs = T, .rhs = T) -> T };
 
-impl syntax @"syntax".@"op binary <" = forall[T] { native "<" :: (.lhs = T, .rhs = T) -> bool };
-impl syntax @"syntax".@"op binary <=" = forall[T] { native "<=" :: (.lhs = T, .rhs = T) -> bool };
-impl syntax @"syntax".@"op binary ==" = forall[T] { native "==" :: (.lhs = T, .rhs = T) -> bool };
-impl syntax @"syntax".@"op binary !=" = forall[T] { native "!=" :: (.lhs = T, .rhs = T) -> bool };
-impl syntax @"syntax".@"op binary >=" = forall[T] { native ">=" :: (.lhs = T, .rhs = T) -> bool };
-impl syntax @"syntax".@"op binary >" = forall[T] { native ">" :: (.lhs = T, .rhs = T) -> bool };
+const @"op binary <" = forall[T] { native "<" :: (.lhs = &T, .rhs = &T) -> bool };
+impl syntax @"syntax".@"op binary <" = macro (.lhs, .rhs) => `(@"op binary <"(.lhs = & $lhs, .rhs = & $rhs));
+const @"op binary <=" = forall[T] { native "<=" :: (.lhs = &T, .rhs = &T) -> bool };
+impl syntax @"syntax".@"op binary <=" = macro (.lhs, .rhs) => `(@"op binary <="(.lhs = & $lhs, .rhs = & $rhs));
+const @"op binary ==" = forall[T] { native "==" :: (.lhs = &T, .rhs = &T) -> bool };
+impl syntax @"syntax".@"op binary ==" = macro (.lhs, .rhs) => `(@"op binary =="(.lhs = & $lhs, .rhs = & $rhs));
+const @"op binary !=" = forall[T] { native "!=" :: (.lhs = &T, .rhs = &T) -> bool };
+impl syntax @"syntax".@"op binary !=" = macro (.lhs, .rhs) => `(@"op binary !="(.lhs = & $lhs, .rhs = & $rhs));
+const @"op binary >=" = forall[T] { native ">=" :: (.lhs = &T, .rhs = &T) -> bool };
+impl syntax @"syntax".@"op binary >=" = macro (.lhs, .rhs) => `(@"op binary >="(.lhs = & $lhs, .rhs = & $rhs));
+const @"op binary >" = forall[T] { native ">" :: (.lhs = &T, .rhs = &T) -> bool };
+impl syntax @"syntax".@"op binary >" = macro (.lhs, .rhs) => `(@"op binary >"(.lhs = & $lhs, .rhs = & $rhs));
 
 impl syntax @"syntax".@"op +=" = macro (.target, .value) => `($target = $target + $value);
 impl syntax @"syntax".@"op -=" = macro (.target, .value) => `($target = $target - $value);
@@ -131,7 +148,7 @@ impl char as Copy = ();
 impl type as Copy = ();
 
 const Parse = forall[Self] {
-    .parse = string -> Self,
+    .parse = &string -> Self,
 };
 
 impl int32 as Parse = (

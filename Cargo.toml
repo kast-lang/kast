@@ -6,6 +6,7 @@ license = "MIT"
 repository = "https://github.com/kast-lang/kast"
 
 [workspace.dependencies]
+parking_lot = "0.12"
 clap = { version = "4.5.18", features = ["derive"] }
 eyre = "0.6.12"
 color-eyre = "0.6.3"
@@ -52,6 +53,7 @@ embed-std = []
 
 [dependencies]
 derive-macros = { package = "kast-derive-macros", path = "crates/derive-macros", version = "0.1" }
+parking_lot.workspace = true
 pad-adapter.workspace = true
 getrandom.workspace = true
 clap.workspace = true

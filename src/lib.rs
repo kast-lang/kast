@@ -37,8 +37,27 @@ mod scopes;
 mod ty;
 mod value;
 
+pub enum MaybeBorrowed<'a, T> {
+    Borrowed(&'a T),
+    Owned(T),
+}
+
+impl<T> std::ops::Deref for MaybeBorrowed<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            MaybeBorrowed::Borrowed(value) => value,
+            MaybeBorrowed::Owned(value) => value,
+        }
+    }
+}
+
 pub trait Output: 'static + Sync + Send {
     fn write(&self, s: &str);
+}
+
+pub trait Input: 'static + Sync + Send {
+    fn read_line(&self) -> String;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -57,6 +76,7 @@ pub struct Kast {
     scopes: Scopes,
     cache: Parc<Cache>,
     pub output: std::sync::Arc<dyn Output>,
+    pub input: std::sync::Arc<dyn Input>,
     exec_mode: ExecMode,
 }
 
@@ -145,6 +165,20 @@ impl Kast {
                 }
                 DefaultOutput
             }),
+            input: std::sync::Arc::new({
+                struct DefaultInput;
+                impl Input for DefaultInput {
+                    fn read_line(&self) -> String {
+                        let mut s = String::new();
+                        std::io::stdin()
+                            .read_line(&mut s)
+                            .expect("failed to read line");
+                        let s = s.trim_end_matches("\n").to_owned();
+                        s
+                    }
+                }
+                DefaultInput
+            }),
             exec_mode: ExecMode::Run,
         }
     }
@@ -153,7 +187,7 @@ impl Kast {
         let syntax = kast
             .import_impl(std_path().join("syntax.ks"), ImportMode::FromScratch)
             .wrap_err("failed to import std syntax")?
-            .expect_inferred()?
+            .into_inferred()?
             .expect_syntax_module()
             .wrap_err("std/syntax.ks must evaluate to syntax")?;
         let mut new_syntax: ast::Syntax = (*kast.syntax).clone();

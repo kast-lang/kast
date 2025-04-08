@@ -141,25 +141,16 @@ fn main() -> eyre::Result<()> {
                     contents,
                     filename: "<stdin>".into(),
                 };
-                let value: PlaceRef = match kast.lock().unwrap().eval_source(source, None) {
+                let place_ref: PlaceRef = match kast.lock().unwrap().eval_source(source, None) {
                     Ok(value) => value,
                     Err(e) => {
                         kast::inference::global_state::revert(snapshot);
                         return Err(e);
                     }
                 };
-                match value.inspect(|value| {
-                    println!("{} :: {}", value, value.ty());
-                }) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        let e = match e {
-                            PlaceError::Unintialized => "uninitialized",
-                            PlaceError::MovedOut => "moved out",
-                        };
-                        println!("<{e}> :: {}", value.place.ty);
-                    }
-                };
+                let place = place_ref.read();
+                let ty = place.ty().unwrap_or_else(|| place_ref.place.ty.clone());
+                println!("{} :: {}", *place, ty);
                 Ok(())
             })?;
         }

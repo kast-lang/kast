@@ -224,7 +224,7 @@ impl Cache {
                         }
                         std::task::Poll::Ready(value) => value,
                     };
-                    match r#macro.clone().expect_inferred()? {
+                    match r#macro.clone().into_inferred()? {
                         ValueShape::Macro(f) => Macro::UserDefined(f.f.clone()),
                         _ => Macro::Value(r#macro.clone()),
                     }
@@ -293,7 +293,7 @@ pub trait Compilable: Sized {
                 .into();
                 // hold on
                 let expanded = kast.call_fn(r#macro, arg).await?;
-                let expanded = match expanded.clone().expect_inferred()? {
+                let expanded = match expanded.clone().into_inferred()? {
                     ValueShape::Ast(ast) => ast,
                     _ => eyre::bail!(
                         "macro {name} did not expand to an ast, but to {expanded}",
@@ -1041,7 +1041,7 @@ impl Kast {
         let def = self
             .eval_ast::<Value>(def, Some(TypeShape::SyntaxDefinition.into()))
             .await?
-            .expect_inferred()?
+            .into_inferred()?
             .expect_syntax_definition()?;
         tracing::trace!("defined syntax {:?}", def.name);
         let r#impl = self.eval_ast(r#impl, None).await?; // TODO should be a macro?
@@ -1075,7 +1075,7 @@ impl Kast {
         inner
             .eval_ast::<Value>(body, Some(TypeShape::Unit.into()))
             .await?
-            .expect_inferred()?
+            .into_inferred()?
             .expect_unit()?;
         Ok(Compiled::Expr(
             Expr::Constant {
@@ -1113,7 +1113,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         // TODO expect some type here?
         let def = self.eval_ast::<Value>(def, None).await?;
-        let def = def.expect_inferred()?.expect_function()?;
+        let def = def.into_inferred()?.expect_function()?;
         Ok(Compiled::Expr(
             Expr::Constant {
                 value: ValueShape::Macro(def).into(),
@@ -1223,7 +1223,7 @@ impl Kast {
                     contexts, None, // TODO Contexts??
                 )
                 .await?
-                .expect_inferred()?
+                .into_inferred()?
                 .into_contexts()?,
             None => Contexts::new_not_inferred(),
         };
@@ -1276,8 +1276,8 @@ impl Kast {
                 Some(TypeShape::String.into()),
             )
             .await?
-            .expect_inferred()?
-            .expect_string()?
+            .into_inferred()?
+            .as_str()?
             .to_owned();
         let path = if path.starts_with('.') {
             ast.data()
@@ -1303,8 +1303,8 @@ impl Kast {
                 Some(TypeShape::String.into()),
             )
             .await?
-            .expect_inferred()?
-            .expect_string()?
+            .into_inferred()?
+            .as_str()?
             .to_owned();
         let path = if path.starts_with('.') {
             ast.data()
@@ -1824,7 +1824,7 @@ impl Kast {
         let ast = self
             .eval_ast::<Value>(value, Some(TypeShape::Ast.into()))
             .await?
-            .expect_inferred()?
+            .into_inferred()?
             .expect_ast()?;
         self.compile_into(cty, &ast).await
     }
@@ -2675,9 +2675,9 @@ impl Expr<Span> {
                                     eyre!("default number type context not available")
                                 })?;
                             let f = default_number_type_context
-                                .expect_inferred()
+                                .into_inferred()
                                 .unwrap()
-                                .expect_tuple()
+                                .as_tuple()
                                 .unwrap()
                                 .clone()
                                 .into_values()

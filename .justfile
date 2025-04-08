@@ -2,7 +2,7 @@ default:
     just --list
 
 test *ARGS:
-    cargo test --release --no-default-features -- {{ARGS}}
+    cargo test --workspace --release --no-default-features -- {{ARGS}}
 
 repl *ARGS:
     just run repl {{ARGS}}

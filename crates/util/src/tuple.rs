@@ -159,6 +159,21 @@ impl<T> Tuple<T> {
             named_order: self.named_order.clone(),
         }
     }
+    pub fn try_map<U, E>(self, mut f: impl FnMut(T) -> Result<U, E>) -> Result<Tuple<U>, E> {
+        Ok(Tuple {
+            unnamed: self
+                .unnamed
+                .into_iter()
+                .map(&mut f)
+                .collect::<Result<Vec<_>, _>>()?,
+            named: self
+                .named
+                .into_iter()
+                .map(|(key, value)| Ok((key, f(value)?)))
+                .collect::<Result<BTreeMap<_, _>, _>>()?,
+            named_order: self.named_order,
+        })
+    }
     pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Tuple<U> {
         Tuple {
             unnamed: self.unnamed.into_iter().map(&mut f).collect(),

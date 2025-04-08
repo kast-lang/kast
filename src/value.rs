@@ -1,3 +1,7 @@
+use parking_lot::{
+    MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+};
+
 use super::*;
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
@@ -52,6 +56,9 @@ impl TupleValue {
     pub fn into_values(self) -> Tuple<Value> {
         self.0.map(|place| place.into_value().unwrap())
     }
+    pub fn values(&self) -> eyre::Result<Tuple<PlaceReadGuard<'_, Value>>> {
+        self.0.as_ref().try_map(|place| place.read_value())
+    }
 }
 
 impl std::fmt::Display for TupleValue {
@@ -72,7 +79,7 @@ impl std::ops::Deref for OwnedPlace {
 
 impl PartialEq for OwnedPlace {
     fn eq(&self, other: &Self) -> bool {
-        *self.0.state.lock().unwrap() == *other.0.state.lock().unwrap()
+        *self.0.state.read() == *other.0.state.read()
     }
 }
 
@@ -81,15 +88,13 @@ impl Eq for OwnedPlace {}
 impl TryHash for OwnedPlace {
     type Error = <PlaceState as TryHash>::Error;
     fn try_hash(&self, state: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
-        self.0.state.lock().unwrap().try_hash(state)
+        self.0.state.read().try_hash(state)
     }
 }
 
 impl Clone for OwnedPlace {
     fn clone(&self) -> Self {
-        Self(Parc::new(Place::new_state(
-            self.0.state.lock().unwrap().clone(),
-        )))
+        Self(Parc::new(Place::new_state(self.0.state.read().clone())))
     }
 }
 
@@ -107,7 +112,7 @@ impl OwnedPlace {
         Self(Parc::new(Place {
             id: Id::new(),
             ty,
-            state: Mutex::new(inner),
+            state: RwLock::new(inner),
         }))
     }
     pub fn new_uninitialized(ty: Type) -> Self {
@@ -157,6 +162,7 @@ impl Kast {
                 | TypeShape::Ref(_)
                 | TypeShape::Symbol
                 | TypeShape::Char => Some(true),
+                TypeShape::UnwindHandle(_) => Some(true),
                 TypeShape::String | TypeShape::List(_) | TypeShape::HashMap(_) => Some(false),
                 TypeShape::Variant(_) => None,
                 TypeShape::Tuple(tuple) => {
@@ -175,7 +181,6 @@ impl Kast {
                 TypeShape::Ast => None,
                 TypeShape::SyntaxModule => None,
                 TypeShape::SyntaxDefinition => None,
-                TypeShape::UnwindHandle(_) => None,
                 TypeShape::Binding(_) => None,
                 TypeShape::NewType { .. } => None,
             };
@@ -210,16 +215,25 @@ impl Kast {
 
 // nothing is going to work
 impl PlaceRef {
-    pub fn inspect<R>(&self, f: impl FnOnce(&Value) -> R) -> Result<R, PlaceError> {
-        self.place.inspect(f)
+    pub fn read(&self) -> PlaceReadGuard<'_, PlaceState> {
+        self.place.read()
+    }
+    pub fn write(&self) -> eyre::Result<PlaceWriteGuard<'_, PlaceState>> {
+        self.place.write()
+    }
+    pub fn read_value(&self) -> eyre::Result<PlaceReadGuard<'_, Value>> {
+        self.place.read_value()
+    }
+    pub fn write_value(&self) -> eyre::Result<PlaceWriteGuard<'_, ValueShape>> {
+        self.place.write_value()
     }
     pub fn claim_value(&self, kast: &Kast) -> eyre::Result<Value> {
-        if let Some(cloned_inferrable) = self.place.inspect(|value| match value.r#impl {
-            ValueImpl::Inferrable(_) => Some(value.clone()),
-            ValueImpl::NonInferrable(_) => None,
-        })? {
-            return Ok(cloned_inferrable);
-        };
+        {
+            let value = self.read_value()?;
+            if let ValueImpl::Inferrable(_) = value.r#impl {
+                return Ok(value.clone());
+            }
+        }
         Ok(if kast.is_copy(&self.place.ty)? {
             self.place.clone_value()?
         } else {
@@ -232,9 +246,6 @@ impl PlaceRef {
     pub fn assign(&self, new_value: Value) {
         self.place.assign(new_value)
     }
-    pub fn mutate<R>(&self, f: impl FnOnce(&mut ValueShape) -> R) -> eyre::Result<R> {
-        self.place.mutate(f)
-    }
 }
 
 impl std::fmt::Display for PlaceRef {
@@ -246,7 +257,31 @@ impl std::fmt::Display for PlaceRef {
 pub struct Place {
     pub id: Id,
     pub ty: Type,
-    pub state: Mutex<PlaceState>,
+    pub state: RwLock<PlaceState>,
+}
+
+pub struct PlaceReadGuard<'a, T>(MappedRwLockReadGuard<'a, T>);
+
+impl<T> std::ops::Deref for PlaceReadGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub struct PlaceWriteGuard<'a, T>(MappedRwLockWriteGuard<'a, T>);
+
+impl<T> std::ops::Deref for PlaceWriteGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> std::ops::DerefMut for PlaceWriteGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 // this wouldnt be so much code if i would code it in assembly
@@ -260,29 +295,46 @@ impl Place {
             ty: state
                 .ty()
                 .unwrap_or_else(|| Type::new_not_inferred("place type")),
-            state: Mutex::new(state),
+            state: RwLock::new(state),
         }
     }
-    pub fn inspect<R>(&self, f: impl FnOnce(&Value) -> R) -> Result<R, PlaceError> {
-        Ok(f(self.state.lock().unwrap().get()?))
+    pub fn read(&self) -> PlaceReadGuard<'_, PlaceState> {
+        PlaceReadGuard(RwLockReadGuard::map(self.state.read(), |x| x))
+    }
+    pub fn write(&self) -> eyre::Result<PlaceWriteGuard<'_, PlaceState>> {
+        Ok(PlaceWriteGuard(RwLockWriteGuard::map(
+            self.state.write(),
+            |x| x,
+        )))
+    }
+    pub fn read_value(&self) -> eyre::Result<PlaceReadGuard<'_, Value>> {
+        let state = self.state.read();
+        match RwLockReadGuard::try_map(state, |state| state.get().ok()) {
+            Ok(result) => Ok(PlaceReadGuard(result)),
+            Err(state) => Err(state.get().unwrap_err().into()),
+        }
+    }
+    pub fn write_value(&self) -> eyre::Result<PlaceWriteGuard<'_, ValueShape>> {
+        let state = self.state.write();
+        match RwLockWriteGuard::try_map(state, |state| state.get_mut().ok()) {
+            Ok(result) => Ok(PlaceWriteGuard(result)),
+            Err(state) => Err(state.get().unwrap_err().into()),
+        }
     }
     pub fn take_value(&self) -> Result<Value, PlaceError> {
-        Ok(self.state.lock().unwrap().take()?.clone())
+        Ok(self.state.write().take()?.clone())
     }
     pub fn clone_value(&self) -> Result<Value, PlaceError> {
-        Ok(self.state.lock().unwrap().get()?.clone())
+        Ok(self.state.read().get()?.clone())
     }
     pub fn assign(&self, new_value: Value) {
-        self.state.lock().unwrap().assign(new_value)
-    }
-    pub fn mutate<R>(&self, f: impl FnOnce(&mut ValueShape) -> R) -> eyre::Result<R> {
-        Ok(f(self.state.lock().unwrap().get_mut()?))
+        self.state.write().assign(new_value)
     }
 }
 
 impl std::fmt::Display for Place {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &*self.state.lock().unwrap() {
+        match &*self.state.read() {
             PlaceState::Unintialized => write!(f, "<uninitialized>"),
             PlaceState::Occupied(value) => value.fmt(f),
             PlaceState::MovedOut => write!(f, "<moved out>"),
@@ -296,6 +348,16 @@ pub enum PlaceState {
     // This place is taken
     Occupied(#[try_hash] Value),
     MovedOut,
+}
+
+impl std::fmt::Display for PlaceState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PlaceState::Unintialized => write!(f, "<uninitialized>"),
+            PlaceState::Occupied(value) => value.fmt(f),
+            PlaceState::MovedOut => write!(f, "<moved out>"),
+        }
+    }
 }
 
 impl PlaceState {
@@ -520,9 +582,10 @@ impl std::fmt::Display for ValueShape {
             ValueShape::UnwindHandle(_) => write!(f, "<unwind handle>"),
             ValueShape::Symbol(symbol) => write!(f, "symbol {symbol}"),
             ValueShape::HashMap(map) => map.fmt(f),
+            // copying strings will not work, ever
             ValueShape::Ref(r) => {
                 write!(f, "&")?;
-                r.inspect(|value| value.fmt(f)).expect("tried to fmt ref")
+                r.read().fmt(f)
             }
         }
     }
@@ -562,16 +625,18 @@ impl Value {
             ValueImpl::NonInferrable(value) => value.expect_type()?,
         })
     }
-    pub fn expect_inferred(self) -> eyre::Result<ValueShape> {
+    pub fn into_inferred(self) -> eyre::Result<ValueShape> {
         match self.r#impl {
             ValueImpl::Inferrable(inferrable) => inferrable.expect_inferred(),
             ValueImpl::NonInferrable(value) => Ok(value),
         }
     }
-    pub fn expect_inferred_ref<R>(&self, f: impl FnOnce(&ValueShape) -> R) -> eyre::Result<R> {
+    pub fn as_inferred(&self) -> eyre::Result<MaybeBorrowed<'_, ValueShape>> {
         Ok(match &self.r#impl {
-            ValueImpl::Inferrable(inferrable) => f(&inferrable.expect_inferred()?),
-            ValueImpl::NonInferrable(value) => f(value),
+            ValueImpl::Inferrable(inferrable) => {
+                MaybeBorrowed::Owned(inferrable.expect_inferred()?)
+            }
+            ValueImpl::NonInferrable(value) => MaybeBorrowed::Borrowed(value),
         })
     }
 }
@@ -685,7 +750,16 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_hash_map_mut(
+    pub fn as_hash_map(&self) -> Result<&HashMapValue, ExpectError<ValueShape, &'static str>> {
+        match self {
+            Self::HashMap(map) => Ok(map),
+            _ => Err(ExpectError {
+                value: self.clone(),
+                expected: "HashMap",
+            }),
+        }
+    }
+    pub fn as_hash_map_mut(
         &mut self,
     ) -> Result<&mut HashMapValue, ExpectError<ValueShape, &'static str>> {
         match self {
@@ -696,7 +770,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_hash_map(self) -> Result<HashMapValue, ExpectError<ValueShape, &'static str>> {
+    pub fn into_hash_map(self) -> Result<HashMapValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::HashMap(map) => Ok(map),
             _ => Err(ExpectError {
@@ -705,7 +779,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_tuple(&self) -> Result<&TupleValue, ExpectError<ValueShape, &'static str>> {
+    pub fn as_tuple(&self) -> Result<&TupleValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Tuple(tuple) => Ok(tuple),
             _ => Err(ExpectError {
@@ -755,7 +829,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_list_mut(&mut self) -> Result<&mut ListValue, ExpectError> {
+    pub fn as_list_mut(&mut self) -> Result<&mut ListValue, ExpectError> {
         match self {
             Self::List(list) => Ok(list),
             _ => Err(ExpectError {
@@ -782,7 +856,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_string(&self) -> Result<&str, ExpectError> {
+    pub fn as_str(&self) -> Result<&str, ExpectError> {
         match self {
             Self::String(s) => Ok(s),
             _ => Err(ExpectError {
@@ -815,6 +889,15 @@ impl ValueShape {
             _ => Err(ExpectError {
                 value: self,
                 expected: TypeShape::Float64,
+            }),
+        }
+    }
+    pub fn as_ref(&self) -> Result<&PlaceRef, ExpectError<ValueShape, &'static str>> {
+        match self {
+            Self::Ref(r) => Ok(r),
+            _ => Err(ExpectError {
+                value: self.clone(),
+                expected: "reference",
             }),
         }
     }

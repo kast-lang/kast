@@ -292,6 +292,16 @@ pub struct FnType {
     pub result: Type,
 }
 
+impl FnType {
+    pub fn new_not_inferred() -> Self {
+        Self {
+            arg: Type::new_not_inferred("fn arg"),
+            contexts: Contexts::new_not_inferred(),
+            result: Type::new_not_inferred("fn result"),
+        }
+    }
+}
+
 impl std::fmt::Display for FnType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} -> {}", self.arg, self.result)?;

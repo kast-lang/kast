@@ -10,11 +10,11 @@ let run_once = fn (.quit, .first) {
     );
     print "guess:";
     loop {
-        let s = input();
+        let s = read_line ();
         if s == "exit" then (
             let _ = unwind quit "quitted";
         );
-        let guessed = s |> parse;
+        let guessed = &s |> parse;
         if guessed == picked then (
             break
         ) else (

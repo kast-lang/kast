@@ -36,7 +36,7 @@ pub fn default_file_system() -> Value {
             name: "read_file".into(),
             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, path: Value| {
                 async move {
-                    let path = path.expect_inferred()?.expect_string()?.to_owned();
+                    let path = path.into_inferred()?.as_str()?.to_owned();
                     let contents = std::fs::read_to_string(path)?;
                     Ok(ValueShape::String(contents).into())
                 }
@@ -62,7 +62,7 @@ pub fn default_number_type() -> Value {
             name: "default_number_type".to_owned(),
             r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
                 async move {
-                    let _s = s.expect_inferred()?.expect_string()?;
+                    let _s = s.into_inferred()?.as_str()?;
                     Ok(ValueShape::Type(Type::new_not_inferred("default number type")).into())
                 }
                 .boxed()
@@ -79,7 +79,7 @@ pub fn default_number_type() -> Value {
     ValueShape::Tuple(TupleValue::new(context)).into()
 }
 
-pub fn output_context() -> Value {
+pub fn default_output() -> Value {
     let write_type = FnType {
         arg: TypeShape::Ref(TypeShape::String.into()).into(),
         contexts: Contexts::empty(),
@@ -98,12 +98,12 @@ pub fn output_context() -> Value {
             name: "print".to_owned(),
             r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
                 async move {
-                    s.expect_inferred()?.expect_ref()?.inspect(|s| {
-                        s.expect_inferred_ref(|value| {
-                            kast.output.write(value.expect_string()?);
-                            Ok::<_, eyre::Report>(())
-                        })
-                    })???;
+                    let s = s.into_inferred()?;
+                    let s = s.expect_ref()?;
+                    let s = s.read_value()?;
+                    let s = s.as_inferred()?;
+                    let s = s.as_str()?;
+                    kast.output.write(s);
                     Ok(ValueShape::Unit.into())
                 }
                 .boxed()
@@ -118,6 +118,32 @@ pub fn output_context() -> Value {
     context
 }
 
+pub fn default_input() -> Value {
+    let mut context = Tuple::empty();
+    context.add_named(
+        "read_line",
+        ValueShape::NativeFunction(NativeFunction {
+            name: "read_line".to_owned(),
+            r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, _arg: Value| {
+                async move {
+                    let s = kast.input.read_line();
+                    Ok(ValueShape::String(s).into())
+                }
+                .boxed()
+            }) as std::sync::Arc<NativeFunctionImpl>)
+                .into(),
+            ty: FnType {
+                arg: TypeShape::Unit.into(),
+                contexts: Contexts::empty(),
+                result: TypeShape::String.into(),
+            },
+        })
+        .into(),
+    );
+    let context: Value = ValueShape::Tuple(TupleValue::new(context)).into();
+    context
+}
+
 impl State {
     pub fn empty() -> Self {
         Self {
@@ -127,7 +153,8 @@ impl State {
     }
     pub fn default() -> Self {
         let mut contexts = Self::empty();
-        contexts.insert_runtime(output_context()).unwrap();
+        contexts.insert_runtime(default_output()).unwrap();
+        contexts.insert_runtime(default_input()).unwrap();
         contexts.insert_runtime(default_number_type()).unwrap();
         contexts.insert_runtime(default_file_system()).unwrap();
         contexts
