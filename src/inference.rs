@@ -240,7 +240,7 @@ impl<T: Inferrable + std::fmt::Debug> std::fmt::Debug for Var<T> {
     }
 }
 
-pub trait Inferrable: Clone + Send + Sync + 'static {
+pub trait Inferrable: Clone + Send + Sync + PartialEq + 'static {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self>;
 }
 
@@ -289,7 +289,13 @@ impl<T: Inferrable> Var<T> {
         let mut root_data = root_var.get();
         let root = root_data.as_root();
         let new_value = match root.value.take() {
-            Some(prev_value) => T::make_same((*prev_value).clone(), value)?,
+            Some(prev_value) => {
+                if *prev_value == value {
+                    root.value = Some(prev_value);
+                    return Ok(());
+                }
+                T::make_same((*prev_value).clone(), value)?
+            }
             None => value,
         };
         root.value = Some(Arc::new(new_value));

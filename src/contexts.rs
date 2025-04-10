@@ -200,11 +200,78 @@ impl ContextsData {
 }
 
 #[derive(Debug, Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Contexts(#[try_hash] inference::MaybeNotInferred<ContextsData>);
+pub struct Contexts(#[try_hash] pub inference::MaybeNotInferred<ContextsData>);
 
 impl Contexts {
     pub fn var(&self) -> &inference::Var<ContextsData> {
         self.0.var()
+    }
+    pub fn single(ty: Type) -> eyre::Result<Self> {
+        let this = inference::MaybeNotInferred::new_set(ContextsData {
+            types: Default::default(),
+            growable: true,
+        });
+        ty.var().add_check({
+            let this = this.clone();
+            move |ty: &TypeShape| -> eyre::Result<inference::CheckResult> {
+                let mut current = this.inferred().unwrap();
+                current.extend_with_types([&ty.clone().into()])?;
+                this.var().set(current)?;
+                Ok(inference::CheckResult::Completed)
+            }
+        })?;
+        Ok(Self(this))
+    }
+    pub fn remove_injected(contexts: &Self, ty: &Type) -> eyre::Result<Self> {
+        let this = inference::MaybeNotInferred::new_set(ContextsData {
+            types: Default::default(),
+            growable: true,
+        });
+        let update = {
+            let contexts = contexts.clone();
+            let ty = ty.clone();
+            let this = this.clone();
+            move || -> eyre::Result<inference::CheckResult> {
+                // TODO fully_inferred?
+                if ty.inferred().is_err() {
+                    return Ok(inference::CheckResult::RunAgain);
+                };
+                let Ok(mut contexts) = contexts.0.inferred() else {
+                    return Ok(inference::CheckResult::RunAgain);
+                };
+                let _was_removed = contexts.types.remove(&ty);
+                this.var().set(contexts)?;
+                Ok(inference::CheckResult::RunAgain)
+            }
+        };
+        contexts.var().add_check({
+            let update = update.clone();
+            move |_| update()
+        })?;
+        ty.var().add_check(move |_| update())?;
+        Ok(Self(this))
+    }
+    pub fn merge<'a>(iter: impl IntoIterator<Item = &'a Self>) -> eyre::Result<Self> {
+        let this = inference::MaybeNotInferred::new_set(ContextsData {
+            types: Default::default(),
+            growable: true,
+        });
+        let update = {
+            let this = this.clone();
+            move |updated: &ContextsData| -> eyre::Result<inference::CheckResult> {
+                let mut current = this.inferred().unwrap();
+                current.extend_with(updated)?;
+                this.var().set(current)?;
+                Ok(inference::CheckResult::RunAgain)
+            }
+        };
+        for elem in iter {
+            elem.var().add_check(update.clone())?;
+        }
+        Ok(Self(this))
+    }
+    pub fn merge_two(a: &Self, b: &Self) -> eyre::Result<Self> {
+        Self::merge([a, b])
     }
 }
 
@@ -247,12 +314,15 @@ impl std::fmt::Display for Contexts {
 
 impl Contexts {
     pub fn empty() -> Self {
-        Self::from_list([])
+        Self::from_list([], false)
     }
-    pub fn from_list(list: impl IntoIterator<Item = Type>) -> Self {
+    pub fn empty_growable() -> Self {
+        Self::from_list([], true)
+    }
+    pub fn from_list(list: impl IntoIterator<Item = Type>, growable: bool) -> Self {
         Self(inference::MaybeNotInferred::new_set(ContextsData {
             types: list.into_iter().collect(),
-            growable: false,
+            growable,
         }))
     }
     pub fn is_empty(&self) -> bool {
@@ -268,9 +338,12 @@ impl Contexts {
 }
 
 impl ContextsData {
-    pub fn extend_with(&mut self, that: &Self) -> eyre::Result<()> {
+    pub fn extend_with_types<'a>(
+        &mut self,
+        types: impl IntoIterator<Item = &'a Type>,
+    ) -> eyre::Result<()> {
         // TODO multiple occurences
-        for ty in &that.types {
+        for ty in types {
             if !self.types.contains(ty) {
                 if !self.growable {
                     eyre::bail!("context not listed: {ty}");
@@ -279,6 +352,9 @@ impl ContextsData {
             }
         }
         Ok(())
+    }
+    pub fn extend_with(&mut self, that: &Self) -> eyre::Result<()> {
+        self.extend_with_types(that.types.iter())
     }
 }
 
@@ -307,8 +383,8 @@ impl SubstituteBindings for Contexts {
 impl Inferrable for ContextsData {
     fn make_same(mut a: Self, mut b: Self) -> eyre::Result<Self> {
         #![allow(unused_mut)]
-        // a.extend_with(&b)?;
-        // b.extend_with(&a)?;
+        a.extend_with(&b)?;
+        b.extend_with(&a)?;
         Ok(Self {
             types: a.types,
             growable: a.growable && b.growable,

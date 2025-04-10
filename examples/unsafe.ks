@@ -3,7 +3,7 @@ use std.*;
 # TODO smth
 const unsafe :: type = newtype :Unsafe;
 
-let unsafe_fn = fn (s :: string) with unsafe {
+let unsafe_fn = fn (s :: string) with (unsafe | output) {
     print &s;
 };
 

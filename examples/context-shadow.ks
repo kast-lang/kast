@@ -15,4 +15,4 @@ let show_current_context = () => (
     show_current_context();
 );
 
-show_current_context(); # This should not compile (no context available)
+show_current_context(); # TODO This should not compile (no context available)

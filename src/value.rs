@@ -797,16 +797,26 @@ impl ValueShape {
             }),
         }
     }
-    pub fn into_contexts(self) -> Result<Contexts, ExpectError> {
+    pub fn into_contexts(self) -> eyre::Result<Contexts> {
         match self {
             Self::Unit => Ok(Contexts::empty()),
             Self::Contexts(contexts) => Ok(contexts),
-            Self::Type(ty) => Ok(Contexts::from_list([ty])),
-            Self::Binding(binding) => Ok(Contexts::from_list([TypeShape::Binding(binding).into()])),
+            Self::Type(ty) => Ok(Contexts::from_list([ty], false)),
+            Self::Multiset(set) => Ok(Contexts::from_list(
+                set.into_iter()
+                    .map(|value| value.expect_type())
+                    .collect::<Result<Vec<_>, eyre::Report>>()?,
+                false,
+            )),
+            Self::Binding(binding) => Ok(Contexts::from_list(
+                [TypeShape::Binding(binding).into()],
+                false,
+            )),
             _ => Err(ExpectError {
                 value: self,
                 expected: TypeShape::Contexts,
-            }),
+            }
+            .into()),
         }
     }
     pub fn expect_syntax_definition(self) -> Result<Parc<ast::SyntaxDefinition>, ExpectError> {

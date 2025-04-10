@@ -167,8 +167,8 @@ const parse = forall[T] {
     (T as Parse).parse
 };
 
-const generator_handler = forall[T] {
-    (.handle = T -> () with ()) :: type
+const generator_handler = forall[T :: type] { # TODO contexts
+    (.handle = T -> () with output) :: type
 };
 native "set_native" (.name = "generator_handler", .value = generator_handler);
 

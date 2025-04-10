@@ -1,4 +1,4 @@
-use std;
+use std.*;
 
 # TODO mark generator with yielding effect
 
@@ -9,19 +9,19 @@ let generator = fn(void) {
 	yield "2";
 };
 
-for value in generator () {
-	print value;
+for value :: string in generator () {
+	print &value;
 };
 
 print "now using generator as value";
 
 # TODO types should be inferred
 
-let g = generator_value[Yield: string, Resume: void, Finish: void] generator;
-print "calling .next()";
-dbg <| g.next();
-print "calling .next()";
-dbg <| g.next();
-print "calling .next()";
-dbg <| g.next();
+# let g = generator_value[Yield: string, Resume: void, Finish: void] generator;
+# print "calling .next()";
+# dbg <| g.next();
+# print "calling .next()";
+# dbg <| g.next();
+# print "calling .next()";
+# dbg <| g.next();
 # dbg <| g.next(); # this one panics since generator is finished

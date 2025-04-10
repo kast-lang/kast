@@ -1,3 +1,4 @@
+//! the name of the programming language is kast
 #![allow(clippy::type_complexity, clippy::needless_question_mark)]
 
 use async_trait::async_trait;

@@ -1,9 +1,16 @@
 use super::*;
 
 #[derive(Clone)]
+pub struct AssigneeExprData {
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Clone)]
 pub struct ExprData {
     pub ty: Type,
     pub span: Span,
+    pub contexts: Contexts,
 }
 
 #[derive(Clone, derive_macros::ExprDisplay)]
@@ -184,7 +191,7 @@ pub enum Expr<Data = ExprData> {
 }
 
 #[derive(Clone, derive_macros::ExprDisplay)]
-pub enum AssigneeExpr<Data = ExprData> {
+pub enum AssigneeExpr<Data = AssigneeExprData> {
     Placeholder {
         data: Data,
     },
