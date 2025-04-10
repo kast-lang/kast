@@ -24,8 +24,6 @@ impl std::hash::Hash for Key {
 #[derive(Clone)]
 pub struct State {
     runtime_contexts: HashMap<Key, Value>,
-    /// Contexts that are going to be brought in using "with" exprs at runtime
-    compile_contexts: HashSet<Key>,
 }
 
 pub fn default_file_system() -> Value {
@@ -148,7 +146,6 @@ impl State {
     pub fn empty() -> Self {
         Self {
             runtime_contexts: Default::default(),
-            compile_contexts: Default::default(),
         }
     }
     pub fn default() -> Self {
@@ -159,17 +156,8 @@ impl State {
         contexts.insert_runtime(default_file_system()).unwrap();
         contexts
     }
-    pub fn insert_compile(&mut self, context_ty: Type) -> eyre::Result<()> {
-        tracing::trace!("inserted comptime context: {context_ty}");
-        let key = Key::new(context_ty)?;
-        // jonathan blow was here
-        // i am innocent
-        self.compile_contexts.insert(key);
-        Ok(())
-    }
     pub fn insert_runtime(&mut self, context: Value) -> eyre::Result<()> {
         let key = Key::new(context.ty())?;
-        self.compile_contexts.insert(key.clone()); // TODO maybe not?
         self.runtime_contexts.insert(key, context);
         Ok(())
     }
@@ -184,19 +172,6 @@ pub struct ContextsData {
     // TODO multiset?
     pub types: std::collections::BTreeSet<Type>,
     pub growable: bool,
-}
-
-impl ContextsData {
-    pub fn check_available(&self, state: &State) -> eyre::Result<()> {
-        // When I wrote this code, only God & I understood what it did. Now... only God knows.
-        // Why? Why?! WHY?! OH thats why!
-        for ty in &self.types {
-            if !state.compile_contexts.contains(&Key::new(ty.clone())?) {
-                eyre::bail!("{ty} context is not available");
-            }
-        }
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]

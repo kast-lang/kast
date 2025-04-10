@@ -18,7 +18,7 @@ pub use kast_ast::Token;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
 use scopes::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use try_hash::TryHash;

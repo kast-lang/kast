@@ -142,6 +142,7 @@ impl Cache {
         populate!(
             macro_native,
             macro_type_ascribe,
+            macro_context_ascribe,
             macro_const_let,
             macro_let_assign,
             macro_let,
@@ -704,6 +705,32 @@ impl Kast {
         let mut value = self.compile_into(cty, value).await?;
         value.ty_mut().make_same(ty)?;
         Ok(value)
+    }
+    async fn macro_context_ascribe(
+        &mut self,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        let (values, _span) = get_complex(ast);
+        let [expr, contexts] = values
+            .as_ref()
+            .into_named(["expr", "contexts"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let contexts = self
+            .eval_ast::<Value>(contexts, None) // TODO contexts
+            .await
+            .wrap_err_with(|| "Failed to evaluate the contexts")?
+            .into_inferred()?
+            .into_contexts()?;
+        let mut expr = self.compile_into(cty, expr).await?;
+        let data: &mut ExprData = match &mut expr {
+            Compiled::Expr(e) => e.data_mut(),
+            Compiled::PlaceExpr(e) => e.data_mut(),
+            Compiled::AssigneeExpr(_) => todo!(),
+            Compiled::Pattern(_) => todo!(),
+        };
+        data.contexts.0.make_same(contexts.0)?;
+        Ok(expr)
     }
     async fn macro_const_let(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_expr!(self, cty, ast);
@@ -1778,11 +1805,6 @@ impl Kast {
         }
         // god pls forgive me the sin of creating kast
         let context: Expr = self.compile(new_context).await?;
-        self.interpreter
-            .contexts
-            .lock()
-            .unwrap()
-            .insert_compile(context.data().ty.clone())?;
         // no context
         // I wish I had done this in LUA
         Ok(Compiled::Expr(

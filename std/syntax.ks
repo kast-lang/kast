@@ -59,6 +59,7 @@ syntax_module {
   syntax @"builtin macro function_def" -> 6 = arg "=>" body;
 
   syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
+  syntax @"builtin macro context_ascribe" <- 7.1 = expr "::" "with" contexts;
   syntax @"builtin macro type_ascribe" <- 7.1 = type "of" value;
   syntax @"builtin macro type_ascribe" <- 7.1 = type ":>" value;
   syntax @"builtin macro type_ascribe" <- 7.1 = value "<:" type;
