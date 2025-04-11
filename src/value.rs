@@ -754,6 +754,15 @@ impl ValueShape {
             }),
         }
     }
+    pub fn into_variant(self) -> Result<VariantValue, ExpectError<ValueShape, &'static str>> {
+        match self {
+            Self::Variant(value) => Ok(value),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "variant",
+            }),
+        }
+    }
     pub fn as_hash_map(&self) -> Result<&HashMapValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::HashMap(map) => Ok(map),
