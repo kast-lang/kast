@@ -1,7 +1,7 @@
 [package]
 name = "kast-derive-macros"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "derive macros for kast"
 license.workspace = true
 repository.workspace = true

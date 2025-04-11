@@ -141,7 +141,7 @@ impl Lexer {
         })
     }
     fn skip_whitespace(&mut self) {
-        while self.reader.peek().map_or(false, |c| c.is_whitespace()) {
+        while self.reader.peek().is_some_and(|c| c.is_whitespace()) {
             self.next().unwrap();
         }
     }
@@ -307,8 +307,7 @@ impl Lexer {
                 let mut name = String::new();
                 while let Some(&c) = self.reader.peek() {
                     let is_good = |c: char| c.is_alphanumeric() || c == '_';
-                    if is_good(c) || c == '-' && self.reader.peek2().map_or(false, |&c| is_good(c))
-                    {
+                    if is_good(c) || c == '-' && self.reader.peek2().is_some_and(|&c| is_good(c)) {
                         name.push(c);
                         self.next().unwrap();
                     } else {

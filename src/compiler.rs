@@ -2804,12 +2804,10 @@ impl Expr<Span> {
                             let default_number_type_context_type = kast
                                 .cache
                                 .interpreter
-                                .builtins
-                                .get("default_number_type")
-                                .unwrap()(
-                                TypeShape::Type.into()
-                            )?
-                            .expect_type()?;
+                                .natives
+                                .get("default_number_type", TypeShape::Type.into())?
+                                .unwrap()
+                                .expect_type()?;
                             let default_number_type_context = kast
                                 .interpreter
                                 .contexts
@@ -3038,7 +3036,7 @@ impl Expr {
             let is_template = data
                 .ty
                 .inferred()
-                .map_or(false, |ty| matches!(ty, TypeShape::Template { .. }));
+                .is_ok_and(|ty| matches!(ty, TypeShape::Template { .. }));
             if !is_template {
                 break;
             }

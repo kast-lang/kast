@@ -142,7 +142,7 @@ impl Scope {
                     tracing::trace!("not found in recursive - was closed");
                     break;
                 }
-                if spawn_id.map_or(true, |spawn_id| spawn_id == self.spawn_id) {
+                if spawn_id.is_none_or(|spawn_id| spawn_id == self.spawn_id) {
                     tracing::trace!("not awaiting (same spawn id) - break");
                     break;
                 }

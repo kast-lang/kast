@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 
 type Check<T> = Arc<dyn Fn(&T) -> eyre::Result<CheckResult> + Send + Sync>;
 
@@ -100,7 +100,7 @@ pub mod global_state {
     use std::{
         collections::HashMap,
         marker::PhantomData,
-        sync::{atomic::AtomicUsize, OnceLock},
+        sync::{OnceLock, atomic::AtomicUsize},
     };
 
     #[derive(Clone)]
@@ -331,7 +331,7 @@ impl<T: Inferrable> Var<T> {
                 std::mem::take(&mut other_root.default_value),
             )
         };
-        if thread_rng().gen() {
+        if thread_rng().r#gen() {
             other_root.value = common_value;
             other_root.default_value = common_default_value;
             other_root.checks.append(&mut root.checks);

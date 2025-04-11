@@ -193,11 +193,8 @@ impl Kast {
         let copy_trait = self
             .cache
             .interpreter
-            .set_natives
-            .lock()
-            .unwrap()
-            .get("Copy")
-            .cloned();
+            .natives
+            .get("Copy", Type::new_not_inferred("copy"))?;
         let Some(copy_trait) = copy_trait else {
             // Before Copy is defined everything is Copy
             // TODO maybe not needed because of logic above?

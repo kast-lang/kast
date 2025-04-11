@@ -6,11 +6,11 @@ pub struct State {
     pub check_types: bool,
 }
 
-type Builtin = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
+type Native = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
 
 struct NamedBuiltin {
     name: String,
-    value: Builtin,
+    value: Native,
 }
 
 pub struct CompletionCandidate {
@@ -18,10 +18,27 @@ pub struct CompletionCandidate {
     pub ty: Type,
 }
 
-pub struct Cache {
-    pub builtins: HashMap<String, Builtin>,
+pub struct Natives {
+    natives: Mutex<HashMap<String, Native>>,
     #[allow(dead_code)]
-    pub set_natives: Parc<Mutex<HashMap<String, Value>>>,
+    set_natives: Parc<Mutex<HashMap<String, Value>>>,
+}
+
+impl Natives {
+    pub fn get(&self, name: &str, ty: Type) -> eyre::Result<Option<Value>> {
+        if let Some(value) = self.set_natives.lock().unwrap().get(name) {
+            return Ok(Some(value.clone()));
+        }
+        let natives = self.natives.lock().unwrap();
+        let Some(native) = natives.get(name) else {
+            return Ok(None);
+        };
+        Ok(Some(native(ty)?))
+    }
+}
+
+pub struct Cache {
+    pub natives: Natives,
 }
 
 impl Cache {
@@ -29,455 +46,71 @@ impl Cache {
         let set_natives: Parc<Mutex<HashMap<String, Value>>> =
             Parc::new(Mutex::new(HashMap::new()));
         Self {
-            builtins: {
-                let mut map = HashMap::<String, Builtin>::new();
+            natives: Natives {
+                natives: {
+                    let mut map = HashMap::<String, Native>::new();
 
-                let mut insert_value = |name: &str, value: Value| {
-                    let expected_ty = value.ty().inferred().unwrap();
-                    map.insert(
-                        name.to_owned(),
-                        Box::new(move |expected: Type| {
-                            expected.infer_as(expected_ty.clone())?;
-                            Ok(value.clone())
-                        }),
+                    let mut insert_value = |name: &str, value: Value| {
+                        let expected_ty = value.ty().inferred().unwrap();
+                        map.insert(
+                            name.to_owned(),
+                            Box::new(move |expected: Type| {
+                                expected.infer_as(expected_ty.clone())?;
+                                Ok(value.clone())
+                            }),
+                        );
+                    };
+                    insert_value("true", ValueShape::Bool(true).into());
+                    insert_value("false", ValueShape::Bool(false).into());
+
+                    let mut insert_ty = |name: &str, ty: TypeShape| {
+                        map.insert(
+                            name.to_owned(),
+                            Box::new(move |expected: Type| {
+                                expected.infer_as(TypeShape::Type)?;
+                                Ok(ValueShape::Type(ty.clone().into()).into())
+                            }),
+                        );
+                    };
+                    insert_ty("bool", TypeShape::Bool);
+                    insert_ty("int32", TypeShape::Int32);
+                    insert_ty("int64", TypeShape::Int64);
+                    insert_ty("float64", TypeShape::Float64);
+                    insert_ty("char", TypeShape::Char);
+                    insert_ty("string", TypeShape::String);
+                    insert_ty("ast", TypeShape::Ast);
+                    insert_ty("type", TypeShape::Type);
+                    insert_ty("symbol", TypeShape::Symbol);
+                    insert_ty(
+                        "output",
+                        contexts::default_output().ty().inferred().unwrap(),
                     );
-                };
-                insert_value("true", ValueShape::Bool(true).into());
-                insert_value("false", ValueShape::Bool(false).into());
-
-                let mut insert_ty = |name: &str, ty: TypeShape| {
-                    map.insert(
-                        name.to_owned(),
-                        Box::new(move |expected: Type| {
-                            expected.infer_as(TypeShape::Type)?;
-                            Ok(ValueShape::Type(ty.clone().into()).into())
-                        }),
+                    insert_ty(
+                        "filesystem",
+                        contexts::default_file_system().ty().inferred().unwrap(),
                     );
-                };
-                insert_ty("bool", TypeShape::Bool);
-                insert_ty("int32", TypeShape::Int32);
-                insert_ty("int64", TypeShape::Int64);
-                insert_ty("float64", TypeShape::Float64);
-                insert_ty("char", TypeShape::Char);
-                insert_ty("string", TypeShape::String);
-                insert_ty("ast", TypeShape::Ast);
-                insert_ty("type", TypeShape::Type);
-                insert_ty("symbol", TypeShape::Symbol);
-                insert_ty(
-                    "output",
-                    contexts::default_output().ty().inferred().unwrap(),
-                );
-                insert_ty(
-                    "filesystem",
-                    contexts::default_file_system().ty().inferred().unwrap(),
-                );
-                // does anyone understand what happened here?
-                insert_ty(
-                    "default_number_type",
-                    contexts::default_number_type().ty().inferred().unwrap(),
-                );
+                    // does anyone understand what happened here?
+                    insert_ty(
+                        "default_number_type",
+                        contexts::default_number_type().ty().inferred().unwrap(),
+                    );
 
-                map.insert(
-                    "dbg_type".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Type.into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::String.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "dbg_type".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty: FnType, value: Value| {
-                                async move {
-                                    let value: Type = value.expect_type()?;
-                                    Ok(ValueShape::String(value.to_string()).into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "dbg_type_of_value".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: Type::new_not_inferred("arg of dbg_type_of_value"),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::String.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "dbg_type_of_value".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty: FnType, value: Value| {
-                                async move { Ok(ValueShape::String(value.ty().to_string()).into()) }
-                                    .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "dbg".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: Type::new_not_inferred("arg of dbg"),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::String.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "dbg".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, value: Value| {
-                                async move {
-                                    let ty = &fn_ty.arg;
-                                    assert_eq!(&value.ty(), ty);
-                                    Ok(ValueShape::String(value.to_string()).into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "time.now".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Unit.into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Float64.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "time.now".to_owned(),
-                            r#impl: (std::sync::Arc::new(
-                                |kast: Kast, _fn_ty: FnType, _value: Value| {
-                                    async move {
-                                        let now: f64 = kast.cache.start.elapsed().as_secs_f64();
-                                        Ok(ValueShape::Float64(now.into()).into())
-                                    }
-                                    .boxed()
-                                },
-                            )
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "HashMap".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_unnamed(TypeShape::Type.into());
-                                args.add_unnamed(TypeShape::Type.into());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Type.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "HashMap".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let [key, value] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_unnamed()?;
-                                    Ok(ValueShape::Type(
-                                        TypeShape::HashMap(HashMapType {
-                                            key: key.expect_type()?,
-                                            value: value.expect_type()?,
-                                        })
-                                        .into(),
-                                    )
-                                    .into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "HashMap.new".to_owned(),
-                    Box::new(|expected: Type| {
-                        let key_ty = Type::new_not_inferred("HashMap.new key");
-                        let value_ty = Type::new_not_inferred("HashMap.new value");
-                        let ty = FnType {
-                            arg: TypeShape::Unit.into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::HashMap(HashMapType {
-                                key: key_ty.clone(),
-                                value: value_ty.clone(),
-                            })
-                            .into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "HashMap.new".to_owned(),
-                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
-                                let key_ty = key_ty.clone();
-                                let value_ty = value_ty.clone();
-                                async move {
-                                    args.into_inferred()?.expect_unit()?;
-                                    Ok(ValueShape::HashMap(HashMapValue {
-                                        values: HashMap::new(),
-                                        ty: HashMapType {
-                                            key: key_ty.clone(),
-                                            value: value_ty.clone(),
-                                        },
-                                    })
-                                    .into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "HashMap.insert".to_owned(),
-                    Box::new(|expected: Type| {
-                        let key_ty = Type::new_not_inferred("HashMap.insert key");
-                        let value_ty = Type::new_not_inferred("HashMap.insert value");
-                        let map_type: Type = TypeShape::HashMap(HashMapType {
-                            key: key_ty.clone(),
-                            value: value_ty.clone(),
-                        })
-                        .into();
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
-                                args.add_unnamed(key_ty.clone());
-                                args.add_unnamed(value_ty.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Unit.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "HashMap.insert".to_owned(),
-                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let [map, key, value] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_unnamed()?;
-                                    let map = map.into_inferred()?.expect_ref()?;
-                                    let mut map = map.write_value()?;
-                                    let map = map.as_hash_map_mut()?;
-                                    map.values
-                                        .insert(HashableValue(key), OwnedPlace::new(value));
-                                    Ok(ValueShape::Unit.into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "HashMap.size".to_owned(),
-                    Box::new(|expected: Type| {
-                        let key_ty = Type::new_not_inferred("HashMap.size key");
-                        let value_ty = Type::new_not_inferred("HashMap.size value");
-                        let map_type: Type = TypeShape::HashMap(HashMapType {
-                            key: key_ty.clone(),
-                            value: value_ty.clone(),
-                        })
-                        .into();
-                        let ty = FnType {
-                            arg: TypeShape::Ref(map_type.clone()).into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Int32.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "HashMap.size".to_owned(),
-                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let map = args.into_inferred()?.expect_ref()?;
-                                    let map = map.read_value()?;
-                                    let map = map.as_inferred()?;
-                                    let map = map.as_hash_map()?;
-                                    Ok(ValueShape::Int32(map.values.len().try_into()?).into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                // What's the deal with all these hashmaps?
-                map.insert(
-                    "HashMap.get".to_owned(),
-                    Box::new(|expected: Type| {
-                        let key_ty = Type::new_not_inferred("HashMap.get key");
-                        let value_ty = Type::new_not_inferred("HashMap.get value");
-                        let map_type: Type = TypeShape::HashMap(HashMapType {
-                            key: key_ty.clone(),
-                            value: value_ty.clone(),
-                        })
-                        .into();
-                        let result_ty = Type::new_not_inferred("HashMap.get result");
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
-                                args.add_unnamed(key_ty.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            // TODO use Option
-                            result: result_ty.clone(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "HashMap.get".to_owned(),
-                            r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
-                                let result_ty = result_ty.clone();
-                                async move {
-                                    let [map, key] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_unnamed()?;
-                                    let map = map.into_inferred()?.expect_ref()?;
-                                    let map = map.read_value()?;
-                                    let map = map.as_inferred()?;
-                                    let map = map.as_hash_map()?;
-                                    let value_ref = map
-                                        .values
-                                        .get(&HashableValue(key))
-                                        .map(|place| place.get_ref());
-                                    Ok(ValueShape::Variant(VariantValue {
-                                        name: match value_ref {
-                                            Some(_) => "Some",
-                                            None => "None",
-                                        }
-                                        .to_owned(),
-                                        value: value_ref.map(|value_ref| {
-                                            OwnedPlace::new(ValueShape::Ref(value_ref).into())
-                                        }),
-                                        ty: result_ty,
-                                    })
-                                    .into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "HashMap.into_iter".to_owned(),
-                    Box::new({
-                        let set_natives = set_natives.clone();
-                        move |expected: Type| {
+                    map.insert(
+                        "dbg_type".to_owned(),
+                        Box::new(|expected: Type| {
                             let ty = FnType {
-                                arg: Type::new_not_inferred("HashMap.into_iter arg"),
-                                contexts: Contexts::empty(), // TODO generator_handler
-                                result: TypeShape::Unit.into(),
+                                arg: TypeShape::Type.into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::String.into(),
                             };
                             expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                            let set_natives = set_natives.clone();
                             Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: "HashMap.into_iter".to_owned(),
+                                name: "dbg_type".to_owned(),
                                 r#impl: (std::sync::Arc::new(
-                                    move |kast: Kast, _fn_ty: FnType, value: Value| {
-                                        let set_natives = set_natives.clone();
+                                    |_kast, _fn_ty: FnType, value: Value| {
                                         async move {
-                                            let map = value.into_inferred()?.into_hash_map()?;
-                                            let generator_handler = set_natives
-                                                .lock()
-                                                .unwrap()
-                                                .get("generator_handler")
-                                                .ok_or_else(|| eyre!("generator_handler not set"))?
-                                                .clone();
-                                            let generator_handler = kast
-                                                .instantiate(
-                                                    generator_handler,
-                                                    ValueShape::Type(
-                                                        TypeShape::Tuple({
-                                                            let mut tuple = Tuple::empty();
-                                                            tuple.add_unnamed(map.ty.key.clone());
-                                                            tuple.add_unnamed(map.ty.value.clone());
-                                                            tuple
-                                                        })
-                                                        .into(),
-                                                    )
-                                                    .into(),
-                                                )
-                                                .await?
-                                                .expect_type()?;
-                                            let handler = kast
-                                                .interpreter
-                                                .contexts
-                                                .lock()
-                                                .unwrap()
-                                                .get_runtime(generator_handler)?
-                                                .ok_or_else(|| eyre!("no handler"))?
-                                                .into_inferred()?
-                                                .as_tuple()?
-                                                .clone()
-                                                .into_values();
-                                            // oh shit
-                                            let handler = handler
-                                                .get_named("handle")
-                                                .ok_or_else(|| eyre!("wut"))?;
-                                            for (key, value) in map.values.into_iter() {
-                                                let HashableValue(key) = key;
-                                                let mut tuple = Tuple::empty();
-                                                tuple.add_unnamed(key);
-                                                tuple.add_unnamed(value.into_value()?);
-                                                kast.call(
-                                                    handler.clone(),
-                                                    ValueShape::Tuple(tuple.into()).into(),
-                                                )
-                                                .await?;
-                                            }
-                                            Ok(ValueShape::Unit.into())
+                                            let value: Type = value.expect_type()?;
+                                            Ok(ValueShape::String(value.to_string()).into())
                                         }
                                         .boxed()
                                     },
@@ -487,139 +120,78 @@ impl Cache {
                                 ty,
                             })
                             .into())
-                        }
-                    }),
-                );
-                map.insert(
-                    "contains".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_named("s", TypeShape::String.into());
-                                args.add_named("substring", TypeShape::String.into());
-                                args
+                        }),
+                    );
+                    map.insert(
+                        "dbg_type_of_value".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: Type::new_not_inferred("arg of dbg_type_of_value"),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::String.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "dbg_type_of_value".to_owned(),
+                                r#impl: (std::sync::Arc::new(
+                                    |_kast, _fn_ty: FnType, value: Value| {
+                                        async move {
+                                            Ok(ValueShape::String(value.ty().to_string()).into())
+                                        }
+                                        .boxed()
+                                    },
+                                )
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
                             })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Bool.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "contains".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let mut args =
-                                        args.into_inferred()?.as_tuple()?.clone().into_values();
-                                    // TODO do not to_owned
-                                    let s = args
-                                        .take_named("s")
-                                        .unwrap()
-                                        .into_inferred()?
-                                        .as_str()?
-                                        .to_owned();
-                                    let substring = args
-                                        .take_named("substring")
-                                        .unwrap()
-                                        .into_inferred()?
-                                        .as_str()?
-                                        .to_owned();
-                                    Ok(ValueShape::Bool(s.contains(&substring)).into())
-                                }
-                                .boxed()
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "dbg".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: Type::new_not_inferred("arg of dbg"),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::String.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "dbg".to_owned(),
+                                r#impl: (std::sync::Arc::new(
+                                    |_kast, fn_ty: FnType, value: Value| {
+                                        async move {
+                                            let ty = &fn_ty.arg;
+                                            assert_eq!(&value.ty(), ty);
+                                            Ok(ValueShape::String(value.to_string()).into())
+                                        }
+                                        .boxed()
+                                    },
+                                )
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
                             })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "loop".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Function(Box::new(FnType {
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "time.now".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
                                 arg: TypeShape::Unit.into(),
-                                contexts: Contexts::new_not_inferred(),
-                                result: TypeShape::Unit.into(),
-                            }))
-                            .into(),
-                            contexts: Contexts::new_not_inferred(),
-                            result: Type::new_not_inferred("loop result"), // TODO never
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "loop".to_owned(),
-                            r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, body: Value| {
-                                async move {
-                                    loop {
-                                        kast.call(body.clone(), ValueShape::Unit.into()).await?;
-                                    }
-                                    // rust is stupid
-                                    #[allow(unreachable_code)]
-                                    Ok(ValueShape::Unit.into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "list_iter".to_owned(),
-                    Box::new({
-                        let set_natives = set_natives.clone();
-                        move |expected: Type| {
-                            let set_natives = set_natives.clone();
-                            let elem_ty = Type::new_not_inferred("list_iter elem_ty");
-                            let ty = FnType {
-                                arg: TypeShape::List(elem_ty).into(),
-                                contexts: Contexts::new_not_inferred(), // TODO generator_handler
-                                result: TypeShape::Unit.into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Float64.into(),
                             };
                             expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                             Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: "list_iter".to_owned(),
+                                name: "time.now".to_owned(),
                                 r#impl: (std::sync::Arc::new(
-                                    move |kast: Kast, _fn_ty: FnType, value: Value| {
-                                        let set_natives = set_natives.clone();
+                                    |kast: Kast, _fn_ty: FnType, _value: Value| {
                                         async move {
-                                            let value = value.into_inferred()?.expect_list()?;
-                                            let generator_handler = set_natives
-                                                .lock()
-                                                .unwrap()
-                                                .get("generator_handler")
-                                                .ok_or_else(|| eyre!("generator_handler not set"))?
-                                                .clone();
-                                            let generator_handler = kast
-                                                .instantiate(
-                                                    generator_handler,
-                                                    ValueShape::Type(value.element_ty).into(),
-                                                )
-                                                .await?
-                                                .expect_type()?;
-                                            let handler = kast
-                                                .interpreter
-                                                .contexts
-                                                .lock()
-                                                .unwrap()
-                                                .get_runtime(generator_handler)?
-                                                .ok_or_else(|| eyre!("no handler"))?
-                                                .into_inferred()?
-                                                .as_tuple()?
-                                                .clone()
-                                                .into_values();
-                                            let handler = handler
-                                                .get_named("handle")
-                                                .ok_or_else(|| eyre!("wut"))?;
-                                            for elem in value.values.iter() {
-                                                kast.call(handler.clone(), elem.clone()).await?;
-                                            }
-                                            Ok(ValueShape::Unit.into())
+                                            let now: f64 = kast.cache.start.elapsed().as_secs_f64();
+                                            Ok(ValueShape::Float64(now.into()).into())
                                         }
                                         .boxed()
                                     },
@@ -629,92 +201,107 @@ impl Cache {
                                 ty,
                             })
                             .into())
-                        }
-                    }),
-                );
-                map.insert(
-                    "chars".to_owned(),
-                    Box::new({
-                        let set_natives = set_natives.clone();
-                        move |expected: Type| {
-                            let set_natives = set_natives.clone();
-                            let ty = FnType {
-                                arg: TypeShape::Ref(TypeShape::String.into()).into(),
-                                contexts: Contexts::new_not_inferred(), // TODO generator_handler
-                                result: TypeShape::Unit.into(),
-                            };
-                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                            Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: "chars".to_owned(),
-                                r#impl: (std::sync::Arc::new(
-                                    move |kast: Kast, _fn_ty: FnType, value: Value| {
-                                        let set_natives = set_natives.clone();
-                                        async move {
-                                            let value = value.into_inferred()?.expect_ref()?;
-                                            let generator_handler = set_natives
-                                                .lock()
-                                                .unwrap()
-                                                .get("generator_handler")
-                                                .ok_or_else(|| eyre!("generator_handler not set"))?
-                                                .clone();
-                                            let generator_handler = kast
-                                                .instantiate(
-                                                    generator_handler,
-                                                    ValueShape::Type(TypeShape::Char.into()).into(),
-                                                )
-                                                .await?
-                                                .expect_type()?;
-                                            let handler = kast
-                                                .interpreter
-                                                .contexts
-                                                .lock()
-                                                .unwrap()
-                                                .get_runtime(generator_handler)?
-                                                .ok_or_else(|| eyre!("no handler"))?
-                                                .into_inferred()?
-                                                .as_tuple()?
-                                                .clone()
-                                                .into_values();
-                                            let handler = handler
-                                                .get_named("handle")
-                                                .ok_or_else(|| eyre!("wut"))?;
-                                            let value = value.read_value()?;
-                                            let value = value.as_inferred()?;
-                                            let value = value.as_str()?;
-                                            for c in value.chars() {
-                                                kast.call(
-                                                    handler.clone(),
-                                                    ValueShape::Char(c).into(),
-                                                )
-                                                .await?;
-                                            }
-                                            Ok(ValueShape::Unit.into())
-                                        }
-                                        .boxed()
-                                    },
-                                )
-                                    as std::sync::Arc<NativeFunctionImpl>)
-                                    .into(),
-                                ty,
-                            })
-                            .into())
-                        }
-                    }),
-                );
-                map.insert(
-                    "set_native".to_owned(),
-                    Box::new({
-                        let set_natives = set_natives.clone();
-                        move |expected: Type| {
-                            let set_natives = set_natives.clone();
+                        }),
+                    );
+                    map.insert(
+                        "HashMap".to_owned(),
+                        Box::new(|expected: Type| {
                             let ty = FnType {
                                 arg: TypeShape::Tuple({
                                     let mut args = Tuple::empty();
-                                    args.add_named("name", TypeShape::String.into());
-                                    args.add_named(
-                                        "value",
-                                        Type::new_not_inferred("set_natives arg.value"),
-                                    );
+                                    args.add_unnamed(TypeShape::Type.into());
+                                    args.add_unnamed(TypeShape::Type.into());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Type.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "HashMap".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                    async move {
+                                        let [key, value] = args
+                                            .into_inferred()?
+                                            .as_tuple()?
+                                            .clone()
+                                            .into_values()
+                                            .into_unnamed()?;
+                                        Ok(ValueShape::Type(
+                                            TypeShape::HashMap(HashMapType {
+                                                key: key.expect_type()?,
+                                                value: value.expect_type()?,
+                                            })
+                                            .into(),
+                                        )
+                                        .into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "HashMap.new".to_owned(),
+                        Box::new(|expected: Type| {
+                            let key_ty = Type::new_not_inferred("HashMap.new key");
+                            let value_ty = Type::new_not_inferred("HashMap.new value");
+                            let ty = FnType {
+                                arg: TypeShape::Unit.into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::HashMap(HashMapType {
+                                    key: key_ty.clone(),
+                                    value: value_ty.clone(),
+                                })
+                                .into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "HashMap.new".to_owned(),
+                                r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                    let key_ty = key_ty.clone();
+                                    let value_ty = value_ty.clone();
+                                    async move {
+                                        args.into_inferred()?.expect_unit()?;
+                                        Ok(ValueShape::HashMap(HashMapValue {
+                                            values: HashMap::new(),
+                                            ty: HashMapType {
+                                                key: key_ty.clone(),
+                                                value: value_ty.clone(),
+                                            },
+                                        })
+                                        .into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "HashMap.insert".to_owned(),
+                        Box::new(|expected: Type| {
+                            let key_ty = Type::new_not_inferred("HashMap.insert key");
+                            let value_ty = Type::new_not_inferred("HashMap.insert value");
+                            let map_type: Type = TypeShape::HashMap(HashMapType {
+                                key: key_ty.clone(),
+                                value: value_ty.clone(),
+                            })
+                            .into();
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
+                                    args.add_unnamed(key_ty.clone());
+                                    args.add_unnamed(value_ty.clone());
                                     args
                                 })
                                 .into(),
@@ -723,18 +310,20 @@ impl Cache {
                             };
                             expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                             Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: "set_native".to_owned(),
+                                name: "HashMap.insert".to_owned(),
                                 r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
-                                    let set_natives = set_natives.clone();
                                     async move {
-                                        let [name, value] = args
+                                        let [map, key, value] = args
                                             .into_inferred()?
                                             .as_tuple()?
                                             .clone()
                                             .into_values()
-                                            .into_named(["name", "value"])?;
-                                        let name = name.into_inferred()?.as_str()?.to_owned();
-                                        set_natives.lock().unwrap().insert(name, value);
+                                            .into_unnamed()?;
+                                        let map = map.into_inferred()?.expect_ref()?;
+                                        let mut map = map.write_value()?;
+                                        let map = map.as_hash_map_mut()?;
+                                        map.values
+                                            .insert(HashableValue(key), OwnedPlace::new(value));
                                         Ok(ValueShape::Unit.into())
                                     }
                                     .boxed()
@@ -744,458 +333,33 @@ impl Cache {
                                 ty,
                             })
                             .into())
-                        }
-                    }),
-                );
-                map.insert(
-                    "list_get".to_owned(),
-                    Box::new(|expected: Type| {
-                        let elem_ty = Type::new_not_inferred("list_get elem_ty");
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut tuple = Tuple::empty();
-                                tuple.add_unnamed(TypeShape::List(elem_ty.clone()).into());
-                                tuple.add_unnamed(TypeShape::Int32.into()); // TODO usize?
-                                tuple
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: elem_ty,
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "list_get".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let [list, index] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_unnamed()?;
-                                    let list = list.into_inferred()?.expect_list()?;
-                                    let index = index.into_inferred()?.expect_int32()?;
-                                    Ok(list
-                                        .values
-                                        .get(
-                                            usize::try_from(index)
-                                                .map_err(|e| eyre!("incorrect index: {e}"))?,
-                                        )
-                                        .ok_or_else(|| eyre!("list index out of bounds"))?
-                                        .clone())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "list_length".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::List(Type::new_not_inferred("list_length elem_ty"))
-                                .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Int32.into(), // TODO usize?
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "list_length".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, list: Value| {
-                                async move {
-                                    let list = list.into_inferred()?.expect_list()?;
-                                    Ok(ValueShape::Int32(list.values.len().try_into().map_err(
-                                        |e| eyre!("list length doesnt fit in int32: {e}"),
-                                    )?)
-                                    .into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "list_set".to_owned(),
-                    Box::new(|expected: Type| {
-                        let elem_ty = Type::new_not_inferred("list_set elem_ty");
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_unnamed(
-                                    TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
-                                );
-                                args.add_unnamed(TypeShape::Int32.into());
-                                args.add_unnamed(elem_ty.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Unit.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "list_set".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let [list, index, new_value] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_unnamed()?;
-                                    let list_ref = list.into_inferred()?.expect_ref()?;
-                                    let index = index.into_inferred()?.expect_int32()?;
-                                    let index: usize = index.try_into()?;
-                                    let mut list = list_ref.write()?;
-                                    let list = list.get_mut()?.as_list_mut()?;
-                                    *list
-                                        .values
-                                        .get_mut(index)
-                                        .ok_or_else(|| eyre!("out of bounds"))? = new_value;
-                                    Ok(ValueShape::Unit.into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "list_push".to_owned(),
-                    Box::new(|expected: Type| {
-                        let elem_ty = Type::new_not_inferred("list_push elem_ty");
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_unnamed(
-                                    TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
-                                );
-                                args.add_unnamed(elem_ty.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Unit.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "list_push".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let [list_ref, new_elem] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_unnamed()?;
-                                    let list_ref = list_ref.into_inferred()?.expect_ref()?;
-                                    let mut list = list_ref.write()?;
-                                    let list = list.get_mut()?.as_list_mut()?;
-                                    list.values.push(new_elem);
-                                    Ok(ValueShape::Unit.into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "push_char".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_unnamed(TypeShape::String.into());
-                                args.add_unnamed(TypeShape::Char.into());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::String.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "push_char".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let [s, c] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_unnamed()?;
-                                    let s = s.into_inferred()?.as_str()?.to_owned();
-                                    let c = c.into_inferred()?.expect_char()?;
-                                    let mut result = s;
-                                    result.push(c);
-                                    Ok(ValueShape::String(result).into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "char_ord".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Char.into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Int32.into(), // TODO UInt32?
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "char_ord".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
-                                async move {
-                                    let c = args.into_inferred()?.expect_char()?;
-                                    Ok(ValueShape::Int32(u32::from(c).try_into()?).into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "panic".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::String.into(),
-                            contexts: Contexts::empty(),    // TODO panic
-                            result: TypeShape::Unit.into(), // TODO never type
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "panic".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
-                                async move {
-                                    let s = s.into_inferred()?.as_str()?.to_owned();
-                                    Err(eyre!("panic: {s}"))
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "random".to_owned(),
-                    Box::new(|expected: Type| {
-                        let value_ty = Type::new_not_inferred("random value_ty");
-                        let ty = FnType {
-                            arg: TypeShape::Tuple({
-                                let mut args = Tuple::empty();
-                                args.add_named("min", value_ty.clone());
-                                args.add_named("max", value_ty.clone());
-                                args
-                            })
-                            .into(),
-                            contexts: Contexts::empty(), // TODO rng
-                            result: value_ty,
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "random".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, args: Value| {
-                                async move {
-                                    use rand::prelude::*;
-                                    let [min, max] = args
-                                        .into_inferred()?
-                                        .as_tuple()?
-                                        .clone()
-                                        .into_values()
-                                        .into_named(["min", "max"])?;
-                                    let min = min.into_inferred()?;
-                                    let max = max.into_inferred()?;
-                                    Ok(match fn_ty.result.inferred() {
-                                        Ok(ty) => Value::from(match ty {
-                                            TypeShape::Int32 => {
-                                                let min = min.expect_int32()?;
-                                                let max = max.expect_int32()?;
-                                                ValueShape::Int32(thread_rng().gen_range(min..=max))
-                                            }
-                                            TypeShape::Int64 => {
-                                                let min = min.expect_int64()?;
-                                                let max = max.expect_int64()?;
-                                                ValueShape::Int64(thread_rng().gen_range(min..=max))
-                                            }
-                                            TypeShape::Float64 => {
-                                                let min = min.expect_float64()?;
-                                                let max = max.expect_float64()?;
-                                                ValueShape::Float64(
-                                                    thread_rng().gen_range(min..=max),
-                                                )
-                                            }
-                                            _ => eyre::bail!("{ty} is not rngable???"),
-                                        }),
-                                        Err(_) => eyre::bail!("cant parse not inferred type"),
-                                    })
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "parse".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::Ref(TypeShape::String.into()).into(),
-                            contexts: Contexts::empty(), // TODO error
-                            result: Type::new_not_inferred("parse result"),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "parse".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, s: Value| {
-                                async move {
-                                    let s = s.into_inferred()?.expect_ref()?;
-                                    let s = s.read_value()?;
-                                    let s = s.as_inferred()?;
-                                    let s = s.as_str()?;
-                                    Ok(match fn_ty.result.inferred() {
-                                        Ok(ty) => Value::from(match ty {
-                                            TypeShape::Int32 => ValueShape::Int32(s.parse()?),
-                                            TypeShape::Int64 => ValueShape::Int64(s.parse()?),
-                                            TypeShape::Float64 => ValueShape::Float64(s.parse()?),
-                                            _ => eyre::bail!("{ty} is not parseable???"),
-                                        }),
-                                        Err(_) => {
-                                            eyre::bail!("cant parse not inferred type")
-                                        }
-                                    })
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-                map.insert(
-                    "gensym".to_owned(),
-                    Box::new(|expected: Type| {
-                        let ty = FnType {
-                            arg: TypeShape::String.into(),
-                            contexts: Contexts::empty(),
-                            result: TypeShape::Symbol.into(),
-                        };
-                        expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                        Ok(ValueShape::NativeFunction(NativeFunction {
-                            name: "gensym".to_owned(),
-                            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, name: Value| {
-                                async move {
-                                    let name = name.into_inferred()?.as_str()?.to_owned();
-                                    Ok(ValueShape::Symbol(Symbol::new(name)).into())
-                                }
-                                .boxed()
-                            })
-                                as std::sync::Arc<NativeFunctionImpl>)
-                                .into(),
-                            ty,
-                        })
-                        .into())
-                    }),
-                );
-
-                let mut insert_named = |named: NamedBuiltin| {
-                    map.insert(named.name.clone(), named.value);
-                };
-
-                fn unary_op(
-                    name: &str,
-                    f: impl Fn(Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
-                ) -> NamedBuiltin {
-                    let name = name.to_owned();
-                    NamedBuiltin {
-                        name: name.clone(),
-                        value: Box::new(move |expected: Type| {
-                            let ty = Type::new_not_inferred(&format!("unary op {name:?} ty"));
-                            let ty = FnType {
-                                arg: ty.clone(),
-                                contexts: Contexts::empty(), // TODO
-                                result: ty.clone(),
-                            };
-                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                            Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: name.clone(),
-                                r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, arg: Value| {
-                                    async move { f(arg) }.boxed()
-                                })
-                                    as std::sync::Arc<NativeFunctionImpl>)
-                                    .into(),
-                                ty,
-                            })
-                            .into())
                         }),
-                    }
-                }
-                fn binary_op_impl(
-                    name: &str,
-                    result_ty: Option<TypeShape>,
-                    f: impl Fn(Value, Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
-                ) -> NamedBuiltin {
-                    let name = name.to_owned();
-                    NamedBuiltin {
-                        name: name.clone(),
-                        value: Box::new(move |expected: Type| {
-                            let operand_type =
-                                Type::new_not_inferred("binary op {name:?} operand_type");
+                    );
+                    map.insert(
+                        "HashMap.size".to_owned(),
+                        Box::new(|expected: Type| {
+                            let key_ty = Type::new_not_inferred("HashMap.size key");
+                            let value_ty = Type::new_not_inferred("HashMap.size value");
+                            let map_type: Type = TypeShape::HashMap(HashMapType {
+                                key: key_ty.clone(),
+                                value: value_ty.clone(),
+                            })
+                            .into();
                             let ty = FnType {
-                                arg: TypeShape::Tuple({
-                                    let mut args = Tuple::empty();
-                                    args.add_named("lhs", operand_type.clone());
-                                    args.add_named("rhs", operand_type.clone());
-                                    args
-                                })
-                                .into(),
-                                contexts: Contexts::empty(), // TODO
-                                result: result_ty.clone().map_or(operand_type, Into::into),
+                                arg: TypeShape::Ref(map_type.clone()).into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Int32.into(),
                             };
                             expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                             Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: name.clone(),
+                                name: "HashMap.size".to_owned(),
                                 r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
                                     async move {
-                                        let [lhs, rhs] = args
-                                            .into_inferred()?
-                                            .as_tuple()?
-                                            .clone()
-                                            .into_values()
-                                            .into_named(["lhs", "rhs"])?;
-                                        f(lhs, rhs)
+                                        let map = args.into_inferred()?.expect_ref()?;
+                                        let map = map.read_value()?;
+                                        let map = map.as_inferred()?;
+                                        let map = map.as_hash_map()?;
+                                        Ok(ValueShape::Int32(map.values.len().try_into()?).into())
                                     }
                                     .boxed()
                                 })
@@ -1205,24 +369,916 @@ impl Cache {
                             })
                             .into())
                         }),
-                    }
-                }
-                fn binary_op(
-                    name: &str,
-                    f: impl Fn(Value, Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
-                ) -> NamedBuiltin {
-                    binary_op_impl(name, None, f)
-                }
+                    );
+                    // What's the deal with all these hashmaps?
+                    map.insert(
+                        "HashMap.get".to_owned(),
+                        Box::new(|expected: Type| {
+                            let key_ty = Type::new_not_inferred("HashMap.get key");
+                            let value_ty = Type::new_not_inferred("HashMap.get value");
+                            let map_type: Type = TypeShape::HashMap(HashMapType {
+                                key: key_ty.clone(),
+                                value: value_ty.clone(),
+                            })
+                            .into();
+                            let result_ty = Type::new_not_inferred("HashMap.get result");
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
+                                    args.add_unnamed(key_ty.clone());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                // TODO use Option
+                                result: result_ty.clone(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "HashMap.get".to_owned(),
+                                r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
+                                    let result_ty = result_ty.clone();
+                                    async move {
+                                        let [map, key] = args
+                                            .into_inferred()?
+                                            .as_tuple()?
+                                            .clone()
+                                            .into_values()
+                                            .into_unnamed()?;
+                                        let map = map.into_inferred()?.expect_ref()?;
+                                        let map = map.read_value()?;
+                                        let map = map.as_inferred()?;
+                                        let map = map.as_hash_map()?;
+                                        let value_ref = map
+                                            .values
+                                            .get(&HashableValue(key))
+                                            .map(|place| place.get_ref());
+                                        Ok(ValueShape::Variant(VariantValue {
+                                            name: match value_ref {
+                                                Some(_) => "Some",
+                                                None => "None",
+                                            }
+                                            .to_owned(),
+                                            value: value_ref.map(|value_ref| {
+                                                OwnedPlace::new(ValueShape::Ref(value_ref).into())
+                                            }),
+                                            ty: result_ty,
+                                        })
+                                        .into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "HashMap.into_iter".to_owned(),
+                        Box::new({
+                            let set_natives = set_natives.clone();
+                            move |expected: Type| {
+                                let ty = FnType {
+                                    arg: Type::new_not_inferred("HashMap.into_iter arg"),
+                                    contexts: Contexts::empty(), // TODO generator_handler
+                                    result: TypeShape::Unit.into(),
+                                };
+                                expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                                let set_natives = set_natives.clone();
+                                Ok(ValueShape::NativeFunction(NativeFunction {
+                                    name: "HashMap.into_iter".to_owned(),
+                                    r#impl: (std::sync::Arc::new(
+                                        move |kast: Kast, _fn_ty: FnType, value: Value| {
+                                            let set_natives = set_natives.clone();
+                                            async move {
+                                                let map = value.into_inferred()?.into_hash_map()?;
+                                                let generator_handler = set_natives
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get("generator_handler")
+                                                    .ok_or_else(|| {
+                                                        eyre!("generator_handler not set")
+                                                    })?
+                                                    .clone();
+                                                let generator_handler = kast
+                                                    .instantiate(
+                                                        generator_handler,
+                                                        ValueShape::Type(
+                                                            TypeShape::Tuple({
+                                                                let mut tuple = Tuple::empty();
+                                                                tuple.add_unnamed(
+                                                                    map.ty.key.clone(),
+                                                                );
+                                                                tuple.add_unnamed(
+                                                                    map.ty.value.clone(),
+                                                                );
+                                                                tuple
+                                                            })
+                                                            .into(),
+                                                        )
+                                                        .into(),
+                                                    )
+                                                    .await?
+                                                    .expect_type()?;
+                                                let handler = kast
+                                                    .interpreter
+                                                    .contexts
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get_runtime(generator_handler)?
+                                                    .ok_or_else(|| eyre!("no handler"))?
+                                                    .into_inferred()?
+                                                    .as_tuple()?
+                                                    .clone()
+                                                    .into_values();
+                                                // oh shit
+                                                let handler = handler
+                                                    .get_named("handle")
+                                                    .ok_or_else(|| eyre!("wut"))?;
+                                                for (key, value) in map.values.into_iter() {
+                                                    let HashableValue(key) = key;
+                                                    let mut tuple = Tuple::empty();
+                                                    tuple.add_unnamed(key);
+                                                    tuple.add_unnamed(value.into_value()?);
+                                                    kast.call(
+                                                        handler.clone(),
+                                                        ValueShape::Tuple(tuple.into()).into(),
+                                                    )
+                                                    .await?;
+                                                }
+                                                Ok(ValueShape::Unit.into())
+                                            }
+                                            .boxed()
+                                        },
+                                    )
+                                        as std::sync::Arc<NativeFunctionImpl>)
+                                        .into(),
+                                    ty,
+                                })
+                                .into())
+                            }
+                        }),
+                    );
+                    map.insert(
+                        "contains".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_named("s", TypeShape::String.into());
+                                    args.add_named("substring", TypeShape::String.into());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Bool.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "contains".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                    async move {
+                                        let mut args =
+                                            args.into_inferred()?.as_tuple()?.clone().into_values();
+                                        // TODO do not to_owned
+                                        let s = args
+                                            .take_named("s")
+                                            .unwrap()
+                                            .into_inferred()?
+                                            .as_str()?
+                                            .to_owned();
+                                        let substring = args
+                                            .take_named("substring")
+                                            .unwrap()
+                                            .into_inferred()?
+                                            .as_str()?
+                                            .to_owned();
+                                        Ok(ValueShape::Bool(s.contains(&substring)).into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "loop".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::Function(Box::new(FnType {
+                                    arg: TypeShape::Unit.into(),
+                                    contexts: Contexts::new_not_inferred(),
+                                    result: TypeShape::Unit.into(),
+                                }))
+                                .into(),
+                                contexts: Contexts::new_not_inferred(),
+                                result: Type::new_not_inferred("loop result"), // TODO never
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "loop".to_owned(),
+                                r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, body: Value| {
+                                    async move {
+                                        loop {
+                                            kast.call(body.clone(), ValueShape::Unit.into())
+                                                .await?;
+                                        }
+                                        // rust is stupid
+                                        #[allow(unreachable_code)]
+                                        Ok(ValueShape::Unit.into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "list_iter".to_owned(),
+                        Box::new({
+                            let set_natives = set_natives.clone();
+                            move |expected: Type| {
+                                let set_natives = set_natives.clone();
+                                let elem_ty = Type::new_not_inferred("list_iter elem_ty");
+                                let ty = FnType {
+                                    arg: TypeShape::List(elem_ty).into(),
+                                    contexts: Contexts::new_not_inferred(), // TODO generator_handler
+                                    result: TypeShape::Unit.into(),
+                                };
+                                expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                                Ok(ValueShape::NativeFunction(NativeFunction {
+                                    name: "list_iter".to_owned(),
+                                    r#impl: (std::sync::Arc::new(
+                                        move |kast: Kast, _fn_ty: FnType, value: Value| {
+                                            let set_natives = set_natives.clone();
+                                            async move {
+                                                let value = value.into_inferred()?.expect_list()?;
+                                                let generator_handler = set_natives
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get("generator_handler")
+                                                    .ok_or_else(|| {
+                                                        eyre!("generator_handler not set")
+                                                    })?
+                                                    .clone();
+                                                let generator_handler = kast
+                                                    .instantiate(
+                                                        generator_handler,
+                                                        ValueShape::Type(value.element_ty).into(),
+                                                    )
+                                                    .await?
+                                                    .expect_type()?;
+                                                let handler = kast
+                                                    .interpreter
+                                                    .contexts
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get_runtime(generator_handler)?
+                                                    .ok_or_else(|| eyre!("no handler"))?
+                                                    .into_inferred()?
+                                                    .as_tuple()?
+                                                    .clone()
+                                                    .into_values();
+                                                let handler = handler
+                                                    .get_named("handle")
+                                                    .ok_or_else(|| eyre!("wut"))?;
+                                                for elem in value.values.iter() {
+                                                    kast.call(handler.clone(), elem.clone())
+                                                        .await?;
+                                                }
+                                                Ok(ValueShape::Unit.into())
+                                            }
+                                            .boxed()
+                                        },
+                                    )
+                                        as std::sync::Arc<NativeFunctionImpl>)
+                                        .into(),
+                                    ty,
+                                })
+                                .into())
+                            }
+                        }),
+                    );
+                    map.insert(
+                        "chars".to_owned(),
+                        Box::new({
+                            let set_natives = set_natives.clone();
+                            move |expected: Type| {
+                                let set_natives = set_natives.clone();
+                                let ty = FnType {
+                                    arg: TypeShape::Ref(TypeShape::String.into()).into(),
+                                    contexts: Contexts::new_not_inferred(), // TODO generator_handler
+                                    result: TypeShape::Unit.into(),
+                                };
+                                expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                                Ok(ValueShape::NativeFunction(NativeFunction {
+                                    name: "chars".to_owned(),
+                                    r#impl: (std::sync::Arc::new(
+                                        move |kast: Kast, _fn_ty: FnType, value: Value| {
+                                            let set_natives = set_natives.clone();
+                                            async move {
+                                                let value = value.into_inferred()?.expect_ref()?;
+                                                let generator_handler = set_natives
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get("generator_handler")
+                                                    .ok_or_else(|| {
+                                                        eyre!("generator_handler not set")
+                                                    })?
+                                                    .clone();
+                                                let generator_handler = kast
+                                                    .instantiate(
+                                                        generator_handler,
+                                                        ValueShape::Type(TypeShape::Char.into())
+                                                            .into(),
+                                                    )
+                                                    .await?
+                                                    .expect_type()?;
+                                                let handler = kast
+                                                    .interpreter
+                                                    .contexts
+                                                    .lock()
+                                                    .unwrap()
+                                                    .get_runtime(generator_handler)?
+                                                    .ok_or_else(|| eyre!("no handler"))?
+                                                    .into_inferred()?
+                                                    .as_tuple()?
+                                                    .clone()
+                                                    .into_values();
+                                                let handler = handler
+                                                    .get_named("handle")
+                                                    .ok_or_else(|| eyre!("wut"))?;
+                                                let value = value.read_value()?;
+                                                let value = value.as_inferred()?;
+                                                let value = value.as_str()?;
+                                                for c in value.chars() {
+                                                    kast.call(
+                                                        handler.clone(),
+                                                        ValueShape::Char(c).into(),
+                                                    )
+                                                    .await?;
+                                                }
+                                                Ok(ValueShape::Unit.into())
+                                            }
+                                            .boxed()
+                                        },
+                                    )
+                                        as std::sync::Arc<NativeFunctionImpl>)
+                                        .into(),
+                                    ty,
+                                })
+                                .into())
+                            }
+                        }),
+                    );
+                    map.insert(
+                        "set_native".to_owned(),
+                        Box::new({
+                            let set_natives = set_natives.clone();
+                            move |expected: Type| {
+                                let set_natives = set_natives.clone();
+                                let ty = FnType {
+                                    arg: TypeShape::Tuple({
+                                        let mut args = Tuple::empty();
+                                        args.add_named("name", TypeShape::String.into());
+                                        args.add_named(
+                                            "value",
+                                            Type::new_not_inferred("set_natives arg.value"),
+                                        );
+                                        args
+                                    })
+                                    .into(),
+                                    contexts: Contexts::empty(),
+                                    result: TypeShape::Unit.into(),
+                                };
+                                expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                                Ok(ValueShape::NativeFunction(NativeFunction {
+                                    name: "set_native".to_owned(),
+                                    r#impl: (std::sync::Arc::new(
+                                        move |_kast, _fn_ty, args: Value| {
+                                            let set_natives = set_natives.clone();
+                                            async move {
+                                                let [name, value] = args
+                                                    .into_inferred()?
+                                                    .as_tuple()?
+                                                    .clone()
+                                                    .into_values()
+                                                    .into_named(["name", "value"])?;
+                                                let name =
+                                                    name.into_inferred()?.as_str()?.to_owned();
+                                                set_natives.lock().unwrap().insert(name, value);
+                                                Ok(ValueShape::Unit.into())
+                                            }
+                                            .boxed()
+                                        },
+                                    )
+                                        as std::sync::Arc<NativeFunctionImpl>)
+                                        .into(),
+                                    ty,
+                                })
+                                .into())
+                            }
+                        }),
+                    );
+                    map.insert(
+                        "list_get".to_owned(),
+                        Box::new(|expected: Type| {
+                            let elem_ty = Type::new_not_inferred("list_get elem_ty");
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut tuple = Tuple::empty();
+                                    tuple.add_unnamed(TypeShape::List(elem_ty.clone()).into());
+                                    tuple.add_unnamed(TypeShape::Int32.into()); // TODO usize?
+                                    tuple
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                result: elem_ty,
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "list_get".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                    async move {
+                                        let [list, index] = args
+                                            .into_inferred()?
+                                            .as_tuple()?
+                                            .clone()
+                                            .into_values()
+                                            .into_unnamed()?;
+                                        let list = list.into_inferred()?.expect_list()?;
+                                        let index = index.into_inferred()?.expect_int32()?;
+                                        Ok(list
+                                            .values
+                                            .get(
+                                                usize::try_from(index)
+                                                    .map_err(|e| eyre!("incorrect index: {e}"))?,
+                                            )
+                                            .ok_or_else(|| eyre!("list index out of bounds"))?
+                                            .clone())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "list_length".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::List(Type::new_not_inferred("list_length elem_ty"))
+                                    .into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Int32.into(), // TODO usize?
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "list_length".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, list: Value| {
+                                    async move {
+                                        let list = list.into_inferred()?.expect_list()?;
+                                        Ok(ValueShape::Int32(
+                                            list.values.len().try_into().map_err(|e| {
+                                                eyre!("list length doesnt fit in int32: {e}")
+                                            })?,
+                                        )
+                                        .into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "list_set".to_owned(),
+                        Box::new(|expected: Type| {
+                            let elem_ty = Type::new_not_inferred("list_set elem_ty");
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_unnamed(
+                                        TypeShape::Ref(TypeShape::List(elem_ty.clone()).into())
+                                            .into(),
+                                    );
+                                    args.add_unnamed(TypeShape::Int32.into());
+                                    args.add_unnamed(elem_ty.clone());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Unit.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "list_set".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                    async move {
+                                        let [list, index, new_value] = args
+                                            .into_inferred()?
+                                            .as_tuple()?
+                                            .clone()
+                                            .into_values()
+                                            .into_unnamed()?;
+                                        let list_ref = list.into_inferred()?.expect_ref()?;
+                                        let index = index.into_inferred()?.expect_int32()?;
+                                        let index: usize = index.try_into()?;
+                                        let mut list = list_ref.write()?;
+                                        let list = list.get_mut()?.as_list_mut()?;
+                                        *list
+                                            .values
+                                            .get_mut(index)
+                                            .ok_or_else(|| eyre!("out of bounds"))? = new_value;
+                                        Ok(ValueShape::Unit.into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "list_push".to_owned(),
+                        Box::new(|expected: Type| {
+                            let elem_ty = Type::new_not_inferred("list_push elem_ty");
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_unnamed(
+                                        TypeShape::Ref(TypeShape::List(elem_ty.clone()).into())
+                                            .into(),
+                                    );
+                                    args.add_unnamed(elem_ty.clone());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Unit.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "list_push".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                    async move {
+                                        let [list_ref, new_elem] = args
+                                            .into_inferred()?
+                                            .as_tuple()?
+                                            .clone()
+                                            .into_values()
+                                            .into_unnamed()?;
+                                        let list_ref = list_ref.into_inferred()?.expect_ref()?;
+                                        let mut list = list_ref.write()?;
+                                        let list = list.get_mut()?.as_list_mut()?;
+                                        list.values.push(new_elem);
+                                        Ok(ValueShape::Unit.into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "push_char".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_unnamed(TypeShape::String.into());
+                                    args.add_unnamed(TypeShape::Char.into());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::String.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "push_char".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                    async move {
+                                        let [s, c] = args
+                                            .into_inferred()?
+                                            .as_tuple()?
+                                            .clone()
+                                            .into_values()
+                                            .into_unnamed()?;
+                                        let s = s.into_inferred()?.as_str()?.to_owned();
+                                        let c = c.into_inferred()?.expect_char()?;
+                                        let mut result = s;
+                                        result.push(c);
+                                        Ok(ValueShape::String(result).into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "char_ord".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::Char.into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Int32.into(), // TODO UInt32?
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "char_ord".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
+                                    async move {
+                                        let c = args.into_inferred()?.expect_char()?;
+                                        Ok(ValueShape::Int32(u32::from(c).try_into()?).into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "panic".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::String.into(),
+                                contexts: Contexts::empty(), // TODO panic
+                                result: TypeShape::Unit.into(), // TODO never type
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "panic".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
+                                    async move {
+                                        let s = s.into_inferred()?.as_str()?.to_owned();
+                                        Err(eyre!("panic: {s}"))
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "random".to_owned(),
+                        Box::new(|expected: Type| {
+                            let value_ty = Type::new_not_inferred("random value_ty");
+                            let ty = FnType {
+                                arg: TypeShape::Tuple({
+                                    let mut args = Tuple::empty();
+                                    args.add_named("min", value_ty.clone());
+                                    args.add_named("max", value_ty.clone());
+                                    args
+                                })
+                                .into(),
+                                contexts: Contexts::empty(), // TODO rng
+                                result: value_ty,
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "random".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, args: Value| {
+                                    async move {
+                                        use rand::prelude::*;
+                                        let [min, max] = args
+                                            .into_inferred()?
+                                            .as_tuple()?
+                                            .clone()
+                                            .into_values()
+                                            .into_named(["min", "max"])?;
+                                        let min = min.into_inferred()?;
+                                        let max = max.into_inferred()?;
+                                        Ok(match fn_ty.result.inferred() {
+                                            Ok(ty) => Value::from(match ty {
+                                                TypeShape::Int32 => {
+                                                    let min = min.expect_int32()?;
+                                                    let max = max.expect_int32()?;
+                                                    ValueShape::Int32(
+                                                        thread_rng().gen_range(min..=max),
+                                                    )
+                                                }
+                                                TypeShape::Int64 => {
+                                                    let min = min.expect_int64()?;
+                                                    let max = max.expect_int64()?;
+                                                    ValueShape::Int64(
+                                                        thread_rng().gen_range(min..=max),
+                                                    )
+                                                }
+                                                TypeShape::Float64 => {
+                                                    let min = min.expect_float64()?;
+                                                    let max = max.expect_float64()?;
+                                                    ValueShape::Float64(
+                                                        thread_rng().gen_range(min..=max),
+                                                    )
+                                                }
+                                                _ => eyre::bail!("{ty} is not rngable???"),
+                                            }),
+                                            Err(_) => eyre::bail!("cant parse not inferred type"),
+                                        })
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "parse".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::Ref(TypeShape::String.into()).into(),
+                                contexts: Contexts::empty(), // TODO error
+                                result: Type::new_not_inferred("parse result"),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "parse".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, s: Value| {
+                                    async move {
+                                        let s = s.into_inferred()?.expect_ref()?;
+                                        let s = s.read_value()?;
+                                        let s = s.as_inferred()?;
+                                        let s = s.as_str()?;
+                                        Ok(match fn_ty.result.inferred() {
+                                            Ok(ty) => Value::from(match ty {
+                                                TypeShape::Int32 => ValueShape::Int32(s.parse()?),
+                                                TypeShape::Int64 => ValueShape::Int64(s.parse()?),
+                                                TypeShape::Float64 => {
+                                                    ValueShape::Float64(s.parse()?)
+                                                }
+                                                _ => eyre::bail!("{ty} is not parseable???"),
+                                            }),
+                                            Err(_) => {
+                                                eyre::bail!("cant parse not inferred type")
+                                            }
+                                        })
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+                    map.insert(
+                        "gensym".to_owned(),
+                        Box::new(|expected: Type| {
+                            let ty = FnType {
+                                arg: TypeShape::String.into(),
+                                contexts: Contexts::empty(),
+                                result: TypeShape::Symbol.into(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "gensym".to_owned(),
+                                r#impl: (std::sync::Arc::new(|_kast, _fn_ty, name: Value| {
+                                    async move {
+                                        let name = name.into_inferred()?.as_str()?.to_owned();
+                                        Ok(ValueShape::Symbol(Symbol::new(name)).into())
+                                    }
+                                    .boxed()
+                                })
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
 
-                fn binary_cmp_op(
-                    name: &str,
-                    f: impl Fn(&Value, &Value) -> eyre::Result<bool> + Copy + Send + Sync + 'static,
-                ) -> NamedBuiltin {
-                    binary_op_impl(name, Some(TypeShape::Bool), move |lhs, rhs| {
-                        Ok(ValueShape::Bool(f(&lhs, &rhs)?).into())
-                    })
-                }
-                macro_rules! binary_cmp_op {
+                    let mut insert_named = |named: NamedBuiltin| {
+                        map.insert(named.name.clone(), named.value);
+                    };
+
+                    fn unary_op(
+                        name: &str,
+                        f: impl Fn(Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
+                    ) -> NamedBuiltin {
+                        let name = name.to_owned();
+                        NamedBuiltin {
+                            name: name.clone(),
+                            value: Box::new(move |expected: Type| {
+                                let ty = Type::new_not_inferred(&format!("unary op {name:?} ty"));
+                                let ty = FnType {
+                                    arg: ty.clone(),
+                                    contexts: Contexts::empty(), // TODO
+                                    result: ty.clone(),
+                                };
+                                expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                                Ok(ValueShape::NativeFunction(NativeFunction {
+                                    name: name.clone(),
+                                    r#impl: (std::sync::Arc::new(
+                                        move |_kast, _fn_ty, arg: Value| {
+                                            async move { f(arg) }.boxed()
+                                        },
+                                    )
+                                        as std::sync::Arc<NativeFunctionImpl>)
+                                        .into(),
+                                    ty,
+                                })
+                                .into())
+                            }),
+                        }
+                    }
+                    fn binary_op_impl(
+                        name: &str,
+                        result_ty: Option<TypeShape>,
+                        f: impl Fn(Value, Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
+                    ) -> NamedBuiltin {
+                        let name = name.to_owned();
+                        NamedBuiltin {
+                            name: name.clone(),
+                            value: Box::new(move |expected: Type| {
+                                let operand_type =
+                                    Type::new_not_inferred("binary op {name:?} operand_type");
+                                let ty = FnType {
+                                    arg: TypeShape::Tuple({
+                                        let mut args = Tuple::empty();
+                                        args.add_named("lhs", operand_type.clone());
+                                        args.add_named("rhs", operand_type.clone());
+                                        args
+                                    })
+                                    .into(),
+                                    contexts: Contexts::empty(), // TODO
+                                    result: result_ty.clone().map_or(operand_type, Into::into),
+                                };
+                                expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                                Ok(ValueShape::NativeFunction(NativeFunction {
+                                    name: name.clone(),
+                                    r#impl: (std::sync::Arc::new(
+                                        move |_kast, _fn_ty, args: Value| {
+                                            async move {
+                                                let [lhs, rhs] = args
+                                                    .into_inferred()?
+                                                    .as_tuple()?
+                                                    .clone()
+                                                    .into_values()
+                                                    .into_named(["lhs", "rhs"])?;
+                                                f(lhs, rhs)
+                                            }
+                                            .boxed()
+                                        },
+                                    )
+                                        as std::sync::Arc<NativeFunctionImpl>)
+                                        .into(),
+                                    ty,
+                                })
+                                .into())
+                            }),
+                        }
+                    }
+                    fn binary_op(
+                        name: &str,
+                        f: impl Fn(Value, Value) -> eyre::Result<Value> + Copy + Send + Sync + 'static,
+                    ) -> NamedBuiltin {
+                        binary_op_impl(name, None, f)
+                    }
+
+                    fn binary_cmp_op(
+                        name: &str,
+                        f: impl Fn(&Value, &Value) -> eyre::Result<bool> + Copy + Send + Sync + 'static,
+                    ) -> NamedBuiltin {
+                        binary_op_impl(name, Some(TypeShape::Bool), move |lhs, rhs| {
+                            Ok(ValueShape::Bool(f(&lhs, &rhs)?).into())
+                        })
+                    }
+                    macro_rules! binary_cmp_op {
                     ($op:tt, $name:ident) => {
                         fn $name(lhs: &Value, rhs: &Value) -> eyre::Result<bool> {
                             let lhs = lhs.as_inferred()?;
@@ -1259,28 +1315,28 @@ impl Cache {
                         insert_named(binary_cmp_op(stringify!($op), $name));
                     };
                 }
-                binary_cmp_op!(<, lt);
-                binary_cmp_op!(<=, le);
-                binary_cmp_op!(==, eq);
-                binary_cmp_op!(!=, ne);
-                binary_cmp_op!(>=, gt);
-                binary_cmp_op!(>, ge);
-                insert_named(unary_op("unary -", |value| {
-                    Ok(match value.clone().into_inferred()? {
-                        ValueShape::Int32(value) => ValueShape::Int32(-value).into(),
-                        ValueShape::Int64(value) => ValueShape::Int64(-value).into(),
-                        ValueShape::Float64(value) => ValueShape::Float64(-value).into(),
-                        _ => eyre::bail!("unary - doesnt work for {}", value.ty()),
-                    })
-                }));
-                insert_named(unary_op("not", |value| {
-                    Ok(match value.clone().into_inferred()? {
-                        ValueShape::Bool(x) => ValueShape::Bool(!x).into(),
-                        _ => eyre::bail!("not doesnt work for {}", value.ty()),
-                    })
-                }));
+                    binary_cmp_op!(<, lt);
+                    binary_cmp_op!(<=, le);
+                    binary_cmp_op!(==, eq);
+                    binary_cmp_op!(!=, ne);
+                    binary_cmp_op!(>=, gt);
+                    binary_cmp_op!(>, ge);
+                    insert_named(unary_op("unary -", |value| {
+                        Ok(match value.clone().into_inferred()? {
+                            ValueShape::Int32(value) => ValueShape::Int32(-value).into(),
+                            ValueShape::Int64(value) => ValueShape::Int64(-value).into(),
+                            ValueShape::Float64(value) => ValueShape::Float64(-value).into(),
+                            _ => eyre::bail!("unary - doesnt work for {}", value.ty()),
+                        })
+                    }));
+                    insert_named(unary_op("not", |value| {
+                        Ok(match value.clone().into_inferred()? {
+                            ValueShape::Bool(x) => ValueShape::Bool(!x).into(),
+                            _ => eyre::bail!("not doesnt work for {}", value.ty()),
+                        })
+                    }));
 
-                macro_rules! binary_op {
+                    macro_rules! binary_op {
                     ($op:tt, $method: ident) => {
                         insert_named(binary_op(stringify!($op), |lhs, rhs| {
                             Ok(match (lhs.into_inferred()?, rhs.into_inferred()?) {
@@ -1305,63 +1361,65 @@ impl Cache {
                         }));
                     };
                 }
-                // I am even worse in other things
-                binary_op!(-, checked_sub);
-                binary_op!(+, checked_add);
-                binary_op!(*, checked_mul);
-                binary_op!(/, checked_div);
-                binary_op!(%, checked_rem);
+                    // I am even worse in other things
+                    binary_op!(-, checked_sub);
+                    binary_op!(+, checked_add);
+                    binary_op!(*, checked_mul);
+                    binary_op!(/, checked_div);
+                    binary_op!(%, checked_rem);
 
-                {
-                    let exec_mode_ty = TypeShape::Variant(vec![
-                        VariantType {
-                            name: "Run".to_owned(),
-                            value: None,
-                        },
-                        VariantType {
-                            name: "Import".to_owned(),
-                            value: None,
-                        },
-                    ]);
-                    map.insert(
-                        "exec_mode".to_owned(),
-                        Box::new(move |expected: Type| {
-                            let exec_mode_ty = exec_mode_ty.clone();
-                            let ty = FnType {
-                                arg: TypeShape::Unit.into(),
-                                contexts: Contexts::empty(),
-                                result: exec_mode_ty.clone().into(),
-                            };
-                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
-                            Ok(ValueShape::NativeFunction(NativeFunction {
-                                name: "exec_mode".to_owned(),
-                                r#impl: (std::sync::Arc::new(move |kast: Kast, _fn_ty, _: Value| {
-                                    let exec_mode_ty = exec_mode_ty.clone();
-                                    async move {
-                                        Ok(ValueShape::Variant(VariantValue {
-                                            name: match kast.exec_mode {
-                                                ExecMode::Run => "Run".into(),
-                                                ExecMode::Import => "Import".into(),
-                                            },
-                                            value: None,
-                                            ty: exec_mode_ty.clone().into(),
-                                        })
-                                        .into())
-                                    }
-                                    .boxed()
+                    {
+                        let exec_mode_ty = TypeShape::Variant(vec![
+                            VariantType {
+                                name: "Run".to_owned(),
+                                value: None,
+                            },
+                            VariantType {
+                                name: "Import".to_owned(),
+                                value: None,
+                            },
+                        ]);
+                        map.insert(
+                            "exec_mode".to_owned(),
+                            Box::new(move |expected: Type| {
+                                let exec_mode_ty = exec_mode_ty.clone();
+                                let ty = FnType {
+                                    arg: TypeShape::Unit.into(),
+                                    contexts: Contexts::empty(),
+                                    result: exec_mode_ty.clone().into(),
+                                };
+                                expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                                Ok(ValueShape::NativeFunction(NativeFunction {
+                                    name: "exec_mode".to_owned(),
+                                    r#impl: (std::sync::Arc::new(
+                                        move |kast: Kast, _fn_ty, _: Value| {
+                                            let exec_mode_ty = exec_mode_ty.clone();
+                                            async move {
+                                                Ok(ValueShape::Variant(VariantValue {
+                                                    name: match kast.exec_mode {
+                                                        ExecMode::Run => "Run".into(),
+                                                        ExecMode::Import => "Import".into(),
+                                                    },
+                                                    value: None,
+                                                    ty: exec_mode_ty.clone().into(),
+                                                })
+                                                .into())
+                                            }
+                                            .boxed()
+                                        },
+                                    )
+                                        as std::sync::Arc<NativeFunctionImpl>)
+                                        .into(),
+                                    ty,
                                 })
-                                    as std::sync::Arc<NativeFunctionImpl>)
-                                    .into(),
-                                ty,
-                            })
-                            .into())
-                        }),
-                    );
-                };
-
-                map
+                                .into())
+                            }),
+                        );
+                    };
+                    Mutex::new(map)
+                },
+                set_natives,
             },
-            set_natives,
         }
     }
 }
@@ -2119,8 +2177,13 @@ impl Kast {
                         .substitute_bindings(self, &mut RecurseCache::new());
                     let name = self.eval(name).await?.into_inferred()?.as_str()?.to_owned();
                     tracing::trace!("native {name} :: {actual_type}");
-                    match self.cache.interpreter.builtins.get(name.as_str()) {
-                        Some(builtin) => builtin(actual_type)?,
+                    match self
+                        .cache
+                        .interpreter
+                        .natives
+                        .get(name.as_str(), actual_type)?
+                    {
+                        Some(value) => value,
                         None => eyre::bail!("native {name:?} not found"),
                     }
                 }

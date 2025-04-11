@@ -2,6 +2,7 @@
 members = ["crates/*"]
 
 [workspace.package]
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/kast-lang/kast"
 
@@ -42,7 +43,7 @@ try-hash = { package = "kast-try-hash", version = "0.1", path = "crates/try-hash
 [package]
 name = "kast"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "kast programming language"
 license.workspace = true
 repository.workspace = true
