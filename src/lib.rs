@@ -6,7 +6,7 @@ use cast::*;
 pub use compiler::{Ast, AstData, Hygiene};
 pub use contexts::Contexts;
 use executor::Executor;
-use eyre::{eyre, Context as _};
+use eyre::{Context as _, eyre};
 use futures::future::BoxFuture;
 use futures::prelude::*;
 pub use id::*;
@@ -17,6 +17,7 @@ pub use kast_ast as ast;
 pub use kast_ast::Token;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
+pub use rusty::*;
 use scopes::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,7 @@ mod id;
 pub mod inference;
 mod interpreter;
 mod ir;
+mod rusty;
 mod scopes;
 mod ty;
 mod value;
@@ -189,7 +191,7 @@ impl Kast {
             .import_impl(std_path().join("syntax.ks"), ImportMode::FromScratch)
             .wrap_err("failed to import std syntax")?
             .into_inferred()?
-            .expect_syntax_module()
+            .into_syntax_module()
             .wrap_err("std/syntax.ks must evaluate to syntax")?;
         let mut new_syntax: ast::Syntax = (*kast.syntax).clone();
         for definition in &*syntax {
@@ -234,7 +236,7 @@ impl Kast {
         let source = SourceFile {
             #[cfg(feature = "embed-std")]
             contents: {
-                use include_dir::{include_dir, Dir};
+                use include_dir::{Dir, include_dir};
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
                         static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
@@ -289,6 +291,17 @@ impl Kast {
             .insert(path.clone(), Some(value.clone()));
         tracing::trace!("{path:?} has been imported");
         Ok(value)
+    }
+
+    pub fn eval_str_as<T: Rusty>(&mut self, source: &str) -> eyre::Result<T> {
+        let value: Value = self.eval_source(
+            SourceFile {
+                contents: source.to_owned(),
+                filename: "<source>".into(),
+            },
+            T::ty(),
+        )?;
+        Ok(T::from_value(value)?)
     }
 
     pub fn eval_file(&mut self, path: impl AsRef<Path>) -> eyre::Result<Value> {

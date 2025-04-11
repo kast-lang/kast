@@ -97,7 +97,7 @@ pub fn default_output() -> Value {
             r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
                 async move {
                     let s = s.into_inferred()?;
-                    let s = s.expect_ref()?;
+                    let s = s.into_ref()?;
                     let s = s.read_value()?;
                     let s = s.as_inferred()?;
                     let s = s.as_str()?;

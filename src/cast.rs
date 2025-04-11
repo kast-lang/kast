@@ -66,7 +66,7 @@ impl CastMap {
                 binding.ty.infer_as(TypeShape::Type)?;
                 TypeShape::Binding(binding).into()
             }
-            inferred => match inferred.expect_type() {
+            inferred => match inferred.into_type() {
                 Ok(value) => value,
                 Err(_e) => return Ok(Err(value)),
             },

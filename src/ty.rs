@@ -391,7 +391,7 @@ impl SubstituteBindings for Type {
                     .unwrap()
                     .inferred()
                     .unwrap()
-                    .expect_type()
+                    .into_type()
                     .unwrap_or_else(|e| {
                         panic!("{} expected to be a type: {e}", binding.symbol.name())
                     }),

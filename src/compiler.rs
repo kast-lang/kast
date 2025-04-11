@@ -701,7 +701,7 @@ impl Kast {
             .eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
             .await
             .wrap_err_with(|| "Failed to evaluate the type")?
-            .expect_type()?;
+            .into_type()?;
         let mut value = self.compile_into(cty, value).await?;
         value.ty_mut().make_same(ty)?;
         Ok(value)
@@ -913,7 +913,7 @@ impl Kast {
             Some(ty) => Some(
                 self.eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
                     .await?
-                    .expect_type()?,
+                    .into_type()?,
             ),
         };
         Ok(match cty {
@@ -1075,7 +1075,7 @@ impl Kast {
             .eval_ast::<Value>(def, Some(TypeShape::SyntaxDefinition.into()))
             .await?
             .into_inferred()?
-            .expect_syntax_definition()?;
+            .into_syntax_definition()?;
         tracing::trace!("defined syntax {:?}", def.name);
         let r#impl = self.eval_ast(r#impl, None).await?; // TODO should be a macro?
         self.cache
@@ -1109,7 +1109,7 @@ impl Kast {
             .eval_ast::<Value>(body, Some(TypeShape::Unit.into()))
             .await?
             .into_inferred()?
-            .expect_unit()?;
+            .into_unit()?;
         Ok(Compiled::Expr(
             Expr::Constant {
                 value: ValueShape::SyntaxModule(Parc::new(inner.scope_syntax_definitions())).into(),
@@ -1146,7 +1146,7 @@ impl Kast {
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         // TODO expect some type here?
         let def = self.eval_ast::<Value>(def, None).await?;
-        let def = def.into_inferred()?.expect_function()?;
+        let def = def.into_inferred()?.into_function()?;
         Ok(Compiled::Expr(
             Expr::Constant {
                 value: ValueShape::Macro(def).into(),
@@ -1252,7 +1252,7 @@ impl Kast {
             Some(ast) => inner
                 .eval_ast::<Value>(ast, Some(TypeShape::Type.into()))
                 .await?
-                .expect_type()?,
+                .into_type()?,
             None => Type::new_not_inferred(&format!("result type of fn at {span}")),
         };
         let contexts = match contexts {
@@ -1646,7 +1646,7 @@ impl Kast {
                                 Some(
                                     self.eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
                                         .await?
-                                        .expect_type()?,
+                                        .into_type()?,
                                 ),
                             )
                         }
@@ -1832,7 +1832,7 @@ impl Kast {
             let ty = self
                 .eval_ast::<Value>(context_type, Some(TypeShape::Type.into()))
                 .await?
-                .expect_type()?;
+                .into_type()?;
             expr.data_mut().ty.make_same(ty)?;
         }
         Ok(Compiled::Expr(expr))
@@ -1859,7 +1859,7 @@ impl Kast {
             .eval_ast::<Value>(value, Some(TypeShape::Ast.into()))
             .await?
             .into_inferred()?
-            .expect_ast()?;
+            .into_ast()?;
         self.compile_into(cty, &ast).await
     }
     async fn macro_mutable_pattern(
@@ -2099,7 +2099,7 @@ impl Kast {
                     .ty
                     .infer_as(TypeShape::Type)?;
                 let ty = kast.call_fn(template, value).await?;
-                ty.expect_type()?
+                ty.into_type()?
             }
             Some(ValueShape::Type(ty)) => ty,
             _ => eyre::bail!("casting to {} is not possible", target.ty()),
@@ -2807,7 +2807,7 @@ impl Expr<Span> {
                                 .natives
                                 .get("default_number_type", TypeShape::Type.into())?
                                 .unwrap()
-                                .expect_type()?;
+                                .into_type()?;
                             let default_number_type_context = kast
                                 .interpreter
                                 .contexts
@@ -2828,7 +2828,7 @@ impl Expr<Span> {
                                 .unwrap()
                                 .clone();
                             let ty = kast.call(f, ValueShape::String(raw).into()).await?;
-                            let ty = ty.expect_type()?;
+                            let ty = ty.into_type()?;
                             match ty.inferred() {
                                 Ok(inferred) => {
                                     Type::new_not_inferred_with_default("number literal", inferred)

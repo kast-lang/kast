@@ -619,16 +619,16 @@ impl std::fmt::Debug for ValueShape {
 
 impl Value {
     /// Get this value AS a type
-    pub fn expect_type(self) -> eyre::Result<Type> {
+    pub fn into_type(self) -> eyre::Result<Type> {
         self.ty.infer_as(TypeShape::Type)?;
         Ok(match self.r#impl {
             ValueImpl::Inferrable(inferrable) => match inferrable.inferred() {
-                Ok(inferred) => inferred.expect_type()?,
+                Ok(inferred) => inferred.into_type()?,
                 Err(_var) => {
                     unreachable!()
                 }
             },
-            ValueImpl::NonInferrable(value) => value.expect_type()?,
+            ValueImpl::NonInferrable(value) => value.into_type()?,
         })
     }
     pub fn into_inferred(self) -> eyre::Result<ValueShape> {
@@ -660,7 +660,7 @@ impl From<ValueShape> for Value {
 
 impl ValueShape {
     /// Get this value AS a type
-    pub fn expect_type(self) -> Result<Type, ExpectError> {
+    pub fn into_type(self) -> Result<Type, ExpectError> {
         match self {
             Self::Binding(binding) => {
                 binding.ty.infer_as(TypeShape::Type).unwrap(); // TODO dont unwrap
@@ -727,9 +727,7 @@ pub struct ExpectError<V = ValueShape, Expected = TypeShape> {
 }
 
 impl ValueShape {
-    pub fn expect_unwind_handle(
-        self,
-    ) -> Result<UnwindHandle, ExpectError<ValueShape, &'static str>> {
+    pub fn into_unwind_handle(self) -> Result<UnwindHandle, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::UnwindHandle(value) => Ok(value),
             _ => Err(ExpectError {
@@ -738,7 +736,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_macro(self) -> Result<TypedFunction, ExpectError<ValueShape, &'static str>> {
+    pub fn into_macro(self) -> Result<TypedFunction, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Macro(value) => Ok(value),
             _ => Err(ExpectError {
@@ -747,7 +745,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_variant(&self) -> Result<&VariantValue, ExpectError<ValueShape, &'static str>> {
+    pub fn as_variant(&self) -> Result<&VariantValue, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Variant(value) => Ok(value),
             _ => Err(ExpectError {
@@ -794,6 +792,7 @@ impl ValueShape {
             }),
         }
     }
+
     pub fn into_contexts(self) -> eyre::Result<Contexts> {
         match self {
             Self::Unit => Ok(Contexts::empty()),
@@ -801,7 +800,7 @@ impl ValueShape {
             Self::Type(ty) => Ok(Contexts::from_list([ty], false)),
             Self::Multiset(set) => Ok(Contexts::from_list(
                 set.into_iter()
-                    .map(|value| value.expect_type())
+                    .map(|value| value.into_type())
                     .collect::<Result<Vec<_>, eyre::Report>>()?,
                 false,
             )),
@@ -816,7 +815,7 @@ impl ValueShape {
             .into()),
         }
     }
-    pub fn expect_syntax_definition(self) -> Result<Parc<ast::SyntaxDefinition>, ExpectError> {
+    pub fn into_syntax_definition(self) -> Result<Parc<ast::SyntaxDefinition>, ExpectError> {
         match self {
             Self::SyntaxDefinition(def) => Ok(def),
             _ => Err(ExpectError {
@@ -825,9 +824,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_syntax_module(
-        self,
-    ) -> Result<Parc<Vec<Parc<ast::SyntaxDefinition>>>, ExpectError> {
+    pub fn into_syntax_module(self) -> Result<Parc<Vec<Parc<ast::SyntaxDefinition>>>, ExpectError> {
         match self {
             Self::SyntaxModule(syntax) => Ok(syntax),
             _ => Err(ExpectError {
@@ -836,7 +833,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_unit(self) -> Result<(), ExpectError> {
+    pub fn into_unit(self) -> Result<(), ExpectError> {
         match self {
             Self::Unit => Ok(()),
             _ => Err(ExpectError {
@@ -854,7 +851,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_list(self) -> Result<ListValue, ExpectError> {
+    pub fn into_list(self) -> Result<ListValue, ExpectError> {
         match self {
             Self::List(list) => Ok(list),
             _ => Err(ExpectError {
@@ -863,7 +860,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_char(self) -> Result<char, ExpectError> {
+    pub fn into_char(self) -> Result<char, ExpectError> {
         match self {
             Self::Char(c) => Ok(c),
             _ => Err(ExpectError {
@@ -881,7 +878,16 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_int32(self) -> Result<i32, ExpectError> {
+    pub fn into_string(self) -> Result<String, ExpectError> {
+        match self {
+            Self::String(s) => Ok(s),
+            _ => Err(ExpectError {
+                value: self,
+                expected: TypeShape::String,
+            }),
+        }
+    }
+    pub fn into_int32(self) -> Result<i32, ExpectError> {
         match self {
             Self::Int32(value) => Ok(value),
             _ => Err(ExpectError {
@@ -890,7 +896,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_int64(self) -> Result<i64, ExpectError> {
+    pub fn into_int64(self) -> Result<i64, ExpectError> {
         match self {
             Self::Int64(value) => Ok(value),
             _ => Err(ExpectError {
@@ -899,7 +905,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_float64(self) -> Result<OrderedFloat<f64>, ExpectError> {
+    pub fn into_float64(self) -> Result<OrderedFloat<f64>, ExpectError> {
         match self {
             Self::Float64(value) => Ok(value),
             _ => Err(ExpectError {
@@ -917,7 +923,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_ref(self) -> Result<PlaceRef, ExpectError<ValueShape, &'static str>> {
+    pub fn into_ref(self) -> Result<PlaceRef, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Ref(r) => Ok(r),
             _ => Err(ExpectError {
@@ -926,7 +932,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_bool(self) -> Result<bool, ExpectError> {
+    pub fn into_bool(self) -> Result<bool, ExpectError> {
         match self {
             Self::Bool(value) => Ok(value),
             _ => Err(ExpectError {
@@ -935,7 +941,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_ast(self) -> Result<Ast, ExpectError> {
+    pub fn into_ast(self) -> Result<Ast, ExpectError> {
         match self {
             Self::Ast(ast) => Ok(ast),
             _ => Err(ExpectError {
@@ -944,7 +950,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_function(self) -> Result<TypedFunction, ExpectError<ValueShape, &'static str>> {
+    pub fn into_function(self) -> Result<TypedFunction, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Function(f) => Ok(f),
             _ => Err(ExpectError {
@@ -953,7 +959,7 @@ impl ValueShape {
             }),
         }
     }
-    pub fn expect_template(self) -> Result<Function, ExpectError<ValueShape, &'static str>> {
+    pub fn into_template(self) -> Result<Function, ExpectError<ValueShape, &'static str>> {
         match self {
             Self::Template(f) => Ok(f),
             _ => Err(ExpectError {

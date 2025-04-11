@@ -109,7 +109,7 @@ impl Cache {
                                 r#impl: (std::sync::Arc::new(
                                     |_kast, _fn_ty: FnType, value: Value| {
                                         async move {
-                                            let value: Type = value.expect_type()?;
+                                            let value: Type = value.into_type()?;
                                             Ok(ValueShape::String(value.to_string()).into())
                                         }
                                         .boxed()
@@ -230,8 +230,8 @@ impl Cache {
                                             .into_unnamed()?;
                                         Ok(ValueShape::Type(
                                             TypeShape::HashMap(HashMapType {
-                                                key: key.expect_type()?,
-                                                value: value.expect_type()?,
+                                                key: key.into_type()?,
+                                                value: value.into_type()?,
                                             })
                                             .into(),
                                         )
@@ -267,7 +267,7 @@ impl Cache {
                                     let key_ty = key_ty.clone();
                                     let value_ty = value_ty.clone();
                                     async move {
-                                        args.into_inferred()?.expect_unit()?;
+                                        args.into_inferred()?.into_unit()?;
                                         Ok(ValueShape::HashMap(HashMapValue {
                                             values: HashMap::new(),
                                             ty: HashMapType {
@@ -319,7 +319,7 @@ impl Cache {
                                             .clone()
                                             .into_values()
                                             .into_unnamed()?;
-                                        let map = map.into_inferred()?.expect_ref()?;
+                                        let map = map.into_inferred()?.into_ref()?;
                                         let mut map = map.write_value()?;
                                         let map = map.as_hash_map_mut()?;
                                         map.values
@@ -355,7 +355,7 @@ impl Cache {
                                 name: "HashMap.size".to_owned(),
                                 r#impl: (std::sync::Arc::new(move |_kast, _fn_ty, args: Value| {
                                     async move {
-                                        let map = args.into_inferred()?.expect_ref()?;
+                                        let map = args.into_inferred()?.into_ref()?;
                                         let map = map.read_value()?;
                                         let map = map.as_inferred()?;
                                         let map = map.as_hash_map()?;
@@ -406,7 +406,7 @@ impl Cache {
                                             .clone()
                                             .into_values()
                                             .into_unnamed()?;
-                                        let map = map.into_inferred()?.expect_ref()?;
+                                        let map = map.into_inferred()?.into_ref()?;
                                         let map = map.read_value()?;
                                         let map = map.as_inferred()?;
                                         let map = map.as_hash_map()?;
@@ -482,7 +482,7 @@ impl Cache {
                                                         .into(),
                                                     )
                                                     .await?
-                                                    .expect_type()?;
+                                                    .into_type()?;
                                                 let handler = kast
                                                     .interpreter
                                                     .contexts
@@ -621,7 +621,7 @@ impl Cache {
                                         move |kast: Kast, _fn_ty: FnType, value: Value| {
                                             let set_natives = set_natives.clone();
                                             async move {
-                                                let value = value.into_inferred()?.expect_list()?;
+                                                let value = value.into_inferred()?.into_list()?;
                                                 let generator_handler = set_natives
                                                     .lock()
                                                     .unwrap()
@@ -636,7 +636,7 @@ impl Cache {
                                                         ValueShape::Type(value.element_ty).into(),
                                                     )
                                                     .await?
-                                                    .expect_type()?;
+                                                    .into_type()?;
                                                 let handler = kast
                                                     .interpreter
                                                     .contexts
@@ -686,7 +686,7 @@ impl Cache {
                                         move |kast: Kast, _fn_ty: FnType, value: Value| {
                                             let set_natives = set_natives.clone();
                                             async move {
-                                                let value = value.into_inferred()?.expect_ref()?;
+                                                let value = value.into_inferred()?.into_ref()?;
                                                 let generator_handler = set_natives
                                                     .lock()
                                                     .unwrap()
@@ -702,7 +702,7 @@ impl Cache {
                                                             .into(),
                                                     )
                                                     .await?
-                                                    .expect_type()?;
+                                                    .into_type()?;
                                                 let handler = kast
                                                     .interpreter
                                                     .contexts
@@ -815,8 +815,8 @@ impl Cache {
                                             .clone()
                                             .into_values()
                                             .into_unnamed()?;
-                                        let list = list.into_inferred()?.expect_list()?;
-                                        let index = index.into_inferred()?.expect_int32()?;
+                                        let list = list.into_inferred()?.into_list()?;
+                                        let index = index.into_inferred()?.into_int32()?;
                                         Ok(list
                                             .values
                                             .get(
@@ -849,7 +849,7 @@ impl Cache {
                                 name: "list_length".to_owned(),
                                 r#impl: (std::sync::Arc::new(|_kast, _fn_ty, list: Value| {
                                     async move {
-                                        let list = list.into_inferred()?.expect_list()?;
+                                        let list = list.into_inferred()?.into_list()?;
                                         Ok(ValueShape::Int32(
                                             list.values.len().try_into().map_err(|e| {
                                                 eyre!("list length doesnt fit in int32: {e}")
@@ -896,8 +896,8 @@ impl Cache {
                                             .clone()
                                             .into_values()
                                             .into_unnamed()?;
-                                        let list_ref = list.into_inferred()?.expect_ref()?;
-                                        let index = index.into_inferred()?.expect_int32()?;
+                                        let list_ref = list.into_inferred()?.into_ref()?;
+                                        let index = index.into_inferred()?.into_int32()?;
                                         let index: usize = index.try_into()?;
                                         let mut list = list_ref.write()?;
                                         let list = list.get_mut()?.as_list_mut()?;
@@ -945,7 +945,7 @@ impl Cache {
                                             .clone()
                                             .into_values()
                                             .into_unnamed()?;
-                                        let list_ref = list_ref.into_inferred()?.expect_ref()?;
+                                        let list_ref = list_ref.into_inferred()?.into_ref()?;
                                         let mut list = list_ref.write()?;
                                         let list = list.get_mut()?.as_list_mut()?;
                                         list.values.push(new_elem);
@@ -986,7 +986,7 @@ impl Cache {
                                             .into_values()
                                             .into_unnamed()?;
                                         let s = s.into_inferred()?.as_str()?.to_owned();
-                                        let c = c.into_inferred()?.expect_char()?;
+                                        let c = c.into_inferred()?.into_char()?;
                                         let mut result = s;
                                         result.push(c);
                                         Ok(ValueShape::String(result).into())
@@ -1013,7 +1013,7 @@ impl Cache {
                                 name: "char_ord".to_owned(),
                                 r#impl: (std::sync::Arc::new(|_kast, _fn_ty, args: Value| {
                                     async move {
-                                        let c = args.into_inferred()?.expect_char()?;
+                                        let c = args.into_inferred()?.into_char()?;
                                         Ok(ValueShape::Int32(u32::from(c).try_into()?).into())
                                     }
                                     .boxed()
@@ -1082,22 +1082,22 @@ impl Cache {
                                         Ok(match fn_ty.result.inferred() {
                                             Ok(ty) => Value::from(match ty {
                                                 TypeShape::Int32 => {
-                                                    let min = min.expect_int32()?;
-                                                    let max = max.expect_int32()?;
+                                                    let min = min.into_int32()?;
+                                                    let max = max.into_int32()?;
                                                     ValueShape::Int32(
                                                         thread_rng().gen_range(min..=max),
                                                     )
                                                 }
                                                 TypeShape::Int64 => {
-                                                    let min = min.expect_int64()?;
-                                                    let max = max.expect_int64()?;
+                                                    let min = min.into_int64()?;
+                                                    let max = max.into_int64()?;
                                                     ValueShape::Int64(
                                                         thread_rng().gen_range(min..=max),
                                                     )
                                                 }
                                                 TypeShape::Float64 => {
-                                                    let min = min.expect_float64()?;
-                                                    let max = max.expect_float64()?;
+                                                    let min = min.into_float64()?;
+                                                    let max = max.into_float64()?;
                                                     ValueShape::Float64(
                                                         thread_rng().gen_range(min..=max),
                                                     )
@@ -1129,7 +1129,7 @@ impl Cache {
                                 name: "parse".to_owned(),
                                 r#impl: (std::sync::Arc::new(|_kast, fn_ty: FnType, s: Value| {
                                     async move {
-                                        let s = s.into_inferred()?.expect_ref()?;
+                                        let s = s.into_inferred()?.into_ref()?;
                                         let s = s.read_value()?;
                                         let s = s.as_inferred()?;
                                         let s = s.as_str()?;
@@ -1502,6 +1502,35 @@ impl SomeExprResult for PlaceRef {
 }
 
 impl Kast {
+    pub fn register_fn<A: Rusty, R: Rusty>(
+        &mut self,
+        name: &str,
+        f: impl Fn(A) -> R + Sync + Send + 'static,
+    ) {
+        let f = std::sync::Arc::new(f);
+        self.add_local(
+            Symbol::new(name),
+            ValueShape::NativeFunction(NativeFunction {
+                name: name.into(),
+                ty: FnType {
+                    arg: A::ty()
+                        .unwrap_or_else(|| Type::new_not_inferred(&format!("{name:?} arg"))),
+                    contexts: Contexts::new_not_inferred(),
+                    result: R::ty()
+                        .unwrap_or_else(|| Type::new_not_inferred(&format!("{name:?} result"))),
+                },
+                r#impl: (std::sync::Arc::new(move |_kast: Kast, _fn_type: FnType, arg: Value| {
+                    let f = f.clone();
+                    async move { Ok(f(A::from_value(arg)?).into_value()) }.boxed()
+                }) as std::sync::Arc<NativeFunctionImpl>)
+                    .into(),
+            })
+            .into(),
+        );
+    }
+}
+
+impl Kast {
     pub fn assign<'a>(
         &'a mut self,
         assignee: &'a AssigneeExpr,
@@ -1662,7 +1691,7 @@ impl Kast {
                     }
                 }
                 PlaceExpr::Deref { r#ref, data: _ } => {
-                    self.eval(r#ref).await?.into_inferred()?.expect_ref()?
+                    self.eval(r#ref).await?.into_inferred()?.into_ref()?
                 }
             };
             Ok::<_, eyre::Report>(result)
@@ -1699,7 +1728,7 @@ impl Kast {
                                 .eval_place(place)
                                 .await?
                                 .claim_value(self)?
-                                .expect_type()?;
+                                .into_type()?;
                             ValueShape::Type(TypeShape::Ref(inner_ty).into()).into()
                         }
                         TypeShape::Ref { .. } => {
@@ -1713,7 +1742,7 @@ impl Kast {
                     place.claim_value(self)?
                 }
                 Expr::And { lhs, rhs, data: _ } => {
-                    let lhs = self.eval(lhs).await?.into_inferred()?.expect_bool()?;
+                    let lhs = self.eval(lhs).await?.into_inferred()?.into_bool()?;
                     if lhs {
                         self.eval(rhs).await?
                     } else {
@@ -1721,7 +1750,7 @@ impl Kast {
                     }
                 }
                 Expr::Or { lhs, rhs, data: _ } => {
-                    let lhs = self.eval(lhs).await?.into_inferred()?.expect_bool()?;
+                    let lhs = self.eval(lhs).await?.into_inferred()?.into_bool()?;
                     if !lhs {
                         self.eval(rhs).await?
                     } else {
@@ -1746,7 +1775,7 @@ impl Kast {
                                 values_exprs.as_slice().try_into().map_err(|_e| {
                                     eyre!("list type must be a list of single element")
                                 })?;
-                            let element_ty: Type = self.eval(element_ty).await?.expect_type()?;
+                            let element_ty: Type = self.eval(element_ty).await?.into_type()?;
                             ValueShape::Type(TypeShape::List(element_ty).into()).into()
                         }
                         TypeShape::List(element_ty) => {
@@ -1768,7 +1797,7 @@ impl Kast {
                         .eval(name)
                         .await?
                         .into_inferred()?
-                        .expect_unwind_handle()?;
+                        .into_unwind_handle()?;
                     let value = self.eval(value).await?;
                     name.sender
                         .lock()
@@ -1814,7 +1843,7 @@ impl Kast {
                     arg,
                     data: _,
                 } => {
-                    let r#macro = self.eval(r#macro).await?.into_inferred()?.expect_macro()?;
+                    let r#macro = self.eval(r#macro).await?.into_inferred()?.into_macro()?;
                     let arg = self.eval(arg).await?;
                     self.call_fn(r#macro.f, arg).await?
                 }
@@ -1851,7 +1880,7 @@ impl Kast {
                     result,
                     data: _,
                 } => {
-                    let arg = self.eval(arg).await?.expect_type()?;
+                    let arg = self.eval(arg).await?.into_type()?;
                     let contexts = match contexts {
                         Some(contexts) => self
                             .eval(contexts)
@@ -1860,7 +1889,7 @@ impl Kast {
                             .into_contexts()?,
                         None => Contexts::new_not_inferred(),
                     };
-                    let result = self.eval(result).await?.expect_type()?;
+                    let result = self.eval(result).await?.into_type()?;
                     ValueShape::Type(
                         TypeShape::Function(Box::new(FnType {
                             arg,
@@ -1928,12 +1957,12 @@ impl Kast {
                         ValueShape::Multiset(values) => {
                             let mut variants = Vec::new();
                             for value in values {
-                                let variant = value.into_inferred()?.expect_variant()?.clone();
+                                let variant = value.into_inferred()?.as_variant()?.clone();
                                 variants.push(VariantType {
                                     name: variant.name,
                                     value: variant
                                         .value
-                                        .map(|value| value.into_value()?.expect_type())
+                                        .map(|value| value.into_value()?.into_type())
                                         .transpose()?
                                         .map(Box::new),
                                 });
@@ -1944,7 +1973,7 @@ impl Kast {
                             name: variant.name,
                             value: variant
                                 .value
-                                .map(|value| value.into_value()?.expect_type())
+                                .map(|value| value.into_value()?.into_type())
                                 .transpose()?
                                 .map(Box::new),
                         }])
@@ -2007,7 +2036,7 @@ impl Kast {
                 }
                 Expr::Recursive { body, data: _ } => {
                     let mut inner = self.enter_recursive_scope();
-                    inner.eval(body).await?.into_inferred()?.expect_unit()?;
+                    inner.eval(body).await?.into_inferred()?.into_unit()?;
                     let mut fields = Tuple::empty();
                     inner.scopes.interpreter.inspect(|locals| {
                         for (name, place) in locals.iter() {
@@ -2028,7 +2057,7 @@ impl Kast {
                     for (name, value) in values.as_ref().into_iter() {
                         let value = self.eval_place(value).await?;
                         let value = value.read_value()?.clone();
-                        let value = value.into_inferred()?.expect_ast()?;
+                        let value = value.into_inferred()?.into_ast()?;
                         ast_values.add(name, value);
                     }
                     let mut ast = Ast::Complex {
@@ -2081,7 +2110,7 @@ impl Kast {
                     data: _,
                 } => {
                     let mut kast = self.enter_scope();
-                    let condition = kast.eval(condition).await?.into_inferred()?.expect_bool()?;
+                    let condition = kast.eval(condition).await?.into_inferred()?.into_bool()?;
                     if condition {
                         kast.eval(then_case).await?
                     } else if let Some(else_case) = else_case {
@@ -2308,7 +2337,7 @@ impl Kast {
     }
 
     pub async fn instantiate(&self, template: Value, arg: Value) -> eyre::Result<Value> {
-        let template = template.into_inferred()?.expect_template()?;
+        let template = template.into_inferred()?.into_template()?;
         // TODO memoization
         self.call_fn(template, arg).await
     }
@@ -2385,7 +2414,7 @@ impl Pattern {
                         let value = place.read_value()?;
                         let value = value.as_inferred()?;
                         let value = value
-                            .expect_variant()
+                            .as_variant()
                             .expect("matching non variant with variant???");
                         let actual_value = value.value.as_ref().map(|place| place.get_ref());
                         (value.name == *name_pattern, actual_value)

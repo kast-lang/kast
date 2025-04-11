@@ -241,7 +241,7 @@ fn test_fibonacci() {
                 None,
             )
             .unwrap();
-        let value = value.into_inferred().unwrap().expect_int32().unwrap();
+        let value = value.into_inferred().unwrap().into_int32().unwrap();
         assert_eq!(answer, value);
     };
     test_fib(1, 1);
