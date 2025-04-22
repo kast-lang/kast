@@ -81,7 +81,9 @@ fn check_with(checker: Checker) -> impl FnOnce(Result<Option<Ast>, Error>) {
                         );
                     }
                     Err(TupleZipError::NamedOnlyPresentInOther(field_name)) => {
-                        panic!("field {field_name:?} was expected but not present in {expected_name} at {span}");
+                        panic!(
+                            "field {field_name:?} was expected but not present in {expected_name} at {span}"
+                        );
                     }
                     Ok(zipped) => {
                         for (actual, expected) in zipped.into_field_values() {

@@ -1,11 +1,17 @@
 mod display_option;
 mod error;
+mod id;
 mod parc;
+mod recurse_cache;
+mod show_short;
 mod source;
 mod tuple;
 
 pub use crate::display_option::display_option;
 pub use crate::error::{Error, ErrorMessage};
+pub use crate::id::*;
 pub use crate::parc::Parc;
+pub use crate::recurse_cache::*;
+pub use crate::show_short::*;
 pub use crate::source::{Position, SourceFile, Span};
 pub use crate::tuple::{Tuple, TupleZipError};

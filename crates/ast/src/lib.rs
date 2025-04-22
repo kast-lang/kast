@@ -7,7 +7,7 @@ mod lexer;
 mod peek2;
 mod syntax;
 
-pub use lexer::{is_punctuation, lex, SpannedToken, StringToken, StringType, Token};
+pub use lexer::{SpannedToken, StringToken, StringType, Token, is_punctuation, lex};
 pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefinitionPart};
 
 use lexer::*;

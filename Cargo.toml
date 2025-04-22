@@ -33,6 +33,7 @@ event-listener = "5"
 # https://github.com/rust-random/rand#wasm-support
 getrandom = { version = "0.2", features = ["js"] }
 ordered-float = { version = "4", features = ["rand"] }
+anymap3 = "1.0.1"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
@@ -83,7 +84,7 @@ decursion.workspace = true
 event-listener.workspace = true
 try-hash.workspace = true
 async-oneshot.workspace = true
-anymap3 = "1.0.1"
+anymap3.workspace = true
 include_dir = "0.7.4"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
