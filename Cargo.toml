@@ -3,6 +3,7 @@ members = ["crates/*"]
 
 [workspace.package]
 edition = "2024"
+version = "0.1.0"
 license = "MIT"
 repository = "https://github.com/kast-lang/kast"
 
@@ -33,16 +34,16 @@ event-listener = "5"
 getrandom = { version = "0.2", features = ["js"] }
 ordered-float = { version = "4", features = ["rand"] }
 
-kast-util = { version = "0.1", path = "crates/util" }
-kast-ast = { version = "0.1", path = "crates/ast" }
+kast-util = { path = "crates/util" }
+kast-ast = { path = "crates/ast" }
 
 decursion = "0.1"
-refmap = { package = "kast-refmap", version = "0.1", path = "crates/refmap" }
-try-hash = { package = "kast-try-hash", version = "0.1", path = "crates/try-hash" }
+refmap = { package = "kast-refmap", path = "crates/refmap" }
+try-hash = { package = "kast-try-hash", path = "crates/try-hash" }
 
 [package]
 name = "kast"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 description = "kast programming language"
 license.workspace = true
@@ -56,7 +57,7 @@ default = ["embed-std"]
 embed-std = []
 
 [dependencies]
-derive-macros = { package = "kast-derive-macros", path = "crates/derive-macros", version = "0.1" }
+derive-macros = { package = "kast-derive-macros", path = "crates/derive-macros" }
 batbox-time.workspace = true
 tokio.workspace = true
 pad-adapter.workspace = true

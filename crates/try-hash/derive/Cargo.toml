@@ -1,6 +1,6 @@
 [package]
 name = "kast-try-hash-derive"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 description = "Failable Hash trait (derive macros)"
 license.workspace = true

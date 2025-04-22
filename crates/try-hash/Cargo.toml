@@ -1,10 +1,10 @@
 [package]
 name = "kast-try-hash"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 description = "Failable Hash trait"
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-try-hash-derive = { package = "kast-try-hash-derive", version = "0.1", path = "derive" }
+try-hash-derive = { package = "kast-try-hash-derive", path = "derive" }
