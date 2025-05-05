@@ -749,6 +749,7 @@ dependencies = [
  "include_dir",
  "kast-ast",
  "kast-derive-macros",
+ "kast-inference",
  "kast-refmap",
  "kast-try-hash",
  "kast-util",
@@ -788,19 +789,9 @@ version = "0.1.0"
 dependencies = [
  "anymap3",
  "eyre",
- "kast-inference-derive",
  "kast-try-hash",
  "kast-util",
  "rand",
-]
-
-[[package]]
-name = "kast-inference-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

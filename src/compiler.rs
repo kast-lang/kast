@@ -2052,33 +2052,31 @@ fn get_complex(ast: &Ast) -> (&Tuple<Ast>, Span) {
     }
 }
 
-impl Type {
-    fn infer_variant(description: &str, name: String, value_ty: Option<Type>) -> Type {
-        let var = inference::Var::new(description);
-        var.add_check(move |ty: &TypeShape| {
-            let variants = ty.clone().expect_variant()?;
-            match variants.iter().find(|variant| variant.name == name) {
-                Some(variant) => match (&variant.value, &value_ty) {
-                    (None, None) => Ok(inference::CheckResult::Completed),
-                    (None, Some(_)) => {
-                        eyre::bail!("variant {name} did not expect a value")
-                    }
-                    (Some(_), None) => {
-                        eyre::bail!("variant {name} expected a value")
-                    }
-                    (Some(expected_ty), Some(actual_ty)) => {
-                        expected_ty.clone().make_same(actual_ty.clone())?;
-                        Ok(inference::CheckResult::Completed)
-                    }
-                },
-                None => {
-                    eyre::bail!("variant {name} not found in type {ty}")
+fn infer_type_variant(description: &str, name: String, value_ty: Option<Type>) -> Type {
+    let var = inference::Var::new(description);
+    var.add_check(move |ty: &TypeShape| {
+        let variants = ty.clone().expect_variant()?;
+        match variants.iter().find(|variant| variant.name == name) {
+            Some(variant) => match (&variant.value, &value_ty) {
+                (None, None) => Ok(inference::CheckResult::Completed),
+                (None, Some(_)) => {
+                    eyre::bail!("variant {name} did not expect a value")
                 }
+                (Some(_), None) => {
+                    eyre::bail!("variant {name} expected a value")
+                }
+                (Some(expected_ty), Some(actual_ty)) => {
+                    expected_ty.clone().make_same(actual_ty.clone())?;
+                    Ok(inference::CheckResult::Completed)
+                }
+            },
+            None => {
+                eyre::bail!("variant {name} not found in type {ty}")
             }
-        })
-        .expect("checks failed");
-        var.into()
-    }
+        }
+    })
+    .expect("checks failed");
+    var.into()
 }
 
 // All comments fully authored by the Kuviman.
@@ -2569,7 +2567,7 @@ impl Expr<Span> {
                     let value_ty = value.as_ref().map(|value| value.data().ty.clone());
                     Expr::Variant {
                         data: ExprData {
-                            ty: Type::infer_variant(
+                            ty: infer_type_variant(
                                 &format!("variant at {span}"),
                                 name.clone(),
                                 value_ty,
@@ -3075,7 +3073,7 @@ impl Pattern<Span> {
                     name: name.clone(),
                     value,
                     data: PatternData {
-                        ty: Type::infer_variant(&format!("variant at {span}"), name, value_ty),
+                        ty: infer_type_variant(&format!("variant at {span}"), name, value_ty),
                         span,
                     },
                 }

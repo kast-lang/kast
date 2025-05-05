@@ -1,298 +1,503 @@
-//! https://infoscience.epfl.ch/entities/publication/106da598-3385-4029-892b-27ea85194046
-pub use kast_inference_derive::*;
-
-use crate as kast_inference;
-
 use kast_util::*;
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex, OnceLock},
-};
+use rand::{Rng, thread_rng};
+use std::sync::{Arc, Mutex};
+
+type Check<T> = Arc<dyn Fn(&T) -> eyre::Result<CheckResult> + Send + Sync>;
+
+#[derive(Clone, Default)]
+enum DefaultValue<T> {
+    #[default]
+    None,
+    Some(Arc<T>),
+    Conflicted,
+}
+
+impl<T: Inferrable> DefaultValue<T> {
+    fn get(&self) -> Option<Arc<T>> {
+        match self {
+            DefaultValue::None | DefaultValue::Conflicted => None,
+            DefaultValue::Some(value) => Some(value.clone()),
+        }
+    }
+    fn common(a: Self, b: Self) -> Self {
+        match (a, b) {
+            (Self::None, Self::None) => Self::None,
+            (Self::None, Self::Some(value)) => Self::Some(value),
+            (Self::Some(value), Self::None) => Self::Some(value),
+            (Self::Conflicted, _) | (_, Self::Conflicted) => Self::Conflicted,
+            (Self::Some(a), Self::Some(b)) => match T::make_same(T::clone(&a), T::clone(&b)) {
+                Ok(value) => Self::Some(Arc::new(value)),
+                Err(_) => Self::Conflicted,
+            },
+        }
+    }
+}
 
 #[derive(Clone)]
-struct SubsetCacheKey<T: Inferrable> {
-    subset: WithSame<MaybeVar<T>>,
-    superset: WithSame<MaybeVar<T>>,
-}
-
-impl<T: Inferrable> PartialEq for SubsetCacheKey<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.subset == other.subset && self.superset == other.superset
-    }
-}
-
-impl<T: Inferrable> Eq for SubsetCacheKey<T> {}
-
-impl<T: Inferrable> std::hash::Hash for SubsetCacheKey<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.subset.hash(state);
-        self.superset.hash(state);
-    }
-}
-
-#[derive(Default)]
-pub struct Context {
-    subset_cache: anymap3::Map<dyn anymap3::CloneAny + Send + Sync>,
-}
-
-impl Context {
-    fn subset_cache<T: Inferrable>(&mut self) -> &mut HashSet<SubsetCacheKey<T>> {
-        self.subset_cache.entry().or_default()
-    }
-}
-
-impl Context {
-    fn get<'a>() -> std::sync::MutexGuard<'a, Self> {
-        static CONTEXT: OnceLock<Mutex<Context>> = OnceLock::new();
-        CONTEXT.get_or_init(Default::default).lock().unwrap()
-    }
-}
-
-pub trait Same {
-    fn is_same(&self, other: &Self) -> bool;
-    fn hash(&self, state: &mut impl std::hash::Hasher);
-}
-
-macro_rules! impl_same_for {
-    ($($ty:ty),* $(,)?) => {
-        $(
-            impl Same for $ty {
-                fn is_same(&self, other: &Self) -> bool {
-                    self == other
-                }
-                fn hash(&self, state: &mut impl std::hash::Hasher) {
-                    std::hash::Hash::hash(self, state)
-                }
-            }
-        )*
-    };
-}
-
-impl_same_for!(u8, u16, u32, u64, u128, usize);
-impl_same_for!(i8, i16, i32, i64, i128, isize);
-impl_same_for!(String);
-
-#[derive(Debug, Clone)]
-pub struct WithSame<T>(T);
-
-impl<T: Same> std::hash::Hash for WithSame<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        <T as Same>::hash(&self.0, state)
-    }
-}
-impl<T: Same> PartialEq for WithSame<T> {
-    fn eq(&self, other: &Self) -> bool {
-        <T as Same>::is_same(&self.0, &other.0)
-    }
-}
-impl<T: Same> Eq for WithSame<T> {}
-
-struct Data<T: Inferrable> {
+struct Data<T> {
     #[allow(dead_code)]
     description: Arc<str>,
-    lower_bounds: Vec<MaybeVar<T>>,
-    upper_bounds: Vec<MaybeVar<T>>,
+    value: Option<Arc<T>>,
+    default_value: DefaultValue<T>,
+    checks: Vec<Check<T>>,
 }
 
-#[derive(Clone, Same)]
-pub enum MaybeVar<T: Inferrable> {
-    Var(Var<T>),
-    Value(T),
-}
-
-impl<T: Inferrable> From<Var<T>> for MaybeVar<T> {
-    fn from(var: Var<T>) -> Self {
-        Self::Var(var)
-    }
-}
-
-impl<'a, T: Inferrable> From<&'a Var<T>> for MaybeVar<T> {
-    fn from(var: &'a Var<T>) -> Self {
-        Self::Var(var.clone())
-    }
-}
-
-impl<T: Inferrable> From<T> for MaybeVar<T> {
-    fn from(value: T) -> Self {
-        Self::Value(value)
-    }
-}
-
-impl<'a, T: Inferrable> From<&'a T> for MaybeVar<T> {
-    fn from(value: &'a T) -> Self {
-        Self::Value(value.clone())
-    }
-}
-
-impl<T: Inferrable> MaybeVar<T> {
-    fn inferred_bound(&self, bound: Bound) -> eyre::Result<T> {
-        Ok(match self {
-            MaybeVar::Var(var) => {
-                let data = var.data.lock().unwrap();
-                let result = match bound {
-                    Bound::Lower => data.lower_bounds.iter().try_fold(None, |acc, item| {
-                        let item = item.inferred_bound(bound)?;
-                        Ok::<_, eyre::Report>(Some(match acc {
-                            Some(acc) => T::union(acc, item)?,
-                            None => item,
-                        }))
-                    })?,
-                    Bound::Upper => data.upper_bounds.iter().try_fold(None, |acc, item| {
-                        let item = item.inferred_bound(bound)?;
-                        Ok::<_, eyre::Report>(Some(match acc {
-                            Some(acc) => T::intersect(acc, item)?,
-                            None => item,
-                        }))
-                    })?,
-                };
-                match result {
-                    Some(result) => result,
-                    None => eyre::bail!("not inferred"),
+impl<T> Data<T> {
+    fn run_checks(&mut self) -> eyre::Result<()> {
+        // println!("running checks for {:?}", self.description);
+        if let Some(value) = &self.value {
+            let mut completed = Vec::new();
+            for (index, check) in self.checks.iter().enumerate() {
+                match check(value)? {
+                    CheckResult::RunAgain => {}
+                    CheckResult::Completed => {
+                        completed.push(index);
+                    }
                 }
             }
-            MaybeVar::Value(value) => value.clone(),
-        })
+            for idx in completed.into_iter().rev() {
+                self.checks.remove(idx);
+            }
+        }
+        Ok(())
     }
-    pub fn infer_as_subset_of(&self, superset: &Self) -> eyre::Result<()> {
-        if !Context::get().subset_cache().insert(SubsetCacheKey {
-            subset: WithSame(self.clone()),
-            superset: WithSame(superset.clone()),
-        }) {
-            return Ok(());
+}
+
+#[derive(Clone)]
+enum VarState<T> {
+    Root(Data<T>),
+    NotRoot {
+        closer_to_root: global_state::Id<Self>,
+    },
+}
+
+impl<T: Sync + Send + Clone + 'static> VarState<T> {
+    fn as_root(&mut self) -> &mut Data<T> {
+        match self {
+            VarState::Root(data) => data,
+            VarState::NotRoot { .. } => unreachable!(),
+        }
+    }
+    fn get_root(this: &global_state::Id<Self>) -> global_state::Id<Self> {
+        let mut this_value = this.get();
+        let result = match this_value {
+            VarState::Root { .. } => this.clone(),
+            VarState::NotRoot {
+                ref mut closer_to_root,
+            } => {
+                let root = Self::get_root(closer_to_root);
+                *closer_to_root = root.clone();
+                root
+            }
         };
-        match (self, superset) {
-            (MaybeVar::Value(self_value), MaybeVar::Value(superset)) => {
-                <T as Inferrable>::infer_as_subset_of(self_value, superset)
-            }
-            (MaybeVar::Var(subset), superset) => {
-                let subset_lower_bounds = {
-                    let mut subset_data = subset.data.lock().unwrap();
-                    subset_data.upper_bounds.push(superset.clone());
-                    subset_data.lower_bounds.clone()
-                };
-                for lower_bound in subset_lower_bounds {
-                    lower_bound.infer_as_subset_of(superset)?;
-                }
-                Ok(())
-            }
-            (subset, MaybeVar::Var(superset)) => {
-                let superset_upper_bounds = {
-                    let mut superset_data = superset.data.lock().unwrap();
-                    superset_data.lower_bounds.push(subset.clone());
-                    superset_data.upper_bounds.clone()
-                };
-                for upper_bound in superset_upper_bounds {
-                    upper_bound.infer_as_superset_of(subset)?;
-                }
-                Ok(())
+        this.set(this_value);
+        result
+    }
+}
+
+pub mod global_state {
+    use super::*;
+    use std::{
+        collections::HashMap,
+        marker::PhantomData,
+        sync::{OnceLock, atomic::AtomicUsize},
+    };
+
+    #[derive(Clone)]
+    struct ConcreteState<T> {
+        vars: HashMap<usize, T>,
+    }
+
+    impl<T> Default for ConcreteState<T> {
+        fn default() -> Self {
+            Self {
+                vars: Default::default(),
             }
         }
     }
-    pub fn infer_as_superset_of(&self, subset: &Self) -> eyre::Result<()> {
-        subset.infer_as_subset_of(self)
-    }
-    pub fn infer_as(&self, value: &Self) -> eyre::Result<()> {
-        self.infer_as_subset_of(value)?;
-        self.infer_as_superset_of(value)?;
-        Ok(())
-    }
-}
 
-pub trait Inferrable: 'static + Clone + Same + Send + Sync {
-    fn infer_as_subset_of(&self, superset: &Self) -> eyre::Result<()>;
-    fn infer_as(&self, other: &Self) -> eyre::Result<()> {
-        self.infer_as_subset_of(other)?;
-        other.infer_as_subset_of(self)?;
-        Ok(())
+    #[derive(Default, Clone)]
+    struct State {
+        concrete: anymap3::Map<dyn anymap3::CloneAny + Send + Sync>,
     }
-    fn infer_as_superset_of(&self, subset: &Self) -> eyre::Result<()> {
-        subset.infer_as_subset_of(self)
+
+    static STATE: OnceLock<Mutex<State>> = OnceLock::new();
+    fn state() -> &'static Mutex<State> {
+        STATE.get_or_init(Default::default)
     }
-    fn union(a: Self, b: Self) -> eyre::Result<Self>;
-    fn intersect(a: Self, b: Self) -> eyre::Result<Self>;
-}
 
-pub struct Var<T: Inferrable> {
-    data: Arc<Mutex<Data<T>>>,
-}
+    pub struct Snapshot {
+        state: State,
+    }
 
-impl<T: Inferrable> Clone for Var<T> {
-    fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
+    pub fn snapshot() -> Snapshot {
+        Snapshot {
+            state: state().lock().unwrap().clone(),
         }
     }
+
+    pub fn revert(snapshot: Snapshot) {
+        *state().lock().unwrap() = snapshot.state;
+    }
+
+    #[derive(Clone)]
+    pub struct Id<T> {
+        pub index: usize,
+        phantom_data: PhantomData<T>,
+    }
+
+    impl<T: Send + Sync + Clone + 'static> Id<T> {
+        pub fn new(value: T) -> Self {
+            static NEXT_INDEX: AtomicUsize = AtomicUsize::new(0);
+            let index = NEXT_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let result = Self {
+                index,
+                phantom_data: PhantomData,
+            };
+            result.set(value);
+            result
+        }
+        pub fn set(&self, value: T) {
+            state()
+                .lock()
+                .unwrap()
+                .concrete
+                .entry::<ConcreteState<T>>()
+                .or_default()
+                .vars
+                .insert(self.index, value);
+        }
+        pub fn get(&self) -> T {
+            state()
+                .lock()
+                .unwrap()
+                .concrete
+                .entry::<ConcreteState<T>>()
+                .or_default()
+                .vars
+                .get(&self.index)
+                .expect("var not exist???")
+                .clone()
+        }
+        pub fn modify<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+            let mut value = self.get();
+            let result = f(&mut value);
+            self.set(value);
+            result
+        }
+    }
+
+    pub fn ptr_eq<T>(a: &Id<T>, b: &Id<T>) -> bool {
+        a.index == b.index
+    }
 }
 
+#[derive(Clone)]
+pub struct Var<T> {
+    state: global_state::Id<VarState<T>>,
+}
+
+impl<T: Sync + Send + Clone + 'static> Identifiable for Var<T> {
+    type Id = usize;
+    fn id(&self) -> Self::Id {
+        VarState::get_root(&self.state).index
+    }
+}
+
+#[must_use]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Bound {
-    Lower,
-    Upper,
+pub enum CheckResult {
+    RunAgain,
+    Completed,
 }
 
 impl<T: Inferrable> Var<T> {
-    pub fn new_not_inferred(description: impl AsRef<str>) -> Self {
-        let data = Data {
-            description: description.as_ref().into(),
-            lower_bounds: vec![],
-            upper_bounds: vec![],
-        };
+    pub fn is_same_as(&self, other: &Self) -> bool {
+        let self_root = VarState::get_root(&self.state);
+        let other_root = VarState::get_root(&other.state);
+        global_state::ptr_eq(&self_root, &other_root)
+    }
+    pub fn add_check(
+        &self,
+        check: impl Fn(&T) -> eyre::Result<CheckResult> + Sync + Send + 'static,
+    ) -> eyre::Result<()> {
+        VarState::get_root(&self.state).modify(|state| {
+            let root = state.as_root();
+            root.checks.push(Arc::new(check));
+            root.run_checks()
+        })
+    }
+}
+
+impl<T: Inferrable + std::fmt::Debug> std::fmt::Debug for Var<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Var(")?;
+        match self.get() {
+            Some(inferred) => <T as std::fmt::Debug>::fmt(&inferred, f)?,
+            None => write!(f, "<not inferred>")?,
+        }
+        write!(f, ")")
+    }
+}
+
+pub trait Inferrable: Clone + Send + Sync + PartialEq + 'static {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self>;
+}
+
+impl<T: Inferrable> Var<T> {
+    #[allow(clippy::new_without_default)]
+    pub fn new(description: &str) -> Self {
         Self {
-            data: Arc::new(Mutex::new(data)),
+            state: global_state::Id::new(VarState::Root(Data {
+                description: description.into(),
+                value: None,
+                default_value: DefaultValue::None,
+                checks: Vec::new(),
+            })),
         }
     }
-    pub fn known(value: T) -> Self {
-        let result = Self::new_not_inferred("<known>");
-        result.infer_as(MaybeVar::Value(value)).unwrap();
-        result
+    #[allow(clippy::new_without_default)]
+    pub fn new_with_default(description: &str, default: T) -> Self {
+        Self {
+            state: global_state::Id::new(VarState::Root(Data {
+                description: description.into(),
+                value: None,
+                default_value: DefaultValue::Some(Arc::new(default)),
+                checks: Vec::new(),
+            })),
+        }
     }
-    pub fn infer_as_subset_of(&self, superset: impl Into<MaybeVar<T>>) -> eyre::Result<()> {
-        superset.into().infer_as_superset_of(&self.into())
+    pub fn get_or_default(&self) -> eyre::Result<Option<Arc<T>>> {
+        VarState::get_root(&self.state).modify(|root| {
+            let root = root.as_root();
+            if root.value.is_none() {
+                root.value = root.default_value.get();
+                root.run_checks()?;
+            }
+            Ok(root.value.clone())
+        })
     }
-    pub fn infer_as_superset_of(&self, subset: impl Into<MaybeVar<T>>) -> eyre::Result<()> {
-        subset.into().infer_as_subset_of(&self.into())
+    pub fn get(&self) -> Option<Arc<T>> {
+        VarState::get_root(&self.state)
+            .get()
+            .as_root()
+            .value
+            .clone()
     }
-    pub fn infer_as(&self, value: impl Into<MaybeVar<T>>) -> eyre::Result<()> {
-        value.into().infer_as(&self.into())
+    pub fn set(&self, value: T) -> eyre::Result<()> {
+        let root_var = VarState::get_root(&self.state);
+        let mut root_data = root_var.get();
+        let root = root_data.as_root();
+        let new_value = match root.value.take() {
+            Some(prev_value) => {
+                if *prev_value == value {
+                    root.value = Some(prev_value);
+                    return Ok(());
+                }
+                T::make_same((*prev_value).clone(), value)?
+            }
+            None => value,
+        };
+        root.value = Some(Arc::new(new_value));
+        root.run_checks()?;
+        root_var.set(root_data);
+        Ok(())
     }
-    pub fn inferred(&self) -> eyre::Result<T> {
-        self.inferred_bound(Bound::Lower)
-    }
-    pub fn inferred_bound(&self, bound: Bound) -> eyre::Result<T> {
-        MaybeVar::Var(self.clone()).inferred_bound(bound)
+    pub fn make_same(&self, other: &Self) -> eyre::Result<()> {
+        let root_state = VarState::get_root(&self.state);
+        let other_root_state = VarState::get_root(&other.state);
+        if global_state::ptr_eq(&root_state, &other_root_state) {
+            return Ok(());
+        }
+        let mut root_locked = root_state.get();
+        let root = root_locked.as_root();
+        let mut other_root_locked = other_root_state.get();
+        let other_root = other_root_locked.as_root();
+        let value = root.value.take();
+        let other_value = other_root.value.take();
+        let common_value = match (value, other_value) {
+            (None, None) => None,
+            (Some(value), None) | (None, Some(value)) => Some(value),
+            (Some(self_value), Some(other_value)) => Some(Arc::new(T::make_same(
+                T::clone(&self_value),
+                T::clone(&other_value),
+            )?)),
+        };
+        let common_default_value = if common_value.is_some() {
+            DefaultValue::None
+        } else {
+            DefaultValue::common(
+                std::mem::take(&mut root.default_value),
+                std::mem::take(&mut other_root.default_value),
+            )
+        };
+        if thread_rng().r#gen() {
+            other_root.value = common_value;
+            other_root.default_value = common_default_value;
+            other_root.checks.append(&mut root.checks);
+            other_root.run_checks()?;
+            root_locked = VarState::NotRoot {
+                closer_to_root: other_root_state.clone(),
+            };
+        } else {
+            root.value = common_value;
+            root.default_value = common_default_value;
+            root.checks.append(&mut other_root.checks);
+            root.run_checks()?;
+            other_root_locked = VarState::NotRoot {
+                closer_to_root: root_state.clone(),
+            };
+        }
+        root_state.set(root_locked);
+        other_root_state.set(other_root_locked);
+        Ok(())
     }
 }
 
-impl<T: Inferrable> std::fmt::Debug for Var<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO
-        write!(f, "<var>")
-    }
-}
+#[derive(Debug, Clone)]
+pub struct MaybeNotInferred<T: Inferrable>(Var<T>);
 
-impl<T: Inferrable> Inferrable for Var<T> {
-    fn infer_as_subset_of(&self, superset: &Self) -> eyre::Result<()> {
-        todo!()
-    }
-    fn intersect(a: Self, b: Self) -> eyre::Result<Self> {
-        todo!()
-    }
-    fn union(a: Self, b: Self) -> eyre::Result<Self> {
-        todo!()
-    }
-}
-
-impl<T: Inferrable> Same for Var<T> {
-    fn is_same(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.data, &other.data)
-    }
-    fn hash(&self, state: &mut impl std::hash::Hasher) {
-        std::hash::Hash::hash(&Arc::as_ptr(&self.data), state)
-    }
-}
-
-impl<T: Inferrable> From<T> for Var<T> {
+impl<T: Inferrable> From<T> for MaybeNotInferred<T> {
     fn from(value: T) -> Self {
-        Self::known(value)
+        Self({
+            let var = Var::new("already inferred");
+            var.set(value).unwrap();
+            var
+        })
+    }
+}
+
+impl<T: Inferrable> From<Var<T>> for MaybeNotInferred<T> {
+    fn from(value: Var<T>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: Inferrable + try_hash::TryHash> try_hash::TryHash for MaybeNotInferred<T>
+where
+    <T as try_hash::TryHash>::Error: std::fmt::Debug + std::fmt::Display + Send + Sync,
+{
+    type Error = eyre::Report;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        match self.inferred_or_default()? {
+            Ok(ty) => ty.try_hash(hasher).map_err(|e| eyre::eyre!(e))?,
+            Err(_) => eyre::bail!("type is not inferred, fail to hash"),
+        }
+        Ok(())
+    }
+}
+
+impl<T: Inferrable + PartialOrd> PartialOrd for MaybeNotInferred<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        T::partial_cmp(&*self.0.get()?, &*other.0.get()?)
+    }
+}
+
+impl<T: Inferrable + Ord> Ord for MaybeNotInferred<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other)
+            .expect("cant ord not inferred types")
+    }
+}
+
+impl<T: Inferrable + PartialEq> PartialEq for MaybeNotInferred<T> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.0.get(), other.0.get()) {
+            (Some(a), Some(b)) => a == b,
+            _ => self.0.is_same_as(&other.0),
+        }
+    }
+}
+
+impl<T: Inferrable + Eq> Eq for MaybeNotInferred<T> {}
+
+impl<T: Inferrable> MaybeNotInferred<T> {
+    pub fn var(&self) -> &Var<T> {
+        &self.0
+    }
+    pub fn infer_as(&self, value: T) -> eyre::Result<()> {
+        self.0.set(value)
+    }
+    pub fn new_set(value: T) -> Self {
+        let var = Var::new("set");
+        var.set(value).unwrap();
+        Self(var)
+    }
+    pub fn new_not_inferred(description: &str) -> Self {
+        Self(Var::new(description))
+    }
+    pub fn new_not_inferred_with_default(description: &str, default: T) -> Self {
+        Self(Var::new_with_default(description, default))
+    }
+    pub fn expect_inferred(&self) -> eyre::Result<T> {
+        self.inferred().map_err(|_| eyre::eyre!("var not inferred"))
+    }
+    /// Get actual value (if it is an inference var)
+    pub fn inferred(&self) -> Result<T, &Var<T>> {
+        self.0.get().map(|value| (*value).clone()).ok_or(&self.0)
+    }
+    /// Get actual value (if it is an inference var)
+    pub fn inferred_or_default(&self) -> eyre::Result<Result<T, &Var<T>>> {
+        Ok(self
+            .0
+            .get_or_default()?
+            .map(|value| (*value).clone())
+            .ok_or(&self.0))
+    }
+    pub fn make_same(&mut self, other: Self) -> eyre::Result<()> {
+        *self = Inferrable::make_same(self.clone(), other)?;
+        Ok(())
+    }
+}
+
+impl<T: Inferrable> Inferrable for MaybeNotInferred<T> {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        a.0.make_same(&b.0)?;
+        Ok(a)
+    }
+}
+
+impl<T: Inferrable + crate::ShowShort> crate::ShowShort for MaybeNotInferred<T> {
+    fn show_short(&self) -> &'static str {
+        match self.0.get() {
+            Some(inferred) => inferred.show_short(),
+            None => "<not inferred>",
+        }
+    }
+}
+
+impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        thread_local! { static CACHE: std::cell::RefCell<(usize, Option<crate::RecurseCache>)> = Default::default(); }
+        let cached = CACHE.with_borrow_mut(|(level, cache)| {
+            if *level == 0 {
+                assert!(cache.is_none());
+                *cache = Some(crate::RecurseCache::new());
+            }
+            *level += 1;
+            let cache = cache.as_mut().unwrap();
+            match cache.get::<_, ()>(self.var()) {
+                Some(_cached) => true,
+                None => {
+                    cache.insert(self.var(), ());
+                    false
+                }
+            }
+        });
+        let result = if cached {
+            write!(f, "<recursive>")
+        } else {
+            match self.0.get() {
+                Some(inferred) => inferred.fmt(f),
+                None => write!(f, "<not inferred>"),
+            }
+        };
+        CACHE.with_borrow_mut(|(level, cache)| {
+            *level -= 1;
+            if *level == 0 {
+                assert!(cache.take().is_some());
+            }
+        });
+        result
     }
 }

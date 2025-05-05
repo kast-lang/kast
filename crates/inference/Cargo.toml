@@ -2,7 +2,6 @@
 name = "kast-inference"
 version.workspace = true
 edition.workspace = true
-description = "derive macros for kast"
 license.workspace = true
 repository.workspace = true
 
@@ -12,4 +11,3 @@ eyre.workspace = true
 anymap3.workspace = true
 try-hash.workspace = true
 kast-util.workspace = true
-kast-inference-derive = { path = "derive" }
