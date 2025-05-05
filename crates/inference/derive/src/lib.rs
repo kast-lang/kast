@@ -1,5 +1,4 @@
 extern crate proc_macro;
-use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::spanned::Spanned;
 
@@ -13,8 +12,6 @@ pub fn derive_try_hash(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     struct Field {
         /// `0` is a valid name originally
         name: syn::Member,
-        /// because `0` is not a valid name anymore
-        new_name: syn::Ident,
     }
     fn fields(fields: &syn::Fields) -> impl Iterator<Item = Field> + '_ {
         fields.iter().enumerate().map(|(index, field)| Field {
@@ -25,7 +22,6 @@ pub fn derive_try_hash(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
                     span: field.span(),
                 }),
             },
-            new_name: syn::Ident::new(&format!("__self_{index}"), field.span()),
         })
     }
 
