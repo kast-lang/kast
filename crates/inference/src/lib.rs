@@ -2,36 +2,12 @@ use kast_util::*;
 use rand::{Rng, thread_rng};
 use std::sync::{Arc, Mutex};
 
-type Check<T> = Arc<dyn Fn(&T) -> eyre::Result<CheckResult> + Send + Sync>;
+mod checks;
+mod default;
+pub mod global_state;
 
-#[derive(Clone, Default)]
-enum DefaultValue<T> {
-    #[default]
-    None,
-    Some(Arc<T>),
-    Conflicted,
-}
-
-impl<T: Inferrable> DefaultValue<T> {
-    fn get(&self) -> Option<Arc<T>> {
-        match self {
-            DefaultValue::None | DefaultValue::Conflicted => None,
-            DefaultValue::Some(value) => Some(value.clone()),
-        }
-    }
-    fn common(a: Self, b: Self) -> Self {
-        match (a, b) {
-            (Self::None, Self::None) => Self::None,
-            (Self::None, Self::Some(value)) => Self::Some(value),
-            (Self::Some(value), Self::None) => Self::Some(value),
-            (Self::Conflicted, _) | (_, Self::Conflicted) => Self::Conflicted,
-            (Self::Some(a), Self::Some(b)) => match T::make_same(T::clone(&a), T::clone(&b)) {
-                Ok(value) => Self::Some(Arc::new(value)),
-                Err(_) => Self::Conflicted,
-            },
-        }
-    }
-}
+pub use self::checks::{Check, CheckResult};
+use self::default::*;
 
 #[derive(Clone)]
 struct Data<T> {
@@ -40,27 +16,6 @@ struct Data<T> {
     value: Option<Arc<T>>,
     default_value: DefaultValue<T>,
     checks: Vec<Check<T>>,
-}
-
-impl<T> Data<T> {
-    fn run_checks(&mut self) -> eyre::Result<()> {
-        // println!("running checks for {:?}", self.description);
-        if let Some(value) = &self.value {
-            let mut completed = Vec::new();
-            for (index, check) in self.checks.iter().enumerate() {
-                match check(value)? {
-                    CheckResult::RunAgain => {}
-                    CheckResult::Completed => {
-                        completed.push(index);
-                    }
-                }
-            }
-            for idx in completed.into_iter().rev() {
-                self.checks.remove(idx);
-            }
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone)]
@@ -95,103 +50,6 @@ impl<T: Sync + Send + Clone + 'static> VarState<T> {
     }
 }
 
-pub mod global_state {
-    use super::*;
-    use std::{
-        collections::HashMap,
-        marker::PhantomData,
-        sync::{OnceLock, atomic::AtomicUsize},
-    };
-
-    #[derive(Clone)]
-    struct ConcreteState<T> {
-        vars: HashMap<usize, T>,
-    }
-
-    impl<T> Default for ConcreteState<T> {
-        fn default() -> Self {
-            Self {
-                vars: Default::default(),
-            }
-        }
-    }
-
-    #[derive(Default, Clone)]
-    struct State {
-        concrete: anymap3::Map<dyn anymap3::CloneAny + Send + Sync>,
-    }
-
-    static STATE: OnceLock<Mutex<State>> = OnceLock::new();
-    fn state() -> &'static Mutex<State> {
-        STATE.get_or_init(Default::default)
-    }
-
-    pub struct Snapshot {
-        state: State,
-    }
-
-    pub fn snapshot() -> Snapshot {
-        Snapshot {
-            state: state().lock().unwrap().clone(),
-        }
-    }
-
-    pub fn revert(snapshot: Snapshot) {
-        *state().lock().unwrap() = snapshot.state;
-    }
-
-    #[derive(Clone)]
-    pub struct Id<T> {
-        pub index: usize,
-        phantom_data: PhantomData<T>,
-    }
-
-    impl<T: Send + Sync + Clone + 'static> Id<T> {
-        pub fn new(value: T) -> Self {
-            static NEXT_INDEX: AtomicUsize = AtomicUsize::new(0);
-            let index = NEXT_INDEX.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            let result = Self {
-                index,
-                phantom_data: PhantomData,
-            };
-            result.set(value);
-            result
-        }
-        pub fn set(&self, value: T) {
-            state()
-                .lock()
-                .unwrap()
-                .concrete
-                .entry::<ConcreteState<T>>()
-                .or_default()
-                .vars
-                .insert(self.index, value);
-        }
-        pub fn get(&self) -> T {
-            state()
-                .lock()
-                .unwrap()
-                .concrete
-                .entry::<ConcreteState<T>>()
-                .or_default()
-                .vars
-                .get(&self.index)
-                .expect("var not exist???")
-                .clone()
-        }
-        pub fn modify<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
-            let mut value = self.get();
-            let result = f(&mut value);
-            self.set(value);
-            result
-        }
-    }
-
-    pub fn ptr_eq<T>(a: &Id<T>, b: &Id<T>) -> bool {
-        a.index == b.index
-    }
-}
-
 #[derive(Clone)]
 pub struct Var<T> {
     state: global_state::Id<VarState<T>>,
@@ -202,13 +60,6 @@ impl<T: Sync + Send + Clone + 'static> Identifiable for Var<T> {
     fn id(&self) -> Self::Id {
         VarState::get_root(&self.state).index
     }
-}
-
-#[must_use]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum CheckResult {
-    RunAgain,
-    Completed,
 }
 
 impl<T: Inferrable> Var<T> {
