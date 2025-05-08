@@ -612,7 +612,7 @@ impl Cache {
                                 let set_natives = set_natives.clone();
                                 let elem_ty = Type::new_not_inferred("list_iter elem_ty");
                                 let ty = FnType {
-                                    arg: TypeShape::List(elem_ty).into(),
+                                    arg: TypeShape::Ref(TypeShape::List(elem_ty).into()).into(),
                                     contexts: Contexts::new_not_inferred(), // TODO generator_handler
                                     result: TypeShape::Unit.into(),
                                 };
@@ -623,7 +623,10 @@ impl Cache {
                                         move |kast: Kast, _fn_ty: FnType, value: Value| {
                                             let set_natives = set_natives.clone();
                                             async move {
-                                                let value = value.into_inferred()?.into_list()?;
+                                                let list = value.into_inferred()?.into_ref()?;
+                                                let list = list.read_value()?;
+                                                let list = list.as_inferred()?;
+                                                let list = list.as_list()?;
                                                 let generator_handler = set_natives
                                                     .lock()
                                                     .unwrap()
@@ -635,7 +638,11 @@ impl Cache {
                                                 let generator_handler = kast
                                                     .instantiate(
                                                         generator_handler,
-                                                        ValueShape::Type(value.element_ty).into(),
+                                                        ValueShape::Type(
+                                                            TypeShape::Ref(list.element_ty.clone())
+                                                                .into(),
+                                                        )
+                                                        .into(),
                                                     )
                                                     .await?
                                                     .into_type()?;
@@ -653,9 +660,12 @@ impl Cache {
                                                 let handler = handler
                                                     .get_named("handle")
                                                     .ok_or_else(|| eyre!("wut"))?;
-                                                for elem in value.values.iter() {
-                                                    kast.call(handler.clone(), elem.clone())
-                                                        .await?;
+                                                for elem in list.values.iter() {
+                                                    kast.call(
+                                                        handler.clone(),
+                                                        ValueShape::Ref(elem.get_ref()).into(),
+                                                    )
+                                                    .await?;
                                                 }
                                                 Ok(ValueShape::Unit.into())
                                             }
@@ -798,13 +808,16 @@ impl Cache {
                             let ty = FnType {
                                 arg: TypeShape::Tuple({
                                     let mut tuple = Tuple::empty();
-                                    tuple.add_unnamed(TypeShape::List(elem_ty.clone()).into());
+                                    tuple.add_unnamed(
+                                        TypeShape::Ref(TypeShape::List(elem_ty.clone()).into())
+                                            .into(),
+                                    );
                                     tuple.add_unnamed(TypeShape::Int32.into()); // TODO usize?
                                     tuple
                                 })
                                 .into(),
                                 contexts: Contexts::empty(),
-                                result: elem_ty,
+                                result: TypeShape::Ref(elem_ty).into(),
                             };
                             expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                             Ok(ValueShape::NativeFunction(NativeFunction {
@@ -817,16 +830,22 @@ impl Cache {
                                             .clone()
                                             .into_values()
                                             .into_unnamed()?;
-                                        let list = list.into_inferred()?.into_list()?;
+                                        let list = list.into_inferred()?.into_ref()?;
+                                        let list = list.read_value()?;
+                                        let list = list.as_inferred()?;
+                                        let list = list.as_list()?;
                                         let index = index.into_inferred()?.into_int32()?;
-                                        Ok(list
-                                            .values
-                                            .get(
-                                                usize::try_from(index)
-                                                    .map_err(|e| eyre!("incorrect index: {e}"))?,
-                                            )
-                                            .ok_or_else(|| eyre!("list index out of bounds"))?
-                                            .clone())
+                                        Ok(ValueShape::Ref(
+                                            list.values
+                                                .get(
+                                                    usize::try_from(index).map_err(|e| {
+                                                        eyre!("incorrect index: {e}")
+                                                    })?,
+                                                )
+                                                .ok_or_else(|| eyre!("list index out of bounds"))?
+                                                .get_ref(),
+                                        )
+                                        .into())
                                     }
                                     .boxed()
                                 })
@@ -841,8 +860,11 @@ impl Cache {
                         "list_length".to_owned(),
                         Box::new(|expected: Type| {
                             let ty = FnType {
-                                arg: TypeShape::List(Type::new_not_inferred("list_length elem_ty"))
-                                    .into(),
+                                arg: TypeShape::Ref(
+                                    TypeShape::List(Type::new_not_inferred("list_length elem_ty"))
+                                        .into(),
+                                )
+                                .into(),
                                 contexts: Contexts::empty(),
                                 result: TypeShape::Int32.into(), // TODO usize?
                             };
@@ -851,7 +873,10 @@ impl Cache {
                                 name: "list_length".to_owned(),
                                 r#impl: (std::sync::Arc::new(|_kast, _fn_ty, list: Value| {
                                     async move {
-                                        let list = list.into_inferred()?.into_list()?;
+                                        let list = list.into_inferred()?.into_ref()?;
+                                        let list = list.read_value()?;
+                                        let list = list.as_inferred()?;
+                                        let list = list.as_list()?;
                                         Ok(ValueShape::Int32(
                                             list.values.len().try_into().map_err(|e| {
                                                 eyre!("list length doesnt fit in int32: {e}")
@@ -903,10 +928,10 @@ impl Cache {
                                         let index: usize = index.try_into()?;
                                         let mut list = list_ref.write()?;
                                         let list = list.get_mut()?.as_list_mut()?;
-                                        *list
-                                            .values
+                                        list.values
                                             .get_mut(index)
-                                            .ok_or_else(|| eyre!("out of bounds"))? = new_value;
+                                            .ok_or_else(|| eyre!("out of bounds"))?
+                                            .assign(new_value)?;
                                         Ok(ValueShape::Unit.into())
                                     }
                                     .boxed()
@@ -950,7 +975,7 @@ impl Cache {
                                         let list_ref = list_ref.into_inferred()?.into_ref()?;
                                         let mut list = list_ref.write()?;
                                         let list = list.get_mut()?.as_list_mut()?;
-                                        list.values.push(new_elem);
+                                        list.values.push(OwnedPlace::new(new_elem));
                                         Ok(ValueShape::Unit.into())
                                     }
                                     .boxed()
@@ -1783,7 +1808,7 @@ impl Kast {
                         TypeShape::List(element_ty) => {
                             let mut values = Vec::new();
                             for value_expr in values_exprs {
-                                values.push(self.eval(value_expr).await?);
+                                values.push(OwnedPlace::new(self.eval(value_expr).await?));
                             }
                             ValueShape::List(ListValue { values, element_ty }).into()
                         }

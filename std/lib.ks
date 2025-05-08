@@ -255,13 +255,13 @@ const list_set = forall[T] {
     native "list_set" :: (&list[T], int32, T) -> ()
 };
 const list_length = forall[T] {
-    native "list_length" :: list[T] -> int32
+    native "list_length" :: &list[T] -> int32
 };
 const list_iter = forall[T] {
-    native "list_iter" :: list[T] -> () with generator_handler[T]
+    native "list_iter" :: &list[T] -> () with generator_handler[&T]
 };
 const list_get = forall[T] {
-    native "list_get" :: (list[T], int32) -> T
+    native "list_get" :: (&list[T], int32) -> &T
 };
 
 const exec_mode = native "exec_mode";

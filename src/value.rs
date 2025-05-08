@@ -489,7 +489,7 @@ impl TryHash for HashMapValue {
 #[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct ListValue {
     #[try_hash]
-    pub values: Vec<Value>,
+    pub values: Vec<OwnedPlace>,
     #[try_hash]
     pub element_ty: Type,
 }
@@ -851,6 +851,15 @@ impl ValueShape {
             }),
         }
     }
+    pub fn as_list(&self) -> Result<&ListValue, ExpectError> {
+        match self {
+            Self::List(list) => Ok(list),
+            _ => Err(ExpectError {
+                value: self.clone(),
+                expected: TypeShape::List(Type::new_not_inferred("whatever")),
+            }),
+        }
+    }
     pub fn as_list_mut(&mut self) -> Result<&mut ListValue, ExpectError> {
         match self {
             Self::List(list) => Ok(list),
@@ -1040,7 +1049,12 @@ impl Inferrable for ListValue {
                 .values
                 .into_iter()
                 .zip(b.values.into_iter())
-                .map(|(a, b)| Inferrable::make_same(a, b))
+                .map(|(a, b)| {
+                    Ok::<_, eyre::Report>(OwnedPlace::new(Inferrable::make_same(
+                        a.into_value()?,
+                        b.into_value()?,
+                    )?))
+                })
                 .collect::<Result<Vec<_>, _>>()?,
             element_ty,
         })

@@ -112,12 +112,16 @@ impl<T: Rusty> Rusty for Vec<T> {
             .into_list()?
             .values
             .into_iter()
-            .map(T::from_value)
+            .map(|place| place.into_value().and_then(T::from_value))
             .collect::<Result<_, eyre::Report>>()?)
     }
     fn into_value(self) -> Value {
         ValueShape::List(ListValue {
-            values: self.into_iter().map(T::into_value).collect(),
+            values: self
+                .into_iter()
+                .map(T::into_value)
+                .map(OwnedPlace::new)
+                .collect(),
             element_ty: T::ty().unwrap_or_else(|| Type::new_not_inferred("Vec<_>")),
         })
         .into()
