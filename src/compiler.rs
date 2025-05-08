@@ -2199,18 +2199,34 @@ impl PlaceExpr<Span> {
                     data: span,
                 } => PlaceExpr::FieldAccess {
                     data: ExprData {
-                        ty: match obj.data().ty.inferred() {
-                            Ok(inferred_ty) => match &inferred_ty {
-                                TypeShape::Tuple(fields) => match fields.get_named(&field) {
-                                    Some(field_ty) => field_ty.clone(),
-                                    None => {
-                                        eyre::bail!("{inferred_ty} does not have field {field:?}")
+                        ty: {
+                            let ty = Type::new_not_inferred("obj.field");
+                            obj.data().ty.var().add_check({
+                                let ty = ty.clone();
+                                let field = field.clone();
+                                move |obj_ty| {
+                                    match &obj_ty {
+                                        TypeShape::Tuple(fields) => {
+                                            match fields.get_named(&field) {
+                                                Some(field_ty) => {
+                                                    ty.clone().make_same(field_ty.clone())?
+                                                }
+                                                None => {
+                                                    eyre::bail!(
+                                                        "{obj_ty} does not have field {field:?}"
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        TypeShape::SyntaxModule => {
+                                            ty.infer_as(TypeShape::SyntaxDefinition)?
+                                        }
+                                        _ => eyre::bail!("can not get fields of type {obj_ty}"),
                                     }
-                                },
-                                TypeShape::SyntaxModule => TypeShape::SyntaxDefinition.into(),
-                                _ => eyre::bail!("can not get fields of type {inferred_ty}"),
-                            },
-                            Err(_) => todo!("lazy inferring field access type"),
+                                    Ok(inference::CheckResult::Completed)
+                                }
+                            })?;
+                            ty
                         },
                         span,
                         contexts: obj.data().contexts.clone(),
