@@ -386,7 +386,7 @@ impl Cache {
                                 arg: TypeShape::Tuple({
                                     let mut args = Tuple::empty();
                                     args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
-                                    args.add_unnamed(key_ty.clone());
+                                    args.add_unnamed(TypeShape::Ref(key_ty.clone()).into());
                                     args
                                 })
                                 .into(),
@@ -410,6 +410,8 @@ impl Cache {
                                         let map = map.read_value()?;
                                         let map = map.as_inferred()?;
                                         let map = map.as_hash_map()?;
+                                        let key = key.into_inferred()?.into_ref()?;
+                                        let key = key.clone_value()?; // TODO not clone
                                         let value_ref = map
                                             .values
                                             .get(&HashableValue(key))

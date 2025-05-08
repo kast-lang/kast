@@ -303,7 +303,7 @@ const HashMap_insert = forall[K :: type, V :: type] {
     native "HashMap.insert" :: (&HashMap[K, V], K, V) -> ()
 };
 const HashMap_get = forall[K :: type, V :: type] {
-    native "HashMap.get" :: (&HashMap[K, V], K) -> Option[&V]
+    native "HashMap.get" :: (&HashMap[K, V], &K) -> Option[&V]
 };
 const HashMap_size = forall[K :: type, V :: type] {
     native "HashMap.size" :: &HashMap[K, V] -> int32
