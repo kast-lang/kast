@@ -43,6 +43,7 @@ syntax_module {
   syntax @"builtin macro field" <- 4.75 = "." name;
 
   syntax @"builtin macro comptime" <- 4.9 = "comptime" value;
+  # syntax @"builtin macro comptime" <- 1 = "comptime" value;
 
   # syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
   syntax @"builtin macro with_context" <- 5 = "with" new_context;
@@ -75,8 +76,6 @@ syntax_module {
   syntax @"builtin macro match" <- 13 = "match" value "{" branches "}";
   syntax @"builtin macro if" <- 13 = "if" cond "then" then;
   syntax @"builtin macro if" <- 13 = "if" cond "then" then "else" else;
-
-  syntax @"builtin macro if" -> 13.1 = cond "?" then ":" else;
 
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "with" contexts "{" body "}";
   syntax @"builtin macro function_def" <- 13.5 = "fn" "(" arg ")" "->" result_type "{" body "}";
