@@ -1015,15 +1015,45 @@ impl std::fmt::Debug for Function {
     }
 }
 
-pub type NativeFunctionImpl =
-    dyn Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync;
+pub trait NativeFunctionClosure: Send + Sync + 'static {
+    fn call(
+        &self,
+        kast: Kast,
+        fn_type: FnType,
+        arg: Value,
+    ) -> BoxFuture<'static, eyre::Result<Value>>;
+}
+
+impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static>
+    NativeFunctionClosure for F
+{
+    fn call(
+        &self,
+        kast: Kast,
+        fn_type: FnType,
+        arg: Value,
+    ) -> BoxFuture<'static, eyre::Result<Value>> {
+        self(kast, fn_type, arg)
+    }
+}
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct NativeFunction {
     pub name: String,
-    pub r#impl: Parc<NativeFunctionImpl>,
     #[try_hash]
     pub ty: FnType,
+    pub r#impl: Parc<dyn NativeFunctionClosure>,
+}
+
+impl NativeFunction {
+    pub fn new(name: impl Into<String>, ty: FnType, r#impl: impl NativeFunctionClosure) -> Self {
+        Self {
+            name: name.into(),
+            ty,
+            r#impl: (std::sync::Arc::new(r#impl) as std::sync::Arc<dyn NativeFunctionClosure>)
+                .into(),
+        }
+    }
 }
 
 impl std::fmt::Debug for NativeFunction {

@@ -107,6 +107,15 @@ impl std::fmt::Display for VariantType {
 }
 
 impl TypeShape {
+    pub fn expect_hash_map(self) -> Result<HashMapType, ExpectError<TypeShape, &'static str>> {
+        match self {
+            Self::HashMap(ty) => Ok(ty),
+            _ => Err(ExpectError {
+                value: self,
+                expected: "HashMap",
+            }),
+        }
+    }
     pub fn expect_function(self) -> Result<FnType, ExpectError<TypeShape, &'static str>> {
         match self {
             Self::Function(ty) => Ok(*ty),

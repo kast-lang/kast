@@ -30,23 +30,22 @@ pub fn default_file_system() -> Value {
     let mut context = Tuple::empty();
     context.add_named(
         "read_file",
-        ValueShape::NativeFunction(NativeFunction {
-            name: "read_file".into(),
-            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, path: Value| {
+        ValueShape::NativeFunction(NativeFunction::new(
+            "read_file",
+            FnType {
+                arg: TypeShape::String.into(),
+                contexts: Contexts::empty(),
+                result: TypeShape::String.into(),
+            },
+            |_kast, _fn_ty, path: Value| {
                 async move {
                     let path = path.into_inferred()?.as_str()?.to_owned();
                     let contents = std::fs::read_to_string(path)?;
                     Ok(ValueShape::String(contents).into())
                 }
                 .boxed()
-            }) as std::sync::Arc<NativeFunctionImpl>)
-                .into(),
-            ty: FnType {
-                arg: TypeShape::String.into(),
-                contexts: Contexts::empty(),
-                result: TypeShape::String.into(),
             },
-        })
+        ))
         .into(),
     );
     ValueShape::Tuple(TupleValue::new(context)).into()
@@ -56,22 +55,21 @@ pub fn default_number_type() -> Value {
     let mut context = Tuple::empty();
     context.add_named(
         "default_number_type",
-        ValueShape::NativeFunction(NativeFunction {
-            name: "default_number_type".to_owned(),
-            r#impl: (std::sync::Arc::new(|_kast, _fn_ty, s: Value| {
+        ValueShape::NativeFunction(NativeFunction::new(
+            "default_number_type",
+            FnType {
+                arg: TypeShape::String.into(),
+                contexts: Contexts::empty(),
+                result: TypeShape::Type.into(),
+            },
+            |_kast, _fn_ty, s: Value| {
                 async move {
                     let _s = s.into_inferred()?.as_str()?;
                     Ok(ValueShape::Type(Type::new_not_inferred("default number type")).into())
                 }
                 .boxed()
-            }) as std::sync::Arc<NativeFunctionImpl>)
-                .into(),
-            ty: FnType {
-                arg: TypeShape::String.into(),
-                contexts: Contexts::empty(),
-                result: TypeShape::Type.into(),
             },
-        })
+        ))
         .into(),
     );
     ValueShape::Tuple(TupleValue::new(context)).into()
@@ -92,9 +90,10 @@ pub fn default_output() -> Value {
     let mut context = Tuple::empty();
     context.add_named(
         "write",
-        ValueShape::NativeFunction(NativeFunction {
-            name: "print".to_owned(),
-            r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, s: Value| {
+        ValueShape::NativeFunction(NativeFunction::new(
+            "print",
+            write_type,
+            |kast: Kast, _fn_ty, s: Value| {
                 async move {
                     let s = s.into_inferred()?;
                     let s = s.into_ref()?;
@@ -105,10 +104,8 @@ pub fn default_output() -> Value {
                     Ok(ValueShape::Unit.into())
                 }
                 .boxed()
-            }) as std::sync::Arc<NativeFunctionImpl>)
-                .into(),
-            ty: write_type,
-        })
+            },
+        ))
         .into(),
     );
     let context: Value = ValueShape::Tuple(TupleValue::new(context)).into();
@@ -120,22 +117,21 @@ pub fn default_input() -> Value {
     let mut context = Tuple::empty();
     context.add_named(
         "read_line",
-        ValueShape::NativeFunction(NativeFunction {
-            name: "read_line".to_owned(),
-            r#impl: (std::sync::Arc::new(|kast: Kast, _fn_ty, _arg: Value| {
+        ValueShape::NativeFunction(NativeFunction::new(
+            "read_line",
+            FnType {
+                arg: TypeShape::Unit.into(),
+                contexts: Contexts::empty(),
+                result: TypeShape::String.into(),
+            },
+            |kast: Kast, _fn_ty, _arg: Value| {
                 async move {
                     let s = kast.input.read_line();
                     Ok(ValueShape::String(s).into())
                 }
                 .boxed()
-            }) as std::sync::Arc<NativeFunctionImpl>)
-                .into(),
-            ty: FnType {
-                arg: TypeShape::Unit.into(),
-                contexts: Contexts::empty(),
-                result: TypeShape::String.into(),
             },
-        })
+        ))
         .into(),
     );
     let context: Value = ValueShape::Tuple(TupleValue::new(context)).into();

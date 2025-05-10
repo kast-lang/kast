@@ -256,19 +256,19 @@ const chars :: &string -> () with generator_handler[char] = native "chars";
 const push_char :: (string, char) -> string = native "push_char";
 
 const list_push = forall[T] {
-    native "list_push" :: (&list[T], T) -> ()
+    native "list.push" :: (&list[T], T) -> ()
 };
 const list_set = forall[T] {
-    native "list_set" :: (&list[T], int32, T) -> ()
+    native "list.set" :: (&list[T], int32, T) -> ()
 };
 const list_length = forall[T] {
-    native "list_length" :: &list[T] -> int32
+    native "list.length" :: &list[T] -> int32
 };
 const list_iter = forall[T] {
-    native "list_iter" :: &list[T] -> () with generator_handler[&T]
+    native "list.iter" :: &list[T] -> () with generator_handler[&T]
 };
 const list_get = forall[T] {
-    native "list_get" :: (&list[T], int32) -> &T
+    native "list.get" :: (&list[T], int32) -> &T
 };
 
 const exec_mode = native "exec_mode";
