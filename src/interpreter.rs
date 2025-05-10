@@ -96,6 +96,35 @@ impl Cache {
                     );
 
                     map.insert(
+                        "clone".to_owned(),
+                        Box::new(|expected: Type| {
+                            let item_ty = Type::new_not_inferred("native clone");
+                            let ty = FnType {
+                                arg: TypeShape::Ref(item_ty.clone()).into(),
+                                contexts: Contexts::empty(),
+                                result: item_ty.clone(),
+                            };
+                            expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
+                            Ok(ValueShape::NativeFunction(NativeFunction {
+                                name: "clone".to_owned(),
+                                r#impl: (std::sync::Arc::new(
+                                    |_kast, _fn_ty: FnType, value: Value| {
+                                        async move {
+                                            let value_ref = value.into_inferred()?.into_ref()?;
+                                            Ok(value_ref.clone_value()?)
+                                        }
+                                        .boxed()
+                                    },
+                                )
+                                    as std::sync::Arc<NativeFunctionImpl>)
+                                    .into(),
+                                ty,
+                            })
+                            .into())
+                        }),
+                    );
+
+                    map.insert(
                         "dbg_type".to_owned(),
                         Box::new(|expected: Type| {
                             let ty = FnType {

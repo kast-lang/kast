@@ -147,6 +147,13 @@ impl bool as Copy = ();
 impl char as Copy = ();
 impl type as Copy = ();
 
+# TODO Clone trait
+const clone = forall[T] {
+    fn (x :: &T) -> T {
+        native "clone" x
+    }
+};
+
 const Parse = forall[Self] {
     .parse = &string -> Self,
 };
