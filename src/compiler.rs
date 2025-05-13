@@ -1943,6 +1943,11 @@ impl Kast {
         if cty == CompiledType::Expr {
             return Ok(Compiled::Expr(self.compile::<PlaceExpr>(ast).await?.into()));
         }
+        if cty == CompiledType::AssigneeExpr {
+            return Ok(Compiled::AssigneeExpr(
+                self.compile::<PlaceExpr>(ast).await?.into(),
+            ));
+        }
         assert_eq!(cty, CompiledType::PlaceExpr);
         let (values, span) = get_complex(ast);
         let r#ref = values.as_ref().into_single_named("ref")?;

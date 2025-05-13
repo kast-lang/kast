@@ -1,5 +1,6 @@
 use super::*;
 
+// TODO should be same ExprData - can have assignee expr with effects
 #[derive(Clone)]
 pub struct AssigneeExprData {
     pub ty: Type,
@@ -246,6 +247,19 @@ impl From<PlaceExpr> for Expr {
     fn from(place: PlaceExpr) -> Self {
         Self::ReadPlace {
             data: place.data().clone(),
+            place,
+        }
+    }
+}
+
+impl From<PlaceExpr> for AssigneeExpr {
+    fn from(place: PlaceExpr) -> Self {
+        let data = place.data();
+        Self::Place {
+            data: AssigneeExprData {
+                ty: data.ty.clone(),
+                span: data.span.clone(),
+            },
             place,
         }
     }
