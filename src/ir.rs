@@ -587,7 +587,7 @@ impl Symbol {
 pub struct Binding {
     pub symbol: Symbol,
     pub ty: Type,
-    pub mutable: bool,
+    pub mutability: Mutability,
     pub compiler_scope: CompilerScope,
 }
 

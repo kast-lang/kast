@@ -346,8 +346,10 @@ impl Natives {
                     let map = map.into_inferred()?.into_ref()?;
                     let mut map = map.write_value()?;
                     let map = map.as_hash_map_mut()?;
-                    map.values
-                        .insert(HashableValue(key), OwnedPlace::new(value));
+                    map.values.insert(
+                        HashableValue(key),
+                        OwnedPlace::new(value, Mutability::Nested),
+                    );
                     Ok(ValueShape::Unit.into())
                 }
                 .boxed()
@@ -430,8 +432,9 @@ impl Natives {
                             None => "None",
                         }
                         .to_owned(),
-                        value: value_ref
-                            .map(|value_ref| OwnedPlace::new(ValueShape::Ref(value_ref).into())),
+                        value: value_ref.map(|value_ref| {
+                            OwnedPlace::new(ValueShape::Ref(value_ref).into(), Mutability::Nested)
+                        }),
                         ty: result_ty,
                     })
                     .into())
@@ -841,7 +844,8 @@ impl Natives {
                     let list_ref = list_ref.into_inferred()?.into_ref()?;
                     let mut list = list_ref.write()?;
                     let list = list.get_mut()?.as_list_mut()?;
-                    list.values.push(OwnedPlace::new(new_elem));
+                    list.values
+                        .push(OwnedPlace::new(new_elem, Mutability::Nested));
                     Ok(ValueShape::Unit.into())
                 }
                 .boxed()

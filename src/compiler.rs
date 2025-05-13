@@ -47,13 +47,13 @@ use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct State {
-    bindings_mutable: bool,
+    bindings_mutability: Mutability,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            bindings_mutable: false,
+            bindings_mutability: Mutability::ReadOnly,
         }
     }
 }
@@ -574,7 +574,7 @@ async fn compile_ident_pattern(
     let binding = Parc::new(Binding {
         symbol: Symbol::new(name),
         ty: Type::new_not_inferred(&format!("{name} at {span}")),
-        mutable: kast.compiler.bindings_mutable,
+        mutability: kast.compiler.bindings_mutability,
         compiler_scope,
     });
     Ok(Pattern::Binding {
@@ -651,9 +651,11 @@ impl Kast {
             binding.symbol.name(),
             ValueShape::Binding(binding.clone()).into(),
         );
-        self.scopes
-            .interpreter
-            .insert(&binding.symbol, ValueShape::Binding(binding.clone()).into());
+        self.scopes.interpreter.insert(
+            &binding.symbol,
+            ValueShape::Binding(binding.clone()).into(),
+            binding.mutability,
+        );
     }
     fn inject_bindings(&mut self, pattern: &Pattern) {
         pattern.collect_bindings(&mut |binding| self.inject_binding(&binding));
@@ -746,7 +748,7 @@ impl Kast {
 
         // TODO don't clone value
         let matches = pattern
-            .r#match(OwnedPlace::new(value.clone()).get_ref(), self)?
+            .r#match(OwnedPlace::new_temp(value.clone()).get_ref(), self)?
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
             self.scopes.compiler.insert(binding.symbol.name(), value);
@@ -1870,7 +1872,7 @@ impl Kast {
         let (values, _span) = get_complex(ast);
         let pattern = values.as_ref().into_single_named("pattern")?;
         let mut kast = self.clone();
-        kast.compiler.bindings_mutable = true;
+        kast.compiler.bindings_mutability = Mutability::Mutable;
         kast.compile_into(cty, pattern).await
     }
     async fn macro_or(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -3020,7 +3022,8 @@ impl Expr<Span> {
 
                     let mut template_kast =
                         kast.with_scopes(Scopes::new(kast.spawn_id, ScopeType::NonRecursive, None));
-                    template_kast.pattern_match(&compiled.arg, OwnedPlace::new(arg).get_ref())?;
+                    template_kast
+                        .pattern_match(&compiled.arg, OwnedPlace::new_temp(arg).get_ref())?;
                     let result_ty = compiled
                         .body
                         .data()

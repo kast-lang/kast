@@ -120,7 +120,7 @@ impl<T: Rusty> Rusty for Vec<T> {
             values: self
                 .into_iter()
                 .map(T::into_value)
-                .map(OwnedPlace::new)
+                .map(|value| OwnedPlace::new(value, Mutability::Nested))
                 .collect(),
             element_ty: T::ty().unwrap_or_else(|| Type::new_not_inferred("Vec<_>")),
         })

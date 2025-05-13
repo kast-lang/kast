@@ -17,11 +17,11 @@ impl Locals {
         self.id_by_name.insert(name.name().to_owned(), name.id());
         self.by_id.insert(name.id(), (name, place));
     }
-    fn insert(&mut self, name: Symbol, value: Value) {
-        self.insert_place(name, OwnedPlace::new(value));
+    fn insert(&mut self, name: Symbol, value: Value, mutability: Mutability) {
+        self.insert_place(name, OwnedPlace::new(value, mutability));
     }
-    fn insert_uninitialized(&mut self, name: Symbol, ty: Type) {
-        self.insert_place(name, OwnedPlace::new_uninitialized(ty));
+    fn insert_uninitialized(&mut self, name: Symbol, ty: Type, mutability: Mutability) {
+        self.insert_place(name, OwnedPlace::new_uninitialized(ty, mutability));
     }
     #[allow(dead_code)]
     fn get(&self, lookup: Lookup<'_>) -> Option<&(Symbol, OwnedPlace)> {
@@ -105,17 +105,20 @@ impl Scope {
     pub fn inspect<R>(&self, f: impl FnOnce(&Locals) -> R) -> R {
         f(&self.locals.lock().unwrap())
     }
-    pub fn insert(&self, name: Symbol, value: Value) {
+    pub fn insert(&self, name: Symbol, value: Value, mutability: Mutability) {
         tracing::trace!("insert into {:?} {:?} = {:?}", self.id, name, value);
-        self.locals.lock().unwrap().insert(name, value);
+        self.locals.lock().unwrap().insert(name, value, mutability);
     }
-    pub fn insert_uninitialized(&self, name: Symbol, ty: Type) {
+    pub fn insert_uninitialized(&self, name: Symbol, ty: Type, mutability: Mutability) {
         tracing::trace!(
             "insert into {:?} {:?} = <uninitialized of {ty}>",
             self.id,
             name,
         );
-        self.locals.lock().unwrap().insert_uninitialized(name, ty);
+        self.locals
+            .lock()
+            .unwrap()
+            .insert_uninitialized(name, ty, mutability);
     }
     pub fn lookup<'a>(
         &'a self,

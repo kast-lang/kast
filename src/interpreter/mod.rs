@@ -146,7 +146,9 @@ impl Kast {
             .r#match(place, self)?
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
-            self.scopes.interpreter.insert(&binding.symbol, value);
+            self.scopes
+                .interpreter
+                .insert(&binding.symbol, value, binding.mutability);
         }
         Ok(())
     }
@@ -230,7 +232,7 @@ impl Kast {
             let result: PlaceRef = match expr {
                 PlaceExpr::Temporary { value, data: _ } => {
                     let value = self.eval(value).await?;
-                    OwnedPlace::new(value).get_ref()
+                    OwnedPlace::new_temp(value).get_ref()
                 }
                 PlaceExpr::Binding { binding, data: _ } => self
                     .scopes
@@ -251,8 +253,8 @@ impl Kast {
                             Some(place) => place.get_ref(),
                             None => eyre::bail!("{obj} does not have field {field:?}"),
                         },
-                        // TODO should this be making a temporary?
-                        ValueShape::SyntaxModule(definitions) => OwnedPlace::new(
+                        // TODO should this be making a temporary? probably not
+                        ValueShape::SyntaxModule(definitions) => OwnedPlace::new_temp(
                             ValueShape::SyntaxDefinition(
                                 definitions
                                     .iter() // TODO store a map? iteration is slow?
@@ -359,7 +361,10 @@ impl Kast {
                         TypeShape::List(element_ty) => {
                             let mut values = Vec::new();
                             for value_expr in values_exprs {
-                                values.push(OwnedPlace::new(self.eval(value_expr).await?));
+                                values.push(OwnedPlace::new(
+                                    self.eval(value_expr).await?,
+                                    Mutability::Nested,
+                                ));
                             }
                             ValueShape::List(ListValue { values, element_ty }).into()
                         }
@@ -397,7 +402,7 @@ impl Kast {
                         .run({
                             kast.pattern_match(
                                 name,
-                                OwnedPlace::new(
+                                OwnedPlace::new_temp(
                                     ValueShape::UnwindHandle(UnwindHandle {
                                         sender: Parc::new(Mutex::new(unwind_sender)),
                                         ty: body.data().ty.clone(),
@@ -506,7 +511,11 @@ impl Kast {
                         if let Some(matches) = branch.pattern.r#match(value.clone(), self)? {
                             let mut kast = self.enter_scope();
                             for (binding, value) in matches {
-                                kast.scopes.interpreter.insert(&binding.symbol, value);
+                                kast.scopes.interpreter.insert(
+                                    &binding.symbol,
+                                    value,
+                                    binding.mutability,
+                                );
                             }
                             let result = kast.eval(&branch.body).await?;
                             break 'result result;
@@ -522,7 +531,11 @@ impl Kast {
                     let value = self.eval_place(value).await?;
                     if let Some(matches) = pattern.r#match(value, self)? {
                         for (binding, value) in matches {
-                            self.scopes.interpreter.insert(&binding.symbol, value);
+                            self.scopes.interpreter.insert(
+                                &binding.symbol,
+                                value,
+                                binding.mutability,
+                            );
                         }
                         ValueShape::Bool(true).into()
                     } else {
@@ -574,7 +587,7 @@ impl Kast {
                     };
                     ValueShape::Variant(VariantValue {
                         name: name.clone(),
-                        value: value.map(OwnedPlace::new),
+                        value: value.map(|value| OwnedPlace::new(value, Mutability::Nested)),
                         ty: data.ty.clone(),
                     })
                     .into()
@@ -821,9 +834,11 @@ impl Kast {
                                     binding.symbol,
                                     binding.ty,
                                 );
-                                self.scopes
-                                    .interpreter
-                                    .insert_uninitialized(&binding.symbol, binding.ty.clone());
+                                self.scopes.interpreter.insert_uninitialized(
+                                    &binding.symbol,
+                                    binding.ty.clone(),
+                                    binding.mutability,
+                                );
                             });
                         }
                     }
@@ -945,7 +960,7 @@ impl Kast {
                 .clone()
                 .substitute_bindings(&kast, &mut RecurseCache::new()),
         )?;
-        kast.pattern_match(&compiled.arg, OwnedPlace::new(arg).get_ref())?;
+        kast.pattern_match(&compiled.arg, OwnedPlace::new_temp(arg).get_ref())?;
         let value = kast.eval(&compiled.body).await?;
         Ok(value)
     }

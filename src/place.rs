@@ -30,8 +30,10 @@ impl TryHash for OwnedPlace {
 
 impl Clone for OwnedPlace {
     fn clone(&self) -> Self {
-        Self(Parc::new(Place::new_state(
+        Self(Parc::new(Place::new(
             self.0.read().expect("can't read for clone").clone(),
+            self.0.ty.clone(),
+            self.0.mutability, // TODO is this correct?
         )))
     }
 }
@@ -43,18 +45,18 @@ impl std::fmt::Display for OwnedPlace {
 }
 
 impl OwnedPlace {
-    pub fn new(value: Value) -> Self {
-        Self::new_impl(value.ty(), PlaceState::Occupied(value))
+    pub fn new(value: Value, mutability: Mutability) -> Self {
+        let ty = value.ty();
+        Self::new_impl(PlaceState::Occupied(value), ty, mutability)
     }
-    fn new_impl(ty: Type, inner: PlaceState) -> Self {
-        Self(Parc::new(Place {
-            id: Id::new(),
-            ty,
-            state: tokio::sync::RwLock::new(inner),
-        }))
+    pub fn new_temp(value: Value) -> Self {
+        Self::new(value, Mutability::Mutable)
     }
-    pub fn new_uninitialized(ty: Type) -> Self {
-        Self::new_impl(ty, PlaceState::Unintialized)
+    fn new_impl(state: PlaceState, ty: Type, mutability: Mutability) -> Self {
+        Self(Parc::new(Place::new(state, ty, mutability)))
+    }
+    pub fn new_uninitialized(ty: Type, mutability: Mutability) -> Self {
+        Self::new_impl(PlaceState::Unintialized, ty, mutability)
     }
     pub fn into_value(self) -> eyre::Result<Value> {
         self.0.take_value()
@@ -73,8 +75,13 @@ pub struct PlaceRef {
 
 impl PlaceRef {
     pub fn new_temp(value: Value) -> Self {
+        let ty = value.ty();
         Self {
-            place: Parc::new(Place::new(value)),
+            place: Parc::new(Place::new(
+                PlaceState::Occupied(value),
+                ty,
+                Mutability::Mutable,
+            )),
         }
     }
 }
@@ -127,10 +134,35 @@ impl std::fmt::Display for PlaceRef {
         write!(f, "&{}", self.place.id)
     }
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Mutability {
+    ReadOnly,
+    Mutable,
+    Nested,
+}
+
+impl Mutability {
+    pub fn check_can_read(&self) -> eyre::Result<()> {
+        match self {
+            Self::Nested => Ok(()),
+            Self::ReadOnly | Self::Mutable => Ok(()),
+        }
+    }
+    pub fn check_can_mutate(&self) -> eyre::Result<()> {
+        match self {
+            Self::Nested => Ok(()),
+            Self::ReadOnly => Err(eyre!("place is readonly")),
+            Self::Mutable => Ok(()),
+        }
+    }
+}
+
 pub struct Place {
     pub id: Id,
     pub ty: Type,
-    pub state: tokio::sync::RwLock<PlaceState>,
+    pub mutability: Mutability,
+    state: tokio::sync::RwLock<PlaceState>,
 }
 
 pub struct PlaceReadGuard<'a, T>(tokio::sync::RwLockReadGuard<'a, T>);
@@ -159,19 +191,15 @@ impl<T> std::ops::DerefMut for PlaceWriteGuard<'_, T> {
 
 // this wouldnt be so much code if i would code it in assembly
 impl Place {
-    pub fn new(value: Value) -> Self {
-        Self::new_state(PlaceState::Occupied(value))
-    }
-    pub fn new_state(state: PlaceState) -> Self {
+    pub fn new(state: PlaceState, ty: Type, mutability: Mutability) -> Self {
         Self {
             id: Id::new(),
-            ty: state
-                .ty()
-                .unwrap_or_else(|| Type::new_not_inferred("place type")),
+            mutability,
+            ty,
             state: tokio::sync::RwLock::new(state),
         }
     }
-    pub fn read(&self) -> eyre::Result<PlaceReadGuard<'_, PlaceState>> {
+    fn read(&self) -> eyre::Result<PlaceReadGuard<'_, PlaceState>> {
         Ok(PlaceReadGuard(tokio::sync::RwLockReadGuard::map(
             self.state
                 .try_read()
@@ -179,7 +207,7 @@ impl Place {
             |x| x,
         )))
     }
-    pub fn write(&self) -> eyre::Result<PlaceWriteGuard<'_, PlaceState>> {
+    fn write(&self) -> eyre::Result<PlaceWriteGuard<'_, PlaceState>> {
         Ok(PlaceWriteGuard(tokio::sync::RwLockWriteGuard::map(
             self.state
                 .try_write()
@@ -188,6 +216,7 @@ impl Place {
         )))
     }
     pub fn read_value(&self) -> eyre::Result<PlaceReadGuard<'_, Value>> {
+        self.mutability.check_can_read()?;
         let guard = self.read()?;
         match tokio::sync::RwLockReadGuard::try_map(guard.0, |state| state.get().ok()) {
             Ok(result) => Ok(PlaceReadGuard(result)),
@@ -195,6 +224,7 @@ impl Place {
         }
     }
     pub fn write_value(&self) -> eyre::Result<PlaceWriteGuard<'_, ValueShape>> {
+        self.mutability.check_can_mutate()?;
         let guard = self.write()?;
         match tokio::sync::RwLockMappedWriteGuard::try_map(guard.0, |state| state.get_mut().ok()) {
             Ok(result) => Ok(PlaceWriteGuard(result)),
@@ -202,13 +232,20 @@ impl Place {
         }
     }
     pub fn take_value(&self) -> eyre::Result<Value> {
+        self.mutability.check_can_read()?;
         Ok(self.write()?.take()?.clone())
     }
     pub fn clone_value(&self) -> eyre::Result<Value> {
+        self.mutability.check_can_read()?;
         Ok(self.read()?.get()?.clone())
     }
     pub fn assign(&self, new_value: Value) -> eyre::Result<()> {
-        self.write()?.assign(new_value);
+        let mut state = self.write()?;
+        match *state {
+            PlaceState::Unintialized => {}
+            PlaceState::Occupied(_) | PlaceState::MovedOut => self.mutability.check_can_mutate()?,
+        }
+        state.assign(new_value);
         Ok(())
     }
 }

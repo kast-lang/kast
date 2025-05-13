@@ -11,11 +11,11 @@ pub use scope::{Locals, ScopeType};
 pub struct InterpreterScope(Parc<Scope>);
 
 impl InterpreterScope {
-    pub fn insert(&self, symbol: &Symbol, value: Value) {
-        self.0.insert(symbol.clone(), value);
+    pub fn insert(&self, symbol: &Symbol, value: Value, mutability: Mutability) {
+        self.0.insert(symbol.clone(), value, mutability);
     }
-    pub fn insert_uninitialized(&self, symbol: &Symbol, ty: Type) {
-        self.0.insert_uninitialized(symbol.clone(), ty);
+    pub fn insert_uninitialized(&self, symbol: &Symbol, ty: Type, mutability: Mutability) {
+        self.0.insert_uninitialized(symbol.clone(), ty, mutability);
     }
     /// TODO dont expose Locals?
     pub fn inspect<R>(&self, f: impl FnOnce(&Locals) -> R) -> R {
@@ -43,7 +43,11 @@ impl CompilerScope {
     }
     pub fn insert(&self, name: &str, value: Value) {
         tracing::trace!("inserting {name:?} into {:?}", self.0.id);
-        self.0.insert(Symbol::new(name), value);
+        self.0.insert(
+            Symbol::new(name),
+            value,
+            Mutability::Nested, // TODO whats the mutability?
+        );
     }
     pub async fn lookup(&self, name: &str, hygiene: Hygiene, spawn_id: Id) -> Option<Value> {
         tracing::trace!("lookup {name:?} in {:?}", self.0.id);

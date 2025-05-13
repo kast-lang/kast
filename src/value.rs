@@ -41,7 +41,7 @@ impl std::ops::Deref for TupleValue {
 
 impl From<Tuple<Value>> for TupleValue {
     fn from(values: Tuple<Value>) -> Self {
-        Self(values.map(OwnedPlace::new))
+        Self(values.map(|value| OwnedPlace::new(value, Mutability::Nested)))
     }
 }
 
@@ -800,10 +800,10 @@ impl Inferrable for ListValue {
                 .into_iter()
                 .zip(b.values.into_iter())
                 .map(|(a, b)| {
-                    Ok::<_, eyre::Report>(OwnedPlace::new(Inferrable::make_same(
-                        a.into_value()?,
-                        b.into_value()?,
-                    )?))
+                    Ok::<_, eyre::Report>(OwnedPlace::new(
+                        Inferrable::make_same(a.into_value()?, b.into_value()?)?,
+                        Mutability::Nested,
+                    ))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
             element_ty,
