@@ -2,30 +2,18 @@
 #![allow(clippy::type_complexity, clippy::needless_question_mark)]
 
 use async_trait::async_trait;
-use cast::*;
-pub use compiler::{Ast, AstData, Hygiene};
-pub use contexts::Contexts;
-use executor::Executor;
 use eyre::{Context as _, eyre};
 use futures::future::BoxFuture;
 use futures::prelude::*;
-pub use id::*;
-pub use inference;
 use inference::Inferrable;
-pub use ir::Symbol;
-use ir::*;
 pub use kast_ast as ast;
 pub use kast_ast::Token;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
-pub use rusty::*;
-use scopes::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use try_hash::TryHash;
-pub use ty::*;
-pub use value::*;
 
 mod cast;
 mod comments;
@@ -35,10 +23,25 @@ mod executor;
 mod id;
 mod interpreter;
 mod ir;
+mod place;
 mod rusty;
 mod scopes;
 mod ty;
 mod value;
+
+use self::cast::*;
+pub use self::compiler::{Ast, AstData, Hygiene};
+pub use self::contexts::Contexts;
+use self::executor::Executor;
+pub use self::id::*;
+pub use self::ir::Symbol;
+use self::ir::*;
+pub use self::place::*;
+pub use self::rusty::*;
+use self::scopes::*;
+pub use self::ty::*;
+pub use self::value::*;
+pub use inference;
 
 pub enum MaybeBorrowed<'a, T> {
     Borrowed(&'a T),
