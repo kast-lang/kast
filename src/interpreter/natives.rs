@@ -181,6 +181,24 @@ impl Natives {
         natives.insert("default_number_type", contexts::default_number_type().ty());
 
         natives.insert_fn(
+            "eval_ast",
+            || FnType {
+                arg: TypeShape::Ast.into(),
+                contexts: Contexts::empty(),
+                result: Type::new_not_inferred("eval_ast result"),
+            },
+            |kast: Kast, fn_ty: FnType, ast: Value| {
+                async move {
+                    let ast = ast.into_inferred()?.into_ast()?;
+                    let result_ty = fn_ty.result;
+                    let mut kast = kast;
+                    kast.eval_ast(&ast, Some(result_ty)).await
+                }
+                .boxed()
+            },
+        );
+
+        natives.insert_fn(
             "clone",
             || {
                 let item_ty = Type::new_not_inferred("cloned item type");
@@ -1019,6 +1037,12 @@ impl Natives {
                     let rhs = rhs.as_ref()?.read_value()?;
                     let rhs = rhs.as_inferred()?;
                     Ok(match (&*lhs, &*rhs) {
+                        // TODO types should only implement ==
+                        (ValueShape::Type(lhs), ValueShape::Type(rhs)) => {
+                            let lhs = lhs.expect_inferred()?;
+                            let rhs = rhs.expect_inferred()?;
+                            lhs $op rhs
+                        }
                         (ValueShape::Bool(lhs), ValueShape::Bool(rhs)) => lhs $op rhs,
                         (ValueShape::Int32(lhs), ValueShape::Int32(rhs)) => lhs $op rhs,
                         (ValueShape::Int64(lhs), ValueShape::Int64(rhs)) => lhs $op rhs,
