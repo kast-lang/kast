@@ -249,7 +249,7 @@ impl Kast {
                     let obj = obj.as_inferred()?;
                     let obj = &*obj;
                     match obj {
-                        ValueShape::Tuple(TupleValue(fields)) => match fields.get_named(field) {
+                        ValueShape::Tuple(TupleValue(fields)) => match fields.get(field.as_ref()) {
                             Some(place) => place.get_ref(),
                             None => eyre::bail!("{obj} does not have field {field:?}"),
                         },
@@ -258,7 +258,10 @@ impl Kast {
                             ValueShape::SyntaxDefinition(
                                 definitions
                                     .iter() // TODO store a map? iteration is slow?
-                                    .find(|def| def.name == *field)
+                                    .find(|def| {
+                                        tuple::Member::Named(std::borrow::Cow::Borrowed(&def.name))
+                                            == *field
+                                    })
                                     .ok_or_else(|| {
                                         eyre!("syntax def {field:?} not found in syntax module")
                                     })?

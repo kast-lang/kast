@@ -221,7 +221,7 @@ pub enum PlaceExpr<Data = ExprData> {
     },
     FieldAccess {
         obj: Box<PlaceExpr>,
-        field: String,
+        field: tuple::Member<'static>,
         data: Data,
     },
     Temporary {

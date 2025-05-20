@@ -64,6 +64,36 @@ impl<T: TryHash> TryHash for Tuple<T> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub enum Member<'a> {
+    Unnamed(usize),
+    Named(std::borrow::Cow<'a, str>),
+}
+
+impl std::fmt::Display for Member<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Member::Unnamed(index) => write!(f, "{index}"),
+            Member::Named(ident) => write!(f, "{ident}"),
+        }
+    }
+}
+
+impl Member<'_> {
+    pub fn into_owned(self) -> Member<'static> {
+        match self {
+            Member::Unnamed(index) => Member::Unnamed(index),
+            Member::Named(ident) => Member::Named(std::borrow::Cow::Owned(ident.into_owned())),
+        }
+    }
+    pub fn as_ref(&self) -> Member<'_> {
+        match *self {
+            Member::Unnamed(index) => Member::Unnamed(index),
+            Member::Named(ref ident) => Member::Named(std::borrow::Cow::Borrowed(ident)),
+        }
+    }
+}
+
 impl<T> Tuple<T> {
     pub fn empty() -> Self {
         Self {
@@ -80,8 +110,14 @@ impl<T> Tuple<T> {
     pub fn is_empty(&self) -> bool {
         self.unnamed.is_empty() && self.named.is_empty()
     }
-    pub fn get_unnamed(&self) -> &[T] {
-        &self.unnamed
+    pub fn get<'a>(&'a self, member: Member<'_>) -> Option<&'a T> {
+        match member {
+            Member::Unnamed(index) => self.get_unnamed(index),
+            Member::Named(ident) => self.get_named(ident.as_ref()),
+        }
+    }
+    pub fn get_unnamed(&self, index: usize) -> Option<&T> {
+        self.unnamed.get(index)
     }
     pub fn get_named(&self, name: &str) -> Option<&T> {
         self.named.get(name)

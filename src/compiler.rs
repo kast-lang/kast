@@ -19,6 +19,20 @@ impl std::fmt::Display for Hygiene {
     }
 }
 
+fn ast_as_member(ast: &Ast) -> Option<tuple::Member<'_>> {
+    Some(match ast {
+        kast_ast::Ast::Simple { token, data: _ } => match token {
+            Token::Ident { name, .. } => tuple::Member::Named(std::borrow::Cow::Borrowed(name)),
+            Token::Number { raw } => {
+                let index: usize = raw.parse().ok()?;
+                tuple::Member::Unnamed(index)
+            }
+            _ => return None,
+        },
+        _ => return None,
+    })
+}
+
 // TODO: Use string to fix type infer bug. Important
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct AstData {
@@ -1514,14 +1528,13 @@ impl Kast {
         assert_eq!(cty, CompiledType::PlaceExpr);
         let (values, span) = get_complex(ast);
         let [obj, field] = values.as_ref().into_named(["obj", "field"])?;
-        let field = field
-            .as_ident()
-            .ok_or_else(|| eyre!("field expected to be an identifier, got {field}"))?;
+        let field = ast_as_member(field)
+            .ok_or_else(|| eyre!("expected a member (ident or index), got {field}"))?;
         // My hair is very crusty today
         Ok(Compiled::PlaceExpr(
             PlaceExpr::FieldAccess {
                 obj: Box::new(self.compile(obj).await?),
-                field: field.to_owned(),
+                field: field.into_owned(),
                 data: span,
             }
             .init(self)
@@ -2214,7 +2227,7 @@ impl PlaceExpr<Span> {
                                 move |obj_ty| {
                                     match &obj_ty {
                                         TypeShape::Tuple(fields) => {
-                                            match fields.get_named(&field) {
+                                            match fields.get(field.as_ref()) {
                                                 Some(field_ty) => {
                                                     ty.clone().make_same(field_ty.clone())?
                                                 }

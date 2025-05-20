@@ -5,7 +5,7 @@ mod parc;
 mod recurse_cache;
 mod show_short;
 mod source;
-mod tuple;
+pub mod tuple;
 
 pub use crate::display_option::display_option;
 pub use crate::error::{Error, ErrorMessage};
