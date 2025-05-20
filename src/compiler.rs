@@ -927,11 +927,15 @@ impl Kast {
             .ok_or_else(|| eyre!("variant name must be an identifier"))?;
         let ty = match ty {
             None => None,
-            Some(ty) => Some(
-                self.eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
+            Some(ty) => Some({
+                let ty = self
+                    .compile::<Expr>(ty)
                     .await?
-                    .into_type()?,
-            ),
+                    .auto_instantiate(self)
+                    .await?;
+                ty.data().ty.infer_as(TypeShape::Type)?;
+                self.eval(&ty).await?.into_type()?
+            }),
         };
         Ok(match cty {
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
