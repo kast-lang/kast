@@ -203,6 +203,7 @@ impl Cache {
             macro_ref,
             macro_deref,
             macro_ref_pattern,
+            macro_typeof,
         );
         Self {
             builtin_macros,
@@ -1927,6 +1928,26 @@ impl Kast {
             Expr::Assign {
                 assignee,
                 value: Box::new(value),
+                data: span,
+            }
+            .init(self)
+            .await?,
+        ))
+    }
+    async fn macro_typeof(&mut self, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_expr!(self, cty, ast);
+        let (values, span) = get_complex(ast);
+        let expr = values.as_ref().into_single_named("expr")?;
+        let ty = self
+            .enter_scope()
+            .compile::<Expr>(expr)
+            .await?
+            .data()
+            .ty
+            .clone();
+        Ok(Compiled::Expr(
+            Expr::Constant {
+                value: ValueShape::Type(ty).into(),
                 data: span,
             }
             .init(self)
