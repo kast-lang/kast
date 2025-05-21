@@ -13,7 +13,7 @@ pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefini
 use lexer::*;
 use syntax::{BindingPower, Edge};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, derive_macros::Data)]
 pub enum Ast<Data = Span> {
     Simple {
         token: Token,
@@ -35,22 +35,6 @@ pub enum Ast<Data = Span> {
 }
 
 impl<Data> Ast<Data> {
-    pub fn data(&self) -> &Data {
-        match self {
-            Ast::Simple { data, .. }
-            | Ast::Complex { data, .. }
-            | Ast::SyntaxDefinition { data, .. }
-            | Ast::FromScratch { data, .. } => data,
-        }
-    }
-    pub fn data_mut(&mut self) -> &mut Data {
-        match self {
-            Ast::Simple { data, .. }
-            | Ast::Complex { data, .. }
-            | Ast::SyntaxDefinition { data, .. }
-            | Ast::FromScratch { data, .. } => data,
-        }
-    }
     pub fn map_data<NewData>(self, f: impl Fn(Data) -> NewData + Copy) -> Ast<NewData> {
         match self {
             Ast::Simple { token, data } => Ast::Simple {

@@ -20,7 +20,7 @@ pub struct MatchBranch {
     pub body: Expr,
 }
 
-#[derive(Clone, derive_macros::ExprDisplay)]
+#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
 pub enum Expr<Data = ExprData> {
     Ref {
         place: PlaceExpr,
@@ -191,7 +191,7 @@ pub enum Expr<Data = ExprData> {
     },
 }
 
-#[derive(Clone, derive_macros::ExprDisplay)]
+#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
 pub enum AssigneeExpr<Data = AssigneeExprData> {
     Placeholder {
         data: Data,
@@ -213,7 +213,7 @@ pub enum AssigneeExpr<Data = AssigneeExprData> {
     },
 }
 
-#[derive(Clone, derive_macros::ExprDisplay)]
+#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
 pub enum PlaceExpr<Data = ExprData> {
     Binding {
         binding: Parc<Binding>,
@@ -354,44 +354,7 @@ impl std::borrow::Borrow<Span> for ExprData {
     }
 }
 
-impl<Data> PlaceExpr<Data> {
-    pub fn data(&self) -> &Data {
-        match self {
-            Self::Deref { data, .. }
-            | Self::Temporary { data, .. }
-            | PlaceExpr::Binding { data, .. }
-            | PlaceExpr::FieldAccess { data, .. } => data,
-        }
-    }
-    pub fn data_mut(&mut self) -> &mut Data {
-        match self {
-            Self::Deref { data, .. }
-            | Self::Temporary { data, .. }
-            | PlaceExpr::Binding { data, .. }
-            | PlaceExpr::FieldAccess { data, .. } => data,
-        }
-    }
-}
-
 impl<Data> AssigneeExpr<Data> {
-    pub fn data(&self) -> &Data {
-        match self {
-            AssigneeExpr::Placeholder { data, .. }
-            | AssigneeExpr::Unit { data, .. }
-            | AssigneeExpr::Tuple { data, .. }
-            | AssigneeExpr::Place { data, .. }
-            | AssigneeExpr::Let { data, .. } => data,
-        }
-    }
-    pub fn data_mut(&mut self) -> &mut Data {
-        match self {
-            AssigneeExpr::Placeholder { data, .. }
-            | AssigneeExpr::Unit { data, .. }
-            | AssigneeExpr::Tuple { data, .. }
-            | AssigneeExpr::Place { data, .. }
-            | AssigneeExpr::Let { data, .. } => data,
-        }
-    }
     pub fn collect_new_bindings(&self, consumer: &mut impl FnMut(Parc<Binding>)) {
         match self {
             AssigneeExpr::Placeholder { data: _ } => {}
@@ -478,85 +441,6 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
     }
 }
 
-impl<Data> Expr<Data> {
-    pub fn data(&self) -> &Data {
-        let (Expr::And { data, .. }
-        | Expr::Ref { data, .. }
-        | Expr::Or { data, .. }
-        | Expr::Assign { data, .. }
-        | Expr::Unwind { data, .. }
-        | Expr::List { data, .. }
-        | Expr::Unwindable { data, .. }
-        | Expr::CallMacro { data, .. }
-        | Expr::CurrentContext { data, .. }
-        | Expr::InjectContext { data, .. }
-        | Expr::Unit { data, .. }
-        | Expr::Cast { data, .. }
-        | Expr::FunctionType { data, .. }
-        | Expr::Is { data, .. }
-        | Expr::Match { data, .. }
-        | Expr::Newtype { data, .. }
-        | Expr::MakeMultiset { data, .. }
-        | Expr::Variant { data, .. }
-        | Expr::Use { data, .. }
-        | Expr::Tuple { data, .. }
-        | Expr::Ast { data, .. }
-        | Expr::Recursive { data, .. }
-        | Expr::Function { data, .. }
-        | Expr::Template { data, .. }
-        | Expr::Scope { data, .. }
-        | Expr::Then { data, .. }
-        | Expr::If { data, .. }
-        | Expr::Constant { data, .. }
-        | Expr::Number { data, .. }
-        | Expr::String { data, .. }
-        | Expr::Native { data, .. }
-        | Expr::Let { data, .. }
-        | Expr::Call { data, .. }
-        | Expr::ReadPlace { data, .. }
-        | Expr::Instantiate { data, .. }) = self;
-        data
-    }
-    pub fn data_mut(&mut self) -> &mut Data {
-        let (Expr::And { data, .. }
-        | Expr::Ref { data, .. }
-        | Expr::Or { data, .. }
-        | Expr::Assign { data, .. }
-        | Expr::List { data, .. }
-        | Expr::Unwind { data, .. }
-        | Expr::Unwindable { data, .. }
-        | Expr::CallMacro { data, .. }
-        | Expr::CurrentContext { data, .. }
-        | Expr::InjectContext { data, .. }
-        | Expr::Unit { data, .. }
-        | Expr::FunctionType { data, .. }
-        | Expr::Cast { data, .. }
-        | Expr::Is { data, .. }
-        | Expr::Match { data, .. }
-        | Expr::Newtype { data, .. }
-        | Expr::MakeMultiset { data, .. }
-        | Expr::Variant { data, .. }
-        | Expr::Use { data, .. }
-        | Expr::Tuple { data, .. }
-        | Expr::Ast { data, .. }
-        | Expr::Recursive { data, .. }
-        | Expr::Function { data, .. }
-        | Expr::Template { data, .. }
-        | Expr::Scope { data, .. }
-        | Expr::Then { data, .. }
-        | Expr::Constant { data, .. }
-        | Expr::Number { data, .. }
-        | Expr::String { data, .. }
-        | Expr::Native { data, .. }
-        | Expr::Let { data, .. }
-        | Expr::Call { data, .. }
-        | Expr::If { data, .. }
-        | Expr::ReadPlace { data, .. }
-        | Expr::Instantiate { data, .. }) = self;
-        data
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Symbol {
     name: std::sync::Arc<str>,
@@ -621,7 +505,7 @@ impl std::fmt::Display for PatternBindMode {
     }
 }
 
-#[derive(Clone, derive_macros::ExprDisplay)]
+#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
 pub enum Pattern<Data = PatternData> {
     /// matches anything
     Placeholder {
@@ -647,22 +531,6 @@ pub enum Pattern<Data = PatternData> {
 }
 
 impl<Data> Pattern<Data> {
-    pub fn data(&self) -> &Data {
-        let (Self::Placeholder { data, .. }
-        | Self::Unit { data, .. }
-        | Self::Binding { data, .. }
-        | Self::Tuple { data, .. }
-        | Self::Variant { data, .. }) = self;
-        data
-    }
-    pub fn data_mut(&mut self) -> &mut Data {
-        let (Self::Placeholder { data, .. }
-        | Self::Unit { data, .. }
-        | Self::Binding { data, .. }
-        | Self::Tuple { data, .. }
-        | Self::Variant { data, .. }) = self;
-        data
-    }
     pub fn collect_bindings(&self, consumer: &mut impl FnMut(Parc<Binding>)) {
         match self {
             Self::Placeholder { data: _ } => {}

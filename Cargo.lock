@@ -769,6 +769,7 @@ name = "kast-ast"
 version = "0.1.0"
 dependencies = [
  "decursion",
+ "kast-derive-macros",
  "kast-util",
  "noisy_float",
  "tracing",

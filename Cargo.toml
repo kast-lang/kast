@@ -37,6 +37,7 @@ anymap3 = "1.0.1"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
+derive-macros = { package = "kast-derive-macros", path = "crates/derive-macros" }
 
 decursion = "0.1"
 refmap = { package = "kast-refmap", path = "crates/refmap" }
@@ -58,7 +59,7 @@ default = ["embed-std"]
 embed-std = []
 
 [dependencies]
-derive-macros = { package = "kast-derive-macros", path = "crates/derive-macros" }
+derive-macros.workspace = true
 batbox-time.workspace = true
 tokio.workspace = true
 pad-adapter.workspace = true
