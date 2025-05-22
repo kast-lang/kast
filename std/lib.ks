@@ -120,17 +120,29 @@ const @"op binary %" = forall[T] { native "%" :: (.lhs = T, .rhs = T) -> T };
 impl syntax @"syntax".@"op binary %" = @"op binary %";
 
 const @"op binary <" = forall[T] { native "<" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary <" = @"op binary <";
+impl syntax @"syntax".@"op binary <" = macro (.lhs, .rhs) => `(
+    @"op binary <"(.lhs = & $lhs, .rhs = & $rhs)
+);
 const @"op binary <=" = forall[T] { native "<=" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary <=" = @"op binary <=";
+impl syntax @"syntax".@"op binary <=" = macro (.lhs, .rhs) => `(
+    @"op binary <="(.lhs = & $lhs, .rhs = & $rhs)
+);
 const @"op binary ==" = forall[T] { native "==" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary ==" = @"op binary ==";
+impl syntax @"syntax".@"op binary ==" = macro (.lhs, .rhs) => `(
+    @"op binary =="(.lhs = & $lhs, .rhs = & $rhs)
+);
 const @"op binary !=" = forall[T] { native "!=" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary !=" = @"op binary !=";
+impl syntax @"syntax".@"op binary !=" = macro (.lhs, .rhs) => `(
+    @"op binary !="(.lhs = & $lhs, .rhs = & $rhs)
+);
 const @"op binary >=" = forall[T] { native ">=" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary >=" = @"op binary >=";
+impl syntax @"syntax".@"op binary >=" = macro (.lhs, .rhs) => `(
+    @"op binary >="(.lhs = & $lhs, .rhs = & $rhs)
+);
 const @"op binary >" = forall[T] { native ">" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary >" = @"op binary >";
+impl syntax @"syntax".@"op binary >" = macro (.lhs, .rhs) => `(
+    @"op binary >"(.lhs = & $lhs, .rhs = & $rhs)
+);
 
 impl syntax @"syntax".@"op +=" = macro (.target, .value) => `($target = $target + $value);
 impl syntax @"syntax".@"op -=" = macro (.target, .value) => `($target = $target - $value);
