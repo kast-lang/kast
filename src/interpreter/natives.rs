@@ -69,12 +69,12 @@ impl PreparingNatives {
             (std::sync::Arc::new(r#impl) as std::sync::Arc<dyn NativeFunctionClosure>).into();
         let name = name.into();
         self.0.insert(
-            name,
+            name.clone(),
             Box::new(move |expected: Type| {
                 let ty = ty();
                 expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                 Ok(ValueShape::NativeFunction(NativeFunction {
-                    name: "dbg_type".to_owned(),
+                    name: name.clone(),
                     r#impl: r#impl.clone(),
                     ty,
                 })
