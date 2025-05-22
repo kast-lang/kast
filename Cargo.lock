@@ -165,6 +165,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-once-cell"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4288f83726785267c6f2ef073a3d83dc3f9b81464e9f99898240cced85fce35a"
+
+[[package]]
 name = "async-oneshot"
 version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -733,6 +739,7 @@ dependencies = [
  "anymap3",
  "async-executor",
  "async-notify",
+ "async-once-cell",
  "async-oneshot",
  "async-trait",
  "batbox-time",

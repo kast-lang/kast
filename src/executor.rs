@@ -18,6 +18,52 @@ pub struct Executor {
     inner: Parc<ExecutorImpl>,
 }
 
+pub struct Spawned<T>(
+    Parc<async_once_cell::Lazy<eyre::Result<T>, BoxFuture<'static, eyre::Result<T>>>>,
+);
+
+impl<T> Clone for Spawned<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> PartialEq for Spawned<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T> Eq for Spawned<T> {}
+
+impl<T> std::hash::Hash for Spawned<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl<T> PartialOrd for Spawned<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for Spawned<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl<T> Spawned<T> {
+    pub async fn get(&self) -> eyre::Result<&T> {
+        self.0
+            .get_unpin()
+            .await
+            .as_ref()
+            .map_err(|e| eyre!("Background task resulted in error: {e}"))
+    }
+}
+
 impl Executor {
     pub fn new() -> Self {
         Self {
@@ -30,10 +76,23 @@ impl Executor {
         while self.inner.inner.try_tick() {}
         Ok(())
     }
-    pub fn spawn(&self, f: impl Future<Output = eyre::Result<()>> + Send + 'static) {
+    pub fn spawn<T: Send + Sync + 'static>(
+        &self,
+        f: impl Future<Output = eyre::Result<T>> + Send + 'static,
+    ) -> Spawned<T> {
+        let (mut sender, receiver) = async_oneshot::oneshot();
         self.inner
             .inner
-            .spawn(f.map_err(|e| tracing::error!("{e:?}")))
+            .spawn(async move {
+                let result = f.await;
+                if let Err(e) = &result {
+                    tracing::error!("{e:?}");
+                }
+                _ = sender.send(result);
+            })
             .detach();
+        Spawned(Parc::new(async_once_cell::Lazy::new(
+            async move { receiver.await.expect("dropped sender") }.boxed(),
+        )))
     }
 }

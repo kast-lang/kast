@@ -642,26 +642,18 @@ impl Kast {
         contexts: Contexts,
         result_type: Type,
     ) -> MaybeCompiledFn {
-        let compiled = Parc::new(Mutex::new(None));
         self.cache.executor.spawn({
             let mut kast = self.spawn_clone();
-            let compiled = compiled.clone();
             let body: Ast = body.clone();
             let result_type = result_type.clone();
             async move {
                 let mut body: Expr = kast.compile(&body).await?;
                 body.data_mut().ty.make_same(result_type)?;
                 body.data_mut().contexts.0.make_same(contexts.0)?;
-                let old_compiled = compiled
-                    .lock()
-                    .unwrap()
-                    .replace(Parc::new(CompiledFn { body, arg }));
-                assert!(old_compiled.is_none(), "function compiled twice wtf?");
-                Ok(())
+                Ok(Parc::new(CompiledFn { body, arg }))
             }
             .map_err(|err: eyre::Report| err.wrap_err("Failed to compile fn"))
-        });
-        compiled
+        })
     }
 }
 
@@ -1681,25 +1673,45 @@ impl Expr<Span> {
                     // TODO why am I cloning kast?
                     // TODO why eval, if then arg should be value??
 
-                    let compiled = kast.await_compiled(&template_ty).await?;
+                    let result_ty = Type::new_not_inferred("template instantiation result");
+                    kast.cache.executor.spawn({
+                        let mut result_ty = result_ty.clone();
+                        let mut kast = kast.spawn_clone();
+                        let arg_ir = arg_ir.clone();
+                        async move {
+                            let compiled = kast
+                                .await_compiled(&template_ty)
+                                .await
+                                .context("template instantiation")?;
 
-                    arg_ir
-                        .data()
-                        .ty
-                        .clone()
-                        .make_same(compiled.arg.data().ty.clone())?;
-                    let arg = kast.clone().eval(&arg_ir).await?;
+                            arg_ir
+                                .data()
+                                .ty
+                                .clone()
+                                .make_same(compiled.arg.data().ty.clone())?;
 
-                    let mut template_kast =
-                        kast.with_scopes(Scopes::new(kast.spawn_id, ScopeType::NonRecursive, None));
-                    template_kast
-                        .pattern_match(&compiled.arg, OwnedPlace::new_temp(arg).get_ref())?;
-                    let result_ty = compiled
-                        .body
-                        .data()
-                        .ty
-                        .clone()
-                        .substitute_bindings(&template_kast, &mut RecurseCache::new());
+                            let arg = kast.eval(&arg_ir).await?;
+
+                            let mut template_kast = kast.with_scopes(Scopes::new(
+                                kast.spawn_id,
+                                ScopeType::NonRecursive,
+                                None,
+                            ));
+                            template_kast.pattern_match(
+                                &compiled.arg,
+                                OwnedPlace::new_temp(arg).get_ref(),
+                            )?;
+                            result_ty.make_same(
+                                compiled
+                                    .body
+                                    .data()
+                                    .ty
+                                    .clone()
+                                    .substitute_bindings(&template_kast, &mut RecurseCache::new()),
+                            )?;
+                            Ok(())
+                        }
+                    });
 
                     Expr::Instantiate {
                         data: ExprData {

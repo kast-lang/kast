@@ -273,7 +273,7 @@ pub struct CompiledFn {
     pub body: Expr,
 }
 
-pub type MaybeCompiledFn = Parc<Mutex<Option<Parc<CompiledFn>>>>;
+pub type MaybeCompiledFn = executor::Spawned<Parc<CompiledFn>>;
 
 impl Expr {
     pub fn collect_bindings(

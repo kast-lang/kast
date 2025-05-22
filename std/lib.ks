@@ -276,22 +276,6 @@ const char_ord :: char -> int32 = native "char_ord";
 const chars :: &string -> () with generator_handler[char] = native "chars";
 const push_char :: (string, char) -> string = native "push_char";
 
-const list_push = forall[T] {
-    native "list.push" :: (&list[T], T) -> ()
-};
-const list_set = forall[T] {
-    native "list.set" :: (&list[T], int32, T) -> ()
-};
-const list_length = forall[T] {
-    native "list.length" :: &list[T] -> int32
-};
-const list_iter = forall[T] {
-    native "list.iter" :: &list[T] -> () with generator_handler[&T]
-};
-const list_get = forall[T] {
-    native "list.get" :: (&list[T], int32) -> &T
-};
-
 const exec_mode = native "exec_mode";
 
 #trait Iterator {
@@ -320,26 +304,4 @@ impl string as generator = (
 */
 
 const collections = include "./collections/_mod.ks";
-
-const HashMap = forall[K :: type, V :: type] {
-    native "HashMap" (K, V) :: type
-};
-const HashMap_new = forall[K :: type, V :: type] {
-    native "HashMap.new" :: () -> HashMap[K, V]
-};
-const HashMap_insert = forall[K :: type, V :: type] {
-    native "HashMap.insert" :: (&HashMap[K, V], K, V) -> ()
-};
-const HashMap_get = forall[K :: type, V :: type] {
-    native "HashMap.get" :: (&HashMap[K, V], &K) -> Option[&V]
-};
-const HashMap_size = forall[K :: type, V :: type] {
-    native "HashMap.size" :: &HashMap[K, V] -> int32
-};
-const HashMap_into_iter = forall[K :: type, V :: type] {
-    native "HashMap.into_iter" :: HashMap[K, V] -> () # with generator_handler[K, V]
-};
-
-const time = rec (
-    let now :: () -> float64 = native "time.now";
-);
+const time = include "./time.ks";

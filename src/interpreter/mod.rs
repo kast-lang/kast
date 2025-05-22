@@ -956,12 +956,7 @@ impl Kast {
 
     pub async fn await_compiled(&self, f: &MaybeCompiledFn) -> eyre::Result<Parc<CompiledFn>> {
         self.cache.executor.advance()?;
-        match &*f.lock().unwrap() {
-            Some(compiled) => Ok(compiled.clone()),
-            None => {
-                eyre::bail!("function is not compiled yet")
-            }
-        }
+        Ok(f.get().await?.clone())
     }
 
     pub async fn instantiate(&self, template: Value, arg: Value) -> eyre::Result<Value> {

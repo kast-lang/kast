@@ -982,12 +982,9 @@ impl TypeShape {
             TypeShape::Variant(_) => return None,
             TypeShape::Tuple(tuple) => {
                 // TODO maybe named?
-                ValueShape::Tuple(TupleValue::new_unnamed(
-                    tuple
-                        .clone()
-                        .map(|ty| Value::new_not_inferred_of_ty("inferred field value shape", ty))
-                        .into(),
-                ))
+                ValueShape::Tuple(TupleValue::new_unnamed(tuple.clone().map(|ty| {
+                    Value::new_not_inferred_of_ty("inferred field value shape", ty)
+                })))
             }
             TypeShape::Function(_) => return None,
             TypeShape::Template(_) => return None,

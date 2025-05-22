@@ -1,4 +1,4 @@
 module:
 
-const @"list" = include "./list.ks";
-const hash_map = include "./hash_map.ks";
+const List = include "./list.ks";
+const HashMap = include "./hash_map.ks";
