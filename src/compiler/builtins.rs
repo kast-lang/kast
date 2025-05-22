@@ -161,7 +161,9 @@ impl Builtins {
             .r#match(OwnedPlace::new_temp(value.clone()).get_ref(), kast)?
             .ok_or_else(|| eyre!("pattern match was not exhaustive???"))?;
         for (binding, value) in matches {
-            kast.scopes.compiler.insert(binding.symbol.name(), value);
+            kast.scopes
+                .compiler
+                .insert(binding.symbol.name(), &binding.symbol.span, value);
         }
 
         let value = Box::new(PlaceExpr::new_temp(
@@ -789,7 +791,13 @@ impl Builtins {
             Some(ValueShape::Tuple(namespace)) => {
                 for (name, value) in namespace.into_values().into_iter() {
                     let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
-                    kast.add_local(Symbol::new(name), value);
+                    kast.add_local(
+                        Symbol::new(
+                            name,
+                            span.clone(), // TODO actual original span
+                        ),
+                        value,
+                    );
                 }
             }
             _ => eyre::bail!("{namespace} is not a namespace"),

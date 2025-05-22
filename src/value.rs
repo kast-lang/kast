@@ -795,7 +795,7 @@ impl Function {
 impl std::fmt::Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &*self.name.lock().unwrap() {
-            Some(name) => write!(f, "{name}"),
+            Some(name) => write!(f, "{name} at {}", name.span),
             None => write!(f, "<{}>", self.id),
         }
     }

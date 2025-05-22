@@ -7,6 +7,14 @@ pub struct Position {
     pub column: usize,
 }
 
+impl Position {
+    pub const ZERO: Self = Self {
+        index: 0,
+        line: 0,
+        column: 0,
+    };
+}
+
 impl std::fmt::Display for Position {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.line, self.column)

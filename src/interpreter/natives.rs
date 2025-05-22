@@ -1043,7 +1043,16 @@ impl Natives {
             |_kast, _fn_ty, name: Value| {
                 async move {
                     let name = name.into_inferred()?.as_str()?.to_owned();
-                    Ok(ValueShape::Symbol(Symbol::new(name)).into())
+                    Ok(ValueShape::Symbol(Symbol::new(
+                        name,
+                        // TODO track caller span
+                        Span {
+                            start: Position::ZERO,
+                            end: Position::ZERO,
+                            filename: "<gensym>".into(),
+                        },
+                    ))
+                    .into())
                 }
                 .boxed()
             },

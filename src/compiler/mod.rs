@@ -473,7 +473,7 @@ impl Compilable for Expr {
             Ast::SyntaxDefinition { def, data } => {
                 kast.insert_syntax(def.clone())?;
                 kast.add_local(
-                    Symbol::new(&def.name),
+                    Symbol::new(&def.name, data.span.clone()),
                     ValueShape::SyntaxDefinition(def.clone()).into(),
                 );
                 kast.cache.compiler.register_syntax(def);
@@ -527,7 +527,7 @@ async fn compile_ident_pattern(
         Hygiene::DefSite => kast.scopes.compiler.clone(),
     };
     let binding = Parc::new(Binding {
-        symbol: Symbol::new(name),
+        symbol: Symbol::new(name, span.clone()),
         ty: Type::new_not_inferred(&format!("{name} at {span}")),
         mutability: kast.compiler.bindings_mutability,
         compiler_scope,
@@ -589,6 +589,7 @@ impl Kast {
     fn inject_binding(&mut self, binding: &Parc<Binding>) {
         binding.compiler_scope.insert(
             binding.symbol.name(),
+            &binding.symbol.span,
             ValueShape::Binding(binding.clone()).into(),
         );
         self.scopes.interpreter.insert(

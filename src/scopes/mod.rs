@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::AtomicUsize};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 use super::*;
 
@@ -41,10 +41,10 @@ impl CompilerScope {
     pub fn id(&self) -> Id {
         self.0.id
     }
-    pub fn insert(&self, name: &str, value: Value) {
+    pub fn insert(&self, name: &str, span: &Span, value: Value) {
         tracing::trace!("inserting {name:?} into {:?}", self.0.id);
         self.0.insert(
-            Symbol::new(name),
+            Symbol::new(name, span.clone()),
             value,
             Mutability::Nested, // TODO whats the mutability?
         );

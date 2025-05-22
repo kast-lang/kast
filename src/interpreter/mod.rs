@@ -88,7 +88,15 @@ impl Kast {
     ) {
         let f = std::sync::Arc::new(f);
         self.add_local(
-            Symbol::new(name),
+            Symbol::new(
+                name,
+                // TODO maybe have span as arg
+                Span {
+                    start: Position::ZERO,
+                    end: Position::ZERO,
+                    filename: "<rust code>".into(),
+                },
+            ),
             ValueShape::NativeFunction(NativeFunction::new(
                 name,
                 FnType {
@@ -183,7 +191,9 @@ impl Kast {
     }
     pub fn add_local(&mut self, symbol: Symbol, value: Value) {
         // self.scopes.interpreter.insert(&symbol, value);
-        self.scopes.compiler.insert(symbol.name(), value);
+        self.scopes
+            .compiler
+            .insert(symbol.name(), &symbol.span, value);
     }
     pub fn eval_source<R: SomeExprResult>(
         &mut self,
@@ -595,13 +605,20 @@ impl Kast {
                     })
                     .into()
                 }
-                Expr::Use { namespace, data: _ } => {
+                Expr::Use { namespace, data } => {
                     let namespace = self.eval(namespace).await?;
                     match namespace.clone().into_inferred()? {
                         ValueShape::Tuple(namespace) => {
                             for (name, value) in namespace.into_values().into_iter() {
                                 let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
-                                self.add_local(Symbol::new(name), value);
+                                self.add_local(
+                                    Symbol::new(
+                                        name,
+                                        // TODO actual original span
+                                        data.span.clone(),
+                                    ),
+                                    value,
+                                );
                             }
                         }
                         _ => eyre::bail!("{namespace} is not a namespace"),

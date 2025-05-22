@@ -2,7 +2,7 @@
 #![allow(clippy::type_complexity, clippy::needless_question_mark)]
 
 use async_trait::async_trait;
-use eyre::{Context as _, eyre};
+use eyre::{eyre, Context as _};
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use inference::Inferrable;
@@ -180,10 +180,21 @@ impl Kast {
     }
     fn new_normal(cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
         let mut kast = Self::only_std_syntax(cache)?;
+        let std_path = std_path().join("lib.ks");
         let std = kast
-            .import_impl(std_path().join("lib.ks"), ImportMode::OnlyStdSyntax)
+            .import_impl(&std_path, ImportMode::OnlyStdSyntax)
             .wrap_err("std lib import failed")?;
-        kast.add_local(Symbol::new("std"), std);
+        kast.add_local(
+            Symbol::new(
+                "std",
+                Span {
+                    start: Position::ZERO,
+                    end: Position::ZERO,
+                    filename: std_path,
+                },
+            ),
+            std,
+        );
         Ok(kast)
     }
 
@@ -203,7 +214,7 @@ impl Kast {
         let source = SourceFile {
             #[cfg(feature = "embed-std")]
             contents: {
-                use include_dir::{Dir, include_dir};
+                use include_dir::{include_dir, Dir};
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
                         static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");

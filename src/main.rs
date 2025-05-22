@@ -118,7 +118,17 @@ fn main() -> eyre::Result<()> {
                 let name = path.file_stem().unwrap().to_str().unwrap();
                 let mut kast = kast.lock().unwrap();
                 let value = kast.eval_file(&path).expect("Failed to eval file");
-                kast.add_local(kast::Symbol::new(name), value);
+                kast.add_local(
+                    kast::Symbol::new(
+                        name,
+                        Span {
+                            start: Position::ZERO,
+                            end: Position::ZERO,
+                            filename: path.clone(),
+                        },
+                    ),
+                    value,
+                );
             }
             {
                 let prerun =

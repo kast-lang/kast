@@ -443,8 +443,9 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Symbol {
-    name: std::sync::Arc<str>,
-    id: Id,
+    pub name: std::sync::Arc<str>,
+    pub span: Span,
+    pub id: Id,
 }
 
 impl std::fmt::Display for Symbol {
@@ -460,9 +461,10 @@ impl Symbol {
     pub fn id(&self) -> Id {
         self.id
     }
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, span: Span) -> Self {
         Self {
             name: name.into().into(),
+            span,
             id: Id::new(),
         }
     }
