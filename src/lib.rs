@@ -1,5 +1,6 @@
 //! the name of the programming language is kast
 #![allow(clippy::type_complexity, clippy::needless_question_mark)]
+#![recursion_limit = "256"]
 
 use async_trait::async_trait;
 use eyre::{Context as _, eyre};
@@ -23,7 +24,7 @@ mod executor;
 mod id;
 mod interpreter;
 mod ir;
-mod path;
+mod name;
 mod place;
 mod rusty;
 mod scopes;
@@ -37,7 +38,7 @@ use self::executor::Executor;
 pub use self::id::*;
 pub use self::ir::Symbol;
 use self::ir::*;
-pub use self::path::*;
+pub use self::name::*;
 pub use self::place::*;
 pub use self::rusty::*;
 use self::scopes::*;
@@ -82,7 +83,7 @@ pub struct Kast {
     compiler: compiler::State,
     spawn_id: Id,
     scopes: Scopes,
-    // path: Name,
+    current_name: Name,
     cache: Parc<Cache>,
     pub output: std::sync::Arc<dyn Output>,
     pub input: std::sync::Arc<dyn Input>,
@@ -120,7 +121,7 @@ impl Default for Cache {
 }
 
 impl Kast {
-    fn from_scratch(cache: Option<Parc<Cache>>) -> Self {
+    fn from_scratch(path: impl AsRef<Path>, cache: Option<Parc<Cache>>) -> Self {
         let spawn_id = Id::new();
         Self {
             spawn_id,
@@ -153,12 +154,17 @@ impl Kast {
                 DefaultInput
             }),
             exec_mode: ExecMode::Run,
+            current_name: Name::new(NamePart::File(path.as_ref().to_owned())),
         }
     }
-    fn only_std_syntax(cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
-        let mut kast = Self::from_scratch(cache);
+    fn only_std_syntax(path: impl AsRef<Path>, cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
+        let mut kast = Self::from_scratch(path, cache);
         let syntax = kast
-            .import_impl(std_path().join("syntax.ks"), ImportMode::FromScratch)
+            .import_impl(
+                std_path().join("syntax.ks"),
+                Some("std.syntax"),
+                ImportMode::FromScratch,
+            )
             .wrap_err("failed to import std syntax")?
             .into_inferred()?
             .into_syntax_module()
@@ -175,17 +181,17 @@ impl Kast {
         Ok(kast)
     }
     #[allow(clippy::new_without_default)]
-    pub fn new() -> eyre::Result<Self> {
-        Self::new_normal(None)
+    pub fn new(path: impl AsRef<Path>) -> eyre::Result<Self> {
+        Self::new_normal(path, None)
     }
-    pub fn new_nostdlib() -> eyre::Result<Self> {
-        Self::only_std_syntax(None)
+    pub fn new_nostdlib(path: impl AsRef<Path>) -> eyre::Result<Self> {
+        Self::only_std_syntax(path, None)
     }
-    fn new_normal(cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
-        let mut kast = Self::only_std_syntax(cache)?;
+    fn new_normal(path: impl AsRef<Path>, cache: Option<Parc<Cache>>) -> eyre::Result<Self> {
+        let mut kast = Self::only_std_syntax(path, cache)?;
         let std_path = std_path().join("lib.ks");
         let std = kast
-            .import_impl(&std_path, ImportMode::OnlyStdSyntax)
+            .import_impl(&std_path, Some("std"), ImportMode::OnlyStdSyntax)
             .wrap_err("std lib import failed")?;
         kast.add_local(
             kast.new_symbol(
@@ -202,7 +208,7 @@ impl Kast {
     }
 
     pub fn import(&self, path: impl AsRef<Path>) -> eyre::Result<Value> {
-        self.import_impl(path, ImportMode::Normal)
+        self.import_impl(path, None, ImportMode::Normal)
     }
 
     // I am conviced that even stone plates offer
@@ -238,13 +244,25 @@ impl Kast {
         Ok(ast::parse(&self.syntax, source)?.map(compiler::init_ast))
     }
 
-    fn import_impl(&self, path: impl AsRef<Path>, mode: ImportMode) -> eyre::Result<Value> {
+    fn import_impl(
+        &self,
+        path: impl AsRef<Path>,
+        name: Option<&str>,
+        mode: ImportMode,
+    ) -> eyre::Result<Value> {
         let mut path = path.as_ref().to_owned();
         #[cfg(not(target_arch = "wasm32"))]
         if !path.starts_with(std_path()) {
             path = path.canonicalize()?;
         }
         let path = path;
+
+        let name = name
+            .or(path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|s| s.strip_suffix(".ks")))
+            .unwrap_or("_");
 
         tracing::trace!("importing {path:?}");
         if let Some(value) = self.cache.imports.lock().unwrap().get(&path) {
@@ -258,9 +276,9 @@ impl Kast {
             .unwrap()
             .insert(path.clone(), None);
         let mut kast = match mode {
-            ImportMode::Normal => Self::new_normal(Some(self.cache.clone()))?,
-            ImportMode::OnlyStdSyntax => Self::only_std_syntax(Some(self.cache.clone()))?,
-            ImportMode::FromScratch => Self::from_scratch(Some(self.cache.clone())),
+            ImportMode::Normal => Self::new_normal(name, Some(self.cache.clone()))?,
+            ImportMode::OnlyStdSyntax => Self::only_std_syntax(name, Some(self.cache.clone()))?,
+            ImportMode::FromScratch => Self::from_scratch(name, Some(self.cache.clone())),
         };
         let source = self.include(&path)?;
         kast.exec_mode = ExecMode::Import;

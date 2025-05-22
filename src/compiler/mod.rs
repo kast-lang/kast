@@ -240,12 +240,11 @@ pub trait Compilable: Sized {
         Ok(match kast.cache.compiler.find_macro(definition)? {
             Macro::Builtin { name, r#impl } => Self::r#macro(&name, r#impl)(kast, ast).await?,
             Macro::UserDefined(r#macro) => {
-                let arg = ValueShape::Tuple(
+                let arg = ValueShape::Tuple(TupleValue::new_unnamed(
                     values
                         .as_ref()
-                        .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into())
-                        .into(),
-                )
+                        .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into()),
+                ))
                 .into();
                 // hold on
                 let expanded = kast.call_fn(r#macro, arg).await?;

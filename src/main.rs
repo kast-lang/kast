@@ -71,8 +71,8 @@ fn main() -> eyre::Result<()> {
     match cli_args.command() {
         cli::Command::Run { path, no_stdlib } => {
             let mut kast = match no_stdlib {
-                true => Kast::new_nostdlib(),
-                false => Kast::new(),
+                true => Kast::new_nostdlib(&path),
+                false => Kast::new(&path),
             }
             .unwrap();
             init_log_level();
@@ -108,8 +108,8 @@ fn main() -> eyre::Result<()> {
         } => {
             let kast = Arc::new(Mutex::new(
                 match no_stdlib {
-                    false => Kast::new(),
-                    true => Kast::new_nostdlib(),
+                    false => Kast::new("<stdin>"),
+                    true => Kast::new_nostdlib("<stdin>"),
                 }
                 .unwrap(),
             ));

@@ -48,7 +48,7 @@ pub fn default_file_system() -> Value {
         ))
         .into(),
     );
-    ValueShape::Tuple(TupleValue::new(context)).into()
+    ValueShape::Tuple(TupleValue::new_unnamed(context)).into()
 }
 
 pub fn default_number_type() -> Value {
@@ -72,7 +72,7 @@ pub fn default_number_type() -> Value {
         ))
         .into(),
     );
-    ValueShape::Tuple(TupleValue::new(context)).into()
+    ValueShape::Tuple(TupleValue::new_unnamed(context)).into()
 }
 
 pub fn default_output() -> Value {
@@ -108,7 +108,7 @@ pub fn default_output() -> Value {
         ))
         .into(),
     );
-    let context: Value = ValueShape::Tuple(TupleValue::new(context)).into();
+    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context)).into();
     assert_eq!(context.ty(), context_type);
     context
 }
@@ -134,7 +134,7 @@ pub fn default_input() -> Value {
         ))
         .into(),
     );
-    let context: Value = ValueShape::Tuple(TupleValue::new(context)).into();
+    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context)).into();
     context
 }
 

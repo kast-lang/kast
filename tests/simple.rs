@@ -5,7 +5,7 @@ fn test_eq(source: &str, expected_value: Value) {
         contents: source.to_owned(),
         filename: "<test source>".into(),
     };
-    let mut kast = Kast::new().unwrap();
+    let mut kast = Kast::new("<test>").unwrap();
     let value = kast
         .eval_source::<Value>(source, Some(expected_value.ty()))
         .expect("Failed to eval source");

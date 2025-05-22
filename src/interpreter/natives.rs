@@ -535,8 +535,11 @@ impl Natives {
                             let mut tuple = Tuple::empty();
                             tuple.add_unnamed(key);
                             tuple.add_unnamed(value.into_value()?);
-                            kast.call(handler.clone(), ValueShape::Tuple(tuple.into()).into())
-                                .await?;
+                            kast.call(
+                                handler.clone(),
+                                ValueShape::Tuple(TupleValue::new_unnamed(tuple)).into(),
+                            )
+                            .await?;
                         }
                         Ok(ValueShape::Unit.into())
                     }

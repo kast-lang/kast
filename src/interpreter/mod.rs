@@ -633,7 +633,11 @@ impl Kast {
                     for (name, field) in tuple.as_ref() {
                         result.add(name, self.eval(field).await?);
                     }
-                    let result = ValueShape::Tuple(result.into()).into();
+                    let result = ValueShape::Tuple(TupleValue::new(
+                        self.current_name.append(NamePart::tbd()),
+                        result,
+                    ))
+                    .into();
                     match data.ty.inferred_or_default()? {
                         Ok(TypeShape::Type) => self
                             .cache
@@ -707,7 +711,7 @@ impl Kast {
                     f: Function {
                         id: Id::new(),
                         span: data.span.clone(),
-                        name: Name::unknown(),
+                        name: self.current_name.append(NamePart::tbd()),
                         captured: self.capture(),
                         compiled: compiled.clone(),
                     },
@@ -716,7 +720,7 @@ impl Kast {
                 Expr::Template { compiled, data } => ValueShape::Template(Function {
                     id: Id::new(),
                     span: data.span.clone(),
-                    name: Name::unknown(),
+                    name: self.current_name.append(NamePart::tbd()),
                     captured: self.capture(),
                     compiled: compiled.clone(),
                 })
@@ -963,8 +967,9 @@ impl Kast {
     pub async fn instantiate(&self, template: Value, arg: Value) -> eyre::Result<Value> {
         let template = template.into_inferred()?.into_template()?;
         // TODO memoization
-        let result = self.call_fn(template, arg).await?;
-        // TODO result.name_if_needed(path);
+        let mut inner = self.clone();
+        inner.current_name = template.name.append(NamePart::Instantiate(arg.clone()));
+        let result = inner.call_fn(template, arg).await?;
         Ok(result)
     }
 

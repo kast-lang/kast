@@ -78,18 +78,15 @@ impl std::ops::Deref for TupleValue {
     }
 }
 
-impl From<Tuple<Value>> for TupleValue {
-    fn from(values: Tuple<Value>) -> Self {
+impl TupleValue {
+    pub fn new(name: Name, values: Tuple<Value>) -> Self {
         Self {
-            name: Name::unknown(),
+            name,
             inner: values.map(|value| OwnedPlace::new(value, Mutability::Nested)),
         }
     }
-}
-
-impl TupleValue {
-    pub fn new(values: Tuple<Value>) -> Self {
-        values.into()
+    pub fn new_unnamed(values: Tuple<Value>) -> Self {
+        Self::new(Name::unknown(), values)
     }
     pub fn into_values(self) -> Tuple<Value> {
         self.inner.map(|place| place.into_value().unwrap())
@@ -942,7 +939,8 @@ impl Inferrable for ValueShape {
                     let value = Inferrable::make_same(a, b)?;
                     result.add(name, value);
                 }
-                ValueShape::Tuple(result.into())
+                // TODO maybe named?
+                ValueShape::Tuple(TupleValue::new_unnamed(result))
             }
             (ValueShape::Tuple(_), _) => fail!(),
             (ValueShape::Function(_), _) => fail!(),
@@ -982,12 +980,15 @@ impl TypeShape {
             TypeShape::String => return None,
             TypeShape::List(_) => return None,
             TypeShape::Variant(_) => return None,
-            TypeShape::Tuple(tuple) => ValueShape::Tuple(
-                tuple
-                    .clone()
-                    .map(|ty| Value::new_not_inferred_of_ty("inferred field value shape", ty))
-                    .into(),
-            ),
+            TypeShape::Tuple(tuple) => {
+                // TODO maybe named?
+                ValueShape::Tuple(TupleValue::new_unnamed(
+                    tuple
+                        .clone()
+                        .map(|ty| Value::new_not_inferred_of_ty("inferred field value shape", ty))
+                        .into(),
+                ))
+            }
             TypeShape::Function(_) => return None,
             TypeShape::Template(_) => return None,
             TypeShape::Macro(_) => return None,
