@@ -3,7 +3,7 @@ module:
 const @"syntax" = import "./syntax.ks";
 
 impl syntax @"syntax".invoke_macro = macro (.@"macro", .arg) => `(
-    compile_ast ($@"macro" !! `($arg))
+    include_ast ($@"macro" !! `($arg))
 );
 
 impl syntax @"syntax".pipe_right = macro (.arg, .f) => `(

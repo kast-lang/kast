@@ -132,7 +132,7 @@ syntax_module {
 
   syntax @"builtin macro typeof" <- 120 = "typeof" expr;
   syntax @"builtin macro typeofvalue" <- 120 = "typeofvalue" expr;
-  syntax @"builtin macro compile_ast" <- 120 = "compile_ast" ast;
+  syntax @"builtin macro include_ast" <- 120 = "include_ast" ast;
 
   syntax @"builtin macro native" <- 150 = "native" name;
   syntax @"builtin macro import" <- 150 = "import" path;

@@ -78,7 +78,7 @@ impl Builtins {
             macro_with_context,
             macro_current_context,
             macro_comptime,
-            macro_compile_ast,
+            macro_include_ast,
             macro_call_macro,
             macro_unwindable,
             macro_unwind,
@@ -1300,7 +1300,7 @@ impl Builtins {
             Expr::Constant { value, data: span }.init(kast).await?,
         ))
     }
-    async fn macro_compile_ast(
+    async fn macro_include_ast(
         kast: &mut Kast,
         cty: CompiledType,
         ast: &Ast,
