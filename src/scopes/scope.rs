@@ -18,6 +18,7 @@ impl Locals {
         self.by_id.insert(name.id(), (name, place));
     }
     fn insert(&mut self, name: Symbol, value: Value, mutability: Mutability) {
+        value.name_if_neeeded(&name);
         self.insert_place(name, OwnedPlace::new(value, mutability));
     }
     fn insert_uninitialized(&mut self, name: Symbol, ty: Type, mutability: Mutability) {

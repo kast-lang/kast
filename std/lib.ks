@@ -102,30 +102,35 @@ const Either = forall[.left :: type, .right :: type] { newtype :Left left | :Rig
 
 const Result = forall[.ok :: type, .error :: type] { newtype :Ok ok | :Error error };
 
-const @"unary +" = forall[T] { (x :: T) => x };
-const @"unary -" = forall[T] { native "unary -" :: T -> T };
-
 # TODO where T: Num or smth
-impl syntax @"syntax".@"op unary +" = macro (x,) => `(@"unary +" $x);
-impl syntax @"syntax".@"op unary -" = macro (x,) => `(@"unary -" $x);
-impl syntax @"syntax".@"op binary +" = forall[T] { native "+" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary -" = forall[T] { native "-" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary *" = forall[T] { native "*" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary /" = forall[T] { native "/" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary %" = forall[T] { native "%" :: (.lhs = T, .rhs = T) -> T };
+const @"op unary +" = forall[T] { (x :: T,) => x };
+impl syntax @"syntax".@"op unary +" = @"op unary +";
+const @"op unary -" = forall[T] { native "unary -" :: T -> T };
+impl syntax @"syntax".@"op unary -" = @"op unary -";
+
+const @"op binary +" = forall[T] { native "+" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary +" = @"op binary +";
+const @"op binary -" = forall[T] { native "-" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary -" = @"op binary -";
+const @"op binary *" = forall[T] { native "*" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary *" = @"op binary *";
+const @"op binary /" = forall[T] { native "/" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary /" = @"op binary /";
+const @"op binary %" = forall[T] { native "%" :: (.lhs = T, .rhs = T) -> T };
+impl syntax @"syntax".@"op binary %" = @"op binary %";
 
 const @"op binary <" = forall[T] { native "<" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary <" = macro (.lhs, .rhs) => `(@"op binary <"(.lhs = & $lhs, .rhs = & $rhs));
+impl syntax @"syntax".@"op binary <" = @"op binary <";
 const @"op binary <=" = forall[T] { native "<=" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary <=" = macro (.lhs, .rhs) => `(@"op binary <="(.lhs = & $lhs, .rhs = & $rhs));
+impl syntax @"syntax".@"op binary <=" = @"op binary <=";
 const @"op binary ==" = forall[T] { native "==" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary ==" = macro (.lhs, .rhs) => `(@"op binary =="(.lhs = & $lhs, .rhs = & $rhs));
+impl syntax @"syntax".@"op binary ==" = @"op binary ==";
 const @"op binary !=" = forall[T] { native "!=" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary !=" = macro (.lhs, .rhs) => `(@"op binary !="(.lhs = & $lhs, .rhs = & $rhs));
+impl syntax @"syntax".@"op binary !=" = @"op binary !=";
 const @"op binary >=" = forall[T] { native ">=" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary >=" = macro (.lhs, .rhs) => `(@"op binary >="(.lhs = & $lhs, .rhs = & $rhs));
+impl syntax @"syntax".@"op binary >=" = @"op binary >=";
 const @"op binary >" = forall[T] { native ">" :: (.lhs = &T, .rhs = &T) -> bool };
-impl syntax @"syntax".@"op binary >" = macro (.lhs, .rhs) => `(@"op binary >"(.lhs = & $lhs, .rhs = & $rhs));
+impl syntax @"syntax".@"op binary >" = @"op binary >";
 
 impl syntax @"syntax".@"op +=" = macro (.target, .value) => `($target = $target + $value);
 impl syntax @"syntax".@"op -=" = macro (.target, .value) => `($target = $target - $value);

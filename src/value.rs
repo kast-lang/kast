@@ -30,6 +30,39 @@ pub enum ValueShape {
     Ref(PlaceRef),
 }
 
+impl ValueShape {
+    pub fn name_if_needed(&self, name: &Symbol) {
+        match self {
+            ValueShape::Unit
+            | ValueShape::Bool(_)
+            | ValueShape::Int32(_)
+            | ValueShape::Int64(_)
+            | ValueShape::Float64(_)
+            | ValueShape::Char(_)
+            | ValueShape::String(_)
+            | ValueShape::List(_)
+            | ValueShape::Tuple(_)
+            | ValueShape::Binding(_)
+            | ValueShape::Variant(_)
+            | ValueShape::Multiset(_)
+            | ValueShape::Contexts(_)
+            | ValueShape::Ast(_)
+            | ValueShape::Expr(_)
+            | ValueShape::Type(_)
+            | ValueShape::SyntaxModule(_)
+            | ValueShape::SyntaxDefinition(_)
+            | ValueShape::UnwindHandle(_)
+            | ValueShape::Symbol(_)
+            | ValueShape::HashMap(_)
+            | ValueShape::Ref(_) => {}
+
+            ValueShape::Function(f) | ValueShape::Macro(f) => f.name_if_needed(name),
+            ValueShape::Template(f) => f.name_if_needed(name),
+            ValueShape::NativeFunction(_) => {}
+        }
+    }
+}
+
 #[derive(Clone, TryHash, PartialEq, Eq)]
 pub struct TupleValue(#[try_hash] pub Tuple<OwnedPlace>);
 
@@ -183,6 +216,13 @@ impl Value {
         // println!("done");
         Ok(self)
     }
+
+    pub fn name_if_neeeded(&self, name: &Symbol) {
+        match &self.r#impl {
+            ValueImpl::Inferrable(_) => {}
+            ValueImpl::NonInferrable(value) => value.name_if_needed(name),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -291,9 +331,9 @@ impl std::fmt::Display for ValueShape {
             ValueShape::Tuple(tuple) => tuple.fmt(f),
             ValueShape::NativeFunction(function) => function.fmt(f),
             ValueShape::Binding(binding) => binding.fmt(f),
-            ValueShape::Function(_function) => write!(f, "<function>"),
-            ValueShape::Template(_template) => write!(f, "<template>"),
-            ValueShape::Macro(_macro) => write!(f, "<macro>"),
+            ValueShape::Function(fun) => write!(f, "fn {fun}"),
+            ValueShape::Template(fun) => write!(f, "template {fun}"),
+            ValueShape::Macro(fun) => write!(f, "macro {fun}"),
             ValueShape::Ast(ast) => {
                 write!(f, "{ast}")?;
                 if let Some(scope) = &ast.data().def_site {
@@ -722,6 +762,12 @@ pub struct TypedFunction {
     pub f: Function,
 }
 
+impl std::fmt::Display for TypedFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.f.fmt(f)
+    }
+}
+
 impl std::ops::Deref for TypedFunction {
     type Target = Function;
     fn deref(&self) -> &Self::Target {
@@ -732,13 +778,26 @@ impl std::ops::Deref for TypedFunction {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub id: Id,
+    pub name: Parc<Mutex<Option<Symbol>>>,
     pub captured: Parc<Scopes>,
     pub compiled: MaybeCompiledFn,
 }
 
-impl std::fmt::Debug for Function {
+impl Function {
+    pub fn name_if_needed(&self, name: &Symbol) {
+        let mut self_name = self.name.lock().unwrap();
+        if self_name.is_none() {
+            *self_name = Some(name.clone());
+        }
+    }
+}
+
+impl std::fmt::Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<function {:?}>", self.id)
+        match &*self.name.lock().unwrap() {
+            Some(name) => write!(f, "{name}"),
+            None => write!(f, "<{}>", self.id),
+        }
     }
 }
 

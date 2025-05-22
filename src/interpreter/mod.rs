@@ -682,6 +682,7 @@ impl Kast {
                     },
                     f: Function {
                         id: Id::new(),
+                        name: Parc::new(Mutex::new(None)),
                         captured: self.capture(),
                         compiled: compiled.clone(),
                     },
@@ -689,6 +690,7 @@ impl Kast {
                 .into(),
                 Expr::Template { compiled, data: _ } => ValueShape::Template(Function {
                     id: Id::new(),
+                    name: Parc::new(Mutex::new(None)),
                     captured: self.capture(),
                     compiled: compiled.clone(),
                 })
