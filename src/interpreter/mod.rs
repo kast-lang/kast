@@ -685,11 +685,7 @@ impl Kast {
                     }
                     ValueShape::Ast(ast).into()
                 }
-                Expr::Function {
-                    ty,
-                    compiled,
-                    data: _,
-                } => ValueShape::Function(TypedFunction {
+                Expr::Function { ty, compiled, data } => ValueShape::Function(TypedFunction {
                     ty: {
                         let ty = ty
                             .clone()
@@ -699,14 +695,16 @@ impl Kast {
                     },
                     f: Function {
                         id: Id::new(),
+                        span: data.span.clone(),
                         name: Parc::new(Mutex::new(None)),
                         captured: self.capture(),
                         compiled: compiled.clone(),
                     },
                 })
                 .into(),
-                Expr::Template { compiled, data: _ } => ValueShape::Template(Function {
+                Expr::Template { compiled, data } => ValueShape::Template(Function {
                     id: Id::new(),
+                    span: data.span.clone(),
                     name: Parc::new(Mutex::new(None)),
                     captured: self.capture(),
                     compiled: compiled.clone(),

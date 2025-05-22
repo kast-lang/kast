@@ -778,6 +778,7 @@ impl std::ops::Deref for TypedFunction {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub id: Id,
+    pub span: Span,
     pub name: Parc<Mutex<Option<Symbol>>>,
     pub captured: Parc<Scopes>,
     pub compiled: MaybeCompiledFn,
@@ -795,8 +796,8 @@ impl Function {
 impl std::fmt::Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &*self.name.lock().unwrap() {
-            Some(name) => write!(f, "{name} at {}", name.span),
-            None => write!(f, "<{}>", self.id),
+            Some(name) => write!(f, "{name} at {}", self.span),
+            None => write!(f, "_ at {}", self.span),
         }
     }
 }
