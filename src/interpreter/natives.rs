@@ -173,6 +173,7 @@ impl Natives {
         natives.insert("char", TypeShape::Char);
         natives.insert("string", TypeShape::String);
         natives.insert("ast", TypeShape::Ast);
+        natives.insert("expr", TypeShape::Expr);
         natives.insert("type", TypeShape::Type);
         natives.insert("symbol", TypeShape::Symbol);
         natives.insert("output", contexts::default_output().ty());
@@ -180,6 +181,27 @@ impl Natives {
         // does anyone understand what happened here?
         natives.insert("default_number_type", contexts::default_number_type().ty());
 
+        natives.insert_fn(
+            "compile_ast",
+            || FnType {
+                arg: TypeShape::Ast.into(),
+                contexts: Contexts::empty(),
+                result: Type::new_not_inferred("eval_ast result"),
+            },
+            |kast: Kast, fn_ty: FnType, ast: Value| {
+                async move {
+                    let mut kast = kast;
+                    let ast = ast.into_inferred()?.into_ast()?;
+                    match fn_ty.result.expect_inferred()? {
+                        TypeShape::Expr => {
+                            Ok(ValueShape::Expr(Parc::new(kast.compile(&ast).await?)).into())
+                        }
+                        ty => eyre::bail!("can't compile into {ty}"),
+                    }
+                }
+                .boxed()
+            },
+        );
         natives.insert_fn(
             "eval_ast",
             || FnType {

@@ -19,6 +19,7 @@ pub enum TypeShape {
     Multiset,
     Contexts,
     Ast,
+    Expr,
     #[allow(clippy::enum_variant_names)]
     Type,
     SyntaxModule,
@@ -69,6 +70,7 @@ impl ShowShort for TypeShape {
             TypeShape::HashMap(_) => "hash_map",
             TypeShape::Ref(_) => "&",
             TypeShape::NewType { .. } => "newtype",
+            TypeShape::Expr => "expr",
         }
     }
 }
@@ -207,6 +209,8 @@ impl Inferrable for TypeShape {
             (Self::Multiset, _) => fail!(),
             (Self::Ast, Self::Ast) => Self::Ast,
             (Self::Ast, _) => fail!(),
+            (Self::Expr, Self::Expr) => Self::Expr,
+            (Self::Expr, _) => fail!(),
             (Self::Type, Self::Type) => Self::Type,
             (Self::Type, _) => fail!(),
             (Self::SyntaxModule, Self::SyntaxModule) => Self::SyntaxModule,
@@ -269,6 +273,7 @@ impl std::fmt::Display for TypeShape {
             Self::Macro(ty) => write!(f, "macro {ty}"),
             Self::Multiset => write!(f, "multiset"),
             Self::Ast => write!(f, "ast"),
+            Self::Expr => write!(f, "expr"),
             Self::Type => write!(f, "type"),
             Self::Contexts => write!(f, "contexts"),
             Self::SyntaxModule => write!(f, "syntax module"),
@@ -362,6 +367,7 @@ impl SubstituteBindings for Type {
             | TypeShape::Char
             | TypeShape::String
             | TypeShape::Ast
+            | TypeShape::Expr
             | TypeShape::Multiset
             | TypeShape::Contexts
             | TypeShape::Type

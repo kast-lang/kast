@@ -22,8 +22,10 @@ impl syntax @"syntax".let_infer = macro (.pattern) => `(
 
 const type = native "type";
 const ast :: type = native "ast";
+const expr :: type = native "expr";
 
 const eval_ast = forall[T] { native "eval_ast" :: ast -> T };
+const compile_ast = forall[T] { native "compile_ast" :: ast -> T };
 
 const bool :: type = native "bool";
 

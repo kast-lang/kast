@@ -20,6 +20,7 @@ pub enum ValueShape {
     Multiset(#[try_hash] Vec<Value>),
     Contexts(#[try_hash] Contexts),
     Ast(Ast),
+    Expr(Parc<Expr>),
     Type(#[try_hash] Type),
     SyntaxModule(Parc<Vec<Parc<ast::SyntaxDefinition>>>),
     SyntaxDefinition(Parc<ast::SyntaxDefinition>),
@@ -93,6 +94,7 @@ impl Kast {
                 TypeShape::Multiset => None,
                 TypeShape::Contexts => None,
                 TypeShape::Ast => None,
+                TypeShape::Expr => None,
                 TypeShape::SyntaxModule => None,
                 TypeShape::SyntaxDefinition => None,
                 TypeShape::Binding(_) => None,
@@ -299,6 +301,10 @@ impl std::fmt::Display for ValueShape {
                 }
                 Ok(())
             }
+            ValueShape::Expr(expr) => {
+                write!(f, "{expr}")?;
+                Ok(())
+            }
             ValueShape::Type(ty) => {
                 write!(f, "type ")?;
                 ty.fmt(f)
@@ -415,6 +421,7 @@ impl ValueShape {
             ValueShape::Macro(f) => TypeShape::Macro(Box::new(f.ty.clone())).into(),
             ValueShape::NativeFunction(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
             ValueShape::Ast(_) => TypeShape::Ast.into(),
+            ValueShape::Expr(_) => TypeShape::Expr.into(),
             ValueShape::Type(_) => TypeShape::Type.into(),
             ValueShape::SyntaxModule(_) => TypeShape::SyntaxModule.into(),
             ValueShape::SyntaxDefinition(_) => TypeShape::SyntaxDefinition.into(),
@@ -744,8 +751,9 @@ pub trait NativeFunctionClosure: Send + Sync + 'static {
     ) -> BoxFuture<'static, eyre::Result<Value>>;
 }
 
-impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static>
-    NativeFunctionClosure for F
+impl<
+        F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static,
+    > NativeFunctionClosure for F
 {
     fn call(
         &self,
@@ -885,6 +893,7 @@ impl Inferrable for ValueShape {
             (ValueShape::Multiset(_), _) => fail!(),
             (ValueShape::Contexts(_), _) => fail!(),
             (ValueShape::Ast(_), _) => fail!(),
+            (ValueShape::Expr(_), _) => fail!(),
             (ValueShape::Type(a), ValueShape::Type(b)) => {
                 ValueShape::Type(Inferrable::make_same(a, b)?)
             }
@@ -924,6 +933,7 @@ impl TypeShape {
             TypeShape::Multiset => return None,
             TypeShape::Contexts => return None,
             TypeShape::Ast => return None,
+            TypeShape::Expr => return None,
             TypeShape::Type => {
                 ValueShape::Type(Type::new_not_inferred("inferred value shape for type"))
             }
