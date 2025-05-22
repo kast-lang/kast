@@ -1040,10 +1040,10 @@ impl Natives {
                 contexts: Contexts::empty(),
                 result: TypeShape::Symbol.into(),
             },
-            |_kast, _fn_ty, name: Value| {
+            |kast: Kast, _fn_ty, name: Value| {
                 async move {
                     let name = name.into_inferred()?.as_str()?.to_owned();
-                    Ok(ValueShape::Symbol(Symbol::new(
+                    Ok(ValueShape::Symbol(kast.new_symbol(
                         name,
                         // TODO track caller span
                         Span {

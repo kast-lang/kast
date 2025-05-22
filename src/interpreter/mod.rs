@@ -88,7 +88,7 @@ impl Kast {
     ) {
         let f = std::sync::Arc::new(f);
         self.add_local(
-            Symbol::new(
+            self.new_symbol(
                 name,
                 // TODO maybe have span as arg
                 Span {
@@ -131,7 +131,7 @@ impl Kast {
                         let value = value.read_value()?;
                         let value = value.as_inferred()?;
                         let value = value.as_tuple()?;
-                        value.0.as_ref().map(|place| place.get_ref())
+                        value.inner.as_ref().map(|place| place.get_ref())
                     };
                     for (_field_name, (field_assignee, field_value)) in tuple.as_ref().zip(value)? {
                         self.assign(field_assignee, field_value).await?;
@@ -259,7 +259,10 @@ impl Kast {
                     let obj = obj.as_inferred()?;
                     let obj = &*obj;
                     match obj {
-                        ValueShape::Tuple(TupleValue(fields)) => match fields.get(field.as_ref()) {
+                        ValueShape::Tuple(TupleValue {
+                            inner: fields,
+                            name: _,
+                        }) => match fields.get(field.as_ref()) {
                             Some(place) => place.get_ref(),
                             None => eyre::bail!("{obj} does not have field {field:?}"),
                         },
@@ -612,7 +615,7 @@ impl Kast {
                             for (name, value) in namespace.into_values().into_iter() {
                                 let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
                                 self.add_local(
-                                    Symbol::new(
+                                    self.new_symbol(
                                         name,
                                         // TODO actual original span
                                         data.span.clone(),
@@ -645,7 +648,11 @@ impl Kast {
                         Err(_) => eyre::bail!("tuple type could not be inferred???"),
                     }
                 }
-                Expr::Recursive { body, data: _ } => {
+                Expr::Recursive {
+                    body,
+                    compiler_scope,
+                    data: _,
+                } => {
                     let mut inner = self.enter_recursive_scope();
                     inner.eval(body).await?.into_inferred()?.into_unit()?;
                     let mut fields = Tuple::empty();
@@ -654,7 +661,11 @@ impl Kast {
                             fields.add_named(name.name(), place.clone());
                         }
                     });
-                    ValueShape::Tuple(TupleValue(fields)).into()
+                    ValueShape::Tuple(TupleValue {
+                        name: compiler_scope.name().clone(),
+                        inner: fields,
+                    })
+                    .into()
                 }
                 Expr::Ast {
                     expr_root,
@@ -696,7 +707,7 @@ impl Kast {
                     f: Function {
                         id: Id::new(),
                         span: data.span.clone(),
-                        name: Parc::new(Mutex::new(None)),
+                        name: Name::unknown(),
                         captured: self.capture(),
                         compiled: compiled.clone(),
                     },
@@ -705,7 +716,7 @@ impl Kast {
                 Expr::Template { compiled, data } => ValueShape::Template(Function {
                     id: Id::new(),
                     span: data.span.clone(),
-                    name: Parc::new(Mutex::new(None)),
+                    name: Name::unknown(),
                     captured: self.capture(),
                     compiled: compiled.clone(),
                 })
@@ -952,7 +963,9 @@ impl Kast {
     pub async fn instantiate(&self, template: Value, arg: Value) -> eyre::Result<Value> {
         let template = template.into_inferred()?.into_template()?;
         // TODO memoization
-        self.call_fn(template, arg).await
+        let result = self.call_fn(template, arg).await?;
+        // TODO result.name_if_needed(path);
+        Ok(result)
     }
 
     pub async fn call(&self, f: Value, arg: Value) -> eyre::Result<Value> {
@@ -1055,7 +1068,7 @@ impl Pattern {
                         let place = place.read_value()?;
                         let place = place.as_inferred()?;
                         let place = place.as_tuple()?;
-                        place.0.as_ref().map(|place| place.get_ref())
+                        place.inner.as_ref().map(|place| place.get_ref())
                     };
                     for (_, (field_pattern, field_value)) in pattern
                         .as_ref()

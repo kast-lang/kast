@@ -473,7 +473,9 @@ impl Compilable for Expr {
             Ast::SyntaxDefinition { def, data } => {
                 kast.insert_syntax(def.clone())?;
                 kast.add_local(
-                    Symbol::new(&def.name, data.span.clone()),
+                    kast.scopes
+                        .compiler
+                        .new_symbol(&def.name, data.span.clone()),
                     ValueShape::SyntaxDefinition(def.clone()).into(),
                 );
                 kast.cache.compiler.register_syntax(def);
@@ -527,7 +529,7 @@ async fn compile_ident_pattern(
         Hygiene::DefSite => kast.scopes.compiler.clone(),
     };
     let binding = Parc::new(Binding {
-        symbol: Symbol::new(name, span.clone()),
+        symbol: kast.new_symbol(name, span.clone()),
         ty: Type::new_not_inferred(&format!("{name} at {span}")),
         mutability: kast.compiler.bindings_mutability,
         compiler_scope,
@@ -1362,6 +1364,7 @@ impl Expr<Span> {
                 }
                 Expr::Recursive {
                     mut body,
+                    compiler_scope,
                     data: span,
                 } => {
                     body.data_mut().ty.infer_as(TypeShape::Unit)?;
@@ -1379,6 +1382,7 @@ impl Expr<Span> {
                             span,
                             contexts: body.data().contexts.clone(),
                         },
+                        compiler_scope,
                         body,
                     }
                 }

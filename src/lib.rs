@@ -2,7 +2,7 @@
 #![allow(clippy::type_complexity, clippy::needless_question_mark)]
 
 use async_trait::async_trait;
-use eyre::{eyre, Context as _};
+use eyre::{Context as _, eyre};
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use inference::Inferrable;
@@ -23,6 +23,7 @@ mod executor;
 mod id;
 mod interpreter;
 mod ir;
+mod path;
 mod place;
 mod rusty;
 mod scopes;
@@ -36,6 +37,7 @@ use self::executor::Executor;
 pub use self::id::*;
 pub use self::ir::Symbol;
 use self::ir::*;
+pub use self::path::*;
 pub use self::place::*;
 pub use self::rusty::*;
 use self::scopes::*;
@@ -80,6 +82,7 @@ pub struct Kast {
     compiler: compiler::State,
     spawn_id: Id,
     scopes: Scopes,
+    // path: Name,
     cache: Parc<Cache>,
     pub output: std::sync::Arc<dyn Output>,
     pub input: std::sync::Arc<dyn Input>,
@@ -185,7 +188,7 @@ impl Kast {
             .import_impl(&std_path, ImportMode::OnlyStdSyntax)
             .wrap_err("std lib import failed")?;
         kast.add_local(
-            Symbol::new(
+            kast.new_symbol(
                 "std",
                 Span {
                     start: Position::ZERO,
@@ -214,7 +217,7 @@ impl Kast {
         let source = SourceFile {
             #[cfg(feature = "embed-std")]
             contents: {
-                use include_dir::{include_dir, Dir};
+                use include_dir::{Dir, include_dir};
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
                         static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
@@ -294,6 +297,10 @@ impl Kast {
         let mut kast = self.clone();
         kast.spawn_id = Id::new();
         kast
+    }
+
+    pub fn new_symbol(&self, name: impl Into<String>, span: Span) -> Symbol {
+        self.scopes.compiler.new_symbol(name, span)
     }
 }
 

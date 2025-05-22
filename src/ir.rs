@@ -105,6 +105,9 @@ pub enum Expr<Data = ExprData> {
     },
     Recursive {
         body: Box<Expr>,
+        // TODO only need name?
+        #[display(skip)]
+        compiler_scope: CompilerScope,
         data: Data,
     },
     If {
@@ -441,16 +444,23 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Symbol {
     pub name: std::sync::Arc<str>,
+    pub scope: CompilerScope,
     pub span: Span,
     pub id: Id,
 }
 
+impl std::fmt::Debug for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} at {}", self.name, self.span)
+    }
+}
+
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.name)
+        write!(f, "{}", self.name)
     }
 }
 
@@ -460,13 +470,6 @@ impl Symbol {
     }
     pub fn id(&self) -> Id {
         self.id
-    }
-    pub fn new(name: impl Into<String>, span: Span) -> Self {
-        Self {
-            name: name.into().into(),
-            span,
-            id: Id::new(),
-        }
     }
 }
 

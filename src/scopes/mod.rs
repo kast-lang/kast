@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::sync::{Arc, atomic::AtomicUsize};
 
 use super::*;
 
@@ -41,10 +41,16 @@ impl CompilerScope {
     pub fn id(&self) -> Id {
         self.0.id
     }
+    pub fn parent(&self) -> Option<CompilerScope> {
+        self.0.parent.clone().map(Self)
+    }
+    pub fn name(&self) -> &Name {
+        &self.0.name
+    }
     pub fn insert(&self, name: &str, span: &Span, value: Value) {
         tracing::trace!("inserting {name:?} into {:?}", self.0.id);
         self.0.insert(
-            Symbol::new(name, span.clone()),
+            self.new_symbol(name, span.clone()),
             value,
             Mutability::Nested, // TODO whats the mutability?
         );
@@ -57,6 +63,17 @@ impl CompilerScope {
                 Some(value.clone_value().unwrap())
             }
         }
+    }
+    pub fn new_symbol(&self, name: impl Into<String>, span: Span) -> Symbol {
+        Symbol {
+            name: name.into().into(),
+            scope: self.clone(),
+            span,
+            id: Id::new(),
+        }
+    }
+    pub fn name_if_needed(&self, name: &Symbol) {
+        self.0.name_if_needed(name);
     }
 }
 

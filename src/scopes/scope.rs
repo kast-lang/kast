@@ -18,7 +18,7 @@ impl Locals {
         self.by_id.insert(name.id(), (name, place));
     }
     fn insert(&mut self, name: Symbol, value: Value, mutability: Mutability) {
-        value.name_if_neeeded(&name);
+        value.name_if_needed(&name);
         self.insert_place(name, OwnedPlace::new(value, mutability));
     }
     fn insert_uninitialized(&mut self, name: Symbol, ty: Type, mutability: Mutability) {
@@ -46,6 +46,7 @@ pub enum ScopeType {
 pub struct Scope {
     pub id: Id,
     pub spawn_id: Id,
+    pub name: Name,
     pub parent: Option<Parc<Scope>>,
     pub ty: ScopeType,
     closed: AtomicBool,
@@ -89,6 +90,7 @@ impl Scope {
         tracing::trace!("new scope {id:?} (ty={ty:?})");
         Self {
             id,
+            name: Name::unknown(),
             spawn_id,
             parent,
             ty,
@@ -97,6 +99,9 @@ impl Scope {
             syntax_definitions: Default::default(),
             locals: Mutex::new(Locals::new()),
         }
+    }
+    pub fn name_if_needed(&self, name: &Symbol) {
+        self.name.name_if_needed(name);
     }
     pub fn close(&self) {
         tracing::trace!("close scope {:?}", self.id);

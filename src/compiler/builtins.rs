@@ -569,6 +569,7 @@ impl Builtins {
         Ok(Compiled::Expr(
             Expr::Recursive {
                 body: Box::new(body),
+                compiler_scope: inner.scopes.compiler.clone(),
                 data: span,
             }
             .init(kast)
@@ -792,7 +793,7 @@ impl Builtins {
                 for (name, value) in namespace.into_values().into_iter() {
                     let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
                     kast.add_local(
-                        Symbol::new(
+                        kast.new_symbol(
                             name,
                             span.clone(), // TODO actual original span
                         ),

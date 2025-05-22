@@ -41,7 +41,6 @@ impl ValueShape {
             | ValueShape::Char(_)
             | ValueShape::String(_)
             | ValueShape::List(_)
-            | ValueShape::Tuple(_)
             | ValueShape::Binding(_)
             | ValueShape::Variant(_)
             | ValueShape::Multiset(_)
@@ -56,6 +55,8 @@ impl ValueShape {
             | ValueShape::HashMap(_)
             | ValueShape::Ref(_) => {}
 
+            ValueShape::Tuple(value) => value.name.name_if_needed(name),
+
             ValueShape::Function(f) | ValueShape::Macro(f) => f.name_if_needed(name),
             ValueShape::Template(f) => f.name_if_needed(name),
             ValueShape::NativeFunction(_) => {}
@@ -64,18 +65,25 @@ impl ValueShape {
 }
 
 #[derive(Clone, TryHash, PartialEq, Eq)]
-pub struct TupleValue(#[try_hash] pub Tuple<OwnedPlace>);
+pub struct TupleValue {
+    pub name: Name,
+    #[try_hash]
+    pub inner: Tuple<OwnedPlace>,
+}
 
 impl std::ops::Deref for TupleValue {
     type Target = Tuple<OwnedPlace>;
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.inner
     }
 }
 
 impl From<Tuple<Value>> for TupleValue {
     fn from(values: Tuple<Value>) -> Self {
-        Self(values.map(|value| OwnedPlace::new(value, Mutability::Nested)))
+        Self {
+            name: Name::unknown(),
+            inner: values.map(|value| OwnedPlace::new(value, Mutability::Nested)),
+        }
     }
 }
 
@@ -84,16 +92,16 @@ impl TupleValue {
         values.into()
     }
     pub fn into_values(self) -> Tuple<Value> {
-        self.0.map(|place| place.into_value().unwrap())
+        self.inner.map(|place| place.into_value().unwrap())
     }
     pub fn values(&self) -> eyre::Result<Tuple<PlaceReadGuard<'_, Value>>> {
-        self.0.as_ref().try_map(|place| place.read_value())
+        self.inner.as_ref().try_map(|place| place.read_value())
     }
 }
 
 impl std::fmt::Display for TupleValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        self.inner.fmt(f)
     }
 }
 
@@ -217,7 +225,7 @@ impl Value {
         Ok(self)
     }
 
-    pub fn name_if_neeeded(&self, name: &Symbol) {
+    pub fn name_if_needed(&self, name: &Symbol) {
         match &self.r#impl {
             ValueImpl::Inferrable(_) => {}
             ValueImpl::NonInferrable(value) => value.name_if_needed(name),
@@ -779,26 +787,20 @@ impl std::ops::Deref for TypedFunction {
 pub struct Function {
     pub id: Id,
     pub span: Span,
-    pub name: Parc<Mutex<Option<Symbol>>>,
+    pub name: Name,
     pub captured: Parc<Scopes>,
     pub compiled: MaybeCompiledFn,
 }
 
 impl Function {
     pub fn name_if_needed(&self, name: &Symbol) {
-        let mut self_name = self.name.lock().unwrap();
-        if self_name.is_none() {
-            *self_name = Some(name.clone());
-        }
+        self.name.name_if_needed(name);
     }
 }
 
 impl std::fmt::Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &*self.name.lock().unwrap() {
-            Some(name) => write!(f, "{name} at {}", self.span),
-            None => write!(f, "_ at {}", self.span),
-        }
+        write!(f, "{} at {}", self.name, self.span)
     }
 }
 
@@ -811,9 +813,8 @@ pub trait NativeFunctionClosure: Send + Sync + 'static {
     ) -> BoxFuture<'static, eyre::Result<Value>>;
 }
 
-impl<
-        F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static,
-    > NativeFunctionClosure for F
+impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static>
+    NativeFunctionClosure for F
 {
     fn call(
         &self,
