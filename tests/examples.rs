@@ -60,6 +60,7 @@ fn test(case: Case<'_>) {
     try_test(case).expect("Failed to run the test");
 }
 
+/// file:///./../examples/hello.ks
 #[test]
 fn test_hello_world() {
     test(Case {
@@ -70,6 +71,8 @@ fn test_hello_world() {
     });
 }
 
+/// file:///./../examples/import-zero.ks
+/// file:///./../examples/zero.ks
 #[test]
 #[should_panic = "assertion `left == right` failed\n  left: \"1 :: int32\\n\"\n right: \"0 :: int32\\n\""]
 fn test_import_zero_but_expect_1() {
@@ -81,6 +84,7 @@ fn test_import_zero_but_expect_1() {
     });
 }
 
+/// file:///./../examples/mut.ks
 #[test]
 fn test_mut() {
     test(Case {
@@ -91,6 +95,7 @@ fn test_mut() {
     });
 }
 
+/// file:///./../examples/default-number-type.ks
 #[test]
 fn test_default_number_type() {
     test(Case {
@@ -101,6 +106,8 @@ fn test_default_number_type() {
     });
 }
 
+/// file:///./../examples/import-zero.ks
+/// file:///./../examples/zero.ks
 #[test]
 fn test_import_zero() {
     test(Case {
@@ -111,6 +118,7 @@ fn test_import_zero() {
     });
 }
 
+/// file:///./../examples/mutual-recursion.ks
 #[test]
 fn test_mutual_recursion() {
     test(Case {
@@ -121,6 +129,7 @@ fn test_mutual_recursion() {
     });
 }
 
+/// file:///./../examples/context-shadow.ks
 // How can I make it not sucking that hard
 #[test]
 
@@ -136,6 +145,7 @@ fn test_context_shadow_with_missing_context() {
     assert!(err.contains("string context not available"));
 }
 
+/// file:///./../examples/context-shadow.ks
 #[test]
 fn test_context_shadow() {
     test(Case {
@@ -146,6 +156,7 @@ fn test_context_shadow() {
     });
 }
 
+/// file:///./../examples/is.ks
 #[test]
 fn test_is() {
     test(Case {
@@ -156,6 +167,7 @@ fn test_is() {
     });
 }
 
+/// file:///./../examples/local-syntax.ks
 #[test]
 
 fn test_local_syntax() {
@@ -167,6 +179,7 @@ fn test_local_syntax() {
     });
 }
 
+/// file:///./../examples/macro-hygiene.ks
 #[test]
 
 fn test_macro_hygiene() {
@@ -178,6 +191,7 @@ fn test_macro_hygiene() {
     });
 }
 
+/// file:///./../examples/ast-nested-scope.ks
 #[test]
 
 fn ast_nested_scope() {
@@ -189,6 +203,7 @@ fn ast_nested_scope() {
     });
 }
 
+/// file:///./../examples/hash_map.ks
 #[test]
 
 fn test_hash_map() {
@@ -200,6 +215,7 @@ fn test_hash_map() {
     });
 }
 
+/// file:///./../examples/unsafe.ks
 #[test]
 
 fn test_unsafe() {
@@ -211,6 +227,7 @@ fn test_unsafe() {
     });
 }
 
+/// file:///./../examples/unsafe.ks
 #[test]
 #[ignore = "TODO compile checked contexts"]
 #[should_panic = "context is not available"]
@@ -223,6 +240,7 @@ fn test_unsafe_without_unsafe_context() {
     });
 }
 
+/// file:///./../examples/fibonacci.ks
 #[test]
 fn test_fibonacci() {
     let name = "fibonacci";
@@ -259,6 +277,7 @@ fn test_fibonacci() {
     test_fib(10, 89);
 }
 
+/// file:///./../examples/variant-types.ks
 #[test]
 fn test_variant_types() {
     let err = try_test(Case {
@@ -273,4 +292,27 @@ fn test_variant_types() {
         err.contains("this is going to panic"),
         "this example does unwrap of .Error"
     );
+}
+
+#[test]
+#[ignore = "TODO make all examples tested"]
+fn test_all_examples_are_tested() {
+    let this_source = std::fs::read_to_string("tests/examples.rs").unwrap();
+    let used_files: std::collections::HashSet<String> = this_source
+        .lines()
+        .filter_map(|line| line.strip_prefix("/// file:///./../examples/"))
+        .map(|s| s.to_owned())
+        .collect();
+    let mut unused_files = std::collections::BTreeSet::<String>::new();
+    for entry in std::fs::read_dir("examples").unwrap() {
+        let entry = entry.unwrap();
+        let file_name = entry.file_name();
+        let file_name = file_name.to_str().unwrap();
+        if !used_files.contains(file_name) {
+            unused_files.insert(file_name.to_owned());
+        }
+    }
+    if !unused_files.is_empty() {
+        panic!("Untested examples: {unused_files:#?}");
+    }
 }

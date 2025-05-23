@@ -1,2 +1,3 @@
 [target.'cfg(windows)']
+# rustflags = ["-C", "link-args=/STACK:1073741824"] # 1 GB
 rustflags = ["-C", "link-args=/STACK:33554432"] # 32 MB

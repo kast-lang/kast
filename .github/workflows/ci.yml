@@ -12,7 +12,9 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: "" # allow warnings
-      - run: cargo test --workspace --all-features --release
+      - run: cargo test --workspace --all-features
+        env:
+          RUST_MIN_STACK: 33554432
 
   # Check formatting with rustfmt
   formatting:

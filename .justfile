@@ -1,8 +1,10 @@
 default:
     just --list
 
+testi *ARGS:
+    RUST_MIN_STACK=33554432 cargo test --workspace --no-default-features -- {{ARGS}}
 test *ARGS:
-    cargo test --workspace --release --no-default-features -- {{ARGS}}
+    just testi --include-ignored {{ARGS}}
 
 repl *ARGS:
     just run repl {{ARGS}}
