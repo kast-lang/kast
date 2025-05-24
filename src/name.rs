@@ -3,8 +3,10 @@ use super::*;
 #[derive(Clone)]
 pub enum NamePart {
     File(PathBuf),
+    Str(String),
     Symbol(Symbol),
     Instantiate(Value),
+    ImplCast { value: Value, target: Value },
     Tbd(Parc<Mutex<Option<NamePart>>>),
 }
 
@@ -29,14 +31,6 @@ impl Name {
         parts.push(part);
         Self(Parc::new(parts))
     }
-    pub fn name_if_needed(&self, symbol: &Symbol) {
-        if let NamePart::Tbd(tbd) = self.0.last().unwrap() {
-            let mut tbd = tbd.lock().unwrap();
-            if tbd.is_none() {
-                *tbd = Some(NamePart::Symbol(symbol.clone()));
-            }
-        }
-    }
 }
 
 impl std::fmt::Display for NamePart {
@@ -49,6 +43,7 @@ impl std::fmt::Display for NamePart {
                     write!(f, "_")?;
                 }
             }
+            NamePart::Str(s) => write!(f, "{s}")?,
             NamePart::Symbol(symbol) => write!(f, "{symbol}")?,
             NamePart::Tbd(tbd) => {
                 if let Some(part) = &*tbd.lock().unwrap() {
@@ -58,6 +53,9 @@ impl std::fmt::Display for NamePart {
                 }
             }
             NamePart::Instantiate(value) => write!(f, "[{value}]")?,
+            NamePart::ImplCast { value, target } => {
+                write!(f, "(impl {value} as {target})")?;
+            }
         }
         Ok(())
     }
@@ -77,6 +75,9 @@ impl std::fmt::Display for Name {
             }
             first = false;
             write!(f, "{part}")?;
+        }
+        if first {
+            write!(f, "<unonymous>")?;
         }
         Ok(())
     }

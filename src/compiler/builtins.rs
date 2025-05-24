@@ -45,7 +45,6 @@ impl Builtins {
             macro_type_ascribe,
             macro_context_ascribe,
             macro_const_let,
-            macro_let_assign,
             macro_let,
             macro_call,
             macro_then,
@@ -152,9 +151,17 @@ impl Builtins {
             .into_named(["pattern", "value"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
         let pattern: Pattern = kast.compile(pattern).await?;
-        let value = kast
-            .eval_ast::<Value>(value_ast, Some(pattern.data().ty.clone()))
-            .await?;
+        let value = {
+            let mut kast = kast.clone();
+            if let Pattern::Binding { binding, .. } = &pattern {
+                kast.current_name = kast
+                    .current_name
+                    .append(NamePart::Symbol(binding.symbol.clone()));
+            }
+
+            kast.eval_ast::<Value>(value_ast, Some(pattern.data().ty.clone()))
+                .await?
+        };
 
         // TODO don't clone value
         let matches = pattern
@@ -221,31 +228,6 @@ impl Builtins {
             }
             _ => eyre::bail!("must be assignee"),
         })
-    }
-    async fn macro_let_assign(
-        kast: &mut Kast,
-        ty: CompiledType,
-        ast: &Ast,
-    ) -> eyre::Result<Compiled> {
-        assert_expr!(kast, ty, ast);
-        let (values, span) = get_complex(ast);
-        let [pattern, value] = values
-            .as_ref()
-            .into_named(["pattern", "value"])
-            .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let pattern: Pattern = kast.compile(pattern).await?;
-        let value: PlaceExpr = kast.compile(value).await?;
-        kast.inject_bindings(&pattern);
-        Ok(Compiled::Expr(
-            Expr::Let {
-                is_const_let: false,
-                pattern,
-                value: Some(Box::new(value)),
-                data: span,
-            }
-            .init(kast)
-            .await?,
-        ))
     }
     async fn macro_native(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_expr!(kast, cty, ast);
@@ -790,8 +772,10 @@ impl Builtins {
         let namespace: Value = kast.eval_ast(namespace, None).await?;
         match namespace.clone().inferred() {
             Some(ValueShape::Tuple(namespace)) => {
-                for (name, value) in namespace.into_values().into_iter() {
-                    let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
+                for (member, value) in namespace.into_values().into_iter() {
+                    let name = member
+                        .into_name()
+                        .ok_or_else(|| eyre!("cant use unnamed fields"))?;
                     kast.add_local(
                         kast.new_symbol(
                             name,
@@ -1004,9 +988,9 @@ impl Builtins {
                                     definition: definition.clone(),
                                     values: {
                                         let mut result = Tuple::empty();
-                                        for (name, value) in values.as_ref().into_iter() {
+                                        for (member, value) in values.as_ref().into_iter() {
                                             let value = quote(kast, false, value).boxed().await?;
-                                            result.add(name, value);
+                                            result.add_member(member, value);
                                         }
                                         result
                                     },
@@ -1198,7 +1182,14 @@ impl Builtins {
             .await?;
         // right now I have a small brain moment
         r#impl.data_mut().ty.make_same(impl_ty)?;
-        let r#impl = kast.eval(&r#impl).await?;
+        let r#impl = {
+            let mut kast = kast.clone();
+            kast.current_name = Name::new(NamePart::ImplCast {
+                value: value.clone(),
+                target: target.clone(),
+            });
+            kast.eval(&r#impl).await?
+        };
         kast.cache
             .compiler
             .casts
@@ -1370,6 +1361,16 @@ impl Builtins {
         let (values, span) = get_complex(ast);
         let [assignee, value] = values.as_ref().into_named(["assignee", "value"])?;
         let assignee: AssigneeExpr = kast.compile(assignee).await?;
+        let mut kast = kast.clone();
+        if let AssigneeExpr::Let {
+            pattern: Pattern::Binding { binding, .. },
+            ..
+        } = &assignee
+        {
+            kast.current_name = kast
+                .current_name
+                .append(NamePart::Symbol(binding.symbol.clone()));
+        }
         let value: PlaceExpr = kast.compile(value).await?;
         kast.inject_assignee_bindings(&assignee);
         Ok(Compiled::Expr(
@@ -1378,7 +1379,7 @@ impl Builtins {
                 value: Box::new(value),
                 data: span,
             }
-            .init(kast)
+            .init(&kast)
             .await?,
         ))
     }

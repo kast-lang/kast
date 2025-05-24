@@ -85,7 +85,7 @@ impl<T: Inferrable + std::fmt::Debug> std::fmt::Debug for Var<T> {
         write!(f, "Var(")?;
         match self.get() {
             Some(inferred) => <T as std::fmt::Debug>::fmt(&inferred, f)?,
-            None => write!(f, "<not inferred>")?,
+            None => write!(f, "_")?,
         }
         write!(f, ")")
     }
@@ -312,7 +312,7 @@ impl<T: Inferrable + crate::ShowShort> crate::ShowShort for MaybeNotInferred<T> 
     fn show_short(&self) -> &'static str {
         match self.0.get() {
             Some(inferred) => inferred.show_short(),
-            None => "<not inferred>",
+            None => "_",
         }
     }
 }
@@ -340,7 +340,7 @@ impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T
         } else {
             match self.0.get() {
                 Some(inferred) => inferred.fmt(f),
-                None => write!(f, "<not inferred>"),
+                None => write!(f, "_"),
             }
         };
         CACHE.with_borrow_mut(|(level, cache)| {

@@ -192,7 +192,7 @@ impl float64 as Parse = (
 );
 
 const parse = forall[T] {
-    (T as Parse).parse
+    s => (T as Parse).parse s
 };
 
 const generator_handler = forall[T :: type] { # TODO contexts

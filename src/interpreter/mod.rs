@@ -612,8 +612,10 @@ impl Kast {
                     let namespace = self.eval(namespace).await?;
                     match namespace.clone().into_inferred()? {
                         ValueShape::Tuple(namespace) => {
-                            for (name, value) in namespace.into_values().into_iter() {
-                                let name = name.ok_or_else(|| eyre!("cant use unnamed fields"))?;
+                            for (member, value) in namespace.into_values().into_iter() {
+                                let name = member
+                                    .into_name()
+                                    .ok_or_else(|| eyre!("cant use unnamed fields"))?;
                                 self.add_local(
                                     self.new_symbol(
                                         name,
@@ -630,8 +632,11 @@ impl Kast {
                 }
                 Expr::Tuple { tuple, data } => {
                     let mut result = Tuple::empty();
-                    for (name, field) in tuple.as_ref() {
-                        result.add(name, self.eval(field).await?);
+                    for (member, field) in tuple.as_ref() {
+                        let mut kast = self.clone();
+                        kast.current_name =
+                            kast.current_name.append(NamePart::Str(format!("{member}")));
+                        result.add_member(member, kast.eval(field).await?);
                     }
                     let result = ValueShape::Tuple(TupleValue::new(
                         self.current_name.append(NamePart::tbd()),
@@ -680,11 +685,11 @@ impl Kast {
                     def_site,
                 } => {
                     let mut ast_values = Tuple::empty();
-                    for (name, value) in values.as_ref().into_iter() {
+                    for (member, value) in values.as_ref().into_iter() {
                         let value = self.eval_place(value).await?;
                         let value = value.read_value()?.clone();
                         let value = value.into_inferred()?.into_ast()?;
-                        ast_values.add(name, value);
+                        ast_values.add_member(member, value);
                     }
                     let mut ast = Ast::Complex {
                         definition: definition.clone(),
@@ -711,7 +716,7 @@ impl Kast {
                     f: Function {
                         id: Id::new(),
                         span: data.span.clone(),
-                        name: self.current_name.append(NamePart::tbd()),
+                        name: self.current_name.clone(),
                         captured: self.capture(),
                         compiled: compiled.clone(),
                     },
@@ -720,7 +725,7 @@ impl Kast {
                 Expr::Template { compiled, data } => ValueShape::Template(Function {
                     id: Id::new(),
                     span: data.span.clone(),
-                    name: self.current_name.append(NamePart::tbd()),
+                    name: self.current_name.clone(),
                     captured: self.capture(),
                     compiled: compiled.clone(),
                 })
@@ -830,16 +835,15 @@ impl Kast {
                         .ty
                         .clone()
                         .substitute_bindings(self, &mut RecurseCache::new());
-                    let name = self.eval(name).await?.into_inferred()?.as_str()?.to_owned();
-                    tracing::trace!("native {name} :: {actual_type}");
-                    match self
-                        .cache
-                        .interpreter
-                        .natives
-                        .get(name.as_str(), actual_type)?
-                    {
+                    let native_name = self.eval(name).await?.into_inferred()?.as_str()?.to_owned();
+                    tracing::trace!("native {native_name} :: {actual_type}");
+                    match self.cache.interpreter.natives.get_named(
+                        self.current_name.clone(),
+                        native_name.as_str(),
+                        actual_type,
+                    )? {
                         Some(value) => value,
-                        None => eyre::bail!("native {name:?} not found"),
+                        None => eyre::bail!("native {native_name:?} not found"),
                     }
                 }
                 Expr::Assign {

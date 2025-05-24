@@ -53,9 +53,9 @@ impl CastMap {
             // .into(),
             ValueShape::Tuple(tuple) => {
                 let mut tuple_ty = Tuple::<Type>::empty();
-                for (name, value) in tuple.into_values() {
-                    tuple_ty.add(
-                        name,
+                for (member, value) in tuple.into_values() {
+                    tuple_ty.add_member(
+                        member,
                         self.cast_to_ty(value)?
                             .map_err(|value| eyre!("{value} is not a type"))?,
                     );

@@ -447,7 +447,6 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Symbol {
     pub name: std::sync::Arc<str>,
-    pub scope: CompilerScope,
     pub span: Span,
     pub id: Id,
 }

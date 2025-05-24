@@ -188,9 +188,9 @@ impl Inferrable for TypeShape {
             (Self::List(_), _) => fail!(),
             (Self::Tuple(a), Self::Tuple(b)) => {
                 let mut result = Tuple::empty();
-                for (name, (a, b)) in a.zip(b)?.into_iter() {
+                for (member, (a, b)) in a.zip(b)?.into_iter() {
                     let value = Inferrable::make_same(a, b)?;
-                    result.add(name, value);
+                    result.add_member(member, value);
                 }
                 Self::Tuple(result)
             }

@@ -1,6 +1,6 @@
 use super::*;
 
-type Native = Box<dyn Fn(Type) -> eyre::Result<Value> + Send + Sync>;
+type Native = Box<dyn Fn(Name, Type) -> eyre::Result<Value> + Send + Sync>;
 
 pub struct Natives {
     natives: Mutex<HashMap<String, Native>>,
@@ -9,15 +9,23 @@ pub struct Natives {
 }
 
 impl Natives {
-    pub fn get(&self, name: &str, ty: Type) -> eyre::Result<Option<Value>> {
-        if let Some(value) = self.set_natives.lock().unwrap().get(name) {
+    pub fn get(&self, native_name: &str, ty: Type) -> eyre::Result<Option<Value>> {
+        self.get_named(Name::unknown(), native_name, ty)
+    }
+    pub fn get_named(
+        &self,
+        name: Name,
+        native_name: &str,
+        ty: Type,
+    ) -> eyre::Result<Option<Value>> {
+        if let Some(value) = self.set_natives.lock().unwrap().get(native_name) {
             return Ok(Some(value.clone()));
         }
         let natives = self.natives.lock().unwrap();
-        let Some(native) = natives.get(name) else {
+        let Some(native) = natives.get(native_name) else {
             return Ok(None);
         };
-        Ok(Some(native(ty)?))
+        Ok(Some(native(name, ty)?))
     }
 }
 
@@ -31,7 +39,7 @@ impl IntoNative for ValueShape {
     fn into_native(self) -> Native {
         let expected_ty = self.ty().inferred().unwrap();
         let value: Value = self.into();
-        Box::new(move |expected: Type| {
+        Box::new(move |name, expected: Type| {
             expected.infer_as(expected_ty.clone())?;
             Ok(value.clone())
         })
@@ -48,7 +56,7 @@ impl IntoNative for TypeShape {
 impl IntoNative for Type {
     fn into_native(self) -> Native {
         let value: Value = ValueShape::Type(self).into();
-        Box::new(move |expected: Type| {
+        Box::new(move |name, expected: Type| {
             expected.infer_as(TypeShape::Type)?;
             Ok(value.clone())
         })
@@ -61,20 +69,21 @@ impl PreparingNatives {
     }
     fn insert_fn(
         &mut self,
-        name: impl Into<String>,
+        native_name: impl Into<String>,
         ty: impl Fn() -> FnType + Send + Sync + 'static,
         r#impl: impl NativeFunctionClosure,
     ) {
         let r#impl: Parc<dyn NativeFunctionClosure> =
             (std::sync::Arc::new(r#impl) as std::sync::Arc<dyn NativeFunctionClosure>).into();
-        let name = name.into();
+        let native_name = native_name.into();
         self.0.insert(
-            name.clone(),
-            Box::new(move |expected: Type| {
+            native_name.clone(),
+            Box::new(move |name, expected: Type| {
                 let ty = ty();
                 expected.infer_as(TypeShape::Function(Box::new(ty.clone())))?;
                 Ok(ValueShape::NativeFunction(NativeFunction {
-                    name: name.clone(),
+                    name,
+                    native_name: native_name.clone(),
                     r#impl: r#impl.clone(),
                     ty,
                 })

@@ -70,6 +70,15 @@ pub enum Member<'a> {
     Named(std::borrow::Cow<'a, str>),
 }
 
+impl<'a> Member<'a> {
+    pub fn into_name(self) -> Option<std::borrow::Cow<'a, str>> {
+        match self {
+            Member::Unnamed(_) => None,
+            Member::Named(name) => Some(name),
+        }
+    }
+}
+
 impl std::fmt::Display for Member<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -130,6 +139,7 @@ impl<T> Tuple<T> {
         value
     }
     pub fn add_unnamed(&mut self, value: T) {
+        assert_eq!(self.named.len(), 0);
         self.unnamed.push(value);
     }
     pub fn add_named(&mut self, name: impl Into<String>, value: T) {
@@ -142,6 +152,15 @@ impl<T> Tuple<T> {
         match name {
             Some(name) => self.add_named(name, value),
             None => self.add_unnamed(value),
+        }
+    }
+    pub fn add_member(&mut self, member: Member<'_>, value: T) {
+        match member {
+            Member::Unnamed(index) => {
+                assert_eq!(self.unnamed.len(), index);
+                self.add_unnamed(value);
+            }
+            Member::Named(name) => self.add_named(name, value),
         }
     }
     pub fn fmt_with_name<'a>(&'a self, name: &'a str) -> NamedTupleFmt<'a, T> {
@@ -229,29 +248,29 @@ impl<T> Tuple<T> {
 }
 
 pub struct TupleIntoIter<T> {
-    unnamed: <Vec<T> as IntoIterator>::IntoIter,
+    unnamed: std::iter::Enumerate<<Vec<T> as IntoIterator>::IntoIter>,
     names: <Vec<String> as IntoIterator>::IntoIter,
     named: BTreeMap<String, T>,
 }
 
 impl<T> Iterator for TupleIntoIter<T> {
-    type Item = (Option<String>, T);
+    type Item = (Member<'static>, T);
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(value) = self.unnamed.next() {
-            return Some((None, value));
+        if let Some((index, value)) = self.unnamed.next() {
+            return Some((Member::Unnamed(index), value));
         }
         let name = self.names.next()?;
         let value = self.named.remove(&name).unwrap();
-        Some((Some(name), value))
+        Some((Member::Named(name.into()), value))
     }
 }
 
 impl<T> IntoIterator for Tuple<T> {
-    type Item = (Option<String>, T);
+    type Item = (Member<'static>, T);
     type IntoIter = TupleIntoIter<T>;
     fn into_iter(self) -> Self::IntoIter {
         TupleIntoIter {
-            unnamed: self.unnamed.into_iter(),
+            unnamed: self.unnamed.into_iter().enumerate(),
             names: self.named_order.into_iter(),
             named: self.named,
         }

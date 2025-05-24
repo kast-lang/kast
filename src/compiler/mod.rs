@@ -448,8 +448,8 @@ impl Compilable for Expr {
                 Expr::Tuple {
                     tuple: {
                         let mut tuple = Tuple::empty();
-                        for (name, field) in args.as_ref() {
-                            tuple.add(name, kast.compile(field).await?);
+                        for (member, field) in args.as_ref() {
+                            tuple.add_member(member, kast.compile(field).await?);
                         }
                         tuple
                     },
@@ -1286,8 +1286,8 @@ impl Expr<Span> {
                                 &format!("tuple at {span}"),
                                 TypeShape::Tuple({
                                     let mut result = Tuple::empty();
-                                    for (name, field) in tuple.as_ref() {
-                                        result.add(name, field.data().ty.clone());
+                                    for (member, field) in tuple.as_ref() {
+                                        result.add_member(member, field.data().ty.clone());
                                     }
                                     result
                                 }),

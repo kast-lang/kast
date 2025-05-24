@@ -67,13 +67,9 @@ impl CompilerScope {
     pub fn new_symbol(&self, name: impl Into<String>, span: Span) -> Symbol {
         Symbol {
             name: name.into().into(),
-            scope: self.clone(),
             span,
             id: Id::new(),
         }
-    }
-    pub fn name_if_needed(&self, name: &Symbol) {
-        self.0.name_if_needed(name);
     }
 }
 

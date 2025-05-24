@@ -30,40 +30,6 @@ pub enum ValueShape {
     Ref(PlaceRef),
 }
 
-impl ValueShape {
-    pub fn name_if_needed(&self, name: &Symbol) {
-        match self {
-            ValueShape::Unit
-            | ValueShape::Bool(_)
-            | ValueShape::Int32(_)
-            | ValueShape::Int64(_)
-            | ValueShape::Float64(_)
-            | ValueShape::Char(_)
-            | ValueShape::String(_)
-            | ValueShape::List(_)
-            | ValueShape::Binding(_)
-            | ValueShape::Variant(_)
-            | ValueShape::Multiset(_)
-            | ValueShape::Contexts(_)
-            | ValueShape::Ast(_)
-            | ValueShape::Expr(_)
-            | ValueShape::Type(_)
-            | ValueShape::SyntaxModule(_)
-            | ValueShape::SyntaxDefinition(_)
-            | ValueShape::UnwindHandle(_)
-            | ValueShape::Symbol(_)
-            | ValueShape::HashMap(_)
-            | ValueShape::Ref(_) => {}
-
-            ValueShape::Tuple(value) => value.name.name_if_needed(name),
-
-            ValueShape::Function(f) | ValueShape::Macro(f) => f.name_if_needed(name),
-            ValueShape::Template(f) => f.name_if_needed(name),
-            ValueShape::NativeFunction(_) => {}
-        }
-    }
-}
-
 #[derive(Clone, TryHash, PartialEq, Eq)]
 pub struct TupleValue {
     pub name: Name,
@@ -221,13 +187,6 @@ impl Value {
         // println!("done");
         Ok(self)
     }
-
-    pub fn name_if_needed(&self, name: &Symbol) {
-        match &self.r#impl {
-            ValueImpl::Inferrable(_) => {}
-            ValueImpl::NonInferrable(value) => value.name_if_needed(name),
-        }
-    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -336,8 +295,8 @@ impl std::fmt::Display for ValueShape {
             ValueShape::Tuple(tuple) => tuple.fmt(f),
             ValueShape::NativeFunction(function) => function.fmt(f),
             ValueShape::Binding(binding) => binding.fmt(f),
-            ValueShape::Function(fun) => write!(f, "fn {fun}"),
-            ValueShape::Template(fun) => write!(f, "template {fun}"),
+            ValueShape::Function(fun) => write!(f, "{fun}"),
+            ValueShape::Template(fun) => write!(f, "{fun}"),
             ValueShape::Macro(fun) => write!(f, "macro {fun}"),
             ValueShape::Ast(ast) => {
                 write!(f, "{ast}")?;
@@ -351,7 +310,7 @@ impl std::fmt::Display for ValueShape {
                 Ok(())
             }
             ValueShape::Type(ty) => {
-                write!(f, "type ")?;
+                // write!(f, "type ")?;
                 ty.fmt(f)
             }
             ValueShape::SyntaxModule(_definitions) => write!(f, "<syntax module>"),
@@ -789,15 +748,10 @@ pub struct Function {
     pub compiled: MaybeCompiledFn,
 }
 
-impl Function {
-    pub fn name_if_needed(&self, name: &Symbol) {
-        self.name.name_if_needed(name);
-    }
-}
-
 impl std::fmt::Display for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} at {}", self.name, self.span)
+        // write!(f, "{} at {}", self.name, self.span)
+        write!(f, "{}", self.name)
     }
 }
 
@@ -825,16 +779,22 @@ impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Sen
 
 #[derive(Clone, PartialEq, Eq, TryHash)]
 pub struct NativeFunction {
-    pub name: String,
+    pub native_name: String,
+    pub name: Name,
     #[try_hash]
     pub ty: FnType,
     pub r#impl: Parc<dyn NativeFunctionClosure>,
 }
 
 impl NativeFunction {
-    pub fn new(name: impl Into<String>, ty: FnType, r#impl: impl NativeFunctionClosure) -> Self {
+    pub fn new(
+        native_name: impl Into<String>,
+        ty: FnType,
+        r#impl: impl NativeFunctionClosure,
+    ) -> Self {
         Self {
-            name: name.into(),
+            name: Name::unknown(),
+            native_name: native_name.into(),
             ty,
             r#impl: (std::sync::Arc::new(r#impl) as std::sync::Arc<dyn NativeFunctionClosure>)
                 .into(),
@@ -844,7 +804,7 @@ impl NativeFunction {
 
 impl std::fmt::Debug for NativeFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<native fn {:?}>", self.name)
+        write!(f, "<native fn {:?} (aka {})>", self.native_name, self.name)
     }
 }
 
@@ -935,9 +895,9 @@ impl Inferrable for ValueShape {
             (ValueShape::List(_), _) => fail!(),
             (ValueShape::Tuple(a), ValueShape::Tuple(b)) => {
                 let mut result = Tuple::empty();
-                for (name, (a, b)) in a.into_values().zip(b.into_values())?.into_iter() {
+                for (member, (a, b)) in a.into_values().zip(b.into_values())?.into_iter() {
                     let value = Inferrable::make_same(a, b)?;
-                    result.add(name, value);
+                    result.add_member(member, value);
                 }
                 // TODO maybe named?
                 ValueShape::Tuple(TupleValue::new_unnamed(result))
