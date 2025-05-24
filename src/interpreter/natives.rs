@@ -130,11 +130,13 @@ impl PreparingNatives {
             move || {
                 let operand_type = Type::new_not_inferred("binary op {name:?} operand_type");
                 FnType {
-                    arg: TypeShape::Tuple({
-                        let mut args = Tuple::empty();
-                        args.add_named("lhs", operand_type.clone());
-                        args.add_named("rhs", operand_type.clone());
-                        args
+                    arg: TypeShape::Tuple(TupleType {
+                        fields: {
+                            let mut args = Tuple::empty();
+                            args.add_named("lhs", operand_type.clone());
+                            args.add_named("rhs", operand_type.clone());
+                            args
+                        },
                     })
                     .into(),
                     contexts: Contexts::empty(), // TODO
@@ -308,11 +310,13 @@ impl Natives {
         natives.insert_fn(
             "HashMap",
             || FnType {
-                arg: TypeShape::Tuple({
-                    let mut args = Tuple::empty();
-                    args.add_unnamed(TypeShape::Type.into());
-                    args.add_unnamed(TypeShape::Type.into());
-                    args
+                arg: TypeShape::Tuple(TupleType {
+                    fields: {
+                        let mut args = Tuple::empty();
+                        args.add_unnamed(TypeShape::Type.into());
+                        args.add_unnamed(TypeShape::Type.into());
+                        args
+                    },
                 })
                 .into(),
                 contexts: Contexts::empty(),
@@ -372,12 +376,14 @@ impl Natives {
                 })
                 .into();
                 FnType {
-                    arg: TypeShape::Tuple({
-                        let mut args = Tuple::empty();
-                        args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
-                        args.add_unnamed(key_ty.clone());
-                        args.add_unnamed(value_ty.clone());
-                        args
+                    arg: TypeShape::Tuple(TupleType {
+                        fields: {
+                            let mut args = Tuple::empty();
+                            args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
+                            args.add_unnamed(key_ty.clone());
+                            args.add_unnamed(value_ty.clone());
+                            args
+                        },
                     })
                     .into(),
                     contexts: Contexts::empty(),
@@ -444,11 +450,13 @@ impl Natives {
                 .into();
                 let result_ty = Type::new_not_inferred("HashMap.get result");
                 FnType {
-                    arg: TypeShape::Tuple({
-                        let mut args = Tuple::empty();
-                        args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
-                        args.add_unnamed(TypeShape::Ref(key_ty.clone()).into());
-                        args
+                    arg: TypeShape::Tuple(TupleType {
+                        fields: {
+                            let mut args = Tuple::empty();
+                            args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
+                            args.add_unnamed(TypeShape::Ref(key_ty.clone()).into());
+                            args
+                        },
                     })
                     .into(),
                     contexts: Contexts::empty(),
@@ -514,11 +522,13 @@ impl Natives {
                             .instantiate(
                                 generator_handler,
                                 ValueShape::Type(
-                                    TypeShape::Tuple({
-                                        let mut tuple = Tuple::empty();
-                                        tuple.add_unnamed(map.ty.key.clone());
-                                        tuple.add_unnamed(map.ty.value.clone());
-                                        tuple
+                                    TypeShape::Tuple(TupleType {
+                                        fields: {
+                                            let mut tuple = Tuple::empty();
+                                            tuple.add_unnamed(map.ty.key.clone());
+                                            tuple.add_unnamed(map.ty.value.clone());
+                                            tuple
+                                        },
                                     })
                                     .into(),
                                 )
@@ -559,11 +569,13 @@ impl Natives {
         natives.insert_fn(
             "contains",
             || FnType {
-                arg: TypeShape::Tuple({
-                    let mut args = Tuple::empty();
-                    args.add_named("s", TypeShape::String.into());
-                    args.add_named("substring", TypeShape::String.into());
-                    args
+                arg: TypeShape::Tuple(TupleType {
+                    fields: {
+                        let mut args = Tuple::empty();
+                        args.add_named("s", TypeShape::String.into());
+                        args.add_named("substring", TypeShape::String.into());
+                        args
+                    },
                 })
                 .into(),
                 contexts: Contexts::empty(),
@@ -725,11 +737,13 @@ impl Natives {
         natives.insert_fn(
             "set_native",
             || FnType {
-                arg: TypeShape::Tuple({
-                    let mut args = Tuple::empty();
-                    args.add_named("name", TypeShape::String.into());
-                    args.add_named("value", Type::new_not_inferred("set_natives arg.value"));
-                    args
+                arg: TypeShape::Tuple(TupleType {
+                    fields: {
+                        let mut args = Tuple::empty();
+                        args.add_named("name", TypeShape::String.into());
+                        args.add_named("value", Type::new_not_inferred("set_natives arg.value"));
+                        args
+                    },
                 })
                 .into(),
                 contexts: Contexts::empty(),
@@ -759,13 +773,15 @@ impl Natives {
             || {
                 let elem_ty = Type::new_not_inferred("list.get elem_ty");
                 FnType {
-                    arg: TypeShape::Tuple({
-                        let mut tuple = Tuple::empty();
-                        tuple.add_unnamed(
-                            TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
-                        );
-                        tuple.add_unnamed(TypeShape::Int32.into()); // TODO usize?
-                        tuple
+                    arg: TypeShape::Tuple(TupleType {
+                        fields: {
+                            let mut tuple = Tuple::empty();
+                            tuple.add_unnamed(
+                                TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
+                            );
+                            tuple.add_unnamed(TypeShape::Int32.into()); // TODO usize?
+                            tuple
+                        },
                     })
                     .into(),
                     contexts: Contexts::empty(),
@@ -831,14 +847,16 @@ impl Natives {
             || {
                 let elem_ty = Type::new_not_inferred("list.set elem_ty");
                 FnType {
-                    arg: TypeShape::Tuple({
-                        let mut args = Tuple::empty();
-                        args.add_unnamed(
-                            TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
-                        );
-                        args.add_unnamed(TypeShape::Int32.into());
-                        args.add_unnamed(elem_ty.clone());
-                        args
+                    arg: TypeShape::Tuple(TupleType {
+                        fields: {
+                            let mut args = Tuple::empty();
+                            args.add_unnamed(
+                                TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
+                            );
+                            args.add_unnamed(TypeShape::Int32.into());
+                            args.add_unnamed(elem_ty.clone());
+                            args
+                        },
                     })
                     .into(),
                     contexts: Contexts::empty(),
@@ -872,13 +890,15 @@ impl Natives {
             || {
                 let elem_ty = Type::new_not_inferred("list.push elem_ty");
                 FnType {
-                    arg: TypeShape::Tuple({
-                        let mut args = Tuple::empty();
-                        args.add_unnamed(
-                            TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
-                        );
-                        args.add_unnamed(elem_ty.clone());
-                        args
+                    arg: TypeShape::Tuple(TupleType {
+                        fields: {
+                            let mut args = Tuple::empty();
+                            args.add_unnamed(
+                                TypeShape::Ref(TypeShape::List(elem_ty.clone()).into()).into(),
+                            );
+                            args.add_unnamed(elem_ty.clone());
+                            args
+                        },
                     })
                     .into(),
                     contexts: Contexts::empty(),
@@ -906,11 +926,13 @@ impl Natives {
         natives.insert_fn(
             "push_char",
             || FnType {
-                arg: TypeShape::Tuple({
-                    let mut args = Tuple::empty();
-                    args.add_unnamed(TypeShape::String.into());
-                    args.add_unnamed(TypeShape::Char.into());
-                    args
+                arg: TypeShape::Tuple(TupleType {
+                    fields: {
+                        let mut args = Tuple::empty();
+                        args.add_unnamed(TypeShape::String.into());
+                        args.add_unnamed(TypeShape::Char.into());
+                        args
+                    },
                 })
                 .into(),
                 contexts: Contexts::empty(),
@@ -968,11 +990,13 @@ impl Natives {
             || {
                 let value_ty = Type::new_not_inferred("random value_ty");
                 FnType {
-                    arg: TypeShape::Tuple({
-                        let mut args = Tuple::empty();
-                        args.add_named("min", value_ty.clone());
-                        args.add_named("max", value_ty.clone());
-                        args
+                    arg: TypeShape::Tuple(TupleType {
+                        fields: {
+                            let mut args = Tuple::empty();
+                            args.add_named("min", value_ty.clone());
+                            args.add_named("max", value_ty.clone());
+                            args
+                        },
                     })
                     .into(),
                     contexts: Contexts::empty(), // TODO rng

@@ -52,15 +52,18 @@ impl CastMap {
             // )
             // .into(),
             ValueShape::Tuple(tuple) => {
-                let mut tuple_ty = Tuple::<Type>::empty();
+                let mut field_types = Tuple::<Type>::empty();
                 for (member, value) in tuple.into_values() {
-                    tuple_ty.add_member(
+                    field_types.add_member(
                         member,
                         self.cast_to_ty(value)?
                             .map_err(|value| eyre!("{value} is not a type"))?,
                     );
                 }
-                TypeShape::Tuple(tuple_ty).into()
+                TypeShape::Tuple(TupleType {
+                    fields: field_types,
+                })
+                .into()
             }
             ValueShape::Binding(binding) => {
                 binding.ty.infer_as(TypeShape::Type)?;

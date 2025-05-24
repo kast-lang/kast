@@ -81,12 +81,15 @@ pub fn default_output() -> Value {
         contexts: Contexts::empty(),
         result: TypeShape::Unit.into(),
     };
-    let mut context_type = Tuple::empty();
-    context_type.add_named(
+    let mut context_type_fields = Tuple::empty();
+    context_type_fields.add_named(
         "write",
         TypeShape::Function(Box::new(write_type.clone())).into(),
     );
-    let context_type = TypeShape::Tuple(context_type).into();
+    let context_type = TypeShape::Tuple(TupleType {
+        fields: context_type_fields,
+    })
+    .into();
     let mut context = Tuple::empty();
     context.add_named(
         "write",

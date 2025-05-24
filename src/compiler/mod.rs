@@ -792,8 +792,10 @@ impl AssigneeExpr<Span> {
                 // NOTE: We should increase the activation watermark on stream
                 Self::Tuple { tuple, data: span } => AssigneeExpr::Tuple {
                     data: AssigneeExprData {
-                        ty: TypeShape::Tuple(tuple.as_ref().map(|field| field.data().ty.clone()))
-                            .into(),
+                        ty: TypeShape::Tuple(TupleType {
+                            fields: tuple.as_ref().map(|field| field.data().ty.clone()),
+                        })
+                        .into(),
                         span,
                     },
                     tuple,
@@ -873,8 +875,8 @@ impl PlaceExpr<Span> {
                                 let field = field.clone();
                                 move |obj_ty| {
                                     match &obj_ty {
-                                        TypeShape::Tuple(fields) => {
-                                            match fields.get(field.as_ref()) {
+                                        TypeShape::Tuple(obj_ty) => {
+                                            match obj_ty.fields.get(field.as_ref()) {
                                                 Some(field_ty) => {
                                                     ty.clone().make_same(field_ty.clone())?
                                                 }
@@ -1284,12 +1286,14 @@ impl Expr<Span> {
                         ty: {
                             let ty = inference::Var::new_with_default(
                                 &format!("tuple at {span}"),
-                                TypeShape::Tuple({
-                                    let mut result = Tuple::empty();
-                                    for (member, field) in tuple.as_ref() {
-                                        result.add_member(member, field.data().ty.clone());
-                                    }
-                                    result
+                                TypeShape::Tuple(TupleType {
+                                    fields: {
+                                        let mut result = Tuple::empty();
+                                        for (member, field) in tuple.as_ref() {
+                                            result.add_member(member, field.data().ty.clone());
+                                        }
+                                        result
+                                    },
                                 }),
                             );
                             ty.add_check({
@@ -1304,7 +1308,7 @@ impl Expr<Span> {
                                         }
                                         TypeShape::Tuple(inferred) => {
                                             for (_name, (original, inferred)) in
-                                                tuple.as_ref().zip(inferred.as_ref())?
+                                                tuple.as_ref().zip(inferred.fields.as_ref())?
                                             {
                                                 original
                                                     .data()
@@ -1369,7 +1373,7 @@ impl Expr<Span> {
                     // tracing::info!("rec fields = {fields}");
                     Expr::Recursive {
                         data: ExprData {
-                            ty: TypeShape::Tuple(fields).into(),
+                            ty: TypeShape::Tuple(TupleType { fields }).into(),
                             span,
                             contexts: body.data().contexts.clone(),
                         },
@@ -1817,8 +1821,10 @@ impl Pattern<Span> {
             },
             Pattern::Tuple { tuple, data: span } => Pattern::Tuple {
                 data: PatternData {
-                    ty: TypeShape::Tuple(tuple.as_ref().map(|field| field.data().ty.clone()))
-                        .into(),
+                    ty: TypeShape::Tuple(TupleType {
+                        fields: tuple.as_ref().map(|field| field.data().ty.clone()),
+                    })
+                    .into(),
                     span,
                 },
                 tuple,

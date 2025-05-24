@@ -126,7 +126,7 @@ impl Kast {
                 TypeShape::String | TypeShape::List(_) | TypeShape::HashMap(_) => Some(false),
                 TypeShape::Variant(_) => None,
                 TypeShape::Tuple(tuple) => {
-                    for field in tuple.values() {
+                    for field in tuple.fields.values() {
                         if !self.is_copy(field)? {
                             return Ok(false);
                         }
@@ -497,9 +497,10 @@ impl ValueShape {
             ValueShape::Char(_) => TypeShape::Char.into(),
             ValueShape::String(_) => TypeShape::String.into(),
             ValueShape::List(list) => TypeShape::List(list.element_ty.clone()).into(),
-            ValueShape::Tuple(tuple) => {
-                TypeShape::Tuple(tuple.as_ref().map(|field| field.ty.clone())).into()
-            }
+            ValueShape::Tuple(tuple) => TypeShape::Tuple(TupleType {
+                fields: tuple.as_ref().map(|field| field.ty.clone()),
+            })
+            .into(),
             ValueShape::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             ValueShape::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
             ValueShape::Template(t) => TypeShape::Template(t.compiled.clone()).into(),
@@ -1026,7 +1027,7 @@ impl TypeShape {
             TypeShape::Variant(_) => return None,
             TypeShape::Tuple(tuple) => {
                 // TODO maybe named?
-                ValueShape::Tuple(TupleValue::new_unnamed(tuple.clone().map(|ty| {
+                ValueShape::Tuple(TupleValue::new_unnamed(tuple.fields.clone().map(|ty| {
                     Value::new_not_inferred_of_ty("inferred field value shape", ty)
                 })))
             }

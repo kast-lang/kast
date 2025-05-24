@@ -12,7 +12,7 @@ pub enum TypeShape {
     String,
     List(#[try_hash] Type),
     Variant(#[try_hash] VariantType),
-    Tuple(#[try_hash] Tuple<Type>),
+    Tuple(#[try_hash] TupleType),
     Function(#[try_hash] Box<FnType>),
     Template(MaybeCompiledFn),
     Macro(#[try_hash] Box<FnType>),
@@ -88,6 +88,38 @@ pub struct HashMapType {
 impl std::fmt::Display for HashMapType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "HashMap[{}, {}]", self.key, self.value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
+pub struct TupleType {
+    #[try_hash]
+    pub fields: Tuple<Type>,
+}
+
+impl SubstituteBindings for TupleType {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        Self {
+            fields: self.fields.map(|ty| ty.substitute_bindings(kast, cache)),
+        }
+    }
+}
+
+impl Inferrable for TupleType {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        let mut fields = Tuple::empty();
+        for (member, (a, b)) in a.fields.zip(b.fields)?.into_iter() {
+            let value = Inferrable::make_same(a, b)?;
+            fields.add_member(member, value);
+        }
+        Ok(Self { fields })
+    }
+}
+
+impl std::fmt::Display for TupleType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fields.fmt(f)
     }
 }
 
@@ -175,9 +207,9 @@ impl TypeShape {
             }),
         }
     }
-    pub fn expect_tuple(self) -> Result<Tuple<Type>, ExpectError<TypeShape, &'static str>> {
+    pub fn expect_tuple(self) -> Result<TupleType, ExpectError<TypeShape, &'static str>> {
         match self {
-            Self::Tuple(tuple) => Ok(tuple),
+            Self::Tuple(ty) => Ok(ty),
             _ => Err(ExpectError {
                 value: self,
                 expected: "tuple",
@@ -234,14 +266,7 @@ impl Inferrable for TypeShape {
             (Self::String, _) => fail!(),
             (Self::List(a), Self::List(b)) => Self::List(Inferrable::make_same(a, b)?),
             (Self::List(_), _) => fail!(),
-            (Self::Tuple(a), Self::Tuple(b)) => {
-                let mut result = Tuple::empty();
-                for (member, (a, b)) in a.zip(b)?.into_iter() {
-                    let value = Inferrable::make_same(a, b)?;
-                    result.add_member(member, value);
-                }
-                Self::Tuple(result)
-            }
+            (Self::Tuple(a), Self::Tuple(b)) => Self::Tuple(Inferrable::make_same(a, b)?),
             (Self::Tuple(_), _) => fail!(),
             (Self::Function(a), Self::Function(b)) => {
                 Self::Function(Box::new(Inferrable::make_same(*a, *b)?))
@@ -410,9 +435,7 @@ impl SubstituteBindings for TypeShape {
             TypeShape::UnwindHandle(ty) => {
                 TypeShape::UnwindHandle(ty.substitute_bindings(kast, cache))
             }
-            TypeShape::Tuple(tuple) => {
-                TypeShape::Tuple(tuple.map(|ty| ty.substitute_bindings(kast, cache)))
-            }
+            TypeShape::Tuple(tuple) => TypeShape::Tuple(tuple.substitute_bindings(kast, cache)),
             TypeShape::Function(f) => {
                 TypeShape::Function(Box::new((*f).substitute_bindings(kast, cache)))
             }
