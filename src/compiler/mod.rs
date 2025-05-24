@@ -244,6 +244,7 @@ pub trait Compilable: Sized {
                     values
                         .as_ref()
                         .map(|ast| ValueShape::Ast(kast.set_def_site(ast)).into()),
+                    Type::new_not_inferred("macro arg"),
                 ))
                 .into();
                 // hold on
@@ -793,6 +794,7 @@ impl AssigneeExpr<Span> {
                 Self::Tuple { tuple, data: span } => AssigneeExpr::Tuple {
                     data: AssigneeExprData {
                         ty: TypeShape::Tuple(TupleType {
+                            name: inference::MaybeNotInferred::new_not_inferred("tuple"),
                             fields: tuple.as_ref().map(|field| field.data().ty.clone()),
                         })
                         .into(),
@@ -1287,6 +1289,7 @@ impl Expr<Span> {
                             let ty = inference::Var::new_with_default(
                                 &format!("tuple at {span}"),
                                 TypeShape::Tuple(TupleType {
+                                    name: inference::MaybeNotInferred::new_not_inferred("tuple"),
                                     fields: {
                                         let mut result = Tuple::empty();
                                         for (member, field) in tuple.as_ref() {
@@ -1373,7 +1376,11 @@ impl Expr<Span> {
                     // tracing::info!("rec fields = {fields}");
                     Expr::Recursive {
                         data: ExprData {
-                            ty: TypeShape::Tuple(TupleType { fields }).into(),
+                            ty: TypeShape::Tuple(TupleType {
+                                name: inference::MaybeNotInferred::new_not_inferred("recursive"),
+                                fields,
+                            })
+                            .into(),
                             span,
                             contexts: body.data().contexts.clone(),
                         },
@@ -1826,6 +1833,7 @@ impl Pattern<Span> {
             Pattern::Tuple { tuple, data: span } => Pattern::Tuple {
                 data: PatternData {
                     ty: TypeShape::Tuple(TupleType {
+                        name: inference::MaybeNotInferred::new_not_inferred("tuple"),
                         fields: tuple.as_ref().map(|field| field.data().ty.clone()),
                     })
                     .into(),

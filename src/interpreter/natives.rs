@@ -128,6 +128,7 @@ impl PreparingNatives {
                 let operand_type = Type::new_not_inferred("binary op {name:?} operand_type");
                 FnType {
                     arg: TypeShape::Tuple(TupleType {
+                        name: None.into(),
                         fields: {
                             let mut args = Tuple::empty();
                             args.add_named("lhs", operand_type.clone());
@@ -308,6 +309,7 @@ impl Natives {
             "HashMap",
             || FnType {
                 arg: TypeShape::Tuple(TupleType {
+                    name: None.into(),
                     fields: {
                         let mut args = Tuple::empty();
                         args.add_unnamed(TypeShape::Type.into());
@@ -374,6 +376,7 @@ impl Natives {
                 .into();
                 FnType {
                     arg: TypeShape::Tuple(TupleType {
+                        name: None.into(),
                         fields: {
                             let mut args = Tuple::empty();
                             args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
@@ -448,6 +451,7 @@ impl Natives {
                 let result_ty = Type::new_not_inferred("HashMap.get result");
                 FnType {
                     arg: TypeShape::Tuple(TupleType {
+                        name: None.into(),
                         fields: {
                             let mut args = Tuple::empty();
                             args.add_unnamed(TypeShape::Ref(map_type.clone()).into());
@@ -520,6 +524,7 @@ impl Natives {
                                 generator_handler,
                                 ValueShape::Type(
                                     TypeShape::Tuple(TupleType {
+                                        name: None.into(),
                                         fields: {
                                             let mut tuple = Tuple::empty();
                                             tuple.add_unnamed(map.ty.key.clone());
@@ -553,7 +558,11 @@ impl Natives {
                             tuple.add_unnamed(value.into_value()?);
                             kast.call(
                                 handler.clone(),
-                                ValueShape::Tuple(TupleValue::new_unnamed(tuple)).into(),
+                                ValueShape::Tuple(TupleValue::new_unnamed(
+                                    tuple,
+                                    Type::new_not_inferred("_"),
+                                ))
+                                .into(),
                             )
                             .await?;
                         }
@@ -567,6 +576,7 @@ impl Natives {
             "contains",
             || FnType {
                 arg: TypeShape::Tuple(TupleType {
+                    name: None.into(),
                     fields: {
                         let mut args = Tuple::empty();
                         args.add_named("s", TypeShape::String.into());
@@ -735,6 +745,7 @@ impl Natives {
             "set_native",
             || FnType {
                 arg: TypeShape::Tuple(TupleType {
+                    name: None.into(),
                     fields: {
                         let mut args = Tuple::empty();
                         args.add_named("name", TypeShape::String.into());
@@ -771,6 +782,7 @@ impl Natives {
                 let elem_ty = Type::new_not_inferred("list.get elem_ty");
                 FnType {
                     arg: TypeShape::Tuple(TupleType {
+                        name: None.into(),
                         fields: {
                             let mut tuple = Tuple::empty();
                             tuple.add_unnamed(
@@ -845,6 +857,7 @@ impl Natives {
                 let elem_ty = Type::new_not_inferred("list.set elem_ty");
                 FnType {
                     arg: TypeShape::Tuple(TupleType {
+                        name: None.into(),
                         fields: {
                             let mut args = Tuple::empty();
                             args.add_unnamed(
@@ -888,6 +901,7 @@ impl Natives {
                 let elem_ty = Type::new_not_inferred("list.push elem_ty");
                 FnType {
                     arg: TypeShape::Tuple(TupleType {
+                        name: None.into(),
                         fields: {
                             let mut args = Tuple::empty();
                             args.add_unnamed(
@@ -924,6 +938,7 @@ impl Natives {
             "push_char",
             || FnType {
                 arg: TypeShape::Tuple(TupleType {
+                    name: None.into(),
                     fields: {
                         let mut args = Tuple::empty();
                         args.add_unnamed(TypeShape::String.into());
@@ -988,6 +1003,7 @@ impl Natives {
                 let value_ty = Type::new_not_inferred("random value_ty");
                 FnType {
                     arg: TypeShape::Tuple(TupleType {
+                        name: None.into(),
                         fields: {
                             let mut args = Tuple::empty();
                             args.add_named("min", value_ty.clone());

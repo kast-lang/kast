@@ -76,6 +76,8 @@ pub struct TupleValue {
     pub name: Option<Name>,
     #[try_hash]
     pub inner: Tuple<OwnedPlace>,
+    #[try_hash]
+    pub ty: Type,
 }
 
 impl std::ops::Deref for TupleValue {
@@ -86,17 +88,18 @@ impl std::ops::Deref for TupleValue {
 }
 
 impl TupleValue {
-    pub fn new(name: Name, values: Tuple<Value>) -> Self {
-        Self::new_impl(Some(name), values)
+    pub fn new(name: Name, values: Tuple<Value>, ty: Type) -> Self {
+        Self::new_impl(Some(name), values, ty)
     }
-    fn new_impl(name: Option<Name>, values: Tuple<Value>) -> Self {
+    fn new_impl(name: Option<Name>, values: Tuple<Value>, ty: Type) -> Self {
         Self {
             name,
             inner: values.map(|value| OwnedPlace::new(value, Mutability::Nested)),
+            ty,
         }
     }
-    pub fn new_unnamed(values: Tuple<Value>) -> Self {
-        Self::new_impl(None, values)
+    pub fn new_unnamed(values: Tuple<Value>, ty: Type) -> Self {
+        Self::new_impl(None, values, ty)
     }
     pub fn into_values(self) -> Tuple<Value> {
         self.inner.map(|place| place.into_value().unwrap())
@@ -283,7 +286,7 @@ impl PartialOrd for HashMapValue {
     }
 }
 impl Ord for HashMapValue {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
         todo!()
     }
 }
@@ -500,10 +503,7 @@ impl ValueShape {
             ValueShape::Char(_) => TypeShape::Char.into(),
             ValueShape::String(_) => TypeShape::String.into(),
             ValueShape::List(list) => TypeShape::List(list.element_ty.clone()).into(),
-            ValueShape::Tuple(tuple) => TypeShape::Tuple(TupleType {
-                fields: tuple.as_ref().map(|field| field.ty.clone()),
-            })
-            .into(),
+            ValueShape::Tuple(tuple) => tuple.ty.clone(),
             ValueShape::Binding(binding) => binding.ty.clone(), // TODO not sure, maybe Type::Binding?
             ValueShape::Function(f) => TypeShape::Function(Box::new(f.ty.clone())).into(),
             ValueShape::Template(t) => TypeShape::Template(t.compiled.clone()).into(),
@@ -983,13 +983,14 @@ impl Inferrable for ValueShape {
             }
             (ValueShape::List(_), _) => fail!(),
             (ValueShape::Tuple(a), ValueShape::Tuple(b)) => {
+                let ty = Inferrable::make_same(a.ty.clone(), b.ty.clone())?;
                 let mut result = Tuple::empty();
                 for (member, (a, b)) in a.into_values().zip(b.into_values())?.into_iter() {
                     let value = Inferrable::make_same(a, b)?;
                     result.add_member(member, value);
                 }
                 // TODO maybe named?
-                ValueShape::Tuple(TupleValue::new_unnamed(result))
+                ValueShape::Tuple(TupleValue::new_unnamed(result, ty))
             }
             (ValueShape::Tuple(_), _) => fail!(),
             (ValueShape::Function(_), _) => fail!(),
@@ -1031,9 +1032,13 @@ impl TypeShape {
             TypeShape::Variant(_) => return None,
             TypeShape::Tuple(tuple) => {
                 // TODO maybe named?
-                ValueShape::Tuple(TupleValue::new_unnamed(tuple.fields.clone().map(|ty| {
-                    Value::new_not_inferred_of_ty("inferred field value shape", ty)
-                })))
+                ValueShape::Tuple(TupleValue::new_unnamed(
+                    tuple
+                        .fields
+                        .clone()
+                        .map(|ty| Value::new_not_inferred_of_ty("inferred field value shape", ty)),
+                    self.clone().into(),
+                ))
             }
             TypeShape::Function(_) => return None,
             TypeShape::Template(_) => return None,

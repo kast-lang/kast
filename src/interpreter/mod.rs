@@ -263,6 +263,7 @@ impl Kast {
                         ValueShape::Tuple(TupleValue {
                             inner: fields,
                             name: _,
+                            ty: _,
                         }) => match fields.get(field.as_ref()) {
                             Some(place) => place.get_ref(),
                             None => eyre::bail!("{obj} does not have field {field:?}"),
@@ -593,6 +594,26 @@ impl Kast {
                             }],
                         })
                         .into(),
+                        ValueShape::Tuple(tuple) => TypeShape::Tuple(TupleType {
+                            name: Some(self.current_name.clone()).into(),
+                            fields: {
+                                let mut fields = Tuple::empty();
+                                for (member, value) in tuple.into_values() {
+                                    fields.add_member(
+                                        member,
+                                        self.cache
+                                            .compiler
+                                            .casts
+                                            .lock()
+                                            .unwrap()
+                                            .cast_to_ty(value)?
+                                            .unwrap(),
+                                    );
+                                }
+                                fields
+                            },
+                        })
+                        .into(),
                         _ => eyre::bail!("{def} can not be used in newtype"),
                     };
                     ValueShape::Type(ty).into()
@@ -650,8 +671,7 @@ impl Kast {
                         result.add_member(member, kast.eval(field).await?);
                     }
                     let result =
-                        ValueShape::Tuple(TupleValue::new(self.current_name.clone(), result))
-                            .into();
+                        ValueShape::Tuple(TupleValue::new_unnamed(result, data.ty.clone())).into();
                     match data.ty.inferred_or_default()? {
                         Ok(TypeShape::Type) => self
                             .cache
@@ -669,7 +689,7 @@ impl Kast {
                 Expr::Recursive {
                     body,
                     compiler_scope,
-                    data: _,
+                    data,
                 } => {
                     let mut inner = self.enter_recursive_scope();
                     inner.eval(body).await?.into_inferred()?.into_unit()?;
@@ -682,6 +702,7 @@ impl Kast {
                     ValueShape::Tuple(TupleValue {
                         name: Some(self.current_name.clone()),
                         inner: fields,
+                        ty: data.ty.clone(),
                     })
                     .into()
                 }

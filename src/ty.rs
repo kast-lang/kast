@@ -94,6 +94,8 @@ impl std::fmt::Display for HashMapType {
 #[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct TupleType {
     #[try_hash]
+    pub name: inference::MaybeNotInferred<Option<Name>>,
+    #[try_hash]
     pub fields: Tuple<Type>,
 }
 
@@ -101,6 +103,7 @@ impl SubstituteBindings for TupleType {
     type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
         Self {
+            name: substitute_bindings_inferrable(self.name, kast, cache),
             fields: self.fields.map(|ty| ty.substitute_bindings(kast, cache)),
         }
     }
@@ -113,13 +116,23 @@ impl Inferrable for TupleType {
             let value = Inferrable::make_same(a, b)?;
             fields.add_member(member, value);
         }
-        Ok(Self { fields })
+        Ok(Self {
+            name: Inferrable::make_same(a.name, b.name).context("names are different")?,
+            fields,
+        })
     }
 }
 
 impl std::fmt::Display for TupleType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fields.fmt(f)
+        match self.name.inferred() {
+            Ok(None) => self.fields.fmt(f),
+            Ok(Some(name)) => name.fmt(f),
+            Err(_) => {
+                write!(f, "_ ")?;
+                self.fields.fmt(f)
+            }
+        }
     }
 }
 

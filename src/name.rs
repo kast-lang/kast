@@ -33,6 +33,16 @@ impl SubstituteBindings for NamePart {
 #[derive(Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Name(#[try_hash] std::sync::Arc<Vec<NamePart>>);
 
+impl Inferrable for Name {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        if a == b {
+            Ok(a)
+        } else {
+            eyre::bail!("{a} != {b}")
+        }
+    }
+}
+
 impl SubstituteBindings for Name {
     type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {

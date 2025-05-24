@@ -95,6 +95,34 @@ pub trait SubstituteBindings {
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target;
 }
 
+// TODO merge into impl SubstituteBindings for MaybeNotInferred
+pub fn substitute_bindings_inferrable<T: Inferrable + SubstituteBindings<Target = T>>(
+    var: inference::MaybeNotInferred<T>,
+    kast: &Kast,
+    cache: &mut RecurseCache,
+) -> inference::MaybeNotInferred<T> {
+    let inferred = match var.inferred() {
+        Ok(inferred) => inferred,
+        Err(_) => {
+            return var;
+        }
+    };
+    if let Some(result) = cache.get(var.var()) {
+        return result;
+    }
+    cache.insert(var.var(), var.clone());
+    let result: inference::MaybeNotInferred<T> = inferred.substitute_bindings(kast, cache).into();
+    cache.insert(var.var(), result.clone());
+    result
+}
+
+impl<T: SubstituteBindings> SubstituteBindings for Option<T> {
+    type Target = Option<T::Target>;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        self.map(|value| value.substitute_bindings(kast, cache))
+    }
+}
+
 enum ImportMode {
     Normal,
     OnlyStdSyntax,

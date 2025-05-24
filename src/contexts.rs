@@ -49,7 +49,13 @@ pub fn default_file_system() -> Value {
         ))
         .into(),
     );
-    ValueShape::Tuple(TupleValue::new_unnamed(context)).into()
+    let context_ty = TypeShape::Tuple(TupleType {
+        name: None.into(),
+        fields: context.as_ref().map(|field: &Value| field.ty()),
+    })
+    .into();
+    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context, context_ty)).into();
+    context
 }
 
 pub fn default_number_type() -> Value {
@@ -74,7 +80,13 @@ pub fn default_number_type() -> Value {
         ))
         .into(),
     );
-    ValueShape::Tuple(TupleValue::new_unnamed(context)).into()
+    let context_ty = TypeShape::Tuple(TupleType {
+        name: None.into(),
+        fields: context.as_ref().map(|field: &Value| field.ty()),
+    })
+    .into();
+    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context, context_ty)).into();
+    context
 }
 
 pub fn default_output() -> Value {
@@ -89,6 +101,7 @@ pub fn default_output() -> Value {
         TypeShape::Function(Box::new(write_type.clone())).into(),
     );
     let context_type = TypeShape::Tuple(TupleType {
+        name: Some(Name::new(NamePart::Str("output".into()))).into(),
         fields: context_type_fields,
     })
     .into();
@@ -114,8 +127,7 @@ pub fn default_output() -> Value {
         ))
         .into(),
     );
-    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context)).into();
-    assert_eq!(context.ty(), context_type);
+    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context, context_type)).into();
     context
 }
 
@@ -141,7 +153,12 @@ pub fn default_input() -> Value {
         ))
         .into(),
     );
-    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context)).into();
+    let context_ty = TypeShape::Tuple(TupleType {
+        name: None.into(),
+        fields: context.as_ref().map(|field: &Value| field.ty()),
+    })
+    .into();
+    let context: Value = ValueShape::Tuple(TupleValue::new_unnamed(context, context_ty)).into();
     context
 }
 

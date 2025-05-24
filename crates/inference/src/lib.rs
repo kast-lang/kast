@@ -352,3 +352,14 @@ impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T
         result
     }
 }
+
+impl<T: Inferrable> Inferrable for Option<T> {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        match (a, b) {
+            (None, None) => Ok(None),
+            (Some(a), Some(b)) => Ok(Some(T::make_same(a, b)?)),
+            (Some(_), None) => eyre::bail!("some != none"),
+            (None, Some(_)) => eyre::bail!("none != some"),
+        }
+    }
+}

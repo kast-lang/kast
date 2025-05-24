@@ -52,6 +52,7 @@ impl CastMap {
             // )
             // .into(),
             ValueShape::Tuple(tuple) => {
+                let name = tuple.name.clone();
                 let mut field_types = Tuple::<Type>::empty();
                 for (member, value) in tuple.into_values() {
                     field_types.add_member(
@@ -61,6 +62,7 @@ impl CastMap {
                     );
                 }
                 TypeShape::Tuple(TupleType {
+                    name: name.into(),
                     fields: field_types,
                 })
                 .into()
