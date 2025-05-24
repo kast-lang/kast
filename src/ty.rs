@@ -11,7 +11,7 @@ pub enum TypeShape {
     Char,
     String,
     List(#[try_hash] Type),
-    Variant(#[try_hash] Vec<VariantType>),
+    Variant(#[try_hash] VariantType),
     Tuple(#[try_hash] Tuple<Type>),
     Function(#[try_hash] Box<FnType>),
     Template(MaybeCompiledFn),
@@ -93,12 +93,53 @@ impl std::fmt::Display for HashMapType {
 
 #[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct VariantType {
+    #[try_hash]
+    pub variants: Vec<VariantTypeVariant>,
+}
+
+impl VariantType {
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> VariantType {
+        Self {
+            variants: self
+                .variants
+                .into_iter()
+                .map(|variant| VariantTypeVariant {
+                    name: variant.name.clone(),
+                    value: variant
+                        .value
+                        .map(|ty| Box::new(ty.substitute_bindings(kast, cache))),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl std::fmt::Display for VariantType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (index, variant) in self.variants.iter().enumerate() {
+            if index != 0 && !f.alternate() {
+                write!(f, " | ")?;
+            }
+            if f.alternate() {
+                write!(f, "| ")?;
+            }
+            variant.fmt(f)?;
+            if f.alternate() {
+                writeln!(f)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
+pub struct VariantTypeVariant {
     pub name: String,
     #[try_hash]
     pub value: Option<Box<Type>>,
 }
 
-impl std::fmt::Display for VariantType {
+impl std::fmt::Display for VariantTypeVariant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, ":{}", self.name)?;
         if let Some(value) = &self.value {
@@ -136,9 +177,9 @@ impl TypeShape {
             }),
         }
     }
-    pub fn expect_variant(self) -> Result<Vec<VariantType>, ExpectError<TypeShape, &'static str>> {
+    pub fn expect_variant(self) -> Result<VariantType, ExpectError<TypeShape, &'static str>> {
         match self {
-            Self::Variant(variants) => Ok(variants),
+            Self::Variant(ty) => Ok(ty),
             _ => Err(ExpectError {
                 value: self,
                 expected: "variant",
@@ -270,7 +311,7 @@ impl std::fmt::Display for TypeShape {
             Self::Tuple(tuple) => tuple.fmt(f),
             Self::Function(ty) => ty.fmt(f),
             Self::Template(_template) => write!(f, "template"),
-            Self::Macro(ty) => write!(f, "macro {ty}"),
+            Self::Macro(ty) => write!(f, "macro {ty:#}"),
             Self::Multiset => write!(f, "multiset"),
             Self::Ast => write!(f, "ast"),
             Self::Expr => write!(f, "expr"),
@@ -279,15 +320,7 @@ impl std::fmt::Display for TypeShape {
             Self::SyntaxModule => write!(f, "syntax module"),
             Self::SyntaxDefinition => write!(f, "syntax definition"),
             Self::Binding(binding) => binding.fmt(f),
-            Self::Variant(variants) => {
-                for (index, variant) in variants.iter().enumerate() {
-                    if index != 0 {
-                        write!(f, " ")?;
-                    }
-                    write!(f, "| {variant}")?;
-                }
-                Ok(())
-            }
+            Self::Variant(ty) => ty.fmt(f),
             Self::Symbol => write!(f, "symbol"),
             Self::HashMap(map) => map.fmt(f),
             Self::Ref(ty) => write!(f, "&{ty}"),
@@ -375,18 +408,9 @@ impl SubstituteBindings for Type {
             | TypeShape::SyntaxModule
             | TypeShape::SyntaxDefinition => self.clone(),
             TypeShape::List(a) => TypeShape::List(a.substitute_bindings(kast, cache)).into(),
-            TypeShape::Variant(variants) => TypeShape::Variant(
-                variants
-                    .into_iter()
-                    .map(|variant| VariantType {
-                        name: variant.name.clone(),
-                        value: variant
-                            .value
-                            .map(|ty| Box::new(ty.substitute_bindings(kast, cache))),
-                    })
-                    .collect(),
-            )
-            .into(),
+            TypeShape::Variant(ty) => {
+                TypeShape::Variant(ty.substitute_bindings(kast, cache)).into()
+            }
             TypeShape::UnwindHandle(ty) => {
                 TypeShape::UnwindHandle(ty.substitute_bindings(kast, cache)).into()
             }

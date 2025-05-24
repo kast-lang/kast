@@ -722,8 +722,8 @@ fn get_complex(ast: &Ast) -> (&Tuple<Ast>, Span) {
 fn infer_type_variant(description: &str, name: String, value_ty: Option<Type>) -> Type {
     let var = inference::Var::new(description);
     var.add_check(move |ty: &TypeShape| {
-        let variants = ty.clone().expect_variant()?;
-        match variants.iter().find(|variant| variant.name == name) {
+        let ty = ty.clone().expect_variant()?;
+        match ty.variants.iter().find(|variant| variant.name == name) {
             Some(variant) => match (&variant.value, &value_ty) {
                 (None, None) => Ok(inference::CheckResult::Completed),
                 (None, Some(_)) => {

@@ -1168,16 +1168,18 @@ impl Natives {
         binary_op!(%, checked_rem);
 
         {
-            let exec_mode_ty = TypeShape::Variant(vec![
-                VariantType {
-                    name: "Run".to_owned(),
-                    value: None,
-                },
-                VariantType {
-                    name: "Import".to_owned(),
-                    value: None,
-                },
-            ]);
+            let exec_mode_ty = TypeShape::Variant(VariantType {
+                variants: vec![
+                    VariantTypeVariant {
+                        name: "Run".to_owned(),
+                        value: None,
+                    },
+                    VariantTypeVariant {
+                        name: "Import".to_owned(),
+                        value: None,
+                    },
+                ],
+            });
             natives.insert_fn(
                 "exec_mode",
                 {

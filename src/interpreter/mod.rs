@@ -565,7 +565,7 @@ impl Kast {
                             let mut variants = Vec::new();
                             for value in values {
                                 let variant = value.into_inferred()?.as_variant()?.clone();
-                                variants.push(VariantType {
+                                variants.push(VariantTypeVariant {
                                     name: variant.name,
                                     value: variant
                                         .value
@@ -574,16 +574,18 @@ impl Kast {
                                         .map(Box::new),
                                 });
                             }
-                            TypeShape::Variant(variants).into()
+                            TypeShape::Variant(VariantType { variants }).into()
                         }
-                        ValueShape::Variant(variant) => TypeShape::Variant(vec![VariantType {
-                            name: variant.name,
-                            value: variant
-                                .value
-                                .map(|value| value.into_value()?.into_type())
-                                .transpose()?
-                                .map(Box::new),
-                        }])
+                        ValueShape::Variant(variant) => TypeShape::Variant(VariantType {
+                            variants: vec![VariantTypeVariant {
+                                name: variant.name,
+                                value: variant
+                                    .value
+                                    .map(|value| value.into_value()?.into_type())
+                                    .transpose()?
+                                    .map(Box::new),
+                            }],
+                        })
                         .into(),
                         _ => eyre::bail!("{def} can not be used in newtype"),
                     };
