@@ -1492,7 +1492,11 @@ impl Expr<Span> {
                                 .cache
                                 .interpreter
                                 .natives
-                                .get("default_number_type", TypeShape::Type.into())?
+                                .get_named(
+                                    kast.current_name.clone(), // TODO
+                                    "default_number_type",
+                                    TypeShape::Type.into(),
+                                )?
                                 .unwrap()
                                 .into_type()?;
                             let default_number_type_context = kast

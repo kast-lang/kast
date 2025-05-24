@@ -98,6 +98,7 @@ impl Kast {
                 },
             ),
             ValueShape::NativeFunction(NativeFunction::new(
+                Name::new(NamePart::Str("<rusty>".into())),
                 name,
                 FnType {
                     arg: A::ty()
@@ -648,11 +649,9 @@ impl Kast {
                             kast.current_name.append(NamePart::Str(format!("{member}")));
                         result.add_member(member, kast.eval(field).await?);
                     }
-                    let result = ValueShape::Tuple(TupleValue::new(
-                        self.current_name.append(NamePart::tbd()),
-                        result,
-                    ))
-                    .into();
+                    let result =
+                        ValueShape::Tuple(TupleValue::new(self.current_name.clone(), result))
+                            .into();
                     match data.ty.inferred_or_default()? {
                         Ok(TypeShape::Type) => self
                             .cache
@@ -681,7 +680,7 @@ impl Kast {
                         }
                     });
                     ValueShape::Tuple(TupleValue {
-                        name: compiler_scope.name().clone(),
+                        name: Some(self.current_name.clone()),
                         inner: fields,
                     })
                     .into()

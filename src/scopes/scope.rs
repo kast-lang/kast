@@ -45,7 +45,6 @@ pub enum ScopeType {
 pub struct Scope {
     pub id: Id,
     pub spawn_id: Id,
-    pub name: Name,
     pub parent: Option<Parc<Scope>>,
     pub ty: ScopeType,
     closed: AtomicBool,
@@ -89,7 +88,6 @@ impl Scope {
         tracing::trace!("new scope {id:?} (ty={ty:?})");
         Self {
             id,
-            name: Name::unknown(),
             spawn_id,
             parent,
             ty,

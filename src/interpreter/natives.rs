@@ -9,9 +9,6 @@ pub struct Natives {
 }
 
 impl Natives {
-    pub fn get(&self, native_name: &str, ty: Type) -> eyre::Result<Option<Value>> {
-        self.get_named(Name::unknown(), native_name, ty)
-    }
     pub fn get_named(
         &self,
         name: Name,

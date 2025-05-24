@@ -152,7 +152,7 @@ impl SubstituteBindings for VariantType {
 
 impl std::fmt::Display for VariantType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.name.is_known() {
+        if true {
             return self.name.fmt(f);
         }
         for (index, variant) in self.variants.iter().enumerate() {

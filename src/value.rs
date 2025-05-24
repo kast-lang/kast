@@ -73,7 +73,7 @@ impl SubstituteBindings for ValueShape {
 #[derive(Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TupleValue {
     #[try_hash]
-    pub name: Name,
+    pub name: Option<Name>,
     #[try_hash]
     pub inner: Tuple<OwnedPlace>,
 }
@@ -87,13 +87,16 @@ impl std::ops::Deref for TupleValue {
 
 impl TupleValue {
     pub fn new(name: Name, values: Tuple<Value>) -> Self {
+        Self::new_impl(Some(name), values)
+    }
+    fn new_impl(name: Option<Name>, values: Tuple<Value>) -> Self {
         Self {
             name,
             inner: values.map(|value| OwnedPlace::new(value, Mutability::Nested)),
         }
     }
     pub fn new_unnamed(values: Tuple<Value>) -> Self {
-        Self::new(Name::unknown(), values)
+        Self::new_impl(None, values)
     }
     pub fn into_values(self) -> Tuple<Value> {
         self.inner.map(|place| place.into_value().unwrap())
@@ -150,11 +153,11 @@ impl Kast {
             }
         }
         // this part is kinda like redstone
-        let copy_trait = self
-            .cache
-            .interpreter
-            .natives
-            .get("Copy", Type::new_not_inferred("copy"))?;
+        let copy_trait = self.cache.interpreter.natives.get_named(
+            self.current_name.clone(),
+            "Copy",
+            Type::new_not_inferred("copy"),
+        )?;
         let Some(copy_trait) = copy_trait else {
             // Before Copy is defined everything is Copy
             // TODO maybe not needed because of logic above?
@@ -873,12 +876,13 @@ pub struct NativeFunction {
 
 impl NativeFunction {
     pub fn new(
+        name: Name,
         native_name: impl Into<String>,
         ty: FnType,
         r#impl: impl NativeFunctionClosure,
     ) -> Self {
         Self {
-            name: Name::unknown(),
+            name,
             native_name: native_name.into(),
             ty,
             r#impl: (std::sync::Arc::new(r#impl) as std::sync::Arc<dyn NativeFunctionClosure>)

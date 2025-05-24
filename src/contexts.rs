@@ -31,6 +31,7 @@ pub fn default_file_system() -> Value {
     context.add_named(
         "read_file",
         ValueShape::NativeFunction(NativeFunction::new(
+            Name::new(NamePart::Str("native.read_file".into())),
             "read_file",
             FnType {
                 arg: TypeShape::String.into(),
@@ -56,6 +57,7 @@ pub fn default_number_type() -> Value {
     context.add_named(
         "default_number_type",
         ValueShape::NativeFunction(NativeFunction::new(
+            Name::new(NamePart::Str("native.default_number_type".into())),
             "default_number_type",
             FnType {
                 arg: TypeShape::String.into(),
@@ -94,6 +96,7 @@ pub fn default_output() -> Value {
     context.add_named(
         "write",
         ValueShape::NativeFunction(NativeFunction::new(
+            Name::new(NamePart::Str("native.print".into())),
             "print",
             write_type,
             |kast: Kast, _fn_ty, s: Value| {
@@ -121,6 +124,7 @@ pub fn default_input() -> Value {
     context.add_named(
         "read_line",
         ValueShape::NativeFunction(NativeFunction::new(
+            Name::new(NamePart::Str("native.read_line".into())),
             "read_line",
             FnType {
                 arg: TypeShape::Unit.into(),

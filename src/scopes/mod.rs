@@ -44,9 +44,6 @@ impl CompilerScope {
     pub fn parent(&self) -> Option<CompilerScope> {
         self.0.parent.clone().map(Self)
     }
-    pub fn name(&self) -> &Name {
-        &self.0.name
-    }
     pub fn insert(&self, name: &str, span: &Span, value: Value) {
         tracing::trace!("inserting {name:?} into {:?}", self.0.id);
         self.0.insert(
