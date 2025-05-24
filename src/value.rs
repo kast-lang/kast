@@ -111,6 +111,15 @@ impl TupleValue {
 
 impl std::fmt::Display for TupleValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.ty.inferred() {
+            Ok(TypeShape::Tuple(ty)) => match ty.name.inferred() {
+                Ok(Some(name)) => write!(f, "{} ", name.short())?,
+                Ok(None) => {}
+                Err(_) => write!(f, "_ ")?,
+            },
+            Ok(ty) => panic!("tuple value type is {ty}"),
+            Err(_) => write!(f, "_ ")?,
+        }
         self.inner.fmt(f)
     }
 }
@@ -334,7 +343,15 @@ impl std::fmt::Display for Value {
 
 impl std::fmt::Display for VariantValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, ":{}", self.name)?;
+        write!(f, ":")?;
+        match self.ty.inferred() {
+            Ok(TypeShape::Variant(ty)) => {
+                write!(f, "{}.", ty.name.short())?;
+            }
+            Ok(ty) => panic!("variant value type is {ty}"),
+            Err(_) => write!(f, "_.")?,
+        }
+        write!(f, "{}", self.name)?;
         if let Some(value) = &self.value {
             write!(f, " {value}")?;
         }

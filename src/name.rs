@@ -33,6 +33,21 @@ impl SubstituteBindings for NamePart {
 #[derive(Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Name(#[try_hash] std::sync::Arc<Vec<NamePart>>);
 
+impl Name {
+    pub fn short(&self) -> impl std::fmt::Display + '_ {
+        self.0
+            .iter()
+            .rfind(|part| match part {
+                NamePart::Instantiate(_) => false,
+                NamePart::ImplCast { .. } => true,
+                NamePart::File(_) => true,
+                NamePart::Str(_) => true,
+                NamePart::Symbol(_) => true,
+            })
+            .unwrap()
+    }
+}
+
 impl Inferrable for Name {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         if a == b {

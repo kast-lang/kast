@@ -1833,7 +1833,9 @@ impl Pattern<Span> {
             Pattern::Tuple { tuple, data: span } => Pattern::Tuple {
                 data: PatternData {
                     ty: TypeShape::Tuple(TupleType {
-                        name: inference::MaybeNotInferred::new_not_inferred("tuple"),
+                        name: inference::MaybeNotInferred::new_not_inferred_with_default(
+                            "tuple", None,
+                        ),
                         fields: tuple.as_ref().map(|field| field.data().ty.clone()),
                     })
                     .into(),
