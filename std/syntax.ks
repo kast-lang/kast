@@ -140,6 +140,8 @@ syntax_module {
   syntax invoke_macro <- 150 = @"macro" "!" arg;
   syntax @"builtin macro call_macro" <- 150 = @"macro" "!!" arg;
 
+  syntax @"builtin macro variant" -> 200 = "`" name;
+  syntax @"builtin macro variant" -> 200 = "`" name value;
   syntax @"builtin macro quote" -> 200 = "`" "(" expr ")";
   # syntax @"builtin macro variant" <- 250 = type ":" name value;
   # syntax @"builtin macro variant" <- 250 = type ":" name;

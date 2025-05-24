@@ -1,3 +1,5 @@
+use eyre::OptionExt;
+
 use super::*;
 
 pub type BuiltinMacro = for<'a> fn(
@@ -313,11 +315,33 @@ impl Builtins {
             .as_ref()
             .into_named_opt(["name"], ["type", "value"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let name = name
-            .as_ident()
-            .ok_or_else(|| eyre!("variant name must be an identifier"))?;
+        let (inline_ty, name): (Option<Type>, &str) = match name {
+            kast_ast::Ast::Simple {
+                token: kast_ast::Token::Ident { name, .. },
+                ..
+            } => (None, name),
+            kast_ast::Ast::Complex {
+                definition,
+                values,
+                data: _,
+            } if definition.name == "builtin macro field_access" => {
+                let [ty, name] = values.as_ref().into_named(["obj", "field"])?;
+                let ty = kast
+                    .compile::<Expr>(ty)
+                    .await?
+                    .auto_instantiate(kast)
+                    .await?;
+                ty.data().ty.infer_as(TypeShape::Type)?;
+                let ty = kast.eval(&ty).await?.into_type()?;
+                (Some(ty), name.as_ident().ok_or_eyre("expected ident")?)
+            }
+            _ => eyre::bail!("{} is not expected here", name.show_short()),
+        };
+        if ty.is_some() && inline_ty.is_some() {
+            eyre::bail!("both ty and inline ty cant be");
+        }
         let ty = match ty {
-            None => None,
+            None => inline_ty,
             Some(ty) => Some({
                 let ty = kast
                     .compile::<Expr>(ty)
