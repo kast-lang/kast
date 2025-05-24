@@ -1,6 +1,7 @@
 mod display_option;
 mod error;
 mod id;
+pub mod pad_adapter;
 mod parc;
 mod recurse_cache;
 mod show_short;

@@ -7,7 +7,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-pad-adapter.workspace = true
 thiserror.workspace = true
 try-hash.workspace = true
 anymap3.workspace = true

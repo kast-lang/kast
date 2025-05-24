@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use crate::pad_adapter;
 use try_hash::TryHash;
 
 #[derive(Debug, Clone)]
@@ -474,16 +475,35 @@ impl<T: std::fmt::Display> std::fmt::Display for Tuple<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "(")?;
         {
-            if !self.is_empty() {
+            if !self.is_empty() && f.alternate() {
                 writeln!(f)?;
             }
-            let mut f = pad_adapter::PadAdapter::new(f);
+            let mut f =
+                pad_adapter::PadAdapter::with_padding(f, if f.alternate() { "    " } else { "" });
+            let mut first = true;
+            let mut before_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
+                if !first && !f.alternate() {
+                    write!(f, ", ")?;
+                }
+                first = false;
+                Ok(())
+            };
+            let after_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
+                if f.alternate() {
+                    writeln!(f, ",")?;
+                }
+                Ok(())
+            };
             for field in &self.unnamed {
-                writeln!(f, "{field},")?;
+                before_field(&mut f)?;
+                write!(f, "{field}")?;
+                after_field(&mut f)?;
             }
             for name in &self.named_order {
+                before_field(&mut f)?;
                 let field = &self.named[name];
-                writeln!(f, ".{name} = {field},")?;
+                write!(f, ".{name} = {field}")?;
+                after_field(&mut f)?;
             }
         }
         write!(f, ")")?;

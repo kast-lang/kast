@@ -285,7 +285,7 @@ impl Natives {
                 async move {
                     let ty = &fn_ty.arg;
                     assert_eq!(&value.ty(), ty);
-                    Ok(ValueShape::String(value.to_string()).into())
+                    Ok(ValueShape::String(format!("{value:#}")).into())
                 }
                 .boxed()
             },
