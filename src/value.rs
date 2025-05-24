@@ -377,7 +377,7 @@ impl std::fmt::Display for ValueShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ValueShape::Unit => write!(f, "()"),
-            ValueShape::Variant(value) => write!(f, "{value}"),
+            ValueShape::Variant(value) => value.fmt(f),
             ValueShape::Bool(value) => value.fmt(f),
             ValueShape::Int32(value) => value.fmt(f),
             ValueShape::Int64(value) => value.fmt(f),
@@ -391,7 +391,7 @@ impl std::fmt::Display for ValueShape {
                         write!(f, " ")?;
                     }
                     write!(f, "| ")?;
-                    write!(f, "{value}")?;
+                    value.fmt(f)?;
                 }
                 Ok(())
             }
@@ -399,18 +399,21 @@ impl std::fmt::Display for ValueShape {
             ValueShape::Tuple(tuple) => tuple.fmt(f),
             ValueShape::NativeFunction(function) => function.fmt(f),
             ValueShape::Binding(binding) => binding.fmt(f),
-            ValueShape::Function(fun) => write!(f, "{fun}"),
-            ValueShape::Template(fun) => write!(f, "{fun}"),
-            ValueShape::Macro(fun) => write!(f, "macro {fun}"),
+            ValueShape::Function(fun) => fun.fmt(f),
+            ValueShape::Template(fun) => fun.fmt(f),
+            ValueShape::Macro(fun) => {
+                write!(f, "macro ")?;
+                fun.fmt(f)
+            }
             ValueShape::Ast(ast) => {
-                write!(f, "{ast}")?;
+                ast.fmt(f)?;
                 if let Some(scope) = &ast.data().def_site {
                     write!(f, " with def site id={}", scope.id())?;
                 }
                 Ok(())
             }
             ValueShape::Expr(expr) => {
-                write!(f, "{expr}")?;
+                expr.fmt(f)?;
                 Ok(())
             }
             ValueShape::Type(ty) => {

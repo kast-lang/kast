@@ -31,6 +31,13 @@ impl<'a, 'b: 'a, 'c> PadAdapter<'a, 'b, 'c> {
     pub fn alternate(&self) -> bool {
         self.fmt.alternate()
     }
+
+    pub fn write(&mut self, value: impl std::fmt::Display) -> std::fmt::Result {
+        match self.fmt.alternate() {
+            true => write!(self, "{value:#}"),
+            false => write!(self, "{value}"),
+        }
+    }
 }
 
 impl Write for PadAdapter<'_, '_, '_> {

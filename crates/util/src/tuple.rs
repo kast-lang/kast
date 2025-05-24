@@ -496,13 +496,14 @@ impl<T: std::fmt::Display> std::fmt::Display for Tuple<T> {
             };
             for field in &self.unnamed {
                 before_field(&mut f)?;
-                write!(f, "{field}")?;
+                f.write(field)?;
                 after_field(&mut f)?;
             }
             for name in &self.named_order {
                 before_field(&mut f)?;
                 let field = &self.named[name];
-                write!(f, ".{name} = {field}")?;
+                write!(f, ".{name} = ")?;
+                f.write(field)?;
                 after_field(&mut f)?;
             }
         }
@@ -518,6 +519,8 @@ pub struct NamedTupleFmt<'a, T> {
 
 impl<T: std::fmt::Display> std::fmt::Display for NamedTupleFmt<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.name, self.tuple)
+        self.name.fmt(f)?;
+        write!(f, " ")?;
+        self.tuple.fmt(f)
     }
 }

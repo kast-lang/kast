@@ -108,14 +108,12 @@ impl<Data> std::fmt::Display for Ast<Data> {
                 definition,
                 values,
                 data: _,
-            } => {
-                write!(f, "{}", values.fmt_with_name(&definition.name))
-            }
+            } => values.fmt_with_name(&definition.name).fmt(f),
             Ast::SyntaxDefinition { def, data: _ } => write!(f, "syntax {:?}", def.name),
             Ast::FromScratch { next, data: _ } => {
                 write!(f, "syntax from scratch")?;
                 if let Some(next) = next {
-                    write!(f, "{next}")?;
+                    next.fmt(f)?;
                 }
                 Ok(())
             }
