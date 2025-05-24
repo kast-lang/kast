@@ -574,9 +574,14 @@ impl Kast {
                                         .map(Box::new),
                                 });
                             }
-                            TypeShape::Variant(VariantType { variants }).into()
+                            TypeShape::Variant(VariantType {
+                                name: self.current_name.clone(),
+                                variants,
+                            })
+                            .into()
                         }
                         ValueShape::Variant(variant) => TypeShape::Variant(VariantType {
+                            name: self.current_name.clone(),
                             variants: vec![VariantTypeVariant {
                                 name: variant.name,
                                 value: variant
@@ -606,7 +611,10 @@ impl Kast {
                     ValueShape::Variant(VariantValue {
                         name: name.clone(),
                         value: value.map(|value| OwnedPlace::new(value, Mutability::Nested)),
-                        ty: data.ty.clone(),
+                        ty: data
+                            .ty
+                            .clone()
+                            .substitute_bindings(self, &mut RecurseCache::new()),
                     })
                     .into()
                 }

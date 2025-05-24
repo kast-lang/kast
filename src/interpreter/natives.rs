@@ -1169,6 +1169,7 @@ impl Natives {
 
         {
             let exec_mode_ty = TypeShape::Variant(VariantType {
+                name: Name::new(NamePart::Str("ExecMode".into())),
                 variants: vec![
                     VariantTypeVariant {
                         name: "Run".to_owned(),

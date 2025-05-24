@@ -1,5 +1,5 @@
 2 :: int32
-:Some &"world" :: | :Some &string | :None
-:None :: | :Some &string | :None
+:Some &"world" :: std.Option[&string]
+:None :: std.Option[&string]
 iterated
 iterated

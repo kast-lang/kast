@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Position {
     pub index: usize,
     pub line: usize,
@@ -21,7 +21,7 @@ impl std::fmt::Display for Position {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
     pub start: Position,
     pub end: Position,

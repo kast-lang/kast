@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, PartialEq, Eq, TryHash)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub enum ValueShape {
     Unit,
     Bool(bool),
@@ -12,7 +12,7 @@ pub enum ValueShape {
     List(#[try_hash] ListValue),
     Tuple(#[try_hash] TupleValue),
     Function(#[try_hash] TypedFunction),
-    Template(Function),
+    Template(#[try_hash] Function),
     Macro(#[try_hash] TypedFunction),
     NativeFunction(#[try_hash] NativeFunction),
     Binding(Parc<Binding>),
@@ -30,8 +30,49 @@ pub enum ValueShape {
     Ref(PlaceRef),
 }
 
-#[derive(Clone, TryHash, PartialEq, Eq)]
+impl SubstituteBindings for ValueShape {
+    type Target = inference::MaybeNotInferred<ValueShape>;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        let result = match self {
+            ValueShape::Unit
+            | ValueShape::Bool(_)
+            | ValueShape::Int32(_)
+            | ValueShape::Int64(_)
+            | ValueShape::Float64(_)
+            | ValueShape::Char(_)
+            | ValueShape::String(_)
+            | ValueShape::List(_)
+            | ValueShape::Tuple(_)
+            | ValueShape::Function(_)
+            | ValueShape::Template(_)
+            | ValueShape::Macro(_)
+            | ValueShape::NativeFunction(_)
+            | ValueShape::Variant(_)
+            | ValueShape::Multiset(_)
+            | ValueShape::Contexts(_)
+            | ValueShape::Ast(_)
+            | ValueShape::Expr(_)
+            | ValueShape::SyntaxModule(_)
+            | ValueShape::SyntaxDefinition(_)
+            | ValueShape::UnwindHandle(_)
+            | ValueShape::Symbol(_)
+            | ValueShape::HashMap(_)
+            | ValueShape::Ref(_) => self,
+            ValueShape::Type(ty) => ValueShape::Type(ty.substitute_bindings(kast, cache)),
+            ValueShape::Binding(ref binding) => {
+                match kast.scopes.interpreter.get(&binding.symbol) {
+                    Some(value) => return value.clone_value().unwrap().r#impl.into(),
+                    None => self,
+                }
+            }
+        };
+        result.into()
+    }
+}
+
+#[derive(Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TupleValue {
+    #[try_hash]
     pub name: Name,
     #[try_hash]
     pub inner: Tuple<OwnedPlace>,
@@ -131,18 +172,47 @@ impl Kast {
 }
 
 // TODO not public?
-#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, Ord, PartialOrd)]
 pub enum ValueImpl {
     Inferrable(#[try_hash] inference::MaybeNotInferred<ValueShape>),
     NonInferrable(#[try_hash] ValueShape),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TryHash)]
+impl From<ValueImpl> for inference::MaybeNotInferred<ValueShape> {
+    fn from(value: ValueImpl) -> Self {
+        match value {
+            ValueImpl::Inferrable(var) => var,
+            ValueImpl::NonInferrable(value) => value.into(),
+        }
+    }
+}
+
+impl SubstituteBindings for ValueImpl {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
+        match self {
+            Self::NonInferrable(value) => Self::Inferrable(value.substitute_bindings(kast, cache)),
+            Self::Inferrable(var) => Self::Inferrable(var.substitute_bindings(kast, cache)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct Value {
     #[try_hash]
     pub r#impl: ValueImpl, // TODO not public
     #[try_hash]
     pub ty: Type,
+}
+
+impl SubstituteBindings for Value {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
+        Self {
+            r#impl: self.r#impl.substitute_bindings(kast, cache),
+            ty: self.ty.substitute_bindings(kast, cache),
+        }
+    }
 }
 
 impl Value {
@@ -204,6 +274,17 @@ pub struct HashMapValue {
     pub ty: HashMapType,
 }
 
+impl PartialOrd for HashMapValue {
+    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
+        todo!("Maybe not do?")
+    }
+}
+impl Ord for HashMapValue {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        todo!()
+    }
+}
+
 impl TryHash for HashMapValue {
     type Error = eyre::Report;
 
@@ -212,7 +293,7 @@ impl TryHash for HashMapValue {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, TryHash)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct ListValue {
     #[try_hash]
     pub values: Vec<OwnedPlace>,
@@ -220,14 +301,14 @@ pub struct ListValue {
     pub element_ty: Type,
 }
 
-#[derive(Clone, PartialEq, Eq, TryHash)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct UnwindHandle {
     pub sender: Parc<Mutex<async_oneshot::Sender<Value>>>,
     #[try_hash]
     pub ty: Type,
 }
 
-#[derive(Clone, PartialEq, Eq, TryHash)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct VariantValue {
     pub name: String,
     #[try_hash]
@@ -719,10 +800,11 @@ impl ValueShape {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, TryHash)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct TypedFunction {
     #[try_hash]
     pub ty: FnType,
+    #[try_hash]
     pub f: Function,
 }
 
@@ -739,10 +821,11 @@ impl std::ops::Deref for TypedFunction {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct Function {
     pub id: Id,
     pub span: Span,
+    #[try_hash]
     pub name: Name,
     pub captured: Parc<Scopes>,
     pub compiled: MaybeCompiledFn,
@@ -777,9 +860,10 @@ impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Sen
     }
 }
 
-#[derive(Clone, PartialEq, Eq, TryHash)]
+#[derive(Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct NativeFunction {
     pub native_name: String,
+    #[try_hash]
     pub name: Name,
     #[try_hash]
     pub ty: FnType,

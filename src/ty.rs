@@ -94,12 +94,16 @@ impl std::fmt::Display for HashMapType {
 #[derive(Debug, Clone, PartialEq, Eq, TryHash, PartialOrd, Ord)]
 pub struct VariantType {
     #[try_hash]
+    pub name: Name,
+    #[try_hash]
     pub variants: Vec<VariantTypeVariant>,
 }
 
-impl VariantType {
+impl SubstituteBindings for VariantType {
+    type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> VariantType {
         Self {
+            name: self.name.substitute_bindings(kast, cache),
             variants: self
                 .variants
                 .into_iter()
@@ -116,6 +120,9 @@ impl VariantType {
 
 impl std::fmt::Display for VariantType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.name.is_known() {
+            return self.name.fmt(f);
+        }
         for (index, variant) in self.variants.iter().enumerate() {
             if index != 0 && !f.alternate() {
                 write!(f, " | ")?;
@@ -370,6 +377,7 @@ impl Inferrable for FnType {
 }
 
 impl SubstituteBindings for HashMapType {
+    type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
         Self {
             key: self.key.substitute_bindings(kast, cache),
@@ -378,20 +386,10 @@ impl SubstituteBindings for HashMapType {
     }
 }
 
-impl SubstituteBindings for Type {
-    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
-        let inferred = match self.inferred() {
-            Ok(inferred) => inferred,
-            Err(_) => {
-                return self;
-            }
-        };
-        if let Some(result) = cache.get(self.var()) {
-            return result;
-        }
-        cache.insert(self.var(), self.clone());
-        tracing::trace!("subbing {}", inferred.show_short());
-        let result = match inferred {
+impl SubstituteBindings for TypeShape {
+    type Target = inference::MaybeNotInferred<TypeShape>;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        let result = match self {
             TypeShape::Unit
             | TypeShape::Bool
             | TypeShape::Int32
@@ -406,49 +404,67 @@ impl SubstituteBindings for Type {
             | TypeShape::Type
             | TypeShape::Symbol
             | TypeShape::SyntaxModule
-            | TypeShape::SyntaxDefinition => self.clone(),
-            TypeShape::List(a) => TypeShape::List(a.substitute_bindings(kast, cache)).into(),
-            TypeShape::Variant(ty) => {
-                TypeShape::Variant(ty.substitute_bindings(kast, cache)).into()
-            }
+            | TypeShape::SyntaxDefinition => self,
+            TypeShape::List(a) => TypeShape::List(a.substitute_bindings(kast, cache)),
+            TypeShape::Variant(ty) => TypeShape::Variant(ty.substitute_bindings(kast, cache)),
             TypeShape::UnwindHandle(ty) => {
-                TypeShape::UnwindHandle(ty.substitute_bindings(kast, cache)).into()
+                TypeShape::UnwindHandle(ty.substitute_bindings(kast, cache))
             }
             TypeShape::Tuple(tuple) => {
-                TypeShape::Tuple(tuple.map(|ty| ty.substitute_bindings(kast, cache))).into()
+                TypeShape::Tuple(tuple.map(|ty| ty.substitute_bindings(kast, cache)))
             }
             TypeShape::Function(f) => {
-                TypeShape::Function(Box::new((*f).substitute_bindings(kast, cache))).into()
+                TypeShape::Function(Box::new((*f).substitute_bindings(kast, cache)))
             }
             TypeShape::Template(t) => TypeShape::Template(t).into(),
             TypeShape::Macro(f) => {
-                TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache))).into()
+                TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache)))
             }
-            TypeShape::Binding(binding) => match kast.scopes.interpreter.get(&binding.symbol) {
-                Some(value) => value
-                    .clone_value()
-                    .unwrap()
-                    .inferred()
-                    .unwrap()
-                    .into_type()
-                    .unwrap_or_else(|e| {
-                        panic!("{} expected to be a type: {e}", binding.symbol.name())
-                    }),
-                None => TypeShape::Binding(binding.clone()).into(),
+            TypeShape::Binding(ref binding) => match kast.scopes.interpreter.get(&binding.symbol) {
+                Some(value) => {
+                    return value
+                        .clone_value()
+                        .unwrap()
+                        .inferred()
+                        .unwrap()
+                        .into_type()
+                        .unwrap_or_else(|e| {
+                            panic!("{} expected to be a type: {e}", binding.symbol.name())
+                        });
+                }
+                None => self,
             },
-            TypeShape::HashMap(map) => {
-                TypeShape::HashMap(map.substitute_bindings(kast, cache)).into()
-            }
-            TypeShape::Ref(ty) => TypeShape::Ref(ty.substitute_bindings(kast, cache)).into(),
-            TypeShape::NewType { .. } => self.clone(), // TODO maybe need to sub?
+            TypeShape::HashMap(map) => TypeShape::HashMap(map.substitute_bindings(kast, cache)),
+            TypeShape::Ref(ty) => TypeShape::Ref(ty.substitute_bindings(kast, cache)),
+            TypeShape::NewType { .. } => self, // TODO maybe need to sub?
         };
+        result.into()
+    }
+}
+
+impl<T: Inferrable + SubstituteBindings<Target = inference::MaybeNotInferred<T>>> SubstituteBindings
+    for inference::MaybeNotInferred<T>
+{
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
+        let inferred = match self.inferred() {
+            Ok(inferred) => inferred,
+            Err(_) => {
+                return self;
+            }
+        };
+        if let Some(result) = cache.get(self.var()) {
+            return result;
+        }
+        cache.insert(self.var(), self.clone());
+        let result: Self = inferred.substitute_bindings(kast, cache);
         cache.insert(self.var(), result.clone());
-        tracing::trace!("subbed as {result}");
         result
     }
 }
 
 impl SubstituteBindings for FnType {
+    type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
         Self {
             arg: self.arg.substitute_bindings(kast, cache),

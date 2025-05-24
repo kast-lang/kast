@@ -330,6 +330,7 @@ impl ContextsData {
 }
 
 impl SubstituteBindings for ContextsData {
+    type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
         Self {
             types: self
@@ -344,6 +345,7 @@ impl SubstituteBindings for ContextsData {
 }
 
 impl SubstituteBindings for Contexts {
+    type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
         Self(inference::MaybeNotInferred::new_set(
             self.0.inferred().unwrap().substitute_bindings(kast, cache),

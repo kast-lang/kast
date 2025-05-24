@@ -91,7 +91,8 @@ pub struct Kast {
 }
 
 pub trait SubstituteBindings {
-    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self;
+    type Target;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target;
 }
 
 enum ImportMode {

@@ -2,7 +2,7 @@ use super::*;
 
 mod builtins;
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Hygiene {
     DefSite,
 }
@@ -36,7 +36,7 @@ fn ast_as_member(ast: &Ast) -> Option<tuple::Member<'_>> {
 }
 
 // TODO: Use string to fix type infer bug. Important
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AstData {
     pub span: Span,
     pub hygiene: Hygiene,

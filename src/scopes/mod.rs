@@ -34,7 +34,7 @@ impl InterpreterScope {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CompilerScope(Parc<Scope>);
 
 impl CompilerScope {

@@ -4,13 +4,13 @@ use std::collections::HashMap;
 
 pub type Result<T, E = ErrorMessage> = std::result::Result<T, E>;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum StringType {
     SingleQuoted,
     DoubleQuoted,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StringToken {
     pub raw: String,
     pub contents: String,
@@ -18,7 +18,7 @@ pub struct StringToken {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Token {
     Ident {
         raw: String,

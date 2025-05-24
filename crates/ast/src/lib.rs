@@ -13,7 +13,7 @@ pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefini
 use lexer::*;
 use syntax::{BindingPower, Edge};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, derive_macros::Data)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, derive_macros::Data, PartialOrd, Ord)]
 pub enum Ast<Data = Span> {
     Simple {
         token: Token,

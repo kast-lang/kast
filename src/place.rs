@@ -18,6 +18,18 @@ impl PartialEq for OwnedPlace {
 
 impl Eq for OwnedPlace {}
 
+impl PartialOrd for OwnedPlace {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        (*self.0.read().unwrap()).partial_cmp(&*other.0.read().unwrap())
+    }
+}
+
+impl Ord for OwnedPlace {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (*self.0.read().unwrap()).cmp(&*other.0.read().unwrap())
+    }
+}
+
 impl TryHash for OwnedPlace {
     type Error = <PlaceState as TryHash>::Error;
     fn try_hash(&self, state: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
@@ -68,7 +80,7 @@ impl OwnedPlace {
     }
 }
 
-#[derive(Clone, Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PlaceRef {
     pub place: Parc<Place>,
 }
@@ -260,7 +272,7 @@ impl std::fmt::Display for Place {
     }
 }
 
-#[derive(Clone, PartialEq, TryHash)]
+#[derive(Clone, PartialEq, TryHash, Eq, PartialOrd, Ord)]
 pub enum PlaceState {
     Unintialized,
     // This place is taken
