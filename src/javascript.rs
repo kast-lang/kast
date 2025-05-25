@@ -9,8 +9,11 @@ pub enum JavaScriptEngineType {
 }
 
 struct Transpiler {
+    scopes: Parc<Scopes>,
     engine_type: JavaScriptEngineType,
     code: String,
+    captured: std::collections::HashSet<PlaceRef>,
+    captured_unprocessed: Vec<PlaceRef>,
 }
 
 impl std::fmt::Write for Transpiler {
@@ -28,10 +31,13 @@ fn binding_name(binding: &Binding) -> String {
 }
 
 impl Transpiler {
-    fn new(engine_type: JavaScriptEngineType) -> Self {
+    fn new(kast: &mut Kast, engine_type: JavaScriptEngineType) -> Self {
         Self {
+            scopes: Parc::new(kast.scopes.clone()),
             engine_type,
             code: String::new(),
+            captured: Default::default(),
+            captured_unprocessed: Default::default(),
         }
     }
 
@@ -52,7 +58,15 @@ impl Transpiler {
 
     fn eval_place(&mut self, expr: &PlaceExpr) -> eyre::Result<()> {
         match expr {
-            PlaceExpr::Binding { binding, data: _ } => self.make_ref(&binding_name(binding))?,
+            PlaceExpr::Binding { binding, data: _ } => {
+                match self.scopes.interpreter.get(&binding.symbol) {
+                    Some(place) => {
+                        self.ensure_captured(&place);
+                        self.make_ref(&format!("captured{}", place.place.id))?;
+                    }
+                    None => self.make_ref(&binding_name(binding))?,
+                }
+            }
             PlaceExpr::FieldAccess {
                 obj,
                 field,
@@ -245,6 +259,7 @@ impl Transpiler {
                 write!(self, "}}")?;
             }
             ValueShape::Function(f) => {
+                let old_scopes = std::mem::replace(&mut self.scopes, f.f.captured.clone());
                 let arg = format!("arg{}", Id::new());
                 write!(self, "({arg})=>{{")?;
                 let compiled =
@@ -256,6 +271,7 @@ impl Transpiler {
                 write!(self, ";return ")?;
                 self.eval_expr(&compiled.body)?;
                 write!(self, "}}")?;
+                self.scopes = old_scopes;
             }
             ValueShape::Template(_) => todo!(),
             ValueShape::Macro(_) => todo!(),
@@ -370,6 +386,21 @@ impl Transpiler {
         write!(self, "}})()")?;
         Ok(())
     }
+
+    fn ensure_captured(&mut self, place: &PlaceRef) {
+        if self.captured.insert(place.clone()) {
+            self.captured_unprocessed.push(place.clone());
+        }
+    }
+
+    fn process_captured(&mut self) -> eyre::Result<()> {
+        while let Some(unprocessed) = self.captured_unprocessed.pop() {
+            write!(self, "captured{}=", unprocessed.place.id)?;
+            self.transpile(&*unprocessed.read_value()?)?;
+            write!(self, ";")?;
+        }
+        Ok(())
+    }
 }
 
 impl Kast {
@@ -378,8 +409,14 @@ impl Kast {
         engine_type: JavaScriptEngineType,
         value: &Value,
     ) -> eyre::Result<String> {
-        let mut transpiler = Transpiler::new(engine_type);
+        let mut transpiler = Transpiler::new(self, engine_type);
+        transpiler.begin_scope()?;
+        write!(transpiler, "value=")?;
         transpiler.transpile(value)?;
+        write!(transpiler, ";")?;
+        transpiler.process_captured()?;
+        write!(transpiler, "return value")?;
+        transpiler.end_scope()?;
         Ok(transpiler.code)
     }
 }
