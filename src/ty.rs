@@ -144,6 +144,15 @@ pub struct VariantType {
     pub variants: Vec<VariantTypeVariant>,
 }
 
+impl Inferrable for VariantType {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        Ok(Self {
+            name: Inferrable::make_same(a.name, b.name)?,
+            variants: Inferrable::make_same(a.variants, b.variants)?,
+        })
+    }
+}
+
 impl SubstituteBindings for VariantType {
     type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> VariantType {
@@ -189,6 +198,20 @@ pub struct VariantTypeVariant {
     pub name: String,
     #[try_hash]
     pub value: Option<Box<Type>>,
+}
+
+impl Inferrable for VariantTypeVariant {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        Ok(Self {
+            name: {
+                if a.name != b.name {
+                    eyre::bail!("{} != {}", a.name, b.name)
+                }
+                a.name
+            },
+            value: Inferrable::make_same(a.value, b.value)?,
+        })
+    }
 }
 
 impl std::fmt::Display for VariantTypeVariant {
@@ -305,14 +328,7 @@ impl Inferrable for TypeShape {
             (Self::SyntaxDefinition, _) => fail!(),
             (Self::Binding(a), Self::Binding(b)) if a == b => Self::Binding(a),
             (Self::Binding(_), _) => fail!(),
-            (Self::Variant(a), Self::Variant(b)) => {
-                if a == b {
-                    Self::Variant(a)
-                } else {
-                    // TODO
-                    fail!()
-                }
-            }
+            (Self::Variant(a), Self::Variant(b)) => Self::Variant(Inferrable::make_same(a, b)?),
             (Self::Variant(_), _) => fail!(),
             (Self::Symbol, Self::Symbol) => Self::Symbol,
             (Self::Symbol, _) => fail!(),

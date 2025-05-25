@@ -366,3 +366,21 @@ impl<T: Inferrable> Inferrable for Option<T> {
         }
     }
 }
+
+impl<T: Inferrable> Inferrable for Box<T> {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        Ok(Box::new(Inferrable::make_same(*a, *b)?))
+    }
+}
+
+impl<T: Inferrable> Inferrable for Vec<T> {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        if a.len() != b.len() {
+            eyre::bail!("length mismatch, {} vs {}", a.len(), b.len());
+        }
+        a.into_iter()
+            .zip(b)
+            .map(|(a, b)| Inferrable::make_same(a, b))
+            .collect()
+    }
+}

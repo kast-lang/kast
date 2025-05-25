@@ -30,6 +30,41 @@ impl SubstituteBindings for NamePart {
     }
 }
 
+impl Inferrable for NamePart {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        use NamePart::*;
+        macro_rules! fail {
+            () => {
+                eyre::bail!("expected name part {a}, got {b}")
+            };
+        }
+        Ok(match (a.clone(), b.clone()) {
+            (File(a), File(b)) if a == b => File(a),
+            (File(_), _) => fail!(),
+            (Str(a), Str(b)) if a == b => Str(a),
+            (Str(_), _) => fail!(),
+            (Symbol(a), Symbol(b)) if a == b => Symbol(a),
+            (Symbol(_), _) => fail!(),
+            (Instantiate(a), Instantiate(b)) => Instantiate(Inferrable::make_same(a, b)?),
+            (Instantiate { .. }, _) => fail!(),
+            (
+                ImplCast {
+                    value: a_value,
+                    target: a_target,
+                },
+                ImplCast {
+                    value: b_value,
+                    target: b_target,
+                },
+            ) => ImplCast {
+                value: Inferrable::make_same(a_value, b_value)?,
+                target: Inferrable::make_same(a_target, b_target)?,
+            },
+            (ImplCast { .. }, _) => fail!(),
+        })
+    }
+}
+
 #[derive(Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Name(#[try_hash] std::sync::Arc<Vec<NamePart>>);
 
@@ -50,11 +85,11 @@ impl Name {
 
 impl Inferrable for Name {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
-        if a == b {
-            Ok(a)
-        } else {
-            eyre::bail!("{a} != {b}")
-        }
+        let error_context = format!("name {a} != {b}");
+        let parts = |this: Self| -> Vec<NamePart> { (*this.0).clone() };
+        Ok(Self(std::sync::Arc::new(
+            Inferrable::make_same(parts(a), parts(b)).wrap_err(error_context)?,
+        )))
     }
 }
 
