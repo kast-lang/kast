@@ -946,25 +946,29 @@ impl Inferrable for ListValue {
     }
 }
 
+impl Inferrable for ValueImpl {
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        Ok(ValueImpl::Inferrable(match (a, b) {
+            (ValueImpl::Inferrable(a), ValueImpl::Inferrable(b)) => Inferrable::make_same(a, b)?,
+            (ValueImpl::Inferrable(a), ValueImpl::NonInferrable(b)) => {
+                a.infer_as(b)?;
+                a
+            }
+            (ValueImpl::NonInferrable(a), ValueImpl::Inferrable(b)) => {
+                b.infer_as(a)?;
+                b
+            }
+            (ValueImpl::NonInferrable(a), ValueImpl::NonInferrable(b)) => {
+                return Ok(ValueImpl::NonInferrable(Inferrable::make_same(a, b)?));
+            }
+        }))
+    }
+}
+
 impl Inferrable for Value {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Self {
-            r#impl: ValueImpl::Inferrable(match (a.r#impl, b.r#impl) {
-                (ValueImpl::Inferrable(a), ValueImpl::Inferrable(b)) => {
-                    Inferrable::make_same(a, b)?
-                }
-                (ValueImpl::Inferrable(a), ValueImpl::NonInferrable(b)) => {
-                    a.infer_as(b)?;
-                    a
-                }
-                (ValueImpl::NonInferrable(a), ValueImpl::Inferrable(b)) => {
-                    b.infer_as(a)?;
-                    b
-                }
-                (ValueImpl::NonInferrable(_), ValueImpl::NonInferrable(_)) => {
-                    eyre::bail!("inferring non inferrables???")
-                }
-            }),
+            r#impl: Inferrable::make_same(a.r#impl, b.r#impl)?,
             ty: Inferrable::make_same(a.ty, b.ty)?,
         })
     }
