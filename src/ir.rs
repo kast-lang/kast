@@ -135,7 +135,8 @@ pub enum Expr<Data = ExprData> {
     },
     Native {
         /// Name - expr that should evaluate to a string
-        name: Box<Expr>,
+        // name: Box<Expr>,
+        name: String,
         data: Data,
     },
     Let {

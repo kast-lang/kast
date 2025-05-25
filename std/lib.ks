@@ -305,3 +305,4 @@ impl string as generator = (
 
 const collections = include "./collections/_mod.ks";
 const time = include "./time.ks";
+const javascript = include "./javascript.ks";

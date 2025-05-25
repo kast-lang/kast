@@ -1587,11 +1587,8 @@ impl Expr<Span> {
                     },
                     token,
                 },
-                Expr::Native {
-                    mut name,
-                    data: span,
-                } => {
-                    name.data_mut().ty.infer_as(TypeShape::String)?;
+                Expr::Native { name, data: span } => {
+                    // name.data_mut().ty.infer_as(TypeShape::String)?;
                     Expr::Native {
                         name,
                         data: ExprData {

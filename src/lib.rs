@@ -24,6 +24,7 @@ mod executor;
 mod id;
 mod interpreter;
 mod ir;
+pub mod javascript;
 mod name;
 mod place;
 mod rusty;

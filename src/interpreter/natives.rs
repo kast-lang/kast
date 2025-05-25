@@ -191,6 +191,23 @@ impl Natives {
         natives.insert("default_number_type", contexts::default_number_type().ty());
 
         natives.insert_fn(
+            "transpile_to_javascript",
+            || FnType {
+                arg: Type::new_not_inferred("anything"),
+                contexts: Contexts::empty(),
+                result: TypeShape::String.into(),
+            },
+            |mut kast: Kast, _fn_ty: FnType, value: Value| {
+                async move {
+                    let s = kast
+                        .transpile_to_javascript(javascript::JavaScriptEngineType::Node, &value)?;
+                    Ok(ValueShape::String(s).into())
+                }
+                .boxed()
+            },
+        );
+
+        natives.insert_fn(
             "compile_ast",
             || FnType {
                 arg: TypeShape::Ast.into(),

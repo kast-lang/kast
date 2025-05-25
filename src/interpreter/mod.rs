@@ -865,7 +865,7 @@ impl Kast {
                         .ty
                         .clone()
                         .substitute_bindings(self, &mut RecurseCache::new());
-                    let native_name = self.eval(name).await?.into_inferred()?.as_str()?.to_owned();
+                    let native_name = name; // self.eval(name).await?.into_inferred()?.as_str()?.to_owned();
                     tracing::trace!("native {native_name} :: {actual_type}");
                     match self.cache.interpreter.natives.get_named(
                         self.current_name.clone(),

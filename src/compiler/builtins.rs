@@ -238,10 +238,16 @@ impl Builtins {
             .as_ref()
             .into_single_named("name")
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let name = kast.compile(name).await?;
+        // let name = kast.compile(name).await?;
+        let name = kast
+            .eval_ast::<Value>(name, Some(TypeShape::String.into()))
+            .await?
+            .into_inferred()?
+            .into_string()?;
         Ok(Compiled::Expr(
             Expr::Native {
-                name: Box::new(name),
+                // name: Box::new(name),
+                name,
                 data: span,
             }
             .init(kast)
