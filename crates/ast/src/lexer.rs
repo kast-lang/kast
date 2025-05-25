@@ -338,7 +338,7 @@ impl Lexer {
         Ok(Some(Token::Number { raw }))
     }
     fn read_punctuation(&mut self) -> Result<Option<Token>> {
-        let is_single_punctuation = |c: char| "(){}[]&^".contains(c);
+        let is_single_punctuation = |c: char| "(){}[]&^$".contains(c);
         let is_single_char_punctuation = |c: char| ";".contains(c);
         match self.reader.peek() {
             Some(&first) if is_punctuation(first) => {
