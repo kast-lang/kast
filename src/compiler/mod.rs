@@ -914,8 +914,9 @@ impl PlaceExpr<Span> {
 impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
+        let error_context = format!("while initializing {}", self.show_short());
         let r#impl = async {
-            Ok(match self {
+            Ok::<_, eyre::Report>(match self {
                 Expr::Ref { place, data: span } => {
                     let place_ty = place.data().ty.clone();
                     let ty = Type::new_not_inferred_with_default(
@@ -1743,7 +1744,7 @@ impl Expr<Span> {
                 }
             })
         };
-        r#impl.boxed()
+        async { r#impl.await.wrap_err(error_context) }.boxed()
     }
 }
 
