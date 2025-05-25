@@ -982,9 +982,31 @@ impl Builtins {
         assert_expr!(kast, cty, ast);
         let (values, span) = get_complex(ast);
         let expr = values.as_ref().into_single_named("expr")?;
+        struct State {
+            root: bool,
+            level: usize,
+        }
+        fn unquote_level(ast: &Ast) -> eyre::Result<(usize, &Ast)> {
+            if let Ast::Complex {
+                definition,
+                values,
+                data: _,
+            } = ast
+            {
+                if definition.name == "builtin macro unquote" {
+                    let expr = values
+                        .as_ref()
+                        .into_single_named("expr")
+                        .wrap_err_with(|| "wrong args to unquote")?;
+                    let (level, expr) = unquote_level(expr)?;
+                    return Ok((level + 1, expr));
+                }
+            }
+            Ok((0, ast))
+        }
         fn quote<'a>(
             kast: &'a mut Kast,
-            expr_root: bool,
+            state: State,
             ast: &'a Ast,
         ) -> BoxFuture<'a, eyre::Result<PlaceExpr>> {
             async move {
@@ -1000,36 +1022,50 @@ impl Builtins {
                             },
                     } => {
                         if definition.name == "builtin macro unquote" {
-                            let expr = values
-                                .as_ref()
-                                .into_single_named("expr")
-                                .wrap_err_with(|| "wrong args to unquote")?;
-                            kast.compile(expr).await?
-                        } else {
-                            PlaceExpr::new_temp(
-                                Expr::Ast {
-                                    expr_root,
-                                    definition: definition.clone(),
-                                    values: {
-                                        let mut result = Tuple::empty();
-                                        for (member, value) in values.as_ref().into_iter() {
-                                            let value = quote(kast, false, value).boxed().await?;
-                                            result.add_member(member, value);
-                                        }
-                                        result
-                                    },
-                                    hygiene: *hygiene,
-                                    def_site: def_site.clone(),
-                                    data: span.clone(),
-                                }
-                                .init(kast)
-                                .await?,
-                            )
+                            let (unquote_level, expr) = unquote_level(ast)?;
+                            if unquote_level > state.level {
+                                eyre::bail!("too much unquote");
+                            }
+                            if unquote_level == state.level {
+                                return Ok(kast.compile(expr).await?);
+                            }
                         }
+                        PlaceExpr::new_temp(
+                            Expr::Ast {
+                                expr_root: state.root,
+                                definition: definition.clone(),
+                                values: {
+                                    let mut result = Tuple::empty();
+                                    for (member, value) in values.as_ref().into_iter() {
+                                        let value = quote(
+                                            kast,
+                                            State {
+                                                level: if definition.name == "builtin macro quote" {
+                                                    state.level + 1
+                                                } else {
+                                                    state.level
+                                                },
+                                                root: false,
+                                            },
+                                            value,
+                                        )
+                                        .boxed()
+                                        .await?;
+                                        result.add_member(member, value);
+                                    }
+                                    result
+                                },
+                                hygiene: *hygiene,
+                                def_site: def_site.clone(),
+                                data: span.clone(),
+                            }
+                            .init(kast)
+                            .await?,
+                        )
                     }
                     _ => PlaceExpr::new_temp(
                         Expr::Constant {
-                            value: ValueShape::Ast(match expr_root {
+                            value: ValueShape::Ast(match state.root {
                                 true => kast.set_def_site(ast),
                                 false => ast.clone(),
                             })
@@ -1046,7 +1082,15 @@ impl Builtins {
         Ok(Compiled::Expr(
             // TODO `($x) moves x
             Expr::ReadPlace {
-                place: quote(kast, true, expr).await?,
+                place: quote(
+                    kast,
+                    State {
+                        root: true,
+                        level: 1,
+                    },
+                    expr,
+                )
+                .await?,
                 data: span,
             }
             .init(kast)
