@@ -104,20 +104,16 @@ const Result = forall[.ok :: type, .error :: type] { newtype :Ok ok | :Error err
 
 # TODO where T: Num or smth
 const @"op unary +" = forall[T] { (x :: T,) => x };
-impl syntax @"syntax".@"op unary +" = @"op unary +";
+impl syntax @"syntax".@"op unary +" = macro (x,) => `(@"op unary +" $x);
 const @"op unary -" = forall[T] { native "unary -" :: T -> T };
-impl syntax @"syntax".@"op unary -" = @"op unary -";
+impl syntax @"syntax".@"op unary -" = macro (x,) => `(@"op unary -" $x);
 
-const @"op binary +" = forall[T] { native "+" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary +" = @"op binary +";
-const @"op binary -" = forall[T] { native "-" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary -" = @"op binary -";
-const @"op binary *" = forall[T] { native "*" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary *" = @"op binary *";
-const @"op binary /" = forall[T] { native "/" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary /" = @"op binary /";
-const @"op binary %" = forall[T] { native "%" :: (.lhs = T, .rhs = T) -> T };
-impl syntax @"syntax".@"op binary %" = @"op binary %";
+# nobody's using spacetimedb, but maybe they should
+impl syntax @"syntax".@"op binary +" = macro (.lhs, .rhs) => `(@"op binary +" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary -" = macro (.lhs, .rhs) => `(@"op binary -" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary *" = macro (.lhs, .rhs) => `(@"op binary *" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary /" = macro (.lhs, .rhs) => `(@"op binary /" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary %" = macro (.lhs, .rhs) => `(@"op binary %" (.lhs = $lhs, .rhs = $rhs));
 
 const @"op binary <" = forall[T] { native "<" :: (.lhs = &T, .rhs = &T) -> bool };
 impl syntax @"syntax".@"op binary <" = macro (.lhs, .rhs) => `(
@@ -149,6 +145,40 @@ impl syntax @"syntax".@"op -=" = macro (.target, .value) => `($target = $target 
 impl syntax @"syntax".@"op *=" = macro (.target, .value) => `($target = $target * $value);
 impl syntax @"syntax".@"op /=" = macro (.target, .value) => `($target = $target / $value);
 impl syntax @"syntax".@"op %=" = macro (.target, .value) => `($target = $target % $value);
+
+const @"op binary +" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "+"
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)+$(rhs))" )
+    } :: (.lhs = T, .rhs = T) -> T
+};
+const @"op binary -" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "-"
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)-$(rhs))" )
+    } :: (.lhs = T, .rhs = T) -> T
+};
+const @"op binary *" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "*"
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)*$(rhs))" )
+    } :: (.lhs = T, .rhs = T) -> T
+};
+const @"op binary /" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "/"
+        | target.name == "javascript" => (.lhs, .rhs) => (
+            # TODO its based on T
+            native "Math.trunc($(lhs)/$(rhs))"
+        )
+    } :: (.lhs = T, .rhs = T) -> T
+};
+const @"op binary %" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "%"
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)%$(rhs))" )
+    } :: (.lhs = T, .rhs = T) -> T
+};
 
 const @"not" = native "not" :: bool -> bool;
 impl syntax @"syntax".@"not" = macro (e,) => `(@"not" $e);

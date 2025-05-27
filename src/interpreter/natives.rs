@@ -200,7 +200,8 @@ impl Natives {
             |mut kast: Kast, _fn_ty: FnType, value: Value| {
                 async move {
                     let s = kast
-                        .transpile_to_javascript(javascript::JavaScriptEngineType::Node, &value)?;
+                        .transpile_to_javascript(javascript::JavaScriptEngineType::Node, &value)
+                        .await?;
                     Ok(ValueShape::String(s).into())
                 }
                 .boxed()

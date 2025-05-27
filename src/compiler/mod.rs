@@ -892,6 +892,9 @@ impl PlaceExpr<Span> {
                                         TypeShape::SyntaxModule => {
                                             ty.infer_as(TypeShape::SyntaxDefinition)?
                                         }
+                                        TypeShape::Target => {
+                                            ty.clone().make_same(Target::field_ty(&field)?)?
+                                        }
                                         _ => eyre::bail!("can not get fields of type {obj_ty}"),
                                     }
                                     Ok(inference::CheckResult::Completed)
@@ -1587,10 +1590,15 @@ impl Expr<Span> {
                     },
                     token,
                 },
-                Expr::Native { name, data: span } => {
+                Expr::Native {
+                    name,
+                    compiler_scope,
+                    data: span,
+                } => {
                     // name.data_mut().ty.infer_as(TypeShape::String)?;
                     Expr::Native {
                         name,
+                        compiler_scope,
                         data: ExprData {
                             ty: Type::new_not_inferred(&format!("native at {span}")),
                             contexts: Contexts::empty_growable(),
@@ -1737,6 +1745,28 @@ impl Expr<Span> {
                         },
                         template: template_ir,
                         arg: arg_ir,
+                    }
+                }
+                Expr::TargetDependent {
+                    branches,
+                    data: span,
+                } => {
+                    let ty = Type::new_not_inferred("target dependent");
+                    let contexts = Contexts::new_not_inferred();
+                    for branch in &branches {
+                        branch.condition.data().ty.infer_as(TypeShape::Bool)?;
+                        // TODO branch.condition.data().contexts.var().set(empty)?
+                        branch.body.data().ty.clone().make_same(ty.clone())?;
+                        branch
+                            .body
+                            .data()
+                            .contexts
+                            .var()
+                            .make_same(contexts.var())?;
+                    }
+                    Expr::TargetDependent {
+                        branches,
+                        data: ExprData { ty, span, contexts },
                     }
                 }
             })

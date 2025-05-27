@@ -285,6 +285,7 @@ impl Kast {
                             .into(),
                         )
                         .get_ref(),
+                        ValueShape::Target(target) => PlaceRef::new_temp(target.get_field(field)?),
                         _ => eyre::bail!("{obj} is not smth that has fields"),
                     }
                 }
@@ -314,6 +315,12 @@ impl Kast {
         });
         let r#impl = async move {
             let result = match expr {
+                Expr::TargetDependent { branches, data: _ } => {
+                    let body = self
+                        .select_target_dependent_branch(branches, Target::Interpreter)
+                        .await?;
+                    self.enter_scope().eval(body).await?
+                }
                 Expr::Ref { place, data } => {
                     let ref_ty: Type = data
                         .ty
@@ -860,7 +867,11 @@ impl Kast {
                     }
                     make_string(token, &data.ty)?
                 }
-                Expr::Native { name, data } => {
+                Expr::Native {
+                    name,
+                    compiler_scope: _,
+                    data,
+                } => {
                     let actual_type = data
                         .ty
                         .clone()
@@ -963,6 +974,7 @@ impl Kast {
                     | Expr::Instantiate { .. }
                     | Expr::Tuple { .. }
                     | Expr::ReadPlace { .. }
+                    | Expr::TargetDependent { .. }
                     | Expr::Ast { .. } => true,
                     // TODO
                     Expr::Recursive { .. } => false,

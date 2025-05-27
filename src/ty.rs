@@ -34,6 +34,7 @@ pub enum TypeShape {
         #[try_hash]
         inner: Type,
     },
+    Target,
 }
 
 impl std::fmt::Debug for TypeShape {
@@ -71,6 +72,7 @@ impl ShowShort for TypeShape {
             TypeShape::Ref(_) => "&",
             TypeShape::NewType { .. } => "newtype",
             TypeShape::Expr => "expr",
+            TypeShape::Target => "target",
         }
     }
 }
@@ -353,6 +355,8 @@ impl Inferrable for TypeShape {
                 inner: Inferrable::make_same(inner_a, inner_b)?,
             },
             (Self::NewType { .. }, _) => fail!(),
+            (Self::Target, Self::Target) => Self::Target,
+            (Self::Target, _) => fail!(),
         })
     }
 }
@@ -386,6 +390,7 @@ impl std::fmt::Display for TypeShape {
             Self::HashMap(map) => map.fmt(f),
             Self::Ref(ty) => write!(f, "&{ty}"),
             Self::NewType { id, inner } => write!(f, "newtype({id}, {inner})"),
+            Self::Target => write!(f, "target"),
         }
     }
 }
@@ -442,7 +447,11 @@ impl SubstituteBindings for HashMapType {
 
 impl SubstituteBindings for TypeShape {
     type Target = inference::MaybeNotInferred<TypeShape>;
-    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+    fn substitute_bindings(
+        self,
+        kast: &Kast,
+        cache: &mut RecurseCache,
+    ) -> <Self as SubstituteBindings>::Target {
         let result = match self {
             TypeShape::Unit
             | TypeShape::Bool
@@ -457,6 +466,7 @@ impl SubstituteBindings for TypeShape {
             | TypeShape::Contexts
             | TypeShape::Type
             | TypeShape::Symbol
+            | TypeShape::Target
             | TypeShape::SyntaxModule
             | TypeShape::SyntaxDefinition => self,
             TypeShape::List(a) => TypeShape::List(a.substitute_bindings(kast, cache)),

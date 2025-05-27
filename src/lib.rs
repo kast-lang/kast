@@ -29,6 +29,7 @@ mod name;
 mod place;
 mod rusty;
 mod scopes;
+mod target;
 mod ty;
 mod value;
 
@@ -46,6 +47,7 @@ use self::scopes::*;
 pub use self::ty::*;
 pub use self::value::*;
 pub use inference;
+pub use target::*;
 
 pub enum MaybeBorrowed<'a, T> {
     Borrowed(&'a T),
@@ -136,16 +138,47 @@ struct Cache {
     interpreter: interpreter::Cache,
     compiler: compiler::Cache,
     imports: Mutex<HashMap<PathBuf, Option<Value>>>,
+    target_symbol: Symbol,
+    target_dependent_scopes: Scopes,
 }
 
 impl Default for Cache {
     fn default() -> Self {
+        let target_symbol = Symbol {
+            name: "target".into(),
+            span: Span {
+                start: Position::ZERO,
+                end: Position::ZERO,
+                filename: file!().into(),
+            },
+            id: Id::new(),
+        };
         Self {
             start: batbox_time::Instant::now(),
             interpreter: interpreter::Cache::new(),
             compiler: compiler::Cache::new(),
             imports: Default::default(),
             executor: Executor::new(),
+            target_dependent_scopes: {
+                let scopes = Scopes::new(
+                    Id::new(), // TODO what id?
+                    ScopeType::NonRecursive,
+                    None,
+                );
+                scopes.compiler.insert(
+                    &target_symbol.name,
+                    &target_symbol.span,
+                    ValueShape::Binding(Parc::new(Binding {
+                        symbol: target_symbol.clone(),
+                        ty: TypeShape::Target.into(),
+                        mutability: Mutability::ReadOnly,
+                        compiler_scope: scopes.compiler.clone(),
+                    }))
+                    .into(),
+                );
+                scopes
+            },
+            target_symbol,
         }
     }
 }

@@ -137,6 +137,8 @@ pub enum Expr<Data = ExprData> {
         /// Name - expr that should evaluate to a string
         // name: Box<Expr>,
         name: String,
+        #[display(skip)]
+        compiler_scope: CompilerScope,
         data: Data,
     },
     Let {
@@ -191,6 +193,10 @@ pub enum Expr<Data = ExprData> {
     },
     ReadPlace {
         place: PlaceExpr,
+        data: Data,
+    },
+    TargetDependent {
+        branches: Vec<TargetDependentBranch<Expr>>,
         data: Data,
     },
 }
@@ -348,6 +354,7 @@ impl Expr {
                     expr.collect_bindings(consumer, None);
                 }
             }
+            Expr::TargetDependent { .. } => {}
         }
     }
 }
@@ -431,12 +438,17 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
                     Expr::Constant { value: _, data: _ } => write!(f, "const expr")?,
                     Expr::Number { raw, data: _ } => write!(f, "number literal {raw:?}")?,
                     Expr::String { token, data: _ } => write!(f, "string literal {:?}", token.raw)?,
-                    Expr::Native { name: _, data: _ } => write!(f, "native expr")?,
+                    Expr::Native {
+                        name: _,
+                        compiler_scope: _,
+                        data: _,
+                    } => write!(f, "native expr")?,
                     Expr::Ast { .. } => write!(f, "ast expr")?,
                     Expr::Let { .. } => write!(f, "let expr")?,
                     Expr::Call { .. } => write!(f, "call expr")?,
                     Expr::Instantiate { .. } => write!(f, "instantiate expr")?,
                     Expr::ReadPlace { .. } => write!(f, "readref expr")?,
+                    Expr::TargetDependent { .. } => write!(f, "target dependent")?,
                 }
                 write!(f, " at {}", self.0.data().borrow())
             }

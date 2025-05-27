@@ -52,6 +52,7 @@ impl Builtins {
             macro_then,
             macro_if,
             macro_match,
+            macro_target_dependent,
             macro_variant,
             macro_newtype,
             macro_merge,
@@ -248,6 +249,7 @@ impl Builtins {
             Expr::Native {
                 // name: Box::new(name),
                 name,
+                compiler_scope: kast.scopes.compiler.clone(),
                 data: span,
             }
             .init(kast)
@@ -439,6 +441,56 @@ impl Builtins {
         Ok(Compiled::Expr(
             Expr::Match {
                 value: Box::new(kast.compile(value).await?),
+                branches,
+                data: span,
+            }
+            .init(kast)
+            .await?,
+        ))
+    }
+    async fn macro_target_dependent(
+        kast: &mut Kast,
+        cty: CompiledType,
+        ast: &Ast,
+    ) -> eyre::Result<Compiled> {
+        assert_expr!(kast, cty, ast);
+        let (values, span) = get_complex(ast);
+        let branches = values
+            .as_ref()
+            .into_single_named("branches")
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        let ListCollected {
+            list: branch_asts,
+            all_binary: _,
+        } = ListCollector {
+            macro_name: "builtin macro merge",
+            a: "a",
+            b: "b",
+        }
+        .collect(branches)?;
+        let mut branches = Vec::<TargetDependentBranch<Expr>>::new();
+        for branch in branch_asts {
+            match branch {
+                Ast::Complex {
+                    definition,
+                    values,
+                    data: _,
+                } if definition.name == "builtin macro function_def" => {
+                    let [arg, body] = values.as_ref().into_named(["arg", "body"])?;
+                    branches.push(TargetDependentBranch {
+                        condition: kast
+                            .with_scopes(kast.cache.target_dependent_scopes.clone())
+                            .enter_scope()
+                            .compile(arg)
+                            .await?,
+                        body: kast.enter_scope().compile(body).await?,
+                    });
+                }
+                _ => eyre::bail!("match branches wrong syntax"),
+            }
+        }
+        Ok(Compiled::Expr(
+            Expr::TargetDependent {
                 branches,
                 data: span,
             }

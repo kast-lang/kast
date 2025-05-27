@@ -28,11 +28,16 @@ pub enum ValueShape {
     Symbol(Symbol),
     HashMap(#[try_hash] HashMapValue),
     Ref(PlaceRef),
+    Target(Target),
 }
 
 impl SubstituteBindings for ValueShape {
     type Target = inference::MaybeNotInferred<ValueShape>;
-    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+    fn substitute_bindings(
+        self,
+        kast: &Kast,
+        cache: &mut RecurseCache,
+    ) -> <Self as SubstituteBindings>::Target {
         let result = match self {
             ValueShape::Unit
             | ValueShape::Bool(_)
@@ -57,6 +62,7 @@ impl SubstituteBindings for ValueShape {
             | ValueShape::UnwindHandle(_)
             | ValueShape::Symbol(_)
             | ValueShape::HashMap(_)
+            | ValueShape::Target(_)
             | ValueShape::Ref(_) => self,
             ValueShape::Type(ty) => ValueShape::Type(ty.substitute_bindings(kast, cache)),
             ValueShape::Binding(ref binding) => {
@@ -158,6 +164,7 @@ impl Kast {
                 TypeShape::SyntaxModule => None,
                 TypeShape::SyntaxDefinition => None,
                 TypeShape::Binding(_) => None,
+                TypeShape::Target { .. } => Some(true),
                 TypeShape::NewType { .. } => None,
             };
             if let Some(result) = is_copy {
@@ -430,6 +437,7 @@ impl std::fmt::Display for ValueShape {
                 write!(f, "&")?;
                 r.read().expect("failed to read for Display &").fmt(f)
             }
+            ValueShape::Target(target) => target.fmt(f),
         }
     }
 }
@@ -538,6 +546,7 @@ impl ValueShape {
             ValueShape::Symbol(_) => TypeShape::Symbol.into(),
             ValueShape::HashMap(map) => TypeShape::HashMap(map.ty.clone()).into(),
             ValueShape::Ref(r) => TypeShape::Ref(r.place.ty.clone()).into(),
+            ValueShape::Target(_) => TypeShape::Target.into(),
         }
     }
 }
@@ -1038,6 +1047,8 @@ impl Inferrable for ValueShape {
             (ValueShape::HashMap(_), _) => fail!(),
             (ValueShape::Ref(a), ValueShape::Ref(b)) if a == b => ValueShape::Ref(a),
             (ValueShape::Ref(_), _) => fail!(),
+            (ValueShape::Target(a), ValueShape::Target(b)) if a == b => ValueShape::Target(a),
+            (ValueShape::Target(_), _) => fail!(),
         })
     }
 }
@@ -1082,6 +1093,7 @@ impl TypeShape {
             TypeShape::HashMap(_) => return None,
             TypeShape::Ref(_) => return None,
             TypeShape::NewType { .. } => return None,
+            TypeShape::Target => return None,
         })
     }
 }
