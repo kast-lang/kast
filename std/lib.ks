@@ -336,3 +336,20 @@ impl string as generator = (
 const collections = include "./collections/_mod.ks";
 const time = include "./time.ks";
 const javascript = include "./javascript.ks";
+
+const prelude = (
+    # TODO use type, bool, int32, int64, float64, char, string;
+    .type = type,
+    .bool = bool,
+    .int32 = int32,
+    .int64 = int64,
+    .float64 = float64,
+    .char = char,
+    .string = string,
+    
+    .print = print,
+
+    .Option = Option,
+    .Either = Either,
+    .Result = Result,
+);
