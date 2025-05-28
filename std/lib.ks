@@ -20,7 +20,7 @@ impl syntax @"syntax".let_infer = macro (.pattern) => `(
     (let $pattern = _; $pattern)
 );
 
-const type = native "type";
+# const type = native "type";
 const ast :: type = native "ast";
 const expr :: type = native "expr";
 
@@ -339,7 +339,7 @@ const javascript = include "./javascript.ks";
 
 const prelude = (
     # TODO use type, bool, int32, int64, float64, char, string;
-    .type = type,
+    # .type = type,
     .bool = bool,
     .int32 = int32,
     .int64 = int64,

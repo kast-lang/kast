@@ -302,6 +302,45 @@ impl Kast {
         }
         .boxed()
     }
+    pub fn eval_type<'a>(&'a mut self, expr: &'a TypeExpr) -> BoxFuture<'a, eyre::Result<Type>> {
+        tracing::trace!("evaluating {}", expr.show_short());
+        let r#impl = async move {
+            let result: Type = match expr {
+                TypeExpr::Ref { inner, data: _ } => {
+                    TypeShape::Ref(self.eval_type(inner).await?).into()
+                }
+                TypeExpr::List { inner, data: _ } => {
+                    TypeShape::List(self.eval_type(inner).await?).into()
+                }
+                TypeExpr::Unit { data: _ } => TypeShape::Unit.into(),
+                TypeExpr::Tuple { fields, data: _ } => TypeShape::Tuple(TupleType {
+                    name: None.into(),
+                    fields: {
+                        let mut field_types = Tuple::empty();
+                        for (member, field) in fields.as_ref() {
+                            field_types.add_member(member, self.eval_type(field).await?);
+                        }
+                        field_types
+                    },
+                })
+                .into(),
+                TypeExpr::Function {
+                    arg,
+                    result,
+                    contexts,
+                    data: _,
+                } => todo!(),
+                TypeExpr::Expr { expr, data: _ } => self.eval(expr).await?.into_type()?,
+            };
+            Ok::<_, eyre::Report>(result)
+        };
+        async {
+            r#impl
+                .await
+                .wrap_err_with(|| format!("while evaluating {}", expr.show_short()))
+        }
+        .boxed()
+    }
     pub fn eval<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<Value>> {
         tracing::trace!("evaluating {}", expr.show_short());
         let expected_ty = self.interpreter.check_types.then(|| {
@@ -315,6 +354,9 @@ impl Kast {
         });
         let r#impl = async move {
             let result = match expr {
+                Expr::Type { expr, data: _ } => {
+                    ValueShape::Type(self.eval_type(expr).await?).into()
+                }
                 Expr::TargetDependent { branches, data: _ } => {
                     let body = self
                         .select_target_dependent_branch(branches, Target::Interpreter)
@@ -975,6 +1017,7 @@ impl Kast {
                     | Expr::Tuple { .. }
                     | Expr::ReadPlace { .. }
                     | Expr::TargetDependent { .. }
+                    | Expr::Type { .. }
                     | Expr::Ast { .. } => true,
                     // TODO
                     Expr::Recursive { .. } => false,

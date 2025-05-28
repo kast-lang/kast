@@ -105,6 +105,7 @@ impl Transpiler {
     fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<()>> {
         async move {
             match expr {
+                Expr::Type { .. } => write!(self, "undefined")?,
                 Expr::Ref { place, data } => todo!(),
                 Expr::And { lhs, rhs, data } => todo!(),
                 Expr::Or { lhs, rhs, data } => todo!(),

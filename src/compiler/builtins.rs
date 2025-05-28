@@ -43,6 +43,7 @@ impl Builtins {
             }
         }
         populate!(
+            macro_type,
             macro_native,
             macro_type_ascribe,
             macro_context_ascribe,
@@ -136,6 +137,7 @@ impl Builtins {
         let data: &mut ExprData = match &mut expr {
             Compiled::Expr(e) => e.data_mut(),
             Compiled::PlaceExpr(e) => e.data_mut(),
+            Compiled::TypeExpr(_) => todo!(),
             Compiled::AssigneeExpr(_) => todo!(),
             Compiled::Pattern(_) => todo!(),
         };
@@ -232,6 +234,28 @@ impl Builtins {
             _ => eyre::bail!("must be assignee"),
         })
     }
+    async fn macro_type(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
+        assert_expr!(kast, cty, ast);
+        let (values, span) = get_complex(ast);
+        let ([], [expr]) = values
+            .as_ref()
+            .into_named_opt([], ["expr"])
+            .wrap_err_with(|| "Macro received incorrect arguments")?;
+        Ok(Compiled::Expr(
+            match expr {
+                Some(expr) => Expr::Type {
+                    expr: kast.compile(expr).await?,
+                    data: span,
+                },
+                None => Expr::Constant {
+                    value: ValueShape::Type(TypeShape::Type.into()).into(),
+                    data: span,
+                },
+            }
+            .init(kast)
+            .await?,
+        ))
+    }
     async fn macro_native(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_expr!(kast, cty, ast);
         let (values, span) = get_complex(ast);
@@ -303,6 +327,7 @@ impl Builtins {
             CompiledType::Expr => {
                 Compiled::Expr(Expr::MakeMultiset { values, data: span }.init(kast).await?)
             }
+            CompiledType::TypeExpr => todo!(),
             CompiledType::Pattern => todo!(),
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::AssigneeExpr => eyre::bail!("not assignee"),
@@ -363,6 +388,7 @@ impl Builtins {
         Ok(match cty {
             CompiledType::PlaceExpr => eyre::bail!("not a place expr"),
             CompiledType::AssigneeExpr => eyre::bail!("not assignee"),
+            CompiledType::TypeExpr => todo!(),
             CompiledType::Expr => Compiled::Expr({
                 let mut expr = Expr::Variant {
                     name: name.to_owned(),
@@ -775,6 +801,7 @@ impl Builtins {
         Ok(match cty {
             CompiledType::AssigneeExpr => Compiled::AssigneeExpr(kast.compile(expr).await?),
             CompiledType::PlaceExpr => Compiled::PlaceExpr(kast.compile(expr).await?),
+            CompiledType::TypeExpr => Compiled::TypeExpr(kast.compile(expr).await?),
             CompiledType::Expr => {
                 let expr = kast.enter_scope().compile(expr).await?;
                 Compiled::Expr(
@@ -901,6 +928,9 @@ impl Builtins {
             )),
             CompiledType::Pattern => Compiled::Pattern(Pattern::Unit { data: span }.init()?),
             CompiledType::Expr => Compiled::Expr(Expr::Unit { data: span }.init(kast).await?),
+            CompiledType::TypeExpr => {
+                Compiled::TypeExpr(TypeExpr::Unit { data: span }.init(kast).await?)
+            }
         })
     }
     async fn macro_call(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -1248,6 +1278,7 @@ impl Builtins {
                 }
                 .init()?,
             ),
+            CompiledType::TypeExpr => unreachable!(),
         })
     }
     async fn macro_is(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
@@ -1360,6 +1391,21 @@ impl Builtins {
                 .await?,
             ),
             CompiledType::Pattern => Compiled::Pattern(Pattern::Placeholder { data: span }.init()?),
+            CompiledType::TypeExpr => Compiled::TypeExpr(
+                TypeExpr::Expr {
+                    expr: Box::new(
+                        Expr::Constant {
+                            value: Value::new_not_inferred(&format!("placeholder at {span}")),
+                            data: span.clone(),
+                        }
+                        .init(kast)
+                        .await?,
+                    ),
+                    data: span,
+                }
+                .init(kast)
+                .await?,
+            ),
         })
     }
     async fn macro_with_context(

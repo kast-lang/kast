@@ -14,10 +14,70 @@ pub struct ExprData {
     pub contexts: Contexts,
 }
 
+#[derive(Clone)]
+pub struct TypeExprData {
+    pub span: Span,
+}
+
+impl std::borrow::Borrow<Span> for TypeExprData {
+    fn borrow(&self) -> &Span {
+        &self.span
+    }
+}
+
 #[derive(Clone, derive_macros::ExprDisplay)]
 pub struct MatchBranch {
     pub pattern: Pattern,
     pub body: Expr,
+}
+
+#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
+pub enum TypeExpr<Data = TypeExprData> {
+    Ref {
+        inner: Box<TypeExpr>,
+        data: Data,
+    },
+    List {
+        inner: Box<TypeExpr>,
+        data: Data,
+    },
+    Unit {
+        data: Data,
+    },
+    Tuple {
+        fields: Tuple<TypeExpr>,
+        data: Data,
+    },
+    Function {
+        arg: Box<TypeExpr>,
+        result: Box<TypeExpr>,
+        contexts: Box<TypeExpr>,
+        data: Data,
+    },
+    Expr {
+        expr: Box<Expr>,
+        data: Data,
+    },
+}
+
+impl<Data: std::borrow::Borrow<Span>> TypeExpr<Data> {
+    pub fn show_short(&self) -> impl std::fmt::Display + '_ {
+        struct Show<'a, Data>(&'a TypeExpr<Data>);
+        impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.0 {
+                    TypeExpr::Ref { .. } => write!(f, "Ref")?,
+                    TypeExpr::List { .. } => write!(f, "List")?,
+                    TypeExpr::Unit { .. } => write!(f, "Unit")?,
+                    TypeExpr::Tuple { .. } => write!(f, "Tuple")?,
+                    TypeExpr::Function { .. } => write!(f, "Function")?,
+                    TypeExpr::Expr { .. } => write!(f, "Expr")?,
+                }
+                write!(f, " at {}", self.0.data().borrow())
+            }
+        }
+        Show(self)
+    }
 }
 
 #[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
@@ -199,6 +259,10 @@ pub enum Expr<Data = ExprData> {
         branches: Vec<TargetDependentBranch<Expr>>,
         data: Data,
     },
+    Type {
+        expr: TypeExpr,
+        data: Data,
+    },
 }
 
 #[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
@@ -318,6 +382,7 @@ impl Expr {
             | Expr::Ast { .. }
             | Expr::Call { .. }
             | Expr::If { .. }
+            | Expr::Type { .. }
             | Expr::Instantiate { .. } => {}
             Expr::Is {
                 value: _,
@@ -409,6 +474,7 @@ impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
         impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
+                    Expr::Type { .. } => write!(f, "type expr")?,
                     Expr::Ref { .. } => write!(f, "ref expr")?,
                     Expr::And { .. } => write!(f, "and expr")?,
                     Expr::Or { .. } => write!(f, "or expr")?,

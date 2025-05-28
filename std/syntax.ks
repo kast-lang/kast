@@ -159,6 +159,8 @@ syntax_module {
   syntax @"builtin macro struct_def" <- 500 = "struct" "{" body "}";
   syntax @"builtin macro unwindable" <- 500 = "unwindable" name body;
   syntax @"builtin macro unwind" <- 500 = "unwind" name value;
+  syntax @"builtin macro type" <- 500 = "type" expr;
+  syntax @"builtin macro type" <- 500 = "type";
 
   syntax @"builtin macro unquote" -> 500 = "$" expr;
   syntax @"builtin macro unquote" -> 500 = "$" "(" expr ")";

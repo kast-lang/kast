@@ -391,6 +391,44 @@ impl TryFrom<SingleTokenExpr> for AssigneeExpr {
 }
 
 #[async_trait]
+impl Compilable for TypeExpr {
+    const CTY: CompiledType = CompiledType::TypeExpr;
+    fn from_compiled(compiled: Compiled) -> Self {
+        match compiled {
+            Compiled::TypeExpr(e) => e,
+            _ => unreachable!(),
+        }
+    }
+    async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
+        Ok(match ast {
+            kast_ast::Ast::Simple { token, data } => {
+                let expr: Expr = SingleTokenExpr::compile(kast, token, data)
+                    .await?
+                    .try_into()?;
+                TypeExpr::Expr {
+                    expr: Box::new(expr),
+                    data: data.span.clone(),
+                }
+                .init(kast)
+                .await?
+            }
+            kast_ast::Ast::Complex { .. } => Self::expand_macros(kast, ast).await?,
+            kast_ast::Ast::SyntaxDefinition { .. } | kast_ast::Ast::FromScratch { .. } => {
+                eyre::bail!("expected type expr");
+            }
+        })
+    }
+    async fn compile_call(
+        _kast: &mut Kast,
+        _f: Value,
+        _args: &Tuple<Ast>,
+        _span: Span,
+    ) -> eyre::Result<Self> {
+        eyre::bail!("expected type expr")
+    }
+}
+
+#[async_trait]
 impl Compilable for AssigneeExpr {
     const CTY: CompiledType = CompiledType::AssigneeExpr;
     fn from_compiled(compiled: Compiled) -> Self {
@@ -634,6 +672,7 @@ impl Kast {
             CompiledType::Pattern => Compiled::Pattern(self.compile(ast).await?),
             CompiledType::PlaceExpr => Compiled::PlaceExpr(self.compile(ast).await?),
             CompiledType::AssigneeExpr => Compiled::AssigneeExpr(self.compile(ast).await?),
+            CompiledType::TypeExpr => Compiled::TypeExpr(self.compile(ast).await?),
         })
     }
     fn compile_fn_body(
@@ -662,14 +701,16 @@ impl Kast {
 pub enum CompiledType {
     Expr,
     PlaceExpr,
+    TypeExpr,
     AssigneeExpr,
     Pattern,
 }
 
 pub enum Compiled {
-    AssigneeExpr(AssigneeExpr),
     Expr(Expr),
     PlaceExpr(PlaceExpr),
+    TypeExpr(TypeExpr),
+    AssigneeExpr(AssigneeExpr),
     Pattern(Pattern),
 }
 
@@ -680,6 +721,7 @@ impl Compiled {
             Compiled::Expr(e) => &mut e.data_mut().ty,
             Compiled::PlaceExpr(e) => &mut e.data_mut().ty,
             Compiled::Pattern(p) => &mut p.data_mut().ty,
+            Compiled::TypeExpr(_) => unreachable!("getting type of type expr?"),
         }
     }
     fn expect_expr(self) -> Option<Expr> {
@@ -914,12 +956,50 @@ impl PlaceExpr<Span> {
     }
 }
 
+impl TypeExpr<Span> {
+    pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<TypeExpr>> {
+        let error_context = format!("while initializing {}", self.show_short());
+        let r#impl = async {
+            Ok::<_, eyre::Report>(match self {
+                TypeExpr::Ref { inner, data: span } => todo!(),
+                TypeExpr::List { inner, data: span } => todo!(),
+                TypeExpr::Unit { data: span } => TypeExpr::Unit {
+                    data: TypeExprData { span },
+                },
+                TypeExpr::Tuple { fields, data: span } => todo!(),
+                TypeExpr::Function {
+                    arg,
+                    result,
+                    contexts,
+                    data: span,
+                } => todo!(),
+                TypeExpr::Expr { expr, data: span } => {
+                    expr.data().ty.infer_as(TypeShape::Type)?;
+                    TypeExpr::Expr {
+                        expr,
+                        data: TypeExprData { span },
+                    }
+                }
+            })
+        };
+        async { r#impl.await.wrap_err(error_context) }.boxed()
+    }
+}
+
 impl Expr<Span> {
     /// Initialize expr data
     pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<Expr>> {
         let error_context = format!("while initializing {}", self.show_short());
         let r#impl = async {
             Ok::<_, eyre::Report>(match self {
+                Expr::Type { expr, data: span } => Expr::Type {
+                    data: ExprData {
+                        ty: TypeShape::Type.into(),
+                        span,
+                        contexts: Contexts::empty(), // TODO expr.data().contexts.clone(),
+                    },
+                    expr,
+                },
                 Expr::Ref { place, data: span } => {
                     let place_ty = place.data().ty.clone();
                     let ty = Type::new_not_inferred_with_default(
