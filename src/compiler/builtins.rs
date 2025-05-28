@@ -1203,7 +1203,7 @@ impl Builtins {
             b: "b",
         }
         .collect(ast)?;
-        let mut tuple = Tuple::empty();
+        let mut tuple = Tuple::<Compiled>::empty();
         for field in fields {
             match field {
                 Ast::Complex {
@@ -1215,7 +1215,7 @@ impl Builtins {
                         .as_ref()
                         .into_named_opt(["name"], ["value"])
                         .wrap_err_with(|| "field macro wrong args")?;
-                    let (name, ty): (&Ast, Option<Type>) = match name {
+                    let (name_ast, ty): (&Ast, Option<&Ast>) = match name {
                         Ast::Complex {
                             definition,
                             values,
@@ -1225,39 +1225,47 @@ impl Builtins {
                                 .as_ref()
                                 .into_named(["value", "type"])
                                 .wrap_err_with(|| "type ascribe macro wrong args")?;
-                            (
-                                name,
-                                Some(
-                                    kast.eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
-                                        .await?
-                                        .into_type()?,
-                                ),
-                            )
+                            (name, Some(ty))
                         }
                         _ => (name, None),
                     };
-                    let value = value.unwrap_or(name);
-                    let name_span = name.data().span.clone();
-                    let name = name
+                    let name_span = name_ast.data().span.clone();
+                    let name = name_ast
                         .as_ident()
-                        .ok_or_else(|| eyre!("{name} is not an ident"))?
+                        .ok_or_else(|| eyre!("{name_ast} is not an ident"))?
                         .to_owned();
-                    let mut compiled = kast.compile_into(cty, value).await?;
-                    let ty = match ty {
-                        Some(ty) => ty,
-                        None => Type::new_not_inferred(&format!("Field {name} at {name_span}")),
-                    };
-                    compiled.ty_mut().make_same(ty)?;
-                    tuple.add_named(name, compiled);
+                    if cty == CompiledType::TypeExpr {
+                        let None = value else {
+                            eyre::bail!("value is not expected");
+                        };
+                        let Some(ty) = ty else {
+                            eyre::bail!("expected type of field");
+                        };
+                        let ty = kast.compile_into(cty, ty).await?;
+                        tuple.add_named(name, ty);
+                    } else {
+                        let value = value.unwrap_or(name_ast);
+                        let mut value = kast.compile_into(cty, value).await?;
+                        let ty = match ty {
+                            Some(ty) => kast
+                                .eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
+                                .await?
+                                .into_type()?,
+                            None => Type::new_not_inferred(&format!("Field {name} at {name_span}")),
+                        };
+                        value.ty_mut().make_same(ty)?;
+                        tuple.add_named(name, value);
+                    }
                 }
                 _ => tuple.add_unnamed(kast.compile_into(cty, field).await?),
             }
         }
+        let span = &ast.data().span;
         Ok(match cty {
             CompiledType::AssigneeExpr => Compiled::AssigneeExpr(
                 AssigneeExpr::Tuple {
                     tuple: tuple.map(|field| field.expect_assignee_expr().unwrap()),
-                    data: ast.data().span.clone(),
+                    data: span.clone(),
                 }
                 .init(kast)
                 .await?,
@@ -1266,7 +1274,7 @@ impl Builtins {
             CompiledType::Expr => Compiled::Expr(
                 Expr::Tuple {
                     tuple: tuple.map(|field| field.expect_expr().unwrap()),
-                    data: ast.data().span.clone(),
+                    data: span.clone(),
                 }
                 .init(kast)
                 .await?,
@@ -1274,11 +1282,18 @@ impl Builtins {
             CompiledType::Pattern => Compiled::Pattern(
                 Pattern::Tuple {
                     tuple: tuple.map(|field| field.expect_pattern().unwrap()),
-                    data: ast.data().span.clone(),
+                    data: span.clone(),
                 }
                 .init()?,
             ),
-            CompiledType::TypeExpr => unreachable!(),
+            CompiledType::TypeExpr => Compiled::TypeExpr(
+                TypeExpr::Tuple {
+                    fields: tuple.map(|field| field.expect_type().unwrap()),
+                    data: span.clone(),
+                }
+                .init(kast)
+                .await?,
+            ),
         })
     }
     async fn macro_is(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {

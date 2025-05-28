@@ -749,6 +749,12 @@ impl Compiled {
             _ => None,
         }
     }
+    fn expect_type(self) -> Option<TypeExpr> {
+        match self {
+            Compiled::TypeExpr(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
 fn get_complex(ast: &Ast) -> (&Tuple<Ast>, Span) {
@@ -961,18 +967,32 @@ impl TypeExpr<Span> {
         let error_context = format!("while initializing {}", self.show_short());
         let r#impl = async {
             Ok::<_, eyre::Report>(match self {
-                TypeExpr::Ref { inner, data: span } => todo!(),
-                TypeExpr::List { inner, data: span } => todo!(),
+                TypeExpr::Ref { inner, data: span } => TypeExpr::Ref {
+                    inner,
+                    data: TypeExprData { span },
+                },
+                TypeExpr::List { inner, data: span } => TypeExpr::List {
+                    inner,
+                    data: TypeExprData { span },
+                },
                 TypeExpr::Unit { data: span } => TypeExpr::Unit {
                     data: TypeExprData { span },
                 },
-                TypeExpr::Tuple { fields, data: span } => todo!(),
+                TypeExpr::Tuple { fields, data: span } => TypeExpr::Tuple {
+                    fields,
+                    data: TypeExprData { span },
+                },
                 TypeExpr::Function {
                     arg,
                     result,
                     contexts,
                     data: span,
-                } => todo!(),
+                } => TypeExpr::Function {
+                    arg,
+                    result,
+                    contexts,
+                    data: TypeExprData { span },
+                },
                 TypeExpr::Expr { expr, data: span } => {
                     expr.data().ty.infer_as(TypeShape::Type)?;
                     TypeExpr::Expr {
