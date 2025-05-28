@@ -12,6 +12,32 @@ pub struct Builtins {
     builtin_macros: HashMap<&'static str, BuiltinMacro>,
 }
 
+macro_rules! assert_place_expr {
+    ($this:expr, $cty:expr, $ast:expr) => {
+        let cty = $cty;
+        let ast = $ast;
+        match cty {
+            CompiledType::Expr => {
+                return Ok(Compiled::Expr(
+                    $this.compile::<PlaceExpr>(ast).await?.into(),
+                ));
+            }
+            CompiledType::AssigneeExpr => {
+                return Ok(Compiled::AssigneeExpr(
+                    $this.compile::<PlaceExpr>(ast).await?.into(),
+                ));
+            }
+            CompiledType::TypeExpr => {
+                return Ok(Compiled::TypeExpr(
+                    $this.compile::<PlaceExpr>(ast).await?.into(),
+                ));
+            }
+            CompiledType::PlaceExpr => {}
+            CompiledType::Pattern => eyre::bail!("Expected place expr"),
+        }
+    };
+}
+
 macro_rules! assert_expr {
     ($this:expr, $cty:expr, $ast:expr) => {
         let cty = $cty;
@@ -1055,10 +1081,7 @@ impl Builtins {
         cty: CompiledType,
         ast: &Ast,
     ) -> eyre::Result<Compiled> {
-        if cty == CompiledType::Expr {
-            return Ok(Compiled::Expr(kast.compile::<PlaceExpr>(ast).await?.into()));
-        }
-        assert_eq!(cty, CompiledType::PlaceExpr);
+        assert_place_expr!(kast, cty, ast);
         let (values, span) = get_complex(ast);
         let [obj, field] = values.as_ref().into_named(["obj", "field"])?;
         let field = ast_as_member(field)
@@ -1624,15 +1647,7 @@ impl Builtins {
         ))
     }
     async fn macro_deref(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        if cty == CompiledType::Expr {
-            return Ok(Compiled::Expr(kast.compile::<PlaceExpr>(ast).await?.into()));
-        }
-        if cty == CompiledType::AssigneeExpr {
-            return Ok(Compiled::AssigneeExpr(
-                kast.compile::<PlaceExpr>(ast).await?.into(),
-            ));
-        }
-        assert_eq!(cty, CompiledType::PlaceExpr);
+        assert_place_expr!(kast, cty, ast);
         let (values, span) = get_complex(ast);
         let r#ref = values.as_ref().into_single_named("ref")?;
         Ok(Compiled::PlaceExpr(

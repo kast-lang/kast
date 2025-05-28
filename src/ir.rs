@@ -317,6 +317,24 @@ impl PlaceExpr {
     }
 }
 
+impl From<Expr> for TypeExpr {
+    fn from(expr: Expr) -> Self {
+        TypeExpr::Expr {
+            data: TypeExprData {
+                span: expr.data().span.clone(),
+            },
+            expr: Box::new(expr),
+        }
+    }
+}
+
+impl From<PlaceExpr> for TypeExpr {
+    fn from(expr: PlaceExpr) -> Self {
+        let expr: Expr = expr.into();
+        expr.into()
+    }
+}
+
 impl From<PlaceExpr> for Expr {
     fn from(place: PlaceExpr) -> Self {
         Self::ReadPlace {
