@@ -1,5 +1,5 @@
 use kast_util::*;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 use std::sync::{Arc, Mutex};
 
 mod checks;
@@ -330,10 +330,10 @@ impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T
             }
             *level += 1;
             let cache = cache.as_mut().unwrap();
-            match cache.get::<_, ()>(self.var()) {
+            match cache.get::<Var<T>, ()>(self.var()) {
                 Some(_cached) => true,
                 None => {
-                    cache.insert(self.var(), ());
+                    cache.insert::<Var<T>, ()>(self.var(), ());
                     false
                 }
             }
@@ -347,6 +347,10 @@ impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T
             }
         };
         CACHE.with_borrow_mut(|(level, cache)| {
+            if !cached {
+                let removed = cache.as_mut().unwrap().remove::<Var<T>, ()>(self.var());
+                assert!(removed.is_some());
+            }
             *level -= 1;
             if *level == 0 {
                 assert!(cache.take().is_some());

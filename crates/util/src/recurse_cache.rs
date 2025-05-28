@@ -27,4 +27,9 @@ impl RecurseCache {
             .and_then(|map| map.get(&key.id()))
             .cloned()
     }
+    pub fn remove<K: Identifiable, V: 'static>(&mut self, key: &K) -> Option<V> {
+        self.cached
+            .get_mut::<HashMap<K::Id, V>>()
+            .and_then(|map| map.remove(&key.id()))
+    }
 }
