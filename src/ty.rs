@@ -128,11 +128,11 @@ impl Inferrable for TupleType {
 impl std::fmt::Display for TupleType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.name.inferred() {
-            Ok(None) => self.fields.fmt(f),
+            Ok(None) => self.fields.show("::").fmt(f),
             Ok(Some(name)) => name.fmt(f),
             Err(_) => {
                 write!(f, "_ ")?;
-                self.fields.fmt(f)
+                self.fields.show("::").fmt(f)
             }
         }
     }
@@ -365,7 +365,7 @@ impl std::fmt::Display for TypeShape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnwindHandle(ty) => write!(f, "unwindable block handle {ty}"),
-            Self::Unit => write!(f, "unit"),
+            Self::Unit => write!(f, "()"),
             Self::Bool => write!(f, "bool"),
             Self::Int32 => write!(f, "int32"),
             Self::Int64 => write!(f, "int64"),

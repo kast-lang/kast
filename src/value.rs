@@ -424,7 +424,7 @@ impl std::fmt::Display for ValueShape {
                 Ok(())
             }
             ValueShape::Type(ty) => {
-                // write!(f, "type ")?;
+                write!(f, "type ")?;
                 ty.fmt(f)
             }
             ValueShape::SyntaxModule(_definitions) => write!(f, "<syntax module>"),
@@ -880,8 +880,9 @@ pub trait NativeFunctionClosure: Send + Sync + 'static {
     ) -> BoxFuture<'static, eyre::Result<Value>>;
 }
 
-impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static>
-    NativeFunctionClosure for F
+impl<
+        F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static,
+    > NativeFunctionClosure for F
 {
     fn call(
         &self,

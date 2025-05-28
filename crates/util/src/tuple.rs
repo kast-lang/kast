@@ -471,44 +471,70 @@ impl<T> Tuple<T> {
     }
 }
 
-impl<T: std::fmt::Display> std::fmt::Display for Tuple<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "(")?;
-        {
-            if !self.is_empty() && f.alternate() {
-                writeln!(f)?;
-            }
-            let mut f =
-                pad_adapter::PadAdapter::with_padding(f, if f.alternate() { "    " } else { "" });
-            let mut first = true;
-            let mut before_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
-                if !first && !f.alternate() {
-                    write!(f, ", ")?;
-                }
-                first = false;
-                Ok(())
-            };
-            let after_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
-                if f.alternate() {
-                    writeln!(f, ",")?;
-                }
-                Ok(())
-            };
-            for field in &self.unnamed {
-                before_field(&mut f)?;
-                f.write(field)?;
-                after_field(&mut f)?;
-            }
-            for name in &self.named_order {
-                before_field(&mut f)?;
-                let field = &self.named[name];
-                write!(f, ".{name} = ")?;
-                f.write(field)?;
-                after_field(&mut f)?;
+impl<T: std::fmt::Display> Tuple<T> {
+    pub fn show<'a>(&'a self, field_value_symbol: &'a str) -> impl std::fmt::Display + 'a {
+        struct Show<'a, T> {
+            tuple: &'a Tuple<T>,
+            field_value_symbol: &'a str,
+        }
+        impl<T> std::ops::Deref for Show<'_, T> {
+            type Target = Tuple<T>;
+            fn deref(&self) -> &Self::Target {
+                self.tuple
             }
         }
-        write!(f, ")")?;
-        Ok(())
+        impl<T: std::fmt::Display> std::fmt::Display for Show<'_, T> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "(")?;
+                {
+                    if !self.is_empty() && f.alternate() {
+                        writeln!(f)?;
+                    }
+                    let mut f = pad_adapter::PadAdapter::with_padding(
+                        f,
+                        if f.alternate() { "    " } else { "" },
+                    );
+                    let mut first = true;
+                    let mut before_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
+                        if !first && !f.alternate() {
+                            write!(f, ", ")?;
+                        }
+                        first = false;
+                        Ok(())
+                    };
+                    let after_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
+                        if f.alternate() {
+                            writeln!(f, ",")?;
+                        }
+                        Ok(())
+                    };
+                    for field in &self.unnamed {
+                        before_field(&mut f)?;
+                        f.write(field)?;
+                        after_field(&mut f)?;
+                    }
+                    for name in &self.named_order {
+                        before_field(&mut f)?;
+                        let field = &self.named[name];
+                        write!(f, ".{name} {} ", self.field_value_symbol)?;
+                        f.write(field)?;
+                        after_field(&mut f)?;
+                    }
+                }
+                write!(f, ")")?;
+                Ok(())
+            }
+        }
+        Show {
+            tuple: self,
+            field_value_symbol,
+        }
+    }
+}
+
+impl<T: std::fmt::Display> std::fmt::Display for Tuple<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.show("=").fmt(f)
     }
 }
 
