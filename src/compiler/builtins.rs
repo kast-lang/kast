@@ -16,13 +16,24 @@ macro_rules! assert_expr {
     ($this:expr, $cty:expr, $ast:expr) => {
         let cty = $cty;
         let ast = $ast;
-        if cty == CompiledType::PlaceExpr {
-            return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
-                $this.compile(ast).await?,
-            )));
-        }
-        if cty != CompiledType::Expr {
-            eyre::bail!("Expected expr");
+        match cty {
+            CompiledType::Expr => {}
+            CompiledType::PlaceExpr => {
+                return Ok(Compiled::PlaceExpr(PlaceExpr::new_temp(
+                    $this.compile(ast).await?,
+                )));
+            }
+            CompiledType::TypeExpr => {
+                return Ok(Compiled::TypeExpr(
+                    TypeExpr::Expr {
+                        expr: Box::new($this.compile(ast).await?),
+                        data: $ast.data().span.clone(),
+                    }
+                    .init($this)
+                    .await?,
+                ))
+            }
+            CompiledType::AssigneeExpr | CompiledType::Pattern => eyre::bail!("Expected expr"),
         }
     };
 }
@@ -108,11 +119,8 @@ impl Builtins {
             .as_ref()
             .into_named(["value", "type"])
             .wrap_err_with(|| "Macro received incorrect arguments")?;
-        let ty = kast
-            .eval_ast::<Value>(ty, Some(TypeShape::Type.into()))
-            .await
-            .wrap_err_with(|| "Failed to evaluate the type")?
-            .into_type()?;
+        let ty = kast.compile(ty).await?;
+        let ty = kast.eval_type(&ty).await?;
         let mut value = kast.compile_into(cty, value).await?;
         value.ty_mut().make_same(ty)?;
         Ok(value)
