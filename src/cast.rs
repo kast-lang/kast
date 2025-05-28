@@ -51,6 +51,8 @@ impl CastMap {
             //         .map_err(|value| eyre!("{value} is not a type"))?,
             // )
             // .into(),
+
+            // Cast `TupleValue` (value-tuple with types as fields) into a `TypeShape::Tuple` (type-tuple which is a type itself)
             ValueShape::Tuple(tuple) => {
                 let name = tuple.name.clone();
                 let mut field_types = Tuple::<Type>::empty();
