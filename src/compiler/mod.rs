@@ -1799,6 +1799,7 @@ impl Expr<Span> {
                         let mut result_ty = result_ty.clone();
                         let mut kast = kast.spawn_clone();
                         let arg_ir = arg_ir.clone();
+                        let span = span.clone();
                         async move {
                             let compiled = kast
                                 .await_compiled(&template_ty)
@@ -1830,8 +1831,11 @@ impl Expr<Span> {
                                     .clone()
                                     .substitute_bindings(&template_kast, &mut RecurseCache::new()),
                             )?;
-                            Ok(())
+                            Ok::<_, eyre::Report>(())
                         }
+                        .map_err(move |e| {
+                            e.wrap_err(format!("while instantiating template at {span}"))
+                        })
                     });
 
                     Expr::Instantiate {

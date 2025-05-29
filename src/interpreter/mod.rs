@@ -719,18 +719,34 @@ impl Kast {
                             kast.current_name.append(NamePart::Str(format!("{member}")));
                         result.add_member(member, kast.eval(field).await?);
                     }
-                    let result =
-                        ValueShape::Tuple(TupleValue::new_unnamed(result, data.ty.clone())).into();
-                    match data.ty.inferred_or_default()? {
-                        Ok(TypeShape::Type) => self
-                            .cache
-                            .compiler
-                            .casts
-                            .lock()
-                            .unwrap()
-                            .cast(result, &ValueShape::Type(TypeShape::Type.into()).into())?
-                            .map_err(|tuple| eyre!("{tuple} can not be cast into type"))?,
-                        Ok(TypeShape::Tuple(..)) => result,
+                    let result_ty = data
+                        .ty
+                        .clone()
+                        .substitute_bindings(self, &mut RecurseCache::new());
+                    match result_ty.inferred_or_default()? {
+                        Ok(TypeShape::Type) => {
+                            let result = ValueShape::Tuple(TupleValue::new_unnamed(
+                                result,
+                                Type::new_not_inferred("tuple type"),
+                            ))
+                            .into();
+                            self.cache
+                                .compiler
+                                .casts
+                                .lock()
+                                .unwrap()
+                                .cast(result, &ValueShape::Type(TypeShape::Type.into()).into())?
+                                .map_err(|tuple| eyre!("{tuple} can not be cast into type"))?
+                        }
+                        Ok(TypeShape::Tuple(..)) => {
+                            let result = ValueShape::Tuple(TupleValue::new_unnamed(
+                                result,
+                                result_ty.clone(),
+                            ))
+                            .into();
+                            // println!("{result} :: {result_ty}");
+                            result
+                        }
                         Ok(ty) => eyre::bail!("tuple expr type inferred as {ty}???"),
                         Err(_) => eyre::bail!("tuple type could not be inferred???"),
                     }
@@ -751,7 +767,10 @@ impl Kast {
                     ValueShape::Tuple(TupleValue {
                         name: Some(self.current_name.clone()),
                         inner: fields,
-                        ty: data.ty.clone(),
+                        ty: data
+                            .ty
+                            .clone()
+                            .substitute_bindings(self, &mut RecurseCache::new()),
                     })
                     .into()
                 }
@@ -1083,6 +1102,7 @@ impl Kast {
                 .substitute_bindings(&kast, &mut RecurseCache::new()),
         )?;
         kast.pattern_match(&compiled.arg, OwnedPlace::new_temp(arg).get_ref())?;
+        tracing::trace!("calling fn at {}", compiled.body.data().span);
         let value = kast.eval(&compiled.body).await?;
         Ok(value)
     }

@@ -32,76 +32,6 @@ const bool :: type = native "bool";
 impl syntax @"syntax".@"true" = macro _ => `(native "true");
 impl syntax @"syntax".@"false" = macro _ => `(native "false");
 
-const int32 :: type = native "int32";
-const int64 :: type = native "int64";
-const float64 :: type = native "float64";
-const char :: type = native "char";
-const string :: type = native "string";
-
-const output :: type = native "output";
-# const output :: type = (
-#     .write = &string -> (),
-# );
-const input :: type = (
-    .read_line = () -> string with (),
-);
-native "set_native" (.name = "input", .value = input);
-
-const default_number_type :: type = native "default_number_type";
-let default_number_type_based_on_dot :: default_number_type = (
-    # TODO should return Option[type]
-    .default_number_type = s => (
-      if contains (.s, .substring=".") then
-        float64
-      else
-        int32
-    ),
-);
-
-# TODO panic should return never
-const panic :: string -> () = native "panic";
-
-const print :: &string -> () with output = line => (
-    let output = current output;
-    output.write line;
-    output.write &"\n";
-);
-
-const read_line :: () -> string with input = () => (
-    (current input).read_line ()
-);
-
-const filesystem :: type = native "filesystem";
-
-const read_file :: string -> string with filesystem = fn (path) {
-    (current filesystem).read_file path
-};
-
-const contains :: (.s = string, .substring = string) -> bool = native "contains";
-
-const dbg = forall[T] {
-    (value :: T) => (
-        let output = current output;
-        output.write <| &(native "dbg" value);
-        output.write &" :: ";
-        output.write <| &(native "dbg_type" T);
-        output.write &"\n";
-    )
-};
-
-# TODO T: randomizable
-const random = forall[T] {
-    native "random" :: (.min = T, .max = T) -> T
-};
-
-# TODO `:: type` should be inferred
-const Option = forall[T :: type] { newtype :Some T | :None };
-native "set_native" (.name = "Option", .value = Option);
-
-const Either = forall[.left :: type, .right :: type] { newtype :Left left | :Right right };
-
-const Result = forall[.ok :: type, .error :: type] { newtype :Ok ok | :Error error };
-
 # TODO where T: Num or smth
 const @"op unary +" = forall[T] { (x :: T,) => x };
 impl syntax @"syntax".@"op unary +" = macro (x,) => `(@"op unary +" $x);
@@ -115,30 +45,61 @@ impl syntax @"syntax".@"op binary *" = macro (.lhs, .rhs) => `(@"op binary *" (.
 impl syntax @"syntax".@"op binary /" = macro (.lhs, .rhs) => `(@"op binary /" (.lhs = $lhs, .rhs = $rhs));
 impl syntax @"syntax".@"op binary %" = macro (.lhs, .rhs) => `(@"op binary %" (.lhs = $lhs, .rhs = $rhs));
 
-const @"op binary <" = forall[T] { native "<" :: (.lhs = &T, .rhs = &T) -> bool };
 impl syntax @"syntax".@"op binary <" = macro (.lhs, .rhs) => `(
     @"op binary <"(.lhs = & $lhs, .rhs = & $rhs)
 );
-const @"op binary <=" = forall[T] { native "<=" :: (.lhs = &T, .rhs = &T) -> bool };
 impl syntax @"syntax".@"op binary <=" = macro (.lhs, .rhs) => `(
     @"op binary <="(.lhs = & $lhs, .rhs = & $rhs)
 );
-const @"op binary ==" = forall[T] { native "==" :: (.lhs = &T, .rhs = &T) -> bool };
 impl syntax @"syntax".@"op binary ==" = macro (.lhs, .rhs) => `(
     @"op binary =="(.lhs = & $lhs, .rhs = & $rhs)
 );
-const @"op binary !=" = forall[T] { native "!=" :: (.lhs = &T, .rhs = &T) -> bool };
 impl syntax @"syntax".@"op binary !=" = macro (.lhs, .rhs) => `(
     @"op binary !="(.lhs = & $lhs, .rhs = & $rhs)
 );
-const @"op binary >=" = forall[T] { native ">=" :: (.lhs = &T, .rhs = &T) -> bool };
 impl syntax @"syntax".@"op binary >=" = macro (.lhs, .rhs) => `(
     @"op binary >="(.lhs = & $lhs, .rhs = & $rhs)
 );
-const @"op binary >" = forall[T] { native ">" :: (.lhs = &T, .rhs = &T) -> bool };
 impl syntax @"syntax".@"op binary >" = macro (.lhs, .rhs) => `(
     @"op binary >"(.lhs = & $lhs, .rhs = & $rhs)
 );
+const @"op binary <" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "<"
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)<$(rhs))" )
+    } :: (.lhs = &T, .rhs = &T) -> bool
+};
+const @"op binary <=" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "<="
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)<=$(rhs))" )
+    } :: (.lhs = &T, .rhs = &T) -> bool
+};
+const @"op binary ==" = forall[T] {
+    cfg_if {
+        # Can't have normal target.name == "interpreter" because it will recurse
+        | native "==" (.lhs = &target.name, .rhs = &"interpreter") => native "=="
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)==$(rhs))" )
+    } :: (.lhs = &T, .rhs = &T) -> bool
+};
+const @"op binary !=" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native "!="
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)!=$(rhs))" )
+    } :: (.lhs = &T, .rhs = &T) -> bool
+};
+const @"op binary >=" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native ">="
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)>=$(rhs))" )
+    } :: (.lhs = &T, .rhs = &T) -> bool
+};
+const @"op binary >" = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => native ">"
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)>$(rhs))" )
+    } :: (.lhs = &T, .rhs = &T) -> bool
+};
 
 impl syntax @"syntax".@"op +=" = macro (.target, .value) => `($target = $target + $value);
 impl syntax @"syntax".@"op -=" = macro (.target, .value) => `($target = $target - $value);
@@ -182,6 +143,81 @@ const @"op binary %" = forall[T] {
 
 const @"not" = native "not" :: bool -> bool;
 impl syntax @"syntax".@"not" = macro (e,) => `(@"not" $e);
+
+const int32 :: type = native "int32";
+const int64 :: type = native "int64";
+const float64 :: type = native "float64";
+const char :: type = native "char";
+const string :: type = native "string";
+
+const output :: type = native "output";
+# const output :: type = (
+#     .write = &string -> (),
+# );
+const input :: type = (
+    .read_line = () -> string with (),
+);
+native "set_native" (.name = "input", .value = input);
+
+const default_number_type :: type = native "default_number_type";
+let default_number_type_based_on_dot :: default_number_type = (
+    # TODO should return Option[type]
+    .default_number_type = s => (
+      if contains (.s, .substring=".") then
+        float64
+      else
+        int32
+    ),
+);
+
+# TODO panic should return never
+const panic = fn(msg :: string) {
+    cfg_if {
+        | target.name == "interpreter" => native "panic" msg
+        | target.name == "javascript" => native "(()=>{throw $(msg);})()"
+    }
+};
+
+const print :: &string -> () with output = line => (
+    let output = current output;
+    output.write line;
+    output.write &"\n";
+);
+
+const read_line :: () -> string with input = () => (
+    (current input).read_line ()
+);
+
+const filesystem :: type = native "filesystem";
+
+const read_file :: string -> string with filesystem = fn (path) {
+    (current filesystem).read_file path
+};
+
+const contains :: (.s = string, .substring = string) -> bool = native "contains";
+
+const dbg = forall[T] {
+    (value :: T) => (
+        let output = current output;
+        output.write <| &(native "dbg" value);
+        output.write &" :: ";
+        output.write <| &(native "dbg_type" T);
+        output.write &"\n";
+    )
+};
+
+# TODO T: randomizable
+const random = forall[T] {
+    native "random" :: (.min = T, .max = T) -> T
+};
+
+# TODO `:: type` should be inferred
+const Option = forall[T :: type] { newtype :Some T | :None };
+native "set_native" (.name = "Option", .value = Option);
+
+const Either = forall[.left :: type, .right :: type] { newtype :Left left | :Right right };
+
+const Result = forall[.ok :: type, .error :: type] { newtype :Ok ok | :Error error };
 
 const TypeName = (.name = string) as type;
 
@@ -352,4 +388,7 @@ const prelude = (
     .Option = Option,
     .Either = Either,
     .Result = Result,
+    
+    .panic = panic,
+    .dbg = dbg,
 );

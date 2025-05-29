@@ -1,5 +1,5 @@
 use kast_util::*;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use std::sync::{Arc, Mutex};
 
 mod checks;
@@ -118,6 +118,13 @@ impl<T: Inferrable> Var<T> {
             })),
         }
     }
+    pub fn default(&self) -> Option<Arc<T>> {
+        VarState::get_root(&self.state)
+            .get()
+            .as_root()
+            .default_value
+            .get()
+    }
     pub fn get_or_default(&self) -> eyre::Result<Option<Arc<T>>> {
         VarState::get_root(&self.state).modify(|root| {
             let root = root.as_root();
@@ -207,6 +214,35 @@ impl<T: Inferrable> Var<T> {
 
 #[derive(Debug, Clone)]
 pub struct MaybeNotInferred<T: Inferrable>(Var<T>);
+
+impl<T: Inferrable> MaybeNotInferred<T> {
+    pub fn map(
+        self,
+        mut f: impl FnMut(T, &mut RecurseCache) -> MaybeNotInferred<T>,
+        cache: &mut RecurseCache,
+    ) -> Self {
+        let inferred = match self.inferred() {
+            Ok(inferred) => inferred,
+            Err(_) => {
+                if let Some(default) = self.var().default() {
+                    let mapped_default = f((*default).clone(), cache);
+                    let mapped_default = mapped_default
+                        .inferred()
+                        .unwrap_or_else(|_| panic!("mapped default is not inferred"));
+                    return Self(Var::new_with_default("mapped", mapped_default));
+                }
+                return self;
+            }
+        };
+        if let Some(result) = cache.get(self.var()) {
+            return result;
+        }
+        cache.insert(self.var(), self.clone());
+        let result: Self = f(inferred, cache);
+        cache.insert(self.var(), result.clone());
+        result
+    }
+}
 
 impl<T: Inferrable> From<T> for MaybeNotInferred<T> {
     fn from(value: T) -> Self {

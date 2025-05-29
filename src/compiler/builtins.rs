@@ -1634,17 +1634,28 @@ impl Builtins {
         ))
     }
     async fn macro_ref(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
-        assert_expr!(kast, cty, ast);
         let (values, span) = get_complex(ast);
         let place = values.as_ref().into_single_named("place")?;
-        Ok(Compiled::Expr(
-            Expr::Ref {
-                place: kast.compile(place).await?,
-                data: span,
-            }
-            .init(kast)
-            .await?,
-        ))
+        if cty == CompiledType::TypeExpr {
+            Ok(Compiled::TypeExpr(
+                TypeExpr::Ref {
+                    inner: Box::new(kast.compile(place).await?),
+                    data: span,
+                }
+                .init(kast)
+                .await?,
+            ))
+        } else {
+            assert_expr!(kast, cty, ast);
+            Ok(Compiled::Expr(
+                Expr::Ref {
+                    place: kast.compile(place).await?,
+                    data: span,
+                }
+                .init(kast)
+                .await?,
+            ))
+        }
     }
     async fn macro_deref(kast: &mut Kast, cty: CompiledType, ast: &Ast) -> eyre::Result<Compiled> {
         assert_place_expr!(kast, cty, ast);
@@ -1663,6 +1674,19 @@ impl Builtins {
         assert_expr!(kast, cty, ast);
         let (values, span) = get_complex(ast);
         let ([], [values]) = values.as_ref().into_named_opt([], ["values"])?;
+        if cty == CompiledType::TypeExpr {
+            let Some(inner) = values else {
+                eyre::bail!("expected inner type");
+            };
+            return Ok(Compiled::TypeExpr(
+                TypeExpr::List {
+                    inner: Box::new(kast.compile(inner).await?),
+                    data: span,
+                }
+                .init(kast)
+                .await?,
+            ));
+        }
         let values_asts = match values {
             Some(values) => {
                 let ListCollected {

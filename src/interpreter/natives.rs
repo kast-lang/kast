@@ -419,10 +419,8 @@ impl Natives {
                     let map = map.into_inferred()?.into_ref()?;
                     let mut map = map.write_value()?;
                     let map = map.as_hash_map_mut()?;
-                    map.values.insert(
-                        HashableValue(key),
-                        OwnedPlace::new(value, Mutability::Nested),
-                    );
+                    map.values
+                        .insert(Hashable(key), OwnedPlace::new(value, Mutability::Nested));
                     Ok(ValueShape::Unit.into())
                 }
                 .boxed()
@@ -498,10 +496,7 @@ impl Natives {
                     let map = map.as_hash_map()?;
                     let key = key.into_inferred()?.into_ref()?;
                     let key = key.clone_value()?; // TODO not clone
-                    let value_ref = map
-                        .values
-                        .get(&HashableValue(key))
-                        .map(|place| place.get_ref());
+                    let value_ref = map.values.get(&Hashable(key)).map(|place| place.get_ref());
                     Ok(ValueShape::Variant(VariantValue {
                         name: match value_ref {
                             Some(_) => "Some",
@@ -570,7 +565,7 @@ impl Natives {
                         // oh shit
                         let handler = handler.get_named("handle").ok_or_else(|| eyre!("wut"))?;
                         for (key, value) in map.values.into_iter() {
-                            let HashableValue(key) = key;
+                            let Hashable(key) = key;
                             let mut tuple = Tuple::empty();
                             tuple.add_unnamed(key);
                             tuple.add_unnamed(value.into_value()?);
@@ -1155,6 +1150,7 @@ impl Natives {
                             }
                             stringify!($op).contains('=')
                         },
+                        (ValueShape::List(lhs), ValueShape::List(rhs)) => lhs $op rhs,
                         (lhs, rhs) => {
                             eyre::bail!(
                                 "{:?} doesnt work for {} and {}",

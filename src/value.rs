@@ -282,9 +282,9 @@ impl Value {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct HashableValue(pub Value);
+pub struct Hashable<T>(pub T);
 
-impl std::hash::Hash for HashableValue {
+impl<T: TryHash> std::hash::Hash for Hashable<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.try_hash(state).expect("failed to hash");
     }
@@ -292,7 +292,7 @@ impl std::hash::Hash for HashableValue {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct HashMapValue {
-    pub values: HashMap<HashableValue, OwnedPlace>,
+    pub values: HashMap<Hashable<Value>, OwnedPlace>,
     pub ty: HashMapType,
 }
 
@@ -445,12 +445,26 @@ impl std::fmt::Display for ValueShape {
 impl std::fmt::Display for HashMapValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "HashMap[")?;
-        for (index, (key, value)) in self.values.iter().enumerate() {
-            if index != 0 {
-                write!(f, ", ")?;
+        if f.alternate() {
+            writeln!(f)?;
+        }
+        {
+            use std::fmt::Write;
+            let mut f =
+                pad_adapter::PadAdapter::with_padding(f, if f.alternate() { "    " } else { "" });
+            let f = &mut f;
+            for (index, (key, value)) in self.values.iter().enumerate() {
+                if index != 0 && !f.alternate() {
+                    write!(f, ", ")?;
+                }
+                let Hashable(key) = key;
+                f.write(key)?;
+                write!(f, " = ")?;
+                f.write(value)?;
+                if f.alternate() {
+                    writeln!(f, ",")?;
+                }
             }
-            let HashableValue(key) = key;
-            write!(f, "{key} = {value}")?;
         }
         write!(f, "]")
     }
@@ -880,9 +894,8 @@ pub trait NativeFunctionClosure: Send + Sync + 'static {
     ) -> BoxFuture<'static, eyre::Result<Value>>;
 }
 
-impl<
-        F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static,
-    > NativeFunctionClosure for F
+impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static>
+    NativeFunctionClosure for F
 {
     fn call(
         &self,

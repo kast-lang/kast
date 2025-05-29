@@ -1,7 +1,7 @@
 pub use try_hash_derive::TryHash;
 
 pub trait TryHash {
-    type Error;
+    type Error: std::fmt::Display + std::fmt::Debug;
     fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error>;
 }
 

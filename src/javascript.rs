@@ -9,6 +9,8 @@ pub enum JavaScriptEngineType {
     Browser,
 }
 
+const CONTEXT_VAR: &str = "ctx";
+
 struct Transpiler {
     kast: Kast,
     scopes: Parc<Scopes>,
@@ -16,6 +18,7 @@ struct Transpiler {
     code: String,
     captured: std::collections::HashSet<PlaceRef>,
     captured_unprocessed: Vec<PlaceRef>,
+    type_ids: HashMap<Hashable<Type>, Id>,
 }
 
 impl std::fmt::Write for Transpiler {
@@ -24,10 +27,30 @@ impl std::fmt::Write for Transpiler {
     }
 }
 
+fn escape_ident(ident: &str) -> String {
+    ident
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                return c;
+            }
+            '_'
+        })
+        .fold(String::new(), |acc, c| {
+            if acc.ends_with('_') && c == '_' {
+                acc
+            } else {
+                let mut acc = acc;
+                acc.push(c);
+                acc
+            }
+        })
+}
+
 fn binding_name(binding: &Binding) -> String {
     format!(
-        "var{}",
-        // TODO escape_ident(&binding.symbol.name),
+        "{}__{}",
+        escape_ident(&binding.symbol.name),
         binding.symbol.id,
     )
 }
@@ -41,6 +64,7 @@ impl Transpiler {
             code: String::new(),
             captured: Default::default(),
             captured_unprocessed: Default::default(),
+            type_ids: HashMap::new(),
         }
     }
 
@@ -106,7 +130,7 @@ impl Transpiler {
         async move {
             match expr {
                 Expr::Type { .. } => write!(self, "undefined")?,
-                Expr::Ref { place, data } => todo!(),
+                Expr::Ref { place, data: _ } => self.eval_place(place).await?,
                 Expr::And { lhs, rhs, data } => todo!(),
                 Expr::Or { lhs, rhs, data } => todo!(),
                 Expr::Assign {
@@ -120,11 +144,67 @@ impl Transpiler {
                     write!(self, ";")?;
                     self.assign(assignee, &temp_var).await?;
                 }
-                Expr::List { values, data } => todo!(),
-                Expr::Unwindable { name, body, data } => todo!(),
-                Expr::Unwind { name, value, data } => todo!(),
-                Expr::InjectContext { context, data } => todo!(),
-                Expr::CurrentContext { data } => todo!(),
+                Expr::List { values, data: _ } => {
+                    write!(self, "[")?;
+                    for (index, value) in values.iter().enumerate() {
+                        if index != 0 {
+                            write!(self, ",")?;
+                        }
+                        self.eval_expr(value).await?;
+                    }
+                    write!(self, "]")?;
+                }
+                Expr::Unwindable {
+                    name,
+                    body,
+                    data: _,
+                } => {
+                    let handle_var = format!("unwindable{}", Id::new());
+                    self.pattern_match(&handle_var, name)?;
+                    self.begin_scope()?;
+                    write!(self, "{handle_var}=Symbol();")?;
+                    write!(self, "try{{")?;
+                    write!(self, "return ")?;
+                    self.eval_expr(body).await?;
+                    write!(
+                        self,
+                        "}}catch(e){{if (e.handle!=={handle_var})throw e;return e.value}};"
+                    )?;
+                    self.end_scope()?;
+                }
+                Expr::Unwind {
+                    name,
+                    value,
+                    data: _,
+                } => {
+                    self.begin_scope()?;
+                    write!(self, "throw{{handle:")?;
+                    self.eval_expr(name).await?;
+                    write!(self, ",value:")?;
+                    self.eval_expr(value).await?;
+                    write!(self, "}}")?;
+                    self.end_scope()?;
+                }
+                Expr::InjectContext { context, data } => {
+                    let context_name = format!(
+                        "type{}",
+                        self.type_ids
+                            .entry(Hashable(data.ty.clone()))
+                            .or_insert_with(Id::new)
+                    );
+                    write!(self, "({CONTEXT_VAR}.{context_name}=")?;
+                    self.eval_expr(context).await?;
+                    write!(self, ")")?;
+                }
+                Expr::CurrentContext { data } => {
+                    let context_name = format!(
+                        "type{}",
+                        self.type_ids
+                            .entry(Hashable(data.ty.clone()))
+                            .or_insert_with(Id::new)
+                    );
+                    write!(self, "{CONTEXT_VAR}.{context_name}")?;
+                }
                 Expr::Unit { data: _ } => write!(self, "undefined")?,
                 Expr::FunctionType {
                     arg,
@@ -141,14 +221,50 @@ impl Transpiler {
                     value,
                     pattern,
                     data,
-                } => todo!(),
+                } => {
+                    self.begin_scope()?;
+                    let var = format!("var{}", Id::new());
+                    write!(self, "{var}=")?;
+                    self.read_place(value).await?;
+                    let check_var = format!("check{}", Id::new());
+                    write!(self, ";{check_var}=");
+                    self.pattern_check(&var, pattern)?;
+                    write!(self, "if({check_var}){{")?;
+                    self.pattern_match(&var, pattern)?;
+                    write!(self, "}}return {{check_var}}")?;
+                    self.end_scope()?;
+                }
                 Expr::Match {
                     value,
                     branches,
                     data,
-                } => todo!(),
-                Expr::Newtype { def, data } => todo!(),
-                Expr::Variant { name, value, data } => todo!(),
+                } => {
+                    self.begin_scope()?;
+                    let var = format!("var{}", Id::new());
+                    write!(self, "{var}=")?;
+                    self.read_place(value).await?;
+                    write!(self, ";")?;
+                    for branch in branches {
+                        write!(self, "if(")?;
+                        self.pattern_check(&var, &branch.pattern)?;
+                        write!(self, "){{")?;
+                        self.pattern_match(&var, &branch.pattern)?;
+                        write!(self, "return ")?;
+                        self.eval_expr(&branch.body).await?;
+                        write!(self, "}}")?;
+                    }
+                    self.end_scope()?;
+                }
+                Expr::Newtype { def: _, data: _ } => write!(self, "undefined")?,
+                Expr::Variant { name, value, data } => {
+                    self.variant(
+                        name,
+                        value
+                            .as_ref()
+                            .map(|value| async move |this: &mut Self| this.eval_expr(value).await),
+                    )
+                    .await?;
+                }
                 Expr::MakeMultiset { values, data } => todo!(),
                 Expr::Use { namespace, data } => todo!(),
                 Expr::Recursive {
@@ -161,7 +277,18 @@ impl Transpiler {
                     then_case,
                     else_case,
                     data,
-                } => todo!(),
+                } => {
+                    write!(self, "(")?;
+                    self.eval_expr(condition).await?;
+                    write!(self, "?")?;
+                    self.eval_expr(then_case).await?;
+                    write!(self, ":")?;
+                    match else_case {
+                        Some(else_case) => self.eval_expr(else_case).await?,
+                        None => write!(self, "undefined")?,
+                    }
+                    write!(self, ")")?;
+                }
                 Expr::Then { list, data: _ } => {
                     self.begin_scope()?;
                     for (index, expr) in list.iter().enumerate() {
@@ -207,15 +334,24 @@ impl Transpiler {
                     }
                 }
                 Expr::Let {
-                    is_const_let,
+                    is_const_let: _,
                     pattern,
                     value,
-                    data,
-                } => todo!(),
+                    data: _,
+                } => {
+                    let temp_var = format!("temp{}", Id::new());
+                    write!(self, "{temp_var}=")?;
+                    self.begin_scope()?;
+                    let value = value.as_ref().expect("no value in let?");
+                    self.read_place(value).await?;
+                    write!(self, ";")?;
+                    self.pattern_match(&temp_var, pattern)?;
+                    self.end_scope()?;
+                }
                 Expr::Call { f, arg, data: _ } => {
                     write!(self, "(")?;
                     self.eval_expr(f).await?;
-                    write!(self, ")(")?;
+                    write!(self, ")({CONTEXT_VAR},")?;
                     self.eval_expr(arg).await?;
                     write!(self, ")")?;
                 }
@@ -318,17 +454,21 @@ impl Transpiler {
                     self.transpile_fn(t).await; // TODO it should have memoization
                 }
                 ValueShape::Macro(_) => todo!(),
-                ValueShape::NativeFunction(native_function) => todo!(),
+                ValueShape::NativeFunction(native_function) => todo!("{}", native_function.name),
                 ValueShape::Binding(binding) => {
                     write!(self, "{}", binding_name(binding))?;
                 }
                 ValueShape::Variant(variant) => {
-                    write!(self, "{{\"variant\":{:?},\"value\":", variant.name)?;
-                    match &variant.value {
-                        Some(place) => self.transpile(&*place.read_value()?).await?,
-                        None => write!(self, "undefined")?,
-                    }
-                    write!(self, "}}")?;
+                    self.variant(
+                        &variant.name,
+                        variant.value.as_ref().map(|place| {
+                            async |this: &mut Self| {
+                                this.transpile(&*place.read_value()?).await?;
+                                Ok(())
+                            }
+                        }),
+                    )
+                    .await?;
                 }
                 ValueShape::Multiset(_) => todo!(),
                 ValueShape::Contexts(_) => todo!(),
@@ -394,6 +534,34 @@ impl Transpiler {
             Ok(())
         }
         .boxed()
+    }
+
+    fn pattern_check(&mut self, value: &str, pattern: &Pattern) -> eyre::Result<()> {
+        match pattern {
+            Pattern::Placeholder { data: _ } => write!(self, "true")?,
+            Pattern::Unit { data: _ } => write!(self, "true")?,
+            Pattern::Binding { .. } => write!(self, "true")?,
+            Pattern::Tuple { tuple, data: _ } => {
+                for (index, (member, field)) in tuple.as_ref().into_iter().enumerate() {
+                    if index != 0 {
+                        write!(self, "&&")?;
+                    }
+                    self.pattern_check(&format!("{value}[{:?}]", member.to_string()), field)?;
+                }
+            }
+            Pattern::Variant {
+                name,
+                value: value_pattern,
+                data: _,
+            } => {
+                write!(self, "{value}.variant=={name:?}")?;
+                if let Some(value_pattern) = value_pattern {
+                    write!(self, "&&")?;
+                    self.pattern_check(&format!("{value_pattern}.value"), value_pattern)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn pattern_match(&mut self, value: &str, pattern: &Pattern) -> eyre::Result<()> {
@@ -470,11 +638,25 @@ impl Transpiler {
 
     async fn transpile_compiled_fn(&mut self, f: &MaybeCompiledFn) -> eyre::Result<()> {
         let arg = format!("arg{}", Id::new());
-        write!(self, "({arg})=>{{")?;
+        write!(self, "({CONTEXT_VAR},{arg})=>{{")?;
         let compiled = self.kast.await_compiled(f).await?;
         self.pattern_match(&arg, &compiled.arg)?;
         write!(self, ";return ")?;
         self.eval_expr(&compiled.body).await?;
+        write!(self, "}}")?;
+        Ok(())
+    }
+
+    async fn variant(
+        &mut self,
+        name: &str,
+        value: Option<impl AsyncFnOnce(&mut Self) -> eyre::Result<()>>,
+    ) -> eyre::Result<()> {
+        write!(self, "{{\"variant\":{:?},\"value\":", name)?;
+        match value {
+            Some(value) => value(self).await?,
+            None => write!(self, "undefined")?,
+        }
         write!(self, "}}")?;
         Ok(())
     }

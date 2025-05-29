@@ -509,19 +509,10 @@ impl<T: Inferrable + SubstituteBindings<Target = inference::MaybeNotInferred<T>>
 {
     type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
-        let inferred = match self.inferred() {
-            Ok(inferred) => inferred,
-            Err(_) => {
-                return self;
-            }
-        };
-        if let Some(result) = cache.get(self.var()) {
-            return result;
-        }
-        cache.insert(self.var(), self.clone());
-        let result: Self = inferred.substitute_bindings(kast, cache);
-        cache.insert(self.var(), result.clone());
-        result
+        self.map(
+            |inferred, cache| inferred.substitute_bindings(kast, cache),
+            cache,
+        )
     }
 }
 
