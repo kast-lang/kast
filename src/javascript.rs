@@ -1,4 +1,3 @@
-#![allow(unused)]
 use super::*;
 use eyre::OptionExt as _;
 use std::fmt::Write;
@@ -127,7 +126,7 @@ impl Transpiler {
     }
 
     fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<()>> {
-        async move {
+        let r#impl = async move {
             match expr {
                 Expr::Type { .. } => write!(self, "undefined")?,
                 Expr::Ref { place, data: _ } => self.eval_place(place).await?,
@@ -160,10 +159,10 @@ impl Transpiler {
                     data: _,
                 } => {
                     let handle_var = format!("unwindable{}", Id::new());
-                    self.pattern_match(&handle_var, name)?;
                     self.begin_scope()?;
                     write!(self, "{handle_var}=Symbol();")?;
-                    write!(self, "try{{")?;
+                    self.pattern_match(&handle_var, name)?;
+                    write!(self, ";try{{")?;
                     write!(self, "return ")?;
                     self.eval_expr(body).await?;
                     write!(
@@ -220,14 +219,14 @@ impl Transpiler {
                 Expr::Is {
                     value,
                     pattern,
-                    data,
+                    data: _,
                 } => {
                     self.begin_scope()?;
                     let var = format!("var{}", Id::new());
                     write!(self, "{var}=")?;
                     self.read_place(value).await?;
                     let check_var = format!("check{}", Id::new());
-                    write!(self, ";{check_var}=");
+                    write!(self, ";{check_var}=")?;
                     self.pattern_check(&var, pattern)?;
                     write!(self, "if({check_var}){{")?;
                     self.pattern_match(&var, pattern)?;
@@ -237,7 +236,7 @@ impl Transpiler {
                 Expr::Match {
                     value,
                     branches,
-                    data,
+                    data: _,
                 } => {
                     self.begin_scope()?;
                     let var = format!("var{}", Id::new());
@@ -249,7 +248,7 @@ impl Transpiler {
                         self.pattern_check(&var, &branch.pattern)?;
                         write!(self, "){{")?;
                         self.pattern_match(&var, &branch.pattern)?;
-                        write!(self, "return ")?;
+                        write!(self, ";return ")?;
                         self.eval_expr(&branch.body).await?;
                         write!(self, "}}")?;
                     }
@@ -401,14 +400,21 @@ impl Transpiler {
                     self.read_place(place).await?;
                 }
                 Expr::TargetDependent { branches, data: _ } => {
+                    // println!("{expr}");
                     let body = self
                         .kast
                         .select_target_dependent_branch(branches, Target::JavaScript)
                         .await?;
+                    // println!("{body}");
                     self.eval_expr(body).await?
                 }
             }
             Ok(())
+        };
+        async move {
+            r#impl
+                .await
+                .wrap_err_with(|| format!("while transpiling {}", expr.show_short()))
         }
         .boxed()
     }
@@ -451,7 +457,7 @@ impl Transpiler {
                     self.transpile_fn(f).await?;
                 }
                 ValueShape::Template(t) => {
-                    self.transpile_fn(t).await; // TODO it should have memoization
+                    self.transpile_fn(t).await?; // TODO it should have memoization
                 }
                 ValueShape::Macro(_) => todo!(),
                 ValueShape::NativeFunction(native_function) => todo!("{}", native_function.name),

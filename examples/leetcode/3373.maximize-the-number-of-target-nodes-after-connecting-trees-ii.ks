@@ -156,5 +156,10 @@ let max_target_nodes = fn(edges1 :: list[list[int32]], edges2 :: list[list[int32
     list[]
 };
 let js_code :: string = std.javascript.transpile max_target_nodes;
-print "var differenceOfSums=";
+print "var f=";
 print &js_code;
+
+print "maxTargetNodes=(edges1,edges2)=>f({},{edges1,edges2})";
+
+print "console.log(maxTargetNodes([[0,1],[0,2],[2,3],[2,4]],[[0,1],[0,2],[0,3],[2,7],[1,4],[4,5],[4,6]]))"
+

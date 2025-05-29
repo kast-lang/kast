@@ -15,6 +15,7 @@ impl Target {
         Ok(match field {
             "name" => {
                 let name = format!("{self:?}").to_lowercase();
+                // println!("name={name:?}");
                 ValueShape::String(name).into()
             }
             _ => eyre::bail!("target doesnt have field {field:?}"),
@@ -50,7 +51,12 @@ impl Kast {
         branches: &'a [TargetDependentBranch<T>],
         target: Target,
     ) -> eyre::Result<&'a T> {
-        let scopes = &self.cache.target_dependent_scopes.clone();
+        // println!("selecting {target:?}");
+        let scopes = Scopes::new(
+            self.spawn_id,
+            ScopeType::NonRecursive,
+            Some(self.cache.target_dependent_scopes.clone()),
+        );
         scopes.interpreter.insert(
             &self.cache.target_symbol,
             ValueShape::Target(target).into(),
