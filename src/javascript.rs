@@ -10,6 +10,61 @@ pub enum JavaScriptEngineType {
 
 const CONTEXT_VAR: &str = "ctx";
 
+mod ir {
+    use super::*;
+
+    pub enum Expr {
+        Object { fields: HashMap<String, Expr> },
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    pub enum ShowOptions {
+        Minified,
+        Pretty, // TODO { max_line_length: usize },
+    }
+
+    impl Expr {
+        pub fn show(&self, options: ShowOptions) -> impl std::fmt::Display + '_ {
+            struct Show<'a> {
+                expr: &'a Expr,
+                options: ShowOptions,
+            }
+            impl std::fmt::Display for Show<'_> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    match self.expr {
+                        Expr::Object { fields } => {
+                            write!(f, "{{")?;
+                            pad_adapter::padded_items(
+                                f,
+                                fields,
+                                pad_adapter::OuterMode::Surrounded,
+                                pad_adapter::Moded {
+                                    normal: pad_adapter::Separator::Seq(","),
+                                    alternate: pad_adapter::Separator::Seq(","),
+                                },
+                                |f, (name, value)| {
+                                    write!(f, "{name:?}:")?;
+                                    if f.alternate() {
+                                        write!(f, " ")?;
+                                    }
+                                    f.write(value.show(self.options))?;
+                                    Ok(())
+                                },
+                            )?;
+                            write!(f, "}}")?;
+                        }
+                    }
+                    Ok(())
+                }
+            }
+            Show {
+                expr: self,
+                options,
+            }
+        }
+    }
+}
+
 struct Transpiler {
     kast: Kast,
     scopes: Parc<Scopes>,
