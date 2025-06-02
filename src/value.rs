@@ -449,22 +449,25 @@ impl std::fmt::Display for HashMapValue {
             writeln!(f)?;
         }
         {
-            use std::fmt::Write;
-            let mut f =
-                pad_adapter::PadAdapter::with_padding(f, if f.alternate() { "    " } else { "" });
-            let f = &mut f;
-            for (index, (key, value)) in self.values.iter().enumerate() {
-                if index != 0 && !f.alternate() {
-                    write!(f, ", ")?;
-                }
-                let Hashable(key) = key;
-                f.write(key)?;
-                write!(f, " = ")?;
-                f.write(value)?;
-                if f.alternate() {
-                    writeln!(f, ",")?;
-                }
-            }
+            pad_adapter::padded_items(
+                f,
+                &self.values,
+                pad_adapter::OuterMode::Surrounded,
+                pad_adapter::Moded {
+                    normal: pad_adapter::Separator::Seq(", "),
+                    alternate: pad_adapter::Separator::After(","),
+                },
+                |f, (key, value)| {
+                    let Hashable(key) = key;
+                    f.write(key)?;
+                    write!(f, " = ")?;
+                    f.write(value)?;
+                    if f.alternate() {
+                        writeln!(f, ",")?;
+                    }
+                    Ok(())
+                },
+            )?;
         }
         write!(f, "]")
     }
@@ -894,8 +897,9 @@ pub trait NativeFunctionClosure: Send + Sync + 'static {
     ) -> BoxFuture<'static, eyre::Result<Value>>;
 }
 
-impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static>
-    NativeFunctionClosure for F
+impl<
+        F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static,
+    > NativeFunctionClosure for F
 {
     fn call(
         &self,

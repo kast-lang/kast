@@ -16,3 +16,4 @@ pub use crate::recurse_cache::*;
 pub use crate::show_short::*;
 pub use crate::source::{Position, SourceFile, Span};
 pub use crate::tuple::{Tuple, TupleZipError};
+pub use pad_adapter::FormatterExt;

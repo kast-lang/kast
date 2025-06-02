@@ -26,23 +26,33 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 if let syn::Type::Path(ty) = &field.ty {
                     if ty.path.segments[0].ident == "Option" {
                         return quote! {
+                            write!(#f, "{} = ", stringify!(#ident))?;
                             match #ident {
-                                Some(value) => writeln!(#f, "{} = {value}", stringify!(#ident)),
-                                None => writeln!(#f, "{} = None", stringify!(#ident)),
-                            }?;
+                                Some(value) => {
+                                    kast_util::FormatterExt::write(#f, value)?;
+                                    writeln!(#f)?;
+                                },
+                                None => writeln!(#f, "None")?,
+                            };
                         };
                     }
                     if ty.path.segments[0].ident == "Vec" {
                         return quote! {
                             writeln!(#f, "{} = [", stringify!(#ident))?;
                             for item in #ident {
-                                writeln!(#f, "    {item}")?;
+                                write!(#f, "    ")?;
+                                kast_util::FormatterExt::write(#f, item)?;
+                                writeln!(#f)?;
                             }
                             writeln!(#f, "]")?;
                         };
                     }
                 }
-                quote! { writeln!(#f, "{} = {}", stringify!(#ident), #ident)?; }
+                quote! {
+                    write!(#f, "{} = ", stringify!(#ident))?;
+                    kast_util::FormatterExt::write(#f, #ident)?;
+                    writeln!(#f)?;
+                }
             })
             .collect::<Vec<_>>()
     };
@@ -61,7 +71,8 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         use std::fmt::Write;
                         writeln!(#f, "{{")?;
                         {
-                            let mut #f = pad_adapter::PadAdapter::new(#f);
+                            let mut #f = pad_adapter::PadAdapter::with_padding(#f, "    ");
+                            let #f = &mut #f;
                             let Self { #(#field_names,)* } = self;
                             #(#field_writes)*
                         }
@@ -100,7 +111,8 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         };
                         writeln!(#f, "{name} {{")?;
                         {
-                            let mut #f = pad_adapter::PadAdapter::new(#f);
+                            let mut #f = pad_adapter::PadAdapter::with_padding(#f, "    ");
+                            let #f = &mut #f;
                             match self {
                                 #(#variant_fields)*
                             }

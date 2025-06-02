@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
-use std::fmt::Write;
 
-use crate::pad_adapter;
+use crate::pad_adapter::{self, FormatterExt as _};
 use try_hash::TryHash;
 
 #[derive(Debug, Clone)]
@@ -246,6 +245,39 @@ impl<T> Tuple<T> {
             .iter()
             .chain(self.named_order.iter().map(|name| &self.named[name]))
     }
+    pub fn iter(&self) -> TupleIter<'_, T> {
+        <&Self as IntoIterator>::into_iter(self)
+    }
+}
+
+pub struct TupleIter<'a, T> {
+    unnamed: std::iter::Enumerate<<&'a Vec<T> as IntoIterator>::IntoIter>,
+    names: <&'a Vec<String> as IntoIterator>::IntoIter,
+    named: &'a BTreeMap<String, T>,
+}
+
+impl<'a, T> Iterator for TupleIter<'a, T> {
+    type Item = (Member<'a>, &'a T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((index, value)) = self.unnamed.next() {
+            return Some((Member::Unnamed(index), value));
+        }
+        let name = self.names.next()?;
+        let value = self.named.get(name).unwrap();
+        Some((Member::Named(name.into()), value))
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Tuple<T> {
+    type Item = (Member<'a>, &'a T);
+    type IntoIter = TupleIter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        TupleIter {
+            unnamed: self.unnamed.iter().enumerate(),
+            names: self.named_order.iter(),
+            named: &self.named,
+        }
+    }
 }
 
 pub struct TupleIntoIter<T> {
@@ -487,39 +519,25 @@ impl<T: std::fmt::Display> Tuple<T> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "(")?;
                 {
-                    if !self.is_empty() && f.alternate() {
-                        writeln!(f)?;
-                    }
-                    let mut f = pad_adapter::PadAdapter::with_padding(
+                    pad_adapter::padded_items(
                         f,
-                        if f.alternate() { "    " } else { "" },
-                    );
-                    let mut first = true;
-                    let mut before_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
-                        if !first && !f.alternate() {
-                            write!(f, ", ")?;
-                        }
-                        first = false;
-                        Ok(())
-                    };
-                    let after_field = |f: &mut pad_adapter::PadAdapter| -> std::fmt::Result {
-                        if f.alternate() {
-                            writeln!(f, ",")?;
-                        }
-                        Ok(())
-                    };
-                    for field in &self.unnamed {
-                        before_field(&mut f)?;
-                        f.write(field)?;
-                        after_field(&mut f)?;
-                    }
-                    for name in &self.named_order {
-                        before_field(&mut f)?;
-                        let field = &self.named[name];
-                        write!(f, ".{name} {} ", self.field_value_symbol)?;
-                        f.write(field)?;
-                        after_field(&mut f)?;
-                    }
+                        self.tuple.iter(),
+                        pad_adapter::OuterMode::Surrounded,
+                        pad_adapter::Moded {
+                            normal: pad_adapter::Separator::Seq(", "),
+                            alternate: pad_adapter::Separator::After(","),
+                        },
+                        |f, (member, field)| {
+                            match member {
+                                Member::Unnamed(_) => {}
+                                Member::Named(name) => {
+                                    write!(f, ".{name} {} ", self.field_value_symbol)?;
+                                }
+                            }
+                            f.write(field)?;
+                            Ok(())
+                        },
+                    )?;
                 }
                 write!(f, ")")?;
                 Ok(())
