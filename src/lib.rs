@@ -25,6 +25,7 @@ mod id;
 mod interpreter;
 mod ir;
 pub mod javascript;
+pub mod javascript2;
 mod name;
 mod place;
 mod rusty;

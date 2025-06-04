@@ -34,6 +34,10 @@ event-listener = "5"
 getrandom = { version = "0.2", features = ["js"] }
 ordered-float = { version = "4", features = ["rand"] }
 anymap3 = "1.0.1"
+linked-hash-map = "0.5"
+include_dir = "0.7.4"
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"
 
 kast-util = { path = "crates/util" }
 kast-ast = { path = "crates/ast" }
@@ -87,11 +91,12 @@ try-hash.workspace = true
 async-oneshot.workspace = true
 anymap3.workspace = true
 inference = { package = "kast-inference", path = "crates/inference" }
-include_dir = "0.7.4"
+include_dir.workspace = true
+linked-hash-map.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook = "0.1"
-wasm-bindgen = "0.2"
+console_error_panic_hook.workspace = true
+wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rustyline.workspace = true

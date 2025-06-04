@@ -1,5 +1,6 @@
 use super::*;
 use eyre::OptionExt as _;
+use linked_hash_map::LinkedHashMap;
 use std::fmt::Write;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -8,22 +9,175 @@ pub enum JavaScriptEngineType {
     Browser,
 }
 
-const CONTEXT_VAR: &str = "ctx";
+mod ir {
+    use super::*;
+
+    pub struct Number(String);
+
+    impl From<i32> for Number {
+        fn from(value: i32) -> Self {
+            Self(value.to_string())
+        }
+    }
+    impl From<i64> for Number {
+        fn from(value: i64) -> Self {
+            Self(value.to_string())
+        }
+    }
+    impl From<f64> for Number {
+        fn from(value: f64) -> Self {
+            Self(value.to_string())
+        }
+    }
+
+    #[derive(Clone, PartialEq, Eq, Hash)]
+    pub struct Name(pub String);
+
+    impl Name {
+        pub fn context() -> Self {
+            Self("ctx".into())
+        }
+        pub fn unique(s: &str) -> Self {
+            Self(format!("{s}__{}", Id::new()))
+        }
+        pub fn for_binding(binding: &Binding) -> Self {
+            Self(format!(
+                "{}__{}",
+                escape_ident(&binding.symbol.name),
+                binding.symbol.id,
+            ))
+        }
+    }
+
+    #[must_use]
+    pub enum Expr {
+        Binding(Name),
+        Undefined,
+        Bool(bool),
+        Number(Number),
+        String(String),
+        List(Vec<Expr>),
+        Object { fields: LinkedHashMap<Name, Expr> },
+        Fn { args: Vec<Name>, body: Vec<Stmt> },
+        Index { obj: Box<Expr>, index: Box<Expr> },
+        Not(Box<Expr>),
+        Call { f: Box<Expr>, args: Vec<Expr> },
+        Raw(String),
+    }
+
+    #[must_use]
+    pub enum Stmt {
+        Return(Expr),
+        If {
+            condition: Expr,
+            then_case: Vec<Stmt>,
+            else_case: Vec<Stmt>,
+        },
+        Throw(Expr),
+        Assign {
+            /// TODO special expr?
+            assignee: Expr,
+            value: Expr,
+        },
+        Expr(Expr),
+        Try {
+            body: Vec<Stmt>,
+            catch_var: Name,
+            catch_body: Vec<Stmt>,
+        },
+    }
+
+    impl Expr {
+        pub fn binding(binding: &Binding) -> Self {
+            Self::Binding(Name::for_binding(binding))
+        }
+        pub fn new_variant(name: impl Into<String>, value: Option<Self>) -> Self {
+            let mut fields = LinkedHashMap::new();
+            fields.insert(Name("variant".into()), ir::Expr::String(name.into()));
+            if let Some(value) = value {
+                fields.insert(Name("value".into()), value.into());
+            }
+            Self::Object { fields }
+        }
+        pub fn variant_name(value: Self) -> Self {
+            Self::Index {
+                obj: value,
+                index: Self::String("variant".into()),
+            }
+        }
+        pub fn variant_value(value: Self) -> Self {
+            Self::Index {
+                obj: value,
+                index: Self::String("value".into()),
+            }
+        }
+        pub fn scope(stmts: Vec<Stmt>) -> Self {
+            Self::Call {
+                f: Box::new(Self::Fn {
+                    args: vec![],
+                    body: stmts,
+                }),
+                args: vec![],
+            }
+        }
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    pub enum ShowOptions {
+        Minified,
+        Pretty, // TODO { max_line_length: usize },
+    }
+
+    impl Expr {
+        pub fn show(&self, options: ShowOptions) -> impl std::fmt::Display + '_ {
+            struct Show<'a> {
+                expr: &'a Expr,
+                options: ShowOptions,
+            }
+            impl std::fmt::Display for Show<'_> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    match self.expr {
+                        Expr::Object { fields } => {
+                            write!(f, "{{")?;
+                            pad_adapter::padded_items(
+                                f,
+                                fields,
+                                pad_adapter::OuterMode::Surrounded,
+                                pad_adapter::Moded {
+                                    normal: pad_adapter::Separator::Seq(","),
+                                    alternate: pad_adapter::Separator::Seq(","),
+                                },
+                                |f, (name, value)| {
+                                    write!(f, "{name:?}:")?;
+                                    if f.alternate() {
+                                        write!(f, " ")?;
+                                    }
+                                    f.write(value.show(self.options))?;
+                                    Ok(())
+                                },
+                            )?;
+                            write!(f, "}}")?;
+                        }
+                        _ => todo!(),
+                    }
+                    Ok(())
+                }
+            }
+            Show {
+                expr: self,
+                options,
+            }
+        }
+    }
+}
 
 struct Transpiler {
     kast: Kast,
     scopes: Parc<Scopes>,
     engine_type: JavaScriptEngineType,
-    code: String,
     captured: std::collections::HashSet<PlaceRef>,
     captured_unprocessed: Vec<PlaceRef>,
     type_ids: HashMap<Hashable<Type>, Id>,
-}
-
-impl std::fmt::Write for Transpiler {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        self.code.write_str(s)
-    }
 }
 
 fn escape_ident(ident: &str) -> String {
@@ -60,38 +214,67 @@ impl Transpiler {
             kast: kast.clone(),
             scopes: Parc::new(kast.scopes.clone()),
             engine_type,
-            code: String::new(),
             captured: Default::default(),
             captured_unprocessed: Default::default(),
             type_ids: HashMap::new(),
         }
     }
 
-    fn make_ref(&mut self, value: &str) -> eyre::Result<()> {
-        let new_value_var = format!("var{}", Id::new());
-        write!(
-            self,
-            "({{\"get\":()=>{value},\"set\":({new_value_var})=>{value}={new_value_var}}})"
-        )?;
-        Ok(())
+    // TODO maybe assignee/place expr?
+    fn make_ref(&mut self, value: ir::Expr) -> eyre::Result<ir::Expr> {
+        let new_value_var = ir::Name::unique("new_value");
+        let mut fields = LinkedHashMap::new();
+        fields.insert(
+            ir::Name("get".into()),
+            ir::Expr::Fn {
+                args: vec![],
+                body: vec![ir::Stmt::Return(Box::new(value.clone()))],
+            },
+        );
+        fields.insert(
+            ir::Name("set".into()),
+            ir::Expr::Fn {
+                args: vec![new_value_var.clone()],
+                body: vec![ir::Stmt::Assign {
+                    assignee: value,
+                    value: ir::Expr::Binding(new_value_var),
+                }],
+            },
+        );
+        Ok(ir::Expr::Object { fields })
     }
 
-    async fn read_place(&mut self, place: &PlaceExpr) -> eyre::Result<()> {
-        self.eval_place(place).await?;
-        write!(self, ".get()")?;
-        Ok(())
+    fn context_name(&mut self, context_ty: &Type) -> String {
+        format!(
+            "type{}",
+            self.type_ids
+                .entry(Hashable(context_ty.clone()))
+                .or_insert_with(Id::new)
+        )
     }
 
-    fn eval_place<'a>(&'a mut self, expr: &'a PlaceExpr) -> BoxFuture<'a, eyre::Result<()>> {
+    async fn read_place(&mut self, place: &PlaceExpr) -> eyre::Result<ir::Expr> {
+        let place = self.eval_place(place).await?;
+        Ok(ir::Expr::Call {
+            f: Box::new(ir::Expr::Index {
+                obj: Box::new(place),
+                index: Box::new(ir::Expr::String("get".into())),
+            }),
+            args: vec![],
+        })
+    }
+
+    fn eval_place<'a>(&'a mut self, expr: &'a PlaceExpr) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
         async move {
-            match expr {
+            Ok(match expr {
                 PlaceExpr::Binding { binding, data: _ } => {
                     match self.scopes.interpreter.get(&binding.symbol) {
                         Some(place) => {
-                            self.ensure_captured(&place);
-                            self.make_ref(&format!("captured{}", place.place.id))?;
+                            todo!()
+                            // self.ensure_captured(&place);
+                            // self.make_ref(&format!("captured{}", place.place.id))?;
                         }
-                        None => self.make_ref(&binding_name(binding))?,
+                        None => self.make_ref(ir::Expr::binding(binding))?,
                     }
                 }
                 PlaceExpr::FieldAccess {
@@ -99,36 +282,40 @@ impl Transpiler {
                     field,
                     data: _,
                 } => {
-                    self.begin_scope()?;
-                    let temp_var = format!("var{}", Id::new());
-                    write!(self, "{temp_var}=")?;
-                    self.read_place(obj).await?; // The value is a reference type since it has fields
-                    write!(self, ";return")?;
-                    self.make_ref(&format!("{temp_var}[{:?}]", field.to_string()))?;
-                    self.end_scope()?;
+                    let temp_var = ir::Name::unique("obj");
+                    ir::Expr::scope(vec![
+                        ir::Stmt::Assign {
+                            assignee: ir::Expr::Binding(temp_var.clone()),
+                            value: self.read_place(obj)?, // The value is a reference type since it has fields
+                        },
+                        ir::Stmt::Return(Box::new(self.make_ref(ir::Expr::Index {
+                            obj: Box::new(ir::Expr::Binding(temp_var)),
+                            index: Box::new(ir::Expr::String(field.to_string())),
+                        }))),
+                    ])
                 }
                 PlaceExpr::Temporary { value, data: _ } => {
-                    let var = format!("var{}", Id::new());
-                    self.begin_scope()?;
-                    write!(self, "{var}=")?;
-                    self.eval_expr(value).await?;
-                    write!(self, ";return")?;
-                    self.make_ref(&var)?;
-                    self.end_scope()?;
+                    let var = ir::Name::unique("temp");
+                    ir::Expr::scope(vec![
+                        ir::Stmt::Assign {
+                            assignee: ir::Expr::Binding(var.clone()),
+                            value: self.eval_expr(value).await?,
+                        },
+                        ir::Stmt::Return(self.make_ref(ir::Expr::Binding(var))?),
+                    ])
                 }
                 PlaceExpr::Deref { r#ref, data: _ } => {
-                    self.eval_expr(r#ref).await?;
+                    self.eval_expr(r#ref).await? // It's already a reference - which is what a place is
                 }
-            }
-            Ok(())
+            })
         }
         .boxed()
     }
 
-    fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<()>> {
+    fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
         let r#impl = async move {
-            match expr {
-                Expr::Type { .. } => write!(self, "undefined")?,
+            Ok(match expr {
+                Expr::Type { .. } => ir::Expr::Undefined,
                 Expr::Ref { place, data: _ } => self.eval_place(place).await?,
                 Expr::And { lhs, rhs, data } => todo!(),
                 Expr::Or { lhs, rhs, data } => todo!(),
@@ -137,74 +324,82 @@ impl Transpiler {
                     value,
                     data: _,
                 } => {
-                    let temp_var = format!("var{}", Id::new());
-                    write!(self, "{temp_var}=")?;
-                    self.read_place(value).await?;
-                    write!(self, ";")?;
-                    self.assign(assignee, &temp_var).await?;
+                    let temp_var = ir::Name::unique("var");
+                    ir::Expr::scope({
+                        let mut stmts = Vec::new();
+                        stmts.push(ir::Stmt::Assign {
+                            assignee: ir::Expr::Binding(temp_var.clone()),
+                            value: self.read_place(value).await?,
+                        });
+                        self.assign(assignee, ir::Expr::Binding(temp_var), &mut stmts)
+                            .await?;
+                        stmts
+                    })
                 }
-                Expr::List { values, data: _ } => {
-                    write!(self, "[")?;
-                    for (index, value) in values.iter().enumerate() {
-                        if index != 0 {
-                            write!(self, ",")?;
-                        }
-                        self.eval_expr(value).await?;
+                Expr::List { values, data: _ } => ir::Expr::List({
+                    let mut result = Vec::new();
+                    for value in values {
+                        result.push(self.eval_expr(value).await?);
                     }
-                    write!(self, "]")?;
-                }
+                    result
+                }),
                 Expr::Unwindable {
                     name,
                     body,
                     data: _,
-                } => {
-                    let handle_var = format!("unwindable{}", Id::new());
-                    self.begin_scope()?;
-                    write!(self, "{handle_var}=Symbol();")?;
-                    self.pattern_match(&handle_var, name)?;
-                    write!(self, ";try{{")?;
-                    write!(self, "return ")?;
-                    self.eval_expr(body).await?;
-                    write!(
-                        self,
-                        "}}catch(e){{if (e.handle!=={handle_var})throw e;return e.value}};"
-                    )?;
-                    self.end_scope()?;
-                }
+                } => ir::Expr::scope({
+                    let mut stmts = Vec::new();
+                    let handle_var = ir::Name::new("unwindable");
+                    stmts.push(ir::Stmt::Assign {
+                        assignee: ir::Expr::Binding(handle_var.clone()),
+                        value: ir::Expr::Raw("Symbol()".into()),
+                    });
+                    self.pattern_match(ir::Expr::Binding(handle_var.clone()), name, &mut stmts)?;
+                    let catch_var = ir::Name("e".into());
+                    stmts.push(ir::Stmt::Try {
+                        body: vec![ir::Stmt::Return(self.eval_expr(body).await?)],
+                        catch_var: catch_var.clone(),
+                        catch_body: vec![
+                            ir::Stmt::If {
+                                condition: ir::Expr::NotEq(Box::new(ir::Expr::Index {
+                                    obj: Box::new(ir::Expr::Binding(catch_var)),
+                                    index: Box::new(ir::Expr::String("handle".into())),
+                                })),
+                                then_case: vec![ir::Stmt::Throw(ir::Expr::Binding(catch_var))],
+                                else_case: vec![],
+                            },
+                            ir::Stmt::Return(ir::Expr::Index {
+                                obj: Box::new(ir::Expr::Binding(catch_var)),
+                                index: Box::new(ir::Expr::String("value".into())),
+                            }),
+                        ],
+                    });
+                    stmts
+                }),
                 Expr::Unwind {
                     name,
                     value,
                     data: _,
-                } => {
-                    self.begin_scope()?;
-                    write!(self, "throw{{handle:")?;
-                    self.eval_expr(name).await?;
-                    write!(self, ",value:")?;
-                    self.eval_expr(value).await?;
-                    write!(self, "}}")?;
-                    self.end_scope()?;
-                }
-                Expr::InjectContext { context, data } => {
-                    let context_name = format!(
-                        "type{}",
-                        self.type_ids
-                            .entry(Hashable(data.ty.clone()))
-                            .or_insert_with(Id::new)
-                    );
-                    write!(self, "({CONTEXT_VAR}.{context_name}=")?;
-                    self.eval_expr(context).await?;
-                    write!(self, ")")?;
-                }
-                Expr::CurrentContext { data } => {
-                    let context_name = format!(
-                        "type{}",
-                        self.type_ids
-                            .entry(Hashable(data.ty.clone()))
-                            .or_insert_with(Id::new)
-                    );
-                    write!(self, "{CONTEXT_VAR}.{context_name}")?;
-                }
-                Expr::Unit { data: _ } => write!(self, "undefined")?,
+                } => ir::Expr::scope(vec![ir::Stmt::Throw(ir::Expr::Object {
+                    fields: {
+                        let mut fields = LinkedHashMap::new();
+                        fields.insert(ir::Name("handle".into()), self.eval_expr(name).await?);
+                        fields.insert(ir::Name("value".into()), self.eval_expr(value).await?);
+                        fields
+                    },
+                })]),
+                Expr::InjectContext { context, data } => ir::Expr::scope(vec![ir::Stmt::Assign {
+                    assignee: ir::Expr::Index {
+                        obj: Box::new(ir::Expr::Binding(ir::Name::context())),
+                        index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
+                    },
+                    value: self.eval_expr(context).await?,
+                }]),
+                Expr::CurrentContext { data } => ir::Expr::Index {
+                    obj: Box::new(ir::Expr::Binding(ir::Name::context())),
+                    index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
+                },
+                Expr::Unit { data: _ } => ir::Expr::Undefined,
                 Expr::FunctionType {
                     arg,
                     contexts,
@@ -408,8 +603,7 @@ impl Transpiler {
                     // println!("{body}");
                     self.eval_expr(body).await?
                 }
-            }
-            Ok(())
+            })
         };
         async move {
             r#impl
@@ -419,92 +613,67 @@ impl Transpiler {
         .boxed()
     }
 
-    fn transpile<'a>(&'a mut self, value: &'a Value) -> BoxFuture<'a, eyre::Result<()>> {
+    fn transpile<'a>(&'a mut self, value: &'a Value) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
         async move {
             let value = value.as_inferred()?;
             let value: &ValueShape = &value;
-            match value {
-                ValueShape::Unit => write!(self, "undefined")?,
-                ValueShape::Bool(value) => write!(self, "{value:?}")?,
-                ValueShape::Int32(value) => write!(self, "{value}")?,
-                ValueShape::Int64(value) => write!(self, "{value}")?, // TODO two int32s
-                ValueShape::Float64(value) => write!(self, "{value}")?, // TODO this might lose precision
-                ValueShape::Char(c) => write!(self, "{c:?}")?,
-                ValueShape::String(s) => write!(self, "{s:?}")?,
-                ValueShape::List(list) => {
-                    write!(self, "[")?;
-                    for (index, place) in list.values.iter().enumerate() {
-                        if index != 0 {
-                            write!(self, ",")?;
-                        }
+            Ok(match value {
+                ValueShape::Unit => ir::Expr::Undefined,
+                ValueShape::Bool(value) => ir::Expr::Bool(*value),
+                ValueShape::Int32(value) => ir::Expr::Number((*value).into()),
+                ValueShape::Int64(value) => ir::Expr::Number((*value).into()),
+                ValueShape::Float64(value) => ir::Expr::Number((**value).into()),
+                ValueShape::Char(c) => ir::Expr::String(c.to_string()),
+                ValueShape::String(s) => ir::Expr::String(s.clone()),
+                ValueShape::List(list) => ir::Expr::List({
+                    let mut result = Vec::new();
+                    for place in list.values.iter() {
                         let value = place.read_value()?;
-                        self.transpile(&value).await?;
+                        result.push(self.transpile(&value).await?);
                     }
-                    write!(self, "]")?;
-                }
-                ValueShape::Tuple(tuple) => {
-                    write!(self, "{{")?;
-                    for (index, (member, value)) in tuple.values()?.into_iter().enumerate() {
-                        if index != 0 {
-                            write!(self, ",")?;
+                    result
+                }),
+                ValueShape::Tuple(tuple) => ir::Expr::Object {
+                    fields: {
+                        let mut result = LinkedHashMap::new();
+                        for (member, value) in tuple.values()?.into_iter() {
+                            result.insert(member.to_string(), self.transpile(&value).await?);
                         }
-                        write!(self, "{:?}:", member.to_string())?;
-                        self.transpile(&value).await?;
-                    }
-                    write!(self, "}}")?;
-                }
-                ValueShape::Function(f) => {
-                    self.transpile_fn(f).await?;
-                }
+                        result
+                    },
+                },
+                ValueShape::Function(f) => self.transpile_fn(f).await?,
                 ValueShape::Template(t) => {
-                    self.transpile_fn(t).await?; // TODO it should have memoization
+                    self.transpile_fn(t).await? // TODO it should have memoization
                 }
                 ValueShape::Macro(_) => todo!(),
                 ValueShape::NativeFunction(native_function) => todo!("{}", native_function.name),
-                ValueShape::Binding(binding) => {
-                    write!(self, "{}", binding_name(binding))?;
-                }
-                ValueShape::Variant(variant) => {
-                    self.variant(
-                        &variant.name,
-                        variant.value.as_ref().map(|place| {
-                            async |this: &mut Self| {
-                                this.transpile(&*place.read_value()?).await?;
-                                Ok(())
-                            }
-                        }),
-                    )
-                    .await?;
-                }
+                ValueShape::Binding(binding) => ir::Expr::binding(binding),
+                ValueShape::Variant(variant) => ir::Expr::new_variant(
+                    &variant.name,
+                    match &variant.value {
+                        None => None,
+                        Some(place) => {
+                            let value = place.read_value()?;
+                            Some(self.transpile(&value).await?)
+                        }
+                    },
+                ),
                 ValueShape::Multiset(_) => todo!(),
                 ValueShape::Contexts(_) => todo!(),
                 ValueShape::Ast(_) => todo!(),
                 ValueShape::Expr(expr) => todo!(),
                 ValueShape::Type(_) => {
-                    write!(self, "undefined")?; // TODO
+                    ir::Expr::Undefined // TODO
                 }
                 ValueShape::SyntaxModule(_) => todo!(),
                 ValueShape::SyntaxDefinition(_) => todo!(),
                 ValueShape::UnwindHandle(unwind_handle) => todo!(),
                 ValueShape::Symbol(symbol) => todo!(),
-                ValueShape::HashMap(hash_map) => {
-                    let var = "m";
-                    self.begin_scope()?;
-                    write!(self, "const {var}=new Map();")?;
-                    for (key, value) in hash_map.values.iter() {
-                        write!(self, "{var}.set(")?;
-                        self.transpile(&key.0).await?;
-                        write!(self, ",")?;
-                        self.transpile(&*value.read_value()?).await?;
-                        write!(self, ");")?;
-                    }
-                    write!(self, "return {var}")?;
-                    self.end_scope()?;
-                }
+                ValueShape::HashMap(hash_map) => todo!(),
                 ValueShape::Ref(place_ref) => todo!(),
                 ValueShape::Target(target) => todo!(),
-            }
-            Ok(())
+            })
         }
         .boxed()
     }
@@ -512,30 +681,38 @@ impl Transpiler {
     fn assign<'a>(
         &'a mut self,
         assignee: &'a AssigneeExpr,
-        value: &'a str,
+        value: ir::Expr,
+        stmts: &mut Vec<ir::Stmt>,
     ) -> BoxFuture<'a, eyre::Result<()>> {
         async move {
             match assignee {
                 AssigneeExpr::Placeholder { data: _ } => {}
                 AssigneeExpr::Unit { data: _ } => {}
                 AssigneeExpr::Tuple { tuple, data: _ } => {
-                    for (index, (member, field_assignee)) in tuple.as_ref().into_iter().enumerate()
-                    {
-                        if index != 0 {
-                            write!(self, ";")?;
-                        }
+                    for (member, field_assignee) in tuple.iter() {
                         self.assign(
                             field_assignee,
-                            &format!("{value}[{:?}]", member.to_string()),
+                            ir::Expr::Index {
+                                obj: Box::new(value.clone()),
+                                index: Box::new(ir::Expr::String(member.to_string())),
+                            },
+                            stmts,
                         )
                         .await?;
                     }
                 }
                 AssigneeExpr::Place { place, data: _ } => {
-                    self.eval_place(place).await?;
-                    write!(self, ".set({value})")?;
+                    stmts.push(ir::Stmt::Expr(ir::Expr::Call {
+                        f: Box::new(ir::Expr::Index {
+                            obj: Box::new(self.eval_place(place).await?),
+                            index: Box::new(ir::Expr::String("set".into())),
+                        }),
+                        args: vec![value],
+                    }));
                 }
-                AssigneeExpr::Let { pattern, data: _ } => self.pattern_match(value, pattern)?,
+                AssigneeExpr::Let { pattern, data: _ } => {
+                    self.pattern_match(value, pattern, stmts)?
+                }
             }
             Ok(())
         }
@@ -570,7 +747,12 @@ impl Transpiler {
         Ok(())
     }
 
-    fn pattern_match(&mut self, value: &str, pattern: &Pattern) -> eyre::Result<()> {
+    fn pattern_match(
+        &mut self,
+        value: ir::Expr,
+        pattern: &Pattern,
+        stmts: &mut Vec<ir::Stmt>,
+    ) -> eyre::Result<()> {
         match pattern {
             Pattern::Placeholder { data: _ } => {}
             Pattern::Unit { data: _ } => {}
@@ -579,17 +761,20 @@ impl Transpiler {
                 bind_mode: _, // TODO maybe we care?
                 data: _,
             } => {
-                let binding_name = binding_name(binding);
-                write!(self, "{binding_name}={value}")?
+                stmts.push(ir::Stmt::Assign {
+                    assignee: ir::Name::for_binding(binding),
+                    value,
+                });
             }
             Pattern::Tuple { tuple, data: _ } => {
-                for (index, (member, field_pattern)) in tuple.as_ref().into_iter().enumerate() {
-                    if index != 0 {
-                        write!(self, ";")?;
-                    }
+                for (member, field_pattern) in tuple.iter() {
                     self.pattern_match(
-                        &format!("{value}[{:?}]", member.to_string()),
+                        ir::Expr::Index {
+                            obj: value.clone(),
+                            index: ir::Expr::String(member.to_string()),
+                        },
                         field_pattern,
+                        stmts,
                     )?;
                 }
             }
@@ -598,26 +783,23 @@ impl Transpiler {
                 value: value_pattern,
                 data: _,
             } => {
-                write!(
-                    self,
-                    "if({value}[\"variant\"] != {name:?})throw \"assertion failed\";",
-                )?;
+                self.assert(ir::Expr::variant_name(value.clone()), stmts);
                 if let Some(value_pattern) = value_pattern {
-                    self.pattern_match(&format!("{value}[\"value\"]"), value_pattern)?;
+                    self.pattern_match(ir::Expr::variant_value(value), value_pattern, stmts)?;
                 }
             }
         }
         Ok(())
     }
 
-    fn begin_scope(&mut self) -> eyre::Result<()> {
-        write!(self, "(()=>{{")?;
-        Ok(())
-    }
-
-    fn end_scope(&mut self) -> eyre::Result<()> {
-        write!(self, "}})()")?;
-        Ok(())
+    fn assert(&mut self, expr: ir::Expr, stmts: &mut Vec<ir::Stmt>) {
+        stmts.push(ir::Stmt::If {
+            condition: Box::new(ir::Expr::Not(Box::new(expr))),
+            then_case: vec![ir::Stmt::Throw(Box::new(ir::Expr::String(
+                "assertion failed".into(),
+            )))],
+            else_case: vec![],
+        });
     }
 
     fn ensure_captured(&mut self, place: &PlaceRef) {
@@ -635,22 +817,23 @@ impl Transpiler {
         Ok(())
     }
 
-    async fn transpile_fn(&mut self, f: &Function) -> eyre::Result<()> {
+    async fn transpile_fn(&mut self, f: &Function) -> eyre::Result<ir::Expr> {
         let old_scopes = std::mem::replace(&mut self.scopes, f.captured.clone());
-        self.transpile_compiled_fn(&f.compiled).await?;
+        let result = self.transpile_compiled_fn(&f.compiled).await;
         self.scopes = old_scopes;
-        Ok(())
+        result
     }
 
-    async fn transpile_compiled_fn(&mut self, f: &MaybeCompiledFn) -> eyre::Result<()> {
-        let arg = format!("arg{}", Id::new());
-        write!(self, "({CONTEXT_VAR},{arg})=>{{")?;
+    async fn transpile_compiled_fn(&mut self, f: &MaybeCompiledFn) -> eyre::Result<ir::Expr> {
         let compiled = self.kast.await_compiled(f).await?;
-        self.pattern_match(&arg, &compiled.arg)?;
-        write!(self, ";return ")?;
-        self.eval_expr(&compiled.body).await?;
-        write!(self, "}}")?;
-        Ok(())
+        let arg = ir::Name::unique("arg");
+        let args = vec![ir::Name::context(), arg.clone()];
+        let mut body = Vec::new();
+        self.pattern_match(ir::Expr::Binding(arg), &compiled.arg, &mut body)?;
+        body.push(ir::Stmt::Return(Box::new(
+            self.eval_expr(&compiled.body).await?,
+        )));
+        Ok(ir::Expr::Fn { args, body })
     }
 
     async fn variant(
@@ -669,7 +852,7 @@ impl Transpiler {
 }
 
 impl Kast {
-    pub async fn transpile_to_javascript(
+    pub async fn transpile_to_javascript2(
         &mut self,
         engine_type: JavaScriptEngineType,
         value: &Value,

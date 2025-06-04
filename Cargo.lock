@@ -760,6 +760,7 @@ dependencies = [
  "kast-refmap",
  "kast-try-hash",
  "kast-util",
+ "linked-hash-map",
  "ordered-float",
  "rand",
  "rustyline",
@@ -850,6 +851,12 @@ name = "libc"
 version = "0.2.159"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "561d97a539a36e26a9a5fad1ea11a3039a67714694aaa379433e580854bc3dc5"
+
+[[package]]
+name = "linked-hash-map"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
 name = "linux-raw-sys"
