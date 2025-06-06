@@ -347,6 +347,87 @@ mod ir {
             )
         }
     }
+
+    impl Expr {
+        pub fn optimize(self) -> Self {
+            match self {
+                Self::Binding(_) => self,
+                Self::Undefined => self,
+                Self::Bool(_) => self,
+                Self::Number(_) => self,
+                Self::String(_) => self,
+                Self::List(values) => Self::List(values.into_iter().map(Self::optimize).collect()),
+                Self::Object { fields } => Self::Object {
+                    fields: fields
+                        .into_iter()
+                        .map(|(key, value)| (key, value.optimize()))
+                        .collect(),
+                },
+                Self::Fn { args, body } => Self::Fn {
+                    args,
+                    body: optimize_stmts(body),
+                },
+                Self::Index { obj, index } => {
+                    let obj = obj.optimize();
+                    let index = index.optimize();
+                    Self::Index {
+                        obj: Box::new(obj),
+                        index: Box::new(index),
+                    }
+                }
+                Self::NotEq(a, b) => {
+                    let a = a.optimize();
+                    let b = b.optimize();
+                    Self::NotEq(Box::new(a), Box::new(b))
+                }
+                Self::Call { f, args } => {
+                    let f = f.optimize();
+                    let args: Vec<Self> = args.into_iter().map(Self::optimize).collect();
+                    Self::Call {
+                        f: Box::new(f),
+                        args,
+                    }
+                }
+                Self::Raw(_) => self,
+            }
+        }
+    }
+
+    impl Stmt {
+        pub fn optimize(self) -> Self {
+            match self {
+                Self::Return(expr) => Self::Return(expr.optimize()),
+                Self::If {
+                    condition,
+                    then_case,
+                    else_case,
+                } => Self::If {
+                    condition: condition.optimize(),
+                    then_case: optimize_stmts(then_case),
+                    else_case: optimize_stmts(else_case),
+                },
+                Self::Throw(expr) => Self::Throw(expr.optimize()),
+                Self::Assign { assignee, value } => Self::Assign {
+                    assignee: assignee.optimize(),
+                    value: value.optimize(),
+                },
+                Self::Expr(expr) => Self::Expr(expr.optimize()),
+                Self::Try {
+                    body,
+                    catch_var,
+                    catch_body,
+                } => Self::Try {
+                    body: optimize_stmts(body),
+                    catch_var,
+                    catch_body: optimize_stmts(catch_body),
+                },
+            }
+        }
+    }
+
+    fn optimize_stmts(stmts: Vec<Stmt>) -> Vec<Stmt> {
+        stmts.into_iter().map(Stmt::optimize).collect()
+    }
 }
 
 struct Transpiler {
@@ -1031,6 +1112,7 @@ impl Kast {
             stmts.push(ir::Stmt::Return(result));
             stmts
         });
+        let expr = expr.optimize();
         Ok(expr.show(options).to_string())
     }
 }
