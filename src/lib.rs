@@ -3,7 +3,7 @@
 #![recursion_limit = "256"]
 
 use async_trait::async_trait;
-use eyre::{Context as _, eyre};
+use eyre::{eyre, Context as _};
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use inference::Inferrable;
@@ -25,7 +25,6 @@ mod id;
 mod interpreter;
 mod ir;
 pub mod javascript;
-pub mod javascript2;
 mod name;
 mod place;
 mod rusty;
@@ -287,7 +286,7 @@ impl Kast {
         let source = SourceFile {
             #[cfg(feature = "embed-std")]
             contents: {
-                use include_dir::{Dir, include_dir};
+                use include_dir::{include_dir, Dir};
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
                         static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
