@@ -158,7 +158,10 @@ fn main() -> eyre::Result<()> {
                 };
                 let place = place_ref.read()?;
                 let ty = place.ty().unwrap_or_else(|| place_ref.place.ty.clone());
-                println!("{:#} :: {:#}", *place, ty);
+                match ty.inferred() {
+                    Ok(TypeShape::Unit) => {}
+                    _ => println!("{:#} :: {:#}", *place, ty),
+                }
                 Ok(())
             })?;
         }
