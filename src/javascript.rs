@@ -349,27 +349,42 @@ mod ir {
     }
 
     impl Expr {
-        pub fn optimize(self) -> Self {
+        pub fn optimize(&self) -> Self {
             match self {
-                Self::Binding(_) => self,
-                Self::Undefined => self,
-                Self::Bool(_) => self,
-                Self::Number(_) => self,
-                Self::String(_) => self,
+                Self::Binding(_) => self.clone(),
+                Self::Undefined => self.clone(),
+                Self::Bool(_) => self.clone(),
+                Self::Number(_) => self.clone(),
+                Self::String(_) => self.clone(),
                 Self::List(values) => Self::List(values.into_iter().map(Self::optimize).collect()),
                 Self::Object { fields } => Self::Object {
                     fields: fields
-                        .into_iter()
-                        .map(|(key, value)| (key, value.optimize()))
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.optimize()))
                         .collect(),
                 },
                 Self::Fn { args, body } => Self::Fn {
-                    args,
+                    args: args.clone(),
                     body: optimize_stmts(body),
                 },
                 Self::Index { obj, index } => {
                     let obj = obj.optimize();
                     let index = index.optimize();
+                    fn get_obj_field(obj: &Expr, index: &Expr) -> Option<Expr> {
+                        let Expr::Object { fields } = obj else {
+                            return None;
+                        };
+                        let Expr::String(field) = index else {
+                            return None;
+                        };
+                        // TODO what if fields had side effects?
+                        let field = fields.get(field).expect("field not found");
+                        // already optimized
+                        Some(field.clone())
+                    }
+                    if let Some(result) = get_obj_field(&obj, &index) {
+                        return result;
+                    }
                     Self::Index {
                         obj: Box::new(obj),
                         index: Box::new(index),
@@ -382,19 +397,39 @@ mod ir {
                 }
                 Self::Call { f, args } => {
                     let f = f.optimize();
-                    let args: Vec<Self> = args.into_iter().map(Self::optimize).collect();
+                    let args: Vec<Self> = args.iter().map(Self::optimize).collect();
+                    fn lambda_return_call(f: &Expr, args: &[Expr]) -> Option<Expr> {
+                        if !args.is_empty() {
+                            return None;
+                        }
+                        let Expr::Fn { args: f_args, body } = f else {
+                            return None;
+                        };
+                        if !f_args.is_empty() {
+                            return None;
+                        }
+                        let [stmt] = body.as_slice() else { return None };
+                        let Stmt::Return(expr) = stmt else {
+                            return None;
+                        };
+                        // already optimized
+                        Some(expr.clone())
+                    }
+                    if let Some(result) = lambda_return_call(&f, &args) {
+                        return result;
+                    }
                     Self::Call {
                         f: Box::new(f),
                         args,
                     }
                 }
-                Self::Raw(_) => self,
+                Self::Raw(_) => self.clone(),
             }
         }
     }
 
     impl Stmt {
-        pub fn optimize(self) -> Self {
+        pub fn optimize(&self) -> Self {
             match self {
                 Self::Return(expr) => Self::Return(expr.optimize()),
                 Self::If {
@@ -418,15 +453,43 @@ mod ir {
                     catch_body,
                 } => Self::Try {
                     body: optimize_stmts(body),
-                    catch_var,
+                    catch_var: catch_var.clone(),
                     catch_body: optimize_stmts(catch_body),
                 },
             }
         }
     }
 
-    fn optimize_stmts(stmts: Vec<Stmt>) -> Vec<Stmt> {
-        stmts.into_iter().map(Stmt::optimize).collect()
+    fn optimize_stmts(stmts: &[Stmt]) -> Vec<Stmt> {
+        let mut result = Vec::new();
+        for stmt in stmts {
+            let stmt = stmt.optimize();
+            fn return_lambda_call(stmt: &Stmt) -> Option<Vec<Stmt>> {
+                let Stmt::Return(expr) = stmt else {
+                    return None;
+                };
+                let Expr::Call { f, args } = expr else {
+                    return None;
+                };
+                let Expr::Fn { args: f_args, body } = &**f else {
+                    return None;
+                };
+                if args.len() != f_args.len() {
+                    return None;
+                }
+                if !args.is_empty() {
+                    return None;
+                };
+                // already optimized
+                Some(body.clone())
+            }
+            if let Some(stmts) = return_lambda_call(&stmt) {
+                result.extend(stmts);
+                continue;
+            }
+            result.push(stmt);
+        }
+        result
     }
 }
 
@@ -744,8 +807,13 @@ impl Transpiler {
                 }]),
                 Expr::Then { list, data: _ } => ir::Expr::scope({
                     let mut stmts = Vec::new();
-                    for expr in list {
-                        stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
+                    for (index, expr) in list.iter().enumerate() {
+                        let expr = self.eval_expr(expr).await?;
+                        if index == list.len() - 1 {
+                            stmts.push(ir::Stmt::Return(expr));
+                        } else {
+                            stmts.push(ir::Stmt::Expr(expr));
+                        }
                     }
                     stmts
                 }),
