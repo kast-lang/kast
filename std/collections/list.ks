@@ -19,7 +19,7 @@ const set = forall[T] {
 const length = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native "list.length"
-        | target.name == "javascript" => (list_ref) => (
+        | target.name == "javascript" => list_ref => (
             native "$(list_ref).get().length"
         )
     } :: &list[T] -> int32
@@ -27,8 +27,10 @@ const length = forall[T] {
 const iter = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native "list.iter"
-        | target.name == "javascript" => (list_ref) => (
-            native "(()=>{throw \"todo\"})()"
+        | target.name == "javascript" => list_ref => (
+            native "console.log(123)";
+            let handle = (current generator_handler[&T]).handle;
+            native "(()=>{let list=$(list_ref).get();for(let i=0;i<list.length;i++)$(handle)({get:()=>list[i],set:(v)=>list[i]=v})})()"
         )
     } :: &list[T] -> () with generator_handler[&T]
 };
