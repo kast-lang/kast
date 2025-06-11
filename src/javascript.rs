@@ -94,6 +94,14 @@ mod ir {
 
     #[must_use]
     #[derive(Clone)]
+    pub enum AssigneeExpr {
+        NewVar(Name),
+        /// Make sure its working as an assignee
+        Expr(Expr),
+    }
+
+    #[must_use]
+    #[derive(Clone)]
     pub enum Stmt {
         Return(Expr),
         If {
@@ -102,9 +110,9 @@ mod ir {
             else_case: Vec<Stmt>,
         },
         Throw(Expr),
+        DefVar(Name),
         Assign {
-            /// TODO special expr?
-            assignee: Expr,
+            assignee: AssigneeExpr,
             value: Expr,
         },
         Expr(Expr),
@@ -290,6 +298,40 @@ mod ir {
         }
     }
 
+    impl AssigneeExpr {
+        pub fn show(&self, options: ShowOptions) -> impl std::fmt::Display + '_ {
+            struct Show<'a> {
+                expr: &'a AssigneeExpr,
+                options: ShowOptions,
+            }
+            impl std::fmt::Display for Show<'_> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    match self.expr {
+                        AssigneeExpr::NewVar(name) => write!(f, "var {}", name.0)?,
+                        AssigneeExpr::Expr(expr) => f.write(expr.show(self.options))?,
+                    }
+                    Ok(())
+                }
+            }
+            struct Wrapper<T>(T, ShowOptions);
+            impl<T: std::fmt::Display> std::fmt::Display for Wrapper<T> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    match self.1 {
+                        ShowOptions::Minified => write!(f, "{}", self.0),
+                        ShowOptions::Pretty => write!(f, "{:#}", self.0),
+                    }
+                }
+            }
+            Wrapper(
+                Show {
+                    expr: self,
+                    options,
+                },
+                options,
+            )
+        }
+    }
+
     impl Stmt {
         pub fn show(&self, options: ShowOptions) -> impl std::fmt::Display + '_ {
             struct Show<'a> {
@@ -319,6 +361,9 @@ mod ir {
                         Stmt::Throw(expr) => {
                             write!(f, "throw ")?;
                             f.write(expr.show(self.options))?;
+                        }
+                        Stmt::DefVar(name) => {
+                            write!(f, "var {}", name.0)?;
                         }
                         Stmt::Assign { assignee, value } => {
                             f.write(assignee.show(self.options))?;
@@ -532,6 +577,15 @@ mod ir {
         }
     }
 
+    impl AssigneeExpr {
+        pub fn optimize(&self) -> Self {
+            match self {
+                Self::NewVar(_) => self.clone(),
+                Self::Expr(expr) => Self::Expr(expr.optimize()),
+            }
+        }
+    }
+
     impl Stmt {
         pub fn optimize(&self) -> Self {
             match self {
@@ -546,6 +600,7 @@ mod ir {
                     else_case: optimize_stmts(else_case),
                 },
                 Self::Throw(expr) => Self::Throw(expr.optimize()),
+                Self::DefVar(_) => self.clone(),
                 Self::Assign { assignee, value } => Self::Assign {
                     assignee: assignee.optimize(),
                     value: value.optimize(),
@@ -602,7 +657,7 @@ mod ir {
                     return None;
                 };
                 // TODO make sure its a new var
-                let Expr::Binding(name) = assignee else {
+                let AssigneeExpr::NewVar(name) = assignee else {
                     return None;
                 };
                 let Stmt::Return(Expr::Binding(ret_name)) = stmt else {
@@ -634,6 +689,7 @@ mod ir {
                     else_case,
                 } => has_return(then_case) || has_return(else_case),
                 Stmt::Throw(_) => false,
+                Stmt::DefVar(_) => false,
                 Stmt::Assign { .. } => false,
                 Stmt::Expr(..) => false,
                 Stmt::Try {
@@ -680,14 +736,6 @@ fn escape_ident(ident: &str) -> String {
         })
 }
 
-fn binding_name(binding: &Binding) -> String {
-    format!(
-        "{}__{}",
-        escape_ident(&binding.symbol.name),
-        binding.symbol.id,
-    )
-}
-
 impl Transpiler {
     fn new(kast: &mut Kast, engine_type: JavaScriptEngineType) -> Self {
         Self {
@@ -717,7 +765,7 @@ impl Transpiler {
             ir::Expr::Fn {
                 args: vec![new_value_var.clone()],
                 body: vec![ir::Stmt::Assign {
-                    assignee: value,
+                    assignee: ir::AssigneeExpr::Expr(value),
                     value: ir::Expr::Binding(new_value_var),
                 }],
             },
@@ -765,7 +813,7 @@ impl Transpiler {
                     let temp_var = ir::Name::unique("obj");
                     ir::Expr::scope(vec![
                         ir::Stmt::Assign {
-                            assignee: ir::Expr::Binding(temp_var.clone()),
+                            assignee: ir::AssigneeExpr::NewVar(temp_var.clone()),
                             value: self.read_place(obj).await?, // The value is a reference type since it has fields
                         },
                         ir::Stmt::Return(self.make_ref(ir::Expr::Index {
@@ -778,7 +826,7 @@ impl Transpiler {
                     let var = ir::Name::unique("temp");
                     ir::Expr::scope(vec![
                         ir::Stmt::Assign {
-                            assignee: ir::Expr::Binding(var.clone()),
+                            assignee: ir::AssigneeExpr::NewVar(var.clone()),
                             value: self.eval_expr(value).await?,
                         },
                         ir::Stmt::Return(self.make_ref(ir::Expr::Binding(var))?),
@@ -792,11 +840,19 @@ impl Transpiler {
         .boxed()
     }
 
-    fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
+    async fn eval_expr_into_stmts(&mut self, expr: &Expr) -> eyre::Result<Vec<ir::Stmt>> {
+        let mut stmts = Vec::new();
+        self.eval_expr_as_stmts(expr, &mut stmts).await?;
+        Ok(stmts)
+    }
+    fn eval_expr_as_stmts<'a>(
+        &'a mut self,
+        expr: &'a Expr,
+        stmts: &'a mut Vec<ir::Stmt>,
+    ) -> BoxFuture<'a, eyre::Result<()>> {
         let r#impl = async move {
-            Ok(match expr {
-                Expr::Type { .. } => ir::Expr::Undefined,
-                Expr::Ref { place, data: _ } => self.eval_place(place).await?,
+            match expr {
+                Expr::Ref { place, data } => todo!(),
                 Expr::And { lhs, rhs, data } => todo!(),
                 Expr::Or { lhs, rhs, data } => todo!(),
                 Expr::Assign {
@@ -805,39 +861,28 @@ impl Transpiler {
                     data: _,
                 } => {
                     let temp_var = ir::Name::unique("var");
-                    ir::Expr::scope({
-                        let mut stmts = Vec::new();
-                        stmts.push(ir::Stmt::Assign {
-                            assignee: ir::Expr::Binding(temp_var.clone()),
-                            value: self.read_place(value).await?,
-                        });
-                        self.assign(assignee, ir::Expr::Binding(temp_var), &mut stmts)
-                            .await?;
-                        stmts
-                    })
+                    stmts.push(ir::Stmt::Assign {
+                        assignee: ir::AssigneeExpr::NewVar(temp_var.clone()),
+                        value: self.read_place(value).await?,
+                    });
+                    self.assign(assignee, ir::Expr::Binding(temp_var), stmts)
+                        .await?;
                 }
-                Expr::List { values, data: _ } => ir::Expr::List({
-                    let mut result = Vec::new();
-                    for value in values {
-                        result.push(self.eval_expr(value).await?);
-                    }
-                    result
-                }),
+                Expr::List { values, data } => todo!(),
                 Expr::Unwindable {
                     name,
                     body,
                     data: _,
-                } => ir::Expr::scope({
-                    let mut stmts = Vec::new();
+                } => {
                     let handle_var = ir::Name::unique("unwindable");
                     stmts.push(ir::Stmt::Assign {
-                        assignee: ir::Expr::Binding(handle_var.clone()),
+                        assignee: ir::AssigneeExpr::NewVar(handle_var.clone()),
                         value: ir::Expr::Raw("Symbol()".into()),
                     });
                     self.pattern_match(
                         ir::Expr::Binding(handle_var.clone()),
                         name,
-                        &mut stmts,
+                        stmts,
                         MatchMode::Assign,
                     )?;
                     let catch_var = ir::Name("e".into());
@@ -864,8 +909,146 @@ impl Transpiler {
                             }),
                         ],
                     });
-                    stmts
+                }
+                Expr::Unwind { name, value, data } => todo!(),
+                Expr::InjectContext { context, data } => {
+                    stmts.push(ir::Stmt::Assign {
+                        assignee: ir::AssigneeExpr::Expr(ir::Expr::Index {
+                            obj: Box::new(ir::Expr::Binding(ir::Name::context())),
+                            index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
+                        }),
+                        value: self.eval_expr(context).await?,
+                    });
+                }
+                Expr::CurrentContext { data } => todo!(),
+                Expr::Unit { data: _ } => {}
+                Expr::FunctionType {
+                    arg,
+                    contexts,
+                    result,
+                    data,
+                } => todo!(),
+                Expr::Cast {
+                    value,
+                    target,
+                    data,
+                } => todo!(),
+                Expr::Is {
+                    value,
+                    pattern,
+                    data,
+                } => todo!(),
+                Expr::Match {
+                    value,
+                    branches,
+                    data,
+                } => todo!(),
+                Expr::Newtype { def, data } => todo!(),
+                Expr::Variant { name, value, data } => todo!(),
+                Expr::MakeMultiset { values, data } => todo!(),
+                Expr::Use { namespace, data } => todo!(),
+                Expr::Recursive {
+                    body,
+                    compiler_scope,
+                    data,
+                } => todo!(),
+                Expr::If {
+                    condition,
+                    then_case,
+                    else_case,
+                    data: _,
+                } => {
+                    self.register_cond_vars(condition, stmts)?;
+                    stmts.push(ir::Stmt::If {
+                        condition: self.eval_expr(condition).await?,
+                        then_case: self.eval_expr_into_stmts(then_case).await?,
+                        else_case: match else_case {
+                            None => vec![],
+                            Some(else_case) => self.eval_expr_into_stmts(else_case).await?,
+                        },
+                    });
+                }
+                Expr::Then { list, data: _ } => {
+                    for expr in list {
+                        self.eval_expr_as_stmts(expr, stmts).await?;
+                    }
+                }
+                Expr::Constant { value, data } => todo!(),
+                Expr::Number { raw, data } => todo!(),
+                Expr::String { token, data } => todo!(),
+                Expr::Native { .. } => {
+                    stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
+                }
+                Expr::Let {
+                    is_const_let: _,
+                    pattern,
+                    value,
+                    data: _,
+                } => {
+                    let temp_var = ir::Name::unique("let");
+                    let value = value.as_ref().expect("no value in let?");
+                    stmts.push(ir::Stmt::Assign {
+                        assignee: ir::AssigneeExpr::NewVar(temp_var.clone()),
+                        value: self.read_place(value).await?,
+                    });
+                    self.pattern_match(
+                        ir::Expr::Binding(temp_var),
+                        pattern,
+                        stmts,
+                        MatchMode::Assign,
+                    )?;
+                }
+                Expr::Call { .. } => {
+                    stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
+                }
+                Expr::CallMacro { r#macro, arg, data } => todo!(),
+                Expr::Scope { expr, data } => todo!(),
+                Expr::Function { ty, compiled, data } => todo!(),
+                Expr::Template { compiled, data } => todo!(),
+                Expr::Instantiate {
+                    template,
+                    arg,
+                    data,
+                } => todo!(),
+                Expr::Tuple { tuple, data } => todo!(),
+                Expr::Ast {
+                    expr_root,
+                    definition,
+                    values,
+                    hygiene,
+                    def_site,
+                    data,
+                } => todo!(),
+                Expr::ReadPlace { place, data } => todo!(),
+                Expr::TargetDependent { branches, data } => todo!(),
+                Expr::Type { expr, data } => todo!(),
+            }
+            Ok::<_, eyre::Report>(())
+        };
+        async move {
+            r#impl
+                .await
+                .wrap_err_with(|| format!("while transpiling {} to stmt", expr.show_short()))
+        }
+        .boxed()
+    }
+
+    fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
+        let r#impl = async move {
+            Ok(match expr {
+                Expr::Type { .. } => ir::Expr::Undefined,
+                Expr::Ref { place, data: _ } => self.eval_place(place).await?,
+                Expr::And { lhs, rhs, data } => todo!(),
+                Expr::Or { lhs, rhs, data } => todo!(),
+                Expr::Assign { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
+                Expr::List { values, data: _ } => ir::Expr::List({
+                    let mut result = Vec::new();
+                    for value in values {
+                        result.push(self.eval_expr(value).await?);
+                    }
+                    result
                 }),
+                Expr::Unwindable { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
                 Expr::Unwind {
                     name,
                     value,
@@ -878,13 +1061,9 @@ impl Transpiler {
                         fields
                     },
                 })]),
-                Expr::InjectContext { context, data } => ir::Expr::scope(vec![ir::Stmt::Assign {
-                    assignee: ir::Expr::Index {
-                        obj: Box::new(ir::Expr::Binding(ir::Name::context())),
-                        index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
-                    },
-                    value: self.eval_expr(context).await?,
-                }]),
+                Expr::InjectContext { .. } => {
+                    ir::Expr::scope(self.eval_expr_into_stmts(expr).await?)
+                }
                 Expr::CurrentContext { data } => ir::Expr::Index {
                     obj: Box::new(ir::Expr::Binding(ir::Name::context())),
                     index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
@@ -918,10 +1097,11 @@ impl Transpiler {
                     let mut stmts = Vec::new();
                     let var = ir::Name::unique("var");
                     stmts.push(ir::Stmt::Assign {
-                        assignee: ir::Expr::Binding(var.clone()),
+                        assignee: ir::AssigneeExpr::NewVar(var.clone()),
                         value: self.read_place(value).await?,
                     });
                     for branch in branches {
+                        self.register_pattern_vars(&branch.pattern, &mut stmts)?;
                         stmts.push(ir::Stmt::If {
                             condition: self
                                 .pattern_check(ir::Expr::Binding(var.clone()), &branch.pattern)?,
@@ -953,23 +1133,29 @@ impl Transpiler {
                     condition,
                     then_case,
                     else_case,
-                    data,
-                } => ir::Expr::scope(vec![ir::Stmt::If {
-                    condition: self.eval_expr(condition).await?,
-                    then_case: vec![ir::Stmt::Return(self.eval_expr(then_case).await?)],
-                    else_case: match else_case {
-                        None => vec![],
-                        Some(else_case) => vec![ir::Stmt::Return(self.eval_expr(else_case).await?)],
-                    },
-                }]),
+                    data: _,
+                } => ir::Expr::scope({
+                    let mut stmts = Vec::new();
+                    self.register_cond_vars(condition, &mut stmts)?;
+                    stmts.push(ir::Stmt::If {
+                        condition: self.eval_expr(condition).await?,
+                        then_case: vec![ir::Stmt::Return(self.eval_expr(then_case).await?)],
+                        else_case: match else_case {
+                            None => vec![],
+                            Some(else_case) => {
+                                vec![ir::Stmt::Return(self.eval_expr(else_case).await?)]
+                            }
+                        },
+                    });
+                    stmts
+                }),
                 Expr::Then { list, data: _ } => ir::Expr::scope({
                     let mut stmts = Vec::new();
                     for (index, expr) in list.iter().enumerate() {
-                        let expr = self.eval_expr(expr).await?;
                         if index == list.len() - 1 {
-                            stmts.push(ir::Stmt::Return(expr));
+                            stmts.push(ir::Stmt::Return(self.eval_expr(expr).await?));
                         } else {
-                            stmts.push(ir::Stmt::Expr(expr));
+                            self.eval_expr_as_stmts(expr, &mut stmts).await?;
                         }
                     }
                     stmts
@@ -1015,27 +1201,7 @@ impl Transpiler {
                     }
                     ir::Expr::Raw(result)
                 }
-                Expr::Let {
-                    is_const_let: _,
-                    pattern,
-                    value,
-                    data: _,
-                } => ir::Expr::scope({
-                    let temp_var = ir::Name::unique("let");
-                    let mut stmts = Vec::new();
-                    let value = value.as_ref().expect("no value in let?");
-                    stmts.push(ir::Stmt::Assign {
-                        assignee: ir::Expr::Binding(temp_var.clone()),
-                        value: self.read_place(value).await?,
-                    });
-                    self.pattern_match(
-                        ir::Expr::Binding(temp_var),
-                        pattern,
-                        &mut stmts,
-                        MatchMode::Assign,
-                    )?;
-                    stmts
-                }),
+                Expr::Let { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
                 Expr::Call { f, arg, data: _ } => ir::Expr::Call {
                     f: Box::new(self.eval_expr(f).await?),
                     args: vec![
@@ -1200,6 +1366,93 @@ impl Transpiler {
         .boxed()
     }
 
+    fn register_pattern_vars(
+        &self,
+        pattern: &Pattern,
+        stmts: &mut Vec<ir::Stmt>,
+    ) -> eyre::Result<()> {
+        match pattern {
+            Pattern::Placeholder { data: _ } => {}
+            Pattern::Unit { data: _ } => {}
+            Pattern::Binding {
+                binding,
+                bind_mode: _,
+                data: _,
+            } => stmts.push(ir::Stmt::DefVar(ir::Name::for_binding(binding))),
+            Pattern::Tuple { tuple, data: _ } => {
+                for field in tuple.values() {
+                    self.register_pattern_vars(field, stmts)?;
+                }
+            }
+            Pattern::Variant {
+                name: _,
+                value,
+                data: _,
+            } => {
+                if let Some(value) = value {
+                    self.register_pattern_vars(value, stmts)?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn register_cond_vars(&self, expr: &Expr, stmts: &mut Vec<ir::Stmt>) -> eyre::Result<()> {
+        match expr {
+            Expr::Ref { .. } => {}
+            Expr::And { lhs, rhs, data: _ } => {
+                self.register_cond_vars(lhs, stmts)?;
+                self.register_cond_vars(rhs, stmts)?;
+            }
+            Expr::Or { lhs, rhs, data: _ } => {
+                self.register_cond_vars(lhs, stmts)?;
+                _ = rhs; // supposed to have all same vars
+            }
+            Expr::Assign { .. } => {}
+            Expr::List { .. } => {}
+            Expr::Unwindable { .. } => {}
+            Expr::Unwind { .. } => {}
+            Expr::InjectContext { .. } => {}
+            Expr::CurrentContext { .. } => {}
+            Expr::Unit { .. } => {}
+            Expr::FunctionType { .. } => {}
+            Expr::Cast { .. } => {}
+            Expr::Is {
+                value: _,
+                pattern,
+                data: _,
+            } => {
+                self.register_pattern_vars(pattern, stmts)?;
+            }
+            Expr::Match { .. } => {}
+            Expr::Newtype { .. } => {}
+            Expr::Variant { .. } => {}
+            Expr::MakeMultiset { .. } => {}
+            Expr::Use { .. } => {}
+            Expr::Recursive { .. } => {}
+            Expr::If { .. } => {}
+            Expr::Then { .. } => {}
+            Expr::Constant { .. } => {}
+            Expr::Number { .. } => {}
+            Expr::String { .. } => {}
+            Expr::Native { .. } => {}
+            Expr::Let { .. } => {}
+            Expr::Call { .. } => {}
+            Expr::CallMacro { .. } => {}
+            Expr::Scope { expr, data: _ } => {
+                self.register_cond_vars(expr, stmts)?;
+            }
+            Expr::Function { .. } => {}
+            Expr::Template { .. } => {}
+            Expr::Instantiate { .. } => {}
+            Expr::Tuple { .. } => {}
+            Expr::Ast { .. } => {}
+            Expr::ReadPlace { .. } => {}
+            Expr::TargetDependent { branches, data } => todo!(),
+            Expr::Type { .. } => {}
+        }
+        Ok(())
+    }
+
     fn pattern_check(&mut self, value: ir::Expr, pattern: &Pattern) -> eyre::Result<ir::Expr> {
         Ok(ir::Expr::scope({
             let mut stmts = Vec::new();
@@ -1232,8 +1485,12 @@ impl Transpiler {
                 bind_mode: _, // TODO maybe we care?
                 data: _,
             } => {
+                let name = ir::Name::for_binding(binding);
                 stmts.push(ir::Stmt::Assign {
-                    assignee: ir::Expr::Binding(ir::Name::for_binding(binding)),
+                    assignee: match mode {
+                        MatchMode::Check => ir::AssigneeExpr::Expr(ir::Expr::Binding(name)),
+                        MatchMode::Assign => ir::AssigneeExpr::NewVar(name),
+                    },
                     value,
                 });
             }
@@ -1292,7 +1549,7 @@ impl Transpiler {
         while let Some(unprocessed) = self.captured_unprocessed.pop() {
             let value = self.transpile(&*unprocessed.read_value()?).await?;
             self.captured_code.push(ir::Stmt::Assign {
-                assignee: ir::Expr::Binding(captured_name(&unprocessed)),
+                assignee: ir::AssigneeExpr::NewVar(captured_name(&unprocessed)),
                 value,
             });
         }
