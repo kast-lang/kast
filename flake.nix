@@ -59,6 +59,7 @@
             just
             cargo-flamegraph
             cargo-outdated
+            nodejs
           ];
           shellHook = ''
             echo Hello from Kast devshell
