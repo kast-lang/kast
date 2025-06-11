@@ -58,6 +58,7 @@
             rust-analyzer
             just
             cargo-flamegraph
+            cargo-outdated
           ];
           shellHook = ''
             echo Hello from Kast devshell
