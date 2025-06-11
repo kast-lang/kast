@@ -73,6 +73,25 @@ mod ir {
         Raw(String),
     }
 
+    impl Expr {
+        fn has_bindings(&self) -> bool {
+            match self {
+                Self::Binding(_) => true,
+                Self::Undefined => false,
+                Self::Bool(_) => false,
+                Self::Number(_) => false,
+                Self::String(_) => false,
+                Self::List(exprs) => exprs.iter().all(Self::has_bindings),
+                Self::Object { fields } => fields.values().all(Self::has_bindings),
+                Self::Fn { args: _, body: _ } => true, // too lazy too look deeper
+                Self::Index { obj, index } => obj.has_bindings() || index.has_bindings(),
+                Self::NotEq(a, b) => a.has_bindings() || b.has_bindings(),
+                Self::Call { f, args } => f.has_bindings() || args.iter().any(Self::has_bindings),
+                Self::Raw(_) => true, // can be anything
+            }
+        }
+    }
+
     #[must_use]
     #[derive(Clone)]
     pub enum Stmt {
@@ -370,6 +389,9 @@ mod ir {
                 Self::Index { obj, index } => {
                     let obj = obj.optimize();
                     let index = index.optimize();
+
+                    /// from: { field: value, ... }["field"]
+                    /// into: value
                     fn get_obj_field(obj: &Expr, index: &Expr) -> Option<Expr> {
                         let Expr::Object { fields } = obj else {
                             return None;
@@ -385,6 +407,44 @@ mod ir {
                     if let Some(result) = get_obj_field(&obj, &index) {
                         return result;
                     }
+
+                    /// from: ((args) => { ...; return obj; })(args)["field"]
+                    /// into: ((args) => { ...; return obj["field"]; })(args)
+                    fn inline_lambda_obj_field(obj: &Expr, index: &Expr) -> Option<Expr> {
+                        let Expr::Call { f, args } = obj else {
+                            return None;
+                        };
+                        let Expr::Fn { args: f_args, body } = &**f else {
+                            return None;
+                        };
+                        let (Stmt::Return(ret), before_return) = body.split_last()? else {
+                            return None;
+                        };
+                        if has_return(before_return) {
+                            return None;
+                        }
+                        Some(
+                            Expr::Call {
+                                f: Box::new(Expr::Fn {
+                                    args: f_args.clone(),
+                                    body: {
+                                        let mut body = before_return.to_vec();
+                                        body.push(Stmt::Return(Expr::Index {
+                                            obj: Box::new(ret.clone()),
+                                            index: Box::new(index.clone()),
+                                        }));
+                                        body
+                                    },
+                                }),
+                                args: args.clone(),
+                            }
+                            .optimize(), // TODO optimizes body again?
+                        )
+                    }
+                    if let Some(result) = inline_lambda_obj_field(&obj, &index) {
+                        return result;
+                    }
+
                     Self::Index {
                         obj: Box::new(obj),
                         index: Box::new(index),
@@ -398,6 +458,9 @@ mod ir {
                 Self::Call { f, args } => {
                     let f = f.optimize();
                     let args: Vec<Self> = args.iter().map(Self::optimize).collect();
+
+                    /// from: (() => { return x })()
+                    /// into: x
                     fn lambda_return_call(f: &Expr, args: &[Expr]) -> Option<Expr> {
                         if !args.is_empty() {
                             return None;
@@ -418,6 +481,47 @@ mod ir {
                     if let Some(result) = lambda_return_call(&f, &args) {
                         return result;
                     }
+
+                    /// from: ((args) => { ...; return f; })(args)(outer_args)
+                    /// into: ((args) => { ...; return f(outer_args); })(args)
+                    fn inline_lambda_f_call(outer_f: &Expr, outer_args: &[Expr]) -> Option<Expr> {
+                        if outer_args.iter().any(Expr::has_bindings) {
+                            return None;
+                        }
+                        let Expr::Call { f, args } = outer_f else {
+                            return None;
+                        };
+                        let Expr::Fn { args: f_args, body } = &**f else {
+                            return None;
+                        };
+                        let (Stmt::Return(ret), before_return) = body.split_last()? else {
+                            return None;
+                        };
+                        if has_return(before_return) {
+                            return None;
+                        }
+                        Some(
+                            Expr::Call {
+                                f: Box::new(Expr::Fn {
+                                    args: f_args.clone(),
+                                    body: {
+                                        let mut body = before_return.to_vec();
+                                        body.push(Stmt::Return(Expr::Call {
+                                            f: Box::new(ret.clone()),
+                                            args: outer_args.to_vec(),
+                                        }));
+                                        body
+                                    },
+                                }),
+                                args: args.clone(),
+                            }
+                            .optimize(), // TODO optimizes body again?
+                        )
+                    }
+                    if let Some(result) = inline_lambda_f_call(&f, &args) {
+                        return result;
+                    }
+
                     Self::Call {
                         f: Box::new(f),
                         args,
@@ -464,6 +568,9 @@ mod ir {
         let mut result = Vec::new();
         for stmt in stmts {
             let stmt = stmt.optimize();
+
+            /// from: return (() => { body })();
+            /// into: body
             fn return_lambda_call(stmt: &Stmt) -> Option<Vec<Stmt>> {
                 let Stmt::Return(expr) = stmt else {
                     return None;
@@ -487,9 +594,59 @@ mod ir {
                 result.extend(stmts);
                 continue;
             }
+
+            /// from: x = expr; return x;
+            /// into: return expr;
+            fn return_temp(prev: Option<&Stmt>, stmt: &Stmt) -> Option<Stmt> {
+                let Stmt::Assign { assignee, value } = prev? else {
+                    return None;
+                };
+                // TODO make sure its a new var
+                let Expr::Binding(name) = assignee else {
+                    return None;
+                };
+                let Stmt::Return(Expr::Binding(ret_name)) = stmt else {
+                    return None;
+                };
+                if name != ret_name {
+                    return None;
+                };
+                Some(Stmt::Return(value.clone()))
+            }
+            if let Some(stmt) = return_temp(result.last(), &stmt) {
+                _ = result.pop().unwrap();
+                result.push(stmt);
+                continue;
+            }
+
             result.push(stmt);
         }
         result
+    }
+
+    fn has_return(stmts: &[Stmt]) -> bool {
+        for stmt in stmts {
+            let stmt_has_return = match stmt {
+                Stmt::Return(_) => true,
+                Stmt::If {
+                    condition: _,
+                    then_case,
+                    else_case,
+                } => has_return(then_case) || has_return(else_case),
+                Stmt::Throw(_) => false,
+                Stmt::Assign { .. } => false,
+                Stmt::Expr(..) => false,
+                Stmt::Try {
+                    body,
+                    catch_var: _,
+                    catch_body: _,
+                } => has_return(body),
+            };
+            if stmt_has_return {
+                return true;
+            }
+        }
+        false
     }
 }
 
