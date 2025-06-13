@@ -708,6 +708,7 @@ mod ir {
 
 struct Transpiler {
     kast: Kast,
+    compiled_fns: std::collections::HashMap<Parc<CompiledFn>, ir::Name>,
     scopes: Parc<Scopes>,
     engine_type: JavaScriptEngineType,
     captured: std::collections::HashSet<PlaceRef>,
@@ -739,6 +740,7 @@ fn escape_ident(ident: &str) -> String {
 impl Transpiler {
     fn new(kast: &mut Kast, engine_type: JavaScriptEngineType) -> Self {
         Self {
+            compiled_fns: Default::default(),
             kast: kast.clone(),
             scopes: Parc::new(kast.scopes.clone()),
             engine_type,
@@ -1565,6 +1567,12 @@ impl Transpiler {
 
     async fn transpile_compiled_fn(&mut self, f: &MaybeCompiledFn) -> eyre::Result<ir::Expr> {
         let compiled = self.kast.await_compiled(f).await?;
+        if let Some(name) = self.compiled_fns.get(&compiled) {
+            return Ok(ir::Expr::Binding(name.clone()));
+        }
+        let name = ir::Name::unique("compiled_fn");
+        self.compiled_fns.insert(compiled.clone(), name.clone());
+
         let arg = ir::Name::unique("arg");
         let args = vec![ir::Name::context(), arg.clone()];
         let mut body = Vec::new();
@@ -1575,7 +1583,12 @@ impl Transpiler {
             MatchMode::Assign,
         )?;
         body.push(ir::Stmt::Return(self.eval_expr(&compiled.body).await?));
-        Ok(ir::Expr::Fn { args, body })
+
+        self.captured_code.push(ir::Stmt::Assign {
+            assignee: ir::AssigneeExpr::NewVar(name.clone()),
+            value: ir::Expr::Fn { args, body },
+        });
+        Ok(ir::Expr::Binding(name))
     }
 }
 
