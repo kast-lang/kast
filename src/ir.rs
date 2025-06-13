@@ -14,9 +14,28 @@ pub struct ExprData {
     pub contexts: Contexts,
 }
 
+impl SubstituteBindings for ExprData {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        Self {
+            ty: self.ty.substitute_bindings(kast, cache),
+            span: self.span,
+            contexts: self.contexts.substitute_bindings(kast, cache),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct TypeExprData {
     pub span: Span,
+}
+
+impl SubstituteBindings for TypeExprData {
+    type Target = Self;
+
+    fn substitute_bindings(self, _kast: &Kast, _cache: &mut RecurseCache) -> Self::Target {
+        Self { span: self.span }
+    }
 }
 
 impl std::borrow::Borrow<Span> for TypeExprData {
@@ -25,13 +44,15 @@ impl std::borrow::Borrow<Span> for TypeExprData {
     }
 }
 
-#[derive(Clone, derive_macros::ExprDisplay)]
+#[derive(Clone, derive_macros::ExprDisplay, derive_macros::ExprSubstituteBindings)]
 pub struct MatchBranch {
     pub pattern: Pattern,
     pub body: Expr,
 }
 
-#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
+#[derive(
+    Clone, derive_macros::ExprDisplay, derive_macros::ExprSubstituteBindings, derive_macros::Data,
+)]
 pub enum TypeExpr<Data = TypeExprData> {
     Ref {
         inner: Box<TypeExpr>,
@@ -80,7 +101,9 @@ impl<Data: std::borrow::Borrow<Span>> TypeExpr<Data> {
     }
 }
 
-#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
+#[derive(
+    Clone, derive_macros::ExprDisplay, derive_macros::ExprSubstituteBindings, derive_macros::Data,
+)]
 pub enum Expr<Data = ExprData> {
     Ref {
         place: PlaceExpr,
@@ -151,6 +174,7 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Variant {
+        #[substitute(skip)]
         name: String,
         value: Option<Box<Expr>>,
         data: Data,
@@ -167,6 +191,7 @@ pub enum Expr<Data = ExprData> {
         body: Box<Expr>,
         // TODO only need name?
         #[display(skip)]
+        #[substitute(skip)]
         compiler_scope: CompilerScope,
         data: Data,
     },
@@ -185,23 +210,28 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Number {
+        #[substitute(skip)]
         raw: String,
         data: Data,
     },
     String {
         #[display(skip)]
+        #[substitute(skip)]
         token: kast_ast::StringToken,
         data: Data,
     },
     Native {
         /// Name - expr that should evaluate to a string
         // name: Box<Expr>,
+        #[substitute(skip)] // TODO I use interpolation in js here?
         name: String,
         #[display(skip)]
+        #[substitute(skip)]
         compiler_scope: CompilerScope,
         data: Data,
     },
     Let {
+        #[substitute(skip)]
         is_const_let: bool,
         pattern: Pattern,
         value: Option<Box<PlaceExpr>>,
@@ -224,11 +254,13 @@ pub enum Expr<Data = ExprData> {
     Function {
         ty: FnType,
         #[display(skip)]
+        #[substitute(skip)] // TODO
         compiled: MaybeCompiledFn,
         data: Data,
     },
     Template {
         #[display(skip)]
+        #[substitute(skip)] // TODO
         compiled: MaybeCompiledFn,
         data: Data,
     },
@@ -242,12 +274,16 @@ pub enum Expr<Data = ExprData> {
         data: Data,
     },
     Ast {
+        #[substitute(skip)]
         expr_root: bool,
         #[display(skip)]
+        #[substitute(skip)]
         definition: Parc<ast::SyntaxDefinition>,
         values: Tuple<PlaceExpr>,
+        #[substitute(skip)]
         hygiene: Hygiene,
         #[display(skip)]
+        #[substitute(skip)]
         def_site: Option<CompilerScope>,
         data: Data,
     },
@@ -265,7 +301,9 @@ pub enum Expr<Data = ExprData> {
     },
 }
 
-#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
+#[derive(
+    Clone, derive_macros::ExprDisplay, derive_macros::ExprSubstituteBindings, derive_macros::Data,
+)]
 pub enum AssigneeExpr<Data = AssigneeExprData> {
     Placeholder {
         data: Data,
@@ -287,14 +325,18 @@ pub enum AssigneeExpr<Data = AssigneeExprData> {
     },
 }
 
-#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
+#[derive(
+    Clone, derive_macros::ExprDisplay, derive_macros::ExprSubstituteBindings, derive_macros::Data,
+)]
 pub enum PlaceExpr<Data = ExprData> {
+    #[substitute(with = substitute_place_binding)]
     Binding {
         binding: Parc<Binding>,
         data: Data,
     },
     FieldAccess {
         obj: Box<PlaceExpr>,
+        #[substitute(skip)]
         field: tuple::Member<'static>,
         data: Data,
     },
@@ -306,6 +348,36 @@ pub enum PlaceExpr<Data = ExprData> {
         r#ref: Box<Expr>,
         data: Data,
     },
+}
+
+impl PlaceExpr {
+    fn substitute_place_binding(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
+        match self {
+            PlaceExpr::Binding { binding, data } => {
+                match kast.scopes.interpreter.get(&binding.symbol) {
+                    Some(value) => {
+                        let value = value.clone_value().unwrap();
+                        return Self::Temporary {
+                            value: Box::new(Expr::Constant {
+                                data: ExprData {
+                                    ty: value.ty(),
+                                    span: binding.symbol.span.clone(),
+                                    contexts: Contexts::empty(),
+                                },
+                                value,
+                            }),
+                            data: data.substitute_bindings(kast, cache),
+                        };
+                    }
+                    None => Self::Binding {
+                        binding,
+                        data: data.substitute_bindings(kast, cache),
+                    },
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl PlaceExpr {
@@ -593,6 +665,16 @@ pub struct PatternData {
     pub span: Span,
 }
 
+impl SubstituteBindings for PatternData {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        Self {
+            ty: self.ty.substitute_bindings(kast, cache),
+            span: self.span,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum PatternBindMode {
     Claim,
@@ -606,7 +688,9 @@ impl std::fmt::Display for PatternBindMode {
     }
 }
 
-#[derive(Clone, derive_macros::ExprDisplay, derive_macros::Data)]
+#[derive(
+    Clone, derive_macros::ExprDisplay, derive_macros::ExprSubstituteBindings, derive_macros::Data,
+)]
 pub enum Pattern<Data = PatternData> {
     /// matches anything
     Placeholder {
@@ -616,7 +700,9 @@ pub enum Pattern<Data = PatternData> {
         data: Data,
     },
     Binding {
+        #[substitute(skip)]
         binding: Parc<Binding>,
+        #[substitute(skip)]
         bind_mode: PatternBindMode,
         data: Data,
     },
@@ -625,6 +711,7 @@ pub enum Pattern<Data = PatternData> {
         data: Data,
     },
     Variant {
+        #[substitute(skip)]
         name: String,
         value: Option<Box<Pattern>>,
         data: Data,

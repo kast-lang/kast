@@ -12,3 +12,9 @@ mod expr_display;
 pub fn derive_expr_display(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     expr_display::derive(input)
 }
+
+mod expr_substitute_bindings;
+#[proc_macro_derive(ExprSubstituteBindings, attributes(substitute))]
+pub fn derive_expr_substitute_bindings(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    expr_substitute_bindings::derive(input)
+}

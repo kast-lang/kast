@@ -165,9 +165,7 @@ impl SubstituteBindings for VariantType {
                 .into_iter()
                 .map(|variant| VariantTypeVariant {
                     name: variant.name.clone(),
-                    value: variant
-                        .value
-                        .map(|ty| Box::new(ty.substitute_bindings(kast, cache))),
+                    value: variant.value.map(|ty| ty.substitute_bindings(kast, cache)),
                 })
                 .collect(),
         }

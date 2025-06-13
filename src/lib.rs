@@ -126,6 +126,29 @@ impl<T: SubstituteBindings> SubstituteBindings for Option<T> {
     }
 }
 
+impl<T: SubstituteBindings> SubstituteBindings for Box<T> {
+    type Target = Box<T::Target>;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        Box::new(T::substitute_bindings(*self, kast, cache))
+    }
+}
+
+impl<T: SubstituteBindings> SubstituteBindings for Tuple<T> {
+    type Target = Tuple<T::Target>;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        self.map(|value| value.substitute_bindings(kast, cache))
+    }
+}
+
+impl<T: SubstituteBindings> SubstituteBindings for Vec<T> {
+    type Target = Vec<T::Target>;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        self.into_iter()
+            .map(|value| value.substitute_bindings(kast, cache))
+            .collect()
+    }
+}
+
 enum ImportMode {
     Normal,
     OnlyStdSyntax,

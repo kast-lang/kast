@@ -45,6 +45,18 @@ pub struct TargetDependentBranch<T: std::fmt::Display> {
     pub body: T,
 }
 
+impl<T: std::fmt::Display + SubstituteBindings<Target = T>> SubstituteBindings
+    for TargetDependentBranch<T>
+{
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        Self {
+            condition: self.condition.substitute_bindings(kast, cache),
+            body: self.body.substitute_bindings(kast, cache),
+        }
+    }
+}
+
 impl Kast {
     pub async fn select_target_dependent_branch<'a, T: std::fmt::Display>(
         &self,

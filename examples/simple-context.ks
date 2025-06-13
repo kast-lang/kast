@@ -2,7 +2,7 @@ use std.*;
 
 const f = forall[T :: type] {
     () => (
-        let value = current string;
+        let value = current T;
         dbg value;
     )
 };

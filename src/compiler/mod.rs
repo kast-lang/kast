@@ -1985,3 +1985,136 @@ impl Pattern<Span> {
         })
     }
 }
+
+impl Kast {
+    pub async fn monomorphise(
+        &mut self,
+        compiled_fn: &CompiledFn,
+        provided_values: HashMap<Parc<Binding>, Value>,
+    ) -> eyre::Result<CompiledFn> {
+        let mut args = std::collections::BTreeSet::new();
+        compiled_fn.arg.collect_bindings(&mut |binding| {
+            args.insert(binding);
+        });
+        let mut new_args = Tuple::empty();
+        let mut new_arg_bindings = HashMap::<Parc<Binding>, Parc<Binding>>::new();
+        for arg in &args {
+            if !provided_values.contains_key(arg) {
+                new_args.add_unnamed(
+                    Pattern::Binding {
+                        binding: new_arg_bindings
+                            .entry(arg.clone())
+                            .or_insert_with(|| {
+                                Parc::new(Binding {
+                                    symbol: Symbol {
+                                        name: arg.symbol.name.clone(),
+                                        span: arg.symbol.span.clone(),
+                                        id: Id::new(),
+                                    },
+                                    ty: arg.ty.clone(),
+                                    mutability: Mutability::ReadOnly,
+                                    compiler_scope: self.scopes.compiler.clone(), // TODO wut
+                                })
+                            })
+                            .clone(),
+                        bind_mode: PatternBindMode::Claim,
+                        data: arg.symbol.span.clone(),
+                    }
+                    .init()?,
+                );
+            }
+        }
+
+        let arg_span = &compiled_fn.arg.data().span;
+
+        let mut new_body = Vec::new();
+        new_body.push(
+            Expr::Assign {
+                assignee: AssigneeExpr::Let {
+                    pattern: Pattern::Tuple {
+                        tuple: {
+                            let mut fields = Tuple::empty();
+                            for arg in &args {
+                                fields.add_unnamed(
+                                    Pattern::Binding {
+                                        binding: arg.clone(),
+                                        bind_mode: PatternBindMode::Claim, // TODO not sure
+                                        data: arg_span.clone(),
+                                    }
+                                    .init()?,
+                                );
+                            }
+                            fields
+                        },
+                        data: arg_span.clone(),
+                    }
+                    .init()?,
+                    data: arg_span.clone(),
+                }
+                .init(self)
+                .await?,
+                value: Box::new(
+                    PlaceExpr::Temporary {
+                        value: Box::new(
+                            Expr::Tuple {
+                                tuple: {
+                                    let mut fields = Tuple::empty();
+                                    for arg in &args {
+                                        fields.add_unnamed(match provided_values.get(arg) {
+                                            Some(provided_value) => {
+                                                Expr::Constant {
+                                                    value: provided_value.clone(), // TODO move?
+                                                    data: arg.symbol.span.clone(),
+                                                }
+                                                .init(self)
+                                                .await?
+                                            }
+                                            None => todo!(),
+                                        });
+                                    }
+                                    fields
+                                },
+                                data: arg_span.clone(),
+                            }
+                            .init(self)
+                            .await?,
+                        ),
+                        data: arg_span.clone(),
+                    }
+                    .init(self)
+                    .await?,
+                ),
+                data: arg_span.clone(),
+            }
+            .init(self)
+            .await?,
+        );
+        new_body.push(compiled_fn.body.clone().substitute_bindings(
+            &{
+                let kast = self.enter_scope();
+                for (binding, value) in &provided_values {
+                    kast.scopes.interpreter.insert(
+                        &binding.symbol,
+                        value.clone(),
+                        Mutability::ReadOnly,
+                    );
+                }
+                kast
+            },
+            &mut RecurseCache::new(),
+        ));
+        Ok(CompiledFn {
+            arg: Pattern::Tuple {
+                tuple: { new_args },
+                data: arg_span.clone(),
+            }
+            .init()?,
+            body: Expr::Then {
+                list: new_body,
+                data: compiled_fn.body.data().span.clone(),
+            }
+            .init(self)
+            .await?,
+        })
+    }
+}
