@@ -948,7 +948,7 @@ impl Transpiler {
                 Expr::Newtype { def, data } => todo!(),
                 Expr::Variant { name, value, data } => todo!(),
                 Expr::MakeMultiset { values, data } => todo!(),
-                Expr::Use { namespace, data } => todo!(),
+                Expr::Use { .. } => {}
                 Expr::Recursive {
                     body,
                     compiler_scope,
@@ -1125,7 +1125,7 @@ impl Transpiler {
                     },
                 ),
                 Expr::MakeMultiset { values, data } => todo!(),
-                Expr::Use { namespace, data } => todo!(),
+                Expr::Use { .. } => ir::Expr::Undefined,
                 Expr::Recursive {
                     body,
                     compiler_scope,
@@ -1172,6 +1172,26 @@ impl Transpiler {
                     .map_err(|_| eyre!("string type not inferred"))?
                 {
                     TypeShape::String => ir::Expr::String(token.contents.clone()),
+                    TypeShape::Ref(inner) => {
+                        match inner
+                            .inferred()
+                            .map_err(|_| eyre!("string type not inferred"))?
+                        {
+                            TypeShape::String => ir::Expr::scope({
+                                let mut stmts = Vec::new();
+                                let temp = ir::Name::unique("str");
+                                stmts.push(ir::Stmt::Assign {
+                                    assignee: ir::AssigneeExpr::NewVar(temp.clone()),
+                                    value: ir::Expr::String(token.contents.clone()),
+                                });
+                                stmts.push(ir::Stmt::Return(
+                                    self.make_ref(ir::Expr::Binding(temp))?,
+                                ));
+                                stmts
+                            }),
+                            other => eyre::bail!("wrong string type: &{other}"),
+                        }
+                    }
                     other => eyre::bail!("wrong string type: {other}"),
                 },
                 Expr::Native {
@@ -1600,7 +1620,31 @@ impl Kast {
         options: ShowOptions,
     ) -> eyre::Result<String> {
         let mut transpiler = Transpiler::new(self, engine_type);
-        let result = transpiler.transpile(value).await?;
+
+        let result = match &*value.as_inferred()? {
+            ValueShape::Expr(expr) => {
+                let mut contexts = LinkedHashMap::new();
+                // TODO more contexts
+
+                contexts.insert(
+                    transpiler.context_name(&contexts::default_output().ty()),
+                    // TODO console.log in browser
+                    ir::Expr::Raw("{write:(ctx,ref_s)=>process.stdout.write(ref_s.get())}".into()),
+                );
+
+                let code = transpiler.eval_expr(expr).await?;
+                let code = ir::Expr::Fn {
+                    args: vec![ir::Name::context()],
+                    body: vec![ir::Stmt::Return(code)],
+                };
+                let code = ir::Expr::Call {
+                    f: Box::new(code),
+                    args: vec![ir::Expr::Object { fields: contexts }],
+                };
+                code
+            }
+            _ => transpiler.transpile(value).await?,
+        };
         transpiler.process_captured().await?;
         let expr = ir::Expr::scope({
             let mut stmts = transpiler.captured_code;

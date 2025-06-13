@@ -201,11 +201,9 @@ impl Kast {
         source: SourceFile,
         expected_ty: Option<Type>,
     ) -> eyre::Result<R> {
-        let ast = ast::parse(&self.syntax, source)?;
+        let ast = self.parse_ast(source)?;
         match ast {
             Some(ast) => {
-                // sounds like a hack
-                let ast = compiler::init_ast(ast);
                 // TODO but idr what this todo is about
                 futures_lite::future::block_on(self.eval_ast(&ast, expected_ty))
             }

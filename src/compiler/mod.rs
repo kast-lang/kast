@@ -654,6 +654,13 @@ impl Kast {
         }
         ast
     }
+    pub fn compile_file<T: Compilable>(&mut self, path: impl AsRef<Path>) -> eyre::Result<T> {
+        let ast = self.parse_ast_file(path)?;
+        match ast {
+            Some(ast) => futures_lite::future::block_on(self.compile(&ast)),
+            None => todo!(),
+        }
+    }
     pub async fn compile<T: Compilable>(&mut self, ast: &Ast) -> eyre::Result<T> {
         let mut kast = match &ast.data().def_site {
             Some(scope) => self.with_scopes(self.scopes.enter_def_site(scope.clone())),

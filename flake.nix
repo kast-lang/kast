@@ -60,6 +60,9 @@
             cargo-flamegraph
             cargo-outdated
             nodejs
+            (pkgs.writeShellScriptBin "kast" ''
+              cargo run --no-default-features -- "$@"
+            '')
           ];
           shellHook = ''
             echo Hello from Kast devshell

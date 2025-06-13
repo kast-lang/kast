@@ -69,6 +69,34 @@ fn main() -> eyre::Result<()> {
     };
 
     match cli_args.command() {
+        cli::Command::Compile {
+            path,
+            out_path,
+            no_stdlib,
+            target,
+        } => {
+            let mut kast = match no_stdlib {
+                true => Kast::new_nostdlib(&path),
+                false => Kast::new(&path),
+            }
+            .unwrap();
+            init_log_level();
+            let ir: Expr = kast.compile_file(path)?;
+            match target {
+                cli::CompilationTarget::JavaScriptNode => {
+                    let js = futures_lite::future::block_on(kast.transpile_to_javascript(
+                        javascript::JavaScriptEngineType::Node,
+                        &ValueShape::Expr(Parc::new(ir)).into(),
+                        javascript::ShowOptions::Pretty,
+                    ))?;
+                    if let Some(out_path) = out_path {
+                        std::fs::write(out_path, js)?;
+                    } else {
+                        print!("{js}")
+                    }
+                }
+            }
+        }
         cli::Command::Run { path, no_stdlib } => {
             let mut kast = match no_stdlib {
                 true => Kast::new_nostdlib(&path),

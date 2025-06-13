@@ -15,6 +15,31 @@ pub enum Command {
         #[clap(long)]
         no_stdlib: bool,
     },
+    Compile {
+        path: PathBuf,
+        #[clap(long)]
+        out_path: Option<PathBuf>,
+        #[clap(long)]
+        no_stdlib: bool,
+        /// TODO maybe subcommand?
+        #[clap(long)]
+        target: CompilationTarget,
+    },
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum CompilationTarget {
+    JavaScriptNode,
+}
+
+impl std::str::FromStr for CompilationTarget {
+    type Err = eyre::Report;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "js" | "javascript" => Self::JavaScriptNode,
+            _ => eyre::bail!("{s:?} is unknown target"),
+        })
+    }
 }
 
 #[derive(clap::Parser)]

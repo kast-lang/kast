@@ -23,7 +23,7 @@ mod contexts;
 mod executor;
 mod id;
 mod interpreter;
-mod ir;
+pub mod ir;
 pub mod javascript;
 mod name;
 mod place;
@@ -39,7 +39,7 @@ pub use self::contexts::Contexts;
 use self::executor::Executor;
 pub use self::id::*;
 pub use self::ir::Symbol;
-use self::ir::*;
+pub use self::ir::*;
 pub use self::name::*;
 pub use self::place::*;
 pub use self::rusty::*;
@@ -364,6 +364,26 @@ impl Kast {
             T::ty(),
         )?;
         Ok(T::from_value(value)?)
+    }
+
+    pub fn parse_ast_file(&self, path: impl AsRef<Path>) -> eyre::Result<Option<Ast>> {
+        let source = SourceFile {
+            contents: std::fs::read_to_string(path.as_ref())?,
+            filename: path.as_ref().into(),
+        };
+        self.parse_ast(source)
+    }
+
+    pub fn parse_ast(&self, source: SourceFile) -> eyre::Result<Option<Ast>> {
+        let ast = ast::parse(&self.syntax, source)?;
+        Ok(match ast {
+            Some(ast) => {
+                // sounds like a hack
+                let ast = compiler::init_ast(ast);
+                Some(ast)
+            }
+            None => None,
+        })
     }
 
     pub fn eval_file(&mut self, path: impl AsRef<Path>) -> eyre::Result<Value> {
