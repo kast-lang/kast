@@ -199,10 +199,19 @@ const contains :: (.s = string, .substring = string) -> bool = native "contains"
 const dbg = forall[T] {
     (value :: T) => (
         let output = current output;
-        output.write <| &(native "dbg" value);
-        output.write &" :: ";
-        output.write <| &(native "dbg_type" T);
-        output.write &"\n";
+        cfg_if {
+            | target.name == "interpreter" => (
+                output.write <| &(native "dbg" value);
+                output.write &" :: ";
+                output.write <| &(native "dbg_type" T);
+                output.write &"\n";
+            )
+            | target.name == "javascript" => (
+                output.write &(native "require('node:util').format('%o',$(value))");
+                output.write "\n";
+                # native "console.log($(value))";
+            )
+        }
     )
 };
 

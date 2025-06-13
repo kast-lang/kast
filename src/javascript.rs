@@ -776,8 +776,10 @@ impl Transpiler {
     }
 
     fn context_name(&mut self, context_ty: &Type) -> String {
+        let type_name = format!("{context_ty}");
+        let type_name = escape_ident(&type_name);
         format!(
-            "type{}",
+            "context_{type_name}__{}",
             self.type_ids
                 .entry(Hashable(context_ty.clone()))
                 .or_insert_with(Id::new)
@@ -800,11 +802,18 @@ impl Transpiler {
             Ok(match expr {
                 PlaceExpr::Binding { binding, data: _ } => {
                     match self.scopes.interpreter.get(&binding.symbol) {
-                        Some(place) => {
+                        Some(place)
+                            if place.read()?.get()?.as_inferred().is_ok_and(|inferred| {
+                                !matches!(*inferred, ValueShape::Binding(..))
+                            }) =>
+                        {
+                            println!("capturing {}", binding.symbol);
                             self.ensure_captured(&place);
                             self.make_ref(ir::Expr::Binding(captured_name(&place)))?
                         }
-                        None => self.make_ref(ir::Expr::binding(binding))?,
+                        Some(_ /* binding */) | None => {
+                            self.make_ref(ir::Expr::binding(binding))?
+                        }
                     }
                 }
                 PlaceExpr::FieldAccess {
@@ -917,7 +926,9 @@ impl Transpiler {
                     stmts.push(ir::Stmt::Assign {
                         assignee: ir::AssigneeExpr::Expr(ir::Expr::Index {
                             obj: Box::new(ir::Expr::Binding(ir::Name::context())),
-                            index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
+                            index: Box::new(ir::Expr::String(
+                                self.context_name(&context.data().ty),
+                            )),
                         }),
                         value: self.eval_expr(context).await?,
                     });
