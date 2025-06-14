@@ -4,17 +4,32 @@ const HashMap = forall[K :: type, V :: type] {
     native "HashMap" (K, V) :: type
 };
 const new = forall[K :: type, V :: type] {
-    native "HashMap.new" :: () -> HashMap[K, V]
+    () => cfg_if {
+        | target.name == "interpreter" => native "HashMap.new"
+        | target.name == "javascript" => native "new Map()"
+    } :: () -> HashMap[K, V] with ()
 };
 const insert = forall[K :: type, V :: type] {
-    native "HashMap.insert" :: (&HashMap[K, V], K, V) -> ()
+    (map, key, value) => cfg_if {
+        | target.name == "interpreter" => native "HashMap.insert" (map, key, value)
+        | target.name == "javascript" => native "$(map).set($(key),$(value))"
+    } :: (&HashMap[K, V], K, V) -> () with ()
 };
 const get = forall[K :: type, V :: type] {
-    native "HashMap.get" :: (&HashMap[K, V], &K) -> Option[&V]
+    (map, key) => cfg_if {
+        | target.name == "interpreter" => native "HashMap.get" (map, key)
+        | target.name == "javascript" => native "$(map).has($(key))?{variant:'Some','value':$(map).get($(key))}:{variant:'None'}"
+    } :: (&HashMap[K, V], &K) -> Option[&V] with ()
 };
 const size = forall[K :: type, V :: type] {
-    native "HashMap.size" :: &HashMap[K, V] -> int32
+    (map) => cfg_if {
+        | target.name == "interpreter" => native "HashMap.size" map
+        | target.name == "javascript" => native "$(map).size"
+    } :: &HashMap[K, V] -> int32 with ()
 };
 const into_iter = forall[K :: type, V :: type] {
-    native "HashMap.into_iter" :: HashMap[K, V] -> () # with generator_handler[K, V]
+    (map) => cfg_if {
+        | target.name == "interpreter" => native "HashMap.into_iter" map
+        | target.name == "javascript" => native "new Map()"
+    } :: HashMap[K, V] -> () with () # with generator_handler[K, V]
 };

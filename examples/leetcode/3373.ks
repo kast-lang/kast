@@ -58,7 +58,7 @@ let make_tree = fn(edges :: &list[Edge]) -> Tree {
         let :Some a = HashMap.get (&tree.vertices, &a);
         List.push (&(a^).edges, b);
     );
-    for edge :: &Edge in edges |> List.iter {
+    for edge :: &Edge in List.iter edges {
         let (a :: VertexId, b :: VertexId) = edge^;
         insert_edge (a, b);
         insert_edge (b, a);
@@ -79,7 +79,7 @@ let tree_data = fn(tree :: &Tree) -> TreeData {
             let result_store = if even then ( &result.even ) else ( &result.odd );
             HashSet.insert (result_store, current_vertex_id);
             let :Some current_vertex = HashMap.get (&(tree^).vertices, &current_vertex_id);
-            for neighbor_id :: &VertexId in &(current_vertex^).edges |> List.iter {
+            for neighbor_id :: &VertexId in List.iter &(current_vertex^).edges {
                 let neighbor_id = neighbor_id^;
                 if neighbor_id != prev_vertex_id then (
                     traverse(neighbor_id, current_vertex_id, not even);
