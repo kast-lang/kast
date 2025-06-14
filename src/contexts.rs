@@ -339,7 +339,7 @@ impl ContextsData {
     ) -> eyre::Result<()> {
         // TODO multiple occurences
         for ty in types {
-            if !self.types.contains(ty) {
+            if !catch_panic(|| self.types.contains(ty))? {
                 if !self.growable {
                     eyre::bail!("context not listed: {ty}");
                 }

@@ -56,7 +56,7 @@ fn main() -> eyre::Result<()> {
         let (filter, reload_handle) = reload::Layer::new(filter::LevelFilter::WARN);
         tracing_subscriber::registry()
             .with(filter)
-            .with(fmt::Layer::default())
+            .with(fmt::Layer::default().with_writer(std::io::stderr))
             .init();
         reload_handle
     };

@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::AtomicUsize};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 use super::*;
 
@@ -72,6 +72,7 @@ impl CompilerScope {
 
 pub struct Scopes {
     pub id: Id,
+    pub ty: ScopeType,
     /// we get values for symbols by id
     pub interpreter: InterpreterScope,
     /// we get values by names
@@ -95,6 +96,7 @@ impl Scopes {
         }
         Self {
             id: self.id,
+            ty: self.ty,
             interpreter: self.interpreter.clone(),
             compiler: self.compiler.clone(),
             is_weak,
@@ -111,6 +113,7 @@ impl Scopes {
         };
         Self {
             id: Id::new(),
+            ty,
             interpreter: InterpreterScope(Parc::new(Scope::new(spawn_id, ty, iparent))),
             compiler: CompilerScope(Parc::new(Scope::new(spawn_id, ty, cparent))),
             is_weak: false,
@@ -119,8 +122,10 @@ impl Scopes {
     }
     pub fn enter_def_site(&self, def_site: CompilerScope) -> Self {
         tracing::trace!("entering def site: {:?}", def_site.0.id);
+        // TODO I forgot
         Self {
             id: Id::new(),
+            ty: self.ty,
             interpreter: self.interpreter.clone(),
             compiler: def_site,
             // compiler: CompilerScope(Parc::new(Scope::new(self.interpreter.0.ty, Some(def_site.0)))),

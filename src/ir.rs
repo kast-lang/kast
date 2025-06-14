@@ -283,7 +283,7 @@ pub enum Expr<Data: std::fmt::Display = ExprData> {
     Instantiate {
         #[display(skip)]
         #[substitute(skip)]
-        captured: Scopes,
+        captured: Parc<Scopes>,
         template: Box<Expr>,
         arg: Box<Expr>,
         data: Data,

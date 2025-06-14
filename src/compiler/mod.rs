@@ -1819,27 +1819,27 @@ impl Expr<Span> {
                                 .data()
                                 .ty
                                 .clone()
-                                .make_same(compiled.arg.data().ty.clone())?;
+                                .make_same(compiled.arg.data().ty.clone())
+                                .context("arg doenst match")?;
 
-                            let arg = kast.eval(&arg_ir).await?;
+                            let arg = kast.eval(&arg_ir).await.context("failed to eval arg")?;
 
                             let mut template_kast = kast.with_scopes(Scopes::new(
                                 kast.spawn_id,
                                 ScopeType::NonRecursive,
                                 None,
                             ));
-                            template_kast.pattern_match(
-                                &compiled.arg,
-                                OwnedPlace::new_temp(arg).get_ref(),
-                            )?;
-                            result_ty.make_same(
-                                compiled
-                                    .body
-                                    .data()
-                                    .ty
-                                    .clone()
-                                    .substitute_bindings(&template_kast, &mut RecurseCache::new()),
-                            )?;
+                            template_kast
+                                .pattern_match(&compiled.arg, OwnedPlace::new_temp(arg).get_ref())
+                                .context("failed to pattern match arg")?;
+                            result_ty
+                                .make_same(
+                                    compiled.body.data().ty.clone().substitute_bindings(
+                                        &template_kast,
+                                        &mut RecurseCache::new(),
+                                    ),
+                                )
+                                .context("result type mismatch")?;
                             Ok::<_, eyre::Report>(())
                         }
                         .map_err(move |e| {
@@ -1902,7 +1902,7 @@ impl Expr {
                 break;
             }
             result = Expr::Instantiate {
-                captured: kast.scopes.clone(),
+                captured: kast.capture(),
                 arg: Box::new(
                     Expr::Constant {
                         value: Value::new_not_inferred(&format!(

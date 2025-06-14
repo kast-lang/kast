@@ -604,8 +604,15 @@ impl Builtins {
         }
         .collect(ast)?;
         let mut expr_list = Vec::with_capacity(ast_list.len());
-        for ast in ast_list {
-            expr_list.push(kast.compile(ast).await?);
+        {
+            let mut kast = kast.clone();
+            for ast in ast_list {
+                match kast.scopes.ty {
+                    ScopeType::NonRecursive => kast = kast.enter_scope(),
+                    ScopeType::Recursive => {}
+                }
+                expr_list.push(kast.compile(ast).await?);
+            }
         }
         let expr = Expr::Then {
             list: expr_list,
@@ -765,7 +772,7 @@ impl Builtins {
         let arg = kast.compile(arg).await?;
         Ok(Compiled::Expr(
             Expr::Instantiate {
-                captured: kast.scopes.clone(),
+                captured: kast.capture(),
                 template: Box::new(template),
                 arg: Box::new(arg),
                 data: span,

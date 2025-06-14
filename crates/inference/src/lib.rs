@@ -1,5 +1,5 @@
 use kast_util::*;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 use std::sync::{Arc, Mutex};
 
 mod checks;
@@ -285,8 +285,10 @@ impl<T: Inferrable + PartialOrd> PartialOrd for MaybeNotInferred<T> {
 
 impl<T: Inferrable + Ord> Ord for MaybeNotInferred<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other)
-            .expect("cant ord not inferred types")
+        match self.partial_cmp(other) {
+            Some(result) => result,
+            None => throw_catchable(eyre::eyre!("cant ord not inferred types")),
+        }
     }
 }
 

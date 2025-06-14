@@ -751,7 +751,7 @@ impl Kast {
                 }
                 Expr::Recursive {
                     body,
-                    compiler_scope,
+                    compiler_scope: _,
                     data,
                 } => {
                     let mut inner = self.enter_recursive_scope();
@@ -848,7 +848,12 @@ impl Kast {
                 }
                 Expr::Then { list, data: _ } => {
                     let mut value = ValueShape::Unit.into();
+                    let mut kast = self.clone();
                     for expr in list {
+                        match kast.scopes.ty {
+                            ScopeType::NonRecursive => kast = kast.enter_scope(),
+                            ScopeType::Recursive => {}
+                        }
                         value = self.eval(expr).await?;
                     }
                     value

@@ -887,47 +887,7 @@ impl Transpiler {
                         .await?;
                 }
                 Expr::List { values, data } => todo!(),
-                Expr::Unwindable {
-                    name,
-                    body,
-                    data: _,
-                } => {
-                    let handle_var = ir::Name::unique("unwindable");
-                    stmts.push(ir::Stmt::Assign {
-                        assignee: ir::AssigneeExpr::NewVar(handle_var.clone()),
-                        value: ir::Expr::Raw("Symbol()".into()),
-                    });
-                    self.pattern_match(
-                        ir::Expr::Binding(handle_var.clone()),
-                        name,
-                        stmts,
-                        MatchMode::Assign,
-                    )?;
-                    let catch_var = ir::Name("e".into());
-                    stmts.push(ir::Stmt::Try {
-                        body: vec![ir::Stmt::Return(self.eval_expr(body).await?)],
-                        catch_var: catch_var.clone(),
-                        catch_body: vec![
-                            ir::Stmt::If {
-                                condition: ir::Expr::NotEq(
-                                    Box::new(ir::Expr::Index {
-                                        obj: Box::new(ir::Expr::Binding(catch_var.clone())),
-                                        index: Box::new(ir::Expr::String("handle".into())),
-                                    }),
-                                    Box::new(ir::Expr::Binding(handle_var.clone())),
-                                ),
-                                then_case: vec![ir::Stmt::Throw(ir::Expr::Binding(
-                                    catch_var.clone(),
-                                ))],
-                                else_case: vec![],
-                            },
-                            ir::Stmt::Return(ir::Expr::Index {
-                                obj: Box::new(ir::Expr::Binding(catch_var.clone())),
-                                index: Box::new(ir::Expr::String("value".into())),
-                            }),
-                        ],
-                    });
-                }
+                Expr::Unwindable { .. } => stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?)),
                 Expr::Unwind {
                     name,
                     value,
@@ -1092,7 +1052,49 @@ impl Transpiler {
                     }
                     result
                 }),
-                Expr::Unwindable { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
+                Expr::Unwindable {
+                    name,
+                    body,
+                    data: _,
+                } => ir::Expr::scope({
+                    let mut stmts = Vec::new();
+                    let handle_var = ir::Name::unique("unwindable");
+                    stmts.push(ir::Stmt::Assign {
+                        assignee: ir::AssigneeExpr::NewVar(handle_var.clone()),
+                        value: ir::Expr::Raw("Symbol()".into()),
+                    });
+                    self.pattern_match(
+                        ir::Expr::Binding(handle_var.clone()),
+                        name,
+                        &mut stmts,
+                        MatchMode::Assign,
+                    )?;
+                    let catch_var = ir::Name("e".into());
+                    stmts.push(ir::Stmt::Try {
+                        body: vec![ir::Stmt::Return(self.eval_expr(body).await?)],
+                        catch_var: catch_var.clone(),
+                        catch_body: vec![
+                            ir::Stmt::If {
+                                condition: ir::Expr::NotEq(
+                                    Box::new(ir::Expr::Index {
+                                        obj: Box::new(ir::Expr::Binding(catch_var.clone())),
+                                        index: Box::new(ir::Expr::String("handle".into())),
+                                    }),
+                                    Box::new(ir::Expr::Binding(handle_var.clone())),
+                                ),
+                                then_case: vec![ir::Stmt::Throw(ir::Expr::Binding(
+                                    catch_var.clone(),
+                                ))],
+                                else_case: vec![],
+                            },
+                            ir::Stmt::Return(ir::Expr::Index {
+                                obj: Box::new(ir::Expr::Binding(catch_var.clone())),
+                                index: Box::new(ir::Expr::String("value".into())),
+                            }),
+                        ],
+                    });
+                    stmts
+                }),
                 Expr::Unwind {
                     name,
                     value,
@@ -1296,7 +1298,7 @@ impl Transpiler {
                     arg,
                     data: _,
                 } => {
-                    let mut kast = self.kast.with_scopes(captured.clone());
+                    let mut kast = self.kast.with_scopes((**captured).clone());
                     let template_fn = kast
                         .eval(template)
                         .await?

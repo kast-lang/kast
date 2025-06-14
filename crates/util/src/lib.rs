@@ -1,3 +1,4 @@
+mod catch_panic;
 mod display_option;
 mod error;
 mod id;
@@ -8,6 +9,7 @@ mod show_short;
 mod source;
 pub mod tuple;
 
+pub use crate::catch_panic::*;
 pub use crate::display_option::display_option;
 pub use crate::error::{Error, ErrorMessage};
 pub use crate::id::*;

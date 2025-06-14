@@ -102,7 +102,7 @@ impl Executor {
             .spawn(async move {
                 let result = f.await;
                 if let Err(e) = &result {
-                    tracing::error!("{e:?}");
+                    tracing::error!("Spawned task failed: {e:?}");
                 }
                 _ = sender.send(result);
             })
