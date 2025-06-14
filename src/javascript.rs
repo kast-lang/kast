@@ -410,6 +410,13 @@ mod ir {
                 options,
             )
         }
+
+        pub fn throw_error(s: &str) -> Stmt {
+            Stmt::Throw(Expr::Call {
+                f: Box::new(Expr::Raw("Error".into())),
+                args: vec![Expr::String(s.into())],
+            })
+        }
     }
 
     impl Expr {
@@ -921,7 +928,20 @@ impl Transpiler {
                         ],
                     });
                 }
-                Expr::Unwind { name, value, data } => todo!(),
+                Expr::Unwind {
+                    name,
+                    value,
+                    data: _,
+                } => {
+                    stmts.push(ir::Stmt::Throw(ir::Expr::Object {
+                        fields: {
+                            let mut fields = LinkedHashMap::new();
+                            fields.insert("handle".into(), self.eval_expr(name).await?);
+                            fields.insert("value".into(), self.eval_expr(value).await?);
+                            fields
+                        },
+                    }));
+                }
                 Expr::InjectContext { context, data } => {
                     stmts.push(ir::Stmt::Assign {
                         assignee: ir::AssigneeExpr::Expr(ir::Expr::Index {
@@ -1038,7 +1058,13 @@ impl Transpiler {
                     data,
                 } => todo!(),
                 Expr::ReadPlace { place, data } => todo!(),
-                Expr::TargetDependent { branches, data } => todo!(),
+                Expr::TargetDependent { branches, data: _ } => {
+                    let body = self
+                        .kast
+                        .select_target_dependent_branch(branches, Target::JavaScript)
+                        .await?;
+                    self.eval_expr_as_stmts(body, stmts).await?;
+                }
                 Expr::Type { expr, data } => todo!(),
             }
             Ok::<_, eyre::Report>(())
@@ -1071,14 +1097,7 @@ impl Transpiler {
                     name,
                     value,
                     data: _,
-                } => ir::Expr::scope(vec![ir::Stmt::Throw(ir::Expr::Object {
-                    fields: {
-                        let mut fields = LinkedHashMap::new();
-                        fields.insert("handle".into(), self.eval_expr(name).await?);
-                        fields.insert("value".into(), self.eval_expr(value).await?);
-                        fields
-                    },
-                })]),
+                } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
                 Expr::InjectContext { .. } => {
                     ir::Expr::scope(self.eval_expr_into_stmts(expr).await?)
                 }
@@ -1129,10 +1148,8 @@ impl Transpiler {
                             then_case: vec![ir::Stmt::Return(self.eval_expr(&branch.body).await?)],
                             else_case: vec![],
                         });
-                        stmts.push(ir::Stmt::Throw(ir::Expr::String(
-                            "non exhaustive match".into(),
-                        )));
                     }
+                    stmts.push(ir::Stmt::throw_error("non exhaustive match"));
                     stmts
                 }),
                 Expr::Newtype { def: _, data: _ } => ir::Expr::Undefined,
@@ -1147,9 +1164,24 @@ impl Transpiler {
                 Expr::Use { .. } => ir::Expr::Undefined,
                 Expr::Recursive {
                     body,
-                    compiler_scope,
-                    data,
-                } => todo!(),
+                    compiler_scope: _,
+                    data: _,
+                } => ir::Expr::scope({
+                    let mut stmts = Vec::new();
+                    self.eval_expr_as_stmts(body, &mut stmts).await?;
+                    let mut fields = LinkedHashMap::new();
+                    expr.collect_bindings(
+                        &mut |binding| {
+                            fields.insert(
+                                binding.symbol.name().to_owned(),
+                                ir::Expr::Binding(ir::Name::for_binding(&binding)),
+                            );
+                        },
+                        None,
+                    );
+                    stmts.push(ir::Stmt::Return(ir::Expr::Object { fields }));
+                    stmts
+                }),
                 Expr::If {
                     condition,
                     then_case,
@@ -1582,7 +1614,7 @@ impl Transpiler {
                     ),
                     then_case: match mode {
                         MatchMode::Assign => {
-                            vec![ir::Stmt::Throw(ir::Expr::String("assertion failed".into()))]
+                            vec![ir::Stmt::throw_error("assertion failed")]
                         }
                         MatchMode::Check => vec![ir::Stmt::Return(ir::Expr::Bool(false))],
                     },
@@ -1628,9 +1660,9 @@ impl Transpiler {
 
     async fn transpile_compiled_fn(&mut self, f: &MaybeCompiledFn) -> eyre::Result<ir::Expr> {
         let compiled = self.kast.await_compiled(f).await?;
-        if let Some(name) = self.compiled_fns.get(&compiled) {
-            return Ok(ir::Expr::Binding(name.clone()));
-        }
+        // if let Some(name) = self.compiled_fns.get(&compiled) {
+        //     return Ok(ir::Expr::Binding(name.clone()));
+        // }
         let name = ir::Name::unique("compiled_fn");
         self.compiled_fns.insert(compiled.clone(), name.clone());
 
@@ -1645,11 +1677,12 @@ impl Transpiler {
         )?;
         body.push(ir::Stmt::Return(self.eval_expr(&compiled.body).await?));
 
-        self.captured_code.push(ir::Stmt::Assign {
-            assignee: ir::AssigneeExpr::NewVar(name.clone()),
-            value: ir::Expr::Fn { args, body },
-        });
-        Ok(ir::Expr::Binding(name))
+        // self.captured_code.push(ir::Stmt::Assign {
+        //     assignee: ir::AssigneeExpr::NewVar(name.clone()),
+        //     value: ir::Expr::Fn { args, body },
+        // });
+        // Ok(ir::Expr::Binding(name))
+        Ok(ir::Expr::Fn { args, body })
     }
 }
 

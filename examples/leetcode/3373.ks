@@ -141,27 +141,25 @@ test(
 );
 
 let max_target_nodes = fn(.edges1 :: list[list[int32]], .edges2 :: list[list[int32]]) -> list[int32] {
-    native "console.log($(edges1))";
     let convert = fn(edges :: list[list[int32]]) -> list[Edge] {
         let mut result = list[];
         for edge :: &list[int32] in List.iter &edges {
             if List.length edge != 2 then panic "wtf";
             let a, b = List.get(edge, 0), List.get(edge, 1);
-            let edge :: Edge = a^, b^;
-            List.push(&result, edge);
+            let edge2 :: Edge = a^, b^;
+            List.push(&result, edge2);
         };
         result
     };
     let edges1 = edges1 |> convert;
     let edges2 = edges2 |> convert;
-    list[]
+    max_target_nodes(.edges1, .edges2)
 };
 let js_code :: string = std.javascript.transpile max_target_nodes;
 print "var f=";
 print &js_code;
 
-print "f({}, {edges1:[], edges2:[]})";
-# print "maxTargetNodes=(edges1,edges2)=>f({},{edges1,edges2})";
+print "maxTargetNodes=(edges1,edges2)=>f({},{edges1,edges2})";
 
-# print "console.log(maxTargetNodes([[0,1],[0,2],[2,3],[2,4]],[[0,1],[0,2],[0,3],[2,7],[1,4],[4,5],[4,6]]))"
+print "console.log(maxTargetNodes([[0,1],[0,2],[2,3],[2,4]],[[0,1],[0,2],[0,3],[2,7],[1,4],[4,5],[4,6]]))"
 

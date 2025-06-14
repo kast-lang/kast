@@ -66,38 +66,38 @@ impl syntax @"syntax".@"op binary >" = macro (.lhs, .rhs) => `(
 const @"op binary <" = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native "<"
-        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)<$(rhs))" )
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs).get()<$(rhs).get())" )
     } :: (.lhs = &T, .rhs = &T) -> bool
 };
 const @"op binary <=" = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native "<="
-        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)<=$(rhs))" )
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs).get()<=$(rhs).get())" )
     } :: (.lhs = &T, .rhs = &T) -> bool
 };
 const @"op binary ==" = forall[T] {
     cfg_if {
         # Can't have normal target.name == "interpreter" because it will recurse
         | native "==" (.lhs = &target.name, .rhs = &"interpreter") => native "=="
-        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)==$(rhs))" )
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs).get()==$(rhs).get())" )
     } :: (.lhs = &T, .rhs = &T) -> bool
 };
 const @"op binary !=" = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native "!="
-        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)!=$(rhs))" )
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs).get()!=$(rhs).get())" )
     } :: (.lhs = &T, .rhs = &T) -> bool
 };
 const @"op binary >=" = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native ">="
-        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)>=$(rhs))" )
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs).get()>=$(rhs).get())" )
     } :: (.lhs = &T, .rhs = &T) -> bool
 };
 const @"op binary >" = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native ">"
-        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs)>$(rhs))" )
+        | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs).get()>$(rhs).get())" )
     } :: (.lhs = &T, .rhs = &T) -> bool
 };
 
@@ -141,7 +141,10 @@ const @"op binary %" = forall[T] {
     } :: (.lhs = T, .rhs = T) -> T
 };
 
-const @"not" = native "not" :: bool -> bool;
+const @"not" :: bool -> bool = x => cfg_if {
+    | target.name == "interpreter" => native "not" x
+    | target.name == "javascript" => native "!$(x)"
+};
 impl syntax @"syntax".@"not" = macro (e,) => `(@"not" $e);
 
 const int32 :: type = native "int32";
