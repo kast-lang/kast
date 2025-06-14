@@ -22,6 +22,22 @@ pub struct Spawned<T>(
     Parc<async_once_cell::Lazy<eyre::Result<T>, BoxFuture<'static, eyre::Result<T>>>>,
 );
 
+impl<T: std::fmt::Display> std::fmt::Display for Spawned<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0.try_get() {
+            None => write!(f, "<not ready>"),
+            Some(Ok(value)) => f.write(value),
+            Some(Err(_e)) => write!(f, "<errored>"),
+        }
+    }
+}
+
+impl<T> Spawned<T> {
+    pub fn ready(value: T) -> Self {
+        Self(Parc::new(async_once_cell::Lazy::with_value(Ok(value))))
+    }
+}
+
 impl<T> Clone for Spawned<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())

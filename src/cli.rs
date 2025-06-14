@@ -30,6 +30,7 @@ pub enum Command {
 #[derive(Debug, Copy, Clone)]
 pub enum CompilationTarget {
     JavaScriptNode,
+    Ir,
 }
 
 impl std::str::FromStr for CompilationTarget {
@@ -37,6 +38,7 @@ impl std::str::FromStr for CompilationTarget {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
             "js" | "javascript" => Self::JavaScriptNode,
+            "ir" => Self::Ir,
             _ => eyre::bail!("{s:?} is unknown target"),
         })
     }

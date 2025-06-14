@@ -20,15 +20,14 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             .iter()
             .map(|field| {
                 let ident = field.ident.as_ref().unwrap();
-                let skip = ident == "data"
-                    || field
-                        .attrs
-                        .iter()
-                        .filter(|attr| attr.path().is_ident("substitute"))
-                        .any(|attr| {
-                            let name = attr.parse_args::<syn::Ident>().unwrap();
-                            name == "skip"
-                        });
+                let skip = field
+                    .attrs
+                    .iter()
+                    .filter(|attr| attr.path().is_ident("substitute"))
+                    .any(|attr| {
+                        let name = attr.parse_args::<syn::Ident>().unwrap();
+                        name == "skip"
+                    });
                 if skip {
                     return quote!( #ident: #ident );
                 }
@@ -66,15 +65,14 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     .attrs
                     .iter()
                     .filter(|attr| attr.path().is_ident("substitute"))
-                    .filter_map(|attr| {
+                    .find_map(|attr| {
                         let name_value = attr.parse_args::<syn::MetaNameValue>().unwrap();
                         if name_value.path.is_ident("with") {
                             Some(name_value.value)
                         } else {
                             None
                         }
-                    })
-                    .next();
+                    });
                 if let Some(expr) = with {
                     return quote! { Self::#ident { .. } => self.#expr(kast, cache), };
                 }
@@ -94,9 +92,12 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 impl SubstituteBindings for #ident #default_data_type {
                     type Target = Self;
                     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self {
-                        match self {
+                        // println!("before sub = {self}");
+                        let result = match self {
                             #(#variants)*
-                        }
+                        };
+                        // println!("after sub = {result}");
+                        result
                     }
                 }
             }

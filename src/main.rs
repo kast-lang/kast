@@ -82,19 +82,23 @@ fn main() -> eyre::Result<()> {
             .unwrap();
             init_log_level();
             let ir: Expr = kast.compile_file(path)?;
-            match target {
+            let result: Box<dyn std::fmt::Display> = match target {
+                cli::CompilationTarget::Ir => Box::new(ir),
                 cli::CompilationTarget::JavaScriptNode => {
                     let js = futures_lite::future::block_on(kast.transpile_to_javascript(
                         javascript::JavaScriptEngineType::Node,
                         &ValueShape::Expr(Parc::new(ir)).into(),
                         javascript::ShowOptions::Pretty,
                     ))?;
-                    if let Some(out_path) = out_path {
-                        std::fs::write(out_path, js)?;
-                    } else {
-                        print!("{js}")
-                    }
+                    Box::new(js)
                 }
+            };
+            if let Some(out_path) = out_path {
+                let mut writer = std::io::BufWriter::new(std::fs::File::create(out_path)?);
+                use std::io::Write;
+                write!(writer, "{result}")?;
+            } else {
+                print!("{result}");
             }
         }
         cli::Command::Run { path, no_stdlib } => {

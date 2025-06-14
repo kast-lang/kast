@@ -6,6 +6,13 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ident = input.ident;
     let f = syn::Ident::new("f71y26t3t5r4152637687234", proc_macro2::Span::mixed_site());
 
+    let show_data = input
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("display"))
+        .any(|attr| attr.parse_args::<syn::Ident>().unwrap() == "show_data");
+    let show_data = show_data.then(|| quote! { write!(#f, " :: {}", self.data())? });
+
     let field_writes = |fields: &syn::Fields| {
         fields
             .iter()
@@ -117,7 +124,9 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                 #(#variant_fields)*
                             }
                         }
-                        write!(#f, "}}")
+                        write!(#f, "}}")?;
+                        #show_data;
+                        Ok(())
                     }
                 }
             }

@@ -993,11 +993,15 @@ impl Transpiler {
                     stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
                 }
                 Expr::Let {
-                    is_const_let: _,
+                    is_const_let,
                     pattern,
                     value,
                     data: _,
                 } => {
+                    // TODO huh?
+                    if *is_const_let {
+                        return Ok(());
+                    }
                     let temp_var = ir::Name::unique("let");
                     let value = value.as_ref().expect("no value in let?");
                     stmts.push(ir::Stmt::Assign {
@@ -1019,6 +1023,7 @@ impl Transpiler {
                 Expr::Function { ty, compiled, data } => todo!(),
                 Expr::Template { compiled, data } => todo!(),
                 Expr::Instantiate {
+                    captured,
                     template,
                     arg,
                     data,
@@ -1077,10 +1082,13 @@ impl Transpiler {
                 Expr::InjectContext { .. } => {
                     ir::Expr::scope(self.eval_expr_into_stmts(expr).await?)
                 }
-                Expr::CurrentContext { data } => ir::Expr::Index {
-                    obj: Box::new(ir::Expr::Binding(ir::Name::context())),
-                    index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
-                },
+                Expr::CurrentContext { data } => {
+                    // println!("{}", &data.ty);
+                    ir::Expr::Index {
+                        obj: Box::new(ir::Expr::Binding(ir::Name::context())),
+                        index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
+                    }
+                }
                 Expr::Unit { data: _ } => ir::Expr::Undefined,
                 Expr::FunctionType {
                     arg,
@@ -1251,13 +1259,35 @@ impl Transpiler {
                 } => self.transpile_compiled_fn(compiled).await?,
                 Expr::Template { compiled, data } => todo!(),
                 Expr::Instantiate {
+                    captured,
                     template,
                     arg,
                     data: _,
-                } => ir::Expr::Call {
-                    f: Box::new(self.eval_expr(template).await?),
-                    args: vec![self.eval_expr(arg).await?],
-                },
+                } => {
+                    let mut kast = self.kast.with_scopes(captured.clone());
+                    let template_fn = kast
+                        .eval(template)
+                        .await?
+                        .into_inferred()?
+                        .into_template()?;
+                    let arg = kast.eval(arg).await?;
+                    let template = kast.await_compiled(&template_fn.compiled).await?;
+                    let instantiated_template = kast.monomorphise(&template, arg).await?;
+                    // println!("instantiated = {instantiated_template}");
+                    let f = self
+                        .transpile_fn(&Function {
+                            id: Id::new(),
+                            span: template_fn.span.clone(),
+                            name: template_fn.name.clone(), // TODO ?
+                            captured: template_fn.captured.clone(),
+                            compiled: crate::executor::Spawned::ready(instantiated_template),
+                        })
+                        .await?;
+                    ir::Expr::Call {
+                        f: Box::new(f),
+                        args: vec![ir::Expr::Binding(ir::Name::context())],
+                    }
+                }
                 Expr::Tuple { tuple, data: _ } => ir::Expr::Object {
                     fields: {
                         let mut fields = LinkedHashMap::new();

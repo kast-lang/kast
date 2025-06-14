@@ -7,6 +7,16 @@ pub struct AssigneeExprData {
     pub span: Span,
 }
 
+impl SubstituteBindings for AssigneeExprData {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        Self {
+            ty: self.ty.substitute_bindings(kast, cache),
+            span: self.span,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ExprData {
     pub ty: Type,
@@ -14,9 +24,16 @@ pub struct ExprData {
     pub contexts: Contexts,
 }
 
+impl std::fmt::Display for ExprData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.ty.fmt(f)
+    }
+}
+
 impl SubstituteBindings for ExprData {
     type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        // println!("Subbing expr data");
         Self {
             ty: self.ty.substitute_bindings(kast, cache),
             span: self.span,
@@ -104,7 +121,8 @@ impl<Data: std::borrow::Borrow<Span>> TypeExpr<Data> {
 #[derive(
     Clone, derive_macros::ExprDisplay, derive_macros::ExprSubstituteBindings, derive_macros::Data,
 )]
-pub enum Expr<Data = ExprData> {
+#[display(show_data)]
+pub enum Expr<Data: std::fmt::Display = ExprData> {
     Ref {
         place: PlaceExpr,
         data: Data,
@@ -254,17 +272,18 @@ pub enum Expr<Data = ExprData> {
     Function {
         ty: FnType,
         #[display(skip)]
-        #[substitute(skip)] // TODO
         compiled: MaybeCompiledFn,
         data: Data,
     },
     Template {
         #[display(skip)]
-        #[substitute(skip)] // TODO
         compiled: MaybeCompiledFn,
         data: Data,
     },
     Instantiate {
+        #[display(skip)]
+        #[substitute(skip)]
+        captured: Scopes,
         template: Box<Expr>,
         arg: Box<Expr>,
         data: Data,
@@ -429,12 +448,38 @@ impl From<PlaceExpr> for AssigneeExpr {
     }
 }
 
+#[derive(Clone, derive_macros::ExprDisplay)]
 pub struct CompiledFn {
     pub arg: Pattern,
     pub body: Expr,
 }
 
 pub type MaybeCompiledFn = executor::Spawned<Parc<CompiledFn>>;
+
+impl SubstituteBindings for MaybeCompiledFn {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, _cache: &mut RecurseCache) -> Self::Target {
+        kast.cache.executor.spawn({
+            let kast = kast.clone();
+            async move {
+                let compiled = kast.await_compiled(&self).await?;
+                Ok(compiled.substitute_bindings(&kast, &mut RecurseCache::new()))
+            }
+        })
+    }
+}
+
+impl SubstituteBindings for CompiledFn {
+    type Target = Self;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        let result = Self {
+            arg: self.arg.substitute_bindings(kast, cache),
+            body: self.body.substitute_bindings(kast, cache),
+        };
+        // println!("sub fn = {}", result.body);
+        result
+    }
+}
 
 impl Expr {
     pub fn collect_bindings(
@@ -558,10 +603,10 @@ impl<Data: std::borrow::Borrow<Span>> PlaceExpr<Data> {
     }
 }
 
-impl<Data: std::borrow::Borrow<Span>> Expr<Data> {
+impl<Data: std::fmt::Display + std::borrow::Borrow<Span>> Expr<Data> {
     pub fn show_short(&self) -> impl std::fmt::Display + '_ {
-        struct Show<'a, Data>(&'a Expr<Data>);
-        impl<Data: std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
+        struct Show<'a, Data: std::fmt::Display>(&'a Expr<Data>);
+        impl<Data: std::fmt::Display + std::borrow::Borrow<Span>> std::fmt::Display for Show<'_, Data> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match &self.0 {
                     Expr::Type { .. } => write!(f, "type expr")?,

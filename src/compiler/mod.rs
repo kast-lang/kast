@@ -1680,9 +1680,10 @@ impl Expr<Span> {
                                             inner.var().add_check(move |ty| self.check(ty))?;
                                         }
                                         _ => {
-                                            eyre::bail!(
-                                                "{token_typ:?} string literal inferred as {ty}"
-                                            )
+                                            // TODO uncomment
+                                            // eyre::bail!(
+                                            //     "{token_typ:?} string literal inferred as {ty}"
+                                            // )
                                         }
                                     }
                                     Ok(inference::CheckResult::Completed)
@@ -1788,6 +1789,7 @@ impl Expr<Span> {
                     }
                 }
                 Expr::Instantiate {
+                    captured,
                     template: template_ir,
                     arg: arg_ir,
                     data: span,
@@ -1846,6 +1848,7 @@ impl Expr<Span> {
                     });
 
                     Expr::Instantiate {
+                        captured,
                         data: ExprData {
                             ty: result_ty,
                             span,
@@ -1899,6 +1902,7 @@ impl Expr {
                 break;
             }
             result = Expr::Instantiate {
+                captured: kast.scopes.clone(),
                 arg: Box::new(
                     Expr::Constant {
                         value: Value::new_not_inferred(&format!(
@@ -1990,33 +1994,39 @@ impl Kast {
     pub async fn monomorphise(
         &mut self,
         compiled_fn: &CompiledFn,
+        arg: Value,
+    ) -> eyre::Result<Parc<CompiledFn>> {
+        let mut kast = self.enter_scope();
+        kast.pattern_match(&compiled_fn.arg, PlaceRef::new_temp(arg))?;
+        let mut provided_values = HashMap::new();
+        compiled_fn.arg.collect_bindings(&mut |binding| {
+            let value = kast
+                .scopes
+                .interpreter
+                .get(&binding.symbol)
+                .unwrap()
+                .claim_value(&kast)
+                .unwrap();
+            provided_values.insert(binding, value);
+        });
+        kast.monomorphise_partially(compiled_fn, provided_values)
+            .await
+    }
+    pub async fn monomorphise_partially(
+        &mut self,
+        compiled_fn: &CompiledFn,
         provided_values: HashMap<Parc<Binding>, Value>,
-    ) -> eyre::Result<CompiledFn> {
+    ) -> eyre::Result<Parc<CompiledFn>> {
         let mut args = std::collections::BTreeSet::new();
         compiled_fn.arg.collect_bindings(&mut |binding| {
             args.insert(binding);
         });
         let mut new_args = Tuple::empty();
-        let mut new_arg_bindings = HashMap::<Parc<Binding>, Parc<Binding>>::new();
         for arg in &args {
             if !provided_values.contains_key(arg) {
                 new_args.add_unnamed(
                     Pattern::Binding {
-                        binding: new_arg_bindings
-                            .entry(arg.clone())
-                            .or_insert_with(|| {
-                                Parc::new(Binding {
-                                    symbol: Symbol {
-                                        name: arg.symbol.name.clone(),
-                                        span: arg.symbol.span.clone(),
-                                        id: Id::new(),
-                                    },
-                                    ty: arg.ty.clone(),
-                                    mutability: Mutability::ReadOnly,
-                                    compiler_scope: self.scopes.compiler.clone(), // TODO wut
-                                })
-                            })
-                            .clone(),
+                        binding: arg.clone(),
                         bind_mode: PatternBindMode::Claim,
                         data: arg.symbol.span.clone(),
                     }
@@ -2027,72 +2037,11 @@ impl Kast {
 
         let arg_span = &compiled_fn.arg.data().span;
 
-        let mut new_body = Vec::new();
-        new_body.push(
-            Expr::Assign {
-                assignee: AssigneeExpr::Let {
-                    pattern: Pattern::Tuple {
-                        tuple: {
-                            let mut fields = Tuple::empty();
-                            for arg in &args {
-                                fields.add_unnamed(
-                                    Pattern::Binding {
-                                        binding: arg.clone(),
-                                        bind_mode: PatternBindMode::Claim, // TODO not sure
-                                        data: arg_span.clone(),
-                                    }
-                                    .init()?,
-                                );
-                            }
-                            fields
-                        },
-                        data: arg_span.clone(),
-                    }
-                    .init()?,
-                    data: arg_span.clone(),
-                }
-                .init(self)
-                .await?,
-                value: Box::new(
-                    PlaceExpr::Temporary {
-                        value: Box::new(
-                            Expr::Tuple {
-                                tuple: {
-                                    let mut fields = Tuple::empty();
-                                    for arg in &args {
-                                        fields.add_unnamed(match provided_values.get(arg) {
-                                            Some(provided_value) => {
-                                                Expr::Constant {
-                                                    value: provided_value.clone(), // TODO move?
-                                                    data: arg.symbol.span.clone(),
-                                                }
-                                                .init(self)
-                                                .await?
-                                            }
-                                            None => todo!(),
-                                        });
-                                    }
-                                    fields
-                                },
-                                data: arg_span.clone(),
-                            }
-                            .init(self)
-                            .await?,
-                        ),
-                        data: arg_span.clone(),
-                    }
-                    .init(self)
-                    .await?,
-                ),
-                data: arg_span.clone(),
-            }
-            .init(self)
-            .await?,
-        );
-        new_body.push(compiled_fn.body.clone().substitute_bindings(
+        let substituted_body = compiled_fn.body.clone().substitute_bindings(
             &{
                 let kast = self.enter_scope();
                 for (binding, value) in &provided_values {
+                    // println!("subbed {binding} = {value}");
                     kast.scopes.interpreter.insert(
                         &binding.symbol,
                         value.clone(),
@@ -2102,19 +2051,15 @@ impl Kast {
                 kast
             },
             &mut RecurseCache::new(),
-        ));
-        Ok(CompiledFn {
+        );
+        // println!("{substituted_body}");
+        Ok(Parc::new(CompiledFn {
             arg: Pattern::Tuple {
                 tuple: { new_args },
                 data: arg_span.clone(),
             }
             .init()?,
-            body: Expr::Then {
-                list: new_body,
-                data: compiled_fn.body.data().span.clone(),
-            }
-            .init(self)
-            .await?,
-        })
+            body: substituted_body,
+        }))
     }
 }

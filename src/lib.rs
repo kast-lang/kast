@@ -3,7 +3,7 @@
 #![recursion_limit = "256"]
 
 use async_trait::async_trait;
-use eyre::{eyre, Context as _};
+use eyre::{Context as _, eyre};
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use inference::Inferrable;
@@ -130,6 +130,13 @@ impl<T: SubstituteBindings> SubstituteBindings for Box<T> {
     type Target = Box<T::Target>;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
         Box::new(T::substitute_bindings(*self, kast, cache))
+    }
+}
+
+impl<T: Clone + SubstituteBindings> SubstituteBindings for Parc<T> {
+    type Target = Parc<T::Target>;
+    fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
+        Parc::new(T::substitute_bindings((*self).clone(), kast, cache))
     }
 }
 
@@ -309,7 +316,7 @@ impl Kast {
         let source = SourceFile {
             #[cfg(feature = "embed-std")]
             contents: {
-                use include_dir::{include_dir, Dir};
+                use include_dir::{Dir, include_dir};
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
                         static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
