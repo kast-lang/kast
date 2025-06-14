@@ -807,7 +807,7 @@ impl Transpiler {
                                 !matches!(*inferred, ValueShape::Binding(..))
                             }) =>
                         {
-                            println!("capturing {}", binding.symbol);
+                            // println!("capturing {}", binding.symbol);
                             self.ensure_captured(&place);
                             self.make_ref(ir::Expr::Binding(captured_name(&place)))?
                         }
@@ -1019,7 +1019,7 @@ impl Transpiler {
                     stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
                 }
                 Expr::CallMacro { r#macro, arg, data } => todo!(),
-                Expr::Scope { expr, data } => todo!(),
+                Expr::Scope { expr, data: _ } => self.eval_expr_as_stmts(expr, stmts).await?,
                 Expr::Function { ty, compiled, data } => todo!(),
                 Expr::Template { compiled, data } => todo!(),
                 Expr::Instantiate {
