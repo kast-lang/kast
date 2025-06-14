@@ -191,7 +191,7 @@ impl Natives {
         natives.insert("default_number_type", contexts::default_number_type().ty());
 
         natives.insert_fn(
-            "transpile_to_javascript",
+            "javascript.transpile",
             || FnType {
                 arg: Type::new_not_inferred("anything"),
                 contexts: Contexts::empty(),

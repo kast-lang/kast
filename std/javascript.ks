@@ -1,6 +1,6 @@
 module:
 
-const transpile = forall[T] { native "transpile_to_javascript" :: T -> string };
+const transpile = forall[T] { native "javascript.transpile" :: T -> string };
 
 const debug_print = (s :: string) => (
     cfg_if {

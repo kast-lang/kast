@@ -33,6 +33,22 @@ const iter = forall[T] {
         )
     } :: &list[T] -> () with generator_handler[&T]
 };
+
+/*
+const iter_copied = forall[T] {
+    cfg_if {
+        | target.name == "interpreter" => list_ref => (
+            for value :: &T in iter[T] list_ref {
+                (current generator_handler[T]).handle (value^)
+            }
+        )
+        | target.name == "javascript" => list_ref => (
+            let handle = (current generator_handler[&T]).handle;
+            native "(()=>{let list=$(list_ref).get();for(let i=0;i<list.length;i++)$(handle)(ctx,list[i])})()"
+        )
+    } :: &list[T] -> () with generator_handler[T]
+};*/
+
 const get = forall[T] {
     cfg_if {
         | target.name == "interpreter" => native "list.get"

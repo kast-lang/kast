@@ -302,7 +302,10 @@ impl syntax @"syntax".@"loop" = macro (.body) => `(
                 | :Continue => ()
             };
         );
-        native "loop" body
+        cfg_if {
+            | target.name == "interpreter" => native "loop" body
+            | target.name == "javascript" => native "(()=>{for(;;)$(body)(ctx)})()"
+        }
     )
 );
 
@@ -403,4 +406,7 @@ const prelude = (
     
     .panic = panic,
     .dbg = dbg,
+
+    .List = collections.List,
+    .HashMap = collections.HashMap,
 );

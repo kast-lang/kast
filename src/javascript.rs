@@ -1257,7 +1257,16 @@ impl Transpiler {
                     while !code.is_empty() {
                         if let Some(index) = code.find('$') {
                             write!(result, "{}", &code[..index])?;
-                            code = code[index..].strip_prefix("$(").ok_or_eyre("expected $(")?;
+                            code = match code[index..].strip_prefix("$(") {
+                                Some(code) => code,
+                                None => {
+                                    write!(result, "$")?;
+                                    code = code[index..]
+                                        .strip_prefix("$$")
+                                        .ok_or_eyre("expected $( or $$")?;
+                                    continue;
+                                }
+                            };
                             let Some(index) = code.find(')') else {
                                 eyre::bail!("unclosed $(");
                             };
@@ -1686,6 +1695,18 @@ impl Transpiler {
         // Ok(ir::Expr::Binding(name))
         Ok(ir::Expr::Fn { args, body })
     }
+
+    pub fn node_ctx(&mut self) -> ir::Expr {
+        let mut contexts = LinkedHashMap::new();
+        // TODO more contexts
+
+        contexts.insert(
+            self.context_name(&contexts::default_output().ty()),
+            // TODO console.log in browser
+            ir::Expr::Raw("{write:(ctx,ref_s)=>process.stdout.write(ref_s.get())}".into()),
+        );
+        ir::Expr::Object { fields: contexts }
+    }
 }
 
 impl Kast {
@@ -1699,15 +1720,6 @@ impl Kast {
 
         let result = match &*value.as_inferred()? {
             ValueShape::Expr(expr) => {
-                let mut contexts = LinkedHashMap::new();
-                // TODO more contexts
-
-                contexts.insert(
-                    transpiler.context_name(&contexts::default_output().ty()),
-                    // TODO console.log in browser
-                    ir::Expr::Raw("{write:(ctx,ref_s)=>process.stdout.write(ref_s.get())}".into()),
-                );
-
                 let code = transpiler.eval_expr(expr).await?;
                 let code = ir::Expr::Fn {
                     args: vec![ir::Name::context()],
@@ -1715,7 +1727,7 @@ impl Kast {
                 };
                 let code = ir::Expr::Call {
                     f: Box::new(code),
-                    args: vec![ir::Expr::Object { fields: contexts }],
+                    args: vec![transpiler.node_ctx()],
                 };
                 code
             }

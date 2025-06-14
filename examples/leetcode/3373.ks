@@ -79,8 +79,8 @@ let tree_data = fn(tree :: &Tree) -> TreeData {
             let result_store = if even then ( &result.even ) else ( &result.odd );
             HashSet.insert (result_store, current_vertex_id);
             let :Some current_vertex = HashMap.get (&(tree^).vertices, &current_vertex_id);
-            for neighbor_id :: &VertexId in List.iter &(current_vertex^).edges {
-                let neighbor_id = neighbor_id^;
+            for neighbor_id :: VertexId in List.iter_copied &(current_vertex^).edges {
+                #let neighbor_id = neighbor_id^;
                 if neighbor_id != prev_vertex_id then (
                     traverse(neighbor_id, current_vertex_id, not even);
                 );
@@ -159,7 +159,9 @@ let js_code :: string = std.javascript.transpile max_target_nodes;
 print "var f=";
 print &js_code;
 
-print "maxTargetNodes=(edges1,edges2)=>f({},{edges1,edges2})";
+print "maxTargetNodes=({edges1,edges2})=>f({},{edges1,edges2})";
 
-print "console.log(maxTargetNodes([[0,1],[0,2],[2,3],[2,4]],[[0,1],[0,2],[0,3],[2,7],[1,4],[4,5],[4,6]]))"
-
+# print "console.log(maxTargetNodes({edges1:[[0,1],[0,2],[2,3],[2,4]],edges2:[[0,1],[0,2],[0,3],[2,7],[1,4],[4,5],[4,6]]}))";
+# print "console.log(maxTargetNodes({edges1:[[0,1],[0,2],[0,3],[0,4]],edges2:[[0,1],[1,2],[2,3]]}))";
+print "let input = require(`${process.cwd()}/examples/leetcode/3373.input.json`);";
+print "console.log(maxTargetNodes(input))"

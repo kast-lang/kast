@@ -11,6 +11,7 @@ const new = forall[K :: type, V :: type] {
         }
      }
 };
+
 const insert = forall[K :: type, V :: type] {
     fn(map :: &HashMap[K, V], key :: K, value :: V) -> () with () {
         cfg_if {
@@ -20,12 +21,12 @@ const insert = forall[K :: type, V :: type] {
     }
 };
 const get = forall[K :: type, V :: type] {
-    fn(map :: &HashMap[K, V], key :: &K) -> Option[&V] with () {
+    fn(map_arg :: &HashMap[K, V], key_arg :: &K) -> Option[&V] with () {
         cfg_if {
-            | target.name == "interpreter" => native "HashMap.get" (map, key)
+            | target.name == "interpreter" => native "HashMap.get" (map_arg, key_arg)
             | target.name == "javascript" => (
-                let map = native "$(map).get()";
-                let key = native "$(key).get()";
+                let map = native "$(map_arg).get()";
+                let key = native "$(key_arg).get()";
                 if native "$(map).has($(key))" then
                     :Some (&(native "$(map).get($(key))"))
                 else
