@@ -1,5 +1,5 @@
 use kast_util::*;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use std::sync::{Arc, Mutex};
 
 mod checks;
