@@ -294,8 +294,9 @@ fn test_variant_types() {
     );
 }
 
+/// file:///./../examples/embed.rs
+/// file:///./../examples/untested
 #[test]
-#[ignore = "TODO make all examples tested"]
 fn test_all_examples_are_tested() {
     let this_source = std::fs::read_to_string("tests/examples.rs").unwrap();
     let used_files: std::collections::HashSet<String> = this_source
