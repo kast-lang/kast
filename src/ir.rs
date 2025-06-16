@@ -19,6 +19,7 @@ impl SubstituteBindings for AssigneeExprData {
 
 #[derive(Clone)]
 pub struct ExprData {
+    pub captured: Parc<Scopes>,
     pub ty: Type,
     pub span: Span,
     pub contexts: Contexts,
@@ -35,6 +36,7 @@ impl SubstituteBindings for ExprData {
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
         // println!("Subbing expr data");
         Self {
+            captured: self.captured,
             ty: self.ty.substitute_bindings(kast, cache),
             span: self.span,
             contexts: self.contexts.substitute_bindings(kast, cache),
@@ -281,9 +283,6 @@ pub enum Expr<Data: std::fmt::Display = ExprData> {
         data: Data,
     },
     Instantiate {
-        #[display(skip)]
-        #[substitute(skip)]
-        captured: Parc<Scopes>,
         template: Box<Expr>,
         arg: Box<Expr>,
         data: Data,
@@ -379,6 +378,7 @@ impl PlaceExpr {
                         return Self::Temporary {
                             value: Box::new(Expr::Constant {
                                 data: ExprData {
+                                    captured: kast.capture(),
                                     ty: value.ty(),
                                     span: binding.symbol.span.clone(),
                                     contexts: Contexts::empty(),

@@ -220,7 +220,16 @@ const dbg = forall[T] {
 
 # TODO T: randomizable
 const random = forall[T] {
-    native "random" :: (.min = T, .max = T) -> T
+    fn (.min :: T, .max :: T) -> T {
+        cfg_if {
+            | target.name == "interpreter" => native "random" (.min, .max)
+            | target.name == "javascript" => (
+                # TODO not only ints
+                let len = max - min;
+                native "Math.floor(Math.random() * $(len) + $(min))"
+            )
+        }
+    }
 };
 
 # TODO `:: type` should be inferred
@@ -258,7 +267,12 @@ const Parse = forall[Self] {
 };
 
 impl int32 as Parse = (
-    .parse = native "parse",
+    .parse = fn(s :: &string) -> int32 {
+        cfg_if {
+            | target.name == "interpreter" => native "parse" s
+            | target.name == "javascript" => native "parseInt($(s).get())"
+        }
+    },
 );
 
 impl int64 as Parse = (
@@ -304,7 +318,7 @@ impl syntax @"syntax".@"loop" = macro (.body) => `(
         );
         cfg_if {
             | target.name == "interpreter" => native "loop" body
-            | target.name == "javascript" => native "(()=>{for(;;)$(body)(ctx)})()"
+            | target.name == "javascript" => native "await(async function(){for(;;)await $(body)(ctx)})()"
         }
     )
 );

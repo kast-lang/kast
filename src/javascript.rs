@@ -66,10 +66,12 @@ mod ir {
         String(String),
         List(Vec<Expr>),
         Object { fields: LinkedHashMap<String, Expr> },
-        Fn { args: Vec<Name>, body: Vec<Stmt> },
         Index { obj: Box<Expr>, index: Box<Expr> },
         NotEq(Box<Expr>, Box<Expr>),
-        Call { f: Box<Expr>, args: Vec<Expr> },
+        AsyncFn { args: Vec<Name>, body: Vec<Stmt> },
+        AwaitCall { f: Box<Expr>, args: Vec<Expr> },
+        SyncFn { args: Vec<Name>, body: Vec<Stmt> },
+        SyncCall { f: Box<Expr>, args: Vec<Expr> },
         Raw(String),
     }
 
@@ -83,10 +85,12 @@ mod ir {
                 Self::String(_) => false,
                 Self::List(exprs) => exprs.iter().all(Self::has_bindings),
                 Self::Object { fields } => fields.values().all(Self::has_bindings),
-                Self::Fn { args: _, body: _ } => true, // too lazy too look deeper
                 Self::Index { obj, index } => obj.has_bindings() || index.has_bindings(),
                 Self::NotEq(a, b) => a.has_bindings() || b.has_bindings(),
-                Self::Call { f, args } => f.has_bindings() || args.iter().any(Self::has_bindings),
+                Self::AsyncFn { args: _, body: _ } | Self::SyncFn { args: _, body: _ } => true, // too lazy too look deeper
+                Self::AwaitCall { f, args } | Self::SyncCall { f, args } => {
+                    f.has_bindings() || args.iter().any(Self::has_bindings)
+                }
                 Self::Raw(_) => true, // can be anything
             }
         }
@@ -121,6 +125,7 @@ mod ir {
             catch_var: Name,
             catch_body: Vec<Stmt>,
         },
+        Raw(String),
     }
 
     impl Expr {
@@ -148,8 +153,8 @@ mod ir {
             }
         }
         pub fn scope(stmts: Vec<Stmt>) -> Self {
-            Self::Call {
-                f: Box::new(Self::Fn {
+            Self::AwaitCall {
+                f: Box::new(Self::AsyncFn {
                     args: vec![],
                     body: stmts,
                 }),
@@ -227,7 +232,7 @@ mod ir {
                             )?;
                             write!(f, "]")?;
                         }
-                        Expr::Fn { args, body } => {
+                        Expr::SyncFn { args, body } => {
                             write!(f, "((")?;
                             for (index, arg) in args.iter().enumerate() {
                                 if index != 0 {
@@ -241,6 +246,24 @@ mod ir {
                             match self.options {
                                 ShowOptions::Minified => write!(f, ")=>{{")?,
                                 ShowOptions::Pretty => write!(f, ") => {{")?,
+                            }
+                            write_stmts(f, body, self.options)?;
+                            write!(f, "}})")?;
+                        }
+                        Expr::AsyncFn { args, body } => {
+                            write!(f, "(async function(")?;
+                            for (index, arg) in args.iter().enumerate() {
+                                if index != 0 {
+                                    write!(f, ",")?;
+                                    if let ShowOptions::Pretty = self.options {
+                                        write!(f, " ")?;
+                                    }
+                                }
+                                write!(f, "{}", arg.0)?;
+                            }
+                            match self.options {
+                                ShowOptions::Minified => write!(f, "){{")?,
+                                ShowOptions::Pretty => write!(f, ") {{")?,
                             }
                             write_stmts(f, body, self.options)?;
                             write!(f, "}})")?;
@@ -259,7 +282,7 @@ mod ir {
                             }
                             f.write(b.show(self.options))?;
                         }
-                        Expr::Call { f: fun, args } => {
+                        Expr::SyncCall { f: fun, args } => {
                             f.write(fun.show(self.options))?;
                             write!(f, "(")?;
                             pad_adapter::padded_items(
@@ -272,6 +295,23 @@ mod ir {
                                 },
                                 |f, arg| f.write(arg.show(self.options)),
                             )?;
+                            write!(f, ")")?;
+                        }
+                        Expr::AwaitCall { f: fun, args } => {
+                            write!(f, "(await ")?;
+                            f.write(fun.show(self.options))?;
+                            write!(f, "(")?;
+                            pad_adapter::padded_items(
+                                f,
+                                args,
+                                pad_adapter::OuterMode::Surrounded,
+                                pad_adapter::Moded {
+                                    normal: pad_adapter::Separator::Seq(","),
+                                    alternate: pad_adapter::Separator::Seq(","),
+                                },
+                                |f, arg| f.write(arg.show(self.options)),
+                            )?;
+                            write!(f, ")")?;
                             write!(f, ")")?;
                         }
                         Expr::Raw(s) => write!(f, "{s}")?,
@@ -341,6 +381,9 @@ mod ir {
             impl std::fmt::Display for Show<'_> {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                     match self.stmt {
+                        Stmt::Raw(s) => {
+                            write!(f, "{s}")?;
+                        }
                         Stmt::Return(expr) => {
                             write!(f, "return ")?;
                             f.write(expr.show(self.options))?;
@@ -412,7 +455,7 @@ mod ir {
         }
 
         pub fn throw_error(s: &str) -> Stmt {
-            Stmt::Throw(Expr::Call {
+            Stmt::Throw(Expr::AwaitCall {
                 f: Box::new(Expr::Raw("Error".into())),
                 args: vec![Expr::String(s.into())],
             })
@@ -434,7 +477,11 @@ mod ir {
                         .map(|(key, value)| (key.clone(), value.optimize()))
                         .collect(),
                 },
-                Self::Fn { args, body } => Self::Fn {
+                Self::SyncFn { args, body } => Self::SyncFn {
+                    args: args.clone(),
+                    body: optimize_stmts(body),
+                },
+                Self::AsyncFn { args, body } => Self::AsyncFn {
                     args: args.clone(),
                     body: optimize_stmts(body),
                 },
@@ -463,10 +510,10 @@ mod ir {
                     /// from: ((args) => { ...; return obj; })(args)["field"]
                     /// into: ((args) => { ...; return obj["field"]; })(args)
                     fn inline_lambda_obj_field(obj: &Expr, index: &Expr) -> Option<Expr> {
-                        let Expr::Call { f, args } = obj else {
+                        let Expr::AwaitCall { f, args } = obj else {
                             return None;
                         };
-                        let Expr::Fn { args: f_args, body } = &**f else {
+                        let Expr::AsyncFn { args: f_args, body } = &**f else {
                             return None;
                         };
                         let (Stmt::Return(ret), before_return) = body.split_last()? else {
@@ -476,8 +523,8 @@ mod ir {
                             return None;
                         }
                         Some(
-                            Expr::Call {
-                                f: Box::new(Expr::Fn {
+                            Expr::AwaitCall {
+                                f: Box::new(Expr::AsyncFn {
                                     args: f_args.clone(),
                                     body: {
                                         let mut body = before_return.to_vec();
@@ -507,7 +554,11 @@ mod ir {
                     let b = b.optimize();
                     Self::NotEq(Box::new(a), Box::new(b))
                 }
-                Self::Call { f, args } => {
+                Self::SyncCall { f, args } => Self::SyncCall {
+                    f: Box::new(f.optimize()),
+                    args: args.iter().map(Self::optimize).collect(),
+                },
+                Self::AwaitCall { f, args } => {
                     let f = f.optimize();
                     let args: Vec<Self> = args.iter().map(Self::optimize).collect();
 
@@ -517,7 +568,7 @@ mod ir {
                         if !args.is_empty() {
                             return None;
                         }
-                        let Expr::Fn { args: f_args, body } = f else {
+                        let Expr::AsyncFn { args: f_args, body } = f else {
                             return None;
                         };
                         if !f_args.is_empty() {
@@ -540,10 +591,10 @@ mod ir {
                         if outer_args.iter().any(Expr::has_bindings) {
                             return None;
                         }
-                        let Expr::Call { f, args } = outer_f else {
+                        let Expr::AwaitCall { f, args } = outer_f else {
                             return None;
                         };
-                        let Expr::Fn { args: f_args, body } = &**f else {
+                        let Expr::AsyncFn { args: f_args, body } = &**f else {
                             return None;
                         };
                         let (Stmt::Return(ret), before_return) = body.split_last()? else {
@@ -553,12 +604,12 @@ mod ir {
                             return None;
                         }
                         Some(
-                            Expr::Call {
-                                f: Box::new(Expr::Fn {
+                            Expr::AwaitCall {
+                                f: Box::new(Expr::AsyncFn {
                                     args: f_args.clone(),
                                     body: {
                                         let mut body = before_return.to_vec();
-                                        body.push(Stmt::Return(Expr::Call {
+                                        body.push(Stmt::Return(Expr::AwaitCall {
                                             f: Box::new(ret.clone()),
                                             args: outer_args.to_vec(),
                                         }));
@@ -574,7 +625,7 @@ mod ir {
                         return result;
                     }
 
-                    Self::Call {
+                    Self::AwaitCall {
                         f: Box::new(f),
                         args,
                     }
@@ -596,6 +647,7 @@ mod ir {
     impl Stmt {
         pub fn optimize(&self) -> Self {
             match self {
+                Self::Raw(_) => self.clone(),
                 Self::Return(expr) => Self::Return(expr.optimize()),
                 Self::If {
                     condition,
@@ -637,10 +689,10 @@ mod ir {
                 let Stmt::Return(expr) = stmt else {
                     return None;
                 };
-                let Expr::Call { f, args } = expr else {
+                let Expr::AwaitCall { f, args } = expr else {
                     return None;
                 };
-                let Expr::Fn { args: f_args, body } = &**f else {
+                let Expr::AsyncFn { args: f_args, body } = &**f else {
                     return None;
                 };
                 if args.len() != f_args.len() {
@@ -689,6 +741,7 @@ mod ir {
     fn has_return(stmts: &[Stmt]) -> bool {
         for stmt in stmts {
             let stmt_has_return = match stmt {
+                Stmt::Raw(_) => false, // TODO ????
                 Stmt::Return(_) => true,
                 Stmt::If {
                     condition: _,
@@ -719,7 +772,8 @@ struct Transpiler {
     scopes: Parc<Scopes>,
     engine_type: JavaScriptEngineType,
     captured: std::collections::HashSet<PlaceRef>,
-    captured_code: Vec<ir::Stmt>,
+    init_code: Vec<ir::Stmt>,
+    cleanup_code: Vec<ir::Stmt>,
     captured_unprocessed: Vec<PlaceRef>,
     type_ids: HashMap<Hashable<Type>, Id>,
 }
@@ -752,7 +806,8 @@ impl Transpiler {
             scopes: Parc::new(kast.scopes.clone()),
             engine_type,
             captured: Default::default(),
-            captured_code: vec![],
+            init_code: vec![],
+            cleanup_code: vec![],
             captured_unprocessed: Default::default(),
             type_ids: HashMap::new(),
         }
@@ -764,14 +819,14 @@ impl Transpiler {
         let mut fields = LinkedHashMap::new();
         fields.insert(
             "get".into(),
-            ir::Expr::Fn {
+            ir::Expr::SyncFn {
                 args: vec![],
                 body: vec![ir::Stmt::Return(value.clone())],
             },
         );
         fields.insert(
             "set".into(),
-            ir::Expr::Fn {
+            ir::Expr::SyncFn {
                 args: vec![new_value_var.clone()],
                 body: vec![ir::Stmt::Assign {
                     assignee: ir::AssigneeExpr::Expr(value),
@@ -795,7 +850,7 @@ impl Transpiler {
 
     async fn read_place(&mut self, place: &PlaceExpr) -> eyre::Result<ir::Expr> {
         let place = self.eval_place(place).await?;
-        Ok(ir::Expr::Call {
+        Ok(ir::Expr::AwaitCall {
             f: Box::new(ir::Expr::Index {
                 obj: Box::new(place),
                 index: Box::new(ir::Expr::String("get".into())),
@@ -1003,7 +1058,6 @@ impl Transpiler {
                 Expr::Function { ty, compiled, data } => todo!(),
                 Expr::Template { compiled, data } => todo!(),
                 Expr::Instantiate {
-                    captured,
                     template,
                     arg,
                     data,
@@ -1117,11 +1171,14 @@ impl Transpiler {
                     result,
                     data,
                 } => todo!(),
-                Expr::Cast {
-                    value,
-                    target,
-                    data,
-                } => todo!(),
+                Expr::Cast { .. } => {
+                    let value = self
+                        .kast
+                        .with_scopes((*expr.data().captured).clone())
+                        .eval(expr)
+                        .await?;
+                    self.transpile(&value).await?
+                }
                 Expr::Is {
                     value,
                     pattern,
@@ -1286,7 +1343,7 @@ impl Transpiler {
                     ir::Expr::Raw(result)
                 }
                 Expr::Let { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
-                Expr::Call { f, arg, data: _ } => ir::Expr::Call {
+                Expr::Call { f, arg, data: _ } => ir::Expr::AwaitCall {
                     f: Box::new(self.eval_expr(f).await?),
                     args: vec![
                         ir::Expr::Binding(ir::Name::context()),
@@ -1302,11 +1359,11 @@ impl Transpiler {
                 } => self.transpile_compiled_fn(compiled).await?,
                 Expr::Template { compiled, data } => todo!(),
                 Expr::Instantiate {
-                    captured,
                     template,
                     arg,
-                    data: _,
+                    data,
                 } => {
+                    let captured = &data.captured;
                     let mut kast = self.kast.with_scopes((**captured).clone());
                     let template_fn = kast
                         .eval(template)
@@ -1326,7 +1383,7 @@ impl Transpiler {
                             compiled: crate::executor::Spawned::ready(instantiated_template),
                         })
                         .await?;
-                    ir::Expr::Call {
+                    ir::Expr::AwaitCall {
                         f: Box::new(f),
                         args: vec![ir::Expr::Binding(ir::Name::context())],
                     }
@@ -1455,7 +1512,7 @@ impl Transpiler {
                     }
                 }
                 AssigneeExpr::Place { place, data: _ } => {
-                    stmts.push(ir::Stmt::Expr(ir::Expr::Call {
+                    stmts.push(ir::Stmt::Expr(ir::Expr::AwaitCall {
                         f: Box::new(ir::Expr::Index {
                             obj: Box::new(self.eval_place(place).await?),
                             index: Box::new(ir::Expr::String("set".into())),
@@ -1654,7 +1711,7 @@ impl Transpiler {
     async fn process_captured(&mut self) -> eyre::Result<()> {
         while let Some(unprocessed) = self.captured_unprocessed.pop() {
             let value = self.transpile(&*unprocessed.read_value()?).await?;
-            self.captured_code.push(ir::Stmt::Assign {
+            self.init_code.push(ir::Stmt::Assign {
                 assignee: ir::AssigneeExpr::NewVar(captured_name(&unprocessed)),
                 value,
             });
@@ -1693,7 +1750,7 @@ impl Transpiler {
         //     value: ir::Expr::Fn { args, body },
         // });
         // Ok(ir::Expr::Binding(name))
-        Ok(ir::Expr::Fn { args, body })
+        Ok(ir::Expr::AsyncFn { args, body })
     }
 
     pub fn node_ctx(&mut self) -> ir::Expr {
@@ -1705,6 +1762,24 @@ impl Transpiler {
             // TODO console.log in browser
             ir::Expr::Raw("{write:(ctx,ref_s)=>process.stdout.write(ref_s.get())}".into()),
         );
+        self.init_code.push(ir::Stmt::Raw(
+            r#"
+            const readline = require('node:readline/promises').createInterface({
+                input: process.stdin,
+                output: process.stdout
+            })
+            "#
+            .into(),
+        ));
+        self.cleanup_code
+            .push(ir::Stmt::Raw("readline.close()".into()));
+        contexts.insert(
+            self.context_name(&contexts::default_input().ty()),
+            ir::Expr::Raw(
+                "{read_line:async function(ctx){return await readline.question('')}}".into(),
+            ),
+        );
+
         ir::Expr::Object { fields: contexts }
     }
 }
@@ -1721,24 +1796,36 @@ impl Kast {
         let result = match &*value.as_inferred()? {
             ValueShape::Expr(expr) => {
                 let code = transpiler.eval_expr(expr).await?;
-                let code = ir::Expr::Fn {
+                let code = ir::Expr::AsyncFn {
                     args: vec![ir::Name::context()],
                     body: vec![ir::Stmt::Return(code)],
                 };
-                let code = ir::Expr::Call {
+                ir::Expr::AwaitCall {
                     f: Box::new(code),
                     args: vec![transpiler.node_ctx()],
-                };
-                code
+                }
             }
             _ => transpiler.transpile(value).await?,
         };
         transpiler.process_captured().await?;
-        let expr = ir::Expr::scope({
-            let mut stmts = transpiler.captured_code;
-            stmts.push(ir::Stmt::Return(result));
-            stmts
-        });
+
+        let expr = ir::Expr::SyncCall {
+            f: Box::new(ir::Expr::AsyncFn {
+                args: vec![],
+                body: {
+                    let mut stmts = transpiler.init_code;
+                    let result_name = ir::Name::unique("result");
+                    stmts.push(ir::Stmt::Assign {
+                        assignee: ir::AssigneeExpr::NewVar(result_name.clone()),
+                        value: result,
+                    });
+                    stmts.extend(transpiler.cleanup_code);
+                    stmts.push(ir::Stmt::Return(ir::Expr::Binding(result_name)));
+                    stmts
+                },
+            }),
+            args: vec![],
+        };
         let expr = expr.optimize();
         Ok(expr.show(options).to_string())
     }

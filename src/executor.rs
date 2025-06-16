@@ -8,7 +8,7 @@ impl Drop for ExecutorImpl {
     fn drop(&mut self) {
         while self.inner.try_tick() {}
         if !self.inner.is_empty() {
-            panic!("executor still has unfinished tasks???");
+            //panic!("executor still has unfinished tasks???");
         }
     }
 }

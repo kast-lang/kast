@@ -14,7 +14,7 @@ let run_once = fn (.quit, .first) {
         if s == "exit" then (
             let _ = unwind quit "quitted";
         );
-        let guessed = &s |> parse;
+        let guessed = parse &s; # TODO &s |> parse
         if guessed == picked then (
             break
         ) else (

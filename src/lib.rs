@@ -3,7 +3,7 @@
 #![recursion_limit = "256"]
 
 use async_trait::async_trait;
-use eyre::{Context as _, eyre};
+use eyre::{eyre, Context as _};
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use inference::Inferrable;
@@ -53,6 +53,26 @@ pub enum MaybeBorrowed<'a, T> {
     Borrowed(&'a T),
     Owned(T),
 }
+
+impl<T: PartialEq> PartialEq for MaybeBorrowed<'_, T> {
+    fn eq(&self, other: &Self) -> bool {
+        T::eq(self, other)
+    }
+}
+
+impl<T: PartialOrd> PartialOrd for MaybeBorrowed<'_, T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        T::partial_cmp(self, other)
+    }
+}
+
+impl<T: Ord> Ord for MaybeBorrowed<'_, T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        T::cmp(self, other)
+    }
+}
+
+impl<T: Eq> Eq for MaybeBorrowed<'_, T> {}
 
 impl<T> std::ops::Deref for MaybeBorrowed<'_, T> {
     type Target = T;
@@ -316,7 +336,7 @@ impl Kast {
         let source = SourceFile {
             #[cfg(feature = "embed-std")]
             contents: {
-                use include_dir::{Dir, include_dir};
+                use include_dir::{include_dir, Dir};
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
                         static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");

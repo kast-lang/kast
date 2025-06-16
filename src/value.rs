@@ -194,10 +194,60 @@ impl Kast {
 }
 
 // TODO not public?
-#[derive(Debug, Clone, PartialEq, Eq, TryHash, Ord, PartialOrd)]
+#[derive(Debug, Clone)]
 pub enum ValueImpl {
-    Inferrable(#[try_hash] inference::MaybeNotInferred<ValueShape>),
-    NonInferrable(#[try_hash] ValueShape),
+    Inferrable(inference::MaybeNotInferred<ValueShape>),
+    NonInferrable(ValueShape),
+}
+
+impl ValueImpl {
+    fn as_inferred(&self) -> eyre::Result<MaybeBorrowed<'_, ValueShape>> {
+        Ok(match self {
+            Self::Inferrable(inferrable) => MaybeBorrowed::Owned(inferrable.expect_inferred()?),
+            Self::NonInferrable(value) => MaybeBorrowed::Borrowed(value),
+        })
+    }
+}
+
+impl TryHash for ValueImpl {
+    type Error = eyre::Report;
+    fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
+        match self {
+            ValueImpl::Inferrable(value) => value.try_hash(hasher)?,
+            ValueImpl::NonInferrable(value) => value.try_hash(hasher).map_err(|e| eyre!(e))?,
+        }
+        Ok(())
+    }
+}
+
+impl Eq for ValueImpl {}
+
+impl PartialEq for ValueImpl {
+    fn eq(&self, other: &Self) -> bool {
+        (|| {
+            let a = self.as_inferred()?;
+            let b = other.as_inferred()?;
+            Ok::<_, eyre::Report>(a == b)
+        })()
+        .expect("not inferred") // TODO no panic
+    }
+}
+
+impl PartialOrd for ValueImpl {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ValueImpl {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (|| {
+            let a = self.as_inferred()?;
+            let b = other.as_inferred()?;
+            Ok::<_, eyre::Report>(a.cmp(&b))
+        })()
+        .expect("not inferred") // TODO no panic
+    }
 }
 
 impl From<ValueImpl> for inference::MaybeNotInferred<ValueShape> {
@@ -500,12 +550,7 @@ impl Value {
         }
     }
     pub fn as_inferred(&self) -> eyre::Result<MaybeBorrowed<'_, ValueShape>> {
-        Ok(match &self.r#impl {
-            ValueImpl::Inferrable(inferrable) => {
-                MaybeBorrowed::Owned(inferrable.expect_inferred()?)
-            }
-            ValueImpl::NonInferrable(value) => MaybeBorrowed::Borrowed(value),
-        })
+        self.r#impl.as_inferred()
     }
 }
 

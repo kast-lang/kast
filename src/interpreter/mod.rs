@@ -994,7 +994,6 @@ impl Kast {
                     self.call(f, arg).await?
                 }
                 Expr::Instantiate {
-                    captured: _,
                     template,
                     arg,
                     data: _,

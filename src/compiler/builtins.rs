@@ -772,7 +772,6 @@ impl Builtins {
         let arg = kast.compile(arg).await?;
         Ok(Compiled::Expr(
             Expr::Instantiate {
-                captured: kast.capture(),
                 template: Box::new(template),
                 arg: Box::new(arg),
                 data: span,

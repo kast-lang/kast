@@ -881,7 +881,7 @@ impl AssigneeExpr<Span> {
 }
 
 impl PlaceExpr<Span> {
-    pub fn init(self, _kast: &Kast) -> BoxFuture<'_, eyre::Result<PlaceExpr>> {
+    pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<PlaceExpr>> {
         let r#impl = async {
             Ok(match self {
                 PlaceExpr::Deref { r#ref, data: span } => {
@@ -893,6 +893,7 @@ impl PlaceExpr<Span> {
                         .make_same(TypeShape::Ref(value_ty.clone()).into())?;
                     PlaceExpr::Deref {
                         data: ExprData {
+                            captured: kast.capture(),
                             contexts: r#ref.data().contexts.clone(),
                             ty: value_ty,
                             span,
@@ -902,6 +903,7 @@ impl PlaceExpr<Span> {
                 }
                 PlaceExpr::Temporary { value, data: span } => PlaceExpr::Temporary {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: value.data().ty.clone(),
                         span,
                         contexts: value.data().contexts.clone(),
@@ -913,6 +915,7 @@ impl PlaceExpr<Span> {
                     data: span,
                 } => PlaceExpr::Binding {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: binding.ty.clone(),
                         span,
                         contexts: Contexts::empty_growable(),
@@ -925,6 +928,7 @@ impl PlaceExpr<Span> {
                     data: span,
                 } => PlaceExpr::FieldAccess {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: {
                             let ty = Type::new_not_inferred("obj.field");
                             obj.data().ty.var().add_check({
@@ -1021,6 +1025,7 @@ impl Expr<Span> {
             Ok::<_, eyre::Report>(match self {
                 Expr::Type { expr, data: span } => Expr::Type {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Type.into(),
                         span,
                         contexts: Contexts::empty(), // TODO expr.data().contexts.clone(),
@@ -1047,6 +1052,7 @@ impl Expr<Span> {
                     })?;
                     Expr::Ref {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty,
                             span,
                             contexts: place.data().contexts.clone(),
@@ -1056,6 +1062,7 @@ impl Expr<Span> {
                 }
                 Expr::ReadPlace { place, data: span } => Expr::ReadPlace {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: place.data().ty.clone(),
                         span,
                         contexts: place.data().contexts.clone(), // TODO read effect
@@ -1071,6 +1078,7 @@ impl Expr<Span> {
                     rhs.data().ty.infer_as(TypeShape::Bool)?;
                     Expr::And {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Bool.into(),
                             span,
                             contexts: Contexts::merge_two(
@@ -1091,6 +1099,7 @@ impl Expr<Span> {
                     rhs.data().ty.infer_as(TypeShape::Bool)?;
                     Expr::Or {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Bool.into(),
                             span,
                             contexts: Contexts::merge_two(
@@ -1114,6 +1123,7 @@ impl Expr<Span> {
                         .make_same(value.data().ty.clone())?;
                     Expr::Assign {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Unit.into(),
                             span,
                             contexts: value.data().contexts.clone(), // TODO write effect
@@ -1146,6 +1156,7 @@ impl Expr<Span> {
                     })?;
                     Expr::List {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty,
                             span,
                             contexts: Contexts::merge(
@@ -1165,6 +1176,7 @@ impl Expr<Span> {
                         .infer_as(TypeShape::UnwindHandle(value.data().ty.clone()))?;
                     Expr::Unwind {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: Type::new_not_inferred(&format!("unwind expr at {span}")), // TODO never
                             span,
                             contexts: Contexts::merge_two(
@@ -1186,6 +1198,7 @@ impl Expr<Span> {
                         .infer_as(TypeShape::UnwindHandle(body.data().ty.clone()))?;
                     Expr::Unwindable {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: body.data().ty.clone(),
                             span,
                             contexts: body.data().contexts.clone(), // TODO unwind effect should be
@@ -1200,6 +1213,7 @@ impl Expr<Span> {
                     data: span,
                 } => Expr::InjectContext {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Unit.into(),
                         span,
                         contexts: context.data().contexts.clone(),
@@ -1210,6 +1224,7 @@ impl Expr<Span> {
                     let context_ty = Type::new_not_inferred(&format!("current expr at {span}"));
                     Expr::CurrentContext {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: context_ty.clone(),
                             span,
                             contexts: Contexts::single(kast, context_ty)?,
@@ -1218,6 +1233,7 @@ impl Expr<Span> {
                 }
                 Expr::Unit { data: span } => Expr::Unit {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: Type::new_not_inferred_with_default(
                             &format!("unit expr at {span}"),
                             TypeShape::Unit,
@@ -1237,6 +1253,7 @@ impl Expr<Span> {
                     result.data().ty.infer_as(TypeShape::Type)?;
                     Expr::FunctionType {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Type.into(),
                             span,
                             contexts: Contexts::merge(
@@ -1263,6 +1280,7 @@ impl Expr<Span> {
                     Expr::Cast {
                         target: target.clone(),
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: kast
                                 .cast_result_ty(
                                     || async { kast.enter_scope().eval(&value).await }.boxed(),
@@ -1298,6 +1316,7 @@ impl Expr<Span> {
                     }
                     Expr::Match {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: result_ty,
                             span,
                             contexts: {
@@ -1331,6 +1350,7 @@ impl Expr<Span> {
                         .make_same(pattern.data().ty.clone())?;
                     Expr::Is {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Bool.into(),
                             span,
                             contexts: value.data().contexts.clone(),
@@ -1341,6 +1361,7 @@ impl Expr<Span> {
                 }
                 Expr::Newtype { def, data: span } => Expr::Newtype {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Type.into(),
                         span,
                         contexts: def.data().contexts.clone(),
@@ -1349,6 +1370,7 @@ impl Expr<Span> {
                 },
                 Expr::MakeMultiset { values, data: span } => Expr::MakeMultiset {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Multiset.into(),
                         span,
                         contexts: Contexts::merge(
@@ -1365,6 +1387,7 @@ impl Expr<Span> {
                     let value_ty = value.as_ref().map(|value| value.data().ty.clone());
                     Expr::Variant {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: infer_type_variant(
                                 &format!("variant at {span}"),
                                 name.clone(),
@@ -1385,6 +1408,7 @@ impl Expr<Span> {
                     data: span,
                 } => Expr::Use {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Unit.into(),
                         span,
                         contexts: namespace.data().contexts.clone(),
@@ -1393,6 +1417,7 @@ impl Expr<Span> {
                 },
                 Expr::Tuple { tuple, data: span } => Expr::Tuple {
                     data: ExprData {
+                        captured: kast.capture(),
                         contexts: Contexts::merge(
                             tuple.values().map(|value| &value.data().contexts),
                         )?,
@@ -1459,6 +1484,7 @@ impl Expr<Span> {
                     Expr::Ast {
                         expr_root,
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Ast.into(),
                             span,
                             contexts: Contexts::merge(
@@ -1487,6 +1513,7 @@ impl Expr<Span> {
                     // tracing::info!("rec fields = {fields}");
                     Expr::Recursive {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Tuple(TupleType {
                                 name: inference::MaybeNotInferred::new_not_inferred("recursive"),
                                 fields,
@@ -1505,6 +1532,7 @@ impl Expr<Span> {
                     data: span,
                 } => Expr::Function {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Function(Box::new(ty.clone())).into(),
                         span,
                         contexts: Contexts::empty_growable(),
@@ -1517,6 +1545,7 @@ impl Expr<Span> {
                     data: span,
                 } => Expr::Template {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Template(compiled.clone()).into(),
                         span,
                         contexts: Contexts::empty_growable(),
@@ -1525,6 +1554,7 @@ impl Expr<Span> {
                 },
                 Expr::Scope { expr, data: span } => Expr::Scope {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: expr.data().ty.clone(),
                         span,
                         contexts: expr.data().contexts.clone(),
@@ -1538,6 +1568,7 @@ impl Expr<Span> {
                     data: span,
                 } => Expr::If {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: {
                             let ty = match &else_case {
                                 Some(else_case) => else_case.data().ty.clone(),
@@ -1575,6 +1606,7 @@ impl Expr<Span> {
                         last.map_or_else(|| TypeShape::Unit.into(), |prev| prev.data().ty.clone());
                     Expr::Then {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: result_ty,
                             span,
                             contexts: {
@@ -1596,6 +1628,7 @@ impl Expr<Span> {
                 }
                 Expr::Constant { value, data: span } => Expr::Constant {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: value.ty(),
                         span,
                         contexts: Contexts::empty_growable(),
@@ -1605,6 +1638,7 @@ impl Expr<Span> {
                 Expr::Number { raw, data: span } => Expr::Number {
                     raw: raw.clone(),
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: {
                             let default_number_type_context_type = kast
                                 .cache
@@ -1651,6 +1685,7 @@ impl Expr<Span> {
                 },
                 Expr::String { token, data: span } => Expr::String {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: {
                             let token_typ = token.typ;
                             let ty = Type::new_not_inferred_with_default(
@@ -1708,6 +1743,7 @@ impl Expr<Span> {
                         name,
                         compiler_scope,
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: Type::new_not_inferred(&format!("native at {span}")),
                             contexts: Contexts::empty_growable(),
                             span,
@@ -1728,6 +1764,7 @@ impl Expr<Span> {
                     }
                     Expr::Let {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: TypeShape::Unit.into(),
                             span,
                             contexts: match &value {
@@ -1746,6 +1783,7 @@ impl Expr<Span> {
                     data: span,
                 } => Expr::CallMacro {
                     data: ExprData {
+                        captured: kast.capture(),
                         ty: TypeShape::Ast.into(),
                         span,
                         contexts: Contexts::merge_two(
@@ -1776,6 +1814,7 @@ impl Expr<Span> {
                     // });
                     Expr::Call {
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: result_ty,
                             span,
                             contexts: Contexts::merge([
@@ -1789,7 +1828,6 @@ impl Expr<Span> {
                     }
                 }
                 Expr::Instantiate {
-                    captured,
                     template: template_ir,
                     arg: arg_ir,
                     data: span,
@@ -1848,8 +1886,8 @@ impl Expr<Span> {
                     });
 
                     Expr::Instantiate {
-                        captured,
                         data: ExprData {
+                            captured: kast.capture(),
                             ty: result_ty,
                             span,
                             contexts: Contexts::merge([
@@ -1880,7 +1918,12 @@ impl Expr<Span> {
                     }
                     Expr::TargetDependent {
                         branches,
-                        data: ExprData { ty, span, contexts },
+                        data: ExprData {
+                            captured: kast.capture(),
+                            ty,
+                            span,
+                            contexts,
+                        },
                     }
                 }
             })
@@ -1902,7 +1945,6 @@ impl Expr {
                 break;
             }
             result = Expr::Instantiate {
-                captured: kast.capture(),
                 arg: Box::new(
                     Expr::Constant {
                         value: Value::new_not_inferred(&format!(

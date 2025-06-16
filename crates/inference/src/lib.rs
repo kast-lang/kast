@@ -295,7 +295,7 @@ where
     type Error = eyre::Report;
     fn try_hash(&self, hasher: &mut impl std::hash::Hasher) -> Result<(), Self::Error> {
         match self.inferred_or_default()? {
-            Ok(ty) => ty.try_hash(hasher).map_err(|e| eyre::eyre!(e))?,
+            Ok(value) => value.try_hash(hasher).map_err(|e| eyre::eyre!(e))?,
             Err(_) => eyre::bail!(
                 "{:?} is not inferred, fail to hash",
                 std::any::type_name::<T>(),
