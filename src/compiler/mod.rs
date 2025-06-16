@@ -1212,7 +1212,7 @@ impl Expr<Span> {
                         data: ExprData {
                             ty: context_ty.clone(),
                             span,
-                            contexts: Contexts::single(context_ty)?,
+                            contexts: Contexts::single(kast, context_ty)?,
                         },
                     }
                 }

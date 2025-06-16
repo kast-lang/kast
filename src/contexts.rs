@@ -201,20 +201,19 @@ impl Contexts {
     pub fn var(&self) -> &inference::Var<ContextsData> {
         self.0.var()
     }
-    pub fn single(ty: Type) -> eyre::Result<Self> {
+    pub fn single(kast: &Kast, ty: Type) -> eyre::Result<Self> {
         let this = inference::MaybeNotInferred::new_set(ContextsData {
             types: Default::default(),
             growable: true,
         });
-        ty.var().add_check({
-            let this = this.clone();
-            move |ty: &TypeShape| -> eyre::Result<inference::CheckResult> {
-                let mut current = this.inferred().unwrap();
-                current.extend_with_types([&ty.clone().into()])?;
-                this.var().set(current)?;
-                Ok(inference::CheckResult::Completed)
-            }
-        })?;
+        let also_this = this.clone();
+        kast.cache.executor.spawn(async move {
+            ty.await_fully_inferred(&mut RecurseCache::new()).await?;
+            let mut current = also_this.inferred().unwrap();
+            current.extend_with_types([&ty])?;
+            also_this.var().set(current)?;
+            Ok(())
+        });
         Ok(Self(this))
     }
     pub fn remove_injected(contexts: &Self, ty: &Type) -> eyre::Result<Self> {
@@ -377,6 +376,7 @@ impl SubstituteBindings for Contexts {
     }
 }
 
+#[async_trait]
 impl Inferrable for ContextsData {
     fn make_same(mut a: Self, mut b: Self) -> eyre::Result<Self> {
         #![allow(unused_mut)]
@@ -387,12 +387,22 @@ impl Inferrable for ContextsData {
             growable: a.growable && b.growable,
         })
     }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        for r#type in &self.types {
+            r#type.await_fully_inferred(cache).await?;
+        }
+        Ok(())
+    }
 }
 
+#[async_trait]
 impl Inferrable for Contexts {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         let mut a = a;
         a.0.make_same(b.0)?;
         Ok(a)
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        self.0.await_fully_inferred(cache).await
     }
 }

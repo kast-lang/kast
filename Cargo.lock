@@ -784,6 +784,8 @@ name = "kast-inference"
 version = "0.1.0"
 dependencies = [
  "anymap3",
+ "async-oneshot",
+ "async-trait",
  "eyre",
  "kast-try-hash",
  "kast-util",

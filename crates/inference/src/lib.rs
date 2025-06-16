@@ -1,5 +1,6 @@
+use async_trait::async_trait;
 use kast_util::*;
-use rand::{Rng, thread_rng};
+use rand::{thread_rng, Rng};
 use std::sync::{Arc, Mutex};
 
 mod checks;
@@ -91,7 +92,9 @@ impl<T: Inferrable + std::fmt::Debug> std::fmt::Debug for Var<T> {
     }
 }
 
+#[async_trait]
 pub trait Inferrable: Clone + Send + Sync + PartialEq + 'static {
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()>;
     fn make_same(a: Self, b: Self) -> eyre::Result<Self>;
 }
 
@@ -208,6 +211,31 @@ impl<T: Inferrable> Var<T> {
         }
         root_state.set(root_locked);
         other_root_state.set(other_root_locked);
+        Ok(())
+    }
+    async fn await_inferred(&self) -> eyre::Result<T> {
+        let (sender, receiver) = async_oneshot::oneshot();
+        let sender = Mutex::new(sender);
+        self.add_check(move |inferred| {
+            match sender.lock().unwrap().send(inferred.clone()) {
+                Ok(()) | Err(async_oneshot::Closed()) => {}
+            }
+            Ok(CheckResult::Completed)
+        })?;
+        match receiver.await {
+            Ok(inferred) => Ok(inferred),
+            Err(async_oneshot::Closed()) => {
+                eyre::bail!("value was never inferred");
+            }
+        }
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        if let Some(()) = cache.get(self) {
+            return Ok(());
+        }
+        let inferred = self.await_inferred().await?;
+        cache.insert(self, ());
+        inferred.await_fully_inferred(cache).await?;
         Ok(())
     }
 }
@@ -342,10 +370,14 @@ impl<T: Inferrable> MaybeNotInferred<T> {
     }
 }
 
+#[async_trait]
 impl<T: Inferrable> Inferrable for MaybeNotInferred<T> {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         a.0.make_same(&b.0)?;
         Ok(a)
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        self.0.await_fully_inferred(cache).await
     }
 }
 
@@ -398,6 +430,7 @@ impl<T: Inferrable + std::fmt::Display> std::fmt::Display for MaybeNotInferred<T
     }
 }
 
+#[async_trait]
 impl<T: Inferrable> Inferrable for Option<T> {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         match (a, b) {
@@ -407,14 +440,25 @@ impl<T: Inferrable> Inferrable for Option<T> {
             (None, Some(_)) => eyre::bail!("none != some"),
         }
     }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        if let Some(value) = self {
+            value.await_fully_inferred(cache).await?;
+        }
+        Ok(())
+    }
 }
 
+#[async_trait]
 impl<T: Inferrable> Inferrable for Box<T> {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Box::new(Inferrable::make_same(*a, *b)?))
     }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        T::await_fully_inferred(self, cache).await
+    }
 }
 
+#[async_trait]
 impl<T: Inferrable> Inferrable for Vec<T> {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         if a.len() != b.len() {
@@ -424,5 +468,29 @@ impl<T: Inferrable> Inferrable for Vec<T> {
             .zip(b)
             .map(|(a, b)| Inferrable::make_same(a, b))
             .collect()
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        for value in self {
+            value.await_fully_inferred(cache).await?;
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<T: Inferrable> Inferrable for Tuple<T> {
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        for value in self.values() {
+            value.await_fully_inferred(cache).await?;
+        }
+        Ok(())
+    }
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        let mut result = Tuple::empty();
+        for (member, (a, b)) in a.zip(b)?.into_iter() {
+            let value = Inferrable::make_same(a, b)?;
+            result.add_member(member, value);
+        }
+        Ok(result)
     }
 }

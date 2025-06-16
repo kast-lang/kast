@@ -30,6 +30,7 @@ impl SubstituteBindings for NamePart {
     }
 }
 
+#[async_trait]
 impl Inferrable for NamePart {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         use NamePart::*;
@@ -63,6 +64,21 @@ impl Inferrable for NamePart {
             (ImplCast { .. }, _) => fail!(),
         })
     }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        match self {
+            NamePart::File(_) => {}
+            NamePart::Str(_) => {}
+            NamePart::Symbol(_) => {}
+            NamePart::Instantiate(value) => {
+                value.await_fully_inferred(cache).await?;
+            }
+            NamePart::ImplCast { value, target } => {
+                value.await_fully_inferred(cache).await?;
+                target.await_fully_inferred(cache).await?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, TryHash, PartialEq, Eq, PartialOrd, Ord)]
@@ -83,6 +99,7 @@ impl Name {
     }
 }
 
+#[async_trait]
 impl Inferrable for Name {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         let error_context = format!("name {a} != {b}");
@@ -90,6 +107,9 @@ impl Inferrable for Name {
         Ok(Self(std::sync::Arc::new(
             Inferrable::make_same(parts(a), parts(b)).wrap_err(error_context)?,
         )))
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        self.0.await_fully_inferred(cache).await
     }
 }
 

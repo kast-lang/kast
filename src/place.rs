@@ -3,6 +3,20 @@ use super::*;
 // TODO impl Drop
 pub struct OwnedPlace(Parc<Place>);
 
+#[async_trait]
+impl Inferrable for OwnedPlace {
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        self.0.read_value()?.await_fully_inferred(cache).await?;
+        Ok(())
+    }
+
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        let mutatibility = Inferrable::make_same(a.mutability, b.mutability)?;
+        let value = Inferrable::make_same(a.into_value()?, b.into_value()?)?;
+        Ok::<_, eyre::Report>(OwnedPlace::new(value, mutatibility))
+    }
+}
+
 impl std::ops::Deref for OwnedPlace {
     type Target = Place;
     fn deref(&self) -> &Self::Target {
@@ -152,6 +166,20 @@ pub enum Mutability {
     ReadOnly,
     Mutable,
     Nested,
+}
+
+#[async_trait]
+impl Inferrable for Mutability {
+    async fn await_fully_inferred(&self, _cache: &mut RecurseCache) -> eyre::Result<()> {
+        Ok(())
+    }
+
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        if a != b {
+            eyre::bail!("{a:?} != {b:?}")
+        }
+        Ok(a)
+    }
 }
 
 impl Mutability {

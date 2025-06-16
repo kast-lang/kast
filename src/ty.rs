@@ -87,6 +87,23 @@ pub struct HashMapType {
     pub value: Type,
 }
 
+#[async_trait]
+impl Inferrable for HashMapType {
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        let Self { key, value } = self;
+        key.await_fully_inferred(cache).await?;
+        value.await_fully_inferred(cache).await?;
+        Ok(())
+    }
+
+    fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
+        Ok(Self {
+            key: Inferrable::make_same(a.key, b.key)?,
+            value: Inferrable::make_same(a.value, b.value)?,
+        })
+    }
+}
+
 impl std::fmt::Display for HashMapType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "HashMap[{}, {}]", self.key, self.value)
@@ -111,17 +128,19 @@ impl SubstituteBindings for TupleType {
     }
 }
 
+#[async_trait]
 impl Inferrable for TupleType {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
-        let mut fields = Tuple::empty();
-        for (member, (a, b)) in a.fields.zip(b.fields)?.into_iter() {
-            let value = Inferrable::make_same(a, b)?;
-            fields.add_member(member, value);
-        }
         Ok(Self {
             name: Inferrable::make_same(a.name, b.name).context("names are different")?,
-            fields,
+            fields: Inferrable::make_same(a.fields, b.fields)?,
         })
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        let Self { name, fields } = self;
+        name.await_fully_inferred(cache).await?;
+        fields.await_fully_inferred(cache).await?;
+        Ok(())
     }
 }
 
@@ -146,12 +165,19 @@ pub struct VariantType {
     pub variants: Vec<VariantTypeVariant>,
 }
 
+#[async_trait]
 impl Inferrable for VariantType {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Self {
             name: Inferrable::make_same(a.name, b.name)?,
             variants: Inferrable::make_same(a.variants, b.variants)?,
         })
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        let Self { name, variants } = self;
+        name.await_fully_inferred(cache).await?;
+        variants.await_fully_inferred(cache).await?;
+        Ok(())
     }
 }
 
@@ -200,6 +226,7 @@ pub struct VariantTypeVariant {
     pub value: Option<Box<Type>>,
 }
 
+#[async_trait]
 impl Inferrable for VariantTypeVariant {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Self {
@@ -211,6 +238,11 @@ impl Inferrable for VariantTypeVariant {
             },
             value: Inferrable::make_same(a.value, b.value)?,
         })
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        let Self { name: _, value } = self;
+        value.await_fully_inferred(cache).await?;
+        Ok(())
     }
 }
 
@@ -272,6 +304,7 @@ impl TypeShape {
     }
 }
 
+#[async_trait]
 impl Inferrable for TypeShape {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         macro_rules! fail {
@@ -332,10 +365,7 @@ impl Inferrable for TypeShape {
             (Self::Variant(_), _) => fail!(),
             (Self::Symbol, Self::Symbol) => Self::Symbol,
             (Self::Symbol, _) => fail!(),
-            (Self::HashMap(a), Self::HashMap(b)) => Self::HashMap(HashMapType {
-                key: Inferrable::make_same(a.key, b.key)?,
-                value: Inferrable::make_same(a.value, b.value)?,
-            }),
+            (Self::HashMap(a), Self::HashMap(b)) => Self::HashMap(Inferrable::make_same(a, b)?),
             (Self::HashMap(_), _) => fail!(),
             (Self::Ref(a), Self::Ref(b)) => Self::Ref(Inferrable::make_same(a, b)?),
             (Self::Ref(_), _) => fail!(),
@@ -356,6 +386,39 @@ impl Inferrable for TypeShape {
             (Self::Target, Self::Target) => Self::Target,
             (Self::Target, _) => fail!(),
         })
+    }
+
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        match self {
+            TypeShape::Unit
+            | TypeShape::Bool
+            | TypeShape::Int32
+            | TypeShape::Int64
+            | TypeShape::Float64
+            | TypeShape::Char
+            | TypeShape::String
+            | TypeShape::Target
+            | TypeShape::Multiset
+            | TypeShape::Contexts
+            | TypeShape::Ast
+            | TypeShape::Expr
+            | TypeShape::Type
+            | TypeShape::SyntaxModule
+            | TypeShape::SyntaxDefinition
+            | TypeShape::Symbol => {}
+            TypeShape::UnwindHandle(ty) => ty.await_fully_inferred(cache).await?,
+            TypeShape::Binding(_) => {} // TODO check
+            TypeShape::HashMap(ty) => ty.await_fully_inferred(cache).await?,
+            TypeShape::Ref(ty) => ty.await_fully_inferred(cache).await?,
+            TypeShape::NewType { id: _, inner } => inner.await_fully_inferred(cache).await?,
+            TypeShape::List(ty) => ty.await_fully_inferred(cache).await?,
+            TypeShape::Variant(ty) => ty.await_fully_inferred(cache).await?,
+            TypeShape::Tuple(ty) => ty.await_fully_inferred(cache).await?,
+            TypeShape::Function(ty) => ty.await_fully_inferred(cache).await?,
+            TypeShape::Template(_) => {} // TODO
+            TypeShape::Macro(ty) => ty.await_fully_inferred(cache).await?,
+        }
+        Ok(())
     }
 }
 
@@ -423,6 +486,7 @@ impl std::fmt::Display for FnType {
     }
 }
 
+#[async_trait]
 impl Inferrable for FnType {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Self {
@@ -430,6 +494,17 @@ impl Inferrable for FnType {
             contexts: Inferrable::make_same(a.contexts, b.contexts)?,
             result: Inferrable::make_same(a.result, b.result)?,
         })
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        let Self {
+            arg,
+            contexts,
+            result,
+        } = self;
+        arg.await_fully_inferred(cache).await?;
+        contexts.await_fully_inferred(cache).await?;
+        result.await_fully_inferred(cache).await?;
+        Ok(())
     }
 }
 

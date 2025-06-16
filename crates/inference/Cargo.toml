@@ -11,3 +11,5 @@ eyre.workspace = true
 anymap3.workspace = true
 try-hash.workspace = true
 kast-util.workspace = true
+async-oneshot.workspace = true
+async-trait.workspace = true

@@ -897,8 +897,9 @@ pub trait NativeFunctionClosure: Send + Sync + 'static {
     ) -> BoxFuture<'static, eyre::Result<Value>>;
 }
 
-impl<F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static>
-    NativeFunctionClosure for F
+impl<
+        F: Fn(Kast, FnType, Value) -> BoxFuture<'static, eyre::Result<Value>> + Send + Sync + 'static,
+    > NativeFunctionClosure for F
 {
     fn call(
         &self,
@@ -949,29 +950,23 @@ impl std::fmt::Display for NativeFunction {
     }
 }
 
+#[async_trait]
 impl Inferrable for ListValue {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
-        if a.values.len() != b.values.len() {
-            eyre::bail!("list length differ");
-        }
-        let element_ty = Inferrable::make_same(a.element_ty, b.element_ty)?;
         Ok(Self {
-            values: a
-                .values
-                .into_iter()
-                .zip(b.values.into_iter())
-                .map(|(a, b)| {
-                    Ok::<_, eyre::Report>(OwnedPlace::new(
-                        Inferrable::make_same(a.into_value()?, b.into_value()?)?,
-                        Mutability::Nested,
-                    ))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-            element_ty,
+            values: Inferrable::make_same(a.values, b.values)?,
+            element_ty: Inferrable::make_same(a.element_ty, b.element_ty)?,
         })
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        let Self { values, element_ty } = self;
+        values.await_fully_inferred(cache).await?;
+        element_ty.await_fully_inferred(cache).await?;
+        Ok(())
     }
 }
 
+#[async_trait]
 impl Inferrable for ValueImpl {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(ValueImpl::Inferrable(match (a, b) {
@@ -989,8 +984,20 @@ impl Inferrable for ValueImpl {
             }
         }))
     }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        match self {
+            Self::Inferrable(value) => {
+                value.await_fully_inferred(cache).await?;
+            }
+            Self::NonInferrable(value) => {
+                value.await_fully_inferred(cache).await?;
+            }
+        }
+        Ok(())
+    }
 }
 
+#[async_trait]
 impl Inferrable for Value {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         Ok(Self {
@@ -998,8 +1005,15 @@ impl Inferrable for Value {
             ty: Inferrable::make_same(a.ty, b.ty)?,
         })
     }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        let Self { r#impl, ty } = self;
+        r#impl.await_fully_inferred(cache).await?;
+        ty.await_fully_inferred(cache).await?; // TODO is it needed?
+        Ok(())
+    }
 }
 
+#[async_trait]
 impl Inferrable for ValueShape {
     fn make_same(a: Self, b: Self) -> eyre::Result<Self> {
         macro_rules! fail {
@@ -1067,6 +1081,37 @@ impl Inferrable for ValueShape {
             (ValueShape::Target(a), ValueShape::Target(b)) if a == b => ValueShape::Target(a),
             (ValueShape::Target(_), _) => fail!(),
         })
+    }
+    async fn await_fully_inferred(&self, cache: &mut RecurseCache) -> eyre::Result<()> {
+        match self {
+            ValueShape::Unit
+            | ValueShape::Bool(_)
+            | ValueShape::Int32(_)
+            | ValueShape::Int64(_)
+            | ValueShape::Float64(_)
+            | ValueShape::Char(_)
+            | ValueShape::String(_) => {}
+            ValueShape::List(list) => list.await_fully_inferred(cache).await?,
+            ValueShape::Tuple(tuple) => tuple.await_fully_inferred(cache).await?,
+            ValueShape::Function(_) => todo!(),
+            ValueShape::Template(_) => todo!(),
+            ValueShape::Macro(_) => todo!(),
+            ValueShape::NativeFunction(_) => todo!(),
+            ValueShape::Binding(_) => {} // TODO check
+            ValueShape::Variant(_) => todo!(),
+            ValueShape::Multiset(_) => todo!(),
+            ValueShape::Contexts(_) => todo!(),
+            ValueShape::Ast(_) => {}
+            ValueShape::Expr(_) => todo!(),
+            ValueShape::Type(ty) => ty.await_fully_inferred(cache).await?,
+            ValueShape::SyntaxModule(_) | ValueShape::SyntaxDefinition(_) => {}
+            ValueShape::UnwindHandle(_) => todo!(),
+            ValueShape::Symbol(_) => {}
+            ValueShape::HashMap(_) => todo!(),
+            ValueShape::Ref(_) => todo!(),
+            ValueShape::Target(_) => todo!(),
+        }
+        Ok(())
     }
 }
 
