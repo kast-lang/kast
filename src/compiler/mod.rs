@@ -402,9 +402,7 @@ impl Compilable for TypeExpr {
     async fn compile(kast: &mut Kast, ast: &Ast) -> eyre::Result<Self> {
         Ok(match ast {
             kast_ast::Ast::Simple { token, data } => {
-                let expr: Expr = SingleTokenExpr::compile(kast, token, data)
-                    .await?
-                    .try_into()?;
+                let expr: Expr = SingleTokenExpr::compile(kast, token, data).await?.into();
                 TypeExpr::Expr {
                     expr: Box::new(expr),
                     data: data.span.clone(),
@@ -974,7 +972,7 @@ impl PlaceExpr<Span> {
 }
 
 impl TypeExpr<Span> {
-    pub fn init(self, kast: &Kast) -> BoxFuture<'_, eyre::Result<TypeExpr>> {
+    pub fn init(self, _kast: &Kast) -> BoxFuture<'_, eyre::Result<TypeExpr>> {
         let error_context = format!("while initializing {}", self.show_short());
         let r#impl = async {
             Ok::<_, eyre::Report>(match self {

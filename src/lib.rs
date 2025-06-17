@@ -260,8 +260,7 @@ impl Kast {
                         std::io::stdin()
                             .read_line(&mut s)
                             .expect("failed to read line");
-                        let s = s.trim_end_matches("\n").to_owned();
-                        s
+                        s.trim_end_matches("\n").to_owned()
                     }
                 }
                 DefaultInput

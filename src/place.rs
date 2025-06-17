@@ -34,7 +34,7 @@ impl Eq for OwnedPlace {}
 
 impl PartialOrd for OwnedPlace {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        (*self.0.read().unwrap()).partial_cmp(&*other.0.read().unwrap())
+        Some(self.cmp(other))
     }
 }
 

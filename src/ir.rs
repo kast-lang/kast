@@ -375,7 +375,7 @@ impl PlaceExpr {
                 match kast.scopes.interpreter.get(&binding.symbol) {
                     Some(value) => {
                         let value = value.clone_value().unwrap();
-                        return Self::Temporary {
+                        Self::Temporary {
                             value: Box::new(Expr::Constant {
                                 data: ExprData {
                                     captured: kast.capture(),
@@ -386,7 +386,7 @@ impl PlaceExpr {
                                 value,
                             }),
                             data: data.substitute_bindings(kast, cache),
-                        };
+                        }
                     }
                     None => Self::Binding {
                         binding,
@@ -472,12 +472,10 @@ impl SubstituteBindings for MaybeCompiledFn {
 impl SubstituteBindings for CompiledFn {
     type Target = Self;
     fn substitute_bindings(self, kast: &Kast, cache: &mut RecurseCache) -> Self::Target {
-        let result = Self {
+        Self {
             arg: self.arg.substitute_bindings(kast, cache),
             body: self.body.substitute_bindings(kast, cache),
-        };
-        // println!("sub fn = {}", result.body);
-        result
+        }
     }
 }
 

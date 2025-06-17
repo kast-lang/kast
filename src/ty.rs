@@ -551,7 +551,7 @@ impl SubstituteBindings for TypeShape {
             TypeShape::Function(f) => {
                 TypeShape::Function(Box::new((*f).substitute_bindings(kast, cache)))
             }
-            TypeShape::Template(t) => TypeShape::Template(t).into(),
+            TypeShape::Template(t) => TypeShape::Template(t),
             TypeShape::Macro(f) => {
                 TypeShape::Macro(Box::new((*f).substitute_bindings(kast, cache)))
             }

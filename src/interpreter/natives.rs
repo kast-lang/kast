@@ -36,7 +36,7 @@ impl IntoNative for ValueShape {
     fn into_native(self) -> Native {
         let expected_ty = self.ty().inferred().unwrap();
         let value: Value = self.into();
-        Box::new(move |name, expected: Type| {
+        Box::new(move |_name, expected: Type| {
             expected.infer_as(expected_ty.clone())?;
             Ok(value.clone())
         })
@@ -53,7 +53,7 @@ impl IntoNative for TypeShape {
 impl IntoNative for Type {
     fn into_native(self) -> Native {
         let value: Value = ValueShape::Type(self).into();
-        Box::new(move |name, expected: Type| {
+        Box::new(move |_name, expected: Type| {
             expected.infer_as(TypeShape::Type)?;
             Ok(value.clone())
         })

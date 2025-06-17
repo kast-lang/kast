@@ -164,7 +164,7 @@ impl Kast {
                 TypeShape::SyntaxModule => None,
                 TypeShape::SyntaxDefinition => None,
                 TypeShape::Binding(_) => None,
-                TypeShape::Target { .. } => Some(true),
+                TypeShape::Target => Some(true),
                 TypeShape::NewType { .. } => None,
             };
             if let Some(result) = is_copy {
@@ -347,13 +347,13 @@ pub struct HashMapValue {
 }
 
 impl PartialOrd for HashMapValue {
-    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
-        todo!("Maybe not do?")
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 impl Ord for HashMapValue {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
-        todo!()
+        todo!("Maybe not do?")
     }
 }
 

@@ -136,7 +136,7 @@ mod ir {
             let mut fields = LinkedHashMap::new();
             fields.insert("variant".into(), ir::Expr::String(name.into()));
             if let Some(value) = value {
-                fields.insert("value".into(), value.into());
+                fields.insert("value".into(), value);
             }
             Self::Object { fields }
         }
@@ -470,7 +470,7 @@ mod ir {
                 Self::Bool(_) => self.clone(),
                 Self::Number(_) => self.clone(),
                 Self::String(_) => self.clone(),
-                Self::List(values) => Self::List(values.into_iter().map(Self::optimize).collect()),
+                Self::List(values) => Self::List(values.iter().map(Self::optimize).collect()),
                 Self::Object { fields } => Self::Object {
                     fields: fields
                         .iter()
@@ -925,9 +925,9 @@ impl Transpiler {
     ) -> BoxFuture<'a, eyre::Result<()>> {
         let r#impl = async move {
             match expr {
-                Expr::Ref { place, data } => todo!(),
-                Expr::And { lhs, rhs, data } => todo!(),
-                Expr::Or { lhs, rhs, data } => todo!(),
+                Expr::Ref { .. } => todo!(),
+                Expr::And { .. } => todo!(),
+                Expr::Or { .. } => todo!(),
                 Expr::Assign {
                     assignee,
                     value,
@@ -941,7 +941,7 @@ impl Transpiler {
                     self.assign(assignee, ir::Expr::Binding(temp_var), stmts)
                         .await?;
                 }
-                Expr::List { values, data } => todo!(),
+                Expr::List { .. } => todo!(),
                 Expr::Unwindable { .. } => stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?)),
                 Expr::Unwind {
                     name,
@@ -957,7 +957,7 @@ impl Transpiler {
                         },
                     }));
                 }
-                Expr::InjectContext { context, data } => {
+                Expr::InjectContext { context, data: _ } => {
                     stmts.push(ir::Stmt::Assign {
                         assignee: ir::AssigneeExpr::Expr(ir::Expr::Index {
                             obj: Box::new(ir::Expr::Binding(ir::Name::context())),
@@ -968,38 +968,17 @@ impl Transpiler {
                         value: self.eval_expr(context).await?,
                     });
                 }
-                Expr::CurrentContext { data } => todo!(),
+                Expr::CurrentContext { data: _ } => todo!(),
                 Expr::Unit { data: _ } => {}
-                Expr::FunctionType {
-                    arg,
-                    contexts,
-                    result,
-                    data,
-                } => todo!(),
-                Expr::Cast {
-                    value,
-                    target,
-                    data,
-                } => todo!(),
-                Expr::Is {
-                    value,
-                    pattern,
-                    data,
-                } => todo!(),
-                Expr::Match {
-                    value,
-                    branches,
-                    data,
-                } => todo!(),
-                Expr::Newtype { def, data } => todo!(),
-                Expr::Variant { name, value, data } => todo!(),
-                Expr::MakeMultiset { values, data } => todo!(),
+                Expr::FunctionType { .. } => todo!(),
+                Expr::Cast { .. } => todo!(),
+                Expr::Is { .. } => todo!(),
+                Expr::Match { .. } => todo!(),
+                Expr::Newtype { .. } => todo!(),
+                Expr::Variant { .. } => todo!(),
+                Expr::MakeMultiset { .. } => todo!(),
                 Expr::Use { .. } => {}
-                Expr::Recursive {
-                    body,
-                    compiler_scope,
-                    data,
-                } => todo!(),
+                Expr::Recursive { .. } => todo!(),
                 Expr::If {
                     condition,
                     then_case,
@@ -1021,9 +1000,9 @@ impl Transpiler {
                         self.eval_expr_as_stmts(expr, stmts).await?;
                     }
                 }
-                Expr::Constant { value, data } => todo!(),
-                Expr::Number { raw, data } => todo!(),
-                Expr::String { token, data } => todo!(),
+                Expr::Constant { .. } => todo!(),
+                Expr::Number { .. } => todo!(),
+                Expr::String { .. } => todo!(),
                 Expr::Native { .. } => {
                     stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
                 }
@@ -1053,25 +1032,14 @@ impl Transpiler {
                 Expr::Call { .. } => {
                     stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
                 }
-                Expr::CallMacro { r#macro, arg, data } => todo!(),
+                Expr::CallMacro { .. } => todo!(),
                 Expr::Scope { expr, data: _ } => self.eval_expr_as_stmts(expr, stmts).await?,
-                Expr::Function { ty, compiled, data } => todo!(),
-                Expr::Template { compiled, data } => todo!(),
-                Expr::Instantiate {
-                    template,
-                    arg,
-                    data,
-                } => todo!(),
-                Expr::Tuple { tuple, data } => todo!(),
-                Expr::Ast {
-                    expr_root,
-                    definition,
-                    values,
-                    hygiene,
-                    def_site,
-                    data,
-                } => todo!(),
-                Expr::ReadPlace { place, data } => todo!(),
+                Expr::Function { .. } => todo!(),
+                Expr::Template { .. } => todo!(),
+                Expr::Instantiate { .. } => todo!(),
+                Expr::Tuple { .. } => todo!(),
+                Expr::Ast { .. } => todo!(),
+                Expr::ReadPlace { .. } => todo!(),
                 Expr::TargetDependent { branches, data: _ } => {
                     let body = self
                         .kast
@@ -1079,7 +1047,7 @@ impl Transpiler {
                         .await?;
                     self.eval_expr_as_stmts(body, stmts).await?;
                 }
-                Expr::Type { expr, data } => todo!(),
+                Expr::Type { .. } => todo!(),
             }
             Ok::<_, eyre::Report>(())
         };
@@ -1096,8 +1064,8 @@ impl Transpiler {
             Ok(match expr {
                 Expr::Type { .. } => ir::Expr::Undefined,
                 Expr::Ref { place, data: _ } => self.eval_place(place).await?,
-                Expr::And { lhs, rhs, data } => todo!(),
-                Expr::Or { lhs, rhs, data } => todo!(),
+                Expr::And { .. } => todo!(),
+                Expr::Or { .. } => todo!(),
                 Expr::Assign { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
                 Expr::List { values, data: _ } => ir::Expr::List({
                     let mut result = Vec::new();
@@ -1149,11 +1117,7 @@ impl Transpiler {
                     });
                     stmts
                 }),
-                Expr::Unwind {
-                    name,
-                    value,
-                    data: _,
-                } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
+                Expr::Unwind { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
                 Expr::InjectContext { .. } => {
                     ir::Expr::scope(self.eval_expr_into_stmts(expr).await?)
                 }
@@ -1165,12 +1129,7 @@ impl Transpiler {
                     }
                 }
                 Expr::Unit { data: _ } => ir::Expr::Undefined,
-                Expr::FunctionType {
-                    arg,
-                    contexts,
-                    result,
-                    data,
-                } => todo!(),
+                Expr::FunctionType { .. } => todo!(),
                 Expr::Cast { .. } => {
                     let value = self
                         .kast
@@ -1212,14 +1171,18 @@ impl Transpiler {
                     stmts
                 }),
                 Expr::Newtype { def: _, data: _ } => ir::Expr::Undefined,
-                Expr::Variant { name, value, data } => ir::Expr::new_variant(
+                Expr::Variant {
+                    name,
+                    value,
+                    data: _,
+                } => ir::Expr::new_variant(
                     name,
                     match value {
                         None => None,
                         Some(value) => Some(self.eval_expr(value).await?),
                     },
                 ),
-                Expr::MakeMultiset { values, data } => todo!(),
+                Expr::MakeMultiset { .. } => todo!(),
                 Expr::Use { .. } => ir::Expr::Undefined,
                 Expr::Recursive {
                     body,
@@ -1350,14 +1313,14 @@ impl Transpiler {
                         self.eval_expr(arg).await?,
                     ],
                 },
-                Expr::CallMacro { r#macro, arg, data } => todo!(),
+                Expr::CallMacro { .. } => todo!(),
                 Expr::Scope { expr, data: _ } => self.eval_expr(expr).await?,
                 Expr::Function {
                     ty: _,
                     compiled,
                     data: _,
                 } => self.transpile_compiled_fn(compiled).await?,
-                Expr::Template { compiled, data } => todo!(),
+                Expr::Template { .. } => todo!(),
                 Expr::Instantiate {
                     template,
                     arg,
@@ -1397,14 +1360,7 @@ impl Transpiler {
                         fields
                     },
                 },
-                Expr::Ast {
-                    expr_root,
-                    definition,
-                    values,
-                    hygiene,
-                    def_site,
-                    data,
-                } => todo!(),
+                Expr::Ast { .. } => todo!(),
                 Expr::ReadPlace { place, data: _ } => self.read_place(place).await?,
                 Expr::TargetDependent { branches, data: _ } => {
                     let body = self
@@ -1472,17 +1428,17 @@ impl Transpiler {
                 ValueShape::Multiset(_) => todo!(),
                 ValueShape::Contexts(_) => todo!(),
                 ValueShape::Ast(_) => todo!(),
-                ValueShape::Expr(expr) => todo!(),
+                ValueShape::Expr(_) => todo!(),
                 ValueShape::Type(_) => {
                     ir::Expr::Undefined // TODO
                 }
                 ValueShape::SyntaxModule(_) => todo!(),
                 ValueShape::SyntaxDefinition(_) => todo!(),
-                ValueShape::UnwindHandle(unwind_handle) => todo!(),
-                ValueShape::Symbol(symbol) => todo!(),
-                ValueShape::HashMap(hash_map) => todo!(),
-                ValueShape::Ref(place_ref) => todo!(),
-                ValueShape::Target(target) => todo!(),
+                ValueShape::UnwindHandle(_) => todo!(),
+                ValueShape::Symbol(_) => todo!(),
+                ValueShape::HashMap(_) => todo!(),
+                ValueShape::Ref(_) => todo!(),
+                ValueShape::Target(_) => todo!(),
             })
         }
         .boxed()
@@ -1610,7 +1566,7 @@ impl Transpiler {
             Expr::Tuple { .. } => {}
             Expr::Ast { .. } => {}
             Expr::ReadPlace { .. } => {}
-            Expr::TargetDependent { branches, data } => todo!(),
+            Expr::TargetDependent { .. } => todo!(),
             Expr::Type { .. } => {}
         }
         Ok(())

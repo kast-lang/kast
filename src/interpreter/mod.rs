@@ -322,12 +322,7 @@ impl Kast {
                     },
                 })
                 .into(),
-                TypeExpr::Function {
-                    arg,
-                    result,
-                    contexts,
-                    data: _,
-                } => todo!(),
+                TypeExpr::Function { .. } => todo!(),
                 TypeExpr::Expr { expr, data: _ } => self.eval(expr).await?.into_type()?,
             };
             Ok::<_, eyre::Report>(result)
@@ -737,13 +732,8 @@ impl Kast {
                                 .map_err(|tuple| eyre!("{tuple} can not be cast into type"))?
                         }
                         Ok(TypeShape::Tuple(..)) => {
-                            let result = ValueShape::Tuple(TupleValue::new_unnamed(
-                                result,
-                                result_ty.clone(),
-                            ))
-                            .into();
-                            // println!("{result} :: {result_ty}");
-                            result
+                            ValueShape::Tuple(TupleValue::new_unnamed(result, result_ty.clone()))
+                                .into()
                         }
                         Ok(ty) => eyre::bail!("tuple expr type inferred as {ty}???"),
                         Err(_) => eyre::bail!("tuple type could not be inferred???"),
