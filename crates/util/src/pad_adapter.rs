@@ -142,10 +142,11 @@ impl<'a, 'c> PadAdapter<'a, 'c> {
 impl std::fmt::Write for PadAdapter<'_, '_> {
     fn write_str(&mut self, mut s: &str) -> std::fmt::Result {
         while !s.is_empty() {
-            if self.state.on_newline {
+            let newline_pos = s.find('\n');
+            if self.state.on_newline && newline_pos != Some(0) {
                 self.fmt.write_str(self.padding)?;
             }
-            let split = match s.find('\n') {
+            let split = match newline_pos {
                 Some(pos) => {
                     self.state.on_newline = true;
                     pos + 1
