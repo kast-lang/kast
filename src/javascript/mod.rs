@@ -20,7 +20,7 @@ macro_rules! todo {
         eyre::bail!("TODO at {}:{}:{}", file!(), line!(), column!())
     };
     ($($t:tt)*) => {
-        return Err(eyre!($($t)*).wrap_err(format!("{}:{}:{}", file!(), line!(), column!())))
+        return Err(eyre!($($t)*).wrap_err(format!("TODO at {}:{}:{}", file!(), line!(), column!())))
     };
 }
 
