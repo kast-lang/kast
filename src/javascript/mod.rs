@@ -134,6 +134,9 @@ mod ir {
             catch_var: Name,
             catch_body: Vec<Stmt>,
         },
+        Scope {
+            body: Vec<Stmt>,
+        },
         Raw(String),
     }
 
@@ -441,6 +444,11 @@ mod ir {
                             write_stmts(f, catch_body, self.options)?;
                             write!(f, "}}")?;
                         }
+                        Stmt::Scope { body } => {
+                            write!(f, "{{")?;
+                            write_stmts(f, body, self.options)?;
+                            write!(f, "}}")?;
+                        }
                     }
                     Ok(())
                 }
@@ -683,6 +691,9 @@ mod ir {
                     catch_var: catch_var.clone(),
                     catch_body: optimize_stmts(catch_body),
                 },
+                Self::Scope { body } => Self::Scope {
+                    body: optimize_stmts(body),
+                },
             }
         }
     }
@@ -766,6 +777,7 @@ mod ir {
                     catch_var: _,
                     catch_body: _,
                 } => has_return(body),
+                Stmt::Scope { body } => has_return(body),
             };
             if stmt_has_return {
                 return true;
@@ -1046,7 +1058,11 @@ impl Transpiler {
                     stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
                 }
                 Expr::CallMacro { .. } => todo!(),
-                Expr::Scope { expr, data: _ } => self.eval_expr_as_stmts(expr, stmts).await?,
+                Expr::Scope { expr, data: _ } => {
+                    let mut body = Vec::new();
+                    self.eval_expr_as_stmts(expr, &mut body).await?;
+                    stmts.push(ir::Stmt::Scope { body });
+                }
                 Expr::Function { .. } => todo!(),
                 Expr::Template { .. } => todo!(),
                 Expr::Instantiate { .. } => todo!(),
@@ -1305,11 +1321,16 @@ impl Transpiler {
                             };
                             let var = &code[..index];
                             code = code[index..].strip_prefix(')').unwrap();
-                            let value = compiler_scope
-                                .lookup(var, Hygiene::DefSite, self.kast.spawn_id)
-                                .await
-                                .ok_or_eyre(format!("{var} not found???"))?;
-                            let value = self.transpile(&value).await?;
+                            let value = match var {
+                                "$ctx" => ir::Expr::Binding(ir::Name::context()),
+                                _ => {
+                                    let value = compiler_scope
+                                        .lookup(var, Hygiene::DefSite, self.kast.spawn_id)
+                                        .await
+                                        .ok_or_eyre(format!("{var} not found???"))?;
+                                    self.transpile(&value).await?
+                                }
+                            };
                             write!(result, "{}", value.show(ShowOptions::Minified))?;
                         } else {
                             write!(result, "{}", code)?;
