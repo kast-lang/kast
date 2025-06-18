@@ -161,8 +161,9 @@ fn main() -> eyre::Result<()> {
                 kast.add_local(symbol, value);
             }
             {
-                let prerun = prerun
-                    .unwrap_or("use std.prelude.*; with default_number_type_based_on_dot;".into());
+                let prerun = prerun.unwrap_or(
+                    "use std.prelude.*; with std.default_number_type_based_on_dot;".into(),
+                );
                 kast.lock()
                     .unwrap()
                     .eval_source::<Value>(
