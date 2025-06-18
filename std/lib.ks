@@ -406,21 +406,21 @@ const web = include "./web/_mod.ks";
 const prelude = (
     # TODO use type, bool, int32, int64, float64, char, string;
     # .type = type,
-    .bool = bool,
-    .int32 = int32,
-    .int64 = int64,
-    .float64 = float64,
-    .char = char,
-    .string = string,
+    .bool,
+    .int32,
+    .int64,
+    .float64,
+    .char,
+    .string,
     
-    .print = print,
+    .print,
 
-    .Option = Option,
-    .Either = Either,
-    .Result = Result,
+    .Option,
+    .Either,
+    .Result,
     
-    .panic = panic,
-    .dbg = dbg,
+    .panic,
+    .dbg,
 
     .List = collections.List,
     .HashMap = collections.HashMap,
