@@ -29,7 +29,7 @@ const iter = forall[T] {
         | target.name == "interpreter" => native "list.iter"
         | target.name == "javascript" => list_ref => (
             let handle = (current generator_handler[&T]).handle;
-            native "(()=>{let list=$(list_ref).get();for(let i=0;i<list.length;i++)$(handle)($($ctx),{get:()=>list[i],set:(v)=>list[i]=v})})()"
+            native "await(async()=>{let list=$(list_ref).get();for(let i=0;i<list.length;i++)await $(handle)($($ctx),{get:()=>list[i],set:(v)=>list[i]=v})})()"
         )
     } :: &list[T] -> () with generator_handler[&T]
 };

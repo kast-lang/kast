@@ -97,7 +97,6 @@ let max_target_nodes = fn(.edges1 :: list[Edge], .edges2 :: list[Edge]) -> list[
     let tree2 = make_tree &edges2;
     let tree2_data = &tree2 |> tree_data;
     let max_tree2_added_targets = max(HashSet.size &tree2_data.odd, HashSet.size &tree2_data.even);
-    # dbg max_tree2_added_targets;
     # for v in 0..tree_size tree1
     let mut vertex_id = 0;
     let mut result = list[];
@@ -140,28 +139,33 @@ test(
     .expected_result = list[3,6,6,6,6],
 );
 
-let max_target_nodes = fn(.edges1 :: list[list[int32]], .edges2 :: list[list[int32]]) -> list[int32] {
-    let convert = fn(edges :: list[list[int32]]) -> list[Edge] {
-        let mut result = list[];
-        for edge :: &list[int32] in List.iter &edges {
-            if List.length edge != 2 then panic "wtf";
-            let a, b = List.get(edge, 0), List.get(edge, 1);
-            let edge2 :: Edge = a^, b^;
-            List.push(&result, edge2);
+cfg_if {
+    | target.name == "interpreter" => (
+        let max_target_nodes = fn(.edges1 :: list[list[int32]], .edges2 :: list[list[int32]]) -> list[int32] {
+            let convert = fn(edges :: list[list[int32]]) -> list[Edge] {
+                let mut result = list[];
+                for edge :: &list[int32] in List.iter &edges {
+                    if List.length edge != 2 then panic "wtf";
+                    let a, b = List.get(edge, 0), List.get(edge, 1);
+                    let edge2 :: Edge = a^, b^;
+                    List.push(&result, edge2);
+                };
+                result
+            };
+            let edges1 = edges1 |> convert;
+            let edges2 = edges2 |> convert;
+            max_target_nodes(.edges1, .edges2)
         };
-        result
-    };
-    let edges1 = edges1 |> convert;
-    let edges2 = edges2 |> convert;
-    max_target_nodes(.edges1, .edges2)
-};
-let js_code :: string = std.javascript.transpile max_target_nodes;
-print "var f=";
-print &js_code;
+        let js_code :: string = std.javascript.transpile max_target_nodes;
+        print "var f=";
+        print &js_code;
 
-print "maxTargetNodes=({edges1,edges2})=>f({},{edges1,edges2})";
+        print "maxTargetNodes=({edges1,edges2})=>f({},{edges1,edges2})";
 
-# print "console.log(maxTargetNodes({edges1:[[0,1],[0,2],[2,3],[2,4]],edges2:[[0,1],[0,2],[0,3],[2,7],[1,4],[4,5],[4,6]]}))";
-# print "console.log(maxTargetNodes({edges1:[[0,1],[0,2],[0,3],[0,4]],edges2:[[0,1],[1,2],[2,3]]}))";
-print "let input = require(`${process.cwd()}/examples/leetcode/3373.input.json`);";
-print "console.log(maxTargetNodes(input))"
+        # print "console.log(maxTargetNodes({edges1:[[0,1],[0,2],[2,3],[2,4]],edges2:[[0,1],[0,2],[0,3],[2,7],[1,4],[4,5],[4,6]]}))";
+        # print "console.log(maxTargetNodes({edges1:[[0,1],[0,2],[0,3],[0,4]],edges2:[[0,1],[1,2],[2,3]]}))";
+        print "let input = require(`${process.cwd()}/examples/untested/leetcode/3373.input.json`);";
+        print "console.log(maxTargetNodes(input))";
+    )
+    | true => ()
+}
