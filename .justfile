@@ -2,6 +2,7 @@ default:
     just --list
 
 testjs *ARGS:
+    rm -rf target/test-js
     TEST_ENV=nodejs RUST_MIN_STACK=33554432 cargo test --workspace --no-default-features -- {{ARGS}}
 testi *ARGS:
     RUST_MIN_STACK=33554432 cargo test --workspace --no-default-features -- {{ARGS}}

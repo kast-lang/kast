@@ -14,6 +14,8 @@ pub enum Command {
         path: PathBuf,
         #[clap(long)]
         no_stdlib: bool,
+        #[clap(long)]
+        target: Option<CompilationTarget>,
     },
     Compile {
         path: PathBuf,
@@ -69,6 +71,7 @@ impl Args {
                 Some(path) => Command::Run {
                     path,
                     no_stdlib: false,
+                    target: None,
                 },
                 None => Command::Repl {
                     path: None,

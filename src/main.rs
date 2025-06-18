@@ -3,7 +3,7 @@ mod cli;
 mod repl_helper;
 
 use std::{
-    io::{IsTerminal, Read},
+    io::{IsTerminal, Read, Write},
     sync::{Arc, Mutex},
 };
 
@@ -101,17 +101,47 @@ fn main() -> eyre::Result<()> {
                 print!("{result}");
             }
         }
-        cli::Command::Run { path, no_stdlib } => {
+        cli::Command::Run {
+            path,
+            no_stdlib,
+            target,
+        } => {
             let mut kast = match no_stdlib {
                 true => Kast::new_nostdlib(&path),
                 false => Kast::new(&path),
             }
             .unwrap();
             init_log_level();
-            let value = kast.eval_file(path)?;
-            match value.clone().inferred() {
-                Some(ValueShape::Unit) => {}
-                _ => tracing::info!("evaluated to {value}"),
+            match target.unwrap_or(cli::CompilationTarget::Ir) {
+                cli::CompilationTarget::Ir => {
+                    let value = kast.eval_file(path)?;
+                    match value.clone().inferred() {
+                        Some(ValueShape::Unit) => {}
+                        _ => tracing::info!("evaluated to {value}"),
+                    }
+                }
+                cli::CompilationTarget::JavaScript { engine } => {
+                    match engine {
+                        javascript::JavaScriptEngineType::Node => {}
+                        javascript::JavaScriptEngineType::Browser => todo!(),
+                    }
+                    let ir = kast.compile_file(path)?;
+                    let js = futures_lite::future::block_on(kast.transpile_to_javascript(
+                        engine,
+                        &ValueShape::Expr(Parc::new(ir)).into(),
+                        javascript::ShowOptions::Pretty,
+                    ))?;
+                    let mut js_file = tempfile::NamedTempFile::new()?;
+                    js_file.as_file_mut().write_all(js.as_bytes())?;
+                    let mut cmd = std::process::Command::new(
+                        std::env::var("NODE_EXE").as_deref().unwrap_or("node"),
+                    );
+                    cmd.arg(js_file.path());
+                    let status = cmd.status()?;
+                    if !status.success() {
+                        eyre::bail!("node returned {status}");
+                    }
+                }
             }
         }
         cli::Command::ParseAst => {
