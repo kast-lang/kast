@@ -32,19 +32,6 @@ const bool :: type = native "bool";
 impl syntax @"syntax".@"true" = macro _ => `(native "true");
 impl syntax @"syntax".@"false" = macro _ => `(native "false");
 
-# TODO where T: Num or smth
-const @"op unary +" = forall[T] { (x :: T,) => x };
-impl syntax @"syntax".@"op unary +" = macro (x,) => `(@"op unary +" $x);
-const @"op unary -" = forall[T] { native "unary -" :: T -> T };
-impl syntax @"syntax".@"op unary -" = macro (x,) => `(@"op unary -" $x);
-
-# nobody's using spacetimedb, but maybe they should
-impl syntax @"syntax".@"op binary +" = macro (.lhs, .rhs) => `(@"op binary +" (.lhs = $lhs, .rhs = $rhs));
-impl syntax @"syntax".@"op binary -" = macro (.lhs, .rhs) => `(@"op binary -" (.lhs = $lhs, .rhs = $rhs));
-impl syntax @"syntax".@"op binary *" = macro (.lhs, .rhs) => `(@"op binary *" (.lhs = $lhs, .rhs = $rhs));
-impl syntax @"syntax".@"op binary /" = macro (.lhs, .rhs) => `(@"op binary /" (.lhs = $lhs, .rhs = $rhs));
-impl syntax @"syntax".@"op binary %" = macro (.lhs, .rhs) => `(@"op binary %" (.lhs = $lhs, .rhs = $rhs));
-
 impl syntax @"syntax".@"op binary <" = macro (.lhs, .rhs) => `(
     @"op binary <"(.lhs = & $lhs, .rhs = & $rhs)
 );
@@ -100,6 +87,28 @@ const @"op binary >" = forall[T] {
         | target.name == "javascript" => (.lhs, .rhs) => ( native "($(lhs).get()>$(rhs).get())" )
     } :: (.lhs = &T, .rhs = &T) -> bool
 };
+
+# TODO where T: Num or smth
+const @"op unary +" = forall[T] { (x :: T,) => x };
+impl syntax @"syntax".@"op unary +" = macro (x,) => `(@"op unary +" $x);
+const @"op unary -" = forall[T] {
+    fn(x :: T) -> T {
+        cfg_if {
+            | target.name == "interpreter" =>
+                native "unary -" x
+            | target.name == "javascript" =>
+                native "-$(x)"
+        }
+    }
+};
+impl syntax @"syntax".@"op unary -" = macro (x,) => `(@"op unary -" $x);
+
+# nobody's using spacetimedb, but maybe they should
+impl syntax @"syntax".@"op binary +" = macro (.lhs, .rhs) => `(@"op binary +" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary -" = macro (.lhs, .rhs) => `(@"op binary -" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary *" = macro (.lhs, .rhs) => `(@"op binary *" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary /" = macro (.lhs, .rhs) => `(@"op binary /" (.lhs = $lhs, .rhs = $rhs));
+impl syntax @"syntax".@"op binary %" = macro (.lhs, .rhs) => `(@"op binary %" (.lhs = $lhs, .rhs = $rhs));
 
 impl syntax @"syntax".@"op +=" = macro (.target, .value) => `($target = $target + $value);
 impl syntax @"syntax".@"op -=" = macro (.target, .value) => `($target = $target - $value);

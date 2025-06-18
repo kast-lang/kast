@@ -1403,7 +1403,7 @@ impl Transpiler {
                     stmts.push(ir::Stmt::Return(self.eval_expr(last, &ctx).await?));
                     stmts
                 }),
-                Expr::Constant { value, data: _ } => self.transpile(value).await?,
+                Expr::Constant { value, data: _ } => self.constant(value).await?,
                 Expr::Number { raw, data: _ } => {
                     ir::Expr::Number(ir::Number(raw.clone())) // TODO based on type
                 }
@@ -1552,8 +1552,41 @@ impl Transpiler {
         }
         .boxed()
     }
+}
 
-    fn transpile<'a>(&'a mut self, value: &'a Value) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
+/// This is a hack
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum FailMode {
+    Error,
+    LeaveUndefined,
+    LeaveUndefinedFieldsOnly,
+}
+
+impl Transpiler {
+    async fn constant(&mut self, value: &Value) -> eyre::Result<ir::Expr> {
+        let name = ir::Name::unique("constant");
+        let value = self
+            .transpile_with_mode(value, FailMode::LeaveUndefinedFieldsOnly)
+            .await?;
+        self.init_code.push(ir::Stmt::Assign {
+            assignee: ir::AssigneeExpr::NewVar(name.clone()),
+            value,
+        });
+        Ok(ir::Expr::Binding(name))
+    }
+    async fn transpile(&mut self, value: &Value) -> eyre::Result<ir::Expr> {
+        self.transpile_with_mode(value, FailMode::Error).await
+    }
+    fn transpile_with_mode<'a>(
+        &'a mut self,
+        value: &'a Value,
+        fail_mode: FailMode,
+    ) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
+        let field_fail_mode = match fail_mode {
+            FailMode::Error => FailMode::Error,
+            FailMode::LeaveUndefined => FailMode::LeaveUndefined,
+            FailMode::LeaveUndefinedFieldsOnly => FailMode::LeaveUndefined,
+        };
         async move {
             let value = value.as_inferred()?;
             let value: &ValueShape = &value;
@@ -1569,7 +1602,7 @@ impl Transpiler {
                     let mut result = Vec::new();
                     for place in list.values.iter() {
                         let value = place.read_value()?;
-                        result.push(self.transpile(&value).await?);
+                        result.push(self.transpile_with_mode(&value, field_fail_mode).await?);
                     }
                     result
                 }),
@@ -1577,7 +1610,10 @@ impl Transpiler {
                     fields: {
                         let mut result = LinkedHashMap::new();
                         for (member, value) in tuple.values()?.into_iter() {
-                            result.insert(member.to_string(), self.transpile(&value).await?);
+                            result.insert(
+                                member.to_string(),
+                                self.transpile_with_mode(&value, field_fail_mode).await?,
+                            );
                         }
                         result
                     },
@@ -1596,7 +1632,7 @@ impl Transpiler {
                         None => None,
                         Some(place) => {
                             let value = place.read_value()?;
-                            Some(self.transpile(&value).await?)
+                            Some(self.transpile_with_mode(&value, field_fail_mode).await?)
                         }
                     },
                 ),
@@ -1616,6 +1652,12 @@ impl Transpiler {
                 ValueShape::Target(_) => todo!(),
             })
         }
+        .map(move |result| {
+            if let (Err(_), FailMode::LeaveUndefined) = (&result, fail_mode) {
+                return Ok(ir::Expr::Undefined);
+            }
+            result
+        })
         .boxed()
     }
 
@@ -1843,7 +1885,12 @@ fn captured_name(place_ref: &PlaceRef) -> ir::Name {
 impl Transpiler {
     async fn process_captured(&mut self) -> eyre::Result<()> {
         while let Some(unprocessed) = self.captured_unprocessed.pop() {
-            let value = self.transpile(&*unprocessed.read_value()?).await?;
+            let value = self
+                .transpile_with_mode(
+                    &*unprocessed.read_value()?,
+                    FailMode::LeaveUndefinedFieldsOnly,
+                )
+                .await?;
             self.init_code.push(ir::Stmt::Assign {
                 assignee: ir::AssigneeExpr::NewVar(captured_name(&unprocessed)),
                 value,
