@@ -24,6 +24,16 @@ macro_rules! todo {
     };
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SyncMode {
+    Sync,
+    Async,
+}
+
+impl SyncMode {
+    const ALL: [Self; 2] = [Self::Sync, Self::Async];
+}
+
 mod ir {
     use super::*;
 
@@ -128,6 +138,52 @@ mod ir {
                 Self::Raw(_) => true, // can be anything
             }
         }
+
+        pub fn call(sync_mode: SyncMode, f: Expr, args: Vec<Expr>) -> Self {
+            match sync_mode {
+                SyncMode::Sync => Self::SyncCall {
+                    f: Box::new(f),
+                    args,
+                },
+                SyncMode::Async => Self::AwaitCall {
+                    f: Box::new(f),
+                    args,
+                },
+            }
+        }
+
+        pub fn make_fn(sync_mode: SyncMode, args: Vec<Name>, body: Vec<Stmt>) -> Self {
+            match sync_mode {
+                SyncMode::Sync => Self::SyncFn { args, body },
+                SyncMode::Async => Self::AsyncFn { args, body },
+            }
+        }
+
+        pub fn as_call(&self, sync_mode: SyncMode) -> Option<SomeCall<'_>> {
+            match (self, sync_mode) {
+                (Self::AwaitCall { f, args }, SyncMode::Async) => Some(SomeCall { f, args }),
+                (Self::SyncCall { f, args }, SyncMode::Sync) => Some(SomeCall { f, args }),
+                _ => None,
+            }
+        }
+
+        pub fn as_fn(&self, sync_mode: SyncMode) -> Option<SomeFn<'_>> {
+            match (self, sync_mode) {
+                (Self::AsyncFn { args, body }, SyncMode::Async) => Some(SomeFn { args, body }),
+                (Self::SyncFn { args, body }, SyncMode::Sync) => Some(SomeFn { args, body }),
+                _ => None,
+            }
+        }
+    }
+
+    pub struct SomeCall<'a> {
+        pub f: &'a Expr,
+        pub args: &'a [Expr],
+    }
+
+    pub struct SomeFn<'a> {
+        pub args: &'a [Name],
+        pub body: &'a [Stmt],
     }
 
     #[must_use]
@@ -570,11 +626,15 @@ mod ir {
 
                     /// from: ((args) => { ...; return obj; })(args)["field"]
                     /// into: ((args) => { ...; return obj["field"]; })(args)
-                    fn inline_lambda_obj_field(obj: &Expr, index: &Expr) -> Option<Expr> {
-                        let Expr::AwaitCall { f, args } = obj else {
+                    fn inline_lambda_obj_field(
+                        sync: SyncMode,
+                        obj: &Expr,
+                        index: &Expr,
+                    ) -> Option<Expr> {
+                        let Some(SomeCall { f, args }) = obj.as_call(sync) else {
                             return None;
                         };
-                        let Expr::AsyncFn { args: f_args, body } = &**f else {
+                        let Some(SomeFn { args: f_args, body }) = f.as_fn(sync) else {
                             return None;
                         };
                         let (Stmt::Return(ret), before_return) = body.split_last()? else {
@@ -584,25 +644,25 @@ mod ir {
                             return None;
                         }
                         Some(
-                            Expr::AwaitCall {
-                                f: Box::new(Expr::AsyncFn {
-                                    args: f_args.clone(),
-                                    body: {
-                                        let mut body = before_return.to_vec();
-                                        body.push(Stmt::Return(Expr::Index {
-                                            obj: Box::new(ret.clone()),
-                                            index: Box::new(index.clone()),
-                                        }));
-                                        body
-                                    },
+                            Expr::call(
+                                sync,
+                                Expr::make_fn(sync, f_args.to_vec(), {
+                                    let mut body = before_return.to_vec();
+                                    body.push(Stmt::Return(Expr::Index {
+                                        obj: Box::new(ret.clone()),
+                                        index: Box::new(index.clone()),
+                                    }));
+                                    body
                                 }),
-                                args: args.clone(),
-                            }
+                                args.to_vec(),
+                            )
                             .optimize(), // TODO optimizes body again?
                         )
                     }
-                    if let Some(result) = inline_lambda_obj_field(&obj, &index) {
-                        return result;
+                    for sync_mode in SyncMode::ALL {
+                        if let Some(result) = inline_lambda_obj_field(sync_mode, &obj, &index) {
+                            return result;
+                        }
                     }
 
                     Self::Index {
@@ -615,85 +675,83 @@ mod ir {
                     let b = b.optimize();
                     Self::NotEq(Box::new(a), Box::new(b))
                 }
-                Self::SyncCall { f, args } => Self::SyncCall {
-                    f: Box::new(f.optimize()),
-                    args: args.iter().map(Self::optimize).collect(),
-                },
-                Self::AwaitCall { f, args } => {
-                    let f = f.optimize();
-                    let args: Vec<Self> = args.iter().map(Self::optimize).collect();
-
-                    /// from: (() => { return x })()
-                    /// into: x
-                    fn lambda_return_call(f: &Expr, args: &[Expr]) -> Option<Expr> {
-                        if !args.is_empty() {
-                            return None;
-                        }
-                        let Expr::AsyncFn { args: f_args, body } = f else {
-                            return None;
-                        };
-                        if !f_args.is_empty() {
-                            return None;
-                        }
-                        let [stmt] = body.as_slice() else { return None };
-                        let Stmt::Return(expr) = stmt else {
-                            return None;
-                        };
-                        // already optimized
-                        Some(expr.clone())
-                    }
-                    if let Some(result) = lambda_return_call(&f, &args) {
-                        return result;
-                    }
-
-                    /// from: ((args) => { ...; return f; })(args)(outer_args)
-                    /// into: ((args) => { ...; return f(outer_args); })(args)
-                    fn inline_lambda_f_call(outer_f: &Expr, outer_args: &[Expr]) -> Option<Expr> {
-                        if outer_args.iter().any(Expr::has_bindings) {
-                            return None;
-                        }
-                        let Expr::AwaitCall { f, args } = outer_f else {
-                            return None;
-                        };
-                        let Expr::AsyncFn { args: f_args, body } = &**f else {
-                            return None;
-                        };
-                        let (Stmt::Return(ret), before_return) = body.split_last()? else {
-                            return None;
-                        };
-                        if has_return(before_return) {
-                            return None;
-                        }
-                        Some(
-                            Expr::AwaitCall {
-                                f: Box::new(Expr::AsyncFn {
-                                    args: f_args.clone(),
-                                    body: {
-                                        let mut body = before_return.to_vec();
-                                        body.push(Stmt::Return(Expr::AwaitCall {
-                                            f: Box::new(ret.clone()),
-                                            args: outer_args.to_vec(),
-                                        }));
-                                        body
-                                    },
-                                }),
-                                args: args.clone(),
-                            }
-                            .optimize(), // TODO optimizes body again?
-                        )
-                    }
-                    if let Some(result) = inline_lambda_f_call(&f, &args) {
-                        return result;
-                    }
-
-                    Self::AwaitCall {
-                        f: Box::new(f),
-                        args,
-                    }
-                }
+                Self::SyncCall { f, args } => optimize_call(SyncMode::Sync, f, args),
+                Self::AwaitCall { f, args } => optimize_call(SyncMode::Async, f, args),
                 Self::Raw(_) => self.clone(),
             }
         }
+    }
+
+    fn optimize_call(sync_mode: SyncMode, f: &Expr, args: &[Expr]) -> Expr {
+        let f = f.optimize();
+        let args: Vec<Expr> = args.iter().map(Expr::optimize).collect();
+
+        /// from: (() => { return x })()
+        /// into: x
+        fn lambda_return_call(sync_mode: SyncMode, f: &Expr, args: &[Expr]) -> Option<Expr> {
+            if !args.is_empty() {
+                return None;
+            }
+            let Some(SomeFn { args: f_args, body }) = f.as_fn(sync_mode) else {
+                return None;
+            };
+            if !f_args.is_empty() {
+                return None;
+            }
+            let [stmt] = body else { return None };
+            let Stmt::Return(expr) = stmt else {
+                return None;
+            };
+            // already optimized
+            Some(expr.clone())
+        }
+        if let Some(result) = lambda_return_call(sync_mode, &f, &args) {
+            return result;
+        }
+
+        /// from: ((args) => { ...; return f; })(args)(outer_args)
+        /// into: ((args) => { ...; return f(outer_args); })(args)
+        fn inline_lambda_f_call(
+            sync_mode: SyncMode,
+            outer_f: &Expr,
+            outer_args: &[Expr],
+        ) -> Option<Expr> {
+            if outer_args.iter().any(Expr::has_bindings) {
+                return None;
+            }
+            let Some(SomeCall { f, args }) = outer_f.as_call(sync_mode) else {
+                return None;
+            };
+            let Some(SomeFn { args: f_args, body }) = f.as_fn(sync_mode) else {
+                return None;
+            };
+            let (Stmt::Return(ret), before_return) = body.split_last()? else {
+                return None;
+            };
+            if has_return(before_return) {
+                return None;
+            }
+            Some(
+                Expr::call(
+                    sync_mode,
+                    Expr::make_fn(sync_mode, f_args.to_vec(), {
+                        let mut body = before_return.to_vec();
+                        body.push(Stmt::Return(Expr::call(
+                            sync_mode,
+                            ret.clone(),
+                            outer_args.to_vec(),
+                        )));
+                        body
+                    }),
+                    args.to_vec(),
+                )
+                .optimize(), // TODO optimizes body again?
+            )
+        }
+        if let Some(result) = inline_lambda_f_call(sync_mode, &f, &args) {
+            return result;
+        }
+        Expr::call(sync_mode, f, args)
     }
 
     impl AssigneeExpr {
@@ -744,19 +802,19 @@ mod ir {
 
     fn optimize_stmts(stmts: &[Stmt]) -> Vec<Stmt> {
         let mut result = Vec::new();
-        for stmt in stmts {
+        'stmts: for stmt in stmts {
             let stmt = stmt.optimize();
 
             /// from: return (() => { body })();
             /// into: body
-            fn return_lambda_call(stmt: &Stmt) -> Option<Vec<Stmt>> {
+            fn return_lambda_call(sync_mode: SyncMode, stmt: &Stmt) -> Option<Vec<Stmt>> {
                 let Stmt::Return(expr) = stmt else {
                     return None;
                 };
-                let Expr::AwaitCall { f, args } = expr else {
+                let Some(SomeCall { f, args }) = expr.as_call(sync_mode) else {
                     return None;
                 };
-                let Expr::AsyncFn { args: f_args, body } = &**f else {
+                let Some(SomeFn { args: f_args, body }) = f.as_fn(sync_mode) else {
                     return None;
                 };
                 if args.len() != f_args.len() {
@@ -766,11 +824,13 @@ mod ir {
                     return None;
                 };
                 // already optimized
-                Some(body.clone())
+                Some(body.to_vec())
             }
-            if let Some(stmts) = return_lambda_call(&stmt) {
-                result.extend(stmts);
-                continue;
+            for sync_mode in SyncMode::ALL {
+                if let Some(stmts) = return_lambda_call(sync_mode, &stmt) {
+                    result.extend(stmts);
+                    continue 'stmts;
+                }
             }
 
             /// from: x = expr; return x;

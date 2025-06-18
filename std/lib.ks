@@ -318,7 +318,7 @@ impl syntax @"syntax".@"loop" = macro (.body) => `(
         );
         cfg_if {
             | target.name == "interpreter" => native "loop" body
-            | target.name == "javascript" => native "await(async function(){for(;;)await $(body)(ctx)})()"
+            | target.name == "javascript" => native "await(async function(){for(;;)await $(body)($($ctx))})()"
         }
     )
 );
