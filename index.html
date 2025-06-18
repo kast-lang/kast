@@ -5,6 +5,50 @@
 </head>
 
 <body>
+    <style>
+        #kast-output-container {
+            height: 10em;
+            overflow: scroll;
+            border: 1px solid gray;
+            padding: 5px;
+        }
+    </style>
+    <div id="kast-output-container">
+        <pre id="kast-output"></pre>
+    </div>
+    <input id="kast-input" />
+    <script>
+        async function init_output() {
+            const container = document.getElementById("kast-output-container");
+            const pre = document.getElementById("kast-output");
+            async function write(_ctx, arg) {
+                const s = arg.get();
+                pre.innerText += s;
+                container.scroll({
+                    behavior: "instant",
+                    top: container.scrollHeight,
+                });
+            }
+            return { write };
+        }
+
+        async function init_input() {
+            const input = document.getElementById("kast-input");
+            function read_line(_ctx, _args) {
+                return new Promise((resolve, reject) => {
+                    function on_key_down(e) {
+                        if (e.key === 'Enter') {
+                            resolve(e.currentTarget.value);
+                            e.currentTarget.value = '';
+                            input.removeEventListener('keydown', on_key_down);
+                        }
+                    }
+                    input.addEventListener('keydown', on_key_down);
+                });
+            }
+            return { read_line };
+        }
+    </script>
     <script src="target/index.js"></script>
 </body>
 
