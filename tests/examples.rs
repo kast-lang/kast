@@ -1,6 +1,7 @@
 #![allow(clippy::type_complexity)]
+use eyre::Context;
 use kast::*;
-use std::path::Path;
+use std::{io::Write, path::Path};
 
 #[allow(dead_code)]
 struct Case<'a> {
@@ -10,7 +11,68 @@ struct Case<'a> {
     expect_output: &'a str,
 }
 
-fn try_test(case: Case<'_>) -> eyre::Result<Value> {
+fn try_test_nodejs(case: Case<'_>) -> eyre::Result<()> {
+    let mut kast = Kast::new("<test>").unwrap();
+    let path = Path::new("examples").join(case.name).with_extension("ks");
+    let ast = match case.comment_lines {
+        Some(f) => {
+            let source = SourceFile {
+                contents: {
+                    let mut result = String::new();
+                    for line in std::fs::read_to_string(&path).unwrap().lines() {
+                        if f(line) {
+                            continue;
+                        }
+                        result += line;
+                        result.push('\n');
+                    }
+                    result
+                },
+                filename: path,
+            };
+            kast.parse_ast(source)?
+        }
+        None => kast.parse_ast_file(path)?,
+    };
+    let ast = ast.expect("empty test");
+    futures_lite::future::block_on(async {
+        let ir: Expr = kast.compile(&ast).await.context("Failed to compile test")?;
+        let js = kast
+            .transpile_to_javascript(
+                kast::javascript::JavaScriptEngineType::Node,
+                &ValueShape::Expr(Parc::new(ir)).into(),
+                javascript::ShowOptions::Pretty,
+            )
+            .await
+            .context("transpiling to js failed")?;
+
+        let js_dir = std::path::Path::new("target").join("test-js");
+        std::fs::create_dir_all(&js_dir)?;
+        let (mut f, path) = tempfile::NamedTempFile::new_in(js_dir)?.keep()?;
+        f.write_all(js.as_bytes())?;
+        std::mem::drop(f);
+
+        let mut cmd =
+            std::process::Command::new(std::env::var("NODE_EXE").as_deref().unwrap_or("node"));
+        cmd.stdin(std::process::Stdio::piped()); // TODO
+        cmd.stderr(std::process::Stdio::piped());
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.arg(path);
+        let output = cmd.output().context("Failed to run node")?;
+        if !output.status.success() {
+            std::io::stdout().write_all(&output.stdout)?;
+            eyre::bail!("node exited with failure: {:?}", output.status);
+        }
+        let output = String::from_utf8(output.stdout).context("non-utf output")?;
+        if output != case.expect_output {
+            eyre::bail!("Expected output {:?}, got {:?}", case.expect_output, output);
+        }
+        Ok(())
+    })
+}
+
+fn try_intepret_test(case: Case<'_>) -> eyre::Result<Value> {
+    TestEnv::expect_normal();
     let mut kast = Kast::new("<test>").unwrap();
 
     struct CaptureOutput {
@@ -56,8 +118,41 @@ fn try_test(case: Case<'_>) -> eyre::Result<Value> {
     Ok(value)
 }
 
+enum TestEnv {
+    Normal,
+    NodeJs,
+}
+
+impl TestEnv {
+    fn get() -> Self {
+        match std::env::var("TEST_ENV") {
+            Ok(env) => match env.as_str() {
+                "nodejs" => Self::NodeJs,
+                _ => panic!("unknown env: {env}"),
+            },
+            Err(std::env::VarError::NotPresent) => Self::Normal,
+            Err(std::env::VarError::NotUnicode(e)) => panic!("non unicode env: {e:?}"),
+        }
+    }
+    fn expect_normal() {
+        match Self::get() {
+            Self::Normal => {}
+            Self::NodeJs => {
+                panic!("supposed to run through node")
+            }
+        }
+    }
+}
+
 fn test(case: Case<'_>) {
-    try_test(case).expect("Failed to run the test");
+    match TestEnv::get() {
+        TestEnv::Normal => {
+            try_intepret_test(case).expect("Failed to run the test");
+        }
+        TestEnv::NodeJs => {
+            try_test_nodejs(case).expect("Failed to run the test");
+        }
+    }
 }
 
 /// file:///./../examples/hello.ks
@@ -134,7 +229,7 @@ fn test_mutual_recursion() {
 #[test]
 
 fn test_context_shadow_with_missing_context() {
-    let err = try_test(Case {
+    let err = try_intepret_test(Case {
         name: "context-shadow",
         comment_lines: None,
         input: "",
@@ -243,6 +338,7 @@ fn test_unsafe_without_unsafe_context() {
 /// file:///./../examples/fibonacci.ks
 #[test]
 fn test_fibonacci() {
+    TestEnv::expect_normal();
     let name = "fibonacci";
     let mut kast = Kast::new(name).unwrap();
     let module = kast
@@ -280,7 +376,7 @@ fn test_fibonacci() {
 /// file:///./../examples/variant-types.ks
 #[test]
 fn test_variant_types() {
-    let err = try_test(Case {
+    let err = try_intepret_test(Case {
         name: "variant-types",
         comment_lines: None,
         input: "",

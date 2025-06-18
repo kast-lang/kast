@@ -30,6 +30,7 @@ async-executor = "1.13.1"
 async-trait = "0.1.83"
 futures-lite = "2"
 event-listener = "5"
+tempfile = "3"
 # https://github.com/rust-random/rand#wasm-support
 getrandom = { version = "0.2", features = ["js"] }
 ordered-float = { version = "4", features = ["rand"] }
@@ -93,6 +94,7 @@ anymap3.workspace = true
 inference = { package = "kast-inference", path = "crates/inference" }
 include_dir.workspace = true
 linked-hash-map.workspace = true
+tempfile.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook.workspace = true

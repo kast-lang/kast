@@ -1,6 +1,8 @@
 default:
     just --list
 
+testjs *ARGS:
+    TEST_ENV=nodejs RUST_MIN_STACK=33554432 cargo test --workspace --no-default-features -- {{ARGS}}
 testi *ARGS:
     RUST_MIN_STACK=33554432 cargo test --workspace --no-default-features -- {{ARGS}}
 test *ARGS:
