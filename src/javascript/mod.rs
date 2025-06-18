@@ -50,9 +50,6 @@ mod ir {
     pub struct Name(pub String);
 
     impl Name {
-        pub fn context() -> Self {
-            Self("ctx".into())
-        }
         pub fn unique(s: &str) -> Self {
             Self(format!("{s}__{}", Id::new()))
         }
@@ -74,13 +71,31 @@ mod ir {
         Number(Number),
         String(String),
         List(Vec<Expr>),
-        Object { fields: LinkedHashMap<String, Expr> },
-        Index { obj: Box<Expr>, index: Box<Expr> },
+        Object {
+            extend: Option<Box<Expr>>,
+            fields: LinkedHashMap<String, Expr>,
+        },
+        Index {
+            obj: Box<Expr>,
+            index: Box<Expr>,
+        },
         NotEq(Box<Expr>, Box<Expr>),
-        AsyncFn { args: Vec<Name>, body: Vec<Stmt> },
-        AwaitCall { f: Box<Expr>, args: Vec<Expr> },
-        SyncFn { args: Vec<Name>, body: Vec<Stmt> },
-        SyncCall { f: Box<Expr>, args: Vec<Expr> },
+        AsyncFn {
+            args: Vec<Name>,
+            body: Vec<Stmt>,
+        },
+        AwaitCall {
+            f: Box<Expr>,
+            args: Vec<Expr>,
+        },
+        SyncFn {
+            args: Vec<Name>,
+            body: Vec<Stmt>,
+        },
+        SyncCall {
+            f: Box<Expr>,
+            args: Vec<Expr>,
+        },
         Raw(String),
     }
 
@@ -92,8 +107,18 @@ mod ir {
                 Self::Bool(_) => false,
                 Self::Number(_) => false,
                 Self::String(_) => false,
-                Self::List(exprs) => exprs.iter().all(Self::has_bindings),
-                Self::Object { fields } => fields.values().all(Self::has_bindings),
+                Self::List(exprs) => exprs.iter().any(Self::has_bindings),
+                Self::Object { extend, fields } => {
+                    if let Some(extend) = extend {
+                        if extend.has_bindings() {
+                            return true;
+                        }
+                    }
+                    if fields.values().any(Self::has_bindings) {
+                        return true;
+                    }
+                    false
+                }
                 Self::Index { obj, index } => obj.has_bindings() || index.has_bindings(),
                 Self::NotEq(a, b) => a.has_bindings() || b.has_bindings(),
                 Self::AsyncFn { args: _, body: _ } | Self::SyncFn { args: _, body: _ } => true, // too lazy too look deeper
@@ -150,7 +175,10 @@ mod ir {
             if let Some(value) = value {
                 fields.insert("value".into(), value);
             }
-            Self::Object { fields }
+            Self::Object {
+                fields,
+                extend: None,
+            }
         }
         pub fn variant_name(value: Self) -> Self {
             Self::Index {
@@ -201,22 +229,37 @@ mod ir {
             impl std::fmt::Display for Show<'_> {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                     match self.expr {
-                        Expr::Object { fields } => {
+                        Expr::Object { extend, fields } => {
                             write!(f, "{{")?;
+                            enum Item<'a> {
+                                Extend(&'a Box<Expr>),
+                                Field((&'a String, &'a Expr)),
+                            }
                             pad_adapter::padded_items(
                                 f,
-                                fields,
+                                extend
+                                    .iter()
+                                    .map(Item::Extend)
+                                    .chain(fields.iter().map(Item::Field)),
                                 pad_adapter::OuterMode::Surrounded,
                                 pad_adapter::Moded {
                                     normal: pad_adapter::Separator::Seq(","),
                                     alternate: pad_adapter::Separator::Seq(","),
                                 },
-                                |f, (name, value)| {
-                                    write!(f, "{name:?}:")?;
-                                    if f.alternate() {
-                                        write!(f, " ")?;
+                                |f, item| {
+                                    match item {
+                                        Item::Field((name, value)) => {
+                                            write!(f, "{name:?}:")?;
+                                            if f.alternate() {
+                                                write!(f, " ")?;
+                                            }
+                                            f.write(value.show(self.options))?;
+                                        }
+                                        Item::Extend(extend) => {
+                                            write!(f, "...")?;
+                                            f.write(extend.show(self.options))?;
+                                        }
                                     }
-                                    f.write(value.show(self.options))?;
                                     Ok(())
                                 },
                             )?;
@@ -488,11 +531,12 @@ mod ir {
                 Self::Number(_) => self.clone(),
                 Self::String(_) => self.clone(),
                 Self::List(values) => Self::List(values.iter().map(Self::optimize).collect()),
-                Self::Object { fields } => Self::Object {
+                Self::Object { fields, extend } => Self::Object {
                     fields: fields
                         .iter()
                         .map(|(key, value)| (key.clone(), value.optimize()))
                         .collect(),
+                    extend: extend.as_ref().map(|e| Box::new(e.optimize())),
                 },
                 Self::SyncFn { args, body } => Self::SyncFn {
                     args: args.clone(),
@@ -509,13 +553,13 @@ mod ir {
                     /// from: { field: value, ... }["field"]
                     /// into: value
                     fn get_obj_field(obj: &Expr, index: &Expr) -> Option<Expr> {
-                        let Expr::Object { fields } = obj else {
+                        // TODO what if fields had side effects?
+                        let Expr::Object { fields, extend: _ } = obj else {
                             return None;
                         };
                         let Expr::String(field) = index else {
                             return None;
                         };
-                        // TODO what if fields had side effects?
                         let field = fields.get(field).expect("field not found");
                         // already optimized
                         Some(field.clone())
@@ -859,7 +903,10 @@ impl Transpiler {
                 }],
             },
         );
-        Ok(ir::Expr::Object { fields })
+        Ok(ir::Expr::Object {
+            fields,
+            extend: None,
+        })
     }
 
     fn context_name(&mut self, context_ty: &Type) -> String {
@@ -873,8 +920,8 @@ impl Transpiler {
         )
     }
 
-    async fn read_place(&mut self, place: &PlaceExpr) -> eyre::Result<ir::Expr> {
-        let place = self.eval_place(place).await?;
+    async fn read_place(&mut self, place: &PlaceExpr, ctx: &ir::Name) -> eyre::Result<ir::Expr> {
+        let place = self.eval_place(place, ctx).await?;
         Ok(ir::Expr::AwaitCall {
             f: Box::new(ir::Expr::Index {
                 obj: Box::new(place),
@@ -884,7 +931,11 @@ impl Transpiler {
         })
     }
 
-    fn eval_place<'a>(&'a mut self, expr: &'a PlaceExpr) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
+    fn eval_place<'a>(
+        &'a mut self,
+        expr: &'a PlaceExpr,
+        ctx: &'a ir::Name,
+    ) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
         async move {
             Ok(match expr {
                 PlaceExpr::Binding { binding, data: _ } => {
@@ -912,7 +963,7 @@ impl Transpiler {
                     ir::Expr::scope(vec![
                         ir::Stmt::Assign {
                             assignee: ir::AssigneeExpr::NewVar(temp_var.clone()),
-                            value: self.read_place(obj).await?, // The value is a reference type since it has fields
+                            value: self.read_place(obj, ctx).await?, // The value is a reference type since it has fields
                         },
                         ir::Stmt::Return(self.make_ref(ir::Expr::Index {
                             obj: Box::new(ir::Expr::Binding(temp_var)),
@@ -925,27 +976,59 @@ impl Transpiler {
                     ir::Expr::scope(vec![
                         ir::Stmt::Assign {
                             assignee: ir::AssigneeExpr::NewVar(var.clone()),
-                            value: self.eval_expr(value).await?,
+                            value: self.eval_expr(value, ctx).await?,
                         },
                         ir::Stmt::Return(self.make_ref(ir::Expr::Binding(var))?),
                     ])
                 }
                 PlaceExpr::Deref { r#ref, data: _ } => {
-                    self.eval_expr(r#ref).await? // It's already a reference - which is what a place is
+                    self.eval_expr(r#ref, ctx).await? // It's already a reference - which is what a place is
                 }
             })
         }
         .boxed()
     }
 
-    async fn eval_expr_into_stmts(&mut self, expr: &Expr) -> eyre::Result<Vec<ir::Stmt>> {
+    async fn eval_expr_into_stmts(
+        &mut self,
+        expr: &Expr,
+        ctx: &ir::Name,
+    ) -> eyre::Result<Vec<ir::Stmt>> {
         let mut stmts = Vec::new();
-        self.eval_expr_as_stmts(expr, &mut stmts).await?;
+        self.eval_expr_as_stmts(expr, ctx, &mut stmts).await?;
         Ok(stmts)
+    }
+    /// returns final context name
+    async fn eval_then(
+        &mut self,
+        list: &[Expr],
+        ctx: &ir::Name,
+        stmts: &mut Vec<ir::Stmt>,
+    ) -> eyre::Result<ir::Name> {
+        let mut ctx: ir::Name = ctx.clone();
+        for expr in list {
+            if let Expr::InjectContext { context, data: _ } = expr {
+                let old_ctx = std::mem::replace(&mut ctx, ir::Name::unique("ctx"));
+                stmts.push(ir::Stmt::Assign {
+                    assignee: ir::AssigneeExpr::NewVar(ctx.clone()),
+                    value: ir::Expr::Object {
+                        fields: LinkedHashMap::from_iter([(
+                            self.context_name(&context.data().ty),
+                            self.eval_expr(context, &ctx).await?,
+                        )]),
+                        extend: Some(Box::new(ir::Expr::Binding(old_ctx))),
+                    },
+                });
+            } else {
+                self.eval_expr_as_stmts(expr, &ctx, stmts).await?;
+            }
+        }
+        Ok(ctx)
     }
     fn eval_expr_as_stmts<'a>(
         &'a mut self,
         expr: &'a Expr,
+        ctx: &'a ir::Name,
         stmts: &'a mut Vec<ir::Stmt>,
     ) -> BoxFuture<'a, eyre::Result<()>> {
         let r#impl = async move {
@@ -961,13 +1044,15 @@ impl Transpiler {
                     let temp_var = ir::Name::unique("var");
                     stmts.push(ir::Stmt::Assign {
                         assignee: ir::AssigneeExpr::NewVar(temp_var.clone()),
-                        value: self.read_place(value).await?,
+                        value: self.read_place(value, ctx).await?,
                     });
-                    self.assign(assignee, ir::Expr::Binding(temp_var), stmts)
+                    self.assign(assignee, ir::Expr::Binding(temp_var), ctx, stmts)
                         .await?;
                 }
                 Expr::List { .. } => todo!(),
-                Expr::Unwindable { .. } => stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?)),
+                Expr::Unwindable { .. } => {
+                    stmts.push(ir::Stmt::Expr(self.eval_expr(expr, ctx).await?))
+                }
                 Expr::Unwind {
                     name,
                     value,
@@ -976,23 +1061,14 @@ impl Transpiler {
                     stmts.push(ir::Stmt::Throw(ir::Expr::Object {
                         fields: {
                             let mut fields = LinkedHashMap::new();
-                            fields.insert("handle".into(), self.eval_expr(name).await?);
-                            fields.insert("value".into(), self.eval_expr(value).await?);
+                            fields.insert("handle".into(), self.eval_expr(name, ctx).await?);
+                            fields.insert("value".into(), self.eval_expr(value, ctx).await?);
                             fields
                         },
+                        extend: None,
                     }));
                 }
-                Expr::InjectContext { context, data: _ } => {
-                    stmts.push(ir::Stmt::Assign {
-                        assignee: ir::AssigneeExpr::Expr(ir::Expr::Index {
-                            obj: Box::new(ir::Expr::Binding(ir::Name::context())),
-                            index: Box::new(ir::Expr::String(
-                                self.context_name(&context.data().ty),
-                            )),
-                        }),
-                        value: self.eval_expr(context).await?,
-                    });
-                }
+                Expr::InjectContext { .. } => todo!(),
                 Expr::CurrentContext { data: _ } => todo!(),
                 Expr::Unit { data: _ } => {}
                 Expr::FunctionType { .. } => todo!(),
@@ -1012,24 +1088,22 @@ impl Transpiler {
                 } => {
                     self.register_cond_vars(condition, stmts)?;
                     stmts.push(ir::Stmt::If {
-                        condition: self.eval_expr(condition).await?,
-                        then_case: self.eval_expr_into_stmts(then_case).await?,
+                        condition: self.eval_expr(condition, ctx).await?,
+                        then_case: self.eval_expr_into_stmts(then_case, ctx).await?,
                         else_case: match else_case {
                             None => vec![],
-                            Some(else_case) => self.eval_expr_into_stmts(else_case).await?,
+                            Some(else_case) => self.eval_expr_into_stmts(else_case, ctx).await?,
                         },
                     });
                 }
                 Expr::Then { list, data: _ } => {
-                    for expr in list {
-                        self.eval_expr_as_stmts(expr, stmts).await?;
-                    }
+                    self.eval_then(list, ctx, stmts).await?;
                 }
                 Expr::Constant { .. } => todo!(),
                 Expr::Number { .. } => todo!(),
                 Expr::String { .. } => todo!(),
                 Expr::Native { .. } => {
-                    stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
+                    stmts.push(ir::Stmt::Expr(self.eval_expr(expr, ctx).await?));
                 }
                 Expr::Let {
                     is_const_let,
@@ -1045,7 +1119,7 @@ impl Transpiler {
                     let value = value.as_ref().expect("no value in let?");
                     stmts.push(ir::Stmt::Assign {
                         assignee: ir::AssigneeExpr::NewVar(temp_var.clone()),
-                        value: self.read_place(value).await?,
+                        value: self.read_place(value, ctx).await?,
                     });
                     self.pattern_match(
                         ir::Expr::Binding(temp_var),
@@ -1055,12 +1129,12 @@ impl Transpiler {
                     )?;
                 }
                 Expr::Call { .. } => {
-                    stmts.push(ir::Stmt::Expr(self.eval_expr(expr).await?));
+                    stmts.push(ir::Stmt::Expr(self.eval_expr(expr, ctx).await?));
                 }
                 Expr::CallMacro { .. } => todo!(),
                 Expr::Scope { expr, data: _ } => {
                     let mut body = Vec::new();
-                    self.eval_expr_as_stmts(expr, &mut body).await?;
+                    self.eval_expr_as_stmts(expr, ctx, &mut body).await?;
                     stmts.push(ir::Stmt::Scope { body });
                 }
                 Expr::Function { .. } => todo!(),
@@ -1074,7 +1148,7 @@ impl Transpiler {
                         .kast
                         .select_target_dependent_branch(branches, self.target.clone())
                         .await?;
-                    self.eval_expr_as_stmts(body, stmts).await?;
+                    self.eval_expr_as_stmts(body, ctx, stmts).await?;
                 }
                 Expr::Type { .. } => todo!(),
             }
@@ -1088,18 +1162,22 @@ impl Transpiler {
         .boxed()
     }
 
-    fn eval_expr<'a>(&'a mut self, expr: &'a Expr) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
+    fn eval_expr<'a>(
+        &'a mut self,
+        expr: &'a Expr,
+        ctx: &'a ir::Name,
+    ) -> BoxFuture<'a, eyre::Result<ir::Expr>> {
         let r#impl = async move {
             Ok(match expr {
                 Expr::Type { .. } => ir::Expr::Undefined,
-                Expr::Ref { place, data: _ } => self.eval_place(place).await?,
+                Expr::Ref { place, data: _ } => self.eval_place(place, ctx).await?,
                 Expr::And { .. } => todo!(),
                 Expr::Or { .. } => todo!(),
-                Expr::Assign { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
+                Expr::Assign { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr, ctx).await?),
                 Expr::List { values, data: _ } => ir::Expr::List({
                     let mut result = Vec::new();
                     for value in values {
-                        result.push(self.eval_expr(value).await?);
+                        result.push(self.eval_expr(value, ctx).await?);
                     }
                     result
                 }),
@@ -1122,7 +1200,7 @@ impl Transpiler {
                     )?;
                     let catch_var = ir::Name("e".into());
                     stmts.push(ir::Stmt::Try {
-                        body: vec![ir::Stmt::Return(self.eval_expr(body).await?)],
+                        body: vec![ir::Stmt::Return(self.eval_expr(body, ctx).await?)],
                         catch_var: catch_var.clone(),
                         catch_body: vec![
                             ir::Stmt::If {
@@ -1146,14 +1224,14 @@ impl Transpiler {
                     });
                     stmts
                 }),
-                Expr::Unwind { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
+                Expr::Unwind { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr, ctx).await?),
                 Expr::InjectContext { .. } => {
-                    ir::Expr::scope(self.eval_expr_into_stmts(expr).await?)
+                    ir::Expr::scope(self.eval_expr_into_stmts(expr, ctx).await?)
                 }
                 Expr::CurrentContext { data } => {
                     // println!("{}", &data.ty);
                     ir::Expr::Index {
-                        obj: Box::new(ir::Expr::Binding(ir::Name::context())),
+                        obj: Box::new(ir::Expr::Binding(ctx.clone())),
                         index: Box::new(ir::Expr::String(self.context_name(&data.ty))),
                     }
                 }
@@ -1173,7 +1251,7 @@ impl Transpiler {
                     data: _,
                 } => {
                     // TODO assign first
-                    let value = self.read_place(value).await?;
+                    let value = self.read_place(value, ctx).await?;
                     self.pattern_check(value, pattern)?
                 }
                 Expr::Match {
@@ -1185,14 +1263,16 @@ impl Transpiler {
                     let var = ir::Name::unique("var");
                     stmts.push(ir::Stmt::Assign {
                         assignee: ir::AssigneeExpr::NewVar(var.clone()),
-                        value: self.read_place(value).await?,
+                        value: self.read_place(value, ctx).await?,
                     });
                     for branch in branches {
                         self.register_pattern_vars(&branch.pattern, &mut stmts)?;
                         stmts.push(ir::Stmt::If {
                             condition: self
                                 .pattern_check(ir::Expr::Binding(var.clone()), &branch.pattern)?,
-                            then_case: vec![ir::Stmt::Return(self.eval_expr(&branch.body).await?)],
+                            then_case: vec![ir::Stmt::Return(
+                                self.eval_expr(&branch.body, ctx).await?,
+                            )],
                             else_case: vec![],
                         });
                     }
@@ -1208,7 +1288,7 @@ impl Transpiler {
                     name,
                     match value {
                         None => None,
-                        Some(value) => Some(self.eval_expr(value).await?),
+                        Some(value) => Some(self.eval_expr(value, ctx).await?),
                     },
                 ),
                 Expr::MakeMultiset { .. } => todo!(),
@@ -1219,7 +1299,7 @@ impl Transpiler {
                     data: _,
                 } => ir::Expr::scope({
                     let mut stmts = Vec::new();
-                    self.eval_expr_as_stmts(body, &mut stmts).await?;
+                    self.eval_expr_as_stmts(body, ctx, &mut stmts).await?;
                     let mut fields = LinkedHashMap::new();
                     expr.collect_bindings(
                         &mut |binding| {
@@ -1230,7 +1310,10 @@ impl Transpiler {
                         },
                         None,
                     );
-                    stmts.push(ir::Stmt::Return(ir::Expr::Object { fields }));
+                    stmts.push(ir::Stmt::Return(ir::Expr::Object {
+                        fields,
+                        extend: None,
+                    }));
                     stmts
                 }),
                 Expr::If {
@@ -1242,12 +1325,12 @@ impl Transpiler {
                     let mut stmts = Vec::new();
                     self.register_cond_vars(condition, &mut stmts)?;
                     stmts.push(ir::Stmt::If {
-                        condition: self.eval_expr(condition).await?,
-                        then_case: vec![ir::Stmt::Return(self.eval_expr(then_case).await?)],
+                        condition: self.eval_expr(condition, ctx).await?,
+                        then_case: vec![ir::Stmt::Return(self.eval_expr(then_case, ctx).await?)],
                         else_case: match else_case {
                             None => vec![],
                             Some(else_case) => {
-                                vec![ir::Stmt::Return(self.eval_expr(else_case).await?)]
+                                vec![ir::Stmt::Return(self.eval_expr(else_case, ctx).await?)]
                             }
                         },
                     });
@@ -1255,13 +1338,9 @@ impl Transpiler {
                 }),
                 Expr::Then { list, data: _ } => ir::Expr::scope({
                     let mut stmts = Vec::new();
-                    for (index, expr) in list.iter().enumerate() {
-                        if index == list.len() - 1 {
-                            stmts.push(ir::Stmt::Return(self.eval_expr(expr).await?));
-                        } else {
-                            self.eval_expr_as_stmts(expr, &mut stmts).await?;
-                        }
-                    }
+                    let (last, first) = list.split_last().expect("empty then?");
+                    let ctx = self.eval_then(first, ctx, &mut stmts).await?;
+                    stmts.push(ir::Stmt::Return(self.eval_expr(last, &ctx).await?));
                     stmts
                 }),
                 Expr::Constant { value, data: _ } => self.transpile(value).await?,
@@ -1322,7 +1401,7 @@ impl Transpiler {
                             let var = &code[..index];
                             code = code[index..].strip_prefix(')').unwrap();
                             let value = match var {
-                                "$ctx" => ir::Expr::Binding(ir::Name::context()),
+                                "$ctx" => ir::Expr::Binding(ctx.clone()),
                                 _ => {
                                     let value = compiler_scope
                                         .lookup(var, Hygiene::DefSite, self.kast.spawn_id)
@@ -1339,16 +1418,16 @@ impl Transpiler {
                     }
                     ir::Expr::Raw(result)
                 }
-                Expr::Let { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr).await?),
+                Expr::Let { .. } => ir::Expr::scope(self.eval_expr_into_stmts(expr, ctx).await?),
                 Expr::Call { f, arg, data: _ } => ir::Expr::AwaitCall {
-                    f: Box::new(self.eval_expr(f).await?),
+                    f: Box::new(self.eval_expr(f, ctx).await?),
                     args: vec![
-                        ir::Expr::Binding(ir::Name::context()),
-                        self.eval_expr(arg).await?,
+                        ir::Expr::Binding(ctx.clone()),
+                        self.eval_expr(arg, ctx).await?,
                     ],
                 },
                 Expr::CallMacro { .. } => todo!(),
-                Expr::Scope { expr, data: _ } => self.eval_expr(expr).await?,
+                Expr::Scope { expr, data: _ } => self.eval_expr(expr, ctx).await?,
                 Expr::Function {
                     ty: _,
                     compiled,
@@ -1382,26 +1461,27 @@ impl Transpiler {
                         .await?;
                     ir::Expr::AwaitCall {
                         f: Box::new(f),
-                        args: vec![ir::Expr::Binding(ir::Name::context())],
+                        args: vec![ir::Expr::Binding(ctx.clone())], // TODO ctx shouldnt be used?
                     }
                 }
                 Expr::Tuple { tuple, data: _ } => ir::Expr::Object {
                     fields: {
                         let mut fields = LinkedHashMap::new();
                         for (member, field) in tuple.iter() {
-                            fields.insert(member.to_string(), self.eval_expr(field).await?);
+                            fields.insert(member.to_string(), self.eval_expr(field, ctx).await?);
                         }
                         fields
                     },
+                    extend: None,
                 },
                 Expr::Ast { .. } => todo!(),
-                Expr::ReadPlace { place, data: _ } => self.read_place(place).await?,
+                Expr::ReadPlace { place, data: _ } => self.read_place(place, ctx).await?,
                 Expr::TargetDependent { branches, data: _ } => {
                     let body = self
                         .kast
                         .select_target_dependent_branch(branches, self.target.clone())
                         .await?;
-                    self.eval_expr(body).await?
+                    self.eval_expr(body, ctx).await?
                 }
             })
         };
@@ -1441,6 +1521,7 @@ impl Transpiler {
                         }
                         result
                     },
+                    extend: None,
                 },
                 ValueShape::Function(f) => self.transpile_fn(f).await?,
                 ValueShape::Template(t) => {
@@ -1482,6 +1563,7 @@ impl Transpiler {
         &'a mut self,
         assignee: &'a AssigneeExpr,
         value: ir::Expr,
+        ctx: &'a ir::Name,
         stmts: &'a mut Vec<ir::Stmt>,
     ) -> BoxFuture<'a, eyre::Result<()>> {
         async move {
@@ -1496,6 +1578,7 @@ impl Transpiler {
                                 obj: Box::new(value.clone()),
                                 index: Box::new(ir::Expr::String(member.to_string())),
                             },
+                            ctx,
                             stmts,
                         )
                         .await?;
@@ -1504,7 +1587,7 @@ impl Transpiler {
                 AssigneeExpr::Place { place, data: _ } => {
                     stmts.push(ir::Stmt::Expr(ir::Expr::AwaitCall {
                         f: Box::new(ir::Expr::Index {
-                            obj: Box::new(self.eval_place(place).await?),
+                            obj: Box::new(self.eval_place(place, ctx).await?),
                             index: Box::new(ir::Expr::String("set".into())),
                         }),
                         args: vec![value],
@@ -1724,8 +1807,9 @@ impl Transpiler {
         let name = ir::Name::unique("compiled_fn");
         self.compiled_fns.insert(compiled.clone(), name.clone());
 
+        let ctx = ir::Name::unique("ctx");
         let arg = ir::Name::unique("arg");
-        let args = vec![ir::Name::context(), arg.clone()];
+        let args = vec![ctx.clone(), arg.clone()];
         let mut body = Vec::new();
         self.pattern_match(
             ir::Expr::Binding(arg),
@@ -1733,7 +1817,9 @@ impl Transpiler {
             &mut body,
             MatchMode::Assign,
         )?;
-        body.push(ir::Stmt::Return(self.eval_expr(&compiled.body).await?));
+        body.push(ir::Stmt::Return(
+            self.eval_expr(&compiled.body, &ctx).await?,
+        ));
 
         // self.captured_code.push(ir::Stmt::Assign {
         //     assignee: ir::AssigneeExpr::NewVar(name.clone()),
@@ -1768,7 +1854,10 @@ impl Transpiler {
             self.cleanup_code
                 .push(ir::Stmt::Raw(format!("globalThis.kast_cleanup()")));
 
-            stmts.push(ir::Stmt::Return(ir::Expr::Object { fields: contexts }));
+            stmts.push(ir::Stmt::Return(ir::Expr::Object {
+                fields: contexts,
+                extend: None,
+            }));
             stmts
         })
     }
@@ -1785,9 +1874,10 @@ impl Kast {
 
         let result = match &*value.as_inferred()? {
             ValueShape::Expr(expr) => {
-                let code = transpiler.eval_expr(expr).await?;
+                let ctx = ir::Name::unique("ctx");
+                let code = transpiler.eval_expr(expr, &ctx).await?;
                 let code = ir::Expr::AsyncFn {
-                    args: vec![ir::Name::context()],
+                    args: vec![ctx],
                     body: vec![ir::Stmt::Return(code)],
                 };
                 ir::Expr::AwaitCall {
