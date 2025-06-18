@@ -138,7 +138,7 @@ fn test_context_shadow_with_missing_context() {
         name: "context-shadow",
         comment_lines: None,
         input: "",
-        expect_output: "123\nshadow\n",
+        expect_output: "123\nshadow\n456\n",
     })
     .unwrap_err();
     let err = format!("{err:?}"); // debug impl shows the whole chain
@@ -152,7 +152,7 @@ fn test_context_shadow() {
         name: "context-shadow",
         comment_lines: Some(Box::new(|line| line.contains("should not compile"))),
         input: "",
-        expect_output: "123\nshadow\n",
+        expect_output: "123\nshadow\n456\n",
     });
 }
 

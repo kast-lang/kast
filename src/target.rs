@@ -3,7 +3,9 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Target {
     Interpreter,
-    JavaScript,
+    JavaScript {
+        engine: javascript::JavaScriptEngineType,
+    },
 }
 
 impl Target {
@@ -14,9 +16,21 @@ impl Target {
         let field: &str = &field;
         Ok(match field {
             "name" => {
-                let name = format!("{self:?}").to_lowercase();
+                let name = match self {
+                    Target::Interpreter => "interpreter",
+                    Target::JavaScript { .. } => "javascript",
+                };
                 // println!("name={name:?}");
-                ValueShape::String(name).into()
+                ValueShape::String(name.to_owned()).into()
+            }
+            "is_web" => {
+                let is_web = match self {
+                    Target::JavaScript {
+                        engine: javascript::JavaScriptEngineType::Browser,
+                    } => true,
+                    _ => false,
+                };
+                ValueShape::Bool(is_web).into()
             }
             _ => eyre::bail!("target doesnt have field {field:?}"),
         })
@@ -28,6 +42,7 @@ impl Target {
         let field: &str = &field;
         Ok(match field {
             "name" => TypeShape::String.into(),
+            "is_web" => TypeShape::Bool.into(),
             _ => eyre::bail!("target doesnt have field {field:?}"),
         })
     }

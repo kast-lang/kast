@@ -28,6 +28,39 @@ let run_once = fn (.quit, .first) {
 };
 
 let main = fn (void) {
+    cfg_if {
+        | target.is_web => with ((
+            const document = std.web.document;
+            let pre = document.createElement("pre");
+            document.body.appendChild(pre);
+            (.write = native "async (_ctx, arg) => {
+                const s = arg.get();
+                $(pre).innerText += s;
+            }")
+        ) :: output)
+        | true => ()
+    };
+    cfg_if {
+        | target.is_web => with ((
+            const document = std.web.document;
+            let input = document.createElement("input");
+            document.body.appendChild(input);
+            (.read_line = native "(_ctx, _args) => {
+                const input = $(input);
+                return new Promise((resolve, reject) => {
+                    function on_key_down(e) {
+                        if (e.key === 'Enter') {
+                            resolve(e.currentTarget.value);
+                            e.currentTarget.value = '';
+                            input.removeEventListener('keydown', on_key_down);
+                        }
+                    }
+                    input.addEventListener('keydown', on_key_down);
+                });
+            }")
+        ) :: input)
+        | true => ()
+    };
     let result = unwindable quit (
         run_once (.quit, .first = true);
         loop {

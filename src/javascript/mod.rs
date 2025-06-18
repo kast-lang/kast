@@ -3,7 +3,7 @@ use eyre::OptionExt as _;
 use linked_hash_map::LinkedHashMap;
 use std::fmt::Write;
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum JavaScriptEngineType {
     Node,
     Browser,
@@ -13,6 +13,15 @@ pub enum JavaScriptEngineType {
 pub enum ShowOptions {
     Minified,
     Pretty, // TODO { max_line_length: usize },
+}
+
+macro_rules! todo {
+    () => {
+        eyre::bail!("TODO at {}:{}:{}", file!(), line!(), column!())
+    };
+    ($($t:tt)*) => {
+        return Err(eyre!($($t)*).wrap_err(format!("{}:{}:{}", file!(), line!(), column!())))
+    };
 }
 
 mod ir {
@@ -771,6 +780,7 @@ struct Transpiler {
     compiled_fns: std::collections::HashMap<Parc<CompiledFn>, ir::Name>,
     scopes: Parc<Scopes>,
     engine_type: JavaScriptEngineType,
+    target: Target,
     captured: std::collections::HashSet<PlaceRef>,
     init_code: Vec<ir::Stmt>,
     cleanup_code: Vec<ir::Stmt>,
@@ -805,6 +815,9 @@ impl Transpiler {
             kast: kast.clone(),
             scopes: Parc::new(kast.scopes.clone()),
             engine_type,
+            target: Target::JavaScript {
+                engine: engine_type,
+            },
             captured: Default::default(),
             init_code: vec![],
             cleanup_code: vec![],
@@ -1043,7 +1056,7 @@ impl Transpiler {
                 Expr::TargetDependent { branches, data: _ } => {
                     let body = self
                         .kast
-                        .select_target_dependent_branch(branches, Target::JavaScript)
+                        .select_target_dependent_branch(branches, self.target.clone())
                         .await?;
                     self.eval_expr_as_stmts(body, stmts).await?;
                 }
@@ -1365,7 +1378,7 @@ impl Transpiler {
                 Expr::TargetDependent { branches, data: _ } => {
                     let body = self
                         .kast
-                        .select_target_dependent_branch(branches, Target::JavaScript)
+                        .select_target_dependent_branch(branches, self.target.clone())
                         .await?;
                     self.eval_expr(body).await?
                 }
@@ -1709,34 +1722,34 @@ impl Transpiler {
         Ok(ir::Expr::AsyncFn { args, body })
     }
 
-    pub fn node_ctx(&mut self) -> ir::Expr {
-        let mut contexts = LinkedHashMap::new();
-        // TODO more contexts
+    pub fn create_contexts(&mut self) -> ir::Expr {
+        let source = match self.engine_type {
+            JavaScriptEngineType::Node => include_str!("contexts/node.js"),
+            JavaScriptEngineType::Browser => include_str!("contexts/browser.js"),
+        };
 
-        contexts.insert(
-            self.context_name(&contexts::default_output().ty()),
-            // TODO console.log in browser
-            ir::Expr::Raw("{write:(ctx,ref_s)=>process.stdout.write(ref_s.get())}".into()),
-        );
-        self.init_code.push(ir::Stmt::Raw(
-            r#"
-            const readline = require('node:readline/promises').createInterface({
-                input: process.stdin,
-                output: process.stdout
-            })
-            "#
-            .into(),
-        ));
-        self.cleanup_code
-            .push(ir::Stmt::Raw("readline.close()".into()));
-        contexts.insert(
-            self.context_name(&contexts::default_input().ty()),
-            ir::Expr::Raw(
-                "{read_line:async function(ctx){return await readline.question('')}}".into(),
-            ),
-        );
+        ir::Expr::scope({
+            let mut stmts = Vec::new();
+            let mut contexts = LinkedHashMap::new();
+            // TODO more contexts
+            stmts.push(ir::Stmt::Raw(format!(
+                "const {{ contexts: {{ input, output }}, cleanup }} = await {source}"
+            )));
+            stmts.push(ir::Stmt::Raw(format!("globalThis.kast_cleanup = cleanup",)));
+            contexts.insert(
+                self.context_name(&contexts::default_output().ty()),
+                ir::Expr::Raw("output".into()),
+            );
+            contexts.insert(
+                self.context_name(&contexts::default_input().ty()),
+                ir::Expr::Raw("input".into()),
+            );
+            self.cleanup_code
+                .push(ir::Stmt::Raw(format!("globalThis.kast_cleanup()")));
 
-        ir::Expr::Object { fields: contexts }
+            stmts.push(ir::Stmt::Return(ir::Expr::Object { fields: contexts }));
+            stmts
+        })
     }
 }
 
@@ -1758,7 +1771,7 @@ impl Kast {
                 };
                 ir::Expr::AwaitCall {
                     f: Box::new(code),
-                    args: vec![transpiler.node_ctx()],
+                    args: vec![transpiler.create_contexts()],
                 }
             }
             _ => transpiler.transpile(value).await?,

@@ -5,13 +5,16 @@ let show_current_context = () => (
 );
 
 (
-    with "123";
+    with "123" :: string;
     show_current_context();
 );
 
 (
-    with "456";
-	with "shadow";
+    with "456" :: string;
+    (
+        with "shadow" :: string;
+        show_current_context();
+    );
     show_current_context();
 );
 

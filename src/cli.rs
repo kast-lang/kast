@@ -27,9 +27,11 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum CompilationTarget {
-    JavaScriptNode,
+    JavaScript {
+        engine: kast::javascript::JavaScriptEngineType,
+    },
     Ir,
 }
 
@@ -37,7 +39,12 @@ impl std::str::FromStr for CompilationTarget {
     type Err = eyre::Report;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
-            "js" | "javascript" => Self::JavaScriptNode,
+            "js" | "javascript" | "js-node" | "javascript-node" => Self::JavaScript {
+                engine: kast::javascript::JavaScriptEngineType::Node,
+            },
+            "js-web" | "javascript-web" => Self::JavaScript {
+                engine: kast::javascript::JavaScriptEngineType::Browser,
+            },
             "ir" => Self::Ir,
             _ => eyre::bail!("{s:?} is unknown target"),
         })

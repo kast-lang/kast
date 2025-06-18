@@ -401,6 +401,7 @@ impl string as generator = (
 const collections = include "./collections/_mod.ks";
 const time = include "./time.ks";
 const javascript = include "./javascript.ks";
+const web = include "./web/_mod.ks";
 
 const prelude = (
     # TODO use type, bool, int32, int64, float64, char, string;

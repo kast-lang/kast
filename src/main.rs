@@ -84,9 +84,9 @@ fn main() -> eyre::Result<()> {
             let ir: Expr = kast.compile_file(path)?;
             let result: Box<dyn std::fmt::Display> = match target {
                 cli::CompilationTarget::Ir => Box::new(ir),
-                cli::CompilationTarget::JavaScriptNode => {
+                cli::CompilationTarget::JavaScript { engine } => {
                     let js = futures_lite::future::block_on(kast.transpile_to_javascript(
-                        javascript::JavaScriptEngineType::Node,
+                        engine,
                         &ValueShape::Expr(Parc::new(ir)).into(),
                         javascript::ShowOptions::Pretty,
                     ))?;

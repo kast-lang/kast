@@ -46,8 +46,6 @@ syntax_module {
   # syntax @"builtin macro comptime" <- 1 = "comptime" value;
 
   # syntax @"builtin macro with_context" <- 5 = "with" new_context "(" expr ")";
-  syntax @"builtin macro with_context" <- 5 = "with" new_context;
-  syntax @"builtin macro current_context" <- 5 = "current" context_type;
   syntax @"builtin macro macro" <- 5 = "macro" def;
   syntax @"builtin macro oneof" <- 5 = "oneof" def;
 
@@ -58,6 +56,9 @@ syntax_module {
   syntax @"builtin macro template_def" <- 6 = "forall" "[" arg "]" "{" body "}";
   syntax @"builtin macro template_def" <- 6 = "forall" "[" arg "]" "where" where "{" body "}";
   syntax @"builtin macro function_def" -> 6 = arg "=>" body;
+
+  syntax @"builtin macro with_context" <- 6.5 = "with" new_context;
+  syntax @"builtin macro current_context" <- 6.5 = "current" context_type;
 
   syntax @"builtin macro type_ascribe" <- 7.1 = value "::" type;
   syntax @"builtin macro context_ascribe" <- 7.1 = expr "::" "with" contexts;
