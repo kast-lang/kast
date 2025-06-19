@@ -20,7 +20,7 @@
       };
       crane = crane-flake.mkLib pkgs;
       nix-filter = nix-filter-flake.lib;
-      rust-toolchain = pkgs.rust-bin.stable.latest.default.override {
+      rust-toolchain = pkgs.rust-bin.nightly.latest.default.override {
         extensions = [ "rust-src" ];
         targets = [ "wasm32-unknown-unknown" ];
       };
