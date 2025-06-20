@@ -190,6 +190,7 @@ impl Natives {
         // does anyone understand what happened here?
         natives.insert("default_number_type", contexts::default_number_type().ty());
 
+        #[cfg(feature = "javascript")]
         natives.insert_fn(
             "javascript.transpile",
             || FnType {

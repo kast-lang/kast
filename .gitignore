@@ -8,3 +8,4 @@
 /flamegraph.svg
 /perf.data*
 /timings.txt
+/.vscode/settings.json

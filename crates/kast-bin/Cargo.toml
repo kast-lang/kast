@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+javascript = ["kast/javascript"]
+
 [dependencies]
 anymap3.workspace = true
 async-executor.workspace = true

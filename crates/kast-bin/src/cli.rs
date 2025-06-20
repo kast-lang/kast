@@ -31,6 +31,7 @@ pub enum Command {
 
 #[derive(Debug, Clone)]
 pub enum CompilationTarget {
+    #[cfg(feature = "javascript")]
     JavaScript {
         engine: kast::javascript::JavaScriptEngineType,
     },
@@ -41,9 +42,11 @@ impl std::str::FromStr for CompilationTarget {
     type Err = eyre::Report;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
+            #[cfg(feature = "javascript")]
             "js" | "javascript" | "js-node" | "javascript-node" => Self::JavaScript {
                 engine: kast::javascript::JavaScriptEngineType::Node,
             },
+            #[cfg(feature = "javascript")]
             "js-web" | "javascript-web" => Self::JavaScript {
                 engine: kast::javascript::JavaScriptEngineType::Browser,
             },

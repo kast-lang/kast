@@ -3,6 +3,7 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Target {
     Interpreter,
+    #[cfg(feature = "javascript")]
     JavaScript {
         engine: javascript::JavaScriptEngineType,
     },
@@ -18,6 +19,7 @@ impl Target {
             "name" => {
                 let name = match self {
                     Target::Interpreter => "interpreter",
+                    #[cfg(feature = "javascript")]
                     Target::JavaScript { .. } => "javascript",
                 };
                 // println!("name={name:?}");
@@ -25,6 +27,7 @@ impl Target {
             }
             "is_web" => {
                 let is_web = match self {
+                    #[cfg(feature = "javascript")]
                     Target::JavaScript {
                         engine: javascript::JavaScriptEngineType::Browser,
                     } => true,

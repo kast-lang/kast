@@ -25,6 +25,7 @@ mod contexts;
 mod id;
 mod interpreter;
 pub mod ir;
+#[cfg(feature = "javascript")]
 pub mod javascript;
 mod name;
 mod place;

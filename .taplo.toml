@@ -1,3 +1,4 @@
+# TODO use gitignore: https://github.com/tamasfe/taplo/pull/640
 include = ["crates/**/Cargo.toml", "Cargo.toml"]
 
 [formatting]

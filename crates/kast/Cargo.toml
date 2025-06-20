@@ -12,6 +12,7 @@ debug = true
 [features]
 default = ["embed-std"]
 embed-std = []
+javascript = []
 
 [dependencies]
 anymap3.workspace = true
