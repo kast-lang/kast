@@ -29,5 +29,17 @@ check-compile-times-no-clean:
     echo Done
 
 check-compile-times:
+    cargo clean \
+        -p kast \
+        -p kast-ast \
+        -p kast-bin \
+        -p kast-derive-macros \
+        -p kast-inference \
+        -p kast-refmap \
+        -p kast-try-hash \
+        -p kast-util
+    just check-compile-times-no-clean
+
+check-compile-times-from-scratch:
     cargo clean
     just check-compile-times-no-clean
