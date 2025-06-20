@@ -1,0 +1,11 @@
+[workspace]
+authors = ["kuviman <kuviman@gmail.com>"]
+channels = ["conda-forge", "https://conda.modular.com/max-nightly/"]
+name = "kast"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+modular = ">=25.5.0.dev2025062005,<26"

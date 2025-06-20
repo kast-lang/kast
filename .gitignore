@@ -1,2 +1,6 @@
 /.direnv/
 
+
+# pixi environments
+.pixi
+*.egg-info

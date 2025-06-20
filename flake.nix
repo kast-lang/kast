@@ -16,6 +16,7 @@
       devShells.${system} = {
         default = pkgs.mkShell {
           packages = with pkgs; [
+            pixi
             just
             nodejs
             (pkgs.writeShellScriptBin "kast" ''
