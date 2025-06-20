@@ -784,6 +784,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "kast-bin"
+version = "0.1.0"
+dependencies = [
+ "anymap3",
+ "async-executor",
+ "async-notify",
+ "async-once-cell",
+ "async-oneshot",
+ "async-trait",
+ "batbox-time",
+ "clap",
+ "color-eyre",
+ "colored",
+ "console_error_panic_hook",
+ "decursion",
+ "event-listener 5.4.0",
+ "eyre",
+ "futures",
+ "futures-lite",
+ "getrandom 0.2.16",
+ "include_dir",
+ "kast",
+ "kast-ast",
+ "kast-derive-macros",
+ "kast-inference",
+ "kast-refmap",
+ "kast-try-hash",
+ "kast-util",
+ "linked-hash-map",
+ "ordered-float",
+ "rand",
+ "rustyline",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "kast-derive-macros"
 version = "0.1.0"
 dependencies = [

@@ -31,7 +31,7 @@ impl rustyline::completion::Completer for Helper {
         _ctx: &rustyline::Context<'_>,
     ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
         let start = line[..pos]
-            .rfind(|c| kast_ast::is_punctuation(c) || c.is_whitespace())
+            .rfind(|c| kast::ast::is_punctuation(c) || c.is_whitespace())
             .map(|i| i + 1)
             .unwrap_or(0);
         let part = &line[start..pos];
@@ -53,7 +53,7 @@ impl rustyline::hint::Hinter for Helper {
 
 impl rustyline::highlight::Highlighter for Helper {
     fn highlight<'l>(&self, line: &'l str, _pos: usize) -> std::borrow::Cow<'l, str> {
-        match kast_ast::lex(SourceFile {
+        match kast::ast::lex(SourceFile {
             contents: line.to_owned(),
             filename: "<stdin>".into(),
         }) {
@@ -69,7 +69,7 @@ impl rustyline::highlight::Highlighter for Helper {
                     let colored_token = match token.token {
                         Token::Ident { raw, .. } => raw.underline(),
                         Token::Punctuation { raw, .. } => raw.normal(),
-                        Token::String(kast_ast::StringToken { raw, .. }) => raw.green(),
+                        Token::String(kast::ast::StringToken { raw, .. }) => raw.green(),
                         Token::Number { raw, .. } => raw.italic(),
                         Token::Comment { raw, .. } => raw.dimmed(),
                         Token::Eof => break,

@@ -9,6 +9,8 @@ use futures::prelude::*;
 use inference::Inferrable;
 pub use kast_ast as ast;
 pub use kast_ast::Token;
+use kast_derive_macros as derive_macros;
+pub use kast_inference as inference;
 pub use kast_util::*;
 use ordered_float::OrderedFloat;
 use std::collections::HashMap;
@@ -46,7 +48,6 @@ pub use self::rusty::*;
 use self::scopes::*;
 pub use self::ty::*;
 pub use self::value::*;
-pub use inference;
 pub use target::*;
 
 pub enum MaybeBorrowed<'a, T> {
@@ -338,7 +339,7 @@ impl Kast {
                 use include_dir::{include_dir, Dir};
                 match path.strip_prefix(std_path()) {
                     Ok(path) => {
-                        static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/std");
+                        static STD: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../../std");
                         STD.get_file(path)
                             .ok_or_else(|| eyre!("file not exist: {path:?}"))?
                             .contents_utf8()

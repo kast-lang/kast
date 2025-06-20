@@ -2,13 +2,14 @@
 use std::{borrow::Cow, collections::HashSet};
 
 use decursion::FutureExt;
+use kast_derive_macros as derive_macros;
 use kast_util::*;
 
 mod lexer;
 mod peek2;
 mod syntax;
 
-pub use lexer::{SpannedToken, StringToken, StringType, Token, is_punctuation, lex};
+pub use lexer::{is_punctuation, lex, SpannedToken, StringToken, StringType, Token};
 pub use syntax::{Associativity, Priority, Syntax, SyntaxDefinition, SyntaxDefinitionPart};
 
 use lexer::*;

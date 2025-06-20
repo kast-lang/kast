@@ -24,7 +24,10 @@ asteroids:
     cp examples/asteroids/index.html dist/index.html
     caddy file-server --listen localhost:8000 --root dist
 
-check-compile-times:
-    cargo clean
+check-compile-times-no-clean:
     RUSTFLAGS="-Ztime-passes" cargo build --timings --jobs 1 > timings.txt 2>&1
     echo Done
+
+check-compile-times:
+    cargo clean
+    just check-compile-times-no-clean

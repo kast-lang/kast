@@ -11,4 +11,4 @@ kast-util.workspace = true
 tracing.workspace = true
 noisy_float.workspace = true
 decursion.workspace = true
-derive-macros.workspace = true
+kast-derive-macros.workspace = true

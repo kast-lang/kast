@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+resolver = "3"
 
 [workspace.package]
 edition = "2024"
@@ -40,65 +41,12 @@ include_dir = "0.7.4"
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 
-kast-util = { path = "crates/util" }
-kast-ast = { path = "crates/ast" }
-derive-macros = { package = "kast-derive-macros", path = "crates/derive-macros" }
-
-decursion = "0.1"
+kast-inference.path = "crates/inference"
+kast-util.path = "crates/util"
+kast-ast.path = "crates/ast"
+kast-derive-macros.path = "crates/derive-macros"
+kast.path = "crates/kast"
 refmap = { package = "kast-refmap", path = "crates/refmap" }
 try-hash = { package = "kast-try-hash", path = "crates/try-hash" }
 
-[package]
-name = "kast"
-version.workspace = true
-edition.workspace = true
-description = "kast programming language"
-license.workspace = true
-repository.workspace = true
-
-[profile.release]
-debug = true
-
-[features]
-default = ["embed-std"]
-embed-std = []
-
-[dependencies]
-derive-macros.workspace = true
-batbox-time.workspace = true
-tokio.workspace = true
-getrandom.workspace = true
-clap.workspace = true
-eyre.workspace = true
-color-eyre.workspace = true
-colored.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-kast-util.workspace = true
-kast-ast.workspace = true
-thiserror.workspace = true
-rand.workspace = true
-futures.workspace = true
-ordered-float.workspace = true
-refmap.workspace = true
-async-once-cell.workspace = true
-async-notify.workspace = true
-async-executor.workspace = true
-async-trait.workspace = true
-futures-lite.workspace = true
-decursion.workspace = true
-event-listener.workspace = true
-try-hash.workspace = true
-async-oneshot.workspace = true
-anymap3.workspace = true
-inference = { package = "kast-inference", path = "crates/inference" }
-include_dir.workspace = true
-linked-hash-map.workspace = true
-tempfile.workspace = true
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-console_error_panic_hook.workspace = true
-wasm-bindgen.workspace = true
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-rustyline.workspace = true
+decursion = "0.1"
