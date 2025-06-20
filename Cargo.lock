@@ -156,17 +156,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-notify"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db96c36382f56ea91e5d012c4c7170046c7731449daa46655cbcabc594c8bee6"
-dependencies = [
- "event-listener 4.0.3",
- "futures-core",
- "pin-project-lite",
-]
-
-[[package]]
 name = "async-once-cell"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -459,17 +448,6 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "event-listener"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67b215c49b2b248c855fb73579eb1f4f26c38ffdc12973e20e07b91d78d5646e"
-dependencies = [
- "concurrent-queue",
- "parking",
- "pin-project-lite",
-]
-
-[[package]]
-name = "event-listener"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3492acde4c3fc54c845eaab3eed8bd00c7a7d881f78bfc801e43a93dec1331ae"
@@ -738,14 +716,10 @@ version = "0.1.0"
 dependencies = [
  "anymap3",
  "async-executor",
- "async-notify",
  "async-once-cell",
  "async-oneshot",
  "async-trait",
  "batbox-time",
- "clap",
- "color-eyre",
- "colored",
  "console_error_panic_hook",
  "decursion",
  "event-listener 5.4.0",
@@ -757,18 +731,14 @@ dependencies = [
  "kast-ast",
  "kast-derive-macros",
  "kast-inference",
- "kast-refmap",
  "kast-try-hash",
  "kast-util",
  "linked-hash-map",
  "ordered-float",
  "rand",
- "rustyline",
- "tempfile",
  "thiserror",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "wasm-bindgen",
 ]
 
@@ -789,7 +759,6 @@ version = "0.1.0"
 dependencies = [
  "anymap3",
  "async-executor",
- "async-notify",
  "async-once-cell",
  "async-oneshot",
  "async-trait",
@@ -809,7 +778,6 @@ dependencies = [
  "kast-ast",
  "kast-derive-macros",
  "kast-inference",
- "kast-refmap",
  "kast-try-hash",
  "kast-util",
  "linked-hash-map",

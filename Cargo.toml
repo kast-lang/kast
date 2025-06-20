@@ -40,6 +40,7 @@ linked-hash-map = "0.5"
 include_dir = "0.7.4"
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
+shame-rs = "0.1"
 
 kast-inference.path = "crates/inference"
 kast-util.path = "crates/util"

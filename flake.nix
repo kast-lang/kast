@@ -18,6 +18,7 @@
         inherit system;
         overlays = [ (import rust-overlay) ];
       };
+      pkgs-unstabler = import nixpkgs-unstabler { inherit system; };
       crane = crane-flake.mkLib pkgs;
       nix-filter = nix-filter-flake.lib;
       rust-toolchain = pkgs.rust-bin.nightly.latest.default.override {
@@ -49,6 +50,7 @@
             just
             cargo-flamegraph
             cargo-outdated
+            cargo-udeps
             nodejs
             (pkgs.writeShellScriptBin "kast" ''
               cargo build --no-default-features > target/cargo-output.txt 2>&1
