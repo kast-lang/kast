@@ -51,6 +51,7 @@
             cargo-flamegraph
             cargo-outdated
             cargo-udeps
+            cargo-bloat
             nodejs
             (pkgs.writeShellScriptBin "kast" ''
               cargo build --no-default-features > target/cargo-output.txt 2>&1
