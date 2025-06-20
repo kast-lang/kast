@@ -23,3 +23,8 @@ asteroids:
     just run --to-js examples/asteroids/main.ks > dist/asteroids.js
     cp examples/asteroids/index.html dist/index.html
     caddy file-server --listen localhost:8000 --root dist
+
+check-compile-times:
+    cargo clean
+    RUSTFLAGS="-Ztime-passes" cargo build --timings --jobs 1 > timings.txt 2>&1
+    echo Done
