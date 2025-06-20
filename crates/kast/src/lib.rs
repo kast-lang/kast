@@ -22,7 +22,6 @@ mod cast;
 mod comments;
 mod compiler;
 mod contexts;
-mod executor;
 mod id;
 mod interpreter;
 pub mod ir;
@@ -38,7 +37,6 @@ mod value;
 use self::cast::*;
 pub use self::compiler::{Ast, AstData, Hygiene};
 pub use self::contexts::Contexts;
-use self::executor::Executor;
 pub use self::id::*;
 pub use self::ir::Symbol;
 pub use self::ir::*;
@@ -48,6 +46,7 @@ pub use self::rusty::*;
 use self::scopes::*;
 pub use self::ty::*;
 pub use self::value::*;
+use kast_util::executor::Executor;
 pub use target::*;
 
 pub enum MaybeBorrowed<'a, T> {

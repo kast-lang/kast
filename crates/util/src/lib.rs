@@ -1,6 +1,7 @@
 mod catch_panic;
 mod display_option;
 mod error;
+pub mod executor;
 mod id;
 pub mod pad_adapter;
 mod parc;

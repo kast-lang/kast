@@ -839,8 +839,14 @@ name = "kast-util"
 version = "0.1.0"
 dependencies = [
  "anymap3",
+ "async-executor",
+ "async-once-cell",
+ "async-oneshot",
+ "eyre",
+ "futures",
  "kast-try-hash",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]
