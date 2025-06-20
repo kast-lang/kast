@@ -6,10 +6,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-rand.workspace = true
-eyre.workspace = true
 anymap3.workspace = true
-try-hash.workspace = true
-kast-util.workspace = true
 async-oneshot.workspace = true
 async-trait.workspace = true
+eyre.workspace = true
+kast-util.workspace = true
+rand.workspace = true
+try-hash.workspace = true

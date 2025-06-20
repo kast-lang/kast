@@ -7,8 +7,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kast-util.workspace = true
-tracing.workspace = true
-noisy_float.workspace = true
 decursion.workspace = true
 kast-derive-macros.workspace = true
+kast-util.workspace = true
+noisy_float.workspace = true
+tracing.workspace = true

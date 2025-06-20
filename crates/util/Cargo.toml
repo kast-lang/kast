@@ -7,12 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-thiserror.workspace = true
-try-hash.workspace = true
 anymap3.workspace = true
-async-once-cell.workspace = true
-futures.workspace = true
 async-executor.workspace = true
-eyre.workspace = true
+async-once-cell.workspace = true
 async-oneshot.workspace = true
+eyre.workspace = true
+futures.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
+try-hash.workspace = true

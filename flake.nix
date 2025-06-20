@@ -46,6 +46,7 @@
           packages = with pkgs; [
             rust-toolchain
             rust-analyzer
+            taplo
             just
             cargo-flamegraph
             cargo-outdated

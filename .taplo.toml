@@ -1,0 +1,9 @@
+include = ["crates/**/Cargo.toml", "Cargo.toml"]
+
+[formatting]
+reorder_keys = false
+
+[[rule]]
+keys = ["dependencies"]
+[rule.formatting]
+reorder_keys = true
