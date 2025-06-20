@@ -18,7 +18,6 @@
         inherit system;
         overlays = [ (import rust-overlay) ];
       };
-      pkgs-unstabler = import nixpkgs-unstabler { inherit system; };
       crane = crane-flake.mkLib pkgs;
       nix-filter = nix-filter-flake.lib;
       rust-toolchain = pkgs.rust-bin.nightly.latest.default.override {

@@ -46,28 +46,11 @@
         "type": "github"
       }
     },
-    "nixpkgs-unstabler": {
-      "locked": {
-        "lastModified": 1750405621,
-        "narHash": "sha256-vSAxO9O62ICunsD1XTaHyK0ejtukyylxPbT2nPJzj0E=",
-        "owner": "nixos",
-        "repo": "nixpkgs",
-        "rev": "0ff2300bd27c3799d2df6622315383c82bb44c40",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nixos",
-        "ref": "master",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "crane-flake": "crane-flake",
         "nix-filter-flake": "nix-filter-flake",
         "nixpkgs": "nixpkgs",
-        "nixpkgs-unstabler": "nixpkgs-unstabler",
         "rust-overlay": "rust-overlay"
       }
     },
