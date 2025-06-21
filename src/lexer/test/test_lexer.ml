@@ -2,9 +2,7 @@ open Util
 open Stdext
 module Token = Lexer.Token
 
-type token = Token.t;;
-
-Printexc.record_backtrace true
+type token = Token.t
 
 module ExpectedToken = struct
   type t = Ident of string | Punct of string | Eof
@@ -42,12 +40,17 @@ let test ~(source : string) ~(expected : expected_token list) : unit =
          (fun (expected, token) -> ExpectedToken.check expected token)
          (List.zip expected tokens)
   then (
-    eprintln "got     : %a" (List.print Token.print) tokens;
-    eprintln "expected: %a" (List.print ExpectedToken.print) expected;
-    failwith "test failed")
+    sprintln "Test failed:";
+    sprintln "got     : %a" (List.print Token.print) tokens;
+    sprintln "expected: %a" (List.print ExpectedToken.print) expected;
+    failwith @@ Format.flush_str_formatter ())
 ;;
 
-test ~source:"" ~expected:[];;
-
-test ~source:"hello, world"
-  ~expected:[ Ident "hello"; Punct ","; Ident "world" ]
+Printexc.record_backtrace true;
+try
+  test ~source:"" ~expected:[];
+  test ~source:"hello, world"
+    ~expected:[ Ident "hello"; Punct ","; Ident "wor2ld" ]
+with Failure s as f ->
+  prerr_string s;
+  raise f
