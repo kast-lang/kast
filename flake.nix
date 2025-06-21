@@ -15,20 +15,34 @@
     {
       devShells.${system} = {
         default = pkgs.mkShell {
-          packages = with pkgs; [
-            just
-            (pkgs.writeShellScriptBin "kast" ''
-              echo TODO
-              exit 1
-            '')
+          packages =
+            let
+              ocamlPackages = with pkgs.ocamlPackages; [
+                ocaml
+                ocaml-lsp
+                dune_3
+                findlib
+                utop
+                odoc
+                ocamlformat
+              ];
+              otherPackages = with pkgs; [
 
-            # for running js output
-            nodejs
+                just
+                (pkgs.writeShellScriptBin "kast" ''
+                  echo TODO
+                  exit 1
+                '')
 
-            # NIX
-            nixfmt
-            nil
-          ];
+                # for running js output
+                nodejs
+
+                # NIX
+                nixfmt
+                nil
+              ];
+            in
+            ocamlPackages ++ otherPackages;
           shellHook = ''
             echo Hello from Kast devshell
           '';
