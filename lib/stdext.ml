@@ -60,6 +60,8 @@ let ( let* ) = Option.bind
 module List = struct
   include List
 
+  let zip : 'a. 'a list -> 'b list -> ('a * 'b) list = combine
+
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a list -> unit =
    fun print_value fmt list ->
     fprintf fmt "[";
