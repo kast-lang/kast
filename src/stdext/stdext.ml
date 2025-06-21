@@ -9,11 +9,14 @@ module Format = struct
    fun fmt () -> pp_print_custom_break fmt ~fits:("", 0, "") ~breaks:(",", 0, "")
 
   let fprintln : 'a. formatter -> ('a, formatter, unit) format -> 'a =
-   fun format -> kfprintf (fun fmt -> fprintf fmt "\n") format
+   fun fmt -> kfprintf (fun fmt -> fprintf fmt "\n") fmt
 
   let sprintln = fun format -> fprintln str_formatter format
   let eprintln = fun format -> fprintln err_formatter format
   let println = fun format -> fprintln std_formatter format
+
+  let make_string : 'a. ('a, formatter, unit, tag) format4 -> 'a =
+   fun format -> kfprintf (fun _ -> flush_str_formatter ()) str_formatter format
 end
 
 type formatter = Format.formatter
@@ -23,7 +26,7 @@ let fprintln = Format.fprintln
 let println = Format.println
 let eprintln = Format.eprintln
 let sprintln = Format.sprintln
-let sprintf = Format.sprintf
+let make_string = Format.make_string
 
 module Char = struct
   include Char

@@ -13,11 +13,21 @@ let peek : reader -> char option =
 let peek2 : reader -> char option =
  fun reader -> String.get reader.contents (reader.position.index + 1)
 
-let skip : reader -> unit =
+let advance : reader -> unit =
  fun reader ->
   match peek reader with
-  | None -> failwith "huh"
   | Some c -> reader.position <- Position.advance c reader.position
+  | None -> failwith "tried to advance reader past eof"
+
+let skip : char -> reader -> unit =
+ fun expected reader ->
+  match peek reader with
+  | Some c when c = expected -> advance reader
+  | Some c ->
+      failwith
+      @@ make_string "expected %C, got %C at %a" expected c Position.print
+           reader.position
+  | None -> failwith @@ make_string "expected %C, got <eof>" expected
 
 type recording = { reader : reader; start_index : int }
 
@@ -34,7 +44,7 @@ let read_while : (char -> bool) -> reader -> string =
   let rec loop () =
     match peek reader with
     | Some c when predicate c ->
-        skip reader;
+        advance reader;
         loop ()
     | _ -> ()
   in

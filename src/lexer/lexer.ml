@@ -54,12 +54,9 @@ let expect_next : lexer -> string -> unit =
   if Token.is_raw expected_raw token.value then skip lexer
   else
     failwith
-    @@
-    (* TODO just sprintf? *)
-    (fprintf Format.str_formatter "expected %S, got %a" expected_raw
-       (Spanned.print Token.print)
-       token;
-     Format.flush_str_formatter ())
+    @@ make_string "expected %S, got %a" expected_raw
+         (Spanned.print Token.print)
+         token
 
 let default_rules : rule list =
   let read_eof reader =
@@ -75,12 +72,12 @@ let default_rules : rule list =
         if c != '\'' && c != '"' then return None;
         let delimeter = c in
         let raw = Reader.start_rec reader in
-        Reader.skip reader;
+        Reader.advance reader;
         let contents = Buffer.create 0 in
         let rec loop =
          fun () ->
           let/ c = Reader.peek reader in
-          Reader.skip reader;
+          Reader.advance reader;
           if c = delimeter then ()
           else (
             Buffer.add_char contents c;
