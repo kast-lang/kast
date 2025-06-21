@@ -36,41 +36,43 @@
         propagatedBuildInputs = with pkgs; [ graphviz ];
       };
     in {
-      devShells.${system} = {
-        default = pkgs.mkShell {
-          packages = let
-            ocamlPackages = with pkgs.ocamlPackages; [
-              ocaml
-              ocaml-lsp
-              ocaml-index
-              dune_3
-              dune-deps
-              findlib
-              utop
-              odoc
-              ocamlformat
-            ];
-            otherPackages = with pkgs; [
-              just
-              (pkgs.writeShellScriptBin "kast" ''
-                echo TODO
-                exit 1
-              '')
+      packages.${system}.default = pkgs.ocamlPackages.buildDunePackage rec {
+        pname = "kast";
+        version = "0.3.0";
+        src = ./.;
+      };
+      devShells.${system}.default = pkgs.mkShell {
+        packages = let
+          ocamlPackages = with pkgs.ocamlPackages; [
+            ocaml
+            ocaml-lsp
+            ocaml-index
+            dune_3
+            dune-deps
+            findlib
+            utop
+            odoc
+            ocamlformat
+          ];
+          otherPackages = with pkgs; [
+            just
+            (pkgs.writeShellScriptBin "kast" ''
+              dune exec kast "$@"
+            '')
 
-              # for running js output
-              nodejs
+            # for running js output
+            nodejs
 
-              # NIX
-              nixfmt
-              nil
-            ];
-          in ocamlPackages ++ otherPackages;
-          shellHook = ''
-            echo Hello from Kast devshell
-            export OCAML_BACKTRACE=1
-            export DUNE_CONFIG__GLOBAL_LOCK=disabled
-          '';
-        };
+            # NIX
+            nixfmt
+            nil
+          ];
+        in ocamlPackages ++ otherPackages;
+        shellHook = ''
+          echo Hello from Kast devshell
+          export OCAML_BACKTRACE=1
+          export DUNE_CONFIG__GLOBAL_LOCK=disabled
+        '';
       };
       formatter.${system} = pkgs.nixfmt;
     };
