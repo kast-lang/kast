@@ -23,6 +23,18 @@
           runHook postInstall
         '';
       });
+      dune-deps = pkgs.ocamlPackages.buildDunePackage rec {
+        pname = "dune-deps";
+        version = "1.4.0";
+        src = pkgs.fetchFromGitHub {
+          owner = "mjambon";
+          repo = "dune-deps";
+          rev = "${version}";
+          sha256 = "sha256-b2bubZkyaCu9GjtAJdwtMnuuAOQUtqlU/wpw0P7chWM=";
+        };
+        buildInputs = with pkgs.ocamlPackages; [ cmdliner sexplib ];
+        propagatedBuildInputs = with pkgs; [ graphviz ];
+      };
     in {
       devShells.${system} = {
         default = pkgs.mkShell {
@@ -32,13 +44,13 @@
               ocaml-lsp
               ocaml-index
               dune_3
+              dune-deps
               findlib
               utop
               odoc
               ocamlformat
             ];
             otherPackages = with pkgs; [
-
               just
               (pkgs.writeShellScriptBin "kast" ''
                 echo TODO
