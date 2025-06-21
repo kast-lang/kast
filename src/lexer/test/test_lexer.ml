@@ -1,4 +1,8 @@
-open Kast;;
+open Util
+open Stdext
+module Token = Lexer.Token
+
+type token = Token.t;;
 
 Printexc.record_backtrace true
 

@@ -1,5 +1,8 @@
 open Util
 open Stdext
+module Token = Token
+
+type token = Token.t
 
 (* TODO *)
 type rule = unit

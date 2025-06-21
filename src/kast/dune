@@ -1,0 +1,3 @@
+(library
+ (name kast)
+ (libraries stdext util lexer))

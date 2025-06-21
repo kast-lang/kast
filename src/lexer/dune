@@ -1,0 +1,3 @@
+(library
+ (name lexer)
+ (libraries stdext util))

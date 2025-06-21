@@ -43,6 +43,3 @@ module Spanned = struct
 end
 
 type 'a spanned = 'a Spanned.t
-
-(* :) *)
-type token = Token.t
