@@ -1,6 +1,7 @@
 open Util
 open Stdext
 module Token = Token
+module Reader = Reader
 
 type token = Token.t
 type rule = Reader.t -> token option
@@ -96,9 +97,9 @@ let default_rules : rule list =
   in
   [ read_eof; read_whitespace; read_ident; read_punct; read_string ]
 
-let read_all : source -> token spanned list =
- fun source ->
-  let lexer = init default_rules source in
+let read_all : rule list -> source -> token spanned list =
+ fun rules source ->
+  let lexer = init rules source in
   let found_eof = ref false in
   let dispenser : unit -> token spanned option =
    fun () ->

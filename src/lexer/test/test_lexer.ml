@@ -30,7 +30,10 @@ type expected_token = ExpectedToken.t
 
 let test ~(source : string) ~(expected : expected_token list) : unit =
   let expected = expected @ [ Eof ] in
-  let tokens = Lexer.read_all { contents = source; filename = "<test>" } in
+  let tokens =
+    Lexer.read_all Lexer.default_rules
+      { contents = source; filename = "<test>" }
+  in
   let tokens : token list =
     List.map (fun (spanned : _ spanned) -> spanned.value) tokens
   in
