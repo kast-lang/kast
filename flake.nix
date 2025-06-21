@@ -7,44 +7,41 @@
   outputs = inputs:
     let
       system = "x86_64-linux";
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-      };
+      pkgs = import inputs.nixpkgs { inherit system; };
       nix-filter = inputs.nix-filter.lib;
-    in
-    {
+    in {
       devShells.${system} = {
         default = pkgs.mkShell {
-          packages =
-            let
-              ocamlPackages = with pkgs.ocamlPackages; [
-                ocaml
-                ocaml-lsp
-                dune_3
-                findlib
-                utop
-                odoc
-                ocamlformat
-              ];
-              otherPackages = with pkgs; [
+          packages = let
+            ocamlPackages = with pkgs.ocamlPackages; [
+              ocaml
+              ocaml-lsp
+              dune_3
+              findlib
+              utop
+              odoc
+              ocamlformat
+            ];
+            otherPackages = with pkgs; [
 
-                just
-                (pkgs.writeShellScriptBin "kast" ''
-                  echo TODO
-                  exit 1
-                '')
+              just
+              (pkgs.writeShellScriptBin "kast" ''
+                echo TODO
+                exit 1
+              '')
 
-                # for running js output
-                nodejs
+              # for running js output
+              nodejs
 
-                # NIX
-                nixfmt
-                nil
-              ];
-            in
-            ocamlPackages ++ otherPackages;
+              # NIX
+              nixfmt
+              nil
+            ];
+          in ocamlPackages ++ otherPackages;
           shellHook = ''
             echo Hello from Kast devshell
+            export OCAML_BACKTRACE=1
+            export DUNE_CONFIG__GLOBAL_LOCK=disabled
           '';
         };
       };

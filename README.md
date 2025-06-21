@@ -6,3 +6,4 @@ An experimental programming language
 
 [See more on the website](https://kast-lang.org)
 
+![](overview.png)

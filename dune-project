@@ -4,7 +4,6 @@
 
 (package
  (name kast)
- (depends ocaml)
-)
+ (depends ocaml))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
