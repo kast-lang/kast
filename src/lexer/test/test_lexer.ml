@@ -50,7 +50,7 @@ Printexc.record_backtrace true;
 try
   test ~source:"" ~expected:[];
   test ~source:"hello, world"
-    ~expected:[ Ident "hello"; Punct ","; Ident "wor2ld" ]
+    ~expected:[ Ident "hello"; Punct ","; Ident "world" ]
 with Failure s as f ->
   prerr_string s;
   raise f

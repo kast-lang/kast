@@ -51,11 +51,11 @@ let peek : lexer -> token spanned =
     in
     let read_string : unit -> token option =
      fun () ->
-      let* c = peek_char () in
-      if c == '\'' || c == '"' then
-        let token = Token.String (failwith "todo") in
-        Some token
-      else None
+      with_return (fun { return } ->
+          let* c = peek_char () in
+          if c != '\'' && c != '"' then return None;
+          let token = Token.String (failwith "todo") in
+          Some token)
     in
     let read_ident : unit -> token option =
      fun () ->
