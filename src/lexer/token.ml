@@ -14,16 +14,16 @@ type t =
 
 type token = t
 
-let show : token -> string = function
-  | Punct { raw; _ } -> raw
-  | Ident { raw; _ } -> raw
-  | String { raw; _ } -> raw
-  | Number { raw; _ } -> raw
-  | Comment { raw; _ } -> raw
-  | Eof -> "<eof>"
-
 let print : Format.formatter -> token -> unit =
- fun fmt token -> Format.fprintf fmt "%S" (show token)
+ fun fmt token ->
+  match token with
+  | Punct { raw; _ }
+  | Ident { raw; _ }
+  | String { raw; _ }
+  | Number { raw; _ }
+  | Comment { raw; _ } ->
+      Format.fprintf fmt "%S" raw
+  | Eof -> Format.fprintf fmt "<eof>"
 
 let raw : token -> string option = function
   | Punct { raw; _ } -> Some raw

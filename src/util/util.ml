@@ -1,3 +1,5 @@
+open Stdext
+
 module Position = struct
   type t = { index : int; line : int; column : int }
   type position = t
@@ -10,9 +12,8 @@ module Position = struct
     | '\n' -> { index = p.index + 1; line = p.line + 1; column = 1 }
     | _ -> { index = p.index + 1; line = p.line; column = p.column + 1 }
 
-  let show : position -> string =
-   fun { index = _; line; column } ->
-    Int.to_string line ^ ":" ^ Int.to_string column
+  let print : 'a. formatter -> position -> unit =
+   fun fmt { index = _; line; column } -> fprintf fmt "%d:%d" line column
 end
 
 type position = Position.t
@@ -27,9 +28,9 @@ module Span = struct
   type t = { start : position; finish : position; filename : string }
   type span = t
 
-  let show : span -> string =
-   fun { start; finish; filename } ->
-    filename ^ ":" ^ Position.show start ^ " ~ " ^ Position.show finish
+  let print : 'a. formatter -> span -> unit =
+   fun fmt { start; finish; filename } ->
+    fprintf fmt "%s:%a ~ %a" filename Position.print start Position.print finish
 end
 
 type span = Span.t
@@ -38,8 +39,9 @@ module Spanned = struct
   type 'a t = { value : 'a; span : span }
   type 'a spanned = 'a t
 
-  let show : 'a. ('a -> string) -> 'a spanned -> string =
-   fun show_a spanned -> show_a spanned.value ^ " at " ^ Span.show spanned.span
+  let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a spanned -> unit =
+   fun print_value fmt spanned ->
+    fprintf fmt "%a at %a" print_value spanned.value Span.print spanned.span
 end
 
 type 'a spanned = 'a Spanned.t

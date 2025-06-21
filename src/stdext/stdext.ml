@@ -23,6 +23,7 @@ let fprintln = Format.fprintln
 let println = Format.println
 let eprintln = Format.eprintln
 let sprintln = Format.sprintln
+let sprintf = Format.sprintf
 
 module Char = struct
   include Char

@@ -53,8 +53,13 @@ let expect_next : lexer -> string -> unit =
   let token = peek lexer in
   if Token.is_raw expected_raw token.value then skip lexer
   else
-    failwith @@ "expected " ^ expected_raw ^ ", got "
-    ^ Spanned.show Token.show token
+    failwith
+    @@
+    (* TODO just sprintf? *)
+    (fprintf Format.str_formatter "expected %S, got %a" expected_raw
+       (Spanned.print Token.print)
+       token;
+     Format.flush_str_formatter ())
 
 let default_rules : rule list =
   let read_eof reader =

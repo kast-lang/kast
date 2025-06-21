@@ -1,5 +1,21 @@
+open Stdext
 open Util
-module Token = Token
+
+module Token : sig
+  type t = Token.t
+  type token = t
+
+  val print : formatter -> token -> unit
+  val raw : token -> string option
+  val is_raw : string -> token -> bool
+
+  type punct = Token.punct
+  type ident = Token.ident
+  type string = Token.string
+  type number = Token.number
+  type comment = Token.comment
+end
+
 module Reader = Reader
 
 type token = Token.t
