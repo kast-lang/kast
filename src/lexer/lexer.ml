@@ -11,75 +11,63 @@ type lexer = {
   mutable peeked : token spanned option;
   mutable position : position;
   rules : rule list;
+  reader : Reader.t;
   source : source;
 }
 
 let init : rule list -> source -> lexer =
  fun rules source ->
-  { rules; peeked = None; position = Position.beginning; source }
+  {
+    rules;
+    peeked = None;
+    position = Position.beginning;
+    reader = Reader.init source.contents;
+    source;
+  }
 
 let peek : lexer -> token spanned =
- fun lexer ->
+ fun ({ reader; _ } as lexer) ->
   if Option.is_none lexer.peeked then (
-    let peek_char : unit -> char option =
-     fun () ->
-      let c = String.get lexer.source.contents lexer.position.index in
-      c
-    in
-    let consume_char : unit -> unit =
-     fun () ->
-      match peek_char () with
-      | Some c -> lexer.position <- Position.advance c lexer.position
-      | None -> failwith "huh"
-    in
-    let read_while : (char -> bool) -> string =
-     fun predicate ->
-      let buffer = Buffer.create 0 in
-      let rec loop () =
-        match peek_char () with
-        | Some c when predicate c ->
-            consume_char ();
-            Buffer.add_char buffer c;
-            loop ()
-        | _ -> ()
-      in
-      loop ();
-      Buffer.contents buffer
-    in
     let skip_whitespace : unit -> unit =
-     fun () -> ignore @@ read_while Char.is_whitespace
+     fun () -> ignore @@ Reader.read_while Char.is_whitespace reader
     in
     let read_string : unit -> token option =
      fun () ->
       with_return (fun { return } ->
-          let* c = peek_char () in
+          let* c = Reader.peek reader in
           if c != '\'' && c != '"' then return None;
           let token = Token.String (failwith "todo") in
           Some token)
     in
     let read_ident : unit -> token option =
      fun () ->
-      let* c = peek_char () in
+      let* c = Reader.peek reader in
       if Char.is_alpha c || c == '_' then
         let ident : Token.ident =
-          { raw = read_while (fun c -> Char.is_alphanumberic c || c == '_') }
+          {
+            raw =
+              Reader.read_while
+                (fun c -> Char.is_alphanumberic c || c == '_')
+                reader;
+          }
         in
         Some (Token.Ident ident)
       else None
     in
     let read_punct : unit -> token option =
      fun () ->
-      let* c = peek_char () in
+      let* c = Reader.peek reader in
       let is_punct : char -> bool =
        fun c -> not (Char.is_whitespace c || Char.is_alphanumberic c || c == '_')
       in
       if is_punct c then
-        let token : Token.punct = { raw = read_while is_punct } in
+        let token : Token.punct = { raw = Reader.read_while is_punct reader } in
         Some (Token.Punct token)
       else None
     in
     let read_eof : unit -> token option =
-     fun () -> match peek_char () with Some _ -> None | None -> Some Token.Eof
+     fun () ->
+      match Reader.peek reader with Some _ -> None | None -> Some Token.Eof
     in
     (* actual code *)
     skip_whitespace ();
