@@ -73,8 +73,24 @@ let default_rules : rule list =
     with_return (fun { return } ->
         let* c = Reader.peek reader in
         if c != '\'' && c != '"' then return None;
-        let token = Token.String (failwith "todo") in
-        Some token)
+        let delimeter = c in
+        let raw = Reader.start_rec reader in
+        Reader.skip reader;
+        let contents = Buffer.create 0 in
+        let rec loop =
+         fun () ->
+          let/ c = Reader.peek reader in
+          Reader.skip reader;
+          if c = delimeter then ()
+          else (
+            Buffer.add_char contents c;
+            loop ())
+        in
+        loop ();
+        let token : Token.string =
+          { raw = Reader.finish_rec raw; contents = Buffer.contents contents }
+        in
+        Some (Token.String token))
   in
   let read_ident reader =
     let* c = Reader.peek reader in
@@ -100,7 +116,7 @@ let default_rules : rule list =
       Some (Token.Punct token)
     else None
   in
-  [ read_eof; read_whitespace; read_ident; read_punct; read_string ]
+  [ read_eof; read_whitespace; read_ident; read_string; read_punct ]
 
 let read_all : rule list -> source -> token spanned list =
  fun rules source ->

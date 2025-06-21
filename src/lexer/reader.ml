@@ -19,16 +19,24 @@ let skip : reader -> unit =
   | None -> failwith "huh"
   | Some c -> reader.position <- Position.advance c reader.position
 
+type recording = { reader : reader; start_index : int }
+
+let start_rec : reader -> recording =
+ fun reader -> { reader; start_index = reader.position.index }
+
+let finish_rec : recording -> string =
+ fun { reader; start_index } ->
+  String.sub reader.contents start_index (reader.position.index - start_index)
+
 let read_while : (char -> bool) -> reader -> string =
  fun predicate reader ->
-  let buffer = Buffer.create 0 in
+  let recording = start_rec reader in
   let rec loop () =
     match peek reader with
     | Some c when predicate c ->
         skip reader;
-        Buffer.add_char buffer c;
         loop ()
     | _ -> ()
   in
   loop ();
-  Buffer.contents buffer
+  finish_rec recording

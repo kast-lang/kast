@@ -65,6 +65,9 @@ end
 
 let ( let* ) = Option.bind
 
+let ( let/ ) : 'a. 'a option -> ('a -> unit) -> unit =
+ fun opt f -> match opt with None -> () | Some x -> f x
+
 module List = struct
   include List
 
