@@ -9,6 +9,20 @@
       system = "x86_64-linux";
       pkgs = import inputs.nixpkgs { inherit system; };
       nix-filter = inputs.nix-filter.lib;
+      ocaml-index = pkgs.ocamlPackages.merlin.overrideAttrs (old: rec {
+        pname = "ocaml-index";
+        buildPhase = ''
+          runHook preBuild
+          dune build -p ${pname} ''${enableParallelBuilding:+-j $NIX_BUILD_CORES}
+          runHook postBuild
+        '';
+        installPhase = ''
+          runHook preInstall
+          dune install --prefix $out --libdir $OCAMLFIND_DESTDIR ${pname} \
+            --docdir $out/share/doc --mandir $out/share/man
+          runHook postInstall
+        '';
+      });
     in {
       devShells.${system} = {
         default = pkgs.mkShell {
@@ -16,6 +30,7 @@
             ocamlPackages = with pkgs.ocamlPackages; [
               ocaml
               ocaml-lsp
+              ocaml-index
               dune_3
               findlib
               utop
