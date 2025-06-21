@@ -1,14 +1,19 @@
 open Util
 open Stdext
 
+(* TODO *)
+type rule = unit
+
 type lexer = {
   mutable peeked : token spanned option;
   mutable position : position;
+  rules : rule list;
   source : source;
 }
 
-let init : source -> lexer =
- fun source -> { peeked = None; position = Position.beginning; source }
+let init : rule list -> source -> lexer =
+ fun rules source ->
+  { rules; peeked = None; position = Position.beginning; source }
 
 let peek : lexer -> token spanned =
  fun lexer ->
@@ -112,7 +117,7 @@ let expect_next : lexer -> string -> unit =
 
 let read_all : source -> token spanned list =
  fun source ->
-  let lexer = init source in
+  let lexer = init [] source in
   let found_eof = ref false in
   let dispenser : unit -> token spanned option =
    fun () ->
