@@ -9,11 +9,16 @@ module Format = struct
    fun fmt () -> pp_print_custom_break fmt ~fits:("", 0, "") ~breaks:(",", 0, "")
 
   let fprintln : 'a. formatter -> ('a, formatter, unit) format -> 'a =
-   fun fmt -> kfprintf (fun fmt -> fprintf fmt "\n") fmt
+   fun fmt ->
+    kfprintf
+      (fun fmt ->
+        fprintf fmt "\n";
+        pp_print_flush fmt ())
+      fmt
 
-  let sprintln = fun format -> fprintln str_formatter format
-  let eprintln = fun format -> fprintln err_formatter format
-  let println = fun format -> fprintln std_formatter format
+  let sprintln format = fprintln str_formatter format
+  let eprintln format = fprintln err_formatter format
+  let println format = fprintln std_formatter format
 
   let make_string : 'a. ('a, formatter, unit, tag) format4 -> 'a =
    fun format -> kfprintf (fun _ -> flush_str_formatter ()) str_formatter format
@@ -59,6 +64,9 @@ module Option = struct
   let map_or : 'a 'r. 'r -> ('a -> 'r) -> 'a option -> 'r =
    fun default f opt -> match opt with Some x -> f x | None -> default
 
+  let or_else : 'a. (unit -> 'a option) -> 'a option -> 'a option =
+   fun f opt -> match opt with Some x -> Some x | None -> f ()
+
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a option -> unit =
    fun print_value fmt opt ->
     match opt with
@@ -67,6 +75,10 @@ module Option = struct
 end
 
 let ( let* ) = Option.bind
+
+(* unwrap_or_else *)
+let ( let+ ) : 'a. 'a option -> (unit -> 'a) -> 'a =
+ fun opt f -> match opt with None -> f () | Some x -> x
 
 let ( let/ ) : 'a. 'a option -> ('a -> unit) -> unit =
  fun opt f -> match opt with None -> () | Some x -> f x
@@ -98,3 +110,42 @@ module Return = struct
 end
 
 include Return
+
+module Ord = struct
+  type 'a ord = 'a -> 'a -> int
+  type 'a t = 'a ord
+
+  let min : 'a. 'a ord -> 'a -> 'a -> 'a =
+   fun ord a b -> if ord a b < 0 then a else b
+
+  let max : 'a. 'a ord -> 'a -> 'a -> 'a =
+   fun ord a b -> if ord b a < 0 then a else b
+end
+
+module Range = struct
+  module Inclusive = struct
+    type 'a t = { min : 'a; max : 'a }
+
+    let unite : 'a. 'a Ord.t -> 'a t -> 'a t -> 'a t =
+     fun ord a b ->
+      { min = Ord.min ord a.min b.min; max = Ord.max ord a.max b.max }
+
+    let point : 'a. 'a -> 'a t = fun x -> { min = x; max = x }
+  end
+
+  type 'a inclusive = 'a Inclusive.t
+end
+
+let unreachable : 'never. string -> 'never =
+ fun s -> failwith @@ "unreachable reached: " ^ s
+
+module Set = struct
+  include Set
+
+  module Make (T : OrderedType) = struct
+    include Set.Make (T)
+
+    let contains : elt -> t -> bool =
+     fun elem set -> find_opt elem set |> Option.is_some
+  end
+end

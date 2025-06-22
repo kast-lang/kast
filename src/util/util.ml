@@ -45,3 +45,35 @@ module Spanned = struct
 end
 
 type 'a spanned = 'a Spanned.t
+
+module Tuple = struct
+  module StringMap = Map.Make (String)
+
+  type 'a t = { unnamed : 'a array; named : 'a StringMap.t }
+
+  let empty : 'a. 'a t = { unnamed = [||]; named = StringMap.empty }
+
+  let add : 'a. string option -> 'a -> 'a t -> 'a t =
+   fun (type a) (name : string option) (value : a) (tuple : a t) : a t ->
+    match name with
+    | Some name -> { tuple with named = StringMap.add name value tuple.named }
+    | None ->
+        { tuple with unnamed = Array.append tuple.unnamed (Array.make 1 value) }
+
+  let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a t -> unit =
+   fun print_value fmt { unnamed; named } ->
+    fprintf fmt "{";
+    Format.pp_print_iter ~pp_sep:Format.comma_separator Array.iter print_value
+      fmt unnamed;
+    if StringMap.cardinal named <> 0 then Format.comma_separator fmt ();
+    let print_named fmt (name, value) =
+      fprintf fmt "%S = %a" name print_value value
+    in
+    Format.pp_print_iter ~pp_sep:Format.comma_separator
+      (fun f -> StringMap.iter (fun name value -> f (name, value)))
+      print_named fmt named;
+    Format.trailing_comma fmt ();
+    fprintf fmt "}"
+end
+
+type 'a tuple = 'a Tuple.t

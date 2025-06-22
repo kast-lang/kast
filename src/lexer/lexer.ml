@@ -13,6 +13,8 @@ type lexer = {
   source : source;
 }
 
+type t = lexer
+
 let init : rule list -> source -> lexer =
  fun rules source ->
   { rules; peeked = None; reader = Reader.init source.contents; source }
@@ -47,6 +49,12 @@ let next : lexer -> token spanned =
   result
 
 let skip : lexer -> unit = fun lexer -> ignore @@ next lexer
+
+let skip_comments : lexer -> unit =
+ fun lexer ->
+  while Token.is_comment (peek lexer).value do
+    skip lexer
+  done
 
 let expect_next : lexer -> string -> unit =
  fun lexer expected_raw ->

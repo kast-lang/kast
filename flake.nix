@@ -1,6 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    opam-nix.url = "github:tweag/opam-nix";
     nix-filter.url = "github:numtide/nix-filter";
   };
 
@@ -9,6 +10,7 @@
       system = "x86_64-linux";
       pkgs = import inputs.nixpkgs { inherit system; };
       nix-filter = inputs.nix-filter.lib;
+      opam-nix = inputs.opam-nix.lib.${system};
       ocaml-index = pkgs.ocamlPackages.merlin.overrideAttrs (old: rec {
         pname = "ocaml-index";
         buildPhase = ''
@@ -35,6 +37,9 @@
         buildInputs = with pkgs.ocamlPackages; [ cmdliner sexplib ];
         propagatedBuildInputs = with pkgs; [ graphviz ];
       };
+      # TODO figure this out
+      opam = (opam-nix.queryToScope { } { ppx_deriving_hash = "*"; });
+
     in {
       packages.${system}.default = pkgs.ocamlPackages.buildDunePackage rec {
         pname = "kast";
@@ -43,6 +48,11 @@
       };
       devShells.${system}.default = pkgs.mkShell {
         packages = let
+          ocamlDeps = with pkgs.ocamlPackages; [
+            ppxlib
+            ppx_deriving
+            # opam.ppx_deriving_hash
+          ];
           ocamlPackages = with pkgs.ocamlPackages; [
             ocaml
             ocaml-lsp
@@ -67,10 +77,11 @@
             nixfmt
             nil
           ];
-        in ocamlPackages ++ otherPackages;
+        in ocamlDeps ++ ocamlPackages ++ otherPackages;
         shellHook = ''
           echo Hello from Kast devshell
           export OCAML_BACKTRACE=1
+          export OCAMLRUNPARAM=b
           export DUNE_CONFIG__GLOBAL_LOCK=disabled
         '';
       };
