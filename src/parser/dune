@@ -1,5 +1,5 @@
 (library
  (name parser)
- (libraries stdext util lexer ast)
+ (libraries std util lexer ast)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.ord)))

@@ -1,5 +1,5 @@
 open Util
-open Stdext
+open Std
 module Token = Lexer.Token
 
 type token = Token.t

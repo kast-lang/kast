@@ -1,4 +1,4 @@
-open Stdext
+open Std
 open Util
 
 type reader = { contents : string; mutable position : position }

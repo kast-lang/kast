@@ -1,4 +1,4 @@
-open Stdext
+open Std
 open Util
 
 type token = Lexer.token
