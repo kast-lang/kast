@@ -50,19 +50,29 @@ type 'a spanned = 'a Spanned.t
 module Tuple = struct
   module StringMap = Map.Make (String)
 
-  type 'a t = { unnamed : 'a array; named : 'a StringMap.t }
+  type 'a t = {
+    unnamed : 'a array;
+    named : 'a StringMap.t;
+    named_order_rev : string list;
+  }
 
-  let empty : 'a. 'a t = { unnamed = [||]; named = StringMap.empty }
+  let empty : 'a. 'a t =
+    { unnamed = [||]; named = StringMap.empty; named_order_rev = [] }
 
   let add : 'a. string option -> 'a -> 'a t -> 'a t =
    fun (type a) (name : string option) (value : a) (tuple : a t) : a t ->
     match name with
-    | Some name -> { tuple with named = StringMap.add name value tuple.named }
+    | Some name ->
+        {
+          tuple with
+          named = StringMap.add name value tuple.named;
+          named_order_rev = name :: tuple.named_order_rev;
+        }
     | None ->
-        { tuple with unnamed = Array.append (Array.make 1 value) tuple.unnamed }
+        { tuple with unnamed = Array.append tuple.unnamed (Array.make 1 value) }
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a t -> unit =
-   fun print_value fmt { unnamed; named } ->
+   fun print_value fmt { unnamed; named; named_order_rev } ->
     Format.pp_print_custom_break fmt ~fits:("(", 1, "") ~breaks:("(", 2, "");
     let comma fmt () =
       Format.pp_print_custom_break fmt ~fits:(",", 1, "") ~breaks:(",", 2, "")
@@ -71,12 +81,12 @@ module Tuple = struct
     Format.pp_print_iter ~pp_sep:comma Array.iter print_unnamed fmt unnamed;
     if Array.length unnamed <> 0 && StringMap.cardinal named <> 0 then
       comma fmt ();
-    let print_named fmt (name, value) =
+    let print_named fmt name =
+      let value = StringMap.find name named in
       fprintf fmt "@[<v>%S = %a@]" name print_value value
     in
-    Format.pp_print_iter ~pp_sep:comma
-      (fun f -> StringMap.iter (fun name value -> f (name, value)))
-      print_named fmt named;
+    Format.pp_print_iter ~pp_sep:comma List.iter print_named fmt
+      (List.rev named_order_rev);
     Format.pp_print_custom_break fmt ~fits:("", 1, ")") ~breaks:(",", 0, ")")
 end
 

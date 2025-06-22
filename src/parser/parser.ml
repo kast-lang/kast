@@ -38,17 +38,25 @@ module Rule = struct
    fun values rule ->
     Log.trace "Collecting %d values into %s" (List.length values) rule.name;
     Log.trace "@[<v>Collecting %a@]" (List.print Ast.print) values;
-    let rec collect : Ast.t list -> part list -> Ast.t Tuple.t =
+    let rec collect : Ast.t list -> part list -> (binding * Ast.t) list =
      fun values parts ->
       match (values, parts) with
       | _, Keyword _ :: parts_tail -> collect values parts_tail
       | value :: values_tail, Value binding :: parts_tail ->
-          Tuple.add binding.name value (collect values_tail parts_tail)
-      | [], [] -> Tuple.empty
+          (binding, value) :: collect values_tail parts_tail
+      | [], [] -> []
       | [], _ -> failwith "not enough values supplied"
       | _, [] -> failwith "too many values supplied"
     in
-    Ast.Complex { name = rule.name; children = collect values rule.parts }
+    let collected = collect values rule.parts in
+    let children =
+      List.fold_left
+        (fun tuple (binding, value) ->
+          let (* because OCaml is OCaml *) binding : binding = binding in
+          Tuple.add binding.name value tuple)
+        Tuple.empty collected
+    in
+    Ast.Complex { name = rule.name; children }
 end
 
 type rule = Rule.t
