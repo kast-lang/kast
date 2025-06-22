@@ -30,7 +30,8 @@ module Span = struct
 
   let print : 'a. formatter -> span -> unit =
    fun fmt { start; finish; filename } ->
-    fprintf fmt "%s:%a ~ %a" filename Position.print start Position.print finish
+    fprintf fmt "%s:%d.%d-%d.%d" filename start.line start.column finish.line
+      finish.column
 end
 
 type span = Span.t
@@ -72,7 +73,6 @@ module Tuple = struct
     Format.pp_print_iter ~pp_sep:Format.comma_separator
       (fun f -> StringMap.iter (fun name value -> f (name, value)))
       print_named fmt named;
-    Format.trailing_comma fmt ();
     fprintf fmt "}"
 end
 

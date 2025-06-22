@@ -1,3 +1,5 @@
+open Std
+
 type punct = { raw : string }
 type ident = { raw : string }
 type string_token = { raw : string; contents : string }
@@ -17,13 +19,14 @@ type token = t
 let print : Format.formatter -> token -> unit =
  fun fmt token ->
   match token with
-  | Punct { raw; _ }
-  | Ident { raw; _ }
-  | String { raw; _ }
-  | Number { raw; _ }
-  | Comment { raw; _ } ->
-      Format.fprintf fmt "%S" raw
-  | Eof -> Format.fprintf fmt "<eof>"
+  | Punct { raw; _ } -> fprintf fmt "<punct %S>" raw
+  | Ident { raw; _ } ->
+      if String.exists Char.is_whitespace raw then fprintf fmt "<ident %S>" raw
+      else fprintf fmt "<ident %S>" raw
+  | Number { raw; _ } -> fprintf fmt "<num %s>" raw
+  | String { raw; _ } -> fprintf fmt "<str %s>" raw
+  | Comment _ -> fprintf fmt "<comment>"
+  | Eof -> fprintf fmt "<eof>"
 
 let raw : token -> string option = function
   | Punct { raw; _ } -> Some raw

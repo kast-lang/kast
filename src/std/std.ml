@@ -1,6 +1,28 @@
 module Format = struct
   include Format
 
+  let boxed : (formatter -> unit) -> formatter -> unit =
+   fun f fmt ->
+    pp_open_box fmt 2;
+    f fmt;
+    pp_close_box fmt ()
+
+  module Iter = struct
+    type sep = { fits : string * int * string; breaks : string * int * string }
+    type options = { before : sep; after : sep; sep : sep }
+
+    let print_sep { fits; breaks } fmt = pp_print_custom_break fmt ~fits ~breaks
+
+    let print (type iter) (type a) (options : options) iterations print_value
+        (fmt : formatter) (iter : iter) : unit =
+      let pp_sep fmt () = print_sep options.sep fmt in
+      pp_open_vbox fmt 0;
+      print_sep options.before fmt;
+      pp_print_iter ~pp_sep iterations print_value fmt iter;
+      print_sep options.after fmt;
+      pp_close_box fmt ()
+  end
+
   let noop_formatter : formatter =
     Format.make_formatter (fun _ _ _ -> ()) (fun () -> ())
 
@@ -93,13 +115,16 @@ module List = struct
 
   let zip : 'a. 'a list -> 'b list -> ('a * 'b) list = combine
 
+  let format_options : Format.Iter.options =
+    {
+      before = { fits = ("[", 1, ""); breaks = ("[", 2, "") };
+      sep = { fits = (",", 1, ""); breaks = (",", 2, "") };
+      after = { fits = ("", 1, "]"); breaks = (",", 0, "]") };
+    }
+
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a list -> unit =
    fun print_value fmt list ->
-    fprintf fmt "[";
-    Format.pp_print_iter ~pp_sep:Format.comma_separator List.iter print_value
-      fmt list;
-    Format.trailing_comma fmt ();
-    fprintf fmt "]"
+    Format.Iter.print format_options List.iter print_value fmt list
 
   let tail = List.tl
   let head = List.hd
@@ -110,11 +135,7 @@ module Array = struct
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a array -> unit =
    fun print_value fmt array ->
-    fprintf fmt "[";
-    Format.pp_print_iter ~pp_sep:Format.comma_separator Array.iter print_value
-      fmt array;
-    Format.trailing_comma fmt ();
-    fprintf fmt "]"
+    Array.to_list array |> List.print print_value fmt
 end
 
 module Return = struct
