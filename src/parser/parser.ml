@@ -34,7 +34,7 @@ module Rule = struct
          | Keyword keyword -> Some keyword
          | Value _ -> None)
 
-  let collect : Ast.t list -> rule -> Ast.t =
+  let collect : Ast.t list -> rule -> Ast.kind =
    fun values rule ->
     Log.trace "Collecting %d values into %s" (List.length values) rule.name;
     Log.trace "@[<v>Collecting %a@]" (List.print Ast.print) values;
@@ -173,6 +173,7 @@ let add_rule : rule -> parser -> unit =
 
 module Impl = struct
   type parse_result = MadeProgress of Ast.t | NoProgress
+  type parsed = Keyword of Lexer.token spanned | Value of Ast.t
 
   let rec parse_one :
       start:Ast.t option ->
@@ -184,7 +185,9 @@ module Impl = struct
     (match start with
     | None -> Log.trace "Start to parse one"
     | Some _ -> Log.trace "Start to parse one (having value)");
-    let parsed_values : Ast.t list ref = ref @@ Option.to_list start in
+    let parsed_rev : parsed list ref =
+      ref (start |> Option.map (fun ast -> Value ast) |> Option.to_list)
+    in
     let made_progress : unit -> bool =
       let start_index = (Lexer.peek lexer).span.start.index in
       fun () -> (Lexer.peek lexer).span.start.index <> start_index
@@ -193,7 +196,29 @@ module Impl = struct
       match node.terminal with
       | Some rule ->
           if made_progress () then
-            MadeProgress (Rule.collect (List.rev !parsed_values) rule)
+            let parsed = List.rev !parsed_rev in
+            let values =
+              parsed
+              |> List.filter_map (function
+                   | Keyword _ -> None
+                   | Value ast -> Some ast)
+            in
+            let spans =
+              parsed
+              |> List.map (function
+                   | Keyword spanned -> spanned.span
+                   | Value ast -> ast.span)
+            in
+            MadeProgress
+              {
+                kind = Rule.collect values rule;
+                span =
+                  {
+                    start = (spans |> List.head |> fun span -> span.start);
+                    finish = (spans |> List.last |> fun span -> span.finish);
+                    filename = (Lexer.source lexer).filename;
+                  };
+              }
           else NoProgress
       | None ->
           if made_progress () then
@@ -213,8 +238,8 @@ module Impl = struct
       if should_continue then Some () else None
     in
     let rec go (node : RuleSet.node) : parse_result =
-      let peek = Lexer.peek lexer in
-      let token = peek.value in
+      let spanned = Lexer.peek lexer in
+      let token = spanned.value in
       let raw_token = Lexer.Token.raw token in
       let+ () =
         (* try to follow with token as a keyword *)
@@ -222,6 +247,7 @@ module Impl = struct
         let edge : RuleSet.edge = Keyword raw_token in
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
+        parsed_rev := Keyword spanned :: !parsed_rev;
         Log.trace "Followed with keyword %S" raw_token;
         Lexer.skip lexer;
         Some (go next)
@@ -240,7 +266,7 @@ module Impl = struct
         let* value : Ast.t =
           parse ruleset (next.value_filter |> Option.get) lexer
         in
-        parsed_values := value :: !parsed_values;
+        parsed_rev := Value value :: !parsed_rev;
         Log.trace "Followed with value %a" Ast.print value;
         Some (go next)
       in
@@ -248,9 +274,9 @@ module Impl = struct
     in
     let parse_simple () : Ast.t option =
       Lexer.skip_comments lexer;
-      let spanned_token = Lexer.peek lexer in
-      let token = spanned_token.value in
-      let* result =
+      let spanned = Lexer.peek lexer in
+      let token = spanned.value in
+      let* kind =
         match token with
         | Eof -> None
         | Punct _ -> None
@@ -262,7 +288,7 @@ module Impl = struct
         | Comment _ -> unreachable "comments were skipped"
       in
       Lexer.skip lexer;
-      Some result
+      Some ({ kind; span = spanned.span } : Ast.t)
     in
 
     let start = start |> Option.or_else parse_simple in

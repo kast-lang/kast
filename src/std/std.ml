@@ -127,6 +127,7 @@ module List = struct
 
   let tail = List.tl
   let head = List.hd
+  let last list = list |> rev |> head
 end
 
 module Array = struct

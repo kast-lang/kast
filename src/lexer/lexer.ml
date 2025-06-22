@@ -15,6 +15,8 @@ type lexer = {
 
 type t = lexer
 
+let source lexer = lexer.source
+
 let init : rule list -> source -> lexer =
  fun rules source ->
   { rules; peeked = None; reader = Reader.init source.contents; source }

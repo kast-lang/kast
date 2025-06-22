@@ -23,6 +23,7 @@ type rule = Reader.t -> token option
 type lexer
 type t = lexer
 
+val source : lexer -> source
 val default_rules : rule list
 val init : rule list -> source -> lexer
 val peek : lexer -> token spanned
