@@ -19,12 +19,12 @@ type token = t
 let print : Format.formatter -> token -> unit =
  fun fmt token ->
   match token with
-  | Punct { raw; _ } -> fprintf fmt "<punct %S>" raw
+  | Punct { raw; _ } -> fprintf fmt "%S <punct>" raw
   | Ident { raw; _ } ->
-      if String.exists Char.is_whitespace raw then fprintf fmt "<ident %S>" raw
-      else fprintf fmt "<ident %S>" raw
-  | Number { raw; _ } -> fprintf fmt "<num %s>" raw
-  | String { raw; _ } -> fprintf fmt "<str %s>" raw
+      if String.exists Char.is_whitespace raw then fprintf fmt "%S <ident>" raw
+      else fprintf fmt "%S <ident>" raw
+  | Number { raw; _ } -> fprintf fmt "%s <num>" raw
+  | String { raw; _ } -> fprintf fmt "%s <str>" raw
   | Comment _ -> fprintf fmt "<comment>"
   | Eof -> fprintf fmt "<eof>"
 
