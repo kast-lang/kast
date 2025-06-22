@@ -1,0 +1,3 @@
+(library
+ (name default_syntax)
+ (libraries parser))

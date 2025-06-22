@@ -1,4 +1,4 @@
 (executable
  (public_name kast)
  (name main)
- (libraries std kast))
+ (libraries std kast default_syntax))
