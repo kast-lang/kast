@@ -56,6 +56,32 @@ module Tuple = struct
     named_order_rev : string list;
   }
 
+  type member = Index of int | Name of string
+
+  let zip_order_a : 'a 'b. 'a t -> 'b t -> ('a * 'b) t =
+   fun a b ->
+    let unnamed =
+      try Array.combine a.unnamed b.unnamed
+      with Invalid_argument _ -> invalid_arg "Tuple.zip (unnamed)"
+    in
+    let named_order_rev = a.named_order_rev in
+    let named =
+      try
+        named_order_rev
+        |> List.map (fun name ->
+               (name, (StringMap.find name a.named, StringMap.find name b.named)))
+        |> StringMap.of_list
+      with Not_found -> invalid_arg "Tuple.zip (named)"
+    in
+    { unnamed; named; named_order_rev }
+
+  let to_seq : 'a. 'a t -> (member * 'a) Seq.t =
+   fun { unnamed; named; named_order_rev } ->
+    Seq.append
+      (unnamed |> Array.to_seq |> Seq.mapi (fun i x -> (Index i, x)))
+      (named_order_rev |> List.rev |> List.to_seq
+      |> Seq.map (fun name -> (Name name, StringMap.find name named)))
+
   let empty : 'a. 'a t =
     { unnamed = [||]; named = StringMap.empty; named_order_rev = [] }
 
@@ -70,6 +96,15 @@ module Tuple = struct
         }
     | None ->
         { tuple with unnamed = Array.append tuple.unnamed (Array.make 1 value) }
+
+  let make : 'a. 'a list -> (string * 'a) list -> 'a t =
+   fun unnamed named ->
+    let tuple_of_unnamed =
+      List.fold_left (fun tuple value -> add None value tuple) empty unnamed
+    in
+    List.fold_left
+      (fun tuple (name, value) -> add (Some name) value tuple)
+      tuple_of_unnamed named
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a t -> unit =
    fun print_value fmt { unnamed; named; named_order_rev } ->
