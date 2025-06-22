@@ -16,11 +16,9 @@ module Format = struct
     let print (type iter) (type a) (options : options) iterations print_value
         (fmt : formatter) (iter : iter) : unit =
       let pp_sep fmt () = print_sep options.sep fmt in
-      pp_open_vbox fmt 0;
       print_sep options.before fmt;
       pp_print_iter ~pp_sep iterations print_value fmt iter;
-      print_sep options.after fmt;
-      pp_close_box fmt ()
+      print_sep options.after fmt
   end
 
   let noop_formatter : formatter =

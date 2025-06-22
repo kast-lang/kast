@@ -18,7 +18,7 @@ match args.command with
 | Cli.Command.Tokenize { path } ->
     let source = read path in
     let tokens = Lexer.read_all Lexer.default_rules source in
-    println "parsed tokens: %a"
+    println "@[<v>parsed tokens: %a@]"
       (Lexer.Token.print |> Spanned.print |> List.print)
       tokens
 | Cli.Command.Parse { path } ->
