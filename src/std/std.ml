@@ -59,6 +59,8 @@ module String = struct
   let get : string -> int -> char option =
    fun s i ->
     if 0 <= i && i < String.length s then Some (String.get s i) else None
+
+  let print_dbg : formatter -> string -> unit = fun fmt s -> fprintf fmt "%S" s
 end
 
 module Option = struct
@@ -96,6 +98,21 @@ module List = struct
     fprintf fmt "[";
     Format.pp_print_iter ~pp_sep:Format.comma_separator List.iter print_value
       fmt list;
+    Format.trailing_comma fmt ();
+    fprintf fmt "]"
+
+  let tail = List.tl
+  let head = List.hd
+end
+
+module Array = struct
+  include Array
+
+  let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a array -> unit =
+   fun print_value fmt array ->
+    fprintf fmt "[";
+    Format.pp_print_iter ~pp_sep:Format.comma_separator Array.iter print_value
+      fmt array;
     Format.trailing_comma fmt ();
     fprintf fmt "]"
 end

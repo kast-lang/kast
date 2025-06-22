@@ -121,7 +121,7 @@ let default_rules : rule list =
       Some (Token.Punct token)
     else None
   in
-  [ read_eof; read_whitespace; read_ident; read_string; read_punct ]
+  [ read_whitespace; read_eof; read_ident; read_string; read_punct ]
 
 let read_all : rule list -> source -> token spanned list =
  fun rules source ->
