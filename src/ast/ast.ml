@@ -12,6 +12,6 @@ type t = ast
 let rec print : formatter -> ast -> unit =
  fun fmt ast ->
   match ast with
-  | Simple { token } -> fprintf fmt "simple %a" Lexer.Token.print token
+  | Simple { token } -> Lexer.Token.print fmt token
   | Complex { name; children } ->
       fprintf fmt "%S %a" name (Tuple.print print) children

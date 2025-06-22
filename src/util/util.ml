@@ -63,17 +63,21 @@ module Tuple = struct
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a t -> unit =
    fun print_value fmt { unnamed; named } ->
-    fprintf fmt "{";
-    Format.pp_print_iter ~pp_sep:Format.comma_separator Array.iter print_value
-      fmt unnamed;
-    if StringMap.cardinal named <> 0 then Format.comma_separator fmt ();
-    let print_named fmt (name, value) =
-      fprintf fmt "%S = %a" name print_value value
+    Format.pp_print_custom_break fmt ~fits:("(", 1, "") ~breaks:("(", 2, "");
+    let comma fmt () =
+      Format.pp_print_custom_break fmt ~fits:(",", 1, "") ~breaks:(",", 2, "")
     in
-    Format.pp_print_iter ~pp_sep:Format.comma_separator
+    let print_unnamed fmt value = fprintf fmt "@[<v>%a@]" print_value value in
+    Format.pp_print_iter ~pp_sep:comma Array.iter print_unnamed fmt unnamed;
+    if Array.length unnamed <> 0 && StringMap.cardinal named <> 0 then
+      comma fmt ();
+    let print_named fmt (name, value) =
+      fprintf fmt "@[<v>%S = %a@]" name print_value value
+    in
+    Format.pp_print_iter ~pp_sep:comma
       (fun f -> StringMap.iter (fun name value -> f (name, value)))
       print_named fmt named;
-    fprintf fmt "}"
+    Format.pp_print_custom_break fmt ~fits:("", 1, ")") ~breaks:(",", 0, ")")
 end
 
 type 'a tuple = 'a Tuple.t

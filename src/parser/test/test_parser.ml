@@ -41,9 +41,7 @@ let scope_rule : rule =
   }
 
 let rules : rule list = [ if_rule; scope_rule; apply_rule ]
-
-let ruleset : Parser.ruleset =
-  List.fold_right Parser.RuleSet.add rules Parser.RuleSet.empty
+let ruleset : Parser.ruleset = Parser.RuleSet.of_list rules
 
 let test ~(source : string) ~(expected : unit) : unit =
   let source : source = { contents = source; filename = "<test>" } in

@@ -18,11 +18,13 @@ match args.command with
 | Cli.Command.Tokenize { path } ->
     let source = read path in
     let tokens = Lexer.read_all Lexer.default_rules source in
-    println "@[<v>parsed tokens: %a@]"
+    println "@[<v>%a@]"
       (Lexer.Token.print |> Spanned.print |> List.print)
       tokens
-| Cli.Command.Parse { path } ->
+| Cli.Command.Parse { path } -> (
     let source = read path in
-    failwith "todo"
-    (* Parser.parse source *)
+    let parsed = Parser.parse source Kast.default_syntax_ruleset in
+    match parsed with
+    | Some ast -> println "@[<v>%a@]" Ast.print ast
+    | None -> println "<nothing>")
 | Cli.Command.Help -> println "Hello, I am Kast :)\nhelp is not implemented yet"

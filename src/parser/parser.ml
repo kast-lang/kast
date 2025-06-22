@@ -127,6 +127,9 @@ module RuleSet = struct
 
   let is_keyword : string -> ruleset -> bool =
    fun word ruleset -> StringSet.contains word ruleset.keywords
+
+  let of_list : rule list -> ruleset =
+   fun rules -> List.fold_right add rules empty
 end
 
 type ruleset = RuleSet.t

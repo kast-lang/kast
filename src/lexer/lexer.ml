@@ -113,12 +113,29 @@ let default_rules : rule list =
   in
   let read_punct reader =
     let* c = Reader.peek reader in
-    let is_punct : char -> bool =
-     fun c -> not (Char.is_whitespace c || Char.is_alphanumberic c || c == '_')
+    let is_punct : char -> bool = function
+      | '_' | '\'' | '"' -> false
+      | c when Char.is_whitespace c -> false
+      | c when Char.is_alphanumberic c -> false
+      | _ -> true
     in
-    if is_punct c then
-      let token : Token.punct = { raw = Reader.read_while is_punct reader } in
-      Some (Token.Punct token)
+    let is_single_punct = function
+      | c when String.contains "(){}[]&^$;" c -> true
+      | _ -> false
+    in
+    if is_punct c then (
+      Reader.advance reader;
+      let raw =
+        match is_single_punct c with
+        | true -> String.make 1 c
+        | false ->
+            String.make 1 c
+            ^ Reader.read_while
+                (fun c -> is_punct c && not (is_single_punct c))
+                reader
+      in
+      let token : Token.punct = { raw } in
+      Some (Token.Punct token))
     else None
   in
   [ read_whitespace; read_eof; read_ident; read_string; read_punct ]
