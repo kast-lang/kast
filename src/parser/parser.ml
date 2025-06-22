@@ -32,7 +32,7 @@ module Rule = struct
 
   let collect : Ast.t list -> rule -> Ast.t =
    fun values rule ->
-    eprintln "Collecting %d values into %s" (List.length values) rule.name;
+    Log.trace "Collecting %d values into %s" (List.length values) rule.name;
     let rec collect : Ast.t list -> part list -> Ast.t Tuple.t =
      fun values parts ->
       match (values, parts) with
@@ -148,8 +148,8 @@ module Impl = struct
       parse_result =
    fun ~start ruleset filter lexer ->
     (match start with
-    | None -> eprintln "Start to parse one"
-    | Some _ -> eprintln "Start to parse one (having value)");
+    | None -> Log.trace "Start to parse one"
+    | Some _ -> Log.trace "Start to parse one (having value)");
     let parsed_values : Ast.t list ref = ref @@ Option.to_list start in
     let made_progress : unit -> bool =
       let start_index = (Lexer.peek lexer).span.start.index in
@@ -177,7 +177,7 @@ module Impl = struct
         let* raw_token = raw_token in
         let edge : RuleSet.edge = Keyword raw_token in
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
-        eprintln "Followed with keyword %S" raw_token;
+        Log.trace "Followed with keyword %S" raw_token;
         Lexer.skip lexer;
         Some (go next)
       in
@@ -194,7 +194,7 @@ module Impl = struct
         (* TODO what filter? *)
         let* value : Ast.t = parse ruleset filter lexer in
         parsed_values := value :: !parsed_values;
-        eprintln "Followed with value %a" Ast.print value;
+        Log.trace "Followed with value %a" Ast.print value;
         Some (go next)
       in
       terminate node
@@ -231,8 +231,8 @@ module Impl = struct
     in
 
     (match result with
-    | MadeProgress _ -> eprintln "Finished parse one (made progress)"
-    | NoProgress -> eprintln "Finished parse one (no progress)");
+    | MadeProgress _ -> Log.trace "Finished parse one (made progress)"
+    | NoProgress -> Log.trace "Finished parse one (no progress)");
     result
 
   and parse : ruleset -> Rule.priority_filter -> Lexer.t -> Ast.t option =
@@ -240,7 +240,7 @@ module Impl = struct
     let rec loop (already_parsed : Ast.t option) =
       match parse_one ~start:already_parsed ruleset filter lexer with
       | MadeProgress ast ->
-          eprintln "Made progress: %a" Ast.print ast;
+          Log.trace "Made progress: %a" Ast.print ast;
           loop (Some ast)
       | NoProgress -> already_parsed
     in

@@ -1,6 +1,9 @@
 module Format = struct
   include Format
 
+  let noop_formatter : formatter =
+    Format.make_formatter (fun _ _ _ -> ()) (fun () -> ())
+
   let comma_separator : formatter -> unit -> unit =
    fun fmt () ->
     pp_print_custom_break fmt ~fits:(",", 1, "") ~breaks:(",", 0, "")
@@ -148,4 +151,30 @@ module Set = struct
     let contains : elt -> t -> bool =
      fun elem set -> find_opt elem set |> Option.is_some
   end
+end
+
+module Log = struct
+  type level = Error | Warn | Info | Debug | Trace
+
+  let max_level : level ref = ref Info
+  let set_max_level : level -> unit = fun level -> max_level := level
+
+  let with_level : 'a. level -> ('a, formatter, unit) format -> 'a =
+   fun level ->
+    if level <= !max_level then eprintln else fprintf Format.noop_formatter
+
+  let error : 'a. ('a, formatter, unit) format -> 'a =
+   fun format -> with_level Error format
+
+  let warn : 'a. ('a, formatter, unit) format -> 'a =
+   fun format -> with_level Warn format
+
+  let info : 'a. ('a, formatter, unit) format -> 'a =
+   fun format -> with_level Info format
+
+  let debug : 'a. ('a, formatter, unit) format -> 'a =
+   fun format -> with_level Debug format
+
+  let trace : 'a. ('a, formatter, unit) format -> 'a =
+   fun format -> with_level Trace format
 end

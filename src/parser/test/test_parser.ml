@@ -50,12 +50,13 @@ let test ~(source : string) ~(expected : unit) : unit =
   let ast = Parser.parse source ruleset in
   match ast with
   | Some ast ->
-      eprintln "Parsed: %a" Ast.print ast;
+      Log.debug "Parsed: %a" Ast.print ast;
       failwith "todo test "
   | None -> failwith "nothing was parsed"
 ;;
 
 Printexc.record_backtrace true;
+Log.set_max_level Trace;
 try
   test ~source:"Some(Some(String) )" ~expected:();
   test ~source:"if f x then a else b" ~expected:();
