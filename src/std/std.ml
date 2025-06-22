@@ -122,6 +122,7 @@ module List = struct
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a list -> unit =
    fun print_value fmt list ->
+    let print_value fmt value = fprintf fmt "@[<v>%a@]" print_value value in
     Format.Iter.print format_options List.iter print_value fmt list
 
   let tail = List.tl

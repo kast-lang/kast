@@ -59,7 +59,7 @@ module Tuple = struct
     match name with
     | Some name -> { tuple with named = StringMap.add name value tuple.named }
     | None ->
-        { tuple with unnamed = Array.append tuple.unnamed (Array.make 1 value) }
+        { tuple with unnamed = Array.append (Array.make 1 value) tuple.unnamed }
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a t -> unit =
    fun print_value fmt { unnamed; named } ->

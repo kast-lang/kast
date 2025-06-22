@@ -4,18 +4,22 @@ open Util
 module Rule = struct
   module Priority = struct
     type t = float
+    type priority = t
+    type filter = Greater of priority | GreaterOrEqual of priority | Any
 
     let compare = Float.compare
+
+    let stricter_filter a b =
+      match (a, b) with
+      | Any, p | p, Any -> p
+      | Greater a, Greater b -> Greater (Float.max a b)
+      | GreaterOrEqual a, GreaterOrEqual b -> GreaterOrEqual (Float.max a b)
+      | Greater a, GreaterOrEqual b | GreaterOrEqual b, Greater a ->
+          if a >= b then Greater a else GreaterOrEqual b
   end
 
   type priority = Priority.t
-
-  type priority_filter =
-    | Greater of priority
-    | GreaterOrEqual of priority
-    | Any
-
-  type binding = { name : string option; priority : priority_filter }
+  type binding = { name : string option; priority : Priority.filter }
   type part = Keyword of string | Value of binding
   type rule = { name : string; priority : float; parts : part list }
   type t = rule
@@ -33,6 +37,7 @@ module Rule = struct
   let collect : Ast.t list -> rule -> Ast.t =
    fun values rule ->
     Log.trace "Collecting %d values into %s" (List.length values) rule.name;
+    Log.trace "@[<v>Collecting %a@]" (List.print Ast.print) values;
     let rec collect : Ast.t list -> part list -> Ast.t Tuple.t =
      fun values parts ->
       match (values, parts) with
@@ -60,13 +65,19 @@ module RuleSet = struct
 
   type node = {
     terminal : rule option;
+    value_filter : Rule.Priority.filter option;
     priority_range : Rule.priority Range.inclusive option;
     next : node EdgeMap.t;
   }
 
   module Node = struct
     let empty : node =
-      { terminal = None; priority_range = None; next = EdgeMap.empty }
+      {
+        terminal = None;
+        value_filter = None;
+        priority_range = None;
+        next = EdgeMap.empty;
+      }
   end
 
   module StringSet = Set.Make (String)
@@ -78,7 +89,17 @@ module RuleSet = struct
 
   let add : rule -> ruleset -> ruleset =
    fun rule ruleset ->
-    let rec insert (parts : Rule.part list) (node : node) : node =
+    let rec insert ~(prev : Rule.part option) (parts : Rule.part list)
+        (node : node) : node =
+      let updated_value_filter =
+        match prev with
+        | None | Some (Keyword _) -> node.value_filter
+        | Some (Value { priority; _ }) ->
+            Some
+              (match node.value_filter with
+              | Some current -> Rule.Priority.stricter_filter current priority
+              | None -> priority)
+      in
       let updated_priority_range =
         Some
           (let point = Range.Inclusive.point rule.priority in
@@ -96,6 +117,7 @@ module RuleSet = struct
           | None ->
               {
                 terminal = Some rule;
+                value_filter = updated_value_filter;
                 priority_range = updated_priority_range;
                 next = node.next;
               })
@@ -112,17 +134,18 @@ module RuleSet = struct
               | None -> Node.empty
               | Some existing -> existing
             in
-            Some (insert rest next)
+            Some (insert ~prev:(Some first) rest next)
           in
           {
             terminal = node.terminal;
+            value_filter = updated_value_filter;
             priority_range = updated_priority_range;
             next = EdgeMap.update edge merge_next node.next;
           }
     in
     {
       keywords = StringSet.add_seq (Rule.keywords rule) ruleset.keywords;
-      root = insert rule.parts ruleset.root;
+      root = insert ~prev:None rule.parts ruleset.root;
     }
 
   let is_keyword : string -> ruleset -> bool =
@@ -146,7 +169,7 @@ module Impl = struct
   let rec parse_one :
       start:Ast.t option ->
       ruleset ->
-      Rule.priority_filter ->
+      Rule.Priority.filter ->
       Lexer.t ->
       parse_result =
    fun ~start ruleset filter lexer ->
@@ -171,6 +194,16 @@ module Impl = struct
                  (Lexer.peek lexer).value
           else NoProgress
     in
+    let continue_with (node : RuleSet.node) : unit option =
+      let* range = node.priority_range in
+      let should_continue =
+        match filter with
+        | Any -> true
+        | Greater x -> range.max > x
+        | GreaterOrEqual x -> range.max >= x
+      in
+      if should_continue then Some () else None
+    in
     let rec go (node : RuleSet.node) : parse_result =
       let peek = Lexer.peek lexer in
       let token = peek.value in
@@ -180,6 +213,7 @@ module Impl = struct
         let* raw_token = raw_token in
         let edge : RuleSet.edge = Keyword raw_token in
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
+        let* () = continue_with next in
         Log.trace "Followed with keyword %S" raw_token;
         Lexer.skip lexer;
         Some (go next)
@@ -194,8 +228,10 @@ module Impl = struct
         in
         let edge : RuleSet.edge = Value in
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
-        (* TODO what filter? *)
-        let* value : Ast.t = parse ruleset filter lexer in
+        let* () = continue_with next in
+        let* value : Ast.t =
+          parse ruleset (next.value_filter |> Option.get) lexer
+        in
         parsed_values := value :: !parsed_values;
         Log.trace "Followed with value %a" Ast.print value;
         Some (go next)
@@ -238,7 +274,7 @@ module Impl = struct
     | NoProgress -> Log.trace "Finished parse one (no progress)");
     result
 
-  and parse : ruleset -> Rule.priority_filter -> Lexer.t -> Ast.t option =
+  and parse : ruleset -> Rule.Priority.filter -> Lexer.t -> Ast.t option =
    fun ruleset filter lexer ->
     let rec loop (already_parsed : Ast.t option) =
       match parse_one ~start:already_parsed ruleset filter lexer with
