@@ -41,8 +41,10 @@ module Format = struct
 
   let fprintln : 'a. formatter -> ('a, formatter, unit) format -> 'a =
    fun fmt ->
+    pp_open_vbox fmt 0;
     kfprintf
       (fun fmt ->
+        pp_close_box fmt ();
         fprintf fmt "\n";
         pp_print_flush fmt ())
       fmt

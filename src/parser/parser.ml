@@ -88,7 +88,7 @@ module Rule = struct
   let collect : Ast.t list -> rule -> Ast.kind =
    fun values rule ->
     Log.trace "Collecting %d values into %s" (List.length values) rule.name;
-    Log.trace "@[<v>Collecting %a@]" (List.print Ast.print) values;
+    Log.trace "Collecting %a" (List.print Ast.print) values;
     let rec collect : Ast.t list -> part list -> (binding * Ast.t) list =
      fun values parts ->
       match (values, parts) with

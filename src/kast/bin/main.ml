@@ -27,6 +27,6 @@ match args.command with
     let source = read path in
     let parsed = Parser.parse source Default_syntax.ruleset in
     match parsed with
-    | Some ast -> println "@[<v>%a@]" Ast.print ast
+    | Some ast -> println "%a" Ast.print ast
     | None -> println "<nothing>")
 | Cli.Command.Help -> println "Hello, I am Kast :)\nhelp is not implemented yet"

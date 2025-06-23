@@ -28,7 +28,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
         { contents = source; filename = "<test>" }
         (ruleset |> Option.value ~default:Default_syntax.ruleset)
     in
-    Log.error "@[<v>Parsed: %a@]" (Option.print Ast.print) ast;
+    Log.error "Parsed: %a" (Option.print Ast.print) ast;
     failwith "Parse was supposed to fail"
   with Parser.Error s -> Log.trace "Test properly failed: %s" s
 
@@ -46,8 +46,8 @@ let test ~(source : string) ~(expected : string)
   match ast with
   | Some ast ->
       if not (matches ast expected) then (
-        Log.error "@[<v>Parsed: %a@]" Ast.print ast;
-        Log.error "@[<v>Expected %a@]" Simple_syntax.print expected;
+        Log.error "Parsed: %a" Ast.print ast;
+        Log.error "Expected %a" Simple_syntax.print expected;
         failwith "Test failed")
   | None -> failwith "nothing was parsed"
 ;;
