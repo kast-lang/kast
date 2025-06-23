@@ -80,6 +80,13 @@ let expect_next : lexer -> string -> unit =
          (Spanned.print Token.print)
          token
 
+let expect_eof : lexer -> unit =
+ fun lexer ->
+  let peek = peek lexer in
+  match peek.value with
+  | Eof -> ()
+  | _ -> error "Expected <eof>, got %a" (Spanned.print Token.print) peek
+
 let default_rules : rule list =
   let read_eof reader =
     match Reader.peek reader with

@@ -1,6 +1,8 @@
 open Std
 open Util
 
+exception Error of string
+
 module Token : sig
   type t = Token.t
   type token = t
@@ -32,4 +34,5 @@ val next : lexer -> token spanned
 val skip : lexer -> unit
 val skip_comments : lexer -> unit
 val expect_next : lexer -> string -> unit
+val expect_eof : lexer -> unit
 val read_all : rule list -> source -> token spanned list

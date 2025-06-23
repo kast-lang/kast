@@ -132,11 +132,14 @@ module Rule = struct
     (let token = Lexer.next lexer in
      if Lexer.Token.raw token.value <> Some ":=" then
        error "Expected \":=\", got %a" (Spanned.print Lexer.Token.print) token);
-    let rec collect_parts () =
-      let token = Lexer.peek lexer in
-      let part : part option =
+    let rec collect_parts () : part list =
+      let rec part ?(left_assoc = false) () : part option =
+        let token = Lexer.peek lexer in
         match token.value with
-        | String { contents; _ } ->
+        | Punct { raw = "<-"; _ } when not left_assoc ->
+            Lexer.skip lexer;
+            part ~left_assoc:true ()
+        | String { contents; _ } when not left_assoc ->
             Lexer.skip lexer;
             Some (Keyword contents)
         | Ident { raw; _ } ->
@@ -144,29 +147,36 @@ module Rule = struct
             let name = if raw = "_" then None else Some raw in
             let peek = Lexer.peek lexer in
             let priority =
-              match Lexer.Token.raw peek.value with
-              | Some "=" ->
-                  Lexer.skip lexer;
-                  Priority.GreaterOrEqual
-              | Some ":" ->
-                  Lexer.skip lexer;
-                  let peek = Lexer.peek lexer in
-                  if Lexer.Token.raw peek.value <> Some "any" then
-                    error "Expected \"any\", got %a"
-                      (Spanned.print Lexer.Token.print)
-                      peek;
-                  Lexer.skip lexer;
-                  Priority.Any
-              | _ ->
-                  (* defaulting to Greater means we only need
-                      to annotate with = where we want associativity
+              if left_assoc then Priority.GreaterOrEqual
+              else
+                match Lexer.Token.raw peek.value with
+                | Some "->" ->
+                    Lexer.skip lexer;
+                    Priority.GreaterOrEqual
+                | Some ":" ->
+                    Lexer.skip lexer;
+                    let peek = Lexer.peek lexer in
+                    if Lexer.Token.raw peek.value <> Some "any" then
+                      error "Expected \"any\", got %a"
+                        (Spanned.print Lexer.Token.print)
+                        peek;
+                    Lexer.skip lexer;
+                    Priority.Any
+                | _ ->
+                    (* defaulting to Greater means we only need
+                      to annotate with <- or -> where we want associativity
                       or :any where we want parentheses-like behavior *)
-                  Priority.Greater
+                    Priority.Greater
             in
             Some (Value { name; priority })
-        | _ -> None
+        | _ ->
+            if left_assoc then
+              error "Expected value name, got %a"
+                (Spanned.print Lexer.Token.print)
+                token;
+            None
       in
-      match part with
+      match part () with
       | Some part -> part :: collect_parts ()
       | None -> []
     in
@@ -316,7 +326,9 @@ module RuleSet = struct
              Lexer.init Lexer.default_rules
                { contents = line; filename = "<rule>" }
            in
-           Rule.parse lexer)
+           let rule = Rule.parse lexer in
+           Lexer.expect_eof lexer;
+           rule)
     |> of_list
 
   let parse_lines : string -> ruleset =
@@ -528,7 +540,5 @@ let parse : source -> ruleset -> Ast.t option =
   let result =
     Impl.parse ruleset ~continuation_keywords:StringSet.empty ~filter:Any lexer
   in
-  let peek = Lexer.peek lexer in
-  match peek.value with
-  | Eof -> result
-  | _ -> error "unexpected %a" (Spanned.print Lexer.Token.print) peek
+  Lexer.expect_eof lexer;
+  result
