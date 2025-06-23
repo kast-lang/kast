@@ -130,8 +130,8 @@ module Rule = struct
           token
     in
     (let token = Lexer.next lexer in
-     if Lexer.Token.raw token.value <> Some "=" then
-       error "Expected \"=\", got %a" (Spanned.print Lexer.Token.print) token);
+     if Lexer.Token.raw token.value <> Some ":=" then
+       error "Expected \":=\", got %a" (Spanned.print Lexer.Token.print) token);
     let rec collect_parts () =
       let token = Lexer.peek lexer in
       let part : part option =
@@ -145,10 +145,7 @@ module Rule = struct
             let peek = Lexer.peek lexer in
             let priority =
               match Lexer.Token.raw peek.value with
-              | Some ":>" ->
-                  Lexer.skip lexer;
-                  Priority.Greater
-              | Some ":=" ->
+              | Some "=" ->
                   Lexer.skip lexer;
                   Priority.GreaterOrEqual
               | Some ":" ->
@@ -162,7 +159,7 @@ module Rule = struct
                   Priority.Any
               | _ ->
                   (* defaulting to Greater means we only need
-                      to annotate := where we want associativity
+                      to annotate with = where we want associativity
                       or :any where we want parentheses-like behavior *)
                   Priority.Greater
             in

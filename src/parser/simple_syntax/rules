@@ -1,4 +1,4 @@
-comma             1 = _:= "," _
-"trailing comma"  1 = _:= ","
-named             2 = name "=" value
-complex          10 = name:= "(" children:any ")"
+comma             1 := _= "," _
+"trailing comma"  1 := _= ","
+named             2 := name "=" value
+complex          10 := name= "(" children:any ")"
