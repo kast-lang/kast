@@ -67,7 +67,8 @@
             nil # nix lsp
           ]);
           shellHook = ''
-            echo Hello from Kast devshell
+            echo 'Hello from Kast devshell'
+            echo '  dont forget to run `just lsp-support` :)'
             export OCAML_BACKTRACE=1
             export OCAMLRUNPARAM=b
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
