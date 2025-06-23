@@ -48,8 +48,6 @@ end
 type 'a spanned = 'a Spanned.t
 
 module Tuple = struct
-  module StringMap = Map.Make (String)
-
   type 'a t = {
     unnamed : 'a array;
     named : 'a StringMap.t;

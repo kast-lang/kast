@@ -1,47 +1,7 @@
 open Std
 open Util
 
-let ruleset : Parser.ruleset =
-  Parser.RuleSet.of_list
-    [
-      {
-        name = "complex";
-        priority = 10.0;
-        parts =
-          [
-            Value { name = Some "name"; priority = GreaterOrEqual };
-            Keyword "(";
-            Value { name = Some "children"; priority = Any };
-            Keyword ")";
-          ];
-      };
-      {
-        name = "comma";
-        priority = 1.0;
-        parts =
-          [
-            Value { name = None; priority = GreaterOrEqual };
-            Keyword ",";
-            Value { name = None; priority = GreaterOrEqual };
-          ];
-      };
-      {
-        name = "trailing comma";
-        priority = 1.0;
-        parts =
-          [ Value { name = None; priority = GreaterOrEqual }; Keyword "," ];
-      };
-      {
-        name = "named";
-        priority = 1.0;
-        parts =
-          [
-            Value { name = Some "name"; priority = Greater };
-            Keyword "=";
-            Value { name = Some "value"; priority = Greater };
-          ];
-      };
-    ]
+let ruleset : Parser.ruleset = Parser.RuleSet.parse_lines [%blob "rules"]
 
 type ast =
   | Simple of string
@@ -54,7 +14,7 @@ let rec print fmt = function
 
 let get_name : Ast.t -> string = function
   | { kind = Simple { token = Ident { raw; _ } }; _ } -> raw
-  | other -> unreachable @@ make_string "get_name %a" Ast.print other
+  | other -> unreachable "get_name %a" Ast.print other
 
 let rec process : Ast.t -> ast =
  fun ast ->
@@ -66,13 +26,17 @@ let rec process : Ast.t -> ast =
           name = Tuple.get_named "name" children |> get_name;
           children = Tuple.get_named "children" children |> collect_children;
         }
-  | _ -> unreachable @@ make_string "process %a" Ast.print ast
+  | _ -> unreachable "process %a" Ast.print ast
 
 and collect_children ast : ast tuple =
   match ast.kind with
   | Complex { name = "trailing comma"; children } ->
       Tuple.get_unnamed 0 children |> collect_children
   | Complex { name = "comma"; children } ->
+      if
+        Array.length children.unnamed <> 2
+        || not (StringMap.is_empty children.named)
+      then Parser.error "comma is incorrect structure: %a" Ast.print ast;
       let a = Tuple.get_unnamed 0 children |> collect_children in
       let b = Tuple.get_unnamed 1 children |> collect_children in
       Tuple.merge a b
@@ -83,4 +47,7 @@ and collect_children ast : ast tuple =
   | _ -> Tuple.make [ process ast ] []
 
 let parse : source -> ast option =
- fun source -> Parser.parse source ruleset |> Option.map process
+ fun source ->
+  let ast = Parser.parse source ruleset in
+  Log.debug "@[<v>Parsed: %a@]" (Option.print Ast.print) ast;
+  ast |> Option.map process

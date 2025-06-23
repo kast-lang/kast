@@ -51,14 +51,17 @@ let test ~(source : string) ~(expected : string) : unit =
 ;;
 
 Printexc.record_backtrace true;
-Log.set_max_level Debug;
+Log.set_max_level Trace;
 try
+  ignore @@ Simple_syntax.parse { contents = "f(a=b,c=d)"; filename = "<test>" };
+  exit 0;
   test ~source:"Some(Some(String))"
     ~expected:
       "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )";
   test ~source:"if f x then a else b"
     ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )";
   test_should_fail "f if cond then a else b"
-with Failure s as f ->
-  prerr_string s;
-  raise f
+with Failure s | Parser.Error s ->
+  prerr_endline s;
+  Printexc.print_backtrace stderr;
+  exit 1

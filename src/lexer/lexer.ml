@@ -1,7 +1,16 @@
-open Util
 open Std
+open Util
 module Token = Token
 module Reader = Reader
+
+exception Error of string
+
+let error format =
+  Format.kfprintf
+    (fun _fmt ->
+      let msg = Format.flush_str_formatter () in
+      raise @@ Error msg)
+    Format.str_formatter format
 
 type token = Token.t
 type rule = Reader.t -> token option
@@ -39,7 +48,10 @@ let peek : lexer -> token spanned =
      let token : token spanned =
        match List.find_map try_rule lexer.rules with
        | Some token -> token
-       | None -> failwith "no reader could read a token"
+       | None ->
+           error "Unexpected char %C at %a"
+             (Reader.peek reader |> Option.get)
+             Position.print reader.position
      in
      lexer.peeked <- Some token);
   Option.get lexer.peeked
@@ -115,6 +127,21 @@ let default_rules : rule list =
       Some (Token.Ident ident)
     else None
   in
+  let read_number reader =
+    let* c = Reader.peek reader in
+    let* () = if Char.is_digit c then Some () else None in
+    let seen_dot = ref false in
+    let raw =
+      reader
+      |> Reader.read_while (function
+           | '.' when not !seen_dot ->
+               seen_dot := true;
+               true
+           | c when Char.is_digit c -> true
+           | _ -> false)
+    in
+    Some (Token.Number { raw })
+  in
   let read_punct reader =
     let* c = Reader.peek reader in
     let is_punct : char -> bool = function
@@ -142,7 +169,9 @@ let default_rules : rule list =
       Some (Token.Punct token))
     else None
   in
-  [ read_whitespace; read_eof; read_ident; read_string; read_punct ]
+  [
+    read_whitespace; read_eof; read_ident; read_number; read_string; read_punct;
+  ]
 
 let read_all : rule list -> source -> token spanned list =
  fun rules source ->

@@ -46,3 +46,8 @@ let is_comment : token -> bool =
   | _ -> false
 
 type string = string_token
+
+let as_float : token -> float = function
+  | Number { raw; _ } -> (
+      try Float.of_string raw with Failure _ -> invalid_arg "Token.as_float")
+  | _ -> invalid_arg "Token.as_float"

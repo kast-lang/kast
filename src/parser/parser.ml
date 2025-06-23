@@ -33,6 +33,19 @@ module Rule = struct
       | Greater -> Greater p
       | GreaterOrEqual -> GreaterOrEqual p
       | Any -> Any
+
+    let check_filter_with_range (range : priority Range.Inclusive.t)
+        (filter : filter) =
+      match filter with
+      | Any -> true
+      | Greater x -> range.max > x
+      | GreaterOrEqual x -> range.max >= x
+
+    let check_filter (p : priority) (filter : filter) =
+      match filter with
+      | Any -> true
+      | Greater x -> p > x
+      | GreaterOrEqual x -> p >= x
   end
 
   type priority = Priority.t
@@ -74,6 +87,71 @@ module Rule = struct
         Tuple.empty collected
     in
     Ast.Complex { name = rule.name; children }
+
+  let parse : Lexer.t -> rule =
+   fun lexer ->
+    let get_name (spanned : Lexer.token spanned) =
+      match spanned.value with
+      | Ident { raw; _ } -> raw
+      | String { contents; _ } -> contents
+      | _ ->
+          error "Expected rule name, got %a"
+            (Spanned.print Lexer.Token.print)
+            spanned
+    in
+    let name = get_name (Lexer.next lexer) in
+    let priority =
+      let token = Lexer.next lexer in
+      try Lexer.Token.as_float token.value
+      with Invalid_argument _ ->
+        error "Expected rule priority, got %a"
+          (Spanned.print Lexer.Token.print)
+          token
+    in
+    (let token = Lexer.next lexer in
+     if Lexer.Token.raw token.value <> Some "=" then
+       error "Expected \"=\", got %a" (Spanned.print Lexer.Token.print) token);
+    let rec collect_parts () =
+      let token = Lexer.peek lexer in
+      let part : part option =
+        match token.value with
+        | String { contents; _ } ->
+            Lexer.skip lexer;
+            Some (Keyword contents)
+        | Ident { raw; _ } ->
+            Lexer.skip lexer;
+            let name = if raw = "_" then None else Some raw in
+            let peek = Lexer.peek lexer in
+            let priority =
+              match Lexer.Token.raw peek.value with
+              | Some ":>" ->
+                  Lexer.skip lexer;
+                  Priority.Greater
+              | Some ":=" ->
+                  Lexer.skip lexer;
+                  Priority.GreaterOrEqual
+              | Some ":" ->
+                  Lexer.skip lexer;
+                  let peek = Lexer.peek lexer in
+                  if Lexer.Token.raw peek.value <> Some "any" then
+                    error "Expected \"any\", got %a"
+                      (Spanned.print Lexer.Token.print)
+                      peek;
+                  Lexer.skip lexer;
+                  Priority.Any
+              | _ ->
+                  error "Expected value priority, got %a"
+                    (Spanned.print Lexer.Token.print)
+                    peek
+            in
+            Some (Value { name; priority })
+        | _ -> None
+      in
+      match part with
+      | Some part -> part :: collect_parts ()
+      | None -> []
+    in
+    { name; priority; parts = collect_parts () }
 end
 
 type rule = Rule.t
@@ -93,6 +171,7 @@ module RuleSet = struct
     value_filter : Rule.Priority.filter option;
     priority_range : Rule.priority Range.inclusive option;
     next : node EdgeMap.t;
+    next_keywords : StringSet.t;
   }
 
   module Node = struct
@@ -102,15 +181,20 @@ module RuleSet = struct
         value_filter = None;
         priority_range = None;
         next = EdgeMap.empty;
+        next_keywords = StringSet.empty;
       }
   end
 
-  module StringSet = Set.Make (String)
+  type ruleset = {
+    rules : rule StringMap.t;
+    keywords : StringSet.t;
+    root : node;
+  }
 
-  type ruleset = { keywords : StringSet.t; root : node }
   type t = ruleset
 
-  let empty : ruleset = { keywords = StringSet.empty; root = Node.empty }
+  let empty : ruleset =
+    { rules = StringMap.empty; keywords = StringSet.empty; root = Node.empty }
 
   let add : rule -> ruleset -> ruleset =
    fun rule ruleset ->
@@ -148,6 +232,7 @@ module RuleSet = struct
                 value_filter = updated_value_filter;
                 priority_range = updated_priority_range;
                 next = node.next;
+                next_keywords = node.next_keywords;
               })
       | first :: rest ->
           let edge : Edge.t =
@@ -169,9 +254,14 @@ module RuleSet = struct
             value_filter = updated_value_filter;
             priority_range = updated_priority_range;
             next = EdgeMap.update edge merge_next node.next;
+            next_keywords =
+              (match first with
+              | Value _ -> node.next_keywords
+              | Keyword keyword -> StringSet.add keyword node.next_keywords);
           }
     in
     {
+      rules = StringMap.add rule.name rule ruleset.rules;
       keywords = StringSet.add_seq (Rule.keywords rule) ruleset.keywords;
       root = insert ~prev:None rule.parts ruleset.root;
     }
@@ -179,8 +269,25 @@ module RuleSet = struct
   let is_keyword : string -> ruleset -> bool =
    fun word ruleset -> StringSet.contains word ruleset.keywords
 
+  let find_rule : string -> ruleset -> rule =
+   fun name ruleset -> StringMap.find name ruleset.rules
+
   let of_list : rule list -> ruleset =
    fun rules -> List.fold_right add rules empty
+
+  let parse_lines : string -> ruleset =
+   fun s ->
+    s |> String.split_on_char '\n'
+    |> List.filter (fun line ->
+           (not (String.starts_with ~prefix:"#" line))
+           && not (String.is_whitespace line))
+    |> List.map (fun line ->
+           let lexer =
+             Lexer.init Lexer.default_rules
+               { contents = line; filename = "<rule>" }
+           in
+           Rule.parse lexer)
+    |> of_list
 end
 
 type ruleset = RuleSet.t
@@ -198,10 +305,11 @@ module Impl = struct
   let rec parse_one :
       start:Ast.t option ->
       ruleset ->
-      Rule.Priority.filter ->
+      continuation_keywords:StringSet.t ->
+      filter:Rule.Priority.filter ->
       Lexer.t ->
       parse_result =
-   fun ~start ruleset filter lexer ->
+   fun ~start ruleset ~continuation_keywords ~filter lexer ->
     (match start with
     | None -> Log.trace "Start to parse one"
     | Some _ -> Log.trace "Start to parse one (having value)");
@@ -249,10 +357,7 @@ module Impl = struct
     let continue_with (node : RuleSet.node) : unit option =
       let* range = node.priority_range in
       let should_continue =
-        match filter with
-        | Any -> true
-        | Greater x -> range.max > x
-        | GreaterOrEqual x -> range.max >= x
+        Rule.Priority.check_filter_with_range range filter
       in
       if should_continue then Some () else None
     in
@@ -262,12 +367,16 @@ module Impl = struct
       let raw_token = Lexer.Token.raw token in
       let+ () =
         (* try to follow with token as a keyword *)
-        let* raw_token = raw_token in
-        let edge : RuleSet.edge = Keyword raw_token in
+        let* keyword = raw_token in
+        let* () =
+          if continuation_keywords |> StringSet.contains keyword then None
+          else Some ()
+        in
+        let edge : RuleSet.edge = Keyword keyword in
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
         parsed_rev := Keyword spanned :: !parsed_rev;
-        Log.trace "Followed with keyword %S" raw_token;
+        Log.trace "Followed with keyword %S" keyword;
         Lexer.skip lexer;
         Some (go next)
       in
@@ -283,7 +392,11 @@ module Impl = struct
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
         let* value : Ast.t =
-          parse ruleset (next.value_filter |> Option.get) lexer
+          parse ruleset
+            ~continuation_keywords:
+              (StringSet.union continuation_keywords next.next_keywords)
+            ~filter:(next.value_filter |> Option.get)
+            lexer
         in
         parsed_rev := Value value :: !parsed_rev;
         Log.trace "Followed with value %a" Ast.print value;
@@ -318,7 +431,20 @@ module Impl = struct
           else
             match RuleSet.EdgeMap.find_opt Value ruleset.root.next with
             | None -> NoProgress (* no rules starting with a value *)
-            | Some node -> go node)
+            | Some node ->
+                let start_priority =
+                  match start.kind with
+                  | Ast.Simple _ -> None
+                  | Ast.Complex { name; _ } ->
+                      let rule : rule = RuleSet.find_rule name ruleset in
+                      Some rule.priority
+                in
+                let filtered =
+                  match start_priority with
+                  | None -> true
+                  | Some priority -> Rule.Priority.check_filter priority filter
+                in
+                if filtered then go node else NoProgress)
       | None -> go ruleset.root
     in
 
@@ -327,10 +453,18 @@ module Impl = struct
     | NoProgress -> Log.trace "Finished parse one (no progress)");
     result
 
-  and parse : ruleset -> Rule.Priority.filter -> Lexer.t -> Ast.t option =
-   fun ruleset filter lexer ->
+  and parse :
+      ruleset ->
+      continuation_keywords:StringSet.t ->
+      filter:Rule.Priority.filter ->
+      Lexer.t ->
+      Ast.t option =
+   fun ruleset ~continuation_keywords ~filter lexer ->
     let rec loop (already_parsed : Ast.t option) =
-      match parse_one ~start:already_parsed ruleset filter lexer with
+      match
+        parse_one ~start:already_parsed ruleset ~continuation_keywords ~filter
+          lexer
+      with
       | MadeProgress ast ->
           Log.trace "Made progress: %a" Ast.print ast;
           loop (Some ast)
@@ -342,7 +476,9 @@ end
 let parse : source -> ruleset -> Ast.t option =
  fun source ruleset ->
   let lexer = Lexer.init Lexer.default_rules source in
-  let result = Impl.parse ruleset Any lexer in
+  let result =
+    Impl.parse ruleset ~continuation_keywords:StringSet.empty ~filter:Any lexer
+  in
   let peek = Lexer.peek lexer in
   match peek.value with
   | Eof -> result

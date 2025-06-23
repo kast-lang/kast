@@ -51,6 +51,7 @@
           ocamlDeps = with pkgs.ocamlPackages; [
             ppxlib
             ppx_deriving
+            ppx_blob
             # opam.ppx_deriving_hash
           ];
           ocamlPackages = with pkgs.ocamlPackages; [

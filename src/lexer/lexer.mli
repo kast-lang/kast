@@ -8,6 +8,7 @@ module Token : sig
   val print : formatter -> token -> unit
   val raw : token -> string option
   val is_raw : string -> token -> bool
+  val as_float : token -> float
 
   type punct = Token.punct
   type ident = Token.ident

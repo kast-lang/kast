@@ -6,8 +6,9 @@ module Path = struct
 
   let parse = function
     | "-" -> Some Stdin
-    | path when String.ends_with ~suffix:".ks" path -> Some (File path)
-    | _ -> None
+    | path -> Some (File path)
+  (* | path when String.ends_with ~suffix:".ks" path -> Some (File path) *)
+  (* | _ -> None *)
 end
 
 type path = Path.t

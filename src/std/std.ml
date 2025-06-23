@@ -13,8 +13,8 @@ module Format = struct
 
     let print_sep { fits; breaks } fmt = pp_print_custom_break fmt ~fits ~breaks
 
-    let print (type iter) (type a) (options : options) iterations print_value
-        (fmt : formatter) (iter : iter) : unit =
+    let print (options : options) iterations print_value (fmt : formatter) iter
+        : unit =
       let pp_sep fmt () = print_sep options.sep fmt in
       print_sep options.before fmt;
       pp_print_iter ~pp_sep iterations print_value fmt iter;
@@ -84,6 +84,7 @@ module String = struct
     if 0 <= i && i < String.length s then Some (String.get s i) else None
 
   let print_dbg : formatter -> string -> unit = fun fmt s -> fprintf fmt "%S" s
+  let is_whitespace : string -> bool = String.for_all Char.is_whitespace
 end
 
 module Option = struct
@@ -192,8 +193,13 @@ module Range = struct
   type 'a inclusive = 'a Inclusive.t
 end
 
-let unreachable : 'never. string -> 'never =
- fun s -> failwith @@ "unreachable reached: " ^ s
+let unreachable format =
+  Format.fprintf Format.str_formatter "unreachable reached: ";
+  Format.kfprintf
+    (fun _fmt ->
+      let msg = Format.flush_str_formatter () in
+      failwith msg)
+    Format.str_formatter format
 
 module Set = struct
   include Set
@@ -231,3 +237,6 @@ module Log = struct
   let trace : 'a. ('a, formatter, unit) format -> 'a =
    fun format -> with_level Trace format
 end
+
+module StringSet = Set.Make (String)
+module StringMap = Map.Make (String)
