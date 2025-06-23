@@ -1,4 +1,4 @@
 complex 10 = name:= "(" children:any ")"
 comma 1 = _:= "," _:>
 "trailing comma" 1 = _:= ","
-named 1 = name:> "=" value:>
+named 2 = name:> "=" value:>

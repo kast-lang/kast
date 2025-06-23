@@ -391,10 +391,13 @@ module Impl = struct
         let edge : RuleSet.edge = Value in
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
+        let inner_continuation_keywords =
+          match next.value_filter with
+          | None | Some Any -> StringSet.empty
+          | _ -> StringSet.union continuation_keywords next.next_keywords
+        in
         let* value : Ast.t =
-          parse ruleset
-            ~continuation_keywords:
-              (StringSet.union continuation_keywords next.next_keywords)
+          parse ruleset ~continuation_keywords:inner_continuation_keywords
             ~filter:(next.value_filter |> Option.get)
             lexer
         in

@@ -51,10 +51,10 @@ let test ~(source : string) ~(expected : string) : unit =
 ;;
 
 Printexc.record_backtrace true;
-Log.set_max_level Trace;
+Log.set_max_level Debug;
 try
+  (* TODO a bug if trying to do this but with "named" rule having priority same as "comma" *)
   ignore @@ Simple_syntax.parse { contents = "f(a=b,c=d)"; filename = "<test>" };
-  exit 0;
   test ~source:"Some(Some(String))"
     ~expected:
       "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )";
