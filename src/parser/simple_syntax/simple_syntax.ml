@@ -4,50 +4,43 @@ open Util
 let ruleset : Parser.ruleset =
   Parser.RuleSet.of_list
     [
-      (let priority = 10.0 in
-       {
-         name = "complex";
-         priority;
-         parts =
-           [
-             Value { name = Some "name"; priority = GreaterOrEqual priority };
-             Keyword "(";
-             Value { name = Some "children"; priority = Any };
-             Keyword ")";
-           ];
-       });
-      (let priority = 1.0 in
-       {
-         name = "comma";
-         priority;
-         parts =
-           [
-             Value { name = None; priority = GreaterOrEqual priority };
-             Keyword ",";
-             Value { name = None; priority = GreaterOrEqual priority };
-           ];
-       });
-      (let priority = 1.0 in
-       {
-         name = "trailing comma";
-         priority;
-         parts =
-           [
-             Value { name = None; priority = GreaterOrEqual priority };
-             Keyword ",";
-           ];
-       });
-      (let priority = 1.0 in
-       {
-         name = "named";
-         priority;
-         parts =
-           [
-             Value { name = Some "name"; priority = Greater priority };
-             Keyword "=";
-             Value { name = Some "value"; priority = Greater priority };
-           ];
-       });
+      {
+        name = "complex";
+        priority = 10.0;
+        parts =
+          [
+            Value { name = Some "name"; priority = GreaterOrEqual };
+            Keyword "(";
+            Value { name = Some "children"; priority = Any };
+            Keyword ")";
+          ];
+      };
+      {
+        name = "comma";
+        priority = 1.0;
+        parts =
+          [
+            Value { name = None; priority = GreaterOrEqual };
+            Keyword ",";
+            Value { name = None; priority = GreaterOrEqual };
+          ];
+      };
+      {
+        name = "trailing comma";
+        priority = 1.0;
+        parts =
+          [ Value { name = None; priority = GreaterOrEqual }; Keyword "," ];
+      };
+      {
+        name = "named";
+        priority = 1.0;
+        parts =
+          [
+            Value { name = Some "name"; priority = Greater };
+            Keyword "=";
+            Value { name = Some "value"; priority = Greater };
+          ];
+      };
     ]
 
 type ast =

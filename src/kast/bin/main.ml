@@ -10,7 +10,9 @@ let read path : source =
   in
   let contents = In_channel.input_all channel in
   let filename =
-    match path with Cli.Path.File path -> path | Cli.Path.Stdin -> "<stdin>"
+    match path with
+    | Cli.Path.File path -> path
+    | Cli.Path.Stdin -> "<stdin>"
   in
   { contents; filename }
 in

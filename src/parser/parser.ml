@@ -15,20 +15,28 @@ module Rule = struct
     type t = float
     type priority = t
     type filter = Greater of priority | GreaterOrEqual of priority | Any
+    type filter_kind = Greater | GreaterOrEqual | Any
 
     let compare = Float.compare
 
-    let stricter_filter a b =
+    let stricter_filter (a : filter) (b : filter) =
       match (a, b) with
       | Any, p | p, Any -> p
       | Greater a, Greater b -> Greater (Float.max a b)
       | GreaterOrEqual a, GreaterOrEqual b -> GreaterOrEqual (Float.max a b)
       | Greater a, GreaterOrEqual b | GreaterOrEqual b, Greater a ->
           if a >= b then Greater a else GreaterOrEqual b
+
+    let make_filter : filter_kind -> priority -> filter =
+     fun kind p ->
+      match kind with
+      | Greater -> Greater p
+      | GreaterOrEqual -> GreaterOrEqual p
+      | Any -> Any
   end
 
   type priority = Priority.t
-  type binding = { name : string option; priority : Priority.filter }
+  type binding = { name : string option; priority : Priority.filter_kind }
   type part = Keyword of string | Value of binding
   type rule = { name : string; priority : float; parts : part list }
   type t = rule
@@ -112,10 +120,14 @@ module RuleSet = struct
         match prev with
         | None | Some (Keyword _) -> node.value_filter
         | Some (Value { priority; _ }) ->
+            let priority_filter =
+              Rule.Priority.make_filter priority rule.priority
+            in
             Some
               (match node.value_filter with
-              | Some current -> Rule.Priority.stricter_filter current priority
-              | None -> priority)
+              | Some current ->
+                  Rule.Priority.stricter_filter current priority_filter
+              | None -> priority_filter)
       in
       let updated_priority_range =
         Some

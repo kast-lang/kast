@@ -40,6 +40,9 @@ let is_raw : string -> token -> bool =
  fun expected_raw token -> Some expected_raw = raw token
 
 let is_comment : token -> bool =
- fun token -> match token with Comment _ -> true | _ -> false
+ fun token ->
+  match token with
+  | Comment _ -> true
+  | _ -> false
 
 type string = string_token

@@ -70,7 +70,9 @@ let expect_next : lexer -> string -> unit =
 
 let default_rules : rule list =
   let read_eof reader =
-    match Reader.peek reader with Some _ -> None | None -> Some Token.Eof
+    match Reader.peek reader with
+    | Some _ -> None
+    | None -> Some Token.Eof
   in
   let read_whitespace reader =
     ignore @@ Reader.read_while Char.is_whitespace reader;
@@ -151,7 +153,9 @@ let read_all : rule list -> source -> token spanned list =
     if !found_eof then None
     else
       let token = next lexer in
-      (match token.value with Token.Eof -> found_eof := true | _ -> ());
+      (match token.value with
+      | Token.Eof -> found_eof := true
+      | _ -> ());
       Some token
   in
   List.of_seq (Seq.of_dispenser dispenser)
