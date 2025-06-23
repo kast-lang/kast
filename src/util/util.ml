@@ -58,6 +58,14 @@ module Tuple = struct
 
   type member = Index of int | Name of string
 
+  let get_unnamed index tuple = Array.get tuple.unnamed index
+  let get_named name tuple = StringMap.find name tuple.named
+
+  let get member tuple =
+    match member with
+    | Index index -> get_unnamed index tuple
+    | Name name -> get_named name tuple
+
   let zip_order_a : 'a 'b. 'a t -> 'b t -> ('a * 'b) t =
    fun a b ->
     let unnamed =
@@ -105,6 +113,17 @@ module Tuple = struct
     List.fold_left
       (fun tuple (name, value) -> add (Some name) value tuple)
       tuple_of_unnamed named
+
+  let merge : 'a. 'a t -> 'a t -> 'a t =
+   fun a b ->
+    let unnamed = Array.append a.unnamed b.unnamed in
+    let named_order_rev = List.append b.named_order_rev a.named_order_rev in
+    let named =
+      StringMap.union
+        (fun _name _a _b -> invalid_arg "Tuple.merge")
+        a.named b.named
+    in
+    { unnamed; named; named_order_rev }
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a t -> unit =
    fun print_value fmt { unnamed; named; named_order_rev } ->

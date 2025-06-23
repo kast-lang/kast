@@ -1,14 +1,7 @@
 open Std
 open Util
 
-type expected =
-  | Simple of string
-  | Complex of { name : string; children : expected Tuple.t }
-
-let rec print_expected fmt = function
-  | Simple s -> fprintf fmt "%S" s
-  | Complex { name; children } ->
-      fprintf fmt "%S %a" name (Tuple.print print_expected) children
+type expected = Simple_syntax.ast
 
 let rec matches (ast : Ast.t) (expected : expected) : bool =
   match (ast.kind, expected) with
@@ -27,14 +20,21 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
       with Invalid_argument _ -> false)
   | Complex _, _ -> false
 
-let test ~(source : string) ~(expected : expected) : unit =
-  let source : source = { contents = source; filename = "<test>" } in
-  let ast = Parser.parse source Default_syntax.ruleset in
+let test ~(source : string) ~(expected : string) : unit =
+  let expected =
+    Simple_syntax.parse { contents = expected; filename = "<test>" }
+    |> Option.get
+  in
+  let ast =
+    Parser.parse
+      { contents = source; filename = "<test>" }
+      Default_syntax.ruleset
+  in
   match ast with
   | Some ast ->
       if not (matches ast expected) then (
         Log.error "@[<v>Parsed: %a@]" Ast.print ast;
-        Log.error "@[<v>Expected %a@]" print_expected expected;
+        Log.error "@[<v>Expected %a@]" Simple_syntax.print expected;
         failwith "Test failed")
   | None -> failwith "nothing was parsed"
 ;;
@@ -42,65 +42,12 @@ let test ~(source : string) ~(expected : expected) : unit =
 Printexc.record_backtrace true;
 Log.set_max_level Debug;
 try
-  test ~source:"Some(Some(String) )"
+  test ~source:"Some(Some(String))"
     ~expected:
-      (Complex
-         {
-           name = "apply";
-           children =
-             Tuple.make []
-               [
-                 ("f", Simple "Some");
-                 ( "arg",
-                   Complex
-                     {
-                       name = "scope";
-                       children =
-                         Tuple.make
-                           [
-                             Complex
-                               {
-                                 name = "apply";
-                                 children =
-                                   Tuple.make []
-                                     [
-                                       ("f", Simple "Some");
-                                       ( "arg",
-                                         Complex
-                                           {
-                                             name = "scope";
-                                             children =
-                                               Tuple.make [ Simple "String" ] [];
-                                           } );
-                                     ];
-                               };
-                           ]
-                           [];
-                     } );
-               ];
-         });
+      "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )";
   test ~source:"if f x then a else b"
-    ~expected:
-      (Complex
-         {
-           name = "if";
-           children =
-             Tuple.make []
-               [
-                 ( "cond",
-                   Complex
-                     {
-                       name = "apply";
-                       children =
-                         Tuple.make []
-                           [ ("f", Simple "f"); ("arg", Simple "x") ];
-                     } );
-                 ("then", Simple "a");
-                 ("else", Simple "b");
-               ];
-         });
-  test ~source:"f if cond then a else b"
-    ~expected:(Simple "should not even parse")
+    ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )";
+  test ~source:"f if cond then a else b" ~expected:"\"should not even parse\""
 with Failure s as f ->
   prerr_string s;
   raise f

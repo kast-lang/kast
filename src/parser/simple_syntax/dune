@@ -1,0 +1,3 @@
+(library
+ (name simple_syntax)
+ (libraries parser))

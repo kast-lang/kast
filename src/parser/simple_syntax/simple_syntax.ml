@@ -1,0 +1,93 @@
+open Std
+open Util
+
+let ruleset : Parser.ruleset =
+  Parser.RuleSet.of_list
+    [
+      (let priority = 10.0 in
+       {
+         name = "complex";
+         priority;
+         parts =
+           [
+             Value { name = Some "name"; priority = GreaterOrEqual priority };
+             Keyword "(";
+             Value { name = Some "children"; priority = Any };
+             Keyword ")";
+           ];
+       });
+      (let priority = 1.0 in
+       {
+         name = "comma";
+         priority;
+         parts =
+           [
+             Value { name = None; priority = GreaterOrEqual priority };
+             Keyword ",";
+             Value { name = None; priority = GreaterOrEqual priority };
+           ];
+       });
+      (let priority = 1.0 in
+       {
+         name = "trailing comma";
+         priority;
+         parts =
+           [
+             Value { name = None; priority = GreaterOrEqual priority };
+             Keyword ",";
+           ];
+       });
+      (let priority = 1.0 in
+       {
+         name = "named";
+         priority;
+         parts =
+           [
+             Value { name = Some "name"; priority = Greater priority };
+             Keyword "=";
+             Value { name = Some "value"; priority = Greater priority };
+           ];
+       });
+    ]
+
+type ast =
+  | Simple of string
+  | Complex of { name : string; children : ast tuple }
+
+let rec print fmt = function
+  | Simple s -> fprintf fmt "%S" s
+  | Complex { name; children } ->
+      fprintf fmt "%S %a" name (Tuple.print print) children
+
+let get_name : Ast.t -> string = function
+  | { kind = Simple { token = Ident { raw; _ } }; _ } -> raw
+  | other -> unreachable @@ make_string "get_name %a" Ast.print other
+
+let rec process : Ast.t -> ast =
+ fun ast ->
+  match ast.kind with
+  | Simple { token } -> Simple (Lexer.Token.raw token |> Option.get)
+  | Complex { name = "complex"; children } ->
+      Complex
+        {
+          name = Tuple.get_named "name" children |> get_name;
+          children = Tuple.get_named "children" children |> collect_children;
+        }
+  | _ -> unreachable @@ make_string "process %a" Ast.print ast
+
+and collect_children ast : ast tuple =
+  match ast.kind with
+  | Complex { name = "trailing comma"; children } ->
+      Tuple.get_unnamed 0 children |> collect_children
+  | Complex { name = "comma"; children } ->
+      let a = Tuple.get_unnamed 0 children |> collect_children in
+      let b = Tuple.get_unnamed 1 children |> collect_children in
+      Tuple.merge a b
+  | Complex { name = "named"; children } ->
+      let name = Tuple.get_named "name" children |> get_name in
+      let value = Tuple.get_named "value" children |> process in
+      Tuple.make [] [ (name, value) ]
+  | _ -> Tuple.make [ process ast ] []
+
+let parse : source -> ast option =
+ fun source -> Parser.parse source ruleset |> Option.map process
