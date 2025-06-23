@@ -1,7 +1,10 @@
 open Std
 
 module Path = struct
-  type path = File of string | Stdin
+  type path =
+    | File of string
+    | Stdin
+
   type t = path
 
   let parse = function
@@ -32,7 +35,11 @@ module Command = struct
           | None -> unexpected arg)
   end
 
-  type command = Tokenize of Common.t | Parse of Common.t | Help
+  type command =
+    | Tokenize of Common.t
+    | Parse of Common.t
+    | Help
+
   type t = command
 
   let parse = function

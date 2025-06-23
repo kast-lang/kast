@@ -2,7 +2,12 @@ open Std
 
 type punct = { raw : string }
 type ident = { raw : string }
-type string_token = { raw : string; contents : string }
+
+type string_token = {
+  raw : string;
+  contents : string;
+}
+
 type number = { raw : string }
 type comment = { raw : string }
 

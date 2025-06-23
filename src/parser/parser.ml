@@ -14,8 +14,16 @@ module Rule = struct
   module Priority = struct
     type t = float
     type priority = t
-    type filter = Greater of priority | GreaterOrEqual of priority | Any
-    type filter_kind = Greater | GreaterOrEqual | Any
+
+    type filter =
+      | Greater of priority
+      | GreaterOrEqual of priority
+      | Any
+
+    type filter_kind =
+      | Greater
+      | GreaterOrEqual
+      | Any
 
     let compare = Float.compare
 
@@ -49,9 +57,22 @@ module Rule = struct
   end
 
   type priority = Priority.t
-  type binding = { name : string option; priority : Priority.filter_kind }
-  type part = Keyword of string | Value of binding
-  type rule = { name : string; priority : float; parts : part list }
+
+  type binding = {
+    name : string option;
+    priority : Priority.filter_kind;
+  }
+
+  type part =
+    | Keyword of string
+    | Value of binding
+
+  type rule = {
+    name : string;
+    priority : float;
+    parts : part list;
+  }
+
   type t = rule
 
   let print : formatter -> rule -> unit =
@@ -158,7 +179,10 @@ type rule = Rule.t
 
 module RuleSet = struct
   module Edge = struct
-    type t = Keyword of string | Value [@@deriving eq, ord]
+    type t =
+      | Keyword of string
+      | Value
+    [@@deriving eq, ord]
   end
 
   type edge = Edge.t
@@ -299,8 +323,13 @@ let add_rule : rule -> parser -> unit =
  fun rule parser -> parser.ruleset <- RuleSet.add rule parser.ruleset
 
 module Impl = struct
-  type parse_result = MadeProgress of Ast.t | NoProgress
-  type parsed = Keyword of Lexer.token spanned | Value of Ast.t
+  type parse_result =
+    | MadeProgress of Ast.t
+    | NoProgress
+
+  type parsed =
+    | Keyword of Lexer.token spanned
+    | Value of Ast.t
 
   let rec parse_one :
       start:Ast.t option ->

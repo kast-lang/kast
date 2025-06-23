@@ -4,9 +4,20 @@ open Util
 type token = Lexer.token
 
 type simple = { token : token }
-and complex = { name : string; children : ast row }
-and kind = Simple of simple | Complex of complex
-and ast = { kind : kind; span : span }
+
+and complex = {
+  name : string;
+  children : ast row;
+}
+
+and kind =
+  | Simple of simple
+  | Complex of complex
+
+and ast = {
+  kind : kind;
+  span : span;
+}
 
 type t = ast
 

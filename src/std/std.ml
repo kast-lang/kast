@@ -8,8 +8,16 @@ module Format = struct
     pp_close_box fmt ()
 
   module Iter = struct
-    type sep = { fits : string * int * string; breaks : string * int * string }
-    type options = { before : sep; after : sep; sep : sep }
+    type sep = {
+      fits : string * int * string;
+      breaks : string * int * string;
+    }
+
+    type options = {
+      before : sep;
+      after : sep;
+      sep : sep;
+    }
 
     let print_sep { fits; breaks } fmt = pp_print_custom_break fmt ~fits ~breaks
 
@@ -181,7 +189,10 @@ end
 
 module Range = struct
   module Inclusive = struct
-    type 'a t = { min : 'a; max : 'a }
+    type 'a t = {
+      min : 'a;
+      max : 'a;
+    }
 
     let unite : 'a. 'a Ord.t -> 'a t -> 'a t -> 'a t =
      fun ord a b ->
@@ -213,7 +224,12 @@ module Set = struct
 end
 
 module Log = struct
-  type level = Error | Warn | Info | Debug | Trace
+  type level =
+    | Error
+    | Warn
+    | Info
+    | Debug
+    | Trace
 
   let max_level : level ref = ref Info
   let set_max_level : level -> unit = fun level -> max_level := level

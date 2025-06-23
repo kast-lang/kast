@@ -1,7 +1,11 @@
 open Std
 open Util
 
-type reader = { contents : string; mutable position : position }
+type reader = {
+  contents : string;
+  mutable position : position;
+}
+
 type t = reader
 
 let init : string -> reader =
@@ -29,7 +33,10 @@ let skip : char -> reader -> unit =
            reader.position
   | None -> failwith @@ make_string "expected %C, got <eof>" expected
 
-type recording = { reader : reader; start_index : int }
+type recording = {
+  reader : reader;
+  start_index : int;
+}
 
 let start_rec : reader -> recording =
  fun reader -> { reader; start_index = reader.position.index }

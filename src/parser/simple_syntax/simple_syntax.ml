@@ -3,7 +3,12 @@ open Util
 
 let ruleset : Parser.ruleset = Parser.RuleSet.parse_lines [%blob "rules"]
 
-type ast = Simple of string | Complex of { name : string; children : ast row }
+type ast =
+  | Simple of string
+  | Complex of {
+      name : string;
+      children : ast row;
+    }
 
 let rec print fmt = function
   | Simple s -> fprintf fmt "%S" s

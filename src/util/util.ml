@@ -1,7 +1,12 @@
 open Std
 
 module Position = struct
-  type t = { index : int; line : int; column : int }
+  type t = {
+    index : int;
+    line : int;
+    column : int;
+  }
+
   type position = t
 
   let beginning : position = { index = 0; line = 1; column = 1 }
@@ -19,13 +24,21 @@ end
 type position = Position.t
 
 module Source = struct
-  type t = { contents : string; filename : string }
+  type t = {
+    contents : string;
+    filename : string;
+  }
 end
 
 type source = Source.t
 
 module Span = struct
-  type t = { start : position; finish : position; filename : string }
+  type t = {
+    start : position;
+    finish : position;
+    filename : string;
+  }
+
   type span = t
 
   let print : 'a. formatter -> span -> unit =
@@ -37,7 +50,11 @@ end
 type span = Span.t
 
 module Spanned = struct
-  type 'a t = { value : 'a; span : span }
+  type 'a t = {
+    value : 'a;
+    span : span;
+  }
+
   type 'a spanned = 'a t
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a spanned -> unit =
@@ -54,7 +71,9 @@ module Row = struct
     named_order_rev : string list;
   }
 
-  type member = Index of int | Name of string
+  type member =
+    | Index of int
+    | Name of string
 
   let get_unnamed index row = Array.get row.unnamed index
   let get_named name row = StringMap.find name row.named

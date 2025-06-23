@@ -5,7 +5,12 @@ module Token = Lexer.Token
 type token = Token.t
 
 module ExpectedToken = struct
-  type t = Ident of string | Punct of string | String of string | Eof
+  type t =
+    | Ident of string
+    | Punct of string
+    | String of string
+    | Eof
+
   type expected_token = t
 
   let print : formatter -> expected_token -> unit =

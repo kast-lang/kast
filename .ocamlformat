@@ -1,2 +1,3 @@
 break-string-literals=never
 break-cases=toplevel
+type-decl=sparse
