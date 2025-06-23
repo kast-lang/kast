@@ -115,12 +115,12 @@ let default_rules : rule list =
   in
   let read_ident reader =
     let* c = Reader.peek reader in
-    if Char.is_alpha c || c == '_' then
+    if Char.is_alpha c || c = '_' then
       let ident : Token.ident =
         {
           raw =
             Reader.read_while
-              (fun c -> Char.is_alphanumberic c || c == '_')
+              (fun c -> Char.is_alphanumberic c || c = '_')
               reader;
         }
       in

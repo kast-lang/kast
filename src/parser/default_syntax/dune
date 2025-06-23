@@ -1,3 +1,7 @@
 (library
  (name default_syntax)
- (libraries parser))
+ (libraries parser)
+ (preprocessor_deps
+  (file rules))
+ (preprocess
+  (pps ppx_blob)))
