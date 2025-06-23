@@ -11,7 +11,7 @@ let rec print_expected fmt = function
       fprintf fmt "%S %a" name (Tuple.print print_expected) children
 
 let rec matches (ast : Ast.t) (expected : expected) : bool =
-  match (ast, expected) with
+  match (ast.kind, expected) with
   | Simple { token }, Simple expected ->
       Lexer.Token.raw token |> Option.get = expected
   | Simple _, _ -> false
