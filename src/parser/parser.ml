@@ -161,9 +161,10 @@ module Rule = struct
                   Lexer.skip lexer;
                   Priority.Any
               | _ ->
-                  error "Expected value priority, got %a"
-                    (Spanned.print Lexer.Token.print)
-                    peek
+                  (* defaulting to Greater means we only need
+                      to annotate := where we want associativity
+                      or :any where we want parentheses-like behavior *)
+                  Priority.Greater
             in
             Some (Value { name; priority })
         | _ -> None
