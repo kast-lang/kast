@@ -20,18 +20,20 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
       with Invalid_argument _ -> false)
   | Complex _, _ -> false
 
-let test_should_fail (source : string) : unit =
+let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
+    =
   try
     let ast =
       Parser.parse
         { contents = source; filename = "<test>" }
-        Default_syntax.ruleset
+        (ruleset |> Option.value ~default:Default_syntax.ruleset)
     in
     Log.error "@[<v>Parsed: %a@]" (Option.print Ast.print) ast;
     failwith "Parse was supposed to fail"
-  with Parser.Error _ -> ()
+  with Parser.Error s -> Log.debug "Test properly failed: %s" s
 
-let test ~(source : string) ~(expected : string) : unit =
+let test ~(source : string) ~(expected : string)
+    ?(ruleset : Parser.ruleset option) () : unit =
   let expected =
     Simple_syntax.parse { contents = expected; filename = "<test>" }
     |> Option.get
@@ -39,7 +41,7 @@ let test ~(source : string) ~(expected : string) : unit =
   let ast =
     Parser.parse
       { contents = source; filename = "<test>" }
-      Default_syntax.ruleset
+      (ruleset |> Option.value ~default:Default_syntax.ruleset)
   in
   match ast with
   | Some ast ->
@@ -53,13 +55,20 @@ let test ~(source : string) ~(expected : string) : unit =
 Printexc.record_backtrace true;
 Log.set_max_level Debug;
 try
-  (* TODO a bug if trying to do this but with "named" rule having priority same as "comma" *)
-  ignore @@ Simple_syntax.parse { contents = "f(a=b,c=d)"; filename = "<test>" };
+  (let then_rule p = make_string "then %d = _:> \";\" _:>" p in
+   let eq_rule p = make_string "eq %d = _:> \"=\" _ :>" p in
+   test
+     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 0; eq_rule 1 ])
+     ~source:"a=1;b=2" ~expected:"then( eq( a, 1 ), eq( b, 2 ) )" ();
+   test_should_fail
+     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 2; eq_rule 1 ])
+     "a=1;b=2");
   test ~source:"Some(Some(String))"
     ~expected:
-      "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )";
+      "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )"
+    ();
   test ~source:"if f x then a else b"
-    ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )";
+    ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )" ();
   test_should_fail "f if cond then a else b"
 with Failure s | Parser.Error s ->
   prerr_endline s;

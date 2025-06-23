@@ -299,12 +299,9 @@ module RuleSet = struct
   let of_list : rule list -> ruleset =
    fun rules -> List.fold_right add rules empty
 
-  let parse_lines : string -> ruleset =
-   fun s ->
-    s |> String.split_on_char '\n'
-    |> List.filter (fun line ->
-           (not (String.starts_with ~prefix:"#" line))
-           && not (String.is_whitespace line))
+  let parse_list : string list -> ruleset =
+   fun rules ->
+    rules
     |> List.map (fun line ->
            let lexer =
              Lexer.init Lexer.default_rules
@@ -312,6 +309,14 @@ module RuleSet = struct
            in
            Rule.parse lexer)
     |> of_list
+
+  let parse_lines : string -> ruleset =
+   fun s ->
+    s |> String.split_on_char '\n'
+    |> List.filter (fun line ->
+           (not (String.starts_with ~prefix:"#" line))
+           && not (String.is_whitespace line))
+    |> parse_list
 end
 
 type ruleset = RuleSet.t
