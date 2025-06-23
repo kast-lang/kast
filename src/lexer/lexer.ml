@@ -62,18 +62,18 @@ let next : lexer -> token spanned =
   lexer.peeked <- None;
   result
 
-let skip : lexer -> unit = fun lexer -> ignore @@ next lexer
+let advance : lexer -> unit = fun lexer -> ignore @@ next lexer
 
 let skip_comments : lexer -> unit =
  fun lexer ->
   while Token.is_comment (peek lexer).value do
-    skip lexer
+    advance lexer
   done
 
 let expect_next : lexer -> string -> unit =
  fun lexer expected_raw ->
   let token = peek lexer in
-  if Token.is_raw expected_raw token.value then skip lexer
+  if Token.is_raw expected_raw token.value then advance lexer
   else
     failwith
     @@ make_string "expected %S, got %a" expected_raw

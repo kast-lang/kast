@@ -31,7 +31,7 @@ val default_rules : rule list
 val init : rule list -> source -> lexer
 val peek : lexer -> token spanned
 val next : lexer -> token spanned
-val skip : lexer -> unit
+val advance : lexer -> unit
 val skip_comments : lexer -> unit
 val expect_next : lexer -> string -> unit
 val expect_eof : lexer -> unit

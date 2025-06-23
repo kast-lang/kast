@@ -137,13 +137,13 @@ module Rule = struct
         let token = Lexer.peek lexer in
         match token.value with
         | Punct { raw = "<-"; _ } when not left_assoc ->
-            Lexer.skip lexer;
+            Lexer.advance lexer;
             part ~left_assoc:true ()
         | String { contents; _ } when not left_assoc ->
-            Lexer.skip lexer;
+            Lexer.advance lexer;
             Some (Keyword contents)
         | Ident { raw; _ } ->
-            Lexer.skip lexer;
+            Lexer.advance lexer;
             let name = if raw = "_" then None else Some raw in
             let peek = Lexer.peek lexer in
             let priority =
@@ -151,16 +151,16 @@ module Rule = struct
               else
                 match Lexer.Token.raw peek.value with
                 | Some "->" ->
-                    Lexer.skip lexer;
+                    Lexer.advance lexer;
                     Priority.GreaterOrEqual
                 | Some ":" ->
-                    Lexer.skip lexer;
+                    Lexer.advance lexer;
                     let peek = Lexer.peek lexer in
                     if Lexer.Token.raw peek.value <> Some "any" then
                       error "Expected \"any\", got %a"
                         (Spanned.print Lexer.Token.print)
                         peek;
-                    Lexer.skip lexer;
+                    Lexer.advance lexer;
                     Priority.Any
                 | _ ->
                     (* defaulting to Greater means we only need
@@ -448,7 +448,7 @@ module Impl = struct
         let* () = continue_with next in
         parsed_rev := Keyword spanned :: !parsed_rev;
         Log.trace "Followed with keyword %S" keyword;
-        Lexer.skip lexer;
+        Lexer.advance lexer;
         Some (go next)
       in
       let+ () =
@@ -493,7 +493,7 @@ module Impl = struct
             else Some (Ast.Simple { token })
         | Comment _ -> unreachable "comments were skipped"
       in
-      Lexer.skip lexer;
+      Lexer.advance lexer;
       Some ({ kind; span = spanned.span } : Ast.t)
     in
 
