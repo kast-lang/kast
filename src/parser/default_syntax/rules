@@ -1,7 +1,7 @@
-then        0 := _ ";" _ ->
-stmt        0 := _ ";"
-"use .*"    1 := "use" _ ".*"
-if          1 := "if" cond "then" then "else" else ->
-"|>"      1.5 := <- arg "|>" f
-apply       2 := <- f arg
-scope    1000 := "(" _:any ")"
+then        0 = _ ";" _ ->
+stmt        0 = _ ";"
+"use .*"    1 = "use" _ ".*"
+if          1 = "if" cond "then" then "else" else ->
+"|>"      1.5 = <- arg "|>" f
+apply       2 = <- f arg
+scope    1000 = "(" _:any ")"

@@ -130,8 +130,8 @@ module Rule = struct
           token
     in
     (let token = Lexer.next lexer in
-     if Lexer.Token.raw token.value <> Some ":=" then
-       error "Expected \":=\", got %a" (Spanned.print Lexer.Token.print) token);
+     if Lexer.Token.raw token.value <> Some "=" then
+       error "Expected \"=\", got %a" (Spanned.print Lexer.Token.print) token);
     let rec collect_parts () : part list =
       let rec part ?(left_assoc = false) () : part option =
         let token = Lexer.peek lexer in
