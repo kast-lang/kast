@@ -4,7 +4,7 @@ open Util
 type token = Lexer.token
 
 type simple = { token : token }
-and complex = { name : string; children : ast tuple }
+and complex = { name : string; children : ast row }
 and kind = Simple of simple | Complex of complex
 and ast = { kind : kind; span : span }
 
@@ -18,7 +18,7 @@ and print_kind : formatter -> kind -> unit =
  fun fmt -> function
   | Simple { token } -> Lexer.Token.print fmt token
   | Complex { name; children } ->
-      fprintf fmt "%S %a" name (Tuple.print print) children
+      fprintf fmt "%S %a" name (Row.print print) children
 
 module Kind = struct
   type t = kind

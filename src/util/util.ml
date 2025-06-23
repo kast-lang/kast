@@ -47,7 +47,7 @@ end
 
 type 'a spanned = 'a Spanned.t
 
-module Tuple = struct
+module Row = struct
   type 'a t = {
     unnamed : 'a array;
     named : 'a StringMap.t;
@@ -56,19 +56,19 @@ module Tuple = struct
 
   type member = Index of int | Name of string
 
-  let get_unnamed index tuple = Array.get tuple.unnamed index
-  let get_named name tuple = StringMap.find name tuple.named
+  let get_unnamed index row = Array.get row.unnamed index
+  let get_named name row = StringMap.find name row.named
 
-  let get member tuple =
+  let get member row =
     match member with
-    | Index index -> get_unnamed index tuple
-    | Name name -> get_named name tuple
+    | Index index -> get_unnamed index row
+    | Name name -> get_named name row
 
   let zip_order_a : 'a 'b. 'a t -> 'b t -> ('a * 'b) t =
    fun a b ->
     let unnamed =
       try Array.combine a.unnamed b.unnamed
-      with Invalid_argument _ -> invalid_arg "Tuple.zip (unnamed)"
+      with Invalid_argument _ -> invalid_arg "Row.zip (unnamed)"
     in
     let named_order_rev = a.named_order_rev in
     let named =
@@ -77,7 +77,7 @@ module Tuple = struct
         |> List.map (fun name ->
                (name, (StringMap.find name a.named, StringMap.find name b.named)))
         |> StringMap.of_list
-      with Not_found -> invalid_arg "Tuple.zip (named)"
+      with Not_found -> invalid_arg "Row.zip (named)"
     in
     { unnamed; named; named_order_rev }
 
@@ -92,25 +92,25 @@ module Tuple = struct
     { unnamed = [||]; named = StringMap.empty; named_order_rev = [] }
 
   let add : 'a. string option -> 'a -> 'a t -> 'a t =
-   fun (type a) (name : string option) (value : a) (tuple : a t) : a t ->
+   fun (type a) (name : string option) (value : a) (row : a t) : a t ->
     match name with
     | Some name ->
         {
-          tuple with
-          named = StringMap.add name value tuple.named;
-          named_order_rev = name :: tuple.named_order_rev;
+          row with
+          named = StringMap.add name value row.named;
+          named_order_rev = name :: row.named_order_rev;
         }
     | None ->
-        { tuple with unnamed = Array.append tuple.unnamed (Array.make 1 value) }
+        { row with unnamed = Array.append row.unnamed (Array.make 1 value) }
 
   let make : 'a. 'a list -> (string * 'a) list -> 'a t =
    fun unnamed named ->
-    let tuple_of_unnamed =
-      List.fold_left (fun tuple value -> add None value tuple) empty unnamed
+    let row_of_unnamed =
+      List.fold_left (fun row value -> add None value row) empty unnamed
     in
     List.fold_left
-      (fun tuple (name, value) -> add (Some name) value tuple)
-      tuple_of_unnamed named
+      (fun row (name, value) -> add (Some name) value row)
+      row_of_unnamed named
 
   let merge : 'a. 'a t -> 'a t -> 'a t =
    fun a b ->
@@ -118,7 +118,7 @@ module Tuple = struct
     let named_order_rev = List.append b.named_order_rev a.named_order_rev in
     let named =
       StringMap.union
-        (fun _name _a _b -> invalid_arg "Tuple.merge")
+        (fun _name _a _b -> invalid_arg "Row.merge")
         a.named b.named
     in
     { unnamed; named; named_order_rev }
@@ -142,4 +142,4 @@ module Tuple = struct
     Format.pp_print_custom_break fmt ~fits:("", 1, ")") ~breaks:(",", 0, ")")
 end
 
-type 'a tuple = 'a Tuple.t
+type 'a row = 'a Row.t
