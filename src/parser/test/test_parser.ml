@@ -20,6 +20,17 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
       with Invalid_argument _ -> false)
   | Complex _, _ -> false
 
+let test_should_fail (source : string) : unit =
+  try
+    let ast =
+      Parser.parse
+        { contents = source; filename = "<test>" }
+        Default_syntax.ruleset
+    in
+    Log.error "@[<v>Parsed: %a@]" (Option.print Ast.print) ast;
+    failwith "Parse was supposed to fail"
+  with Parser.Error _ -> ()
+
 let test ~(source : string) ~(expected : string) : unit =
   let expected =
     Simple_syntax.parse { contents = expected; filename = "<test>" }
@@ -47,7 +58,7 @@ try
       "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )";
   test ~source:"if f x then a else b"
     ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )";
-  test ~source:"f if cond then a else b" ~expected:"\"should not even parse\""
+  test_should_fail "f if cond then a else b"
 with Failure s as f ->
   prerr_string s;
   raise f

@@ -95,7 +95,7 @@ module Option = struct
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a option -> unit =
    fun print_value fmt opt ->
     match opt with
-    | None -> fprintf fmt "None"
+    | None -> fprintf fmt "<none>"
     | Some value -> print_value fmt value
 end
 

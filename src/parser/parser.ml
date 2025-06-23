@@ -1,6 +1,15 @@
 open Std
 open Util
 
+exception Error of string
+
+let error format =
+  Format.kfprintf
+    (fun _fmt ->
+      let msg = Format.flush_str_formatter () in
+      raise @@ Error msg)
+    Format.str_formatter format
+
 module Rule = struct
   module Priority = struct
     type t = float
@@ -119,9 +128,8 @@ module RuleSet = struct
       | [] -> (
           match node.terminal with
           | Some existing ->
-              failwith
-              @@ make_string "Duplicate rule: %a and %a" Rule.print existing
-                   Rule.print rule
+              error "Duplicate rule: %a and %a" Rule.print existing Rule.print
+                rule
           | None ->
               {
                 terminal = Some rule;
@@ -222,9 +230,8 @@ module Impl = struct
           else NoProgress
       | None ->
           if made_progress () then
-            failwith
-            @@ make_string "Could not finish parsing, peek=%a" Lexer.Token.print
-                 (Lexer.peek lexer).value
+            error "Could not finish parsing, peek=%a" Lexer.Token.print
+              (Lexer.peek lexer).value
           else NoProgress
     in
     let continue_with (node : RuleSet.node) : unit option =
@@ -323,4 +330,8 @@ end
 let parse : source -> ruleset -> Ast.t option =
  fun source ruleset ->
   let lexer = Lexer.init Lexer.default_rules source in
-  Impl.parse ruleset Any lexer
+  let result = Impl.parse ruleset Any lexer in
+  let peek = Lexer.peek lexer in
+  match peek.value with
+  | Eof -> result
+  | _ -> error "unexpected %a" (Spanned.print Lexer.Token.print) peek
