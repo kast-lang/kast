@@ -102,10 +102,10 @@ module Rule = struct
     let collected = collect values rule.parts in
     let children =
       List.fold_left
-        (fun row (binding, value) ->
+        (fun tuple (binding, value) ->
           let (* because OCaml is OCaml *) binding : binding = binding in
-          Row.add binding.name value row)
-        Row.empty collected
+          Tuple.add binding.name value tuple)
+        Tuple.empty collected
     in
     Ast.Complex { name = rule.name; children }
 

@@ -13,8 +13,8 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
       name = expected_name
       &&
       try
-        Row.zip_order_a children expected_children
-        |> Row.to_seq
+        Tuple.zip_order_a children expected_children
+        |> Tuple.to_seq
         |> Seq.for_all (fun (_member, (child, expected_child)) ->
                matches child expected_child)
       with Invalid_argument _ -> false)
