@@ -256,3 +256,12 @@ end
 
 module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
+
+module Bool = struct
+  include Bool
+
+  let then_some (type a) (value : a) (x : bool) : a option =
+    match x with
+    | true -> Some value
+    | false -> None
+end

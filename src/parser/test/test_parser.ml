@@ -30,7 +30,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
     in
     Log.error "@[<v>Parsed: %a@]" (Option.print Ast.print) ast;
     failwith "Parse was supposed to fail"
-  with Parser.Error s -> Log.debug "Test properly failed: %s" s
+  with Parser.Error s -> Log.trace "Test properly failed: %s" s
 
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =

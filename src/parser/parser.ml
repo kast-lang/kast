@@ -193,6 +193,7 @@ module RuleSet = struct
   type node = {
     terminal : rule option;
     value_filter : Rule.Priority.filter option;
+    prev_value_filter : Rule.Priority.filter option;
     priority_range : Rule.priority Range.inclusive option;
     next : node EdgeMap.t;
     next_keywords : StringSet.t;
@@ -203,6 +204,7 @@ module RuleSet = struct
       {
         terminal = None;
         value_filter = None;
+        prev_value_filter = None;
         priority_range = None;
         next = EdgeMap.empty;
         next_keywords = StringSet.empty;
@@ -220,22 +222,29 @@ module RuleSet = struct
   let empty : ruleset =
     { rules = StringMap.empty; keywords = StringSet.empty; root = Node.empty }
 
+  let update_value_filter (rule : rule) (part : Rule.part option) current_filter
+      =
+    match part with
+    | None | Some (Keyword _) -> current_filter
+    | Some (Value { priority; _ }) ->
+        let priority_filter =
+          Rule.Priority.make_filter priority rule.priority
+        in
+        Some
+          (match current_filter with
+          | Some current ->
+              Rule.Priority.stricter_filter current priority_filter
+          | None -> priority_filter)
+
   let add : rule -> ruleset -> ruleset =
    fun rule ruleset ->
-    let rec insert ~(prev : Rule.part option) (parts : Rule.part list)
-        (node : node) : node =
+    let rec insert ~(prev_prev : Rule.part option) ~(prev : Rule.part option)
+        (parts : Rule.part list) (node : node) : node =
       let updated_value_filter =
-        match prev with
-        | None | Some (Keyword _) -> node.value_filter
-        | Some (Value { priority; _ }) ->
-            let priority_filter =
-              Rule.Priority.make_filter priority rule.priority
-            in
-            Some
-              (match node.value_filter with
-              | Some current ->
-                  Rule.Priority.stricter_filter current priority_filter
-              | None -> priority_filter)
+        update_value_filter rule prev node.value_filter
+      in
+      let updated_prev_value_filter =
+        update_value_filter rule prev_prev node.prev_value_filter
       in
       let updated_priority_range =
         Some
@@ -254,6 +263,7 @@ module RuleSet = struct
               {
                 terminal = Some rule;
                 value_filter = updated_value_filter;
+                prev_value_filter = updated_prev_value_filter;
                 priority_range = updated_priority_range;
                 next = node.next;
                 next_keywords = node.next_keywords;
@@ -271,11 +281,12 @@ module RuleSet = struct
               | None -> Node.empty
               | Some existing -> existing
             in
-            Some (insert ~prev:(Some first) rest next)
+            Some (insert ~prev_prev:prev ~prev:(Some first) rest next)
           in
           {
             terminal = node.terminal;
             value_filter = updated_value_filter;
+            prev_value_filter = updated_prev_value_filter;
             priority_range = updated_priority_range;
             next = EdgeMap.update edge merge_next node.next;
             next_keywords =
@@ -287,7 +298,7 @@ module RuleSet = struct
     {
       rules = StringMap.add rule.name rule ruleset.rules;
       keywords = StringSet.add_seq (Rule.keywords rule) ruleset.keywords;
-      root = insert ~prev:None rule.parts ruleset.root;
+      root = insert ~prev_prev:None ~prev:None rule.parts ruleset.root;
     }
 
   let is_keyword : string -> ruleset -> bool =
@@ -355,9 +366,9 @@ module Impl = struct
       fun () -> (Lexer.peek lexer).span.start.index <> start_index
     in
     let terminate (node : RuleSet.node) : parse_result =
-      match node.terminal with
-      | Some rule ->
-          if made_progress () then
+      if made_progress () then
+        match node.terminal with
+        | Some rule ->
             let parsed = List.rev !parsed_rev in
             let values =
               parsed
@@ -381,19 +392,35 @@ module Impl = struct
                     filename = (Lexer.source lexer).filename;
                   };
               }
-          else NoProgress
-      | None ->
-          if made_progress () then
-            error "Could not finish parsing, peek=%a" Lexer.Token.print
-              (Lexer.peek lexer).value
-          else NoProgress
+        | None ->
+            error "Unexpected %a"
+              (Spanned.print Lexer.Token.print)
+              (Lexer.peek lexer)
+      else NoProgress
     in
+    (* should return bool but we do option because let* makes it easier *)
     let continue_with (node : RuleSet.node) : unit option =
-      let* range = node.priority_range in
-      let should_continue =
-        Rule.Priority.check_filter_with_range range filter
+      let* () =
+        if made_progress () then Some ()
+        else
+          (* On the **first** iteration need to check that start value satisfies prev filter *)
+          let start_priority : Rule.priority option =
+            Option.bind start (fun start ->
+                match start.kind with
+                | Ast.Simple _ -> None
+                | Ast.Complex { name; _ } ->
+                    let rule : rule = RuleSet.find_rule name ruleset in
+                    Some rule.priority)
+          in
+          match start_priority with
+          | None -> Some ()
+          | Some start_priority ->
+              Rule.Priority.check_filter start_priority
+                (node.prev_value_filter |> Option.get)
+              |> Bool.then_some ()
       in
-      if should_continue then Some () else None
+      let* range = node.priority_range in
+      Rule.Priority.check_filter_with_range range filter |> Bool.then_some ()
     in
     let rec go (node : RuleSet.node) : parse_result =
       let spanned = Lexer.peek lexer in
@@ -468,20 +495,7 @@ module Impl = struct
           else
             match RuleSet.EdgeMap.find_opt Value ruleset.root.next with
             | None -> NoProgress (* no rules starting with a value *)
-            | Some node ->
-                let start_priority =
-                  match start.kind with
-                  | Ast.Simple _ -> None
-                  | Ast.Complex { name; _ } ->
-                      let rule : rule = RuleSet.find_rule name ruleset in
-                      Some rule.priority
-                in
-                let filtered =
-                  match start_priority with
-                  | None -> true
-                  | Some priority -> Rule.Priority.check_filter priority filter
-                in
-                if filtered then go node else NoProgress)
+            | Some node -> go node)
       | None -> go ruleset.root
     in
 
