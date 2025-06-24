@@ -29,8 +29,8 @@ and print_kind : formatter -> kind -> unit =
  fun fmt -> function
   | Simple { token } -> Lexer.Token.print fmt token
   | Complex { name; children } ->
-      fprintf fmt "%a %a" String.print_maybe_escaped name (Tuple.print print)
-        children
+      fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped name
+        (Tuple.print print) children
 
 module Kind = struct
   type t = kind

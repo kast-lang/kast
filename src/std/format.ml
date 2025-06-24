@@ -55,48 +55,48 @@ module Format = struct
 
   let make_string : 'a. ('a, formatter, unit, tag) format4 -> 'a =
    fun format -> kfprintf (fun _ -> flush_str_formatter ()) str_formatter format
+
+  let ansi_escape : string -> string * string = function
+    | "bold" -> ("1", "22")
+    | "dim" -> ("2", "22")
+    | "italic" -> ("3", "23")
+    | "under" -> ("4", "24")
+    | "blink" -> ("5", "25")
+    | "strike" -> ("9", "29")
+    | "black" -> ("30", "39")
+    | "red" -> ("31", "39")
+    | "green" -> ("32", "39")
+    | "yellow" -> ("33", "39")
+    | "blue" -> ("34", "39")
+    | "magenta" -> ("35", "39")
+    | "cyan" -> ("36", "39")
+    | "white" -> ("37", "39")
+    | "black_bg" -> ("40", "49")
+    | "red_bg" -> ("41", "49")
+    | "green_bg" -> ("42", "49")
+    | "yellow_bg" -> ("43", "49")
+    | "blue_bg" -> ("44", "49")
+    | "magenta_bg" -> ("45", "49")
+    | "cyan_bg" -> ("46", "49")
+    | "white_bg" -> ("47", "49")
+    | name -> invalid_arg @@ "ansi_escape " ^ name
   ;;
 
   let tag_functions ~tty : formatter_stag_functions =
     if tty then
+      let mark_stag which tag =
+        match tag with
+        | String_tag tag ->
+            let codes =
+              Stdlib.String.split_on_char ';' tag
+              |> Stdlib.List.map (fun tag -> ansi_escape tag |> which)
+            in
+            "\x1b[" ^ Stdlib.String.concat ";" codes ^ "m"
+        | _ -> ""
+      in
       {
-        mark_open_stag =
-          (fun tag ->
-            match tag with
-            | String_tag tag ->
-                let codes =
-                  Stdlib.String.split_on_char ';' tag
-                  |> Stdlib.List.map (fun name ->
-                         match name with
-                         | "bold" -> "1"
-                         | "dim" -> "2"
-                         | "italic" -> "3"
-                         | "under" -> "4"
-                         | "blink" -> "5"
-                         | "strike" -> "9"
-                         | "black" -> "30"
-                         | "red" -> "31"
-                         | "green" -> "32"
-                         | "yellow" -> "33"
-                         | "blue" -> "34"
-                         | "magenta" -> "35"
-                         | "cyan" -> "36"
-                         | "white" -> "37"
-                         | "black_bg" -> "40"
-                         | "red_bg" -> "41"
-                         | "green_bg" -> "42"
-                         | "yellow_bg" -> "43"
-                         | "blue_bg" -> "44"
-                         | "magenta_bg" -> "45"
-                         | "cyan_bg" -> "46"
-                         | "white_bg" -> "47"
-                         | _ ->
-                             eprintln "Unexpected %S" name;
-                             exit 1)
-                in
-                "\x1b[" ^ Stdlib.String.concat ";" codes ^ "m"
-            | _ -> "");
-        mark_close_stag = (fun _ -> "\x1b[0m");
+        mark_open_stag = mark_stag fst;
+        mark_close_stag = mark_stag snd;
         print_open_stag = ignore;
         print_close_stag = ignore;
       }
@@ -108,7 +108,6 @@ module Format = struct
         print_close_stag = ignore;
       }
   in
-
   pp_set_formatter_stag_functions std_formatter
     (tag_functions ~tty:(Unix.isatty @@ Unix.descr_of_out_channel stdout));
   pp_set_formatter_stag_functions err_formatter
