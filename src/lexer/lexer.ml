@@ -3,14 +3,10 @@ open Util
 module Token = Token
 module Reader = Reader
 
-exception Error of string
+exception Error of (formatter -> unit)
 
-let error format =
-  Format.kfprintf
-    (fun _fmt ->
-      let msg = Format.flush_str_formatter () in
-      raise @@ Error msg)
-    Format.str_formatter format
+let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
+ fun format -> Format.kdprintf (fun f -> raise @@ Error f) format
 
 type token = Token.t
 type rule = Reader.t -> token option
@@ -49,7 +45,7 @@ let peek : lexer -> token spanned =
        match List.find_map try_rule lexer.rules with
        | Some token -> token
        | None ->
-           error "Unexpected char %C at %a"
+           error "Unexpected char @{<green>%C@} @{<dim>at %a@}"
              (Reader.peek reader |> Option.get)
              Position.print reader.position
      in
@@ -75,17 +71,19 @@ let expect_next : lexer -> string -> unit =
   let token = peek lexer in
   if Token.is_raw expected_raw token.value then advance lexer
   else
-    failwith
-    @@ make_string "expected %S, got %a" expected_raw
-         (Spanned.print Token.print)
-         token
+    error "expected @{<white>%S@}, got %a" expected_raw
+      (Spanned.print Token.print)
+      token
 
 let expect_eof : lexer -> unit =
  fun lexer ->
   let peek = peek lexer in
   match peek.value with
   | Eof -> ()
-  | _ -> error "Expected <eof>, got %a" (Spanned.print Token.print) peek
+  | _ ->
+      error "Expected %a, got %a" Token.print Eof
+        (Spanned.print Token.print)
+        peek
 
 let default_rules : rule list =
   let read_eof reader =

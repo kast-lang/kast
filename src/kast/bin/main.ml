@@ -1,32 +1,56 @@
 open Std
-open Util;;
+open Util
 
-let args = Cli.parse () in
-let read path : source =
-  let channel =
-    match path with
-    | Cli.Path.File path -> In_channel.open_text path
-    | Cli.Path.Stdin -> In_channel.stdin
+let main () =
+  let args = Cli.parse () in
+  let read path : source =
+    let channel =
+      match path with
+      | Cli.Path.File path -> In_channel.open_text path
+      | Cli.Path.Stdin -> In_channel.stdin
+    in
+    let contents = In_channel.input_all channel in
+    let filename =
+      match path with
+      | Cli.Path.File path -> path
+      | Cli.Path.Stdin -> "<stdin>"
+    in
+    { contents; filename }
   in
-  let contents = In_channel.input_all channel in
-  let filename =
-    match path with
-    | Cli.Path.File path -> path
-    | Cli.Path.Stdin -> "<stdin>"
-  in
-  { contents; filename }
-in
-match args.command with
-| Cli.Command.Tokenize { path } ->
-    let source = read path in
-    let tokens = Lexer.read_all Lexer.default_rules source in
-    tokens
-    |> List.iter (fun token ->
-           println "%a" (Spanned.print Lexer.Token.print) token)
-| Cli.Command.Parse { path } -> (
-    let source = read path in
-    let parsed = Parser.parse source Default_syntax.ruleset in
-    match parsed with
-    | Some ast -> println "%a" Ast.print ast
-    | None -> println "<nothing>")
-| Cli.Command.Help -> println "Hello, I am Kast :)\nhelp is not implemented yet"
+  match args.command with
+  | Cli.Command.Tokenize { path } ->
+      let source = read path in
+      let tokens = Lexer.read_all Lexer.default_rules source in
+      tokens
+      |> List.iter (fun token ->
+             println "%a" (Spanned.print Lexer.Token.print) token)
+  | Cli.Command.Parse { path } -> (
+      let source = read path in
+      let parsed = Parser.parse source Default_syntax.ruleset in
+      match parsed with
+      | Some ast -> println "%a" Ast.print ast
+      | None -> println "<nothing>")
+  | Cli.Command.Help ->
+      println "Hello, I am Kast :)\nhelp is not implemented yet"
+;;
+
+try main () with
+| Failure s ->
+    eprintln "@{<red>%s@}" s;
+    Printexc.print_backtrace stderr;
+    exit 1
+| Lexer.Error f ->
+    Format.eprintf "@{<red>Lexer error@}: ";
+    f Format.err_formatter;
+    eprintln "";
+    exit 1
+| Parser.Error f ->
+    Format.eprintf "@{<red>Parse error@}: ";
+    f Format.err_formatter;
+    eprintln "";
+    exit 1
+| FailFormat f ->
+    Format.eprintf "@{<red>Error@}: ";
+    f Format.err_formatter;
+    eprintln "";
+    exit 1

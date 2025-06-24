@@ -1,7 +1,7 @@
 open Std
 open Util
 
-exception Error of string
+exception Error of (formatter -> unit)
 
 module Token : sig
   type t = Token.t

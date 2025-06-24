@@ -74,4 +74,5 @@ with
     exit 1
 | FailFormat f ->
     f Format.err_formatter;
+    eprintln "";
     exit 1

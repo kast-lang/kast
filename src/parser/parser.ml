@@ -1,14 +1,14 @@
 open Std
 open Util
 
-exception Error of string
+exception Error of (formatter -> unit)
 
-let error format =
-  Format.kfprintf
-    (fun _fmt ->
-      let msg = Format.flush_str_formatter () in
-      raise @@ Error msg)
-    Format.str_formatter format
+let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
+ fun format -> Format.kdprintf (fun f -> raise @@ Error f) format
+
+let expect_eof : Lexer.t -> unit =
+ fun lexer ->
+  try Lexer.expect_eof lexer with Lexer.Error f -> raise @@ Error f
 
 module Rule = struct
   module Priority = struct
@@ -327,7 +327,7 @@ module RuleSet = struct
                { contents = line; filename = "<rule>" }
            in
            let rule = Rule.parse lexer in
-           Lexer.expect_eof lexer;
+           expect_eof lexer;
            rule)
     |> of_list
 
@@ -540,5 +540,5 @@ let parse : source -> ruleset -> Ast.t option =
   let result =
     Impl.parse ruleset ~continuation_keywords:StringSet.empty ~filter:Any lexer
   in
-  Lexer.expect_eof lexer;
+  expect_eof lexer;
   result

@@ -30,8 +30,8 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
     in
     Log.error "Parsed: %a" (Option.print Ast.print) ast;
     failwith "Parse was supposed to fail"
-  with Parser.Error s | Lexer.Error s ->
-    Log.trace "Test properly failed: %s" s
+  with Parser.Error f | Lexer.Error f ->
+    Log.trace "Test properly failed: %a" (fun fmt () -> f fmt) ()
 
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =
@@ -71,7 +71,13 @@ try
   test ~source:"if f x then a else b"
     ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )" ();
   test_should_fail "f if cond then a else b"
-with Failure s | Parser.Error s ->
-  prerr_endline s;
-  Printexc.print_backtrace stderr;
-  exit 1
+with
+| Failure s ->
+    prerr_endline s;
+    Printexc.print_backtrace stderr;
+    exit 1
+| Parser.Error f ->
+    f Format.err_formatter;
+    eprintln "";
+    Printexc.print_backtrace stderr;
+    exit 1
