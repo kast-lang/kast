@@ -55,6 +55,66 @@ module Format = struct
 
   let make_string : 'a. ('a, formatter, unit, tag) format4 -> 'a =
    fun format -> kfprintf (fun _ -> flush_str_formatter ()) str_formatter format
+  ;;
+
+  let tag_functions ~tty : formatter_stag_functions =
+    if tty then
+      {
+        mark_open_stag =
+          (fun tag ->
+            match tag with
+            | String_tag tag ->
+                let codes =
+                  Stdlib.String.split_on_char ';' tag
+                  |> Stdlib.List.map (fun name ->
+                         match name with
+                         | "bold" -> "1"
+                         | "dim" -> "2"
+                         | "italic" -> "3"
+                         | "under" -> "4"
+                         | "blink" -> "5"
+                         | "strike" -> "9"
+                         | "black" -> "30"
+                         | "red" -> "31"
+                         | "green" -> "32"
+                         | "yellow" -> "33"
+                         | "blue" -> "34"
+                         | "magenta" -> "35"
+                         | "cyan" -> "36"
+                         | "white" -> "37"
+                         | "black_bg" -> "40"
+                         | "red_bg" -> "41"
+                         | "green_bg" -> "42"
+                         | "yellow_bg" -> "43"
+                         | "blue_bg" -> "44"
+                         | "magenta_bg" -> "45"
+                         | "cyan_bg" -> "46"
+                         | "white_bg" -> "47"
+                         | _ ->
+                             eprintln "Unexpected %S" name;
+                             exit 1)
+                in
+                "\x1b[" ^ Stdlib.String.concat ";" codes ^ "m"
+            | _ -> "");
+        mark_close_stag = (fun _ -> "\x1b[0m");
+        print_open_stag = ignore;
+        print_close_stag = ignore;
+      }
+    else
+      {
+        mark_open_stag = (fun _ -> "");
+        mark_close_stag = (fun _ -> "");
+        print_open_stag = ignore;
+        print_close_stag = ignore;
+      }
+  in
+
+  pp_set_formatter_stag_functions std_formatter
+    (tag_functions ~tty:(Unix.isatty @@ Unix.descr_of_out_channel stdout));
+  pp_set_formatter_stag_functions err_formatter
+    (tag_functions ~tty:(Unix.isatty @@ Unix.descr_of_out_channel stderr));
+  pp_set_tags std_formatter true;
+  pp_set_tags err_formatter true
 end
 
 type formatter = Format.formatter

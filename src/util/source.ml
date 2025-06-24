@@ -59,7 +59,8 @@ module Spanned = struct
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a spanned -> unit =
    fun print_value fmt spanned ->
-    fprintf fmt "%a at %a" print_value spanned.value Span.print spanned.span
+    fprintf fmt "%a @{<dim>at %a@}" print_value spanned.value Span.print
+      spanned.span
 end
 
 type 'a spanned = 'a Spanned.t

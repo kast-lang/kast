@@ -1,2 +1,3 @@
 (library
- (name std))
+ (name std)
+ (libraries unix))

@@ -127,7 +127,7 @@ let default_rules : rule list =
         {
           raw =
             Reader.read_while
-              (fun c -> Char.is_alphanumberic c || c = '_')
+              (fun c -> Char.is_alphanumeric c || c = '_')
               reader;
         }
       in
@@ -154,7 +154,7 @@ let default_rules : rule list =
     let is_punct : char -> bool = function
       | '_' | '\'' | '"' -> false
       | c when Char.is_whitespace c -> false
-      | c when Char.is_alphanumberic c -> false
+      | c when Char.is_alphanumeric c -> false
       | _ -> true
     in
     let is_single_punct = function

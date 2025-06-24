@@ -23,13 +23,14 @@ type t = ast
 
 let rec print : formatter -> ast -> unit =
  fun fmt { kind; span } ->
-  fprintf fmt "%a at %a" print_kind kind Span.print span
+  fprintf fmt "%a @{<dim>at %a@}" print_kind kind Span.print span
 
 and print_kind : formatter -> kind -> unit =
  fun fmt -> function
   | Simple { token } -> Lexer.Token.print fmt token
   | Complex { name; children } ->
-      fprintf fmt "%S %a" name (Tuple.print print) children
+      fprintf fmt "%a %a" String.print_maybe_escaped name (Tuple.print print)
+        children
 
 module Kind = struct
   type t = kind

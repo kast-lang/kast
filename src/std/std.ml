@@ -21,3 +21,5 @@ let unreachable format =
 
 module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
+
+exception FailFormat of (formatter -> unit)

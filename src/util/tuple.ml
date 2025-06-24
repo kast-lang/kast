@@ -93,7 +93,8 @@ module Tuple = struct
       comma fmt ();
     let print_named fmt name =
       let value = StringMap.find name named in
-      fprintf fmt "@[<v>%S = %a@]" name print_value value
+      fprintf fmt "@[<v>%a = %a@]" String.print_maybe_escaped name print_value
+        value
     in
     Format.pp_print_iter ~pp_sep:comma List.iter print_named fmt
       (List.rev named_order_rev);

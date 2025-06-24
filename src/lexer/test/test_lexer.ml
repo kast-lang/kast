@@ -16,10 +16,10 @@ module ExpectedToken = struct
   let print : formatter -> expected_token -> unit =
    fun fmt token ->
     match token with
-    | Ident s -> fprintf fmt "%s" s
-    | Punct s -> fprintf fmt "%s" s
-    | String s -> fprintf fmt "%S" s
-    | Eof -> fprintf fmt "<eof>"
+    | Ident s -> fprintf fmt "@{<under>%a@}" String.print_maybe_escaped s
+    | Punct s -> fprintf fmt "%a" String.print_maybe_escaped s
+    | String s -> fprintf fmt "@{<green>%S@}" s
+    | Eof -> fprintf fmt "@{<italic><eof>@}"
 
   let check : expected_token -> token -> bool =
    fun expected token ->
@@ -51,11 +51,13 @@ let test ~(source : string) ~(expected : expected_token list) : unit =
        @@ List.for_all
             (fun (expected, token) -> ExpectedToken.check expected token)
             (List.zip expected tokens)
-  then (
-    sprintln "Test failed:";
-    sprintln "got     : %a" (List.print Token.print) tokens;
-    sprintln "expected: %a" (List.print ExpectedToken.print) expected;
-    failwith @@ Format.flush_str_formatter ())
+  then
+    let f fmt =
+      fprintln fmt "@{<red>Test failed:@}";
+      fprintln fmt "got: %a" (List.print Token.print) tokens;
+      fprintln fmt "expected: %a" (List.print ExpectedToken.print) expected
+    in
+    raise @@ FailFormat f
 ;;
 
 Printexc.record_backtrace true;
@@ -65,6 +67,11 @@ try
     ~expected:[ Ident "hello"; Punct ","; Ident "world" ];
   test ~source:"std.print \"hello, world\""
     ~expected:[ Ident "std"; Punct "."; Ident "print"; String "hello, world" ]
-with Failure s as f ->
-  prerr_string s;
-  raise f
+with
+| Failure s ->
+    eprintln "@{<red>%s@}" s;
+    Printexc.print_backtrace stderr;
+    exit 1
+| FailFormat f ->
+    f Format.err_formatter;
+    exit 1

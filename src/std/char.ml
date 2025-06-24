@@ -12,7 +12,7 @@ module Char = struct
     | '0' .. '9' -> true
     | _ -> false
 
-  let is_alphanumberic : char -> bool = fun c -> is_alpha c || is_digit c
+  let is_alphanumeric : char -> bool = fun c -> is_alpha c || is_digit c
 
   let is_whitespace : char -> bool =
    fun c -> c = ' ' || c = '\t' || c = '\r' || c = '\n'
