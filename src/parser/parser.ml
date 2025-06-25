@@ -85,29 +85,49 @@ module Rule = struct
          | Keyword keyword -> Some keyword
          | Value _ -> None)
 
-  let collect : Ast.t list -> rule -> Ast.kind =
-   fun values rule ->
+  let collect : Ast.part list -> rule -> Ast.t =
+   fun parts rule ->
+    let values =
+      parts
+      |> List.filter_map (function
+           | Ast.Keyword _ -> None
+           | Ast.Value ast -> Some ast)
+    in
+    let span : span =
+      let spans =
+        parts
+        |> List.map (function
+             | Ast.Keyword spanned -> spanned.span
+             | Ast.Value ast -> ast.span)
+      in
+      {
+        start = (spans |> List.head |> fun span -> span.start);
+        finish = (spans |> List.last |> fun span -> span.finish);
+        filename = (List.head spans).filename;
+      }
+    in
     Log.trace "Collecting %d values into %s" (List.length values) rule.name;
     Log.trace "Collecting %a" (List.print Ast.print) values;
-    let rec collect : Ast.t list -> part list -> (binding * Ast.t) list =
+    let rec collect_children : Ast.t list -> part list -> (binding * Ast.t) list
+        =
      fun values parts ->
       match (values, parts) with
-      | _, Keyword _ :: parts_tail -> collect values parts_tail
+      | _, Keyword _ :: parts_tail -> collect_children values parts_tail
       | value :: values_tail, Value binding :: parts_tail ->
-          (binding, value) :: collect values_tail parts_tail
+          (binding, value) :: collect_children values_tail parts_tail
       | [], [] -> []
       | [], _ -> failwith "not enough values supplied"
       | _, [] -> failwith "too many values supplied"
     in
-    let collected = collect values rule.parts in
+    let children = collect_children values rule.parts in
     let children =
       List.fold_left
         (fun tuple (binding, value) ->
           let (* because OCaml is OCaml *) binding : binding = binding in
           Tuple.add binding.name value tuple)
-        Tuple.empty collected
+        Tuple.empty children
     in
-    Ast.Complex { name = rule.name; children }
+    { shape = Ast.Complex { name = rule.name; parts; children }; span }
 
   let parse : Lexer.t -> rule =
    fun lexer ->
@@ -353,10 +373,6 @@ module Impl = struct
     | MadeProgress of Ast.t
     | NoProgress
 
-  type parsed =
-    | Keyword of Lexer.token spanned
-    | Value of Ast.t
-
   let rec parse_one :
       start:Ast.t option ->
       ruleset ->
@@ -368,8 +384,8 @@ module Impl = struct
     (match start with
     | None -> Log.trace "Start to parse one"
     | Some _ -> Log.trace "Start to parse one (having value)");
-    let parsed_rev : parsed list ref =
-      ref (start |> Option.map (fun ast -> Value ast) |> Option.to_list)
+    let parsed_rev : Ast.part list ref =
+      ref (start |> Option.map (fun ast -> Ast.Value ast) |> Option.to_list)
     in
     let made_progress : unit -> bool =
       let start_index = (Lexer.peek lexer).span.start.index in
@@ -380,28 +396,7 @@ module Impl = struct
         match node.terminal with
         | Some rule ->
             let parsed = List.rev !parsed_rev in
-            let values =
-              parsed
-              |> List.filter_map (function
-                   | Keyword _ -> None
-                   | Value ast -> Some ast)
-            in
-            let spans =
-              parsed
-              |> List.map (function
-                   | Keyword spanned -> spanned.span
-                   | Value ast -> ast.span)
-            in
-            MadeProgress
-              {
-                kind = Rule.collect values rule;
-                span =
-                  {
-                    start = (spans |> List.head |> fun span -> span.start);
-                    finish = (spans |> List.last |> fun span -> span.finish);
-                    filename = (Lexer.source lexer).filename;
-                  };
-              }
+            MadeProgress (Rule.collect parsed rule)
         | None ->
             error "Unexpected %a"
               (Spanned.print Lexer.Token.print)
@@ -416,7 +411,7 @@ module Impl = struct
           (* On the **first** iteration need to check that start value satisfies prev filter *)
           let start_priority : Rule.priority option =
             Option.bind start (fun start ->
-                match start.kind with
+                match start.shape with
                 | Ast.Simple _ -> None
                 | Ast.Complex { name; _ } ->
                     let rule : rule = RuleSet.find_rule name ruleset in
@@ -482,7 +477,7 @@ module Impl = struct
       Lexer.skip_comments lexer;
       let spanned = Lexer.peek lexer in
       let token = spanned.value in
-      let* kind =
+      let* shape =
         match token with
         | Eof -> None
         | Punct _ -> None
@@ -494,7 +489,7 @@ module Impl = struct
         | Comment _ -> unreachable "comments were skipped"
       in
       Lexer.advance lexer;
-      Some ({ kind; span = spanned.span } : Ast.t)
+      Some ({ shape; span = spanned.span } : Ast.t)
     in
 
     let start = start |> Option.or_else parse_simple in
@@ -534,11 +529,14 @@ module Impl = struct
     loop None
 end
 
-let parse : source -> ruleset -> Ast.t option =
- fun source ruleset ->
-  let lexer = Lexer.init Lexer.default_rules source in
+let parse_with_lexer : Lexer.t -> ruleset -> Ast.t option =
+ fun lexer ruleset ->
   let result =
     Impl.parse ruleset ~continuation_keywords:StringSet.empty ~filter:Any lexer
   in
   expect_eof lexer;
   result
+
+let parse : source -> ruleset -> Ast.t option =
+ fun source ruleset ->
+  parse_with_lexer (Lexer.init Lexer.default_rules source) ruleset

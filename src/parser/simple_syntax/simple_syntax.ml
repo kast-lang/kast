@@ -16,14 +16,14 @@ let rec print fmt = function
       fprintf fmt "%S %a" name (Tuple.print print) children
 
 let get_name : Ast.t -> string = function
-  | { kind = Simple { token = Ident { raw; _ } }; _ } -> raw
+  | { shape = Simple { token = Ident { raw; _ } }; _ } -> raw
   | other -> unreachable "get_name %a" Ast.print other
 
 let rec process : Ast.t -> ast =
  fun ast ->
-  match ast.kind with
+  match ast.shape with
   | Simple { token } -> Simple (Lexer.Token.raw token |> Option.get)
-  | Complex { name = "complex"; children } ->
+  | Complex { name = "complex"; parts = _; children } ->
       Complex
         {
           name = Tuple.get_named "name" children |> get_name;
@@ -32,10 +32,10 @@ let rec process : Ast.t -> ast =
   | _ -> unreachable "process %a" Ast.print ast
 
 and collect_children ast : ast tuple =
-  match ast.kind with
-  | Complex { name = "trailing comma"; children } ->
+  match ast.shape with
+  | Complex { name = "trailing comma"; parts = _; children } ->
       Tuple.get_unnamed 0 children |> collect_children
-  | Complex { name = "comma"; children } ->
+  | Complex { name = "comma"; parts = _; children } ->
       if
         Array.length children.unnamed <> 2
         || not (StringMap.is_empty children.named)
@@ -43,7 +43,7 @@ and collect_children ast : ast tuple =
       let a = Tuple.get_unnamed 0 children |> collect_children in
       let b = Tuple.get_unnamed 1 children |> collect_children in
       Tuple.merge a b
-  | Complex { name = "named"; children } ->
+  | Complex { name = "named"; parts = _; children } ->
       let name = Tuple.get_named "name" children |> get_name in
       let value = Tuple.get_named "value" children |> process in
       Tuple.make [] [ (name, value) ]

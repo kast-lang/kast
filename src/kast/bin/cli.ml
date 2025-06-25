@@ -38,6 +38,7 @@ module Command = struct
   type command =
     | Tokenize of Common.t
     | Parse of Common.t
+    | Highlight of Common.t
     | Help
 
   type t = command
@@ -46,6 +47,7 @@ module Command = struct
     | [] -> Help
     | "tokenize" :: args -> Tokenize (Common.parse args)
     | "parse" :: args -> Parse (Common.parse args)
+    | "highlight" :: args -> Highlight (Common.parse args)
     | arg :: rest -> (
         match Path.parse arg with
         | Some path ->
