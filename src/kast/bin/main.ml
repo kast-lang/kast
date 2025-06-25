@@ -12,8 +12,10 @@ let main () =
              println "%a" (Spanned.print Lexer.Token.print) token)
   | Cli.Command.Parse { path } -> (
       let source = read path in
-      let parsed = Parser.parse source Default_syntax.ruleset in
-      match parsed with
+      let { ast; trailing_comments = _ } : Parser.result =
+        Parser.parse source Default_syntax.ruleset
+      in
+      match ast with
       | Some ast -> println "%a" Ast.print ast
       | None -> println "<nothing>")
   | Cli.Command.Highlight args -> Highlight.perform args

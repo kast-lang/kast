@@ -61,10 +61,13 @@ let perform : Cli.Command.Common.t -> unit =
  fun { path } ->
   let source = read path in
   let lexer = Lexer.init Lexer.default_rules source in
-  let parsed = Parser.parse_with_lexer lexer Default_syntax.ruleset in
+  let { ast; trailing_comments } : Parser.result =
+    Parser.parse_with_lexer lexer Default_syntax.ruleset
+  in
   let eof_token = Lexer.peek lexer in
   let printer = { fmt = Format.std_formatter; position = Position.beginning } in
-  (match parsed with
+  (match ast with
   | Some ast -> print_ast printer ast
   | None -> ());
+  trailing_comments |> List.iter (fun comment -> print_comment printer comment);
   move_to printer eof_token.span.start

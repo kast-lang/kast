@@ -558,7 +558,12 @@ module Impl = struct
     loop None
 end
 
-let parse_with_lexer : Lexer.t -> ruleset -> Ast.t option =
+type result = {
+  ast : Ast.t option;
+  trailing_comments : Lexer.Token.comment spanned list;
+}
+
+let parse_with_lexer : Lexer.t -> ruleset -> result =
  fun lexer ruleset ->
   let comments_before = ref [] in
   let result =
@@ -566,10 +571,8 @@ let parse_with_lexer : Lexer.t -> ruleset -> Ast.t option =
       ~filter:Any lexer
   in
   expect_eof lexer;
-  if !comments_before |> List.length <> 0 then
-    fail "TODO: comments in the end of the file";
-  result
+  { ast = result; trailing_comments = !comments_before }
 
-let parse : source -> ruleset -> Ast.t option =
+let parse : source -> ruleset -> result =
  fun source ruleset ->
   parse_with_lexer (Lexer.init Lexer.default_rules source) ruleset

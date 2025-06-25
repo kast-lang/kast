@@ -9,11 +9,11 @@ let parse : string list -> args = function
 
 module Lsp = Linol.Lsp
 
-type state_after_processing = { ast : Ast.t option }
+type state_after_processing = { parsed : Parser.result }
 
 let process_some_input_file (source : source) : state_after_processing =
-  let ast = Parser.parse source Default_syntax.ruleset in
-  { ast }
+  let parsed = Parser.parse source Default_syntax.ruleset in
+  { parsed }
 
 module Tokens = struct
   type token_shape =
@@ -162,58 +162,64 @@ class lsp_server =
         Lsp.Types.SemanticTokens.t option Lwt.t =
       fun ~notify_back:_ params ->
         Log.info "got semantic tokens request";
-        let buffer_state = Hashtbl.find buffers params.textDocument.uri in
-        match buffer_state.ast with
-        | None -> Linol_lwt.return None
-        | Some ast ->
-            let data =
-              let prev_pos = ref Position.beginning in
-              ast |> Tokens.collect
-              |> Seq.flat_map (fun ({ token; span } : Tokens.token) ->
-                     let deltaLine = span.start.line - !prev_pos.line in
-                     let deltaStartChar =
-                       if deltaLine = 0 then
-                         span.start.column - !prev_pos.column
-                       else span.start.column - Position.beginning.column
-                     in
-                     let length = span.finish.index - span.start.index in
-                     let tokenType =
+        let { parsed = { ast; trailing_comments }; _ } =
+          Hashtbl.find buffers params.textDocument.uri
+        in
+        let data =
+          let prev_pos = ref Position.beginning in
+          let tokens =
+            Seq.append
+              (ast |> Option.to_seq
+              |> Seq.flat_map (fun ast -> ast |> Tokens.collect))
+              (trailing_comments |> List.to_seq
+              |> Seq.map
+                   (fun
+                     (comment : Lexer.Token.comment spanned) : Tokens.token ->
+                     { token = Comment comment.value; span = comment.span }))
+          in
+          tokens
+          |> Seq.flat_map (fun ({ token; span } : Tokens.token) ->
+                 let deltaLine = span.start.line - !prev_pos.line in
+                 let deltaStartChar =
+                   if deltaLine = 0 then span.start.column - !prev_pos.column
+                   else span.start.column - Position.beginning.column
+                 in
+                 let length = span.finish.index - span.start.index in
+                 let tokenType =
+                   match token with
+                   | Tokens.Keyword _ -> Some 19 (* keyword *)
+                   | Tokens.Value token -> (
                        match token with
-                       | Tokens.Keyword _ -> Some 19 (* keyword *)
-                       | Tokens.Value token -> (
-                           match token with
-                           | String _ -> Some 18 (* string *)
-                           | Number _ -> Some 20
-                           | _ -> None)
-                       | Tokens.Comment _ -> Some 17
-                     in
-                     let tokenModifiers = 0 in
-                     let data =
-                       tokenType
-                       |> Option.map (fun tokenType ->
-                              [
-                                deltaLine;
-                                deltaStartChar;
-                                length;
-                                tokenType;
-                                tokenModifiers;
-                              ])
-                     in
-                     (match data with
-                     | Some data ->
-                         Log.info "@[<h>data: %a %a@]" (List.print Int.print)
-                           data Span.print span;
-                         prev_pos := span.start
-                     | None -> ());
-                     let data = data |> Option.value ~default:[] in
-                     List.to_seq data)
-              |> Array.of_seq
-            in
-            let tokens =
-              Lsp.Types.SemanticTokens.create ~data ?resultId:None ()
-            in
-            Log.info "replied with semantic tokens";
-            Linol_lwt.return @@ Some tokens
+                       | String _ -> Some 18 (* string *)
+                       | Number _ -> Some 20
+                       | _ -> None)
+                   | Tokens.Comment _ -> Some 17
+                 in
+                 let tokenModifiers = 0 in
+                 let data =
+                   tokenType
+                   |> Option.map (fun tokenType ->
+                          [
+                            deltaLine;
+                            deltaStartChar;
+                            length;
+                            tokenType;
+                            tokenModifiers;
+                          ])
+                 in
+                 (match data with
+                 | Some data ->
+                     Log.info "@[<h>data: %a %a@]" (List.print Int.print) data
+                       Span.print span;
+                     prev_pos := span.start
+                 | None -> ());
+                 let data = data |> Option.value ~default:[] in
+                 List.to_seq data)
+          |> Array.of_seq
+        in
+        let tokens = Lsp.Types.SemanticTokens.create ~data ?resultId:None () in
+        Log.info "replied with semantic tokens";
+        Linol_lwt.return @@ Some tokens
 
     method! on_request_unhandled : type r.
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
