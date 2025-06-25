@@ -1,4 +1,5 @@
 open Std
+open Kast
 
 module Path = struct
   type path =
@@ -39,6 +40,7 @@ module Command = struct
     | Tokenize of Common.t
     | Parse of Common.t
     | Highlight of Common.t
+    | Lsp of Lsp.args
     | Help
 
   type t = command
@@ -48,6 +50,7 @@ module Command = struct
     | "tokenize" :: args -> Tokenize (Common.parse args)
     | "parse" :: args -> Parse (Common.parse args)
     | "highlight" :: args -> Highlight (Common.parse args)
+    | "lsp" :: args -> Lsp (Lsp.parse args)
     | arg :: rest -> (
         match Path.parse arg with
         | Some path ->

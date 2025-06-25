@@ -1,0 +1,3 @@
+(library
+ (name kast_lsp)
+ (libraries std util lsp))

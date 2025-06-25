@@ -23,3 +23,5 @@ module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
 
 exception FailFormat of (formatter -> unit)
+
+let fail f = Format.kdprintf (fun f -> raise @@ FailFormat f) f

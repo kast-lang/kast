@@ -24,6 +24,8 @@
           ocamlformat = "*";
           ocaml-index = "*";
           dune-deps = "*";
+          odoc = "*";
+          odig = "*";
         };
         query = devPackagesQuery // {
           ## You can force versions of certain packages here, e.g:
