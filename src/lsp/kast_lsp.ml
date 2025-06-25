@@ -104,6 +104,14 @@ let[@inline] lift_ok x =
   let+ x = x in
   Ok x
 
+type linecol = {
+  line : int;
+  column : int;
+}
+
+let linecol (pos : position) : linecol =
+  { line = pos.line; column = pos.column }
+
 class lsp_server =
   object (self)
     inherit Linol_lwt.Jsonrpc2.server
@@ -179,12 +187,40 @@ class lsp_server =
           in
           tokens
           |> Seq.flat_map (fun ({ token; span } : Tokens.token) ->
+                 let pos = ref @@ linecol span.start in
+                 Seq.of_dispenser (fun () ->
+                     if !pos = linecol span.finish then None
+                     else
+                       let next_pos =
+                         if !pos.line = span.finish.line then
+                           linecol span.finish
+                         else { line = !pos.line + 1; column = 1 }
+                       in
+                       (* we dont use index anyway *)
+                       let fakepos (pos : linecol) : position =
+                         { line = pos.line; column = pos.column; index = 0 }
+                       in
+                       let span : span =
+                         {
+                           start = fakepos !pos;
+                           finish = fakepos next_pos;
+                           filename = span.filename;
+                         }
+                       in
+                       pos := next_pos;
+                       Some span)
+                 |> Seq.map (fun span : Tokens.token -> { token; span }))
+          |> Seq.flat_map (fun ({ token; span } : Tokens.token) ->
                  let deltaLine = span.start.line - !prev_pos.line in
                  let deltaStartChar =
                    if deltaLine = 0 then span.start.column - !prev_pos.column
                    else span.start.column - Position.beginning.column
                  in
-                 let length = span.finish.index - span.start.index in
+                 let length =
+                   if span.start.line = span.finish.line then
+                     span.finish.column - span.start.column
+                   else 1000 (* to the end of line :) *)
+                 in
                  let tokenType =
                    match token with
                    | Tokens.Keyword _ -> Some 19 (* keyword *)
@@ -209,7 +245,7 @@ class lsp_server =
                  in
                  (match data with
                  | Some data ->
-                     Log.info "@[<h>data: %a %a@]" (List.print Int.print) data
+                     Log.trace "@[<h>data: %a %a@]" (List.print Int.print) data
                        Span.print span;
                      prev_pos := span.start
                  | None -> ());
