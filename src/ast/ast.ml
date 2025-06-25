@@ -2,9 +2,14 @@ open Std
 open Util
 
 type token = Lexer.token
-type simple = { token : token }
+
+type simple = {
+  comments_before : Lexer.Token.comment spanned list;
+  token : token spanned;
+}
 
 type part =
+  | Comment of Lexer.Token.comment spanned
   | Value of ast
   | Keyword of token spanned
 
@@ -31,7 +36,7 @@ let rec print : formatter -> ast -> unit =
 
 and print_shape : formatter -> shape -> unit =
  fun fmt -> function
-  | Simple { token } -> Lexer.Token.print fmt token
+  | Simple { comments_before = _; token } -> Lexer.Token.print fmt token.value
   | Complex { name; parts = _; children } ->
       fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped name
         (Tuple.print print) children

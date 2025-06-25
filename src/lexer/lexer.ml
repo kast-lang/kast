@@ -60,12 +60,6 @@ let next : lexer -> token spanned =
 
 let advance : lexer -> unit = fun lexer -> ignore @@ next lexer
 
-let skip_comments : lexer -> unit =
- fun lexer ->
-  while Token.is_comment (peek lexer).value do
-    advance lexer
-  done
-
 let expect_next : lexer -> string -> unit =
  fun lexer expected_raw ->
   let token = peek lexer in
@@ -174,8 +168,46 @@ let default_rules : rule list =
       Some (Token.Punct token))
     else None
   in
+  let read_line_comment reader =
+    let* c = Reader.peek reader in
+    let* () = if c = '#' then Some () else None in
+    let raw = reader |> Reader.read_while (fun c -> c <> '\n') in
+    Some (Token.Comment { raw })
+  in
+  let read_block_comment reader =
+    let* () = if Reader.peek reader = Some '(' then Some () else None in
+    let* () = if Reader.peek2 reader = Some '#' then Some () else None in
+    let raw = Reader.start_rec reader in
+    let start_pos = reader.position in
+    Reader.advance reader;
+    Reader.advance reader;
+    let nestiness = ref 1 in
+    while !nestiness > 0 do
+      if Reader.peek reader = Some '#' && Reader.peek2 reader = Some ')' then (
+        Reader.advance reader;
+        Reader.advance reader;
+        nestiness := !nestiness - 1)
+      else if Reader.peek reader = Some '(' && Reader.peek2 reader = Some '#'
+      then (
+        Reader.advance reader;
+        Reader.advance reader;
+        nestiness := !nestiness + 1)
+      else if Reader.peek reader = None then
+        error "Unclosed block comment (start at %a) @{<dim>at %a@}"
+          Position.print start_pos Position.print reader.position
+      else Reader.advance reader
+    done;
+    Some (Token.Comment { raw = Reader.finish_rec raw })
+  in
   [
-    read_whitespace; read_eof; read_ident; read_number; read_string; read_punct;
+    read_whitespace;
+    read_eof;
+    read_ident;
+    read_number;
+    read_string;
+    read_line_comment;
+    read_block_comment;
+    read_punct;
   ]
 
 let read_all : rule list -> source -> token spanned list =

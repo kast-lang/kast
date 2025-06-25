@@ -19,6 +19,7 @@ module Tokens = struct
   type token_shape =
     | Keyword of Lexer.token
     | Value of Lexer.token
+    | Comment of Lexer.Token.comment
 
   type token = {
     token : token_shape;
@@ -26,16 +27,24 @@ module Tokens = struct
   }
 
   let rec collect : Ast.t -> token Seq.t =
-   fun { shape; span } ->
+   fun { shape; span = _ } ->
     match shape with
-    | Ast.Simple { token } -> List.to_seq [ { token = Value token; span } ]
+    | Ast.Simple { comments_before; token } ->
+        Seq.append
+          (comments_before |> List.to_seq
+          |> Seq.map (fun (comment : Lexer.Token.comment spanned) ->
+                 { token = Comment comment.value; span = comment.span }))
+          (List.to_seq [ { token = Value token.value; span = token.span } ])
     | Ast.Complex { parts; _ } ->
         parts |> List.to_seq
         |> Seq.flat_map (function
              | Ast.Value ast -> collect ast
              | Ast.Keyword token ->
                  List.to_seq
-                   [ { token = Keyword token.value; span = token.span } ])
+                   [ { token = Keyword token.value; span = token.span } ]
+             | Ast.Comment comment ->
+                 List.to_seq
+                   [ { token = Comment comment.value; span = comment.span } ])
 end
 
 let diagnostics (_state : state_after_processing) : Lsp.Types.Diagnostic.t list
@@ -176,6 +185,7 @@ class lsp_server =
                            | String _ -> Some 18 (* string *)
                            | Number _ -> Some 20
                            | _ -> None)
+                       | Tokens.Comment _ -> Some 17
                      in
                      let tokenModifiers = 0 in
                      let data =

@@ -71,6 +71,7 @@ module Format = struct
     | "magenta" -> ("35", "39")
     | "cyan" -> ("36", "39")
     | "white" -> ("37", "39")
+    | "gray" -> ("90", "39")
     | "black_bg" -> ("40", "49")
     | "red_bg" -> ("41", "49")
     | "green_bg" -> ("42", "49")
@@ -79,6 +80,7 @@ module Format = struct
     | "magenta_bg" -> ("45", "49")
     | "cyan_bg" -> ("46", "49")
     | "white_bg" -> ("47", "49")
+    | "gray_bg" -> ("100", "49")
     | name -> invalid_arg @@ "ansi_escape " ^ name
   ;;
 

@@ -24,6 +24,12 @@ let print_token (printer : printer) (f : printer -> Lexer.token -> unit)
   f printer token.value;
   printer.position <- token.span.finish
 
+let print_comment (printer : printer) (comment : Lexer.Token.comment spanned) :
+    unit =
+  move_to printer comment.span.start;
+  fprintf printer.fmt "@{<gray>%s@}" comment.value.raw;
+  printer.position <- comment.span.finish
+
 let print_keyword printer (token : Lexer.token) =
   match Lexer.Token.raw token with
   | Some raw -> fprintf printer.fmt "@{<magenta>%s@}" raw
@@ -41,13 +47,15 @@ let print_value printer (token : Lexer.token) =
 
 let rec print_ast (printer : printer) (ast : Ast.t) : unit =
   match ast.shape with
-  | Simple { token } ->
-      print_token printer print_value { value = token; span = ast.span }
+  | Simple { comments_before; token } ->
+      comments_before |> List.iter (print_comment printer);
+      print_token printer print_value token
   | Complex { parts; _ } ->
       parts
       |> List.iter (function
            | Ast.Value ast -> print_ast printer ast
-           | Ast.Keyword token -> print_token printer print_keyword token)
+           | Ast.Keyword token -> print_token printer print_keyword token
+           | Ast.Comment comment -> print_comment printer comment)
 
 let perform : Cli.Command.Common.t -> unit =
  fun { path } ->

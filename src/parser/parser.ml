@@ -90,15 +90,16 @@ module Rule = struct
     let values =
       parts
       |> List.filter_map (function
-           | Ast.Keyword _ -> None
-           | Ast.Value ast -> Some ast)
+           | Ast.Value ast -> Some ast
+           | _ -> None)
     in
     let span : span =
       let spans =
         parts
-        |> List.map (function
-             | Ast.Keyword spanned -> spanned.span
-             | Ast.Value ast -> ast.span)
+        |> List.filter_map (function
+             | Ast.Keyword spanned -> Some spanned.span
+             | Ast.Value ast -> Some ast.span
+             | Ast.Comment _ -> None)
       in
       {
         start = (spans |> List.head |> fun span -> span.start);
@@ -368,24 +369,40 @@ let init : ruleset -> parser = fun ruleset -> { ruleset }
 let add_rule : rule -> parser -> unit =
  fun rule parser -> parser.ruleset <- RuleSet.add rule parser.ruleset
 
+let rec read_comments lexer : Lexer.Token.comment spanned list =
+  let peek = Lexer.peek lexer in
+  match peek.value with
+  | Comment comment ->
+      Lexer.advance lexer;
+      { value = comment; span = peek.span } :: read_comments lexer
+  | _ -> []
+
 module Impl = struct
   type parse_result =
     | MadeProgress of Ast.t
     | NoProgress
 
   let rec parse_one :
+      comments_before:Lexer.Token.comment spanned list ref ->
       start:Ast.t option ->
       ruleset ->
       continuation_keywords:StringSet.t ->
       filter:Rule.Priority.filter ->
       Lexer.t ->
       parse_result =
-   fun ~start ruleset ~continuation_keywords ~filter lexer ->
+   fun ~comments_before ~start ruleset ~continuation_keywords ~filter lexer ->
     (match start with
     | None -> Log.trace "Start to parse one"
     | Some _ -> Log.trace "Start to parse one (having value)");
     let parsed_rev : Ast.part list ref =
       ref (start |> Option.map (fun ast -> Ast.Value ast) |> Option.to_list)
+    in
+    let count_comments_before () =
+      parsed_rev :=
+        (!comments_before |> List.rev
+        |> List.map (fun comment -> Ast.Comment comment))
+        @ !parsed_rev;
+      comments_before := []
     in
     let made_progress : unit -> bool =
       let start_index = (Lexer.peek lexer).span.start.index in
@@ -428,6 +445,7 @@ module Impl = struct
       Rule.Priority.check_filter_with_range range filter |> Bool.then_some ()
     in
     let rec go (node : RuleSet.node) : parse_result =
+      comments_before := !comments_before @ read_comments lexer;
       let spanned = Lexer.peek lexer in
       let token = spanned.value in
       let raw_token = Lexer.Token.raw token in
@@ -441,6 +459,7 @@ module Impl = struct
         let edge : RuleSet.edge = Keyword keyword in
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
+        count_comments_before ();
         parsed_rev := Keyword spanned :: !parsed_rev;
         Log.trace "Followed with keyword %S" keyword;
         Lexer.advance lexer;
@@ -463,7 +482,8 @@ module Impl = struct
           | _ -> StringSet.union continuation_keywords next.next_keywords
         in
         let* value : Ast.t =
-          parse ruleset ~continuation_keywords:inner_continuation_keywords
+          parse ruleset ~comments_before
+            ~continuation_keywords:inner_continuation_keywords
             ~filter:(next.value_filter |> Option.get)
             lexer
         in
@@ -474,22 +494,30 @@ module Impl = struct
       terminate node
     in
     let parse_simple () : Ast.t option =
-      Lexer.skip_comments lexer;
-      let spanned = Lexer.peek lexer in
-      let token = spanned.value in
+      let start = (Lexer.peek lexer).span.start in
+      comments_before := !comments_before @ read_comments lexer;
+      let peek = Lexer.peek lexer in
+      let token = peek.value in
       let* shape =
         match token with
         | Eof -> None
         | Punct _ -> None
-        | Number _ -> Some (Ast.Simple { token })
-        | String _ -> Some (Ast.Simple { token })
+        | Number _ ->
+            Some
+              (Ast.Simple { comments_before = !comments_before; token = peek })
+        | String _ ->
+            Some
+              (Ast.Simple { comments_before = !comments_before; token = peek })
         | Ident { raw; _ } ->
             if RuleSet.is_keyword raw ruleset then None
-            else Some (Ast.Simple { token })
+            else
+              Some
+                (Ast.Simple { comments_before = !comments_before; token = peek })
         | Comment _ -> unreachable "comments were skipped"
       in
+      comments_before := [];
       Lexer.advance lexer;
-      Some ({ shape; span = spanned.span } : Ast.t)
+      Some ({ shape; span = { peek.span with start } } : Ast.t)
     in
 
     let start = start |> Option.or_else parse_simple in
@@ -511,15 +539,16 @@ module Impl = struct
 
   and parse :
       ruleset ->
+      comments_before:Lexer.Token.comment spanned list ref ->
       continuation_keywords:StringSet.t ->
       filter:Rule.Priority.filter ->
       Lexer.t ->
       Ast.t option =
-   fun ruleset ~continuation_keywords ~filter lexer ->
+   fun ruleset ~comments_before ~continuation_keywords ~filter lexer ->
     let rec loop (already_parsed : Ast.t option) =
       match
-        parse_one ~start:already_parsed ruleset ~continuation_keywords ~filter
-          lexer
+        parse_one ~comments_before ~start:already_parsed ruleset
+          ~continuation_keywords ~filter lexer
       with
       | MadeProgress ast ->
           Log.trace "Made progress: %a" Ast.print ast;
@@ -531,10 +560,14 @@ end
 
 let parse_with_lexer : Lexer.t -> ruleset -> Ast.t option =
  fun lexer ruleset ->
+  let comments_before = ref [] in
   let result =
-    Impl.parse ruleset ~continuation_keywords:StringSet.empty ~filter:Any lexer
+    Impl.parse ruleset ~comments_before ~continuation_keywords:StringSet.empty
+      ~filter:Any lexer
   in
   expect_eof lexer;
+  if !comments_before |> List.length <> 0 then
+    fail "TODO: comments in the end of the file";
   result
 
 let parse : source -> ruleset -> Ast.t option =
