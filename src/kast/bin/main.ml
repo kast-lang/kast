@@ -17,7 +17,7 @@ let main () =
       | Some ast -> println "%a" Ast.print ast
       | None -> println "<nothing>")
   | Cli.Command.Highlight args -> Highlight.perform args
-  | Cli.Command.Lsp args -> Lsp.run args
+  | Cli.Command.Lsp args -> Kast_lsp.run args
   | Cli.Command.Help ->
       println "Hello, I am Kast :)\nhelp is not implemented yet"
 ;;

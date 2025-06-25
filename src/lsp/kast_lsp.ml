@@ -7,54 +7,226 @@ let parse : string list -> args = function
   | [] -> { path = None }
   | arg :: _rest -> fail "Unexpected arg %S" arg
 
-module IoMonad = struct
-  type 'a t = 'a
+module Lsp = Linol.Lsp
 
-  let return : 'a. 'a -> 'a t = fun x -> x
-  let raise : 'a. exn -> 'a t = fun e -> raise e
+type state_after_processing = { ast : Ast.t option }
 
-  module O = struct
-    let ( let+ ) : 'a 'b. 'a t -> ('a -> 'b) -> 'b t = fun value f -> f value
-    let ( let* ) : 'a 'b. 'a t -> ('a -> 'b t) -> 'b t = fun value f -> f value
-  end
+let process_some_input_file (source : source) : state_after_processing =
+  let ast = Parser.parse source Default_syntax.ruleset in
+  { ast }
+
+module Tokens = struct
+  type token_shape =
+    | Keyword of Lexer.token
+    | Value of Lexer.token
+
+  type token = {
+    token : token_shape;
+    span : span;
+  }
+
+  let rec collect : Ast.t -> token Seq.t =
+   fun { shape; span } ->
+    match shape with
+    | Ast.Simple { token } -> List.to_seq [ { token = Value token; span } ]
+    | Ast.Complex { parts; _ } ->
+        parts |> List.to_seq
+        |> Seq.flat_map (function
+             | Ast.Value ast -> collect ast
+             | Ast.Keyword token ->
+                 List.to_seq
+                   [ { token = Keyword token.value; span = token.span } ])
 end
 
-module Channel = struct
-  type input = in_channel
-  type output = out_channel
+let diagnostics (_state : state_after_processing) : Lsp.Types.Diagnostic.t list
+    =
+  []
 
-  let read_line : input -> string option IoMonad.t = In_channel.input_line
-
-  let read_exactly : input -> int -> string option IoMonad.t =
-    In_channel.really_input_string
-
-  let write : output -> string list -> unit IoMonad.t =
-   fun out list -> list |> List.iter (Out_channel.output_string out)
-end
-
-module Io = Lsp.Io.Make (IoMonad) (Channel)
-
-let run : args -> unit =
- fun _ ->
-  let rec loop () =
-    match Io.read stdin with
-    | Some packet ->
-        let json : Jsonrpc.Json.t = Jsonrpc.Packet.yojson_of_t packet in
-        let json_string =
-          match json with
-          | `Assoc _ -> "Assoc"
-          | `Bool _ -> "Bool"
-          | `Float _ -> "Float"
-          | `Int _ -> "Int"
-          | `Intlit _ -> "Intlit"
-          | `List _ -> "List"
-          | `Null -> "Null"
-          | `String _ -> "String"
-          | `Tuple _ -> "Tuple"
-          | `Variant _ -> "Variant"
-        in
-        eprintln "%S" json_string;
-        loop ()
-    | None -> ()
+let semanticTokensProvider =
+  let legend =
+    Lsp.Types.SemanticTokensLegend.create
+      ~tokenTypes:
+        [
+          "namespace";
+          "class";
+          "enum";
+          "interface";
+          "struct";
+          "typeParameter";
+          "type";
+          "parameter";
+          "variable";
+          "property";
+          "enumMember";
+          "decorator";
+          "event";
+          "function";
+          "method";
+          "macro";
+          "label";
+          "comment";
+          "string";
+          "keyword";
+          "number";
+          "regexp";
+          "operator";
+        ]
+      ~tokenModifiers:
+        [
+          "declaration";
+          "definition";
+          "readonly";
+          "static";
+          "deprecated";
+          "abstract";
+          "async";
+          "modification";
+          "documentation";
+          "defaultLibrary";
+        ]
   in
-  loop ()
+  Lsp.Types.SemanticTokensRegistrationOptions.create ~full:(`Bool true) ~legend
+    ()
+
+module IO = Linol_lwt.IO_lwt
+
+let[@inline] lift_ok x =
+  let open IO in
+  let+ x = x in
+  Ok x
+
+class lsp_server =
+  object (self)
+    inherit Linol_lwt.Jsonrpc2.server
+
+    method! config_modify_capabilities (c : Lsp.Types.ServerCapabilities.t) :
+        Lsp.Types.ServerCapabilities.t =
+      {
+        c with
+        semanticTokensProvider =
+          Some (`SemanticTokensRegistrationOptions semanticTokensProvider);
+      }
+
+    (* one env per document *)
+    val buffers : (Lsp.Types.DocumentUri.t, state_after_processing) Hashtbl.t =
+      Hashtbl.create 32
+
+    method spawn_query_handler f = Linol_lwt.spawn f
+
+    (* We define here a helper method that will:
+       - process a document
+       - store the state resulting from the processing
+       - return the diagnostics from the new state
+    *)
+    method private _on_doc ~(notify_back : Linol_lwt.Jsonrpc2.notify_back)
+        (uri : Lsp.Types.DocumentUri.t) (contents : string) =
+      Log.info "processing file %S" (Lsp.Uri.to_path uri);
+
+      let new_state =
+        process_some_input_file
+          { filename = Lsp.Types.DocumentUri.to_path uri; contents }
+      in
+      Hashtbl.replace buffers uri new_state;
+      let diags = diagnostics new_state in
+      notify_back#send_diagnostic diags
+
+    (* We now override the [on_notify_doc_did_open] method that will be called
+       by the server each time a new document is opened. *)
+    method on_notif_doc_did_open ~notify_back d ~content : unit Linol_lwt.t =
+      self#_on_doc ~notify_back d.uri content
+
+    (* Similarly, we also override the [on_notify_doc_did_change] method that will be called
+       by the server each time a new document is opened. *)
+    method on_notif_doc_did_change ~notify_back d _c ~old_content:_old
+        ~new_content =
+      self#_on_doc ~notify_back d.uri new_content
+
+    (* On document closes, we remove the state associated to the file from the global
+       hashtable state, to avoid leaking memory. *)
+    method on_notif_doc_did_close ~notify_back:_ d : unit Linol_lwt.t =
+      Hashtbl.remove buffers d.uri;
+      Linol_lwt.return ()
+
+    method private on_semantic_tokens :
+        notify_back:Linol_lwt.Jsonrpc2.notify_back ->
+        Lsp.Types.SemanticTokensParams.t ->
+        Lsp.Types.SemanticTokens.t option Lwt.t =
+      fun ~notify_back:_ params ->
+        Log.info "got semantic tokens request";
+        let buffer_state = Hashtbl.find buffers params.textDocument.uri in
+        match buffer_state.ast with
+        | None -> Linol_lwt.return None
+        | Some ast ->
+            let data =
+              let prev_pos = ref Position.beginning in
+              ast |> Tokens.collect
+              |> Seq.flat_map (fun ({ token; span } : Tokens.token) ->
+                     let deltaLine = span.start.line - !prev_pos.line in
+                     let deltaStartChar =
+                       if deltaLine = 0 then
+                         span.start.column - !prev_pos.column
+                       else span.start.column - Position.beginning.column
+                     in
+                     let length = span.finish.index - span.start.index in
+                     let tokenType =
+                       match token with
+                       | Tokens.Keyword _ -> Some 19 (* keyword *)
+                       | Tokens.Value token -> (
+                           match token with
+                           | String _ -> Some 18 (* string *)
+                           | Number _ -> Some 20
+                           | _ -> None)
+                     in
+                     let tokenModifiers = 0 in
+                     let data =
+                       tokenType
+                       |> Option.map (fun tokenType ->
+                              [
+                                deltaLine;
+                                deltaStartChar;
+                                length;
+                                tokenType;
+                                tokenModifiers;
+                              ])
+                     in
+                     (match data with
+                     | Some data ->
+                         Log.info "@[<h>data: %a %a@]" (List.print Int.print)
+                           data Span.print span;
+                         prev_pos := span.start
+                     | None -> ());
+                     let data = data |> Option.value ~default:[] in
+                     List.to_seq data)
+              |> Array.of_seq
+            in
+            let tokens =
+              Lsp.Types.SemanticTokens.create ~data ?resultId:None ()
+            in
+            Log.info "replied with semantic tokens";
+            Linol_lwt.return @@ Some tokens
+
+    method! on_request_unhandled : type r.
+        notify_back:Linol_lwt.Jsonrpc2.notify_back ->
+        id:Linol.Server.Req_id.t ->
+        r Lsp.Client_request.t ->
+        r Lwt.t =
+      fun ~notify_back ~id:_ request ->
+        match request with
+        | SemanticTokensFull params ->
+            self#on_semantic_tokens ~notify_back params
+        | _ -> IO.failwith "TODO handle this request"
+  end
+
+let run (_args : args) =
+  Log.info "Starting Kast LSP";
+  let s = new lsp_server in
+  let server = Linol_lwt.Jsonrpc2.create_stdio ~env:() s in
+  let task =
+    let shutdown () = s#get_status = `ReceivedExit in
+    Linol_lwt.Jsonrpc2.run ~shutdown server
+  in
+  match Linol_lwt.run task with
+  | () ->
+      Log.info "Exiting Kast LSP";
+      ()
+  | exception e -> raise e

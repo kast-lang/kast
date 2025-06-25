@@ -10,6 +10,7 @@ include Range
 include Log
 include Bool
 include Set
+include Int
 
 let unreachable format =
   Format.fprintf Format.str_formatter "unreachable reached: ";

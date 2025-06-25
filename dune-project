@@ -6,7 +6,7 @@
 
 (package
  (name kast)
- (depends ocaml ppx_deriving ppx_blob lsp))
+ (depends ocaml ppx_deriving ppx_blob linol linol-lwt))
 
 (generate_opam_files)
 
