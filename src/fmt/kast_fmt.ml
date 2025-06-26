@@ -75,13 +75,17 @@ let print_ast : Parser.ruleset -> formatter -> Ast.t -> unit =
 
   print_ast ast
 
+let format : formatter -> Parser.result -> unit =
+ fun fmt { ast; trailing_comments } ->
+  (* TODO not necessarily default *)
+  let ruleset = Default_syntax.ruleset in
+  match ast with
+  | Some ast -> fprintf fmt "@[<v>%a@]" (print_ast ruleset) ast
+  | None -> ()
+
 let run : args -> unit =
  fun { path } ->
   let source = read path in
   let ruleset = Default_syntax.ruleset in
-  let { ast; trailing_comments } : Parser.result =
-    Parser.parse source ruleset
-  in
-  match ast with
-  | Some ast -> println "@[<v>%a@]" (print_ast ruleset) ast
-  | None -> ()
+  Parser.parse source ruleset |> format Format.std_formatter;
+  println ""

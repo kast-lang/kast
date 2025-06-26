@@ -120,6 +120,8 @@ class lsp_server =
         Lsp.Types.ServerCapabilities.t =
       {
         c with
+        documentFormattingProvider =
+          Some (`DocumentFormattingOptions { workDoneProgress = Some false });
         semanticTokensProvider =
           Some (`SemanticTokensRegistrationOptions semanticTokensProvider);
       }
@@ -163,6 +165,31 @@ class lsp_server =
     method on_notif_doc_did_close ~notify_back:_ d : unit Linol_lwt.t =
       Hashtbl.remove buffers d.uri;
       Linol_lwt.return ()
+
+    method private on_format :
+        notify_back:Linol_lwt.Jsonrpc2.notify_back ->
+        Lsp.Types.DocumentFormattingParams.t ->
+        Lsp.Types.TextEdit.t list option Lwt.t =
+      fun ~notify_back:_ params ->
+        Log.info "got format request";
+        let { parsed; _ } = Hashtbl.find buffers params.textDocument.uri in
+        Kast_fmt.format Format.str_formatter parsed;
+        let newText = Format.flush_str_formatter () in
+        let result =
+          Some
+            [
+              ({
+                 newText;
+                 range =
+                   {
+                     start = { line = 0; character = 0 };
+                     end_ = { line = 1000000000; character = 0 };
+                   };
+               }
+                : Lsp.Types.TextEdit.t);
+            ]
+        in
+        Linol_lwt.return result
 
     method private on_semantic_tokens :
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
@@ -264,6 +291,7 @@ class lsp_server =
         r Lwt.t =
       fun ~notify_back ~id:_ request ->
         match request with
+        | TextDocumentFormatting params -> self#on_format ~notify_back params
         | SemanticTokensFull params ->
             self#on_semantic_tokens ~notify_back params
         | _ -> IO.failwith "TODO handle this request"
