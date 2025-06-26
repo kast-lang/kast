@@ -2,6 +2,7 @@ then        0 = [h _ ";"] _ ->
 stmt        0 = [h _ ";"]
 "use .*"    1 = [h "use" _ ".*"]
 if          1 = [>hv "if" cond] [>v [h "then" "("] then:any ] [>v [h ")" "else" "("] else:any ] ")"
+# if          1 = [>hv "if" cond ] [>hv "then" then ] [>hv "else" else -> ]
 or         10 = _ "or" _
 and        11 = _ "and" _
 "|>"       20 = <- arg "|>" f
