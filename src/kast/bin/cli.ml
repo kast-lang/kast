@@ -41,6 +41,7 @@ module Command = struct
     | Parse of Common.t
     | Highlight of Common.t
     | Lsp of Kast_lsp.args
+    | Fmt of Kast_fmt.args
     | Help
 
   type t = command
@@ -51,6 +52,7 @@ module Command = struct
     | "parse" :: args -> Parse (Common.parse args)
     | "highlight" :: args -> Highlight (Common.parse args)
     | "lsp" :: args -> Lsp (Kast_lsp.parse args)
+    | ("fmt" | "format") :: args -> Fmt (Kast_fmt.parse args)
     | arg :: rest -> (
         match Path.parse arg with
         | Some path ->

@@ -3,6 +3,13 @@ open Util
 
 exception Error of (formatter -> unit)
 
+let () =
+  Printexc.register_printer (function
+    | Error f ->
+        eprintln "Parse error: %a" (fun fmt () -> f fmt) ();
+        exit 1
+    | _ -> None)
+
 let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
  fun format -> Format.kdprintf (fun f -> raise @@ Error f) format
 
@@ -64,6 +71,12 @@ module Rule = struct
   }
 
   type part =
+    | OpenBox of {
+        box_type : string;
+        indent : bool;
+      }
+    | CloseBox
+    | Cut
     | Keyword of string
     | Value of binding
 
@@ -83,7 +96,7 @@ module Rule = struct
     List.to_seq rule.parts
     |> Seq.filter_map (function
          | Keyword keyword -> Some keyword
-         | Value _ -> None)
+         | _ -> None)
 
   let collect : Ast.part list -> rule -> Ast.t =
    fun parts rule ->
@@ -113,7 +126,8 @@ module Rule = struct
         =
      fun values parts ->
       match (values, parts) with
-      | _, Keyword _ :: parts_tail -> collect_children values parts_tail
+      | _, (Keyword _ | OpenBox _ | CloseBox | Cut) :: parts_tail ->
+          collect_children values parts_tail
       | value :: values_tail, Value binding :: parts_tail ->
           (binding, value) :: collect_children values_tail parts_tail
       | [], [] -> []
@@ -157,6 +171,40 @@ module Rule = struct
       let rec part ?(left_assoc = false) () : part option =
         let token = Lexer.peek lexer in
         match token.value with
+        | Punct { raw = "|"; _ } when not left_assoc ->
+            Lexer.advance lexer;
+            Some Cut
+        | Punct { raw = "["; _ } when not left_assoc ->
+            Lexer.advance lexer;
+            let indent : bool =
+              let token = Lexer.peek lexer in
+              match Lexer.Token.raw token.value with
+              | Some ">" ->
+                  Lexer.advance lexer;
+                  true
+              | _ -> false
+            in
+            let box_type =
+              let token = Lexer.next lexer in
+              let raw_token =
+                match Lexer.Token.raw token.value with
+                | Some raw -> raw
+                | None ->
+                    error "Expected box type, got %a"
+                      (Spanned.print Lexer.Token.print)
+                      token
+              in
+              match raw_token with
+              | "v" -> "v"
+              | "h" -> "h"
+              | "hv" -> "hv"
+              | "hov" -> "hov"
+              | other -> error "Unrecognized box type %S" other
+            in
+            Some (OpenBox { box_type; indent })
+        | Punct { raw = "]"; _ } when not left_assoc ->
+            Lexer.advance lexer;
+            Some CloseBox
         | Punct { raw = "<-"; _ } when not left_assoc ->
             Lexer.advance lexer;
             part ~left_assoc:true ()
@@ -254,7 +302,6 @@ module RuleSet = struct
   let update_value_filter (rule : rule) (part : Rule.part option) current_filter
       =
     match part with
-    | None | Some (Keyword _) -> current_filter
     | Some (Value { priority; _ }) ->
         let priority_filter =
           Rule.Priority.make_filter priority rule.priority
@@ -264,6 +311,7 @@ module RuleSet = struct
           | Some current ->
               Rule.Priority.stricter_filter current priority_filter
           | None -> priority_filter)
+    | _ -> current_filter
 
   let add : rule -> ruleset -> ruleset =
    fun rule ruleset ->
@@ -297,11 +345,14 @@ module RuleSet = struct
                 next = node.next;
                 next_keywords = node.next_keywords;
               })
+      | (OpenBox _ | CloseBox | Cut) :: rest ->
+          insert ~prev_prev ~prev rest node
       | first :: rest ->
           let edge : Edge.t =
             match first with
             | Keyword keyword -> Keyword keyword
             | Value _ -> Value
+            | OpenBox _ | CloseBox | Cut -> unreachable ":)"
           in
           let merge_next : node option -> node option =
            fun current ->
@@ -321,7 +372,8 @@ module RuleSet = struct
             next_keywords =
               (match first with
               | Value _ -> node.next_keywords
-              | Keyword keyword -> StringSet.add keyword node.next_keywords);
+              | Keyword keyword -> StringSet.add keyword node.next_keywords
+              | OpenBox _ | CloseBox | Cut -> unreachable ":)");
           }
     in
     {

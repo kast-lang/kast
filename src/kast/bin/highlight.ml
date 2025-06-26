@@ -57,7 +57,7 @@ let rec print_ast (printer : printer) (ast : Ast.t) : unit =
            | Ast.Keyword token -> print_token printer print_keyword token
            | Ast.Comment comment -> print_comment printer comment)
 
-let perform : Cli.Command.Common.t -> unit =
+let run : Cli.Command.Common.t -> unit =
  fun { path } ->
   let source = read path in
   let lexer = Lexer.init Lexer.default_rules source in

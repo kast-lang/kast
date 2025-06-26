@@ -1,7 +1,9 @@
-then        0 = _ ";" _ ->
-stmt        0 = _ ";"
-"use .*"    1 = "use" _ ".*"
-if          1 = "if" cond "then" then "else" else ->
-"|>"      1.5 = <- arg "|>" f
-apply       2 = <- f arg
-scope    1000 = "(" _:any ")"
+then        0 = [h _ ";"] _ ->
+stmt        0 = [h _ ";"]
+"use .*"    1 = [h "use" _ ".*"]
+if          1 = [>hv "if" cond] [>v [h "then" "("] then:any ] [>v [h ")" "else" "("] else:any ] ")"
+or         10 = _ "or" _
+and        11 = _ "and" _
+"|>"       20 = <- arg "|>" f
+apply      50 = <- f arg
+scope    1000 = [hv [>hv "(" _:any] ")"]

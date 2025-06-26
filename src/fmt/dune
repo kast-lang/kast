@@ -1,0 +1,3 @@
+(library
+ (name kast_fmt)
+ (libraries std util kast default_syntax))
