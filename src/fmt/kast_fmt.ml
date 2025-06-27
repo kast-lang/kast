@@ -70,6 +70,17 @@ let format : formatter -> Parser.result -> unit =
             wrapped || ast.span.start.line <> ast.span.finish.line
           in
           print_parts rule wrapped rule.parts parts
+      | Syntax { tokens; value_after; _ } -> (
+          let pos = ref (List.head tokens).span.start in
+          tokens
+          |> List.iter (fun (token : Token.t) ->
+                 if token.span.start > !pos then fprintf fmt " ";
+                 fprintf fmt "%s" (Token.raw token |> Option.get));
+          match value_after with
+          | None -> ()
+          | Some value ->
+              print_newline fmt ();
+              print_ast ~parent:None value)
     and print_parts rule wrapped (rule_parts : Syntax.Rule.part list)
         (parts : Ast.part list) =
       match (rule_parts, parts) with

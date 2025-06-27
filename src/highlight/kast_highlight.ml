@@ -39,6 +39,11 @@ let print_keyword printer (token : Token.Shape.t) =
   | Some raw -> fprintf printer.fmt "@{<magenta>%s@}" raw
   | None -> ()
 
+let print_syntax_part printer (token : Token.Shape.t) =
+  match Token.Shape.raw token with
+  | Some raw -> fprintf printer.fmt "@{<yellow>%s@}" raw
+  | None -> ()
+
 let print_value printer (token : Token.Shape.t) =
   let fmt = printer.fmt in
   match token with
@@ -60,6 +65,11 @@ let rec print_ast (printer : printer) (ast : Ast.t) : unit =
            | Ast.Value ast -> print_ast printer ast
            | Ast.Keyword token -> print_token printer print_keyword token
            | Ast.Comment comment -> print_comment printer comment)
+  | Syntax { tokens; value_after; _ } -> (
+      tokens |> List.iter (print_token printer print_syntax_part);
+      match value_after with
+      | None -> ()
+      | Some value -> print_ast printer value)
 
 let print (fmt : formatter) ({ ast; trailing_comments; eof } : Parser.result) :
     unit =

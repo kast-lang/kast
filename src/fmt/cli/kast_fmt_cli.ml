@@ -18,12 +18,13 @@ let run : Args.t -> unit =
   let ruleset = Kast_default_syntax.ruleset in
   let parsed = Parser.parse source ruleset in
   parsed |> Kast_fmt.format Format.str_formatter;
-  let parsed =
-    Parser.parse
-      {
-        contents = Format.flush_str_formatter ();
-        filename = Special "formatted";
-      }
-      ruleset
-  in
-  Kast_highlight.print Format.std_formatter parsed
+  let formatted = Format.flush_str_formatter () in
+  let do_highlight = true in
+  if do_highlight then
+    let parsed =
+      Parser.parse
+        { contents = formatted; filename = Special "formatted" }
+        ruleset
+    in
+    Kast_highlight.print Format.std_formatter parsed
+  else Format.printf "%s" formatted

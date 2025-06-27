@@ -20,3 +20,8 @@ val advance : lexer -> unit
 val expect_next : lexer -> string -> unit
 val expect_eof : lexer -> unit
 val read_all : rule list -> source -> Token.t list
+
+type recording
+
+val start_rec : lexer -> recording
+val stop_rec : recording -> Token.t list

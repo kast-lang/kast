@@ -32,6 +32,7 @@ module Tokens = struct
     | Keyword of Token.Shape.t
     | Value of Token.Shape.t
     | Comment of Token.Shape.comment
+    | Unknown of Token.Shape.t
 
   type token = {
     token : token_shape;
@@ -57,6 +58,12 @@ module Tokens = struct
              | Ast.Comment comment ->
                  List.to_seq
                    [ { token = Comment comment.shape; span = comment.span } ])
+    | Ast.Syntax { value_after; tokens; _ } ->
+        Seq.append
+          (tokens |> List.to_seq
+          |> Seq.map (fun (token : Token.t) ->
+                 { token = Unknown token.shape; span = token.span }))
+          (value_after |> Option.to_seq |> Seq.flat_map collect)
 end
 
 let diagnostics (_state : state_after_processing) : Lsp.Types.Diagnostic.t list
@@ -268,6 +275,7 @@ class lsp_server =
                            | Number _ -> Some 20
                            | _ -> None)
                        | Tokens.Comment _ -> Some 17
+                       | Tokens.Unknown _ -> Some 15
                      in
                      let tokenModifiers = 0 in
                      let data =

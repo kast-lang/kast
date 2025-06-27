@@ -25,4 +25,9 @@ module String = struct
   let print : formatter -> string -> unit = fun fmt s -> fprintf fmt "%s" s
   let print_dbg : formatter -> string -> unit = fun fmt s -> fprintf fmt "%S" s
   let is_whitespace : string -> bool = for_all Char.is_whitespace
+
+  let strip_prefix ~prefix s =
+    if starts_with ~prefix s then
+      Some (sub s (length prefix) (length s - length prefix))
+    else None
 end

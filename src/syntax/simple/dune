@@ -2,6 +2,6 @@
  (name kast_simple_syntax)
  (libraries kast_parser)
  (preprocessor_deps
-  (file rules))
+  (file rules.ks))
  (preprocess
   (pps ppx_blob)))

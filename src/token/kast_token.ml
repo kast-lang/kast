@@ -73,7 +73,7 @@ let raw token = Shape.raw token.shape
 let is_raw s token = Shape.is_raw s token.shape
 
 let print fmt { shape; span } =
-  fprintf fmt "%a @{<dim>at %a}" Shape.print shape Span.print span
+  fprintf fmt "%a @{<dim>at %a@}" Shape.print shape Span.print span
 
 type comment = {
   shape : Shape.comment;

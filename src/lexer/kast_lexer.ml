@@ -17,11 +17,21 @@ let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
 
 type rule = Reader.t -> Token.Shape.t option
 
+module Recording = struct
+  type t = { mutable tokens_rev : Token.t list }
+
+  let equal a b = a == b
+  let hash = Hashtbl.hash
+end
+
+module RecordingTable = Hashtbl.Make (Recording)
+
 type lexer = {
   mutable peeked : Token.t option;
   rules : rule list;
   reader : Reader.t;
   source : source;
+  recordings : unit RecordingTable.t;
 }
 
 type t = lexer
@@ -30,7 +40,13 @@ let source lexer = lexer.source
 
 let init : rule list -> source -> lexer =
  fun rules source ->
-  { rules; peeked = None; reader = Reader.init source.contents; source }
+  {
+    rules;
+    peeked = None;
+    reader = Reader.init source.contents;
+    source;
+    recordings = RecordingTable.create 0;
+  }
 
 let position lexer = lexer.reader.position
 
@@ -60,6 +76,9 @@ let peek : lexer -> Token.t =
 let next : lexer -> Token.t =
  fun lexer ->
   let result = peek lexer in
+  lexer.recordings
+  |> RecordingTable.iter (fun recording () ->
+         recording.tokens_rev <- result :: recording.tokens_rev);
   lexer.peeked <- None;
   result
 
@@ -256,3 +275,19 @@ let read_all : rule list -> source -> Token.t list =
       Some token
   in
   List.of_seq (Seq.of_dispenser dispenser)
+
+type recording = {
+  recording : Recording.t;
+  lexer : lexer;
+}
+
+let start_rec : lexer -> recording =
+ fun lexer ->
+  let recording : Recording.t = { tokens_rev = [] } in
+  RecordingTable.add lexer.recordings recording ();
+  { recording; lexer }
+
+let stop_rec : recording -> Token.t list =
+ fun { recording; lexer } ->
+  RecordingTable.remove lexer.recordings recording;
+  recording.tokens_rev |> List.rev

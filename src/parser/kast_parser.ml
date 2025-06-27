@@ -75,7 +75,7 @@ module Rule = struct
             else (
               Lexer.advance lexer;
               Some (Keyword contents))
-        | Ident { raw; _ } ->
+        | Ident { raw; _ } when raw <> "syntax" ->
             Lexer.advance lexer;
             let name = if raw = "_" then None else Some raw in
             let peek = Lexer.peek lexer in
@@ -315,9 +315,8 @@ module RuleSet = struct
   let parse_lines : string -> ruleset =
    fun s ->
     s |> String.split_on_char '\n'
-    |> List.filter (fun line ->
-           (not (String.starts_with ~prefix:"#" line))
-           && not (String.is_whitespace line))
+    |> List.filter_map (String.strip_prefix ~prefix:"syntax ")
+    |> List.filter (fun line -> String.trim line <> "from_scratch")
     |> parse_list
 end
 
@@ -390,7 +389,8 @@ module Impl = struct
             Option.bind start (fun start ->
                 match start.shape with
                 | Ast.Simple _ -> None
-                | Ast.Complex { rule; _ } -> Some rule.priority)
+                | Ast.Complex { rule; _ } -> Some rule.priority
+                | Ast.Syntax _ -> None (* TODO check *))
           in
           match start_priority with
           | None -> Some ()
@@ -451,31 +451,75 @@ module Impl = struct
       in
       terminate node
     in
-    let parse_simple () : Ast.t option =
-      let start = (Lexer.peek lexer).span.start in
-      comments_before := !comments_before @ read_comments lexer;
-      let peek = Lexer.peek lexer in
-      let* shape =
-        match peek.shape with
-        | Eof -> None
-        | Punct _ -> None
-        | Number _ ->
-            Some
-              (Ast.Simple { comments_before = !comments_before; token = peek })
-        | String _ ->
-            Some
-              (Ast.Simple { comments_before = !comments_before; token = peek })
-        | Ident { raw; _ } ->
-            if RuleSet.is_keyword raw ruleset then None
-            else
-              Some
-                (Ast.Simple { comments_before = !comments_before; token = peek })
-        | Comment _ -> unreachable "comments were skipped"
+    let parse_syntax_extension () : Ast.t =
+      let tokens_rec = Lexer.start_rec lexer in
+      let token = Lexer.next lexer in
+      if token |> Token.is_raw "syntax" |> not then fail "expected \"syntax\"";
+      let mode =
+        match Lexer.peek lexer |> Token.raw with
+        | Some "from_scratch" ->
+            Lexer.advance lexer;
+            Ast.SyntaxMode.FromScratch
+        | _ -> Ast.SyntaxMode.Define (Rule.parse lexer)
       in
-      comments_before := [];
-      Lexer.advance lexer;
-      comments_before := !comments_before @ read_comments lexer;
-      Some ({ shape; span = { peek.span with start } } : Ast.t)
+      let tokens : Token.t list = Lexer.stop_rec tokens_rec in
+      let span : span =
+        {
+          start = (List.head tokens).span.start;
+          finish = (List.last tokens).span.start;
+          filename = (List.head tokens).span.filename;
+        }
+      in
+      let new_ruleset =
+        match mode with
+        | Define rule -> RuleSet.add rule ruleset
+        | FromScratch -> RuleSet.empty
+      in
+      let value_after : Ast.t option =
+        parse new_ruleset ~comments_before:(ref []) ~continuation_keywords
+          ~filter lexer
+      in
+      let shape : Ast.shape =
+        Syntax { comments_before = !comments_before; mode; value_after; tokens }
+      in
+      let span =
+        match value_after with
+        | None -> span
+        | Some value -> { span with finish = value.span.finish }
+      in
+      { shape; span }
+    in
+    let parse_simple () : Ast.t option =
+      with_return (fun { return } ->
+          let start = (Lexer.peek lexer).span.start in
+          comments_before := !comments_before @ read_comments lexer;
+          let peek = Lexer.peek lexer in
+          let* shape =
+            match peek.shape with
+            | Eof -> None
+            | Punct _ -> None
+            | Number _ ->
+                Some
+                  (Ast.Simple
+                     { comments_before = !comments_before; token = peek })
+            | String _ ->
+                Some
+                  (Ast.Simple
+                     { comments_before = !comments_before; token = peek })
+            | Ident { raw = "syntax"; _ } ->
+                return @@ Some (parse_syntax_extension ())
+            | Ident { raw; _ } ->
+                if RuleSet.is_keyword raw ruleset then None
+                else
+                  Some
+                    (Ast.Simple
+                       { comments_before = !comments_before; token = peek })
+            | Comment _ -> unreachable "comments were skipped"
+          in
+          comments_before := [];
+          Lexer.advance lexer;
+          comments_before := !comments_before @ read_comments lexer;
+          Some ({ shape; span = { peek.span with start } } : Ast.t))
     in
 
     let start = start |> Option.or_else parse_simple in

@@ -23,13 +23,14 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
                matches child expected_child)
       with Invalid_argument _ -> false)
   | Complex _, _ -> false
+  | Syntax _, _ -> false
 
 let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
     =
   try
     let { ast; trailing_comments = _; eof = _ } : Parser.result =
       Parser.parse
-        { contents = source; filename = Special "<test>" }
+        { contents = source; filename = Special "test" }
         (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
     in
     Log.error "Parsed: %a" (Option.print Ast.print) ast;
@@ -40,13 +41,12 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =
   let expected =
-    Kast_simple_syntax.parse
-      { contents = expected; filename = Special "<test>" }
+    Kast_simple_syntax.parse { contents = expected; filename = Special "test" }
     |> Option.get
   in
   let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse
-      { contents = source; filename = Special "<test>" }
+      { contents = source; filename = Special "test" }
       (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
   in
   match ast with
@@ -82,6 +82,7 @@ with
     Printexc.print_backtrace stderr;
     exit 1
 | Parser.Error f ->
+    Format.eprintf "Parse error: ";
     f Format.err_formatter;
     eprintln "";
     Printexc.print_backtrace stderr;

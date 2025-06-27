@@ -1,3 +1,5 @@
+syntax
+
 if a then b else c;
 if true then print "hello, world" else print "hello, world (but false)";
 (
