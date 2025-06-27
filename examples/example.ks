@@ -1,5 +1,7 @@
 syntax custom 5 wrap never = "hello" "," " " "world";
 hello, world;
+syntax sql 5 wrap never = "sql" "(" _ ")";
+# sql(SELECT * FROM Table WHERE column > 2);
 if a then b else c;
 if true then print "hello, world" else print "hello, world (but false)";
 (
