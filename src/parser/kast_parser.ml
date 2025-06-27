@@ -2,6 +2,7 @@ open Std
 open Kast_util
 module Token = Kast_token
 module Lexer = Kast_lexer
+module Syntax = Kast_syntax
 module Ast = Kast_ast
 
 exception Error of (formatter -> unit)
@@ -21,141 +22,7 @@ let expect_eof : Lexer.t -> unit =
   try Lexer.expect_eof lexer with Lexer.Error f -> raise @@ Error f
 
 module Rule = struct
-  module Priority = struct
-    type t = float
-    type priority = t
-
-    type filter =
-      | Greater of priority
-      | GreaterOrEqual of priority
-      | Any
-
-    type filter_kind =
-      | Greater
-      | GreaterOrEqual
-      | Any
-
-    let compare = Float.compare
-
-    let stricter_filter (a : filter) (b : filter) =
-      match (a, b) with
-      | Any, p | p, Any -> p
-      | Greater a, Greater b -> Greater (Float.max a b)
-      | GreaterOrEqual a, GreaterOrEqual b -> GreaterOrEqual (Float.max a b)
-      | Greater a, GreaterOrEqual b | GreaterOrEqual b, Greater a ->
-          if a >= b then Greater a else GreaterOrEqual b
-
-    let make_filter : filter_kind -> priority -> filter =
-     fun kind p ->
-      match kind with
-      | Greater -> Greater p
-      | GreaterOrEqual -> GreaterOrEqual p
-      | Any -> Any
-
-    let check_filter_with_range (range : priority Range.Inclusive.t)
-        (filter : filter) =
-      match filter with
-      | Any -> true
-      | Greater x -> range.max > x
-      | GreaterOrEqual x -> range.max >= x
-
-    let check_filter (p : priority) (filter : filter) =
-      match filter with
-      | Any -> true
-      | Greater x -> p > x
-      | GreaterOrEqual x -> p >= x
-  end
-
-  type priority = Priority.t
-
-  type binding = {
-    name : string option;
-    priority : Priority.filter_kind;
-  }
-
-  type part =
-    | Whitespace of {
-        nowrap : string;
-        wrap : string;
-      }
-    | Keyword of string
-    | Value of binding
-
-  module WrapMode = struct
-    type t =
-      | Never
-      | Always
-      | IfAny
-  end
-
-  type wrap_mode = WrapMode.t
-
-  type rule = {
-    name : string;
-    priority : float;
-    parts : part list;
-    wrap_mode : wrap_mode;
-  }
-
-  type t = rule
-
-  let print : formatter -> rule -> unit =
-   fun fmt rule -> fprintf fmt "%S" rule.name
-
-  let keywords : rule -> string Seq.t =
-   fun rule ->
-    List.to_seq rule.parts
-    |> Seq.filter_map (function
-         | Keyword keyword -> Some keyword
-         | _ -> None)
-
-  let collect : Ast.part list -> rule -> Ast.t =
-   fun parts rule ->
-    let values =
-      parts
-      |> List.filter_map (function
-           | Ast.Value ast -> Some ast
-           | _ -> None)
-    in
-    let span : span =
-      let spans =
-        parts
-        |> List.filter_map (function
-             | Ast.Keyword spanned -> Some spanned.span
-             | Ast.Value ast -> Some ast.span
-             | Ast.Comment _ -> None)
-      in
-      {
-        start = (spans |> List.head |> fun span -> span.start);
-        finish = (spans |> List.last |> fun span -> span.finish);
-        filename = (List.head spans).filename;
-      }
-    in
-    Log.trace "Collecting %d values into %s" (List.length values) rule.name;
-    Log.trace "Collecting %a" (List.print Ast.print) values;
-    let rec collect_children : Ast.t list -> part list -> (binding * Ast.t) list
-        =
-     fun values parts ->
-      match (values, parts) with
-      | _, (Keyword _ | Whitespace _) :: parts_tail ->
-          collect_children values parts_tail
-      | value :: values_tail, Value binding :: parts_tail ->
-          (binding, value) :: collect_children values_tail parts_tail
-      | [], [] -> []
-      | [], _ -> failwith "not enough values supplied"
-      | _, [] -> failwith "too many values supplied"
-    in
-    let children = collect_children values rule.parts in
-    let children =
-      List.fold_left
-        (fun tuple (binding, value) ->
-          let (* because OCaml is OCaml *) binding : binding = binding in
-          Tuple.add binding.name value tuple)
-        Tuple.empty children
-    in
-    { shape = Ast.Complex { name = rule.name; parts; children }; span }
-
-  let parse : Lexer.t -> rule =
+  let parse : Lexer.t -> Syntax.rule =
    fun lexer ->
     let get_name (token : Token.t) =
       match token.shape with
@@ -176,16 +43,16 @@ module Rule = struct
         error "Expected \"wrap\", got %a" Token.print token;
       let token = Lexer.next lexer in
       match token.shape with
-      | Ident { raw = "if_any"; _ } -> WrapMode.IfAny
-      | Ident { raw = "always"; _ } -> WrapMode.Always
-      | Ident { raw = "never"; _ } -> WrapMode.Never
+      | Ident { raw = "if_any"; _ } -> Syntax.Rule.WrapMode.IfAny
+      | Ident { raw = "always"; _ } -> Syntax.Rule.WrapMode.Always
+      | Ident { raw = "never"; _ } -> Syntax.Rule.WrapMode.Never
       | _ -> error "Expected wrap mode, got %a" Token.print token
     in
     (let token = Lexer.next lexer in
      if token |> Token.is_raw "=" |> not then
        error "Expected \"=\", got %a" Token.print token);
-    let rec collect_parts () : part list =
-      let rec part ?(left_assoc = false) () : part option =
+    let rec collect_parts () : Syntax.Rule.part list =
+      let rec part ?(left_assoc = false) () : Syntax.Rule.part option =
         let token = Lexer.peek lexer in
         match token.shape with
         | Punct { raw = "<-"; _ } when not left_assoc ->
@@ -213,24 +80,24 @@ module Rule = struct
             let name = if raw = "_" then None else Some raw in
             let peek = Lexer.peek lexer in
             let priority =
-              if left_assoc then Priority.GreaterOrEqual
+              if left_assoc then Syntax.Rule.Priority.GreaterOrEqual
               else
                 match Token.raw peek with
                 | Some "->" ->
                     Lexer.advance lexer;
-                    Priority.GreaterOrEqual
+                    Syntax.Rule.Priority.GreaterOrEqual
                 | Some ":" ->
                     Lexer.advance lexer;
                     let peek = Lexer.peek lexer in
                     if peek |> Token.is_raw "any" |> not then
                       error "Expected \"any\", got %a" Token.print peek;
                     Lexer.advance lexer;
-                    Priority.Any
+                    Syntax.Rule.Priority.Any
                 | _ ->
                     (* defaulting to Greater means we only need
                       to annotate with <- or -> where we want associativity
                       or :any where we want parentheses-like behavior *)
-                    Priority.Greater
+                    Syntax.Rule.Priority.Greater
             in
             Some (Value { name; priority })
         | _ ->
@@ -243,9 +110,57 @@ module Rule = struct
       | None -> []
     in
     { name; priority; parts = collect_parts (); wrap_mode }
-end
 
-type rule = Rule.t
+  let collect : Ast.part list -> Syntax.Rule.t -> Ast.t =
+   fun parts rule ->
+    let values =
+      parts
+      |> List.filter_map (function
+           | Ast.Value ast -> Some ast
+           | _ -> None)
+    in
+    let span : span =
+      let spans =
+        parts
+        |> List.filter_map (function
+             | Ast.Keyword spanned -> Some spanned.span
+             | Ast.Value ast -> Some ast.span
+             | Ast.Comment _ -> None)
+      in
+      {
+        start = (spans |> List.head |> fun span -> span.start);
+        finish = (spans |> List.last |> fun span -> span.finish);
+        filename = (List.head spans).filename;
+      }
+    in
+    Log.trace "Collecting %d values into %s" (List.length values) rule.name;
+    Log.trace "Collecting %a" (List.print Ast.print) values;
+    let rec collect_children :
+        Ast.t list ->
+        Syntax.Rule.part list ->
+        (Syntax.Rule.binding * Ast.t) list =
+     fun values parts ->
+      match (values, parts) with
+      | _, (Keyword _ | Whitespace _) :: parts_tail ->
+          collect_children values parts_tail
+      | value :: values_tail, Value binding :: parts_tail ->
+          (binding, value) :: collect_children values_tail parts_tail
+      | [], [] -> []
+      | [], _ -> failwith "not enough values supplied"
+      | _, [] -> failwith "too many values supplied"
+    in
+    let children = collect_children values rule.parts in
+    let children =
+      List.fold_left
+        (fun tuple (binding, value) ->
+          let (* because OCaml is OCaml *) binding : Syntax.Rule.binding =
+            binding
+          in
+          Tuple.add binding.name value tuple)
+        Tuple.empty children
+    in
+    { shape = Ast.Complex { name = rule.name; parts; children }; span }
+end
 
 module RuleSet = struct
   module Edge = struct
@@ -261,10 +176,10 @@ module RuleSet = struct
   module EdgeMap = Map.Make (Edge)
 
   type node = {
-    terminal : rule option;
-    value_filter : Rule.Priority.filter option;
-    prev_value_filter : Rule.Priority.filter option;
-    priority_range : Rule.priority Range.inclusive option;
+    terminal : Syntax.rule option;
+    value_filter : Syntax.Rule.Priority.filter option;
+    prev_value_filter : Syntax.Rule.Priority.filter option;
+    priority_range : Syntax.Rule.priority Range.inclusive option;
     next : node EdgeMap.t;
     next_keywords : StringSet.t;
   }
@@ -282,7 +197,7 @@ module RuleSet = struct
   end
 
   type ruleset = {
-    rules : rule StringMap.t;
+    rules : Syntax.rule StringMap.t;
     keywords : StringSet.t;
     root : node;
   }
@@ -292,24 +207,25 @@ module RuleSet = struct
   let empty : ruleset =
     { rules = StringMap.empty; keywords = StringSet.empty; root = Node.empty }
 
-  let update_value_filter (rule : rule) (part : Rule.part option) current_filter
-      =
+  let update_value_filter (rule : Syntax.rule) (part : Syntax.Rule.part option)
+      current_filter =
     match part with
     | Some (Value { priority; _ }) ->
         let priority_filter =
-          Rule.Priority.make_filter priority rule.priority
+          Syntax.Rule.Priority.make_filter priority rule.priority
         in
         Some
           (match current_filter with
           | Some current ->
-              Rule.Priority.stricter_filter current priority_filter
+              Syntax.Rule.Priority.stricter_filter current priority_filter
           | None -> priority_filter)
     | _ -> current_filter
 
-  let add : rule -> ruleset -> ruleset =
+  let add : Syntax.rule -> ruleset -> ruleset =
    fun rule ruleset ->
-    let rec insert ~(prev_prev : Rule.part option) ~(prev : Rule.part option)
-        (parts : Rule.part list) (node : node) : node =
+    let rec insert ~(prev_prev : Syntax.Rule.part option)
+        ~(prev : Syntax.Rule.part option) (parts : Syntax.Rule.part list)
+        (node : node) : node =
       let updated_value_filter =
         update_value_filter rule prev node.value_filter
       in
@@ -320,15 +236,15 @@ module RuleSet = struct
         Some
           (let point = Range.Inclusive.point rule.priority in
            Option.map_or point
-             (Range.Inclusive.unite Rule.Priority.compare point)
+             (Range.Inclusive.unite Syntax.Rule.Priority.compare point)
              node.priority_range)
       in
       match parts with
       | [] -> (
           match node.terminal with
           | Some existing ->
-              error "Duplicate rule: %a and %a" Rule.print existing Rule.print
-                rule
+              error "Duplicate rule: %a and %a" Syntax.Rule.print existing
+                Syntax.Rule.print rule
           | None ->
               {
                 terminal = Some rule;
@@ -370,17 +286,17 @@ module RuleSet = struct
     in
     {
       rules = StringMap.add rule.name rule ruleset.rules;
-      keywords = StringSet.add_seq (Rule.keywords rule) ruleset.keywords;
+      keywords = StringSet.add_seq (Syntax.Rule.keywords rule) ruleset.keywords;
       root = insert ~prev_prev:None ~prev:None rule.parts ruleset.root;
     }
 
   let is_keyword : string -> ruleset -> bool =
    fun word ruleset -> StringSet.contains word ruleset.keywords
 
-  let find_rule : string -> ruleset -> rule =
+  let find_rule : string -> ruleset -> Syntax.rule =
    fun name ruleset -> StringMap.find name ruleset.rules
 
-  let of_list : rule list -> ruleset =
+  let of_list : Syntax.rule list -> ruleset =
    fun rules -> List.fold_right add rules empty
 
   let parse_list : string list -> ruleset =
@@ -410,7 +326,7 @@ type parser = { mutable ruleset : ruleset }
 
 let init : ruleset -> parser = fun ruleset -> { ruleset }
 
-let add_rule : rule -> parser -> unit =
+let add_rule : Syntax.rule -> parser -> unit =
  fun rule parser -> parser.ruleset <- RuleSet.add rule parser.ruleset
 
 let rec read_comments lexer : Token.comment list =
@@ -431,7 +347,7 @@ module Impl = struct
       start:Ast.t option ->
       ruleset ->
       continuation_keywords:StringSet.t ->
-      filter:Rule.Priority.filter ->
+      filter:Syntax.Rule.Priority.filter ->
       Lexer.t ->
       parse_result =
    fun ~comments_before ~start ruleset ~continuation_keywords ~filter lexer ->
@@ -470,23 +386,24 @@ module Impl = struct
         if made_progress () then Some ()
         else
           (* On the **first** iteration need to check that start value satisfies prev filter *)
-          let start_priority : Rule.priority option =
+          let start_priority : Syntax.Rule.priority option =
             Option.bind start (fun start ->
                 match start.shape with
                 | Ast.Simple _ -> None
                 | Ast.Complex { name; _ } ->
-                    let rule : rule = RuleSet.find_rule name ruleset in
+                    let rule : Syntax.rule = RuleSet.find_rule name ruleset in
                     Some rule.priority)
           in
           match start_priority with
           | None -> Some ()
           | Some start_priority ->
-              Rule.Priority.check_filter start_priority
+              Syntax.Rule.Priority.check_filter start_priority
                 (node.prev_value_filter |> Option.get)
               |> Bool.then_some ()
       in
       let* range = node.priority_range in
-      Rule.Priority.check_filter_with_range range filter |> Bool.then_some ()
+      Syntax.Rule.Priority.check_filter_with_range range filter
+      |> Bool.then_some ()
     in
     let rec go (node : RuleSet.node) : parse_result =
       comments_before := !comments_before @ read_comments lexer;
@@ -584,7 +501,7 @@ module Impl = struct
       ruleset ->
       comments_before:Token.comment list ref ->
       continuation_keywords:StringSet.t ->
-      filter:Rule.Priority.filter ->
+      filter:Syntax.Rule.Priority.filter ->
       Lexer.t ->
       Ast.t option =
    fun ruleset ~comments_before ~continuation_keywords ~filter lexer ->

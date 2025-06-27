@@ -1,9 +1,10 @@
 open Std
 open Kast_util
 module Token = Kast_token
-module Parser = Kast_parser
+module Syntax = Kast_syntax
 module Ast = Kast_ast
 module Lexer = Kast_lexer
+module Parser = Kast_parser
 
 let ruleset : Parser.ruleset = Parser.RuleSet.parse_lines [%blob "rules"]
 

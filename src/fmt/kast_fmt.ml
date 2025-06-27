@@ -4,10 +4,11 @@ module Token = Kast_token
 module Parser = Kast_parser
 module Ast = Kast_ast
 module Lexer = Kast_lexer
+module Syntax = Kast_syntax
 
 type parent = {
   wrapped : bool;
-  rule : Parser.rule;
+  rule : Syntax.rule;
 }
 
 let format : formatter -> Parser.result -> unit =
@@ -70,7 +71,7 @@ let format : formatter -> Parser.result -> unit =
             wrapped || ast.span.start.line <> ast.span.finish.line
           in
           print_parts rule wrapped rule.parts parts
-    and print_parts rule wrapped (rule_parts : Parser.Rule.part list)
+    and print_parts rule wrapped (rule_parts : Syntax.Rule.part list)
         (parts : Ast.part list) =
       match (rule_parts, parts) with
       | [], [] -> ()

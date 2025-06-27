@@ -1,0 +1,3 @@
+(library
+ (name kast_syntax)
+ (libraries std kast_util kast_token))
