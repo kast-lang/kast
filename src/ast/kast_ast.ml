@@ -1,15 +1,14 @@
 open Std
 open Kast_util
 module Token = Kast_token
-module Lexer = Kast_lexer
 
 type simple = {
-  comments_before : Lexer.Token.comment spanned list;
+  comments_before : Token.comment spanned list;
   token : Token.t spanned;
 }
 
 type part =
-  | Comment of Lexer.Token.comment spanned
+  | Comment of Token.comment spanned
   | Value of ast
   | Keyword of Token.t spanned
 
@@ -36,7 +35,7 @@ let rec print : formatter -> ast -> unit =
 
 and print_shape : formatter -> shape -> unit =
  fun fmt -> function
-  | Simple { comments_before = _; token } -> Lexer.Token.print fmt token.value
+  | Simple { comments_before = _; token } -> Token.print fmt token.value
   | Complex { name; parts = _; children } ->
       fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped name
         (Tuple.print print) children
