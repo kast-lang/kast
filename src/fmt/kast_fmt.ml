@@ -32,69 +32,105 @@ type parent = {
   rule : Parser.rule;
 }
 
-let print_ast : Parser.ruleset -> formatter -> Ast.t -> unit =
- fun ruleset fmt ast ->
+let format : formatter -> Parser.result -> unit =
+ fun fmt { ast; trailing_comments } ->
   let print_indent level =
     for _ = 1 to level do
       fprintf fmt "  "
     done
   in
+
   let current_indent = ref 0 in
-  let print_whitespace (s : string) =
-    s
-    |> String.iter (function
-         | '\n' ->
-             fprintf fmt "\n";
-             print_indent !current_indent
-         | '\t' ->
-             print_indent 1;
-             current_indent := !current_indent + 1
-         | '\\' -> current_indent := !current_indent - 1
-         | c -> fprintf fmt "%c" c)
-  in
-  let rec print_ast ~parent (ast : Ast.t) =
-    match ast.shape with
-    | Simple { comments_before; token } ->
-        fprintf fmt "%s" (Lexer.Token.raw token.value |> Option.get)
-    | Complex { name; parts; _ } ->
-        let rule = Parser.RuleSet.find_rule name ruleset in
-        let wrapped =
-          match parent with
-          | Some { wrapped; rule = parent_rule } ->
-              wrapped && rule.priority = parent_rule.priority
-          | None -> false
-        in
-        let wrapped = wrapped || ast.span.start.line <> ast.span.finish.line in
-        print_parts rule wrapped rule.parts parts
-  and print_parts rule wrapped (rule_parts : Parser.Rule.part list)
-      (parts : Ast.part list) =
-    match (rule_parts, parts) with
-    | [], [] -> ()
-    | Whitespace { nowrap; wrap } :: rest_rule_parts, _ ->
-        (match rule.wrap_mode with
-        | Never -> print_whitespace nowrap
-        | Always -> print_whitespace wrap
-        | IfAny ->
-            if wrapped then print_whitespace wrap else print_whitespace nowrap);
-        print_parts rule wrapped rest_rule_parts parts
-    | Keyword keyword :: rest_rule_parts, Keyword _ :: rest_parts ->
-        fprintf fmt "%s" keyword;
-        print_parts rule wrapped rest_rule_parts rest_parts
-    | Value _ :: rest_rule_parts, Value value :: rest_parts ->
-        print_ast ~parent:(Some { rule; wrapped }) value;
-        print_parts rule wrapped rest_rule_parts rest_parts
-    | _ -> unreachable "todo"
+
+  let print_newline fmt () =
+    fprintf fmt "\n";
+    print_indent !current_indent
   in
 
-  print_ast ~parent:None ast
+  let prev_comment_span : span option ref = ref None in
 
-let format : formatter -> Parser.result -> unit =
- fun fmt { ast; trailing_comments } ->
+  let preserve_newline_after_comment (after : span) =
+    match !prev_comment_span with
+    | Some before ->
+        if before.finish.line <> after.start.line then print_newline fmt ()
+        else fprintf fmt " ";
+        prev_comment_span := None
+    | None -> ()
+  in
+
+  let print_ast : Parser.ruleset -> formatter -> Ast.t -> unit =
+   fun ruleset fmt ast ->
+    let print_whitespace (s : string) =
+      s
+      |> String.iter (function
+           | '\n' -> print_newline fmt ()
+           | '\t' ->
+               print_indent 1;
+               current_indent := !current_indent + 1
+           | '\\' -> current_indent := !current_indent - 1
+           | c -> fprintf fmt "%c" c)
+    in
+    let rec print_ast ~parent (ast : Ast.t) =
+      match ast.shape with
+      | Simple { comments_before; token } ->
+          comments_before
+          |> List.iter (fun (comment : Lexer.Token.comment spanned) ->
+                 preserve_newline_after_comment comment.span;
+                 prev_comment_span := Some comment.span;
+                 fprintf fmt "%s" comment.value.raw);
+          preserve_newline_after_comment token.span;
+          fprintf fmt "%s" (Lexer.Token.raw token.value |> Option.get)
+      | Complex { name; parts; _ } ->
+          let rule = Parser.RuleSet.find_rule name ruleset in
+          let wrapped =
+            match parent with
+            | Some { wrapped; rule = parent_rule } ->
+                wrapped && rule.priority = parent_rule.priority
+            | None -> false
+          in
+          let wrapped =
+            wrapped || ast.span.start.line <> ast.span.finish.line
+          in
+          print_parts rule wrapped rule.parts parts
+    and print_parts rule wrapped (rule_parts : Parser.Rule.part list)
+        (parts : Ast.part list) =
+      match (rule_parts, parts) with
+      | [], [] -> ()
+      | Whitespace { nowrap; wrap } :: rest_rule_parts, _ ->
+          (match rule.wrap_mode with
+          | Never -> print_whitespace nowrap
+          | Always -> print_whitespace wrap
+          | IfAny ->
+              if wrapped then print_whitespace wrap else print_whitespace nowrap);
+          print_parts rule wrapped rest_rule_parts parts
+      | Keyword keyword :: rest_rule_parts, Keyword keyword_token :: rest_parts
+        ->
+          preserve_newline_after_comment keyword_token.span;
+          fprintf fmt "%s" keyword;
+          print_parts rule wrapped rest_rule_parts rest_parts
+      | Value _ :: rest_rule_parts, Value value :: rest_parts ->
+          print_ast ~parent:(Some { rule; wrapped }) value;
+          print_parts rule wrapped rest_rule_parts rest_parts
+      | _, Comment comment :: rest_parts ->
+          preserve_newline_after_comment comment.span;
+          fprintf fmt "%s" comment.value.raw;
+          prev_comment_span := Some comment.span;
+          print_parts rule wrapped rule_parts rest_parts
+      | _ -> unreachable "todo"
+    in
+
+    print_ast ~parent:None ast
+  in
   (* TODO not necessarily default *)
   let ruleset = Default_syntax.ruleset in
-  match ast with
+  (match ast with
   | Some ast -> fprintf fmt "@[<v>%a@]" (print_ast ruleset) ast
-  | None -> ()
+  | None -> ());
+  trailing_comments
+  |> List.iter (fun (comment : Lexer.Token.comment spanned) ->
+         preserve_newline_after_comment comment.span;
+         prev_comment_span := Some comment.span;
+         fprintf fmt "%s" comment.value.raw)
 
 let run : args -> unit =
  fun { path } ->

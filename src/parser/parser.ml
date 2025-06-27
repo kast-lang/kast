@@ -471,7 +471,10 @@ module Impl = struct
         match node.terminal with
         | Some rule ->
             let parsed = List.rev !parsed_rev in
-            MadeProgress (Rule.collect parsed rule)
+            let ast = Rule.collect parsed rule in
+            Log.trace "Parsed %a" Ast.print ast;
+            comments_before := !comments_before @ read_comments lexer;
+            MadeProgress ast
         | None ->
             error "Unexpected %a"
               (Spanned.print Lexer.Token.print)
@@ -575,6 +578,7 @@ module Impl = struct
       in
       comments_before := [];
       Lexer.advance lexer;
+      comments_before := !comments_before @ read_comments lexer;
       Some ({ shape; span = { peek.span with start } } : Ast.t)
     in
 
