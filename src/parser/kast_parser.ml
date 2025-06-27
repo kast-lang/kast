@@ -159,7 +159,7 @@ module Rule = struct
           Tuple.add binding.name value tuple)
         Tuple.empty children
     in
-    { shape = Ast.Complex { name = rule.name; parts; children }; span }
+    { shape = Ast.Complex { rule; parts; children }; span }
 end
 
 module RuleSet = struct
@@ -390,9 +390,7 @@ module Impl = struct
             Option.bind start (fun start ->
                 match start.shape with
                 | Ast.Simple _ -> None
-                | Ast.Complex { name; _ } ->
-                    let rule : Syntax.rule = RuleSet.find_rule name ruleset in
-                    Some rule.priority)
+                | Ast.Complex { rule; _ } -> Some rule.priority)
           in
           match start_priority with
           | None -> Some ()

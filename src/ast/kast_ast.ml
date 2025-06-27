@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 module Token = Kast_token
+module Syntax = Kast_syntax
 
 type simple = {
   comments_before : Token.comment list;
@@ -13,7 +14,7 @@ type part =
   | Keyword of Token.t
 
 and complex = {
-  name : string;
+  rule : Syntax.rule;
   parts : part list;
   children : ast tuple;
 }
@@ -36,8 +37,8 @@ let rec print : formatter -> ast -> unit =
 and print_shape : formatter -> shape -> unit =
  fun fmt -> function
   | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
-  | Complex { name; parts = _; children } ->
-      fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped name
+  | Complex { rule; parts = _; children } ->
+      fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped rule.name
         (Tuple.print print) children
 
 module Kind = struct

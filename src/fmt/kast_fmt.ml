@@ -37,8 +37,8 @@ let format : formatter -> Parser.result -> unit =
     | None -> ()
   in
 
-  let print_ast : Parser.ruleset -> formatter -> Ast.t -> unit =
-   fun ruleset fmt ast ->
+  let print_ast : formatter -> Ast.t -> unit =
+   fun fmt ast ->
     let print_whitespace (s : string) =
       s
       |> String.iter (function
@@ -59,8 +59,7 @@ let format : formatter -> Parser.result -> unit =
                  fprintf fmt "%s" comment.shape.raw);
           preserve_newline_after_comment token.span;
           fprintf fmt "%s" (Token.raw token |> Option.get)
-      | Complex { name; parts; _ } ->
-          let rule = Parser.RuleSet.find_rule name ruleset in
+      | Complex { rule; parts; _ } ->
           let wrapped =
             match parent with
             | Some { wrapped; rule = parent_rule } ->
@@ -100,10 +99,8 @@ let format : formatter -> Parser.result -> unit =
 
     print_ast ~parent:None ast
   in
-  (* TODO not necessarily default *)
-  let ruleset = Kast_default_syntax.ruleset in
   (match ast with
-  | Some ast -> print_ast ruleset fmt ast
+  | Some ast -> print_ast fmt ast
   | None -> ());
   trailing_comments
   |> List.iter (fun (comment : Token.comment) ->

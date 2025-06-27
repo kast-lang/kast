@@ -12,9 +12,9 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
   | Simple { token; _ }, Simple expected ->
       Token.raw token |> Option.get = expected
   | Simple _, _ -> false
-  | ( Complex { name; parts = _; children },
+  | ( Complex { rule; parts = _; children },
       Complex { name = expected_name; children = expected_children } ) -> (
-      name = expected_name
+      rule.name = expected_name
       &&
       try
         Tuple.zip_order_a children expected_children
