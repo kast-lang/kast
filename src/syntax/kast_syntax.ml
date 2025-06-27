@@ -1,6 +1,5 @@
 open Std
 open Kast_util
-module Token = Kast_token
 
 module Rule = struct
   module Priority = struct
