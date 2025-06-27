@@ -3,14 +3,14 @@ open Kast_util
 module Token = Kast_token
 
 type simple = {
-  comments_before : Token.comment spanned list;
-  token : Token.t spanned;
+  comments_before : Token.comment list;
+  token : Token.t;
 }
 
 type part =
-  | Comment of Token.comment spanned
+  | Comment of Token.comment
   | Value of ast
-  | Keyword of Token.t spanned
+  | Keyword of Token.t
 
 and complex = {
   name : string;
@@ -35,7 +35,7 @@ let rec print : formatter -> ast -> unit =
 
 and print_shape : formatter -> shape -> unit =
  fun fmt -> function
-  | Simple { comments_before = _; token } -> Token.print fmt token.value
+  | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
   | Complex { name; parts = _; children } ->
       fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped name
         (Tuple.print print) children

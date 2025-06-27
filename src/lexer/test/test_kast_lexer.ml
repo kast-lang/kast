@@ -1,9 +1,6 @@
 open Std
-open Kast_util
+module Token = Kast_token
 module Lexer = Kast_lexer
-module Token = Lexer.Token
-
-type token = Token.t
 
 module ExpectedToken = struct
   type t =
@@ -22,9 +19,9 @@ module ExpectedToken = struct
     | String s -> fprintf fmt "@{<green>%S@}" s
     | Eof -> fprintf fmt "@{<italic><eof>@}"
 
-  let check : expected_token -> token -> bool =
+  let check : expected_token -> Token.t -> bool =
    fun expected token ->
-    match (expected, token) with
+    match (expected, token.shape) with
     | Ident expected, Ident token when token.raw = expected -> true
     | Ident _, _ -> false
     | Punct expected, Punct token when token.raw = expected -> true
@@ -42,9 +39,6 @@ let test ~(source : string) ~(expected : expected_token list) : unit =
   let tokens =
     Lexer.read_all Lexer.default_rules
       { contents = source; filename = Special "test" }
-  in
-  let tokens : token list =
-    List.map (fun (spanned : _ spanned) -> spanned.value) tokens
   in
   if
     List.compare_lengths expected tokens <> 0

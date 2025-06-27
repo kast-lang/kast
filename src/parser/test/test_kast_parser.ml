@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Token = Kast_token
 module Ast = Kast_ast
 module Lexer = Kast_lexer
 module Parser = Kast_parser
@@ -9,7 +10,7 @@ type expected = Kast_simple_syntax.ast
 let rec matches (ast : Ast.t) (expected : expected) : bool =
   match (ast.shape, expected) with
   | Simple { token; _ }, Simple expected ->
-      Lexer.Token.raw token.value |> Option.get = expected
+      Token.raw token |> Option.get = expected
   | Simple _, _ -> false
   | ( Complex { name; parts = _; children },
       Complex { name = expected_name; children = expected_children } ) -> (

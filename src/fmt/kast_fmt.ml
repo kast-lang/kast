@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Token = Kast_token
 module Parser = Kast_parser
 module Ast = Kast_ast
 module Lexer = Kast_lexer
@@ -51,12 +52,12 @@ let format : formatter -> Parser.result -> unit =
       match ast.shape with
       | Simple { comments_before; token } ->
           comments_before
-          |> List.iter (fun (comment : Lexer.Token.comment spanned) ->
+          |> List.iter (fun (comment : Token.comment) ->
                  preserve_newline_after_comment comment.span;
                  prev_comment_span := Some comment.span;
-                 fprintf fmt "%s" comment.value.raw);
+                 fprintf fmt "%s" comment.shape.raw);
           preserve_newline_after_comment token.span;
-          fprintf fmt "%s" (Lexer.Token.raw token.value |> Option.get)
+          fprintf fmt "%s" (Token.raw token |> Option.get)
       | Complex { name; parts; _ } ->
           let rule = Parser.RuleSet.find_rule name ruleset in
           let wrapped =
@@ -90,7 +91,7 @@ let format : formatter -> Parser.result -> unit =
           print_parts rule wrapped rest_rule_parts rest_parts
       | _, Comment comment :: rest_parts ->
           preserve_newline_after_comment comment.span;
-          fprintf fmt "%s" comment.value.raw;
+          fprintf fmt "%s" comment.shape.raw;
           prev_comment_span := Some comment.span;
           print_parts rule wrapped rule_parts rest_parts
       | _ -> unreachable "todo"
@@ -104,7 +105,7 @@ let format : formatter -> Parser.result -> unit =
   | Some ast -> fprintf fmt "@[<v>%a@]" (print_ast ruleset) ast
   | None -> ());
   trailing_comments
-  |> List.iter (fun (comment : Lexer.Token.comment spanned) ->
+  |> List.iter (fun (comment : Token.comment) ->
          preserve_newline_after_comment comment.span;
          prev_comment_span := Some comment.span;
-         fprintf fmt "%s" comment.value.raw)
+         fprintf fmt "%s" comment.shape.raw)

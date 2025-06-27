@@ -23,24 +23,23 @@ let move_to (printer : printer) (position : position) : unit =
     print_char printer ' '
   done
 
-let print_token (printer : printer) (f : printer -> Token.t -> unit)
-    (token : Token.t spanned) : unit =
+let print_token (printer : printer) (f : printer -> Token.Shape.t -> unit)
+    (token : Token.t) : unit =
   move_to printer token.span.start;
-  f printer token.value;
+  f printer token.shape;
   printer.position <- token.span.finish
 
-let print_comment (printer : printer) (comment : Lexer.Token.comment spanned) :
-    unit =
+let print_comment (printer : printer) (comment : Token.comment) : unit =
   move_to printer comment.span.start;
-  fprintf printer.fmt "@{<gray>%s@}" comment.value.raw;
+  fprintf printer.fmt "@{<gray>%s@}" comment.shape.raw;
   printer.position <- comment.span.finish
 
-let print_keyword printer (token : Token.t) =
-  match Lexer.Token.raw token with
+let print_keyword printer (token : Token.Shape.t) =
+  match Token.Shape.raw token with
   | Some raw -> fprintf printer.fmt "@{<magenta>%s@}" raw
   | None -> ()
 
-let print_value printer (token : Token.t) =
+let print_value printer (token : Token.Shape.t) =
   let fmt = printer.fmt in
   match token with
   | Ident { raw; _ } -> fprintf fmt "%s" raw

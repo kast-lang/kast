@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Token = Kast_token
 module Lexer = Kast_lexer
 
 module Args = struct
@@ -16,6 +17,4 @@ let run : Args.t -> unit =
  fun { path } ->
   let source = Source.read path in
   let tokens = Lexer.read_all Lexer.default_rules source in
-  tokens
-  |> List.iter (fun token ->
-         println "%a" (Spanned.print Lexer.Token.print) token)
+  tokens |> List.iter (fun token -> println "%a" Token.print token)

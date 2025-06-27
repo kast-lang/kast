@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Token = Kast_token
 module Parser = Kast_parser
 module Ast = Kast_ast
 module Lexer = Kast_lexer
@@ -19,13 +20,13 @@ let rec print fmt = function
       fprintf fmt "%S %a" name (Tuple.print print) children
 
 let get_name : Ast.t -> string = function
-  | { shape = Simple { token = { value = Ident { raw; _ }; _ }; _ }; _ } -> raw
+  | { shape = Simple { token = { shape = Ident { raw; _ }; _ }; _ }; _ } -> raw
   | other -> unreachable "get_name %a" Ast.print other
 
 let rec process : Ast.t -> ast =
  fun ast ->
   match ast.shape with
-  | Simple { token; _ } -> Simple (Lexer.Token.raw token.value |> Option.get)
+  | Simple { token; _ } -> Simple (Token.raw token |> Option.get)
   | Complex { name = "complex"; parts = _; children } ->
       Complex
         {

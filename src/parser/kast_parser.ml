@@ -157,39 +157,37 @@ module Rule = struct
 
   let parse : Lexer.t -> rule =
    fun lexer ->
-    let get_name (spanned : Token.t spanned) =
-      match spanned.value with
+    let get_name (token : Token.t) =
+      match token.shape with
       | Ident { raw; _ } -> raw
       | String { contents; _ } -> contents
-      | _ ->
-          error "Expected rule name, got %a" (Spanned.print Token.print) spanned
+      | _ -> error "Expected rule name, got %a" Token.print token
     in
     let name = get_name (Lexer.next lexer) in
     let priority =
       let token = Lexer.next lexer in
-      try Token.as_float token.value
+      try Token.Shape.as_float token.shape
       with Invalid_argument _ ->
-        error "Expected rule priority, got %a" (Spanned.print Token.print) token
+        error "Expected rule priority, got %a" Token.print token
     in
     let wrap_mode =
       let token = Lexer.next lexer in
-      if token.value |> Token.is_raw "wrap" |> not then
-        error "Expected \"wrap\", got %a" (Spanned.print Token.print) token;
+      if token |> Token.is_raw "wrap" |> not then
+        error "Expected \"wrap\", got %a" Token.print token;
       let token = Lexer.next lexer in
-      match token.value with
+      match token.shape with
       | Ident { raw = "if_any"; _ } -> WrapMode.IfAny
       | Ident { raw = "always"; _ } -> WrapMode.Always
       | Ident { raw = "never"; _ } -> WrapMode.Never
-      | _ ->
-          error "Expected wrap mode, got %a" (Spanned.print Token.print) token
+      | _ -> error "Expected wrap mode, got %a" Token.print token
     in
     (let token = Lexer.next lexer in
-     if Token.raw token.value <> Some "=" then
-       error "Expected \"=\", got %a" (Spanned.print Token.print) token);
+     if token |> Token.is_raw "=" |> not then
+       error "Expected \"=\", got %a" Token.print token);
     let rec collect_parts () : part list =
       let rec part ?(left_assoc = false) () : part option =
         let token = Lexer.peek lexer in
-        match token.value with
+        match token.shape with
         | Punct { raw = "<-"; _ } when not left_assoc ->
             Lexer.advance lexer;
             part ~left_assoc:true ()
@@ -198,15 +196,12 @@ module Rule = struct
               Lexer.advance lexer;
               let nowrap = contents in
               let wrap : string =
-                if (Lexer.peek lexer).value |> Token.is_raw "/" then (
+                if lexer |> Lexer.peek |> Token.is_raw "/" then (
                   Lexer.advance lexer;
                   let token = Lexer.next lexer in
-                  match token.value with
+                  match token.shape with
                   | String { contents; _ } -> contents
-                  | _ ->
-                      error "Expected wrap str, got %a"
-                        (Spanned.print Token.print)
-                        token)
+                  | _ -> error "Expected wrap str, got %a" Token.print token)
                 else nowrap
               in
               Some (Whitespace { nowrap; wrap }))
@@ -220,17 +215,15 @@ module Rule = struct
             let priority =
               if left_assoc then Priority.GreaterOrEqual
               else
-                match Token.raw peek.value with
+                match Token.raw peek with
                 | Some "->" ->
                     Lexer.advance lexer;
                     Priority.GreaterOrEqual
                 | Some ":" ->
                     Lexer.advance lexer;
                     let peek = Lexer.peek lexer in
-                    if Token.raw peek.value <> Some "any" then
-                      error "Expected \"any\", got %a"
-                        (Spanned.print Token.print)
-                        peek;
+                    if peek |> Token.is_raw "any" |> not then
+                      error "Expected \"any\", got %a" Token.print peek;
                     Lexer.advance lexer;
                     Priority.Any
                 | _ ->
@@ -242,9 +235,7 @@ module Rule = struct
             Some (Value { name; priority })
         | _ ->
             if left_assoc then
-              error "Expected value name, got %a"
-                (Spanned.print Token.print)
-                token;
+              error "Expected value name, got %a" Token.print token;
             None
       in
       match part () with
@@ -422,12 +413,12 @@ let init : ruleset -> parser = fun ruleset -> { ruleset }
 let add_rule : rule -> parser -> unit =
  fun rule parser -> parser.ruleset <- RuleSet.add rule parser.ruleset
 
-let rec read_comments lexer : Token.comment spanned list =
+let rec read_comments lexer : Token.comment list =
   let peek = Lexer.peek lexer in
-  match peek.value with
+  match peek.shape with
   | Comment comment ->
       Lexer.advance lexer;
-      { value = comment; span = peek.span } :: read_comments lexer
+      { shape = comment; span = peek.span } :: read_comments lexer
   | _ -> []
 
 module Impl = struct
@@ -436,7 +427,7 @@ module Impl = struct
     | NoProgress
 
   let rec parse_one :
-      comments_before:Token.comment spanned list ref ->
+      comments_before:Token.comment list ref ->
       start:Ast.t option ->
       ruleset ->
       continuation_keywords:StringSet.t ->
@@ -470,8 +461,7 @@ module Impl = struct
             Log.trace "Parsed %a" Ast.print ast;
             comments_before := !comments_before @ read_comments lexer;
             MadeProgress ast
-        | None ->
-            error "Unexpected %a" (Spanned.print Token.print) (Lexer.peek lexer)
+        | None -> error "Unexpected %a" Token.print (Lexer.peek lexer)
       else NoProgress
     in
     (* should return bool but we do option because let* makes it easier *)
@@ -500,8 +490,7 @@ module Impl = struct
     in
     let rec go (node : RuleSet.node) : parse_result =
       comments_before := !comments_before @ read_comments lexer;
-      let spanned = Lexer.peek lexer in
-      let token = spanned.value in
+      let token = Lexer.peek lexer in
       let raw_token = Token.raw token in
       let+ () =
         (* try to follow with token as a keyword *)
@@ -514,7 +503,7 @@ module Impl = struct
         let* next = RuleSet.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
         count_comments_before ();
-        parsed_rev := Keyword spanned :: !parsed_rev;
+        parsed_rev := Keyword token :: !parsed_rev;
         Log.trace "Followed with keyword %S" keyword;
         Lexer.advance lexer;
         Some (go next)
@@ -551,9 +540,8 @@ module Impl = struct
       let start = (Lexer.peek lexer).span.start in
       comments_before := !comments_before @ read_comments lexer;
       let peek = Lexer.peek lexer in
-      let token = peek.value in
       let* shape =
-        match token with
+        match peek.shape with
         | Eof -> None
         | Punct _ -> None
         | Number _ ->
@@ -594,7 +582,7 @@ module Impl = struct
 
   and parse :
       ruleset ->
-      comments_before:Token.comment spanned list ref ->
+      comments_before:Token.comment list ref ->
       continuation_keywords:StringSet.t ->
       filter:Rule.Priority.filter ->
       Lexer.t ->
@@ -615,7 +603,7 @@ end
 
 type result = {
   ast : Ast.t option;
-  trailing_comments : Token.comment spanned list;
+  trailing_comments : Token.comment list;
   eof : position;
 }
 

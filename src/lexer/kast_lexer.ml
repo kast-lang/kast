@@ -15,11 +15,10 @@ let () =
 let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
  fun format -> Format.kdprintf (fun f -> raise @@ Error f) format
 
-type token = Token.t
-type rule = Reader.t -> token option
+type rule = Reader.t -> Token.Shape.t option
 
 type lexer = {
-  mutable peeked : token spanned option;
+  mutable peeked : Token.t option;
   rules : rule list;
   reader : Reader.t;
   source : source;
@@ -35,22 +34,19 @@ let init : rule list -> source -> lexer =
 
 let position lexer = lexer.reader.position
 
-let peek : lexer -> token spanned =
+let peek : lexer -> Token.t =
  fun ({ reader; _ } as lexer) ->
   (if Option.is_none lexer.peeked then
-     let try_rule : rule -> token spanned option =
+     let try_rule : rule -> Token.t option =
       fun rule ->
        let start = reader.position in
-       let* token = rule reader in
+       let* shape = rule reader in
        let finish = reader.position in
        Some
-         ({
-            value = token;
-            span = { start; finish; filename = lexer.source.filename };
-          }
-           : token spanned)
+         ({ shape; span = { start; finish; filename = lexer.source.filename } }
+           : Token.t)
      in
-     let token : token spanned =
+     let token : Token.t =
        match List.find_map try_rule lexer.rules with
        | Some token -> token
        | None ->
@@ -61,7 +57,7 @@ let peek : lexer -> token spanned =
      lexer.peeked <- Some token);
   Option.get lexer.peeked
 
-let next : lexer -> token spanned =
+let next : lexer -> Token.t =
  fun lexer ->
   let result = peek lexer in
   lexer.peeked <- None;
@@ -72,27 +68,21 @@ let advance : lexer -> unit = fun lexer -> ignore @@ next lexer
 let expect_next : lexer -> string -> unit =
  fun lexer expected_raw ->
   let token = peek lexer in
-  if Token.is_raw expected_raw token.value then advance lexer
-  else
-    error "expected @{<white>%S@}, got %a" expected_raw
-      (Spanned.print Token.print)
-      token
+  if Token.is_raw expected_raw token then advance lexer
+  else error "expected @{<white>%S@}, got %a" expected_raw Token.print token
 
 let expect_eof : lexer -> unit =
  fun lexer ->
   let peek = peek lexer in
-  match peek.value with
+  match peek.shape with
   | Eof -> ()
-  | _ ->
-      error "Expected %a, got %a" Token.print Eof
-        (Spanned.print Token.print)
-        peek
+  | _ -> error "Expected %a, got %a" Token.Shape.print Eof Token.print peek
 
 let default_rules : rule list =
   let read_eof reader =
     match Reader.peek reader with
     | Some _ -> None
-    | None -> Some Token.Eof
+    | None -> Some Token.Shape.Eof
   in
   let read_whitespace reader =
     ignore @@ Reader.read_while Char.is_whitespace reader;
@@ -148,15 +138,15 @@ let default_rules : rule list =
         | None ->
             error "Expected %C, got @{<italic><eof>@} @{<dim>at %a@}" delimeter
               Position.print reader.position);
-        let token : Token.string =
+        let token : Token.Shape.string =
           { raw = Reader.finish_rec raw; contents = Buffer.contents contents }
         in
-        Some (Token.String token))
+        Some (Token.Shape.String token))
   in
   let read_ident reader =
     let* c = Reader.peek reader in
     if Char.is_alpha c || c = '_' then
-      let ident : Token.ident =
+      let ident : Token.Shape.ident =
         {
           raw =
             Reader.read_while
@@ -164,7 +154,7 @@ let default_rules : rule list =
               reader;
         }
       in
-      Some (Token.Ident ident)
+      Some (Token.Shape.Ident ident)
     else None
   in
   let read_number reader =
@@ -180,7 +170,7 @@ let default_rules : rule list =
            | c when Char.is_digit c -> true
            | _ -> false)
     in
-    Some (Token.Number { raw })
+    Some (Token.Shape.Number { raw })
   in
   let read_punct reader =
     let* c = Reader.peek reader in
@@ -205,15 +195,15 @@ let default_rules : rule list =
                 (fun c -> is_punct c && not (is_single_punct c))
                 reader
       in
-      let token : Token.punct = { raw } in
-      Some (Token.Punct token))
+      let token : Token.Shape.punct = { raw } in
+      Some (Token.Shape.Punct token))
     else None
   in
   let read_line_comment reader =
     let* c = Reader.peek reader in
     let* () = if c = '#' then Some () else None in
     let raw = reader |> Reader.read_while (fun c -> c <> '\n') in
-    Some (Token.Comment { raw })
+    Some (Token.Shape.Comment { raw })
   in
   let read_block_comment reader =
     let* () = if Reader.peek reader = Some '(' then Some () else None in
@@ -238,7 +228,7 @@ let default_rules : rule list =
           Position.print start_pos Position.print reader.position
       else Reader.advance reader
     done;
-    Some (Token.Comment { raw = Reader.finish_rec raw })
+    Some (Token.Shape.Comment { raw = Reader.finish_rec raw })
   in
   [
     read_whitespace;
@@ -251,17 +241,17 @@ let default_rules : rule list =
     read_punct;
   ]
 
-let read_all : rule list -> source -> token spanned list =
+let read_all : rule list -> source -> Token.t list =
  fun rules source ->
   let lexer = init rules source in
   let found_eof = ref false in
-  let dispenser : unit -> token spanned option =
+  let dispenser : unit -> Token.t option =
    fun () ->
     if !found_eof then None
     else
       let token = next lexer in
-      (match token.value with
-      | Token.Eof -> found_eof := true
+      (match token.shape with
+      | Token.Shape.Eof -> found_eof := true
       | _ -> ());
       Some token
   in

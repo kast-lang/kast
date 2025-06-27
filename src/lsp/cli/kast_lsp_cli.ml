@@ -29,9 +29,9 @@ let process_some_input_file (source : source) : state_after_processing =
 
 module Tokens = struct
   type token_shape =
-    | Keyword of Token.t
-    | Value of Token.t
-    | Comment of Lexer.Token.comment
+    | Keyword of Token.Shape.t
+    | Value of Token.Shape.t
+    | Comment of Token.Shape.comment
 
   type token = {
     token : token_shape;
@@ -44,19 +44,19 @@ module Tokens = struct
     | Ast.Simple { comments_before; token } ->
         Seq.append
           (comments_before |> List.to_seq
-          |> Seq.map (fun (comment : Lexer.Token.comment spanned) ->
-                 { token = Comment comment.value; span = comment.span }))
-          (List.to_seq [ { token = Value token.value; span = token.span } ])
+          |> Seq.map (fun (comment : Token.comment) ->
+                 { token = Comment comment.shape; span = comment.span }))
+          (List.to_seq [ { token = Value token.shape; span = token.span } ])
     | Ast.Complex { parts; _ } ->
         parts |> List.to_seq
         |> Seq.flat_map (function
              | Ast.Value ast -> collect ast
              | Ast.Keyword token ->
                  List.to_seq
-                   [ { token = Keyword token.value; span = token.span } ]
+                   [ { token = Keyword token.shape; span = token.span } ]
              | Ast.Comment comment ->
                  List.to_seq
-                   [ { token = Comment comment.value; span = comment.span } ])
+                   [ { token = Comment comment.shape; span = comment.span } ])
 end
 
 let diagnostics (_state : state_after_processing) : Lsp.Types.Diagnostic.t list
@@ -218,13 +218,8 @@ class lsp_server =
                   (ast |> Option.to_seq
                   |> Seq.flat_map (fun ast -> ast |> Tokens.collect))
                   (trailing_comments |> List.to_seq
-                  |> Seq.map
-                       (fun
-                         (comment : Lexer.Token.comment spanned)
-                         :
-                         Tokens.token
-                       ->
-                         { token = Comment comment.value; span = comment.span })
+                  |> Seq.map (fun (comment : Token.comment) : Tokens.token ->
+                         { token = Comment comment.shape; span = comment.span })
                   )
               in
               tokens
