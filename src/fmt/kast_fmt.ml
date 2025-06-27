@@ -27,31 +27,66 @@ let read path : source =
   in
   { contents; filename }
 
+type parent = {
+  wrapped : bool;
+  rule : Parser.rule;
+}
+
 let print_ast : Parser.ruleset -> formatter -> Ast.t -> unit =
  fun ruleset fmt ast ->
-  let rec print_ast (ast : Ast.t) =
+  let print_indent level =
+    for _ = 1 to level do
+      fprintf fmt "  "
+    done
+  in
+  let current_indent = ref 0 in
+  let print_whitespace (s : string) =
+    s
+    |> String.iter (function
+         | '\n' ->
+             fprintf fmt "\n";
+             print_indent !current_indent
+         | '\t' ->
+             print_indent 1;
+             current_indent := !current_indent + 1
+         | '\\' -> current_indent := !current_indent - 1
+         | c -> fprintf fmt "%c" c)
+  in
+  let rec print_ast ~parent (ast : Ast.t) =
     match ast.shape with
     | Simple { comments_before; token } ->
         fprintf fmt "%s" (Lexer.Token.raw token.value |> Option.get)
     | Complex { name; parts; _ } ->
         let rule = Parser.RuleSet.find_rule name ruleset in
-        print_parts rule.parts parts
-  and print_parts (rule_parts : Parser.Rule.part list) (parts : Ast.part list) =
+        let wrapped =
+          match parent with
+          | Some { wrapped; rule = parent_rule } ->
+              wrapped && rule.priority = parent_rule.priority
+          | None -> false
+        in
+        let wrapped = wrapped || ast.span.start.line <> ast.span.finish.line in
+        print_parts rule wrapped rule.parts parts
+  and print_parts rule wrapped (rule_parts : Parser.Rule.part list)
+      (parts : Ast.part list) =
     match (rule_parts, parts) with
     | [], [] -> ()
     | Whitespace { nowrap; wrap } :: rest_rule_parts, _ ->
-        fprintf fmt "%s" nowrap;
-        print_parts rest_rule_parts parts
+        (match rule.wrap_mode with
+        | Never -> print_whitespace nowrap
+        | Always -> print_whitespace wrap
+        | IfAny ->
+            if wrapped then print_whitespace wrap else print_whitespace nowrap);
+        print_parts rule wrapped rest_rule_parts parts
     | Keyword keyword :: rest_rule_parts, Keyword _ :: rest_parts ->
         fprintf fmt "%s" keyword;
-        print_parts rest_rule_parts rest_parts
+        print_parts rule wrapped rest_rule_parts rest_parts
     | Value _ :: rest_rule_parts, Value value :: rest_parts ->
-        print_ast value;
-        print_parts rest_rule_parts rest_parts
+        print_ast ~parent:(Some { rule; wrapped }) value;
+        print_parts rule wrapped rest_rule_parts rest_parts
     | _ -> unreachable "todo"
   in
 
-  print_ast ast
+  print_ast ~parent:None ast
 
 let format : formatter -> Parser.result -> unit =
  fun fmt { ast; trailing_comments } ->
@@ -65,5 +100,6 @@ let run : args -> unit =
  fun { path } ->
   let source = read path in
   let ruleset = Default_syntax.ruleset in
-  Parser.parse source ruleset |> format Format.std_formatter;
+  let parsed = Parser.parse source ruleset in
+  parsed |> format Format.std_formatter;
   println ""
