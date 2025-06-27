@@ -19,6 +19,7 @@ if true then (
     # comment
     print "true"# before semicolon
     ;
+    foo 5;
     syntax foo 10 wrap never = "foo" " " _;
     foo 5;
     print "true";
