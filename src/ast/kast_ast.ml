@@ -1,18 +1,17 @@
 open Std
 open Kast_util
+module Token = Kast_token
 module Lexer = Kast_lexer
-
-type token = Lexer.token
 
 type simple = {
   comments_before : Lexer.Token.comment spanned list;
-  token : token spanned;
+  token : Token.t spanned;
 }
 
 type part =
   | Comment of Lexer.Token.comment spanned
   | Value of ast
-  | Keyword of token spanned
+  | Keyword of Token.t spanned
 
 and complex = {
   name : string;

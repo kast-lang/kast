@@ -1,8 +1,9 @@
 open Std
 open Kast_util
-module Parser = Kast_parser
+module Token = Kast_token
 module Lexer = Kast_lexer
 module Ast = Kast_ast
+module Parser = Kast_parser
 
 module Args = struct
   type args = { dummy : unit }
@@ -28,8 +29,8 @@ let process_some_input_file (source : source) : state_after_processing =
 
 module Tokens = struct
   type token_shape =
-    | Keyword of Lexer.token
-    | Value of Lexer.token
+    | Keyword of Token.t
+    | Value of Token.t
     | Comment of Lexer.Token.comment
 
   type token = {

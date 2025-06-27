@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Token = Kast_token
 module Lexer = Kast_lexer
 module Parser = Kast_parser
 module Ast = Kast_ast
@@ -22,8 +23,8 @@ let move_to (printer : printer) (position : position) : unit =
     print_char printer ' '
   done
 
-let print_token (printer : printer) (f : printer -> Lexer.token -> unit)
-    (token : Lexer.token spanned) : unit =
+let print_token (printer : printer) (f : printer -> Token.t -> unit)
+    (token : Token.t spanned) : unit =
   move_to printer token.span.start;
   f printer token.value;
   printer.position <- token.span.finish
@@ -34,12 +35,12 @@ let print_comment (printer : printer) (comment : Lexer.Token.comment spanned) :
   fprintf printer.fmt "@{<gray>%s@}" comment.value.raw;
   printer.position <- comment.span.finish
 
-let print_keyword printer (token : Lexer.token) =
+let print_keyword printer (token : Token.t) =
   match Lexer.Token.raw token with
   | Some raw -> fprintf printer.fmt "@{<magenta>%s@}" raw
   | None -> ()
 
-let print_value printer (token : Lexer.token) =
+let print_value printer (token : Token.t) =
   let fmt = printer.fmt in
   match token with
   | Ident { raw; _ } -> fprintf fmt "%s" raw

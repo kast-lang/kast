@@ -1,6 +1,6 @@
 open Std
 open Kast_util
-module Token = Token
+module Token = Kast_token
 module Reader = Reader
 
 exception Error of (formatter -> unit)

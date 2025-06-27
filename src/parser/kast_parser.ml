@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Token = Kast_token
 module Lexer = Kast_lexer
 module Ast = Kast_ast
 
@@ -156,43 +157,35 @@ module Rule = struct
 
   let parse : Lexer.t -> rule =
    fun lexer ->
-    let get_name (spanned : Lexer.token spanned) =
+    let get_name (spanned : Token.t spanned) =
       match spanned.value with
       | Ident { raw; _ } -> raw
       | String { contents; _ } -> contents
       | _ ->
-          error "Expected rule name, got %a"
-            (Spanned.print Lexer.Token.print)
-            spanned
+          error "Expected rule name, got %a" (Spanned.print Token.print) spanned
     in
     let name = get_name (Lexer.next lexer) in
     let priority =
       let token = Lexer.next lexer in
-      try Lexer.Token.as_float token.value
+      try Token.as_float token.value
       with Invalid_argument _ ->
-        error "Expected rule priority, got %a"
-          (Spanned.print Lexer.Token.print)
-          token
+        error "Expected rule priority, got %a" (Spanned.print Token.print) token
     in
     let wrap_mode =
       let token = Lexer.next lexer in
-      if token.value |> Lexer.Token.is_raw "wrap" |> not then
-        error "Expected \"wrap\", got %a"
-          (Spanned.print Lexer.Token.print)
-          token;
+      if token.value |> Token.is_raw "wrap" |> not then
+        error "Expected \"wrap\", got %a" (Spanned.print Token.print) token;
       let token = Lexer.next lexer in
       match token.value with
       | Ident { raw = "if_any"; _ } -> WrapMode.IfAny
       | Ident { raw = "always"; _ } -> WrapMode.Always
       | Ident { raw = "never"; _ } -> WrapMode.Never
       | _ ->
-          error "Expected wrap mode, got %a"
-            (Spanned.print Lexer.Token.print)
-            token
+          error "Expected wrap mode, got %a" (Spanned.print Token.print) token
     in
     (let token = Lexer.next lexer in
-     if Lexer.Token.raw token.value <> Some "=" then
-       error "Expected \"=\", got %a" (Spanned.print Lexer.Token.print) token);
+     if Token.raw token.value <> Some "=" then
+       error "Expected \"=\", got %a" (Spanned.print Token.print) token);
     let rec collect_parts () : part list =
       let rec part ?(left_assoc = false) () : part option =
         let token = Lexer.peek lexer in
@@ -205,14 +198,14 @@ module Rule = struct
               Lexer.advance lexer;
               let nowrap = contents in
               let wrap : string =
-                if (Lexer.peek lexer).value |> Lexer.Token.is_raw "/" then (
+                if (Lexer.peek lexer).value |> Token.is_raw "/" then (
                   Lexer.advance lexer;
                   let token = Lexer.next lexer in
                   match token.value with
                   | String { contents; _ } -> contents
                   | _ ->
                       error "Expected wrap str, got %a"
-                        (Spanned.print Lexer.Token.print)
+                        (Spanned.print Token.print)
                         token)
                 else nowrap
               in
@@ -227,16 +220,16 @@ module Rule = struct
             let priority =
               if left_assoc then Priority.GreaterOrEqual
               else
-                match Lexer.Token.raw peek.value with
+                match Token.raw peek.value with
                 | Some "->" ->
                     Lexer.advance lexer;
                     Priority.GreaterOrEqual
                 | Some ":" ->
                     Lexer.advance lexer;
                     let peek = Lexer.peek lexer in
-                    if Lexer.Token.raw peek.value <> Some "any" then
+                    if Token.raw peek.value <> Some "any" then
                       error "Expected \"any\", got %a"
-                        (Spanned.print Lexer.Token.print)
+                        (Spanned.print Token.print)
                         peek;
                     Lexer.advance lexer;
                     Priority.Any
@@ -250,7 +243,7 @@ module Rule = struct
         | _ ->
             if left_assoc then
               error "Expected value name, got %a"
-                (Spanned.print Lexer.Token.print)
+                (Spanned.print Token.print)
                 token;
             None
       in
@@ -429,7 +422,7 @@ let init : ruleset -> parser = fun ruleset -> { ruleset }
 let add_rule : rule -> parser -> unit =
  fun rule parser -> parser.ruleset <- RuleSet.add rule parser.ruleset
 
-let rec read_comments lexer : Lexer.Token.comment spanned list =
+let rec read_comments lexer : Token.comment spanned list =
   let peek = Lexer.peek lexer in
   match peek.value with
   | Comment comment ->
@@ -443,7 +436,7 @@ module Impl = struct
     | NoProgress
 
   let rec parse_one :
-      comments_before:Lexer.Token.comment spanned list ref ->
+      comments_before:Token.comment spanned list ref ->
       start:Ast.t option ->
       ruleset ->
       continuation_keywords:StringSet.t ->
@@ -478,9 +471,7 @@ module Impl = struct
             comments_before := !comments_before @ read_comments lexer;
             MadeProgress ast
         | None ->
-            error "Unexpected %a"
-              (Spanned.print Lexer.Token.print)
-              (Lexer.peek lexer)
+            error "Unexpected %a" (Spanned.print Token.print) (Lexer.peek lexer)
       else NoProgress
     in
     (* should return bool but we do option because let* makes it easier *)
@@ -511,7 +502,7 @@ module Impl = struct
       comments_before := !comments_before @ read_comments lexer;
       let spanned = Lexer.peek lexer in
       let token = spanned.value in
-      let raw_token = Lexer.Token.raw token in
+      let raw_token = Token.raw token in
       let+ () =
         (* try to follow with token as a keyword *)
         let* keyword = raw_token in
@@ -603,7 +594,7 @@ module Impl = struct
 
   and parse :
       ruleset ->
-      comments_before:Lexer.Token.comment spanned list ref ->
+      comments_before:Token.comment spanned list ref ->
       continuation_keywords:StringSet.t ->
       filter:Rule.Priority.filter ->
       Lexer.t ->
@@ -624,7 +615,7 @@ end
 
 type result = {
   ast : Ast.t option;
-  trailing_comments : Lexer.Token.comment spanned list;
+  trailing_comments : Token.comment spanned list;
   eof : position;
 }
 
