@@ -6,7 +6,7 @@ exception Error of (formatter -> unit)
 let () =
   Printexc.register_printer (function
     | Error f ->
-        eprintln "Parse error: %a" (fun fmt () -> f fmt) ();
+        eprintln "@{<red>Parse error:@} %a" (fun fmt () -> f fmt) ();
         exit 1
     | _ -> None)
 
@@ -623,6 +623,7 @@ end
 type result = {
   ast : Ast.t option;
   trailing_comments : Lexer.Token.comment spanned list;
+  eof : position;
 }
 
 let parse_with_lexer : Lexer.t -> ruleset -> result =
@@ -633,7 +634,11 @@ let parse_with_lexer : Lexer.t -> ruleset -> result =
       ~filter:Any lexer
   in
   expect_eof lexer;
-  { ast = result; trailing_comments = !comments_before }
+  {
+    ast = result;
+    trailing_comments = !comments_before;
+    eof = Lexer.position lexer;
+  }
 
 let parse : source -> ruleset -> result =
  fun source ruleset ->

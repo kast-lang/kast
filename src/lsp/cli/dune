@@ -1,3 +1,3 @@
 (library
- (name kast_lsp)
+ (name kast_lsp_cli)
  (libraries std util linol linol-lwt kast default_syntax kast_fmt))

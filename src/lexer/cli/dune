@@ -1,0 +1,3 @@
+(library
+ (name kast_lexer_cli)
+ (libraries lexer))

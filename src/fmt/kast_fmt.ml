@@ -1,20 +1,13 @@
 open Std
 open Kast
 
-type args = { path : path }
-
-let parse : string list -> args = function
-  | [] -> { path = Stdin }
-  | [ path ] -> { path = File path }
-  | first :: _rest -> fail "unexpected arg %S" first
-
 type parent = {
   wrapped : bool;
   rule : Parser.rule;
 }
 
 let format : formatter -> Parser.result -> unit =
- fun fmt { ast; trailing_comments } ->
+ fun fmt { ast; trailing_comments; eof = _ } ->
   let print_indent level =
     for _ = 1 to level do
       fprintf fmt "  "
@@ -112,11 +105,3 @@ let format : formatter -> Parser.result -> unit =
          preserve_newline_after_comment comment.span;
          prev_comment_span := Some comment.span;
          fprintf fmt "%s" comment.value.raw)
-
-let run : args -> unit =
- fun { path } ->
-  let source = Source.read path in
-  let ruleset = Default_syntax.ruleset in
-  let parsed = Parser.parse source ruleset in
-  parsed |> format Format.std_formatter;
-  println ""

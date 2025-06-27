@@ -5,6 +5,13 @@ module Reader = Reader
 
 exception Error of (formatter -> unit)
 
+let () =
+  Printexc.register_printer (function
+    | Error f ->
+        eprintln "@{<red>Lexer error:@} %a" (fun fmt () -> f fmt) ();
+        exit 1
+    | _ -> None)
+
 let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
  fun format -> Format.kdprintf (fun f -> raise @@ Error f) format
 
@@ -25,6 +32,8 @@ let source lexer = lexer.source
 let init : rule list -> source -> lexer =
  fun rules source ->
   { rules; peeked = None; reader = Reader.init source.contents; source }
+
+let position lexer = lexer.reader.position
 
 let peek : lexer -> token spanned =
  fun ({ reader; _ } as lexer) ->

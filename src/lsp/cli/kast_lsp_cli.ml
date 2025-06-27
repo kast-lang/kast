@@ -1,11 +1,14 @@
 open Std
 open Util
 
-type args = { path : string option }
+module Args = struct
+  type args = { dummy : unit }
+  type t = args
 
-let parse : string list -> args = function
-  | [] -> { path = None }
-  | arg :: _rest -> fail "Unexpected arg %S" arg
+  let parse : string list -> args = function
+    | [] -> { dummy = () }
+    | arg :: _rest -> fail "Unexpected arg %S" arg
+end
 
 module Lsp = Linol.Lsp
 
@@ -103,11 +106,6 @@ let semanticTokensProvider =
     ()
 
 module IO = Linol_lwt.IO_lwt
-
-let[@inline] lift_ok x =
-  let open IO in
-  let+ x = x in
-  Ok x
 
 type linecol = {
   line : int;
@@ -208,7 +206,7 @@ class lsp_server =
         let { parsed; _ } = Hashtbl.find buffers params.textDocument.uri in
         match parsed with
         | None -> Linol_lwt.return None
-        | Some { ast; trailing_comments } ->
+        | Some { ast; trailing_comments; eof = _ } ->
             let data =
               let prev_pos = ref Position.beginning in
               let tokens =
@@ -313,7 +311,7 @@ class lsp_server =
         | _ -> IO.failwith "TODO handle this request"
   end
 
-let run (_args : args) =
+let run ({ dummy = () } : Args.t) =
   Log.info "Starting Kast LSP";
   let s = new lsp_server in
   let server = Linol_lwt.Jsonrpc2.create_stdio ~env:() s in

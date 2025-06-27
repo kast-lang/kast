@@ -1,0 +1,3 @@
+(library
+ (name kast_parser_cli)
+ (libraries parser default_syntax))

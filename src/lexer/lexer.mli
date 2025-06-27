@@ -29,6 +29,7 @@ type t = lexer
 val source : lexer -> source
 val default_rules : rule list
 val init : rule list -> source -> lexer
+val position : lexer -> position
 val peek : lexer -> token spanned
 val next : lexer -> token spanned
 val advance : lexer -> unit

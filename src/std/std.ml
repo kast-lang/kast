@@ -25,4 +25,14 @@ module StringMap = Map.Make (String)
 
 exception FailFormat of (formatter -> unit)
 
+let () =
+  Printexc.register_printer (function
+    | FailFormat f ->
+        eprintln "@{<red>Error:@} %a" (fun fmt () -> f fmt) ();
+        exit 1
+    | Failure s ->
+        eprintln "@{<red>Error:@} %s" s;
+        exit 1
+    | _ -> None)
+
 let fail f = Format.kdprintf (fun f -> raise @@ FailFormat f) f

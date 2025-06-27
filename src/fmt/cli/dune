@@ -1,0 +1,3 @@
+(library
+ (name kast_fmt_cli)
+ (libraries kast_fmt))

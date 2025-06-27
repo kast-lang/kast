@@ -1,0 +1,3 @@
+(library
+ (name kast_highlight_cli)
+ (libraries kast_highlight))

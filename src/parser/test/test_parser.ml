@@ -23,7 +23,7 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
 let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
     =
   try
-    let { ast; trailing_comments = _ } : Parser.result =
+    let { ast; trailing_comments = _; eof = _ } : Parser.result =
       Parser.parse
         { contents = source; filename = Special "<test>" }
         (ruleset |> Option.value ~default:Default_syntax.ruleset)
@@ -39,7 +39,7 @@ let test ~(source : string) ~(expected : string)
     Simple_syntax.parse { contents = expected; filename = Special "<test>" }
     |> Option.get
   in
-  let { ast; trailing_comments = _ } : Parser.result =
+  let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse
       { contents = source; filename = Special "<test>" }
       (ruleset |> Option.value ~default:Default_syntax.ruleset)

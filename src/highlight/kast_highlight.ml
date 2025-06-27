@@ -1,18 +1,6 @@
 open Std
 open Util
 
-module Args = struct
-  type args = { path : path }
-  type t = args
-
-  let parse : string list -> args = function
-    | [] -> { path = Stdin }
-    | [ path ] -> { path = File path }
-    | first :: _rest -> fail "Unexpected arg %S" first
-end
-
-type args = Args.t
-
 type printer = {
   fmt : formatter;
   mutable position : position;
@@ -70,17 +58,11 @@ let rec print_ast (printer : printer) (ast : Ast.t) : unit =
            | Ast.Keyword token -> print_token printer print_keyword token
            | Ast.Comment comment -> print_comment printer comment)
 
-let run : args -> unit =
- fun { path } ->
-  let source = Source.read path in
-  let lexer = Lexer.init Lexer.default_rules source in
-  let { ast; trailing_comments } : Parser.result =
-    Parser.parse_with_lexer lexer Default_syntax.ruleset
-  in
-  let eof_token = Lexer.peek lexer in
-  let printer = { fmt = Format.std_formatter; position = Position.beginning } in
+let print (fmt : formatter) ({ ast; trailing_comments; eof } : Parser.result) :
+    unit =
+  let printer = { fmt; position = Position.beginning } in
   (match ast with
   | Some ast -> print_ast printer ast
   | None -> ());
   trailing_comments |> List.iter (fun comment -> print_comment printer comment);
-  move_to printer eof_token.span.start
+  move_to printer eof
