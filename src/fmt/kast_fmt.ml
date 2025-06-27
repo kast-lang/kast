@@ -108,4 +108,5 @@ let format : formatter -> Parser.result -> unit =
   |> List.iter (fun (comment : Token.comment) ->
          preserve_newline_after_comment comment.span;
          prev_comment_span := Some comment.span;
-         fprintf fmt "%s" comment.shape.raw)
+         fprintf fmt "%s" comment.shape.raw);
+  fprintf fmt "\n"
