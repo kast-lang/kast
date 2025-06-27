@@ -1,5 +1,5 @@
-syntax
-
+syntax custom 5 wrap never = "hello" "," " " "world";
+hello, world;
 if a then b else c;
 if true then print "hello, world" else print "hello, world (but false)";
 (
@@ -47,4 +47,4 @@ if true then (
 (
   a + b
 # helo        
-)# hello
+)

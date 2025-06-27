@@ -1,18 +1,18 @@
-syntax from_scratch
-syntax then        0 wrap always = _ ";" "\n" _ ->
-syntax stmt        0 wrap always = _ ";"
-syntax "use .*"    1 wrap never  = "use" " " _ ".*"
-syntax if          1 wrap never  = "if" " " cond " " "then" " " then " " "else" " " else ->
-syntax comma       5 wrap if_any = <- _ "," " "/"\n" _
-syntax tcomma      5 wrap never  = <- _ ","
-syntax or         10 wrap never  = _ " " "or" " " _
-syntax and        11 wrap never  = _ " " "and" " " _
-syntax add        15 wrap if_any = <- _ " "/"\n" "+" " " _
-syntax sub        15 wrap if_any = <- _ " "/"\n" "-" " " _
-syntax mul        17 wrap if_any = <- _ " "/"\n" "*" " " _
-syntax div        17 wrap if_any = <- _ " "/"\n" "/" " " _
-syntax "|>"       20 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\"
-syntax "."        20 wrap if_any = <- obj ""/"\n\t" "." method ""/"\\"
-syntax apply      50 wrap never  = <- f " " arg
-syntax unit     1000 wrap never  = "(" ")"
-syntax scope    1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")"
+syntax from_scratch;
+syntax then        0 wrap always = _ ";" "\n" _ ->;
+syntax stmt        0 wrap always = _ ";";
+syntax "use .*"    1 wrap never  = "use" " " _ ".*";
+syntax if          1 wrap never  = "if" " " cond " " "then" " " then " " "else" " " else ->;
+syntax comma       5 wrap if_any = <- _ "," " "/"\n" _;
+syntax tcomma      5 wrap never  = <- _ ",";
+syntax or         10 wrap never  = _ " " "or" " " _;
+syntax and        11 wrap never  = _ " " "and" " " _;
+syntax add        15 wrap if_any = <- _ " "/"\n" "+" " " _;
+syntax sub        15 wrap if_any = <- _ " "/"\n" "-" " " _;
+syntax mul        17 wrap if_any = <- _ " "/"\n" "*" " " _;
+syntax div        17 wrap if_any = <- _ " "/"\n" "/" " " _;
+syntax "|>"       20 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
+syntax "."        20 wrap if_any = <- obj ""/"\n\t" "." method ""/"\\";
+syntax apply      50 wrap never  = <- f " " arg;
+syntax unit     1000 wrap never  = "(" ")";
+syntax scope    1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";

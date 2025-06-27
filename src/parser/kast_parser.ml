@@ -315,7 +315,10 @@ module RuleSet = struct
   let parse_lines : string -> ruleset =
    fun s ->
     s |> String.split_on_char '\n'
-    |> List.filter_map (String.strip_prefix ~prefix:"syntax ")
+    |> List.filter (fun s ->
+           not (String.is_whitespace s || String.starts_with ~prefix:"#" s))
+    |> List.map (fun s -> String.strip_prefix ~prefix:"syntax " s |> Option.get)
+    |> List.map (fun s -> String.strip_suffix ~suffix:";" s |> Option.get)
     |> List.filter (fun line -> String.trim line <> "from_scratch")
     |> parse_list
 end
@@ -462,6 +465,9 @@ module Impl = struct
             Ast.SyntaxMode.FromScratch
         | _ -> Ast.SyntaxMode.Define (Rule.parse lexer)
       in
+      let token = Lexer.next lexer in
+      if token |> Token.is_raw ";" |> not then
+        error "expected \";\" to finish syntax, got %a" Token.print token;
       let tokens : Token.t list = Lexer.stop_rec tokens_rec in
       let span : span =
         {

@@ -30,4 +30,8 @@ module String = struct
     if starts_with ~prefix s then
       Some (sub s (length prefix) (length s - length prefix))
     else None
+
+  let strip_suffix ~suffix s =
+    if ends_with ~suffix s then Some (sub s 0 (length s - length suffix))
+    else None
 end

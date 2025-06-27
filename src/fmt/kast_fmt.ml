@@ -75,7 +75,8 @@ let format : formatter -> Parser.result -> unit =
           tokens
           |> List.iter (fun (token : Token.t) ->
                  if token.span.start > !pos then fprintf fmt " ";
-                 fprintf fmt "%s" (Token.raw token |> Option.get));
+                 fprintf fmt "%s" (Token.raw token |> Option.get);
+                 pos := token.span.finish);
           match value_after with
           | None -> ()
           | Some value ->
