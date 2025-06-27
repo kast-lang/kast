@@ -19,6 +19,8 @@ if true then (
     # comment
     print "true"# before semicolon
     ;
+    syntax foo 10 wrap never = "foo" " " _;
+    foo 5;
     print "true";
     # hello
     print "hi" "true";
@@ -45,6 +47,7 @@ if true then (
   )
 );
 (
+  foo 5;
   a + b
 # helo        
 )
