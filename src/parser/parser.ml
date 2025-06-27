@@ -71,19 +71,27 @@ module Rule = struct
   }
 
   type part =
-    | OpenBox of {
-        box_type : string;
-        indent : bool;
+    | Whitespace of {
+        nowrap : string;
+        wrap : string;
       }
-    | CloseBox
-    | Cut
     | Keyword of string
     | Value of binding
+
+  module WrapMode = struct
+    type t =
+      | Never
+      | Always
+      | IfAny
+  end
+
+  type wrap_mode = WrapMode.t
 
   type rule = {
     name : string;
     priority : float;
     parts : part list;
+    wrap_mode : wrap_mode;
   }
 
   type t = rule
@@ -126,7 +134,7 @@ module Rule = struct
         =
      fun values parts ->
       match (values, parts) with
-      | _, (Keyword _ | OpenBox _ | CloseBox | Cut) :: parts_tail ->
+      | _, (Keyword _ | Whitespace _) :: parts_tail ->
           collect_children values parts_tail
       | value :: values_tail, Value binding :: parts_tail ->
           (binding, value) :: collect_children values_tail parts_tail
@@ -164,6 +172,22 @@ module Rule = struct
           (Spanned.print Lexer.Token.print)
           token
     in
+    let wrap_mode =
+      let token = Lexer.next lexer in
+      if token.value |> Lexer.Token.is_raw "wrap" |> not then
+        error "Expected \"wrap\", got %a"
+          (Spanned.print Lexer.Token.print)
+          token;
+      let token = Lexer.next lexer in
+      match token.value with
+      | Ident { raw = "if_any"; _ } -> WrapMode.IfAny
+      | Ident { raw = "always"; _ } -> WrapMode.Always
+      | Ident { raw = "never"; _ } -> WrapMode.Never
+      | _ ->
+          error "Expected wrap mode, got %a"
+            (Spanned.print Lexer.Token.print)
+            token
+    in
     (let token = Lexer.next lexer in
      if Lexer.Token.raw token.value <> Some "=" then
        error "Expected \"=\", got %a" (Spanned.print Lexer.Token.print) token);
@@ -171,46 +195,29 @@ module Rule = struct
       let rec part ?(left_assoc = false) () : part option =
         let token = Lexer.peek lexer in
         match token.value with
-        | Punct { raw = "|"; _ } when not left_assoc ->
-            Lexer.advance lexer;
-            Some Cut
-        | Punct { raw = "["; _ } when not left_assoc ->
-            Lexer.advance lexer;
-            let indent : bool =
-              let token = Lexer.peek lexer in
-              match Lexer.Token.raw token.value with
-              | Some ">" ->
-                  Lexer.advance lexer;
-                  true
-              | _ -> false
-            in
-            let box_type =
-              let token = Lexer.next lexer in
-              let raw_token =
-                match Lexer.Token.raw token.value with
-                | Some raw -> raw
-                | None ->
-                    error "Expected box type, got %a"
-                      (Spanned.print Lexer.Token.print)
-                      token
-              in
-              match raw_token with
-              | "v" -> "v"
-              | "h" -> "h"
-              | "hv" -> "hv"
-              | "hov" -> "hov"
-              | other -> error "Unrecognized box type %S" other
-            in
-            Some (OpenBox { box_type; indent })
-        | Punct { raw = "]"; _ } when not left_assoc ->
-            Lexer.advance lexer;
-            Some CloseBox
         | Punct { raw = "<-"; _ } when not left_assoc ->
             Lexer.advance lexer;
             part ~left_assoc:true ()
         | String { contents; _ } when not left_assoc ->
-            Lexer.advance lexer;
-            Some (Keyword contents)
+            if String.is_whitespace contents then (
+              Lexer.advance lexer;
+              let nowrap = contents in
+              let wrap : string =
+                if (Lexer.peek lexer).value |> Lexer.Token.is_raw "/" then (
+                  Lexer.advance lexer;
+                  let token = Lexer.next lexer in
+                  match token.value with
+                  | String { contents; _ } -> contents
+                  | _ ->
+                      error "Expected wrap str, got %a"
+                        (Spanned.print Lexer.Token.print)
+                        token)
+                else nowrap
+              in
+              Some (Whitespace { nowrap; wrap }))
+            else (
+              Lexer.advance lexer;
+              Some (Keyword contents))
         | Ident { raw; _ } ->
             Lexer.advance lexer;
             let name = if raw = "_" then None else Some raw in
@@ -249,7 +256,7 @@ module Rule = struct
       | Some part -> part :: collect_parts ()
       | None -> []
     in
-    { name; priority; parts = collect_parts () }
+    { name; priority; parts = collect_parts (); wrap_mode }
 end
 
 type rule = Rule.t
@@ -345,14 +352,13 @@ module RuleSet = struct
                 next = node.next;
                 next_keywords = node.next_keywords;
               })
-      | (OpenBox _ | CloseBox | Cut) :: rest ->
-          insert ~prev_prev ~prev rest node
+      | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
       | first :: rest ->
           let edge : Edge.t =
             match first with
             | Keyword keyword -> Keyword keyword
             | Value _ -> Value
-            | OpenBox _ | CloseBox | Cut -> unreachable ":)"
+            | Whitespace _ -> unreachable ":)"
           in
           let merge_next : node option -> node option =
            fun current ->
@@ -373,7 +379,7 @@ module RuleSet = struct
               (match first with
               | Value _ -> node.next_keywords
               | Keyword keyword -> StringSet.add keyword node.next_keywords
-              | OpenBox _ | CloseBox | Cut -> unreachable ":)");
+              | Whitespace _ -> unreachable ":)");
           }
     in
     {

@@ -56,8 +56,8 @@ let test ~(source : string) ~(expected : string)
 Printexc.record_backtrace true;
 Log.set_max_level Debug;
 try
-  (let then_rule p = make_string "then %d = _ \";\" _" p in
-   let eq_rule p = make_string "eq %d = _ \"=\" _ " p in
+  (let then_rule p = make_string "then %d wrap never = _ \";\" _" p in
+   let eq_rule p = make_string "eq %d wrap never = _ \"=\" _ " p in
    test
      ~ruleset:(Parser.RuleSet.parse_list [ then_rule 0; eq_rule 1 ])
      ~source:"a=1;b=2" ~expected:"then( eq( a, 1 ), eq( b, 2 ) )" ();

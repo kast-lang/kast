@@ -100,13 +100,45 @@ let default_rules : rule list =
         let rec loop =
          fun () ->
           let/ c = Reader.peek reader in
-          Reader.advance reader;
           if c = delimeter then ()
           else (
+            Reader.advance reader;
+            let c =
+              if c = '\\' then (
+                let c =
+                  match Reader.peek reader with
+                  | Some c -> c
+                  | None ->
+                      error
+                        "Expected escaped char, got @{<italic><eof>@} @{<dim>at %a@}"
+                        Position.print reader.position
+                in
+                let result =
+                  match c with
+                  | '\\' -> '\\'
+                  | 'n' -> '\n'
+                  | 't' -> '\t'
+                  | _ ->
+                      error
+                        "Incorrect escape charater %C @{<italic><eof>@} @{<dim>at %a@}"
+                        c Position.print reader.position
+                in
+                Reader.advance reader;
+                result)
+              else c
+            in
             Buffer.add_char contents c;
             loop ())
         in
         loop ();
+        (match Reader.peek reader with
+        | Some c when c = delimeter -> Reader.advance reader
+        | Some c ->
+            error "Expected %C, got %C @{<dim>at %a@}" delimeter c
+              Position.print reader.position
+        | None ->
+            error "Expected %C, got @{<italic><eof>@} @{<dim>at %a@}" delimeter
+              Position.print reader.position);
         let token : Token.string =
           { raw = Reader.finish_rec raw; contents = Buffer.contents contents }
         in
