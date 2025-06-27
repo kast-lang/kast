@@ -148,7 +148,7 @@ class lsp_server =
 
       let new_state =
         process_some_input_file
-          { filename = Lsp.Types.DocumentUri.to_path uri; contents }
+          { filename = File (Lsp.Types.DocumentUri.to_path uri); contents }
       in
       Hashtbl.replace buffers uri new_state;
       let diags = diagnostics new_state in

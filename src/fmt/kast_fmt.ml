@@ -1,31 +1,12 @@
 open Std
 open Kast
 
-type args = { path : string option }
+type args = { path : path }
 
 let parse : string list -> args = function
-  | [] -> { path = None }
-  | [ path ] -> { path = Some path }
+  | [] -> { path = Stdin }
+  | [ path ] -> { path = File path }
   | first :: _rest -> fail "unexpected arg %S" first
-
-let read path : source =
-  let path =
-    match path with
-    | None | Some "-" -> None
-    | Some path -> Some path
-  in
-  let channel =
-    match path with
-    | Some path -> In_channel.open_text path
-    | None -> In_channel.stdin
-  in
-  let contents = In_channel.input_all channel in
-  let filename =
-    match path with
-    | Some path -> path
-    | None -> "<stdin>"
-  in
-  { contents; filename }
 
 type parent = {
   wrapped : bool;
@@ -134,7 +115,7 @@ let format : formatter -> Parser.result -> unit =
 
 let run : args -> unit =
  fun { path } ->
-  let source = read path in
+  let source = Source.read path in
   let ruleset = Default_syntax.ruleset in
   let parsed = Parser.parse source ruleset in
   parsed |> format Format.std_formatter;

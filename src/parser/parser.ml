@@ -403,7 +403,7 @@ module RuleSet = struct
     |> List.map (fun line ->
            let lexer =
              Lexer.init Lexer.default_rules
-               { contents = line; filename = "<rule>" }
+               { contents = line; filename = Special "rule" }
            in
            let rule = Rule.parse lexer in
            expect_eof lexer;

@@ -23,11 +23,43 @@ end
 
 type position = Position.t
 
+module Path = struct
+  type path =
+    | File of string
+    | Special of string
+    | Stdin
+
+  type t = path
+
+  let parse = function
+    | "-" -> Some Stdin
+    | path -> Some (File path)
+
+  let print fmt = function
+    | File path -> fprintf fmt "%s" path
+    | Special s -> fprintf fmt "<%s>" s
+    | Stdin -> fprintf fmt "<stdin>"
+end
+
+type path = Path.t
+
 module Source = struct
-  type t = {
+  type source = {
     contents : string;
-    filename : string;
+    filename : path;
   }
+
+  type t = source
+
+  let read (path : path) : source =
+    let channel =
+      match path with
+      | File path -> In_channel.open_text path
+      | Special s -> fail "No idea how to open %S" s
+      | Stdin -> In_channel.stdin
+    in
+    let contents = In_channel.input_all channel in
+    { contents; filename = path }
 end
 
 type source = Source.t
@@ -36,15 +68,15 @@ module Span = struct
   type t = {
     start : position;
     finish : position;
-    filename : string;
+    filename : path;
   }
 
   type span = t
 
   let print : 'a. formatter -> span -> unit =
    fun fmt { start; finish; filename } ->
-    fprintf fmt "%s:%d.%d-%d.%d" filename start.line start.column finish.line
-      finish.column
+    fprintf fmt "%a:%d.%d-%d.%d" Path.print filename start.line start.column
+      finish.line finish.column
 end
 
 type span = Span.t

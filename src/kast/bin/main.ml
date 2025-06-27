@@ -1,24 +1,24 @@
-open Common
+open Std
 open Kast
 
 let main () =
   let args = Cli.parse () in
   match args.command with
   | Cli.Command.Tokenize { path } ->
-      let source = read path in
+      let source = Source.read path in
       let tokens = Lexer.read_all Lexer.default_rules source in
       tokens
       |> List.iter (fun token ->
              println "%a" (Spanned.print Lexer.Token.print) token)
   | Cli.Command.Parse { path } -> (
-      let source = read path in
+      let source = Source.read path in
       let { ast; trailing_comments = _ } : Parser.result =
         Parser.parse source Default_syntax.ruleset
       in
       match ast with
       | Some ast -> println "%a" Ast.print ast
       | None -> println "<nothing>")
-  | Cli.Command.Highlight args -> Highlight.run args
+  | Cli.Command.Highlight args -> Kast_highlight.run args
   | Cli.Command.Lsp args -> Kast_lsp.run args
   | Cli.Command.Fmt args -> Kast_fmt.run args
   | Cli.Command.Help ->

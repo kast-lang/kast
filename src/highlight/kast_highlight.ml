@@ -1,4 +1,17 @@
-open Common
+open Std
+open Util
+
+module Args = struct
+  type args = { path : path }
+  type t = args
+
+  let parse : string list -> args = function
+    | [] -> { path = Stdin }
+    | [ path ] -> { path = File path }
+    | first :: _rest -> fail "Unexpected arg %S" first
+end
+
+type args = Args.t
 
 type printer = {
   fmt : formatter;
@@ -57,9 +70,9 @@ let rec print_ast (printer : printer) (ast : Ast.t) : unit =
            | Ast.Keyword token -> print_token printer print_keyword token
            | Ast.Comment comment -> print_comment printer comment)
 
-let run : Cli.Command.Common.t -> unit =
+let run : args -> unit =
  fun { path } ->
-  let source = read path in
+  let source = Source.read path in
   let lexer = Lexer.init Lexer.default_rules source in
   let { ast; trailing_comments } : Parser.result =
     Parser.parse_with_lexer lexer Default_syntax.ruleset

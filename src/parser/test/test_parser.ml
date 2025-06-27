@@ -25,7 +25,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
   try
     let { ast; trailing_comments = _ } : Parser.result =
       Parser.parse
-        { contents = source; filename = "<test>" }
+        { contents = source; filename = Special "<test>" }
         (ruleset |> Option.value ~default:Default_syntax.ruleset)
     in
     Log.error "Parsed: %a" (Option.print Ast.print) ast;
@@ -36,12 +36,12 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =
   let expected =
-    Simple_syntax.parse { contents = expected; filename = "<test>" }
+    Simple_syntax.parse { contents = expected; filename = Special "<test>" }
     |> Option.get
   in
   let { ast; trailing_comments = _ } : Parser.result =
     Parser.parse
-      { contents = source; filename = "<test>" }
+      { contents = source; filename = Special "<test>" }
       (ruleset |> Option.value ~default:Default_syntax.ruleset)
   in
   match ast with

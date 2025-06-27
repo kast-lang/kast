@@ -1,22 +1,6 @@
 open Std
 open Kast
 
-module Path = struct
-  type path =
-    | File of string
-    | Stdin
-
-  type t = path
-
-  let parse = function
-    | "-" -> Some Stdin
-    | path -> Some (File path)
-  (* | path when String.ends_with ~suffix:".ks" path -> Some (File path) *)
-  (* | _ -> None *)
-end
-
-type path = Path.t
-
 module Command = struct
   let unexpected arg = failwith @@ make_string "Unexpected arg %S" arg
   let is_valid_path path = String.ends_with ~suffix:".ks" path || path = "-"
@@ -39,7 +23,7 @@ module Command = struct
   type command =
     | Tokenize of Common.t
     | Parse of Common.t
-    | Highlight of Common.t
+    | Highlight of Kast_highlight.args
     | Lsp of Kast_lsp.args
     | Fmt of Kast_fmt.args
     | Help
@@ -50,7 +34,7 @@ module Command = struct
     | [] -> Help
     | "tokenize" :: args -> Tokenize (Common.parse args)
     | "parse" :: args -> Parse (Common.parse args)
-    | "highlight" :: args -> Highlight (Common.parse args)
+    | "highlight" :: args -> Highlight (Kast_highlight.Args.parse args)
     | "lsp" :: args -> Lsp (Kast_lsp.parse args)
     | ("fmt" | "format") :: args -> Fmt (Kast_fmt.parse args)
     | arg :: rest -> (
