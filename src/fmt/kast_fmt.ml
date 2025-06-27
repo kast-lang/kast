@@ -102,7 +102,7 @@ let format : formatter -> Parser.result -> unit =
   (* TODO not necessarily default *)
   let ruleset = Kast_default_syntax.ruleset in
   (match ast with
-  | Some ast -> fprintf fmt "@[<v>%a@]" (print_ast ruleset) ast
+  | Some ast -> print_ast ruleset fmt ast
   | None -> ());
   trailing_comments
   |> List.iter (fun (comment : Token.comment) ->
