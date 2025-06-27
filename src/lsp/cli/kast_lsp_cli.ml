@@ -1,5 +1,8 @@
 open Std
-open Util
+open Kast_util
+module Parser = Kast_parser
+module Lexer = Kast_lexer
+module Ast = Kast_ast
 
 module Args = struct
   type args = { dummy : unit }
@@ -17,7 +20,7 @@ type state_after_processing = { parsed : Parser.result option }
 let process_some_input_file (source : source) : state_after_processing =
   let parsed =
     try
-      let result = Parser.parse source Default_syntax.ruleset in
+      let result = Parser.parse source Kast_default_syntax.ruleset in
       Some result
     with _ -> None
   in

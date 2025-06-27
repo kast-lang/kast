@@ -1,3 +1,3 @@
 (library
- (name lexer)
- (libraries std util))
+ (name kast_lexer)
+ (libraries std kast_util))

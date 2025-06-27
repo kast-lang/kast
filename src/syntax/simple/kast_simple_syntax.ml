@@ -1,5 +1,8 @@
 open Std
-open Util
+open Kast_util
+module Parser = Kast_parser
+module Ast = Kast_ast
+module Lexer = Kast_lexer
 
 let ruleset : Parser.ruleset = Parser.RuleSet.parse_lines [%blob "rules"]
 

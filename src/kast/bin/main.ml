@@ -1,5 +1,4 @@
 open Std
-open Kast
 
 let () =
   let args = Cli.parse () in

@@ -1,5 +1,8 @@
 open Std
-open Util
+open Kast_util
+module Lexer = Kast_lexer
+module Parser = Kast_parser
+module Ast = Kast_ast
 
 type printer = {
   fmt : formatter;

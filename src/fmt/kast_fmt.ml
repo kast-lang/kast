@@ -1,5 +1,8 @@
 open Std
-open Kast
+open Kast_util
+module Parser = Kast_parser
+module Ast = Kast_ast
+module Lexer = Kast_lexer
 
 type parent = {
   wrapped : bool;
@@ -96,7 +99,7 @@ let format : formatter -> Parser.result -> unit =
     print_ast ~parent:None ast
   in
   (* TODO not necessarily default *)
-  let ruleset = Default_syntax.ruleset in
+  let ruleset = Kast_default_syntax.ruleset in
   (match ast with
   | Some ast -> fprintf fmt "@[<v>%a@]" (print_ast ruleset) ast
   | None -> ());

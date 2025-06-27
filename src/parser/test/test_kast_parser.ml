@@ -1,7 +1,10 @@
 open Std
-open Util
+open Kast_util
+module Ast = Kast_ast
+module Lexer = Kast_lexer
+module Parser = Kast_parser
 
-type expected = Simple_syntax.ast
+type expected = Kast_simple_syntax.ast
 
 let rec matches (ast : Ast.t) (expected : expected) : bool =
   match (ast.shape, expected) with
@@ -26,7 +29,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
     let { ast; trailing_comments = _; eof = _ } : Parser.result =
       Parser.parse
         { contents = source; filename = Special "<test>" }
-        (ruleset |> Option.value ~default:Default_syntax.ruleset)
+        (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
     in
     Log.error "Parsed: %a" (Option.print Ast.print) ast;
     failwith "Parse was supposed to fail"
@@ -36,19 +39,20 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =
   let expected =
-    Simple_syntax.parse { contents = expected; filename = Special "<test>" }
+    Kast_simple_syntax.parse
+      { contents = expected; filename = Special "<test>" }
     |> Option.get
   in
   let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse
       { contents = source; filename = Special "<test>" }
-      (ruleset |> Option.value ~default:Default_syntax.ruleset)
+      (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
   in
   match ast with
   | Some ast ->
       if not (matches ast expected) then (
         Log.error "Parsed: %a" Ast.print ast;
-        Log.error "Expected %a" Simple_syntax.print expected;
+        Log.error "Expected %a" Kast_simple_syntax.print expected;
         failwith "Test failed")
   | None -> failwith "nothing was parsed"
 ;;

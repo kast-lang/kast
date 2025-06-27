@@ -1,5 +1,6 @@
-open Util
 open Std
+open Kast_util
+module Lexer = Kast_lexer
 module Token = Lexer.Token
 
 type token = Token.t

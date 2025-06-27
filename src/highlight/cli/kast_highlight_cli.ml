@@ -1,5 +1,7 @@
 open Std
-open Util
+open Kast_util
+module Lexer = Kast_lexer
+module Parser = Kast_parser
 
 module Args = struct
   type args = { path : path }
@@ -15,5 +17,5 @@ let run : Args.t -> unit =
  fun { path } ->
   let source = Source.read path in
   let lexer = Lexer.init Lexer.default_rules source in
-  let parsed = Parser.parse_with_lexer lexer Default_syntax.ruleset in
+  let parsed = Parser.parse_with_lexer lexer Kast_default_syntax.ruleset in
   Kast_highlight.print Format.std_formatter parsed

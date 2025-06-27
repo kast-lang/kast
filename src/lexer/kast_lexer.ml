@@ -1,5 +1,5 @@
 open Std
-open Util
+open Kast_util
 module Token = Token
 module Reader = Reader
 

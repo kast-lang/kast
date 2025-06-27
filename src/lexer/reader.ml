@@ -1,5 +1,5 @@
 open Std
-open Util
+open Kast_util
 
 type reader = {
   contents : string;

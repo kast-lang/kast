@@ -1,6 +1,6 @@
 (library
- (name default_syntax)
- (libraries parser)
+ (name kast_default_syntax)
+ (libraries kast_parser)
  (preprocessor_deps
   (file rules))
  (preprocess
