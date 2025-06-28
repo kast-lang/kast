@@ -23,6 +23,8 @@ let assign : state -> assignee_expr -> value -> unit =
   match assignee.shape with
   | A_Placeholder -> ()
   | A_Binding { name } ->
+      if StringMap.find_opt name state.scope.bindings |> Option.is_none then
+        fail "trying to assign to undefined variable %S" name;
       state.scope <-
         {
           bindings =

@@ -115,7 +115,25 @@ let let' : handler =
         | _ -> fail "assign must be expr");
   }
 
-let core = [ apply; then'; scope; assign; let' ]
+let placeholder : handler =
+  {
+    name = "placeholder";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        children
+        :
+        a
+      ->
+        Tuple.assert_empty children;
+        match kind with
+        | Assignee -> { shape = A_Placeholder }
+        | Pattern -> { shape = P_Placeholder }
+        | Expr -> fail "todo _ expr");
+  }
+
+let core = [ apply; then'; scope; assign; let'; placeholder ]
 
 (*  TODO remove *)
 
