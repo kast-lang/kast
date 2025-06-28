@@ -11,6 +11,11 @@ module Position = struct
 
   let beginning : position = { index = 0; line = 1; column = 1 }
 
+  let compare : position -> position -> int =
+   fun a b ->
+    let line = Int.compare a.line b.line in
+    if line <> 0 then line else Int.compare a.column b.column
+
   let advance : char -> position -> position =
    fun c p ->
     match c with
@@ -72,6 +77,11 @@ module Span = struct
   }
 
   type span = t
+
+  let contains : position -> span -> bool =
+   fun pos span ->
+    Position.compare span.start pos <= 0
+    && Position.compare pos span.finish <= 0
 
   let print : 'a. formatter -> span -> unit =
    fun fmt { start; finish; filename } ->

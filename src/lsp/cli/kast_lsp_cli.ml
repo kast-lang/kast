@@ -126,6 +126,34 @@ type linecol = {
 let linecol (pos : position) : linecol =
   { line = pos.line; column = pos.column }
 
+let span_to_range (span : span) : Lsp.Types.Range.t =
+  {
+    start = { line = span.start.line - 1; character = span.start.column - 1 };
+    end_ = { line = span.finish.line - 1; character = span.finish.column - 1 };
+  }
+
+let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
+  if Span.contains pos ast.span then
+    ast.span
+    ::
+    (match ast.shape with
+    | Simple _ -> []
+    | Complex { children; _ } -> (
+        let child_spans =
+          children |> Tuple.to_seq
+          |> Seq.find_map (fun (_member, child) ->
+                 let child_spans = find_spans_start_biggest child pos in
+                 if List.length child_spans = 0 then None else Some child_spans)
+        in
+        match child_spans with
+        | None -> []
+        | Some child_spans -> child_spans)
+    | Syntax { value_after; _ } -> (
+        match value_after with
+        | None -> []
+        | Some value -> find_spans_start_biggest value pos))
+  else []
+
 class lsp_server =
   object (self)
     inherit Linol_lwt.Jsonrpc2.server
@@ -138,6 +166,7 @@ class lsp_server =
           Some (`DocumentFormattingOptions { workDoneProgress = Some false });
         semanticTokensProvider =
           Some (`SemanticTokensRegistrationOptions semanticTokensProvider);
+        selectionRangeProvider = Some (`Bool true);
       }
 
     (* one env per document *)
@@ -179,6 +208,46 @@ class lsp_server =
     method on_notif_doc_did_close ~notify_back:_ d : unit Linol_lwt.t =
       Hashtbl.remove buffers d.uri;
       Linol_lwt.return ()
+
+    method private on_selection_range :
+        notify_back:Linol_lwt.Jsonrpc2.notify_back ->
+        Lsp.Types.SelectionRangeParams.t ->
+        Lsp.Types.SelectionRange.t list Lwt.t =
+      fun ~notify_back:_ params ->
+        Log.info "got selection range request";
+        let { parsed; _ } = Hashtbl.find buffers params.textDocument.uri in
+        match parsed with
+        | Some { ast = Some ast; eof; _ } ->
+            params.positions
+            |> List.map (fun (position : Lsp.Types.Position.t) ->
+                   let pos : position =
+                     {
+                       (* we dont need it *)
+                       index = 0;
+                       line = position.line + 1;
+                       column = position.character + 1;
+                     }
+                   in
+                   let full_file : span =
+                     {
+                       start = Position.beginning;
+                       finish = eof;
+                       filename =
+                         File (params.textDocument.uri |> Lsp.Uri.to_path);
+                     }
+                   in
+                   let spans = full_file :: find_spans_start_biggest ast pos in
+                   Log.info "SPANS: %a" (List.print Span.print) spans;
+                   spans
+                   |> List.fold_left
+                        (fun parent (span : span) ->
+                          Some
+                            ({ parent; range = span |> span_to_range }
+                              : Lsp.Types.SelectionRange.t))
+                        None
+                   |> Option.get)
+            |> Linol_lwt.return
+        | Some { ast = None; _ } | None -> Linol_lwt.return []
 
     method private on_format :
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
@@ -312,6 +381,7 @@ class lsp_server =
         r Lwt.t =
       fun ~notify_back ~id:_ request ->
         match request with
+        | SelectionRange params -> self#on_selection_range ~notify_back params
         | TextDocumentFormatting params -> self#on_format ~notify_back params
         | SemanticTokensFull params ->
             self#on_semantic_tokens ~notify_back params
