@@ -165,14 +165,10 @@ let default_rules : rule list =
   let read_ident reader =
     let* c = Reader.peek reader in
     if Char.is_alpha c || c = '_' then
-      let ident : Token.Shape.ident =
-        {
-          raw =
-            Reader.read_while
-              (fun c -> Char.is_alphanumeric c || c = '_')
-              reader;
-        }
+      let raw =
+        Reader.read_while (fun c -> Char.is_alphanumeric c || c = '_') reader
       in
+      let ident : Token.Shape.ident = { raw; name = raw } in
       Some (Token.Shape.Ident ident)
     else None
   in

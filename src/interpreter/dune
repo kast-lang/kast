@@ -1,0 +1,3 @@
+(library
+ (name kast_interpreter)
+ (libraries std kast_types))

@@ -3,7 +3,11 @@ open Kast_util
 
 module Shape = struct
   type punct = { raw : string }
-  type ident = { raw : string }
+
+  type ident = {
+    raw : string;
+    name : string;
+  }
 
   type string_shape = {
     raw : string;

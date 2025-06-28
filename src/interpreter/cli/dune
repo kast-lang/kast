@@ -1,0 +1,8 @@
+(library
+ (name kast_interpreter_cli)
+ (libraries
+  std
+  kast_parser
+  kast_interpreter
+  kast_compiler
+  kast_default_syntax))

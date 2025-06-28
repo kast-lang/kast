@@ -1,0 +1,3 @@
+(library
+ (name kast_types)
+ (libraries std kast_util))

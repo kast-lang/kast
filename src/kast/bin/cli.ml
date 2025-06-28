@@ -7,6 +7,7 @@ module Command = struct
     | Highlight of Kast_highlight_cli.Args.t
     | Lsp of Kast_lsp_cli.Args.t
     | Fmt of Kast_fmt_cli.Args.t
+    | Eval of Kast_interpreter_cli.Args.t
     | Help
 
   type t = command
@@ -19,6 +20,7 @@ module Command = struct
         Highlight (Kast_highlight_cli.Args.parse args)
     | ("lsp" | "language-server") :: args -> Lsp (Kast_lsp_cli.Args.parse args)
     | ("fmt" | "format") :: args -> Fmt (Kast_fmt_cli.Args.parse args)
+    | "eval" :: args -> Eval (Kast_interpreter_cli.Args.parse args)
     | arg :: _rest -> fail "Unexpected arg %S" arg
 end
 
