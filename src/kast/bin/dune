@@ -8,4 +8,5 @@
   kast_fmt_cli
   kast_highlight_cli
   kast_lsp_cli
-  kast_interpreter_cli))
+  kast_interpreter_cli
+  kast_compiler_cli))

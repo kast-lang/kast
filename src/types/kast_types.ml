@@ -34,15 +34,23 @@ type ty = Ty.t
 module Expr = struct
   type t = expr
 
+  let print = print_expr
+
   module Shape = struct
     type t = expr_shape
+
+    let print = print_expr_shape
   end
 
   module Assignee = struct
     type t = assignee_expr
 
+    let print = print_assignee_expr
+
     module Shape = struct
       type t = assignee_expr_shape
+
+      let print = print_assignee_expr_shape
     end
   end
 
@@ -53,6 +61,20 @@ type expr = Expr.t
 
 module Pattern = struct
   type t = pattern
+
+  let print = print_pattern
+
+  module Shape = struct
+    type t = pattern_shape
+
+    let print = print_pattern_shape
+  end
 end
 
 type pattern = Pattern.t
+
+module Binding = struct
+  type t = binding
+
+  let print = print_binding
+end

@@ -8,6 +8,7 @@ module Command = struct
     | Lsp of Kast_lsp_cli.Args.t
     | Fmt of Kast_fmt_cli.Args.t
     | Eval of Kast_interpreter_cli.Args.t
+    | Compile of Kast_compiler_cli.Args.t
     | Help
 
   type t = command
@@ -21,6 +22,7 @@ module Command = struct
     | ("lsp" | "language-server") :: args -> Lsp (Kast_lsp_cli.Args.parse args)
     | ("fmt" | "format") :: args -> Fmt (Kast_fmt_cli.Args.parse args)
     | "eval" :: args -> Eval (Kast_interpreter_cli.Args.parse args)
+    | "compile" :: args -> Compile (Kast_compiler_cli.Args.parse args)
     | arg :: _rest -> fail "Unexpected arg %S" arg
 end
 

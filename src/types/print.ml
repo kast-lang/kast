@@ -30,21 +30,26 @@ and print_ty : formatter -> ty -> unit =
 (* EXPR *)
 and print_expr_shape : formatter -> expr_shape -> unit =
  fun fmt -> function
-  | E_Constant value -> fprintf fmt "const %a" print_value value
-  | E_Binding binding -> fprintf fmt "binding %a" print_binding binding
+  | E_Constant value -> fprintf fmt "@{<magenta>const@} %a" print_value value
+  | E_Binding binding ->
+      fprintf fmt "@{<magenta>binding@} %a" print_binding binding
   | E_Then { a; b } ->
-      fprintf fmt "then %a" (Tuple.print print_expr) (Tuple.make [ a; b ] [])
+      fprintf fmt "@{<magenta>then@} %a" (Tuple.print print_expr)
+        (Tuple.make [ a; b ] [])
   | E_Scope { expr } ->
-      fprintf fmt "scope %a" (Tuple.print print_expr) (Tuple.make [ expr ] [])
+      fprintf fmt "@{<magenta>scope@} %a" (Tuple.print print_expr)
+        (Tuple.make [ expr ] [])
   | E_Fn { arg; body } ->
-      fprintf fmt "fn (@,<0 2>@[<v>arg = %a,@]@,<0 2>@[<v>body = %a@]@ )"
+      fprintf fmt
+        "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
         print_pattern arg print_expr body
   | E_Tuple { tuple } -> fprintf fmt "tuple %a" (Tuple.print print_expr) tuple
   | E_Apply { f; arg } ->
-      fprintf fmt "apply %a" (Tuple.print print_expr)
+      fprintf fmt "@{<magenta>apply@} %a" (Tuple.print print_expr)
         (Tuple.make [] [ ("f", f); ("arg", arg) ])
   | E_Assign { assignee; value } ->
-      fprintf fmt "assign (@ @[<v>assignee = %a,@]@ @[<v>value = %a@])"
+      fprintf fmt
+        "@{<magenta>assign@} (@;<0 2>@[<v>assignee = %a,@]@;<0 2>@[<v>value = %a@]@ )"
         print_assignee_expr assignee print_expr value
 
 and print_expr : formatter -> expr -> unit =
@@ -54,9 +59,10 @@ and print_expr : formatter -> expr -> unit =
 
 and print_assignee_expr_shape : formatter -> assignee_expr_shape -> unit =
  fun fmt -> function
-  | A_Placeholder -> fprintf fmt "_"
-  | A_Binding binding -> fprintf fmt "binding %a" print_binding binding
-  | A_Let pattern -> fprintf fmt "let %a" print_pattern pattern
+  | A_Placeholder -> fprintf fmt "@{<magenta>_@}"
+  | A_Binding binding ->
+      fprintf fmt "@{<magenta>binding@} %a" print_binding binding
+  | A_Let pattern -> fprintf fmt "@{<magenta>let@} %a" print_pattern pattern
 
 and print_assignee_expr : formatter -> assignee_expr -> unit =
  fun fmt expr -> print_assignee_expr_shape fmt expr.shape
@@ -65,8 +71,9 @@ and print_assignee_expr : formatter -> assignee_expr -> unit =
 
 and print_pattern_shape : formatter -> pattern_shape -> unit =
  fun fmt -> function
-  | P_Placeholder -> fprintf fmt "_"
-  | P_Binding binding -> fprintf fmt "binding %a" print_binding binding
+  | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
+  | P_Binding binding ->
+      fprintf fmt "@{<magenta>binding@} %a" print_binding binding
 
 and print_pattern : formatter -> pattern -> unit =
  fun fmt pattern -> print_pattern_shape fmt pattern.shape
