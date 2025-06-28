@@ -5,7 +5,7 @@ module Token = Kast_token
 module Interpreter = Kast_interpreter
 module Ast = Kast_ast
 
-type state = { interpreter : Interpreter.state }
+type state = State.t
 
 let init : unit -> state = fun () -> { interpreter = Interpreter.init () }
 
@@ -23,12 +23,9 @@ let rec compile : state -> Ast.t -> expr =
       | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
           unreachable "!")
   | Ast.Complex { rule; parts = _; children } -> (
-      match rule.name with
-      | "core:apply" ->
-          let f = Tuple.get_named "f" children in
-          let arg = Tuple.get_named "arg" children in
-          let f = compile state f in
-          let arg = compile state arg in
-          { shape = E_Apply { f; arg } }
-      | _ -> fail "todo compile syntax rule %S" rule.name)
+      match rule.name |> String.strip_prefix ~prefix:"core:" with
+      | Some name ->
+          let handler = Core_syntax.handlers |> StringMap.find name in
+          handler ~compile ~state children
+      | None -> fail "todo compile syntax rule %S" rule.name)
   | Ast.Syntax _ -> fail "todo"

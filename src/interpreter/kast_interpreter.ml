@@ -6,20 +6,8 @@ type bindings = value StringMap.t
 type scope = { bindings : bindings }
 type state = { scope : scope }
 
-let builtins =
-  let native_fn name impl : string * value =
-    (name, { shape = V_NativeFn { name; impl } })
-  in
-  [
-    native_fn "print" (fun value ->
-        (match value.shape with
-        | V_String s -> println "%s" s
-        | _ -> fail "print expected a string");
-        { shape = V_Unit });
-  ]
-
 let init : unit -> state =
- fun () -> { scope = { bindings = StringMap.of_list builtins } }
+ fun () -> { scope = { bindings = StringMap.of_list Builtins.builtins } }
 
 let pattern_match : value -> pattern -> bindings =
  fun value pattern ->
