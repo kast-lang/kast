@@ -4,7 +4,9 @@ open Kast_types
 module Ast = Kast_ast
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
-type 'a handle = (module Compiler.S) -> 'a compiled_kind -> Ast.t tuple -> 'a
+
+type 'a handle =
+  (module Compiler.S) -> 'a compiled_kind -> Ast.t tuple -> span -> 'a
 
 type handler = {
   name : string;
@@ -19,6 +21,7 @@ let apply : handler =
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         children
+        span
         :
         a
       ->
@@ -29,7 +32,7 @@ let apply : handler =
         | Expr ->
             let f = Compiler.compile Expr f in
             let arg = Compiler.compile Expr arg in
-            { shape = E_Apply { f; arg } }
+            { shape = E_Apply { f; arg }; span }
         | _ -> fail "apply must be expr");
   }
 
@@ -42,6 +45,7 @@ let then' : handler =
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         children
+        span
         :
         a
       ->
@@ -50,7 +54,7 @@ let then' : handler =
         | Expr ->
             let a = Compiler.compile Expr a in
             let b = Compiler.compile Expr b in
-            { shape = E_Then { a; b } }
+            { shape = E_Then { a; b }; span }
         | _ -> fail "then must be expr");
   }
 
@@ -62,6 +66,7 @@ let scope : handler =
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         children
+        span
         :
         a
       ->
@@ -69,7 +74,7 @@ let scope : handler =
         match kind with
         | Expr ->
             let expr = Compiler.compile Expr expr in
-            { shape = E_Scope { expr } }
+            { shape = E_Scope { expr }; span }
         | Assignee -> Compiler.compile Assignee expr
         | Pattern -> Compiler.compile Pattern expr);
   }
@@ -82,6 +87,7 @@ let assign : handler =
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         children
+        span
         :
         a
       ->
@@ -92,7 +98,7 @@ let assign : handler =
         | Expr ->
             let assignee = Compiler.compile Assignee assignee in
             let value = Compiler.compile Expr value in
-            { shape = E_Assign { assignee; value } }
+            { shape = E_Assign { assignee; value }; span }
         | _ -> fail "assign must be expr");
   }
 
@@ -104,6 +110,7 @@ let let' : handler =
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         children
+        span
         :
         a
       ->
@@ -111,7 +118,7 @@ let let' : handler =
         match kind with
         | Assignee ->
             let pattern = Compiler.compile Pattern pattern in
-            { shape = A_Let pattern }
+            { shape = A_Let pattern; span }
         | _ -> fail "assign must be expr");
   }
 
@@ -123,13 +130,14 @@ let placeholder : handler =
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         children
+        span
         :
         a
       ->
         Tuple.assert_empty children;
         match kind with
-        | Assignee -> { shape = A_Placeholder }
-        | Pattern -> { shape = P_Placeholder }
+        | Assignee -> { shape = A_Placeholder; span }
+        | Pattern -> { shape = P_Placeholder; span }
         | Expr -> fail "todo _ expr %s" __LOC__);
   }
 
@@ -145,6 +153,7 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         children
+        span
         :
         a
       ->
@@ -173,9 +182,14 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
               shape =
                 E_Apply
                   {
-                    f = { shape = E_Constant add };
-                    arg = { shape = E_Tuple { tuple = Tuple.make [ a; b ] [] } };
+                    f = { shape = E_Constant add; span };
+                    arg =
+                      {
+                        shape = E_Tuple { tuple = Tuple.make [ a; b ] [] };
+                        span;
+                      };
                   };
+              span;
             }
         | _ -> fail "bin op must be expr");
   }

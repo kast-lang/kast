@@ -16,7 +16,7 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
 
 and print_value : formatter -> value -> unit =
- fun fmt value -> print_value_shape fmt value.shape
+ fun fmt { shape } -> print_value_shape fmt shape
 
 (* TY *)
 and print_ty_shape : formatter -> ty_shape -> unit =
@@ -25,7 +25,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Int32 -> fprintf fmt "int32"
 
 and print_ty : formatter -> ty -> unit =
- fun fmt ty -> print_ty_shape fmt ty.shape
+ fun fmt { shape } -> print_ty_shape fmt shape
 
 (* EXPR *)
 and print_expr_shape : formatter -> expr_shape -> unit =
@@ -53,7 +53,8 @@ and print_expr_shape : formatter -> expr_shape -> unit =
         print_assignee_expr assignee print_expr value
 
 and print_expr : formatter -> expr -> unit =
- fun fmt expr -> print_expr_shape fmt expr.shape
+ fun fmt { shape; span } ->
+  fprintf fmt "%a @{<dim>at %a@}" print_expr_shape shape Span.print span
 
 (* ASSIGNEE EXPR *)
 
@@ -62,10 +63,14 @@ and print_assignee_expr_shape : formatter -> assignee_expr_shape -> unit =
   | A_Placeholder -> fprintf fmt "@{<magenta>_@}"
   | A_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
-  | A_Let pattern -> fprintf fmt "@{<magenta>let@} %a" print_pattern pattern
+  | A_Let pattern ->
+      fprintf fmt "@{<magenta>let@} (@;<0 2>pattern = %a@ )" print_pattern
+        pattern
 
 and print_assignee_expr : formatter -> assignee_expr -> unit =
- fun fmt expr -> print_assignee_expr_shape fmt expr.shape
+ fun fmt { shape; span } ->
+  fprintf fmt "%a @{<dim>at %a@}" print_assignee_expr_shape shape Span.print
+    span
 
 (* PATTERN *)
 
@@ -76,7 +81,8 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
 
 and print_pattern : formatter -> pattern -> unit =
- fun fmt pattern -> print_pattern_shape fmt pattern.shape
+ fun fmt { shape; span } ->
+  fprintf fmt "%a @{<dim>at %a@}" print_pattern_shape shape Span.print span
 
 (* OTHER *)
 and print_binding : formatter -> binding -> unit =

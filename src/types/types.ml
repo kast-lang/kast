@@ -64,7 +64,10 @@ and expr_shape =
   | E_Apply of expr_apply
   | E_Assign of expr_assign
 
-and expr = { shape : expr_shape }
+and expr = {
+  shape : expr_shape;
+  span : span;
+}
 
 (* ASSIGNEE EXPR *)
 and assignee_expr_shape =
@@ -72,14 +75,20 @@ and assignee_expr_shape =
   | A_Binding of binding
   | A_Let of pattern
 
-and assignee_expr = { shape : assignee_expr_shape }
+and assignee_expr = {
+  shape : assignee_expr_shape;
+  span : span;
+}
 
 (* PATTERN *)
 and pattern_shape =
   | P_Placeholder
   | P_Binding of binding
 
-and pattern = { shape : pattern_shape }
+and pattern = {
+  shape : pattern_shape;
+  span : span;
+}
 
 (* OTHER *)
 and binding = { name : string }
