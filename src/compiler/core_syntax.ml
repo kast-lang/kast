@@ -130,14 +130,14 @@ let placeholder : handler =
         match kind with
         | Assignee -> { shape = A_Placeholder }
         | Pattern -> { shape = P_Placeholder }
-        | Expr -> fail "todo _ expr");
+        | Expr -> fail "todo _ expr %s" __LOC__);
   }
 
 let core = [ apply; then'; scope; assign; let'; placeholder ]
 
 (*  TODO remove *)
 
-let make_binop ~name (f : value_shape * value_shape -> value_shape) : handler =
+let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
   {
     name;
     handle =
@@ -186,28 +186,28 @@ let todo_remove =
       | V_Int32 a, V_Int32 b ->
           let ( + ) = Int32.add in
           V_Int32 (a + b)
-      | _ -> fail "todo")
+      | _ -> fail "todo %s" __LOC__)
   in
   let sub : handler =
     make_binop ~name:"sub" (function
       | V_Int32 a, V_Int32 b ->
           let ( - ) = Int32.sub in
           V_Int32 (a - b)
-      | _ -> fail "todo")
+      | _ -> fail "todo %s" __LOC__)
   in
   let mul : handler =
     make_binop ~name:"mul" (function
       | V_Int32 a, V_Int32 b ->
           let ( * ) = Int32.mul in
           V_Int32 (a * b)
-      | _ -> fail "todo")
+      | _ -> fail "todo %s" __LOC__)
   in
   let div : handler =
     make_binop ~name:"div" (function
       | V_Int32 a, V_Int32 b ->
           let ( / ) = Int32.div in
           V_Int32 (a / b)
-      | _ -> fail "todo")
+      | _ -> fail "todo %s" __LOC__)
   in
   [ add; sub; mul; div ]
 

@@ -3,4 +3,4 @@
 (env
  (dev
   (flags
-   (:standard -g -warn-error -A+8+9))))
+   (:standard -g -warn-error -A+8+9 -w -33))))

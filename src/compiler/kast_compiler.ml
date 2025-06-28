@@ -53,7 +53,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
           in
           handler.handle (make_compiler state) kind children
       | None -> fail "todo compile syntax rule %S" rule.name)
-  | Ast.Syntax _ -> fail "todo"
+  | Ast.Syntax _ -> fail "todo %s" __LOC__
 
 and make_compiler (state : state) : (module Compiler.S) =
   (module struct

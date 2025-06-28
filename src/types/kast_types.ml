@@ -1,95 +1,58 @@
-open Std
-open Kast_util
-
-type _unused
-
-and value_shape =
-  | V_Unit
-  | V_Int32 of int32
-  | V_String of string
-  | V_Tuple of value_tuple
-  | V_Ty of ty
-  | V_Fn of value_fn
-  | V_NativeFn of value_native_fn
-
-and value = { shape : value_shape }
-and value_fn = expr_fn
-and value_tuple = { tuple : value tuple }
-
-and value_native_fn = {
-  name : string;
-  impl : value -> value;
-}
-
-and ty_shape =
-  | T_Int32
-  | T_Ty
-
-and ty = { shape : ty_shape }
-
-and expr_fn = {
-  arg : pattern;
-  body : expr;
-}
-
-and expr_then = {
-  a : expr;
-  b : expr;
-}
-
-and expr_tuple = { tuple : expr tuple }
-
-and expr_apply = {
-  f : expr;
-  arg : expr;
-}
-
-and expr_scope = { expr : expr }
-
-and expr_assign = {
-  assignee : assignee_expr;
-  value : expr;
-}
-
-and expr_shape =
-  | E_Constant of value
-  | E_Binding of binding
-  | E_Then of expr_then
-  | E_Scope of expr_scope
-  | E_Fn of expr_fn
-  | E_Tuple of expr_tuple
-  | E_Apply of expr_apply
-  | E_Assign of expr_assign
-
-and expr = { shape : expr_shape }
-
-and assignee_expr_shape =
-  | A_Placeholder
-  | A_Binding of binding
-  | A_Let of pattern
-
-and assignee_expr = { shape : assignee_expr_shape }
-
-and pattern_shape =
-  | P_Placeholder
-  | P_Binding of binding
-
-and pattern = { shape : pattern_shape }
-and binding = { name : string }
+open Types
+open Print
 
 module Value = struct
+  type t = value
+
+  let print = print_value
+
   module Shape = struct
-    let print : formatter -> value_shape -> unit =
-     fun fmt -> function
-      | V_Unit -> fprintf fmt "()"
-      | V_Ty ty -> fail "todo"
-      | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
-      | V_String value -> fprintf fmt "@{<green>%S@}" value
-      | V_Tuple _ -> fail "todo"
-      | V_Fn f -> fail "todo"
-      | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
+    type t = value_shape
+
+    let print = print_value_shape
   end
 
-  let print : formatter -> value -> unit =
-   fun fmt value -> Shape.print fmt value.shape
+  type shape = Shape.t
 end
+
+type value = Value.t
+
+module Ty = struct
+  type t = ty
+
+  let print = print_ty
+
+  module Shape = struct
+    type t = ty_shape
+
+    let print = print_ty_shape
+  end
+end
+
+type ty = Ty.t
+
+module Expr = struct
+  type t = expr
+
+  module Shape = struct
+    type t = expr_shape
+  end
+
+  module Assignee = struct
+    type t = assignee_expr
+
+    module Shape = struct
+      type t = assignee_expr_shape
+    end
+  end
+
+  type assignee = Assignee.t
+end
+
+type expr = Expr.t
+
+module Pattern = struct
+  type t = pattern
+end
+
+type pattern = Pattern.t

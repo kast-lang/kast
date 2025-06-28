@@ -18,7 +18,7 @@ let pattern_match : value -> pattern -> bindings =
   | P_Placeholder -> StringMap.empty
   | P_Binding binding -> StringMap.singleton binding.name value
 
-let assign : state -> assignee_expr -> value -> unit =
+let assign : state -> Expr.assignee -> value -> unit =
  fun state assignee value ->
   match assignee.shape with
   | A_Placeholder -> ()

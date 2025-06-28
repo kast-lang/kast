@@ -4,7 +4,7 @@ open Kast_types
 module Ast = Kast_ast
 
 type _ compiled_kind =
-  | Assignee : assignee_expr compiled_kind
+  | Assignee : Expr.assignee compiled_kind
   | Expr : expr compiled_kind
   | Pattern : pattern compiled_kind
 
