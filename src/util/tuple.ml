@@ -99,6 +99,19 @@ module Tuple = struct
     Format.pp_print_iter ~pp_sep:comma List.iter print_named fmt
       (List.rev named_order_rev);
     Format.pp_print_custom_break fmt ~fits:("", 1, ")") ~breaks:(",", 0, ")")
+
+  let map : 'a 'b. ('a -> 'b) -> 'a tuple -> 'b tuple =
+   fun f { unnamed; named; named_order_rev } ->
+    {
+      unnamed = unnamed |> Array.map f;
+      named_order_rev;
+      named =
+        named_order_rev |> List.rev
+        |> List.map (fun name ->
+               let current = StringMap.find name named in
+               (name, f current))
+        |> StringMap.of_list;
+    }
 end
 
 type 'a tuple = 'a Tuple.tuple

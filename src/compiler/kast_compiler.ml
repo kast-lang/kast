@@ -25,7 +25,11 @@ let rec compile : state -> Ast.t -> expr =
   | Ast.Complex { rule; parts = _; children } -> (
       match rule.name |> String.strip_prefix ~prefix:"core:" with
       | Some name ->
-          let handler = Core_syntax.handlers |> StringMap.find name in
+          let handler =
+            Core_syntax.handlers |> StringMap.find_opt name
+            |> Option.unwrap_or_else (fun () ->
+                   fail "there is no core syntax %S" name)
+          in
           handler ~compile ~state children
       | None -> fail "todo compile syntax rule %S" rule.name)
   | Ast.Syntax _ -> fail "todo"

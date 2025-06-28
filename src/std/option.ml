@@ -15,6 +15,12 @@ module Option = struct
     | Some x -> Some x
     | None -> f ()
 
+  let unwrap_or_else : 'a. (unit -> 'a) -> 'a option -> 'a =
+   fun f opt ->
+    match opt with
+    | Some x -> x
+    | None -> f ()
+
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a option -> unit =
    fun print_value fmt opt ->
     match opt with

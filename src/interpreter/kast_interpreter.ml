@@ -21,6 +21,11 @@ let rec eval : state -> expr -> value =
   | E_Constant value -> value
   | E_Binding binding -> StringMap.find binding.name state.scope.bindings
   | E_Fn fn -> { shape = V_Fn fn }
+  | E_Tuple { tuple } ->
+      { shape = V_Tuple { tuple = tuple |> Tuple.map (eval state) } }
+  | E_Then { a; b } ->
+      ignore @@ eval state a;
+      eval state b
   | E_Apply { f; arg } -> (
       let f = eval state f in
       let arg = eval state arg in

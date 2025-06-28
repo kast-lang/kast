@@ -7,12 +7,14 @@ and value_shape =
   | V_Unit
   | V_Int32 of int32
   | V_String of string
+  | V_Tuple of value_tuple
   | V_Ty of ty
   | V_Fn of value_fn
   | V_NativeFn of value_native_fn
 
 and value = { shape : value_shape }
 and value_fn = expr_fn
+and value_tuple = { tuple : value tuple }
 
 and value_native_fn = {
   name : string;
@@ -30,6 +32,13 @@ and expr_fn = {
   body : expr;
 }
 
+and expr_then = {
+  a : expr;
+  b : expr;
+}
+
+and expr_tuple = { tuple : expr tuple }
+
 and expr_apply = {
   f : expr;
   arg : expr;
@@ -38,7 +47,9 @@ and expr_apply = {
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
+  | E_Then of expr_then
   | E_Fn of expr_fn
+  | E_Tuple of expr_tuple
   | E_Apply of expr_apply
 
 and expr = { shape : expr_shape }
@@ -58,6 +69,7 @@ module Value = struct
       | V_Ty ty -> fail "todo"
       | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
       | V_String value -> fprintf fmt "@{<green>%S@}" value
+      | V_Tuple _ -> fail "todo"
       | V_Fn f -> fail "todo"
       | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
   end
