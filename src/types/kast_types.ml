@@ -4,12 +4,20 @@ open Kast_util
 type _unused
 
 and value_shape =
+  | V_Unit
   | V_Int32 of int32
+  | V_String of string
   | V_Ty of ty
   | V_Fn of value_fn
+  | V_NativeFn of value_native_fn
 
 and value = { shape : value_shape }
 and value_fn = expr_fn
+
+and value_native_fn = {
+  name : string;
+  impl : value -> value;
+}
 
 and ty_shape =
   | T_Int32
@@ -46,9 +54,12 @@ module Value = struct
   module Shape = struct
     let print : formatter -> value_shape -> unit =
      fun fmt -> function
+      | V_Unit -> fprintf fmt "()"
       | V_Ty ty -> fail "todo"
-      | V_Int32 value -> fprintf fmt "%s" (Int32.to_string value)
+      | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
+      | V_String value -> fprintf fmt "@{<green>%S@}" value
       | V_Fn f -> fail "todo"
+      | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
   end
 
   let print : formatter -> value -> unit =
