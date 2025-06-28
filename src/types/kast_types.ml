@@ -46,6 +46,11 @@ and expr_apply = {
 
 and expr_scope = { expr : expr }
 
+and expr_assign = {
+  assignee : assignee_expr;
+  value : expr;
+}
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -54,8 +59,16 @@ and expr_shape =
   | E_Fn of expr_fn
   | E_Tuple of expr_tuple
   | E_Apply of expr_apply
+  | E_Assign of expr_assign
 
 and expr = { shape : expr_shape }
+
+and assignee_expr_shape =
+  | A_Placeholder
+  | A_Binding of binding
+  | A_Let of pattern
+
+and assignee_expr = { shape : assignee_expr_shape }
 
 and pattern_shape =
   | P_Placeholder

@@ -4,7 +4,10 @@ open Kast_types
 
 type bindings = value StringMap.t
 type scope = { bindings : bindings }
-type state = { scope : scope }
+type state = { mutable scope : scope }
+
+let add_bindings =
+  StringMap.union (fun _name _old_value new_value -> Some new_value)
 
 let init : unit -> state =
  fun () -> { scope = { bindings = StringMap.of_list Builtins.builtins } }
@@ -14,6 +17,21 @@ let pattern_match : value -> pattern -> bindings =
   match pattern.shape with
   | P_Placeholder -> StringMap.empty
   | P_Binding binding -> StringMap.singleton binding.name value
+
+let assign : state -> assignee_expr -> value -> unit =
+ fun state assignee value ->
+  match assignee.shape with
+  | A_Placeholder -> ()
+  | A_Binding { name } ->
+      state.scope <-
+        {
+          bindings =
+            add_bindings state.scope.bindings (StringMap.singleton name value);
+        }
+  | A_Let pattern ->
+      let new_bindings = pattern_match value pattern in
+      state.scope <-
+        { bindings = add_bindings state.scope.bindings new_bindings }
 
 let rec eval : state -> expr -> value =
  fun state expr ->
@@ -27,6 +45,10 @@ let rec eval : state -> expr -> value =
       ignore @@ eval state a;
       eval state b
   | E_Scope { expr } -> eval state expr
+  | E_Assign { assignee; value } ->
+      let value = eval state value in
+      assign state assignee value;
+      { shape = V_Unit }
   | E_Apply { f; arg } -> (
       let f = eval state f in
       let arg = eval state arg in
@@ -36,12 +58,7 @@ let rec eval : state -> expr -> value =
           let new_state =
             {
               scope =
-                {
-                  bindings =
-                    StringMap.union
-                      (fun _name _old_value new_value -> Some new_value)
-                      state.scope.bindings new_bindings;
-                };
+                { bindings = add_bindings state.scope.bindings new_bindings };
             }
           in
           let result = eval new_state f.body in

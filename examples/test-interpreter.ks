@@ -1,2 +1,4 @@
 print "Hello, World!";
-2 + 2 * 3 / 3
+let x = 3;
+x = 2;
+2 + x

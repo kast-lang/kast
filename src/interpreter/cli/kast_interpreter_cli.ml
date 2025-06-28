@@ -23,7 +23,7 @@ let eval : Args.t -> unit =
   | None -> println "<none>"
   | Some ast ->
       let compiler = Compiler.init () in
-      let expr : expr = Compiler.compile compiler ast in
+      let expr : expr = Compiler.compile compiler Expr ast in
       let interpreter = Interpreter.init () in
       let value : value = Interpreter.eval interpreter expr in
       println "%a" Value.print value
