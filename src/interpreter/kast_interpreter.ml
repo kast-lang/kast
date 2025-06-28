@@ -26,6 +26,7 @@ let rec eval : state -> expr -> value =
   | E_Then { a; b } ->
       ignore @@ eval state a;
       eval state b
+  | E_Scope { expr } -> eval state expr
   | E_Apply { f; arg } -> (
       let f = eval state f in
       let arg = eval state arg in

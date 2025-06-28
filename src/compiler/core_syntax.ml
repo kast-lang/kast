@@ -23,10 +23,19 @@ let then' : string * handler =
       let b = compile state b in
       { shape = E_Then { a; b } } )
 
-(*  TODO remove *)
-let add : string * handler =
-  ( "add",
+(* a; b *)
+let scope : string * handler =
+  ( "scope",
     fun ~compile ~state children ->
+      let expr = Tuple.unwrap_single_unnamed children in
+      let expr = compile state expr in
+      { shape = E_Scope { expr } } )
+
+(*  TODO remove *)
+
+let make_binop ~name (f : value_shape * value_shape -> value_shape) =
+  ( name,
+    fun ~compile ~state children : expr ->
       let a, b = Tuple.unwrap_unnamed2 children in
       let a = compile state a in
       let b = compile state b in
@@ -35,17 +44,13 @@ let add : string * handler =
           shape =
             V_NativeFn
               {
-                name = "add";
+                name;
                 impl =
                   (fun arg ->
                     match arg.shape with
-                    | V_Tuple { tuple } -> (
+                    | V_Tuple { tuple } ->
                         let a, b = Tuple.unwrap_unnamed2 tuple in
-                        match (a.shape, b.shape) with
-                        | V_Int32 a, V_Int32 b ->
-                            let ( + ) = Int32.add in
-                            { shape = V_Int32 (a + b) }
-                        | _ -> fail "todo")
+                        { shape = f (a.shape, b.shape) }
                     | _ -> fail "expected a tuple");
               };
         }
@@ -59,4 +64,37 @@ let add : string * handler =
             };
       } )
 
-let handlers : handler StringMap.t = StringMap.of_list [ apply; then'; add ]
+let core = [ apply; then'; scope ]
+
+let todo_remove =
+  let add : string * handler =
+    make_binop ~name:"add" (function
+      | V_Int32 a, V_Int32 b ->
+          let ( + ) = Int32.add in
+          V_Int32 (a + b)
+      | _ -> fail "todo")
+  in
+  let sub : string * handler =
+    make_binop ~name:"sub" (function
+      | V_Int32 a, V_Int32 b ->
+          let ( - ) = Int32.sub in
+          V_Int32 (a - b)
+      | _ -> fail "todo")
+  in
+  let mul : string * handler =
+    make_binop ~name:"mul" (function
+      | V_Int32 a, V_Int32 b ->
+          let ( * ) = Int32.mul in
+          V_Int32 (a * b)
+      | _ -> fail "todo")
+  in
+  let div : string * handler =
+    make_binop ~name:"div" (function
+      | V_Int32 a, V_Int32 b ->
+          let ( / ) = Int32.div in
+          V_Int32 (a / b)
+      | _ -> fail "todo")
+  in
+  [ add; sub; mul; div ]
+
+let handlers : handler StringMap.t = StringMap.of_list (core @ todo_remove)
