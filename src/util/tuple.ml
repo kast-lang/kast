@@ -112,6 +112,57 @@ module Tuple = struct
                (name, f current))
         |> StringMap.of_list;
     }
+
+  let unwrap : 'a. unnamed:int -> named:string list -> 'a tuple -> 'a list =
+   fun ~unnamed ~named tuple ->
+    let actual_unnamed = tuple.unnamed |> Array.length in
+    if actual_unnamed <> unnamed then
+      fail "Expected %d unnamed fields, got %d" unnamed actual_unnamed;
+    let named_set = StringSet.of_list named in
+    let actual_unnamed = tuple.named_order_rev |> StringSet.of_list in
+    if StringSet.equal named_set actual_unnamed |> not then
+      fail "Expected named fields %a, got %a"
+        (List.print String.print_dbg)
+        named
+        (List.print String.print_dbg)
+        (tuple.named_order_rev |> List.rev);
+    List.append
+      (tuple.unnamed |> Array.to_list)
+      (named |> List.map (fun name -> StringMap.find name tuple.named))
+
+  let assert_empty : 'a. 'a tuple -> unit =
+   fun tuple -> ignore @@ unwrap ~unnamed:0 ~named:[] tuple
+
+  let unwrap_single_unnamed : 'a. 'a tuple -> 'a =
+   fun tuple ->
+    match unwrap ~unnamed:1 ~named:[] tuple with
+    | [ a ] -> a
+    | _ -> unreachable "Tuple.unwrap_single_unnamed"
+
+  let unwrap_single_named : 'a. string -> 'a tuple -> 'a =
+   fun name tuple ->
+    match unwrap ~unnamed:0 ~named:[ name ] tuple with
+    | [ a ] -> a
+    | _ -> unreachable "Tuple.unwrap_single_unnamed"
+
+  let unwrap2 : 'a. unnamed:int -> named:string list -> 'a tuple -> 'a * 'a =
+   fun ~unnamed ~named tuple ->
+    match unwrap ~unnamed ~named tuple with
+    | [ a; b ] -> (a, b)
+    | _ -> invalid_arg "Tuple.unwrap2"
+
+  let unwrap_unnamed2 tuple = unwrap2 ~unnamed:2 ~named:[] tuple
+  let unwrap_named2 names tuple = unwrap2 ~unnamed:0 ~named:names tuple
+
+  let unwrap3 : 'a. unnamed:int -> named:string list -> 'a tuple -> 'a * 'a * 'a
+      =
+   fun ~unnamed ~named tuple ->
+    match unwrap ~unnamed ~named tuple with
+    | [ a; b; c ] -> (a, b, c)
+    | _ -> invalid_arg "Tuple.unwrap3"
+
+  let unwrap_unnamed3 tuple = unwrap3 ~unnamed:2 ~named:[] tuple
+  let unwrap_named3 names tuple = unwrap3 ~unnamed:0 ~named:names tuple
 end
 
 type 'a tuple = 'a Tuple.tuple
