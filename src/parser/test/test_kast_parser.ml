@@ -14,7 +14,12 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
   | Simple _, _ -> false
   | ( Complex { rule; parts = _; children },
       Complex { name = expected_name; children = expected_children } ) -> (
-      rule.name = expected_name
+      let rule_name =
+        rule.name
+        |> String.strip_prefix ~prefix:"core:"
+        |> Option.value ~default:rule.name
+      in
+      rule_name = expected_name
       &&
       try
         Tuple.zip_order_a children expected_children

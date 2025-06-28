@@ -24,7 +24,7 @@ let rec compile : state -> Ast.t -> expr =
           unreachable "!")
   | Ast.Complex { rule; parts = _; children } -> (
       match rule.name with
-      | "apply" ->
+      | "core:apply" ->
           let f = Tuple.get_named "f" children in
           let arg = Tuple.get_named "arg" children in
           let f = compile state f in
