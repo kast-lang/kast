@@ -43,7 +43,7 @@ let test ~(source : string) ~(expected : expected_token list) : unit =
   if
     List.compare_lengths expected tokens <> 0
     || not
-       @@ List.for_all
+       <| List.for_all
             (fun (expected, token) -> ExpectedToken.check expected token)
             (List.zip expected tokens)
   then
@@ -52,7 +52,7 @@ let test ~(source : string) ~(expected : expected_token list) : unit =
       fprintln fmt "got: %a" (List.print Token.print) tokens;
       fprintln fmt "expected: %a" (List.print ExpectedToken.print) expected
     in
-    raise @@ FailFormat f
+    raise <| FailFormat f
 ;;
 
 Printexc.record_backtrace true;

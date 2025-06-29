@@ -31,11 +31,11 @@ module Value = struct
     | V_Int32 _ -> Ty.inferred T_Int32
     | V_String _ -> Ty.inferred T_String
     | V_Tuple { tuple } ->
-        Ty.inferred @@ T_Tuple { tuple = Tuple.map ty_of tuple }
+        Ty.inferred <| T_Tuple { tuple = Tuple.map ty_of tuple }
     | V_Ty _ -> Ty.inferred T_Ty
     | V_Fn { arg; body } ->
-        Ty.inferred @@ T_Fn { arg = arg.ty; result = body.ty }
-    | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred @@ T_Fn ty
+        Ty.inferred <| T_Fn { arg = arg.ty; result = body.ty }
+    | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
 
   let print = print_value
 

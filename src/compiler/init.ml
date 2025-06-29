@@ -12,17 +12,17 @@ let init_expr : span -> Expr.Shape.t -> expr =
     | E_Then { a; b } -> b.ty
     | E_Scope { expr } -> expr.ty
     | E_Fn { arg; body } ->
-        Ty.inferred @@ T_Fn { arg = arg.ty; result = body.ty }
+        Ty.inferred <| T_Fn { arg = arg.ty; result = body.ty }
     | E_Tuple { tuple } ->
         Ty.inferred
-        @@ T_Tuple
+        <| T_Tuple
              { tuple = tuple |> Tuple.map (fun (field : expr) -> field.ty) }
     | E_Apply { f; arg } ->
         let f_arg = Ty.new_not_inferred () in
         let f_result = Ty.new_not_inferred () in
         f.ty
         |> Inference.Ty.expect_inferred_as
-             (Ty.inferred @@ T_Fn { arg = f_arg; result = f_result });
+             (Ty.inferred <| T_Fn { arg = f_arg; result = f_result });
         arg.ty |> Inference.Ty.expect_inferred_as f_arg;
         f_result
     | E_Assign { assignee; value } ->

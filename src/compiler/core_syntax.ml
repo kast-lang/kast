@@ -172,7 +172,7 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
                         {
                           arg =
                             Ty.inferred
-                            @@ T_Tuple
+                            <| T_Tuple
                                  {
                                    tuple =
                                      Tuple.make

@@ -15,11 +15,11 @@ let () =
     | _ -> None)
 
 let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
- fun format -> Format.kdprintf (fun f -> raise @@ Error f) format
+ fun format -> Format.kdprintf (fun f -> raise <| Error f) format
 
 let expect_eof : Lexer.t -> unit =
  fun lexer ->
-  try Lexer.expect_eof lexer with Lexer.Error f -> raise @@ Error f
+  try Lexer.expect_eof lexer with Lexer.Error f -> raise <| Error f
 
 module Rule = struct
   let parse : Lexer.t -> Syntax.rule =
@@ -513,7 +513,7 @@ module Impl = struct
                   (Ast.Simple
                      { comments_before = !comments_before; token = peek })
             | Ident { raw = "syntax"; _ } ->
-                return @@ Some (parse_syntax_extension ())
+                return <| Some (parse_syntax_extension ())
             | Ident { raw; _ } ->
                 if RuleSet.is_keyword raw ruleset then None
                 else

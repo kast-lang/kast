@@ -300,7 +300,7 @@ class lsp_server =
               in
               tokens
               |> Seq.flat_map (fun ({ token; span } : Tokens.token) ->
-                     let pos = ref @@ linecol span.start in
+                     let pos = ref <| linecol span.start in
                      Seq.of_dispenser (fun () ->
                          if !pos = linecol span.finish then None
                          else
@@ -372,7 +372,7 @@ class lsp_server =
               Lsp.Types.SemanticTokens.create ~data ?resultId:None ()
             in
             Log.info "replied with semantic tokens";
-            Linol_lwt.return @@ Some tokens
+            Linol_lwt.return <| Some tokens
 
     method! on_request_unhandled : type r.
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->

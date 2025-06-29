@@ -13,7 +13,7 @@ let () =
     | _ -> None)
 
 let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
- fun format -> Format.kdprintf (fun f -> raise @@ Error f) format
+ fun format -> Format.kdprintf (fun f -> raise <| Error f) format
 
 type rule = Reader.t -> Token.Shape.t option
 
@@ -82,7 +82,7 @@ let next : lexer -> Token.t =
   lexer.peeked <- None;
   result
 
-let advance : lexer -> unit = fun lexer -> ignore @@ next lexer
+let advance : lexer -> unit = fun lexer -> ignore <| next lexer
 
 let expect_next : lexer -> string -> unit =
  fun lexer expected_raw ->
@@ -104,7 +104,7 @@ let default_rules : rule list =
     | None -> Some Token.Shape.Eof
   in
   let read_whitespace reader =
-    ignore @@ Reader.read_while Char.is_whitespace reader;
+    ignore <| Reader.read_while Char.is_whitespace reader;
     None
   in
   let read_string reader =

@@ -29,9 +29,9 @@ let skip : char -> reader -> unit =
   | Some c when c = expected -> advance reader
   | Some c ->
       failwith
-      @@ make_string "expected %C, got %C at %a" expected c Position.print
+      <| make_string "expected %C, got %C at %a" expected c Position.print
            reader.position
-  | None -> failwith @@ make_string "expected %C, got <eof>" expected
+  | None -> failwith <| make_string "expected %C, got <eof>" expected
 
 type recording = {
   reader : reader;

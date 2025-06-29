@@ -131,7 +131,7 @@ module Tuple = struct
       (named |> List.map (fun name -> StringMap.find name tuple.named))
 
   let assert_empty : 'a. 'a tuple -> unit =
-   fun tuple -> ignore @@ unwrap ~unnamed:0 ~named:[] tuple
+   fun tuple -> ignore <| unwrap ~unnamed:0 ~named:[] tuple
 
   let unwrap_single_unnamed : 'a. 'a tuple -> 'a =
    fun tuple ->

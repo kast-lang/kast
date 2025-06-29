@@ -44,7 +44,7 @@ let rec eval : state -> expr -> value =
   | E_Tuple { tuple } ->
       { shape = V_Tuple { tuple = tuple |> Tuple.map (eval state) } }
   | E_Then { a; b } ->
-      ignore @@ eval state a;
+      ignore <| eval state a;
       eval state b
   | E_Scope { expr } -> eval state expr
   | E_Assign { assignee; value } ->

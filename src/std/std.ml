@@ -37,5 +37,5 @@ let () =
         exit 1
     | _ -> None)
 
-let fail f = Format.kdprintf (fun f -> raise @@ FailFormat f) f
 let ( <| ) = ( @@ )
+let fail f = Format.kdprintf (fun f -> raise <| FailFormat f) f

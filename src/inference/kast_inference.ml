@@ -33,7 +33,7 @@ and unite_ty_shape : Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
 and unite_ty : ty -> ty -> ty =
  fun { var = a } { var = b } -> { var = Var.unite unite_ty_shape a b }
 
-let expect unite expected x = ignore @@ unite expected x
+let expect unite expected x = ignore <| unite expected x
 
 module Ty = struct
   let expect_inferred_as expected ty = expect unite_ty expected ty
