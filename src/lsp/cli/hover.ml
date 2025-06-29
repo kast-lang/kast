@@ -13,7 +13,7 @@ type hover_info = {
   span : span;
 }
 
-let hover_text info = make_string "%a" Ty.print info.ty
+let hover_text info = make_string "```kast\n%a\n```" Ty.print info.ty
 
 let data : 'a. 'a compiled_kind -> 'a -> span * ty =
  fun (type a) (kind : a compiled_kind) (compiled : a) ->
