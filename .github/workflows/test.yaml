@@ -60,6 +60,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist
+          path: dist
       - uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: dist
