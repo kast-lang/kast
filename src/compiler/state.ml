@@ -28,8 +28,7 @@ module Scope = struct
    fun ident scope ->
     scope |> find_binding_opt ident
     |> Option.unwrap_or_else (fun () : binding ->
-           (* TODO fail "Could not find %S in scope" ident.name *)
-           { name = ident.name; ty = Ty.new_not_inferred () })
+           fail "Could not find %S in scope" ident.name)
 
   let inject_binding : binding -> scope -> scope =
    fun binding { parent; bindings } ->
