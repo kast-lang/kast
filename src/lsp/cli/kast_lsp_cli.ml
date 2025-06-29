@@ -1,9 +1,11 @@
 open Std
 open Kast_util
+module Compiler = Kast_compiler
 module Token = Kast_token
 module Lexer = Kast_lexer
 module Ast = Kast_ast
 module Parser = Kast_parser
+open Kast_types
 
 module Args = struct
   type args = { dummy : unit }
@@ -16,7 +18,10 @@ end
 
 module Lsp = Linol.Lsp
 
-type state_after_processing = { parsed : Parser.result option }
+type state_after_processing = {
+  parsed : Parser.result option;
+  compiled : expr option;
+}
 
 let process_some_input_file (source : source) : state_after_processing =
   let parsed =
@@ -25,7 +30,13 @@ let process_some_input_file (source : source) : state_after_processing =
       Some result
     with _ -> None
   in
-  { parsed }
+  let ast = Option.bind parsed (fun ({ ast; _ } : Parser.result) -> ast) in
+  let compiled =
+    Option.bind ast (fun ast ->
+        let compiler = Compiler.init () in
+        try Some (Compiler.compile compiler Expr ast) with _ -> None)
+  in
+  { parsed; compiled }
 
 module Tokens = struct
   type token_shape =
@@ -154,6 +165,70 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
         | Some value -> find_spans_start_biggest value pos))
   else []
 
+let rec inlay_hints :
+    'a. 'a Compiler.compiled_kind -> 'a -> Lsp.Types.InlayHint.t Seq.t =
+ fun (type a) (kind : a Compiler.compiled_kind) (compiled : a) ->
+  let span, ((type_hint : string option), rest) =
+    match kind with
+    | Expr ->
+        ( compiled.span,
+          match compiled.shape with
+          | E_Constant _ -> (None, Seq.empty)
+          | E_Binding _ -> (None, Seq.empty)
+          | E_Then { a; b } ->
+              (None, Seq.append (inlay_hints Expr a) (inlay_hints Expr b))
+          | E_Scope { expr } -> (None, inlay_hints Expr expr)
+          | E_Fn { arg; body } ->
+              ( None,
+                Seq.append (inlay_hints Pattern arg) (inlay_hints Expr body) )
+          | E_Tuple { tuple } ->
+              ( None,
+                tuple |> Tuple.to_seq
+                |> Seq.flat_map (fun (_member, expr) -> inlay_hints Expr expr)
+              )
+          | E_Apply { f; arg } ->
+              (None, Seq.append (inlay_hints Expr f) (inlay_hints Expr arg))
+          | E_Assign { assignee; value } ->
+              ( None,
+                Seq.append
+                  (inlay_hints Assignee assignee)
+                  (inlay_hints Expr value) ) )
+    | Pattern ->
+        ( compiled.span,
+          match compiled.shape with
+          | P_Placeholder -> (None, Seq.empty)
+          | P_Binding _ ->
+              (Some (make_string ":: %a" Ty.print compiled.ty), Seq.empty) )
+    | Assignee ->
+        ( compiled.span,
+          match compiled.shape with
+          | A_Placeholder -> (None, Seq.empty)
+          | A_Binding _ -> (None, Seq.empty)
+          | A_Let pattern -> (None, inlay_hints Pattern pattern) )
+  in
+  let hint : Lsp.Types.InlayHint.t option =
+    type_hint
+    |> Option.map (fun type_hint : Lsp.Types.InlayHint.t ->
+           {
+             position =
+               {
+                 line = span.finish.line - 1;
+                 character = span.finish.column - 1;
+               };
+             label = `String type_hint;
+             kind = Some Type;
+             textEdits = None;
+             tooltip = None;
+             paddingLeft = Some true;
+             paddingRight = Some false;
+             data = None;
+           })
+  in
+  Seq.append (hint |> Option.to_seq) rest
+
+let inlay_hints (expr : expr) : Lsp.Types.InlayHint.t list =
+  inlay_hints Expr expr |> List.of_seq
+
 class lsp_server =
   object (self)
     inherit Linol_lwt.Jsonrpc2.server
@@ -167,6 +242,7 @@ class lsp_server =
         semanticTokensProvider =
           Some (`SemanticTokensRegistrationOptions semanticTokensProvider);
         selectionRangeProvider = Some (`Bool true);
+        inlayHintProvider = Some (`Bool true);
       }
 
     (* one env per document *)
@@ -208,6 +284,19 @@ class lsp_server =
     method on_notif_doc_did_close ~notify_back:_ d : unit Linol_lwt.t =
       Hashtbl.remove buffers d.uri;
       Linol_lwt.return ()
+
+    method! on_req_inlay_hint ~notify_back:_ ~id:_ ~uri
+        ~(range : Lsp.Types.Range.t) () : Lsp.Types.InlayHint.t list option IO.t
+        =
+      let _ = range in
+      Log.info "got inlay hint req";
+      let { compiled; _ } = Hashtbl.find buffers uri in
+      match compiled with
+      | None -> IO.return None
+      | Some expr ->
+          let hints = inlay_hints expr in
+          Log.info "replying to inlay hint req";
+          IO.return <| Some hints
 
     method private on_selection_range :
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
