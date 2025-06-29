@@ -32,8 +32,9 @@ and print_ty : formatter -> ty -> unit =
  fun fmt { var } -> Inference.Var.print print_ty_shape fmt var
 
 (* EXPR *)
-and print_expr_shape : formatter -> expr_shape -> unit =
- fun fmt -> function
+and print_expr_shape :
+    (formatter -> expr -> unit) -> formatter -> expr_shape -> unit =
+ fun print_expr fmt -> function
   | E_Constant value -> fprintf fmt "@{<magenta>const@} %a" print_value value
   | E_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
@@ -46,7 +47,7 @@ and print_expr_shape : formatter -> expr_shape -> unit =
   | E_Fn { arg; body } ->
       fprintf fmt
         "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-        print_pattern arg print_expr body
+        print_pattern_with_spans arg print_expr body
   | E_Tuple { tuple } -> fprintf fmt "tuple %a" (Tuple.print print_expr) tuple
   | E_Apply { f; arg } ->
       fprintf fmt "@{<magenta>apply@} %a" (Tuple.print print_expr)
@@ -54,11 +55,19 @@ and print_expr_shape : formatter -> expr_shape -> unit =
   | E_Assign { assignee; value } ->
       fprintf fmt
         "@{<magenta>assign@} (@;<0 2>@[<v>assignee = %a,@]@;<0 2>@[<v>value = %a@]@ )"
-        print_assignee_expr assignee print_expr value
+        print_assignee_expr_with_spans assignee print_expr value
 
-and print_expr : formatter -> expr -> unit =
+and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; span; ty = _ } ->
-  fprintf fmt "%a @{<dim>at %a@}" print_expr_shape shape Span.print span
+  fprintf fmt "%a @{<dim>at %a@}"
+    (print_expr_shape print_expr_with_spans)
+    shape Span.print span
+
+and print_expr_with_types : formatter -> expr -> unit =
+ fun fmt { shape; span = _; ty } ->
+  fprintf fmt "%a @{<dim>:: %a@}"
+    (print_expr_shape print_expr_with_types)
+    shape print_ty ty
 
 (* ASSIGNEE EXPR *)
 
@@ -68,10 +77,10 @@ and print_assignee_expr_shape : formatter -> assignee_expr_shape -> unit =
   | A_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
   | A_Let pattern ->
-      fprintf fmt "@{<magenta>let@} (@;<0 2>pattern = %a@ )" print_pattern
-        pattern
+      fprintf fmt "@{<magenta>let@} (@;<0 2>pattern = %a@ )"
+        print_pattern_with_spans pattern
 
-and print_assignee_expr : formatter -> assignee_expr -> unit =
+and print_assignee_expr_with_spans : formatter -> assignee_expr -> unit =
  fun fmt { shape; span; ty = _ } ->
   fprintf fmt "%a @{<dim>at %a@}" print_assignee_expr_shape shape Span.print
     span
@@ -84,7 +93,7 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
   | P_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
 
-and print_pattern : formatter -> pattern -> unit =
+and print_pattern_with_spans : formatter -> pattern -> unit =
  fun fmt { shape; span; ty = _ } ->
   fprintf fmt "%a @{<dim>at %a@}" print_pattern_shape shape Span.print span
 

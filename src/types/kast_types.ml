@@ -53,7 +53,8 @@ type value = Value.t
 module Expr = struct
   type t = expr
 
-  let print = print_expr
+  let print_with_spans = print_expr_with_spans
+  let print_with_types = print_expr_with_types
 
   module Shape = struct
     type t = expr_shape
@@ -64,7 +65,7 @@ module Expr = struct
   module Assignee = struct
     type t = assignee_expr
 
-    let print = print_assignee_expr
+    let print_with_spans = print_assignee_expr_with_spans
 
     module Shape = struct
       type t = assignee_expr_shape
@@ -81,7 +82,7 @@ type expr = Expr.t
 module Pattern = struct
   type t = pattern
 
-  let print = print_pattern
+  let print_with_spans = print_pattern_with_spans
 
   module Shape = struct
     type t = pattern_shape

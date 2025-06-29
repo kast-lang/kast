@@ -23,4 +23,4 @@ let run : Args.t -> unit =
   | Some ast ->
       let compiler = Compiler.init () in
       let expr : expr = Compiler.compile compiler Expr ast in
-      println "%a" Expr.print expr
+      println "%a" Expr.print_with_types expr
