@@ -3,11 +3,8 @@ open Kast_util
 module Ast = Kast_ast
 module Lsp = Linol.Lsp
 
-let span_to_range (span : span) : Lsp.Types.Range.t =
-  {
-    start = { line = span.start.line - 1; character = span.start.column - 1 };
-    end_ = { line = span.finish.line - 1; character = span.finish.column - 1 };
-  }
+let options : Lsp.Types.SelectionRangeRegistrationOptions.t =
+  { workDoneProgress = None; id = None; documentSelector = None }
 
 let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
   if Span.contains pos ast.span then
@@ -59,7 +56,7 @@ let get (params : Lsp.Types.SelectionRangeParams.t)
              |> List.fold_left
                   (fun parent (span : span) ->
                     Some
-                      ({ parent; range = span |> span_to_range }
+                      ({ parent; range = span |> Common.span_to_range }
                         : Lsp.Types.SelectionRange.t))
                   None
              |> Option.get)

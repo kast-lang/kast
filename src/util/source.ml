@@ -78,10 +78,14 @@ module Span = struct
 
   type span = t
 
-  let contains : position -> span -> bool =
+  let touches : position -> span -> bool =
    fun pos span ->
     Position.compare span.start pos <= 0
     && Position.compare pos span.finish <= 0
+
+  let contains : position -> span -> bool =
+   fun pos span ->
+    Position.compare span.start pos <= 0 && Position.compare pos span.finish < 0
 
   let print : 'a. formatter -> span -> unit =
    fun fmt { start; finish; filename } ->

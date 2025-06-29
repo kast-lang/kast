@@ -4,6 +4,14 @@ module Lsp = Linol.Lsp
 module Compiler = Kast_compiler
 open Kast_types
 
+let options : Lsp.Types.InlayHintRegistrationOptions.t =
+  {
+    workDoneProgress = None;
+    resolveProvider = None;
+    id = None;
+    documentSelector = None;
+  }
+
 let rec inlay_hints :
     'a. 'a Compiler.compiled_kind -> 'a -> Lsp.Types.InlayHint.t Seq.t =
  fun (type a) (kind : a Compiler.compiled_kind) (compiled : a) ->

@@ -2,6 +2,9 @@ open Std
 open Kast_util
 module Lsp = Linol.Lsp
 
+let options : Lsp.Types.DocumentFormattingOptions.t =
+  { workDoneProgress = Some false }
+
 let run (_params : Lsp.Types.DocumentFormattingParams.t)
     ({ parsed; _ } : Processing.file_state) : Lsp.Types.TextEdit.t list option =
   Log.info "got format request";

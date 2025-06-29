@@ -49,7 +49,7 @@ let rec collect : Ast.t -> token Seq.t =
                { token = Unknown token.shape; span = token.span }))
         (value_after |> Option.to_seq |> Seq.flat_map collect)
 
-let provider =
+let options : Lsp.Types.SemanticTokensRegistrationOptions.t =
   let legend =
     Lsp.Types.SemanticTokensLegend.create
       ~tokenTypes:

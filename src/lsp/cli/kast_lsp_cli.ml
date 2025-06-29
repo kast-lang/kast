@@ -26,11 +26,14 @@ class lsp_server =
       {
         c with
         documentFormattingProvider =
-          Some (`DocumentFormattingOptions { workDoneProgress = Some false });
+          Some (`DocumentFormattingOptions Formatting.options);
         semanticTokensProvider =
-          Some (`SemanticTokensRegistrationOptions Semantic_tokens.provider);
-        selectionRangeProvider = Some (`Bool true);
-        inlayHintProvider = Some (`Bool true);
+          Some (`SemanticTokensRegistrationOptions Semantic_tokens.options);
+        selectionRangeProvider =
+          Some (`SelectionRangeRegistrationOptions Selection_range.options);
+        inlayHintProvider =
+          Some (`InlayHintRegistrationOptions Inlay_hints.options);
+        hoverProvider = Some (`HoverOptions Hover.options);
       }
 
     (* one env per document *)
@@ -77,6 +80,10 @@ class lsp_server =
         ~(range : Lsp.Types.Range.t) () :
         Lsp.Types.InlayHint.t list option Linol_lwt.t =
       Linol_lwt.return (Hashtbl.find buffers uri |> Inlay_hints.get range)
+
+    method! on_req_hover ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
+        (_ : Linol_lwt.doc_state) : Lsp.Types.Hover.t option Linol_lwt.t =
+      Linol_lwt.return (Hashtbl.find buffers uri |> Hover.run pos)
 
     method private on_selection_range :
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
