@@ -23,6 +23,7 @@ module type Output = sig
   val print_keyword : printer -> Token.Shape.t -> unit
   val print_syntax_part : printer -> Token.Shape.t -> unit
   val print_value : printer -> Token.Shape.t -> unit
+  val move_to_eof : printer -> position -> unit
 end
 
 (* Highlight for a terminal *)
@@ -67,6 +68,8 @@ module Term : Output = struct
     | Punct { raw; _ } -> fprintf fmt "%s" raw
     | Comment _ -> unreachable "<comment> value??"
     | Eof -> unreachable "<eof> value??"
+
+  let move_to_eof = move_to
 end
 
 (* Highlight as HTML *)
@@ -153,6 +156,8 @@ module Html : Output = struct
     | Punct { raw; _ } -> print_str fmt raw "white"
     | Comment _ -> unreachable "<comment> value??"
     | Eof -> unreachable "<eof> value??"
+
+  let move_to_eof _printer _pos = ()
 end
 
 module Common (Output : Output) = struct
@@ -192,5 +197,5 @@ let print (module Output : Output) (fmt : formatter)
   | None -> ());
   trailing_comments
   |> List.iter (fun comment -> Output.print_comment printer comment);
-  Output.move_to printer eof;
+  Output.move_to_eof printer eof;
   Output.finalize printer
