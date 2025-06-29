@@ -6,7 +6,15 @@
 
 (package
  (name kast)
- (depends ocaml ppx_deriving ppx_blob linol linol-lwt))
+ (depends
+  ocaml
+  ppx_deriving
+  ppx_blob
+  linol
+  linol-lwt
+  js_of_ocaml
+  js_of_ocaml-compiler
+  js_of_ocaml-ppx))
 
 (generate_opam_files)
 

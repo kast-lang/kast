@@ -1,0 +1,8 @@
+(executable
+ (name playground)
+ (modes js)
+ (libraries js_of_ocaml)
+ (preprocess
+  (pps js_of_ocaml-ppx))
+ (js_of_ocaml
+  (flags (--effects=double-translation))))
