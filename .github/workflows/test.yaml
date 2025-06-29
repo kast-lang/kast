@@ -44,6 +44,8 @@ jobs:
           path: dist
       
   pages:
+    needs:
+      - build
     name: Pages
     permissions:
       contents: write
