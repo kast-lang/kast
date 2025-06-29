@@ -37,7 +37,7 @@ module Var = struct
    fun print_inferred fmt var ->
     let { inferred } = find_root var in
     match inferred with
-    | None -> fprintf fmt "@{<italic><not inferred>@}"
+    | None -> fprintf fmt "_"
     | Some inferred -> print_inferred fmt inferred
 
   let unite : 'a. ('a -> 'a -> 'a) -> 'a var -> 'a var -> 'a var =
