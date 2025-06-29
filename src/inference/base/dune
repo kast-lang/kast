@@ -1,0 +1,3 @@
+(library
+ (name kast_inference_base)
+ (libraries std kast_util))

@@ -1,8 +1,41 @@
+open Std
+open Kast_util
 open Types
 open Print
 
+module Ty = struct
+  type t = ty
+
+  let print = print_ty
+  let new_not_inferred () : ty = { var = Inference.Var.new_not_inferred () }
+
+  let inferred (shape : ty_shape) : ty =
+    { var = Inference.Var.new_inferred shape }
+
+  module Shape = struct
+    type t = ty_shape
+
+    let print = print_ty_shape
+  end
+end
+
+type ty = Ty.t
+
 module Value = struct
   type t = value
+
+  let rec ty_of : value -> ty =
+   fun { shape } ->
+    match shape with
+    | V_Unit -> Ty.inferred T_Unit
+    | V_Int32 _ -> Ty.inferred T_Int32
+    | V_String _ -> Ty.inferred T_String
+    | V_Tuple { tuple } ->
+        Ty.inferred @@ T_Tuple { tuple = Tuple.map ty_of tuple }
+    | V_Ty _ -> Ty.inferred T_Ty
+    | V_Fn { arg; body } ->
+        Ty.inferred @@ T_Fn { arg = arg.ty; result = body.ty }
+    | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred @@ T_Fn ty
 
   let print = print_value
 
@@ -16,20 +49,6 @@ module Value = struct
 end
 
 type value = Value.t
-
-module Ty = struct
-  type t = ty
-
-  let print = print_ty
-
-  module Shape = struct
-    type t = ty_shape
-
-    let print = print_ty_shape
-  end
-end
-
-type ty = Ty.t
 
 module Expr = struct
   type t = expr

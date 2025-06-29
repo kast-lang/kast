@@ -2,6 +2,7 @@ open Std
 open Kast_util
 open Kast_types
 module Ast = Kast_ast
+open Init
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
@@ -32,7 +33,7 @@ let apply : handler =
         | Expr ->
             let f = Compiler.compile Expr f in
             let arg = Compiler.compile Expr arg in
-            { shape = E_Apply { f; arg }; span }
+            E_Apply { f; arg } |> init_expr span
         | _ -> fail "apply must be expr");
   }
 
@@ -54,7 +55,7 @@ let then' : handler =
         | Expr ->
             let a = Compiler.compile Expr a in
             let b = Compiler.compile Expr b in
-            { shape = E_Then { a; b }; span }
+            E_Then { a; b } |> init_expr span
         | _ -> fail "then must be expr");
   }
 
@@ -74,7 +75,7 @@ let scope : handler =
         match kind with
         | Expr ->
             let expr = Compiler.compile Expr expr in
-            { shape = E_Scope { expr }; span }
+            E_Scope { expr } |> init_expr span
         | Assignee -> Compiler.compile Assignee expr
         | Pattern -> Compiler.compile Pattern expr);
   }
@@ -98,7 +99,7 @@ let assign : handler =
         | Expr ->
             let assignee = Compiler.compile Assignee assignee in
             let value = Compiler.compile Expr value in
-            { shape = E_Assign { assignee; value }; span }
+            E_Assign { assignee; value } |> init_expr span
         | _ -> fail "assign must be expr");
   }
 
@@ -118,7 +119,7 @@ let let' : handler =
         match kind with
         | Assignee ->
             let pattern = Compiler.compile Pattern pattern in
-            { shape = A_Let pattern; span }
+            A_Let pattern |> init_assignee span
         | _ -> fail "assign must be expr");
   }
 
@@ -136,8 +137,8 @@ let placeholder : handler =
       ->
         Tuple.assert_empty children;
         match kind with
-        | Assignee -> { shape = A_Placeholder; span }
-        | Pattern -> { shape = P_Placeholder; span }
+        | Assignee -> A_Placeholder |> init_assignee span
+        | Pattern -> P_Placeholder |> init_pattern span
         | Expr -> fail "todo _ expr %s" __LOC__);
   }
 
@@ -167,6 +168,20 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
                 shape =
                   V_NativeFn
                     {
+                      ty =
+                        {
+                          arg =
+                            Ty.inferred
+                            @@ T_Tuple
+                                 {
+                                   tuple =
+                                     Tuple.make
+                                       (List.init 2 (fun _ ->
+                                            Ty.inferred T_Int32))
+                                       [];
+                                 };
+                          result = Ty.inferred T_Int32;
+                        };
                       name;
                       impl =
                         (fun arg ->
@@ -178,19 +193,14 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
                     };
               }
             in
-            {
-              shape =
-                E_Apply
-                  {
-                    f = { shape = E_Constant add; span };
-                    arg =
-                      {
-                        shape = E_Tuple { tuple = Tuple.make [ a; b ] [] };
-                        span;
-                      };
-                  };
-              span;
-            }
+
+            E_Apply
+              {
+                f = E_Constant add |> init_expr span;
+                arg =
+                  E_Tuple { tuple = Tuple.make [ a; b ] [] } |> init_expr span;
+              }
+            |> init_expr span
         | _ -> fail "bin op must be expr");
   }
 

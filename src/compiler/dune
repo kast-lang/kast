@@ -1,3 +1,3 @@
 (library
  (name kast_compiler)
- (libraries std kast_ast kast_types kast_interpreter))
+ (libraries std kast_ast kast_types kast_interpreter kast_inference))

@@ -38,3 +38,4 @@ let () =
     | _ -> None)
 
 let fail f = Format.kdprintf (fun f -> raise @@ FailFormat f) f
+let ( <| ) = ( @@ )

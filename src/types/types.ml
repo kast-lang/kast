@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Inference = Kast_inference_base
 
 type _unused
 
@@ -19,15 +20,27 @@ and value_tuple = { tuple : value tuple }
 
 and value_native_fn = {
   name : string;
+  ty : ty_fn;
   impl : value -> value;
+}
+
+and ty_tuple = { tuple : ty tuple }
+
+and ty_fn = {
+  arg : ty;
+  result : ty;
 }
 
 (* TY *)
 and ty_shape =
+  | T_Unit
   | T_Int32
+  | T_String
+  | T_Tuple of ty_tuple
   | T_Ty
+  | T_Fn of ty_fn
 
-and ty = { shape : ty_shape }
+and ty = { var : ty_shape Inference.var }
 
 (* EXPR *)
 and expr_fn = {
@@ -67,6 +80,7 @@ and expr_shape =
 and expr = {
   shape : expr_shape;
   span : span;
+  ty : ty;
 }
 
 (* ASSIGNEE EXPR *)
@@ -78,6 +92,7 @@ and assignee_expr_shape =
 and assignee_expr = {
   shape : assignee_expr_shape;
   span : span;
+  ty : ty;
 }
 
 (* PATTERN *)
@@ -88,7 +103,11 @@ and pattern_shape =
 and pattern = {
   shape : pattern_shape;
   span : span;
+  ty : ty;
 }
 
 (* OTHER *)
-and binding = { name : string }
+and binding = {
+  name : string;
+  ty : ty;
+}

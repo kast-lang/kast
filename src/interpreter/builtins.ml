@@ -4,7 +4,16 @@ open Kast_types
 
 let builtins =
   let native_fn name impl : string * value =
-    (name, { shape = V_NativeFn { name; impl } })
+    ( name,
+      {
+        shape =
+          V_NativeFn
+            {
+              ty = { arg = Ty.inferred T_String; result = Ty.inferred T_Unit };
+              name;
+              impl;
+            };
+      } )
   in
   [
     native_fn "print" (fun value ->

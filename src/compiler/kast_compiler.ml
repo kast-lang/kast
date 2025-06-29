@@ -4,6 +4,7 @@ open Kast_types
 module Token = Kast_token
 module Interpreter = Kast_interpreter
 module Ast = Kast_ast
+open Init
 
 type state = State.t
 
@@ -20,18 +21,20 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
       | Expr -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              { shape = E_Binding { name = ident.name }; span }
+              E_Binding { name = ident.name; ty = Ty.new_not_inferred () }
+              |> init_expr span
           | Token.Shape.String s ->
-              { shape = E_Constant { shape = V_String s.contents }; span }
+              E_Constant { shape = V_String s.contents } |> init_expr span
           | Token.Shape.Number { raw; _ } ->
               let value = Int32.of_string raw in
-              { shape = E_Constant { shape = V_Int32 value }; span }
+              E_Constant { shape = V_Int32 value } |> init_expr span
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
               unreachable "!")
       | Assignee -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              { shape = A_Binding { name = ident.name }; span }
+              A_Binding { name = ident.name; ty = Ty.new_not_inferred () }
+              |> init_assignee span
           | Token.Shape.String _ -> fail "string can't be assignee"
           | Token.Shape.Number _ -> fail "number can't be assignee"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
@@ -39,7 +42,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
       | Pattern -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              { shape = P_Binding { name = ident.name }; span }
+              P_Binding { name = ident.name; ty = Ty.new_not_inferred () }
+              |> init_pattern span
           | Token.Shape.String _ -> fail "string can't be pattern"
           | Token.Shape.Number _ -> fail "number can't be pattern"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
