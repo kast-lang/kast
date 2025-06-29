@@ -59,7 +59,7 @@
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
             (pkgs.writeShellScriptBin "kast" ''
-              dune exec kast "$@"
+              dune exec kast -- "$@"
             '')
             # You can add packages from nixpkgs here
             just # look at .justfile
