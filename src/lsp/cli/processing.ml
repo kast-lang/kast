@@ -20,7 +20,8 @@ let process_file (source : source) : file_state =
   let ast = Option.bind parsed (fun ({ ast; _ } : Parser.result) -> ast) in
   let compiled =
     Option.bind ast (fun ast ->
-        let compiler = Compiler.init () in
+        let interpreter = Kast_interpreter.default () in
+        let compiler = Compiler.init ~compile_for:interpreter in
         try Some (Compiler.compile compiler Expr ast) with _ -> None)
   in
   { parsed; compiled }

@@ -22,8 +22,8 @@ let eval : Args.t -> unit =
   match parsed.ast with
   | None -> println "<none>"
   | Some ast ->
-      let compiler = Compiler.init () in
+      let interpreter = Interpreter.default () in
+      let compiler = Compiler.init ~compile_for:interpreter in
       let expr : expr = Compiler.compile compiler Expr ast in
-      let interpreter = Interpreter.init () in
       let value : value = Interpreter.eval interpreter expr in
       println "%a" Value.print value

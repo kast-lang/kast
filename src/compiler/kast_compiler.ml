@@ -8,8 +8,16 @@ open Init
 
 type state = State.t
 
-let init : unit -> state =
- fun () -> { scope = State.Scope.init (); interpreter = Interpreter.init () }
+let init : compile_for:Interpreter.state -> state =
+ fun ~compile_for ->
+  let scope = State.Scope.init () in
+  let scope =
+    StringMap.fold
+      (fun name value scope ->
+        scope |> State.Scope.inject_binding { name; ty = Value.ty_of value })
+      compile_for.scope.bindings scope
+  in
+  { scope; interpreter = Interpreter.init StringMap.empty }
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 

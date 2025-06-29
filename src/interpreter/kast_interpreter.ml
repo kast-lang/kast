@@ -9,8 +9,8 @@ type state = { mutable scope : scope }
 let add_bindings =
   StringMap.union (fun _name _old_value new_value -> Some new_value)
 
-let init : unit -> state =
- fun () -> { scope = { bindings = StringMap.of_list Builtins.builtins } }
+let init : value StringMap.t -> state = fun bindings -> { scope = { bindings } }
+let default () = init (StringMap.of_list Builtins.builtins)
 
 let pattern_match : value -> pattern -> bindings =
  fun value pattern ->

@@ -21,6 +21,7 @@ let run : Args.t -> unit =
   match parsed.ast with
   | None -> println "<none>"
   | Some ast ->
-      let compiler = Compiler.init () in
+      let interpreter = Kast_interpreter.default () in
+      let compiler = Compiler.init ~compile_for:interpreter in
       let expr : expr = Compiler.compile compiler Expr ast in
       println "%a" Expr.print_with_types expr
