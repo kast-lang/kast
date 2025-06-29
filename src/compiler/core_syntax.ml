@@ -59,6 +59,27 @@ let then' : handler =
         | _ -> fail "then must be expr");
   }
 
+(* expr; *)
+let stmt : handler =
+  {
+    name = "stmt";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        children
+        span
+        :
+        a
+      ->
+        let expr = Tuple.unwrap_single_unnamed children in
+        match kind with
+        | Expr ->
+            let expr = Compiler.compile Expr expr in
+            E_Stmt { expr } |> init_expr span
+        | _ -> fail "stmt must be expr");
+  }
+
 let scope : handler =
   {
     name = "scope";
@@ -142,7 +163,29 @@ let placeholder : handler =
         | Expr -> fail "todo _ expr %s" __LOC__);
   }
 
-let core = [ apply; then'; scope; assign; let'; placeholder ]
+let fn : handler =
+  {
+    name = "fn";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        children
+        span
+        :
+        a
+      ->
+        let arg, body = children |> Tuple.unwrap_named2 [ "arg"; "body" ] in
+        match kind with
+        | Assignee -> fail "fn can't be assignee"
+        | Pattern -> fail "fn can't be a pattern"
+        | Expr ->
+            let arg = Compiler.compile Pattern arg in
+            let body = Compiler.compile Expr body in
+            E_Fn { arg; body } |> init_expr span);
+  }
+
+let core = [ apply; then'; stmt; scope; assign; let'; placeholder; fn ]
 
 (*  TODO remove *)
 

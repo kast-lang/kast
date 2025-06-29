@@ -10,6 +10,7 @@ let init_expr : span -> Expr.Shape.t -> expr =
     | E_Constant value -> Value.ty_of value
     | E_Binding binding -> binding.ty
     | E_Then { a; b } -> b.ty
+    | E_Stmt { expr } -> Ty.inferred T_Unit
     | E_Scope { expr } -> expr.ty
     | E_Fn { arg; body } ->
         Ty.inferred <| T_Fn { arg = arg.ty; result = body.ty }

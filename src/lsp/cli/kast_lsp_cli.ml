@@ -177,6 +177,7 @@ let rec inlay_hints :
           | E_Binding _ -> (None, Seq.empty)
           | E_Then { a; b } ->
               (None, Seq.append (inlay_hints Expr a) (inlay_hints Expr b))
+          | E_Stmt { expr } -> (None, inlay_hints Expr expr)
           | E_Scope { expr } -> (None, inlay_hints Expr expr)
           | E_Fn { arg; body } ->
               ( None,

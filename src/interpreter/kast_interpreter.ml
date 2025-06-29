@@ -46,6 +46,9 @@ let rec eval : state -> expr -> value =
   | E_Then { a; b } ->
       ignore <| eval state a;
       eval state b
+  | E_Stmt { expr } ->
+      ignore <| eval state expr;
+      { shape = V_Unit }
   | E_Scope { expr } -> eval state expr
   | E_Assign { assignee; value } ->
       let value = eval state value in

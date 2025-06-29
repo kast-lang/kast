@@ -41,6 +41,9 @@ and print_expr_shape :
   | E_Then { a; b } ->
       fprintf fmt "@{<magenta>then@} %a" (Tuple.print print_expr)
         (Tuple.make [ a; b ] [])
+  | E_Stmt { expr } ->
+      fprintf fmt "@{<magenta>stmt@} %a" (Tuple.print print_expr)
+        (Tuple.make [ expr ] [])
   | E_Scope { expr } ->
       fprintf fmt "@{<magenta>scope@} %a" (Tuple.print print_expr)
         (Tuple.make [ expr ] [])

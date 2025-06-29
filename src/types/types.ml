@@ -53,6 +53,7 @@ and expr_then = {
   b : expr;
 }
 
+and expr_stmt = { expr : expr }
 and expr_tuple = { tuple : expr tuple }
 
 and expr_apply = {
@@ -71,6 +72,7 @@ and expr_shape =
   | E_Constant of value
   | E_Binding of binding
   | E_Then of expr_then
+  | E_Stmt of expr_stmt
   | E_Scope of expr_scope
   | E_Fn of expr_fn
   | E_Tuple of expr_tuple

@@ -7,6 +7,7 @@ syntax "core:let" 3 wrap never = "let" " " pattern;
 syntax "core:if" 4 wrap never = "if" " " cond " " "then" " " then " " "else" " " else ->;
 syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
 syntax "core:tcomma" 5 wrap never = <- _ ",";
+syntax "core:fn" 7 wrap never = arg " " "=>" " " body;
 syntax "core:or" 10 wrap never = _ " " "or" " " _;
 syntax "core:and" 11 wrap never = _ " " "and" " " _;
 syntax "core:add" 15 wrap if_any = <- _ " "/"\n" "+" " " _;
