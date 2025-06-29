@@ -98,3 +98,5 @@ module Binding = struct
 
   let print = print_binding
 end
+
+type binding = Binding.t

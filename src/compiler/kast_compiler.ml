@@ -8,7 +8,8 @@ open Init
 
 type state = State.t
 
-let init : unit -> state = fun () -> { interpreter = Interpreter.init () }
+let init : unit -> state =
+ fun () -> { bindings = StringMap.empty; interpreter = Interpreter.init () }
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
@@ -21,8 +22,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
       | Expr -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              E_Binding { name = ident.name; ty = Ty.new_not_inferred () }
-              |> init_expr span
+              E_Binding (State.find_binding ident state) |> init_expr span
           | Token.Shape.String s ->
               E_Constant { shape = V_String s.contents } |> init_expr span
           | Token.Shape.Number { raw; _ } ->
@@ -33,8 +33,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
       | Assignee -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              A_Binding { name = ident.name; ty = Ty.new_not_inferred () }
-              |> init_assignee span
+              A_Binding (State.find_binding ident state) |> init_assignee span
           | Token.Shape.String _ -> fail "string can't be assignee"
           | Token.Shape.Number _ -> fail "number can't be assignee"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
@@ -42,8 +41,11 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
       | Pattern -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              P_Binding { name = ident.name; ty = Ty.new_not_inferred () }
-              |> init_pattern span
+              let binding : binding =
+                { name = ident.name; ty = Ty.new_not_inferred () }
+              in
+              state.bindings <- StringMap.add ident.name binding state.bindings;
+              P_Binding binding |> init_pattern span
           | Token.Shape.String _ -> fail "string can't be pattern"
           | Token.Shape.Number _ -> fail "number can't be pattern"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
