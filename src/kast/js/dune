@@ -1,8 +1,12 @@
 (executable
- (name playground)
+ (name kast_js)
  (modes js)
- (libraries js_of_ocaml)
+ (libraries js_of_ocaml kast)
  (preprocess
   (pps js_of_ocaml-ppx))
  (js_of_ocaml
   (flags (--effects=double-translation))))
+
+(alias
+ (name kast_js_playground)
+ (deps kast_js.bc.js index.html))

@@ -65,6 +65,7 @@
             just # look at .justfile
             nodejs # for running js output
             graphviz # for dep-graph
+            caddy # serve html
             nixfmt # nix formatter
             nil # nix lsp
           ]);
