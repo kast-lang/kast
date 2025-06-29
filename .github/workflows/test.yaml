@@ -9,15 +9,30 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Set-up OCaml
-        uses: ocaml/setup-ocaml@v3
+      - name: Install and setup dune
+        shell: bash
+        run: |
+          curl -fsSL https://get.dune.build/install | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "DUNE_CACHE_ROOT=$HOME/.cache/dune" >> "$GITHUB_ENV"
+      - name: Cache dune’s cache
+        uses: actions/cache@v4
+        id: dune-cache
         with:
-          ocaml-compiler: 5
-      - name: Install Dune
-        run: opam install dune
+          path: |
+            ${{ env.DUNE_CACHE_ROOT }}
+          key: dune-cache-${{ runner.os }}-${{ runner.arch }}
+      - name: Resolve dependencies
+        shell: bash
+        run: |
+          dune pkg lock
       - name: Hack for linol # https://github.com/c-cube/linol/issues/57
         run: opam install linol.0.9
-      - name: Build
-        run: dune build
-      - name: Test
-        run: dune test
+      - name: Build project
+        shell: bash
+        run: |
+          dune build
+      - name: Run tests
+        shell: bash
+        run: |
+          dune runtest
