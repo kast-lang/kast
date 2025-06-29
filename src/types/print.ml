@@ -77,6 +77,7 @@ and print_expr_with_types : formatter -> expr -> unit =
 and print_assignee_expr_shape : formatter -> assignee_expr_shape -> unit =
  fun fmt -> function
   | A_Placeholder -> fprintf fmt "@{<magenta>_@}"
+  | A_Unit -> fprintf fmt "()"
   | A_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
   | A_Let pattern ->
@@ -93,6 +94,7 @@ and print_assignee_expr_with_spans : formatter -> assignee_expr -> unit =
 and print_pattern_shape : formatter -> pattern_shape -> unit =
  fun fmt -> function
   | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
+  | P_Unit -> fprintf fmt "()"
   | P_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
 

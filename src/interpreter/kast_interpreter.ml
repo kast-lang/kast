@@ -16,12 +16,18 @@ let pattern_match : value -> pattern -> bindings =
  fun value pattern ->
   match pattern.shape with
   | P_Placeholder -> StringMap.empty
+  | P_Unit ->
+      (* TODO assert that value is unit *)
+      StringMap.empty
   | P_Binding binding -> StringMap.singleton binding.name value
 
 let assign : state -> Expr.assignee -> value -> unit =
  fun state assignee value ->
   match assignee.shape with
   | A_Placeholder -> ()
+  | A_Unit ->
+      (* TODO assert that value is unit *)
+      ()
   | A_Binding { name; ty = _ } ->
       if StringMap.find_opt name state.scope.bindings |> Option.is_none then
         fail "trying to assign to undefined variable %S" name;

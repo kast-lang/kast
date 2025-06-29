@@ -9,7 +9,8 @@ type _ compiled_kind =
   | Pattern : pattern compiled_kind
 
 module type S = sig
-  val compile : 'a. 'a compiled_kind -> Ast.t -> 'a
+  val state : State.t
+  val compile : 'a. ?state:State.t -> 'a compiled_kind -> Ast.t -> 'a
 end
 
 type compiler = { compile : 'a. 'a compiled_kind -> Ast.t -> 'a }

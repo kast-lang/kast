@@ -37,6 +37,7 @@ let init_assignee : span -> Expr.Assignee.Shape.t -> Expr.assignee =
   let ty =
     match shape with
     | A_Placeholder -> Ty.new_not_inferred ()
+    | A_Unit -> Ty.inferred T_Unit
     | A_Binding binding -> binding.ty
     | A_Let pattern -> pattern.ty
   in
@@ -47,6 +48,7 @@ let init_pattern : span -> Pattern.Shape.t -> pattern =
   let ty =
     match shape with
     | P_Placeholder -> Ty.new_not_inferred ()
+    | P_Unit -> Ty.inferred T_Unit
     | P_Binding binding -> binding.ty
   in
   { shape; span; ty }

@@ -180,12 +180,32 @@ let fn : handler =
         | Assignee -> fail "fn can't be assignee"
         | Pattern -> fail "fn can't be a pattern"
         | Expr ->
-            let arg = Compiler.compile Pattern arg in
-            let body = Compiler.compile Expr body in
+            let state = Compiler.state |> State.enter_scope in
+            let arg = Compiler.compile ~state Pattern arg in
+            let body = Compiler.compile ~state Expr body in
             E_Fn { arg; body } |> init_expr span);
   }
 
-let core = [ apply; then'; stmt; scope; assign; let'; placeholder; fn ]
+let unit : handler =
+  {
+    name = "unit";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        children
+        span
+        :
+        a
+      ->
+        Tuple.assert_empty children;
+        match kind with
+        | Assignee -> A_Unit |> init_assignee span
+        | Pattern -> P_Unit |> init_pattern span
+        | Expr -> E_Constant { shape = V_Unit } |> init_expr span);
+  }
+
+let core = [ apply; then'; stmt; scope; assign; let'; placeholder; fn; unit ]
 
 (*  TODO remove *)
 

@@ -26,6 +26,12 @@ module Option = struct
     match opt with
     | None -> fprintf fmt "<none>"
     | Some value -> print_value fmt value
+
+  let and_then : 'a 'b. ('a -> 'b option) -> 'a option -> 'b option =
+   fun f opt ->
+    match opt with
+    | None -> None
+    | Some x -> f x
 end
 
 let ( let* ) = Option.bind

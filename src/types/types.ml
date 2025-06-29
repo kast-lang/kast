@@ -88,6 +88,7 @@ and expr = {
 (* ASSIGNEE EXPR *)
 and assignee_expr_shape =
   | A_Placeholder
+  | A_Unit
   | A_Binding of binding
   | A_Let of pattern
 
@@ -100,6 +101,7 @@ and assignee_expr = {
 (* PATTERN *)
 and pattern_shape =
   | P_Placeholder
+  | P_Unit
   | P_Binding of binding
 
 and pattern = {

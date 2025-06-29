@@ -198,12 +198,14 @@ let rec inlay_hints :
         ( compiled.span,
           match compiled.shape with
           | P_Placeholder -> (None, Seq.empty)
+          | P_Unit -> (None, Seq.empty)
           | P_Binding _ ->
               (Some (make_string ":: %a" Ty.print compiled.ty), Seq.empty) )
     | Assignee ->
         ( compiled.span,
           match compiled.shape with
           | A_Placeholder -> (None, Seq.empty)
+          | A_Unit -> (None, Seq.empty)
           | A_Binding _ -> (None, Seq.empty)
           | A_Let pattern -> (None, inlay_hints Pattern pattern) )
   in
