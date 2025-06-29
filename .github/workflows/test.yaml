@@ -13,6 +13,8 @@ jobs:
         uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: 5
+      - name: Install Dune
+        run: opam install dune
       - name: Hack for linol # https://github.com/c-cube/linol/issues/57
         run: opam install linol.0.9
       - name: Build
