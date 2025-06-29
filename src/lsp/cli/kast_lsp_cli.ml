@@ -6,7 +6,6 @@ module Lexer = Kast_lexer
 module Ast = Kast_ast
 module Parser = Kast_parser
 open Kast_types
-module Lsp = Linol.Lsp
 
 module Args = struct
   type args = { dummy : unit }

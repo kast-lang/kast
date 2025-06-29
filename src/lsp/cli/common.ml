@@ -1,6 +1,5 @@
 open Std
 open Kast_util
-module Lsp = Linol.Lsp
 
 let span_to_range (span : span) : Lsp.Types.Range.t =
   {

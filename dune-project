@@ -10,7 +10,9 @@
   ocaml
   ppx_deriving
   ppx_blob
-  linol
+  ; https://github.com/c-cube/linol/issues/57
+  (linol
+   (= 0.9))
   linol-lwt
   js_of_ocaml
   js_of_ocaml-compiler

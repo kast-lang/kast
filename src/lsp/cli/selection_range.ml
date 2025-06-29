@@ -1,7 +1,6 @@
 open Std
 open Kast_util
 module Ast = Kast_ast
-module Lsp = Linol.Lsp
 
 let options : Lsp.Types.SelectionRangeRegistrationOptions.t =
   { workDoneProgress = None; id = None; documentSelector = None }

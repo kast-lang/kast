@@ -1,6 +1,5 @@
 open Std
 open Kast_util
-module Lsp = Linol.Lsp
 module Token = Kast_token
 module Ast = Kast_ast
 

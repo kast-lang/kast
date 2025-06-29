@@ -26,8 +26,6 @@ jobs:
         shell: bash
         run: |
           dune pkg lock
-      - name: Hack for linol # https://github.com/c-cube/linol/issues/57
-        run: opam install linol.0.9
       - name: Build project
         shell: bash
         run: |

@@ -1,6 +1,5 @@
 open Std
 open Kast_util
-module Lsp = Linol.Lsp
 module Compiler = Kast_compiler
 open Kast_types
 
