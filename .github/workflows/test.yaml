@@ -9,6 +9,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Hack for linol # https://github.com/c-cube/linol/issues/57
+        run: opam install linol.0.9
       - name: Use dune
         uses: ocaml-dune/setup-dune@v0
         with:
