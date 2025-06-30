@@ -1,12 +1,12 @@
 print "Hello, World!";
-let print_twice = s => (
+let print_times = s => (
   let f = () => 123;
   let x = f ();
   print s;
   print s;
 );
-print_twice "Kast is best!";
+print_times "Kast is best!";
 # let x = f ();
-let xyz = 3;
+let x = 3;
 _ = 2;
-2 + xyz
+2 + x

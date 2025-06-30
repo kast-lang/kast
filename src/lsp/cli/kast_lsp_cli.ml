@@ -35,6 +35,7 @@ class lsp_server =
         hoverProvider = Some (`HoverOptions Hover.options);
         referencesProvider = Some (`ReferenceOptions Hover.references_options);
         definitionProvider = Some (`DefinitionOptions Hover.definition_options);
+        renameProvider = Some (`RenameOptions Hover.rename_options);
       }
 
     (* one env per document *)
@@ -126,6 +127,37 @@ class lsp_server =
           (Hashtbl.find buffers params.textDocument.uri
           |> Hover.find_references params)
 
+    method private on_req_rename :
+        notify_back:Linol_lwt.Jsonrpc2.notify_back ->
+        Lsp.Types.RenameParams.t ->
+        Lsp.Types.WorkspaceEdit.t Lwt.t =
+      fun ~notify_back:_ params ->
+        let result =
+          Hashtbl.find buffers params.textDocument.uri |> Hover.rename params
+        in
+        let edit =
+          match result with
+          | Some edit -> edit
+          | None ->
+              {
+                documentChanges = None;
+                changes = None;
+                changeAnnotations = None;
+              }
+        in
+        let json = Lsp.Types.WorkspaceEdit.yojson_of_t edit in
+        Log.info "Rename reply: %a" (Yojson.Safe.pretty_print ~std:true) json;
+        Linol_lwt.return edit
+
+    method private on_req_prepare_rename :
+        notify_back:Linol_lwt.Jsonrpc2.notify_back ->
+        Lsp.Types.PrepareRenameParams.t ->
+        Lsp.Types.Range.t option Lwt.t =
+      fun ~notify_back:_ params ->
+        Linol_lwt.return
+          (Hashtbl.find buffers params.textDocument.uri
+          |> Hover.prepare_rename params)
+
     method! on_request_unhandled : type r.
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
         id:Linol.Server.Req_id.t ->
@@ -141,6 +173,9 @@ class lsp_server =
             self#on_req_references ~notify_back params
         | SemanticTokensFull params ->
             self#on_semantic_tokens ~notify_back params
+        | TextDocumentRename params -> self#on_req_rename ~notify_back params
+        | TextDocumentPrepareRename params ->
+            self#on_req_prepare_rename ~notify_back params
         | _ -> Linol_lwt.failwith "TODO handle this request"
   end
 

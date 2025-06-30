@@ -5,6 +5,9 @@ module Compiler = Kast_compiler
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
+let rename_options : Lsp.Types.RenameOptions.t =
+  { workDoneProgress = None; prepareProvider = Some true }
+
 let definition_options : Lsp.Types.DefinitionOptions.t =
   { workDoneProgress = None }
 
@@ -146,6 +149,73 @@ let find_references (params : Lsp.Types.ReferenceParams.t)
     definition.references |> List.filter_map Common.span_location
   in
   Some ((declaration_location |> Option.to_list) @ references)
+
+let prepare_rename (params : Lsp.Types.PrepareRenameParams.t)
+    ({ compiled; _ } : Processing.file_state) : Lsp.Types.Range.t option =
+  let pos : position = Common.lsp_to_kast_pos params.position in
+  let* expr = compiled in
+  let* hover_info = hover Expr expr pos in
+  let* _definition =
+    match hover_info.definition_mode with
+    | DefinedHere definition | DefinedNotHere definition -> Some definition
+    | None -> None
+  in
+  Some (hover_info.span |> Common.span_to_range)
+
+module UriMap = Map.Make (Lsp.Uri)
+
+exception Nope
+
+let rename (params : Lsp.Types.RenameParams.t)
+    ({ compiled; _ } : Processing.file_state) : Lsp.Types.WorkspaceEdit.t option
+    =
+  try
+    (* TODO maybe convert into raw ident *)
+    let newText = params.newName in
+    let pos : position = Common.lsp_to_kast_pos params.position in
+    let* expr = compiled in
+    let* hover_info = hover Expr expr pos in
+    let* definition =
+      match hover_info.definition_mode with
+      | DefinedHere definition | DefinedNotHere definition -> Some definition
+      | None -> None
+    in
+    let spans = definition.span :: definition.references in
+    let changes : Lsp.Types.TextEdit.t list UriMap.t =
+      spans
+      |> List.fold_left
+           (fun changes (span : span) ->
+             match Path.as_file span.filename with
+             | None -> raise Nope
+             | Some path ->
+                 let uri = Lsp.Uri.of_path path in
+                 UriMap.update uri
+                   (fun current ->
+                     let current =
+                       match current with
+                       | None -> []
+                       | Some current -> current
+                     in
+                     let edit : Lsp.Types.TextEdit.t =
+                       { range = span |> Common.span_to_range; newText }
+                     in
+                     Some (edit :: current))
+                   changes)
+           UriMap.empty
+    in
+    let changes : (Lsp.Uri.t * Lsp.Types.TextEdit.t list) list =
+      UriMap.to_list changes
+    in
+    let edit : Lsp.Types.WorkspaceEdit.t =
+      {
+        changes = Some changes;
+        (* documentChanges = Some [ `TextDocumentEdit changes ]; *)
+        documentChanges = None;
+        changeAnnotations = None;
+      }
+    in
+    Some edit
+  with Nope -> None
 
 let hover (pos : Lsp.Types.Position.t) ({ compiled; _ } : Processing.file_state)
     : Lsp.Types.Hover.t option =
