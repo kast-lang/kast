@@ -11,23 +11,20 @@ let types =
          (name, { shape = V_Ty (Ty.inferred ty) }))
 
 let builtins =
-  let native_fn name impl : string * value =
-    ( name,
-      {
-        shape =
-          V_NativeFn
-            {
-              ty = { arg = Ty.inferred T_String; result = Ty.inferred T_Unit };
-              name;
-              impl;
-            };
-      } )
+  let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
+    (name, { shape = V_NativeFn { ty = { arg; result }; name; impl } })
   in
   [
-    native_fn "print" (fun value ->
+    native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Unit) "print"
+      (fun value ->
         (match value.shape with
         | V_String s -> println "%s" s
         | _ -> fail "print expected a string");
         { shape = V_Unit });
+    native_fn ~arg:(Ty.inferred T_Int32) ~result:(Ty.inferred T_Int32) "rng"
+      (fun arg ->
+        match arg.shape with
+        | V_Int32 max -> { shape = V_Int32 (Random.int32 max) }
+        | _ -> fail "print expected a string");
   ]
   @ types
