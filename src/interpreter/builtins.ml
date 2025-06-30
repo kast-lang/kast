@@ -2,6 +2,14 @@ open Std
 open Kast_util
 open Kast_types
 
+let types : (string * Ty.Shape.t) list =
+  [ ("unit", T_Unit); ("int32", T_Int32); ("string", T_String); ("type", T_Ty) ]
+
+let types =
+  types
+  |> List.map (fun (name, ty) : (string * value) ->
+         (name, { shape = V_Ty (Ty.inferred ty) }))
+
 let builtins =
   let native_fn name impl : string * value =
     ( name,
@@ -21,5 +29,5 @@ let builtins =
         | V_String s -> println "%s" s
         | _ -> fail "print expected a string");
         { shape = V_Unit });
-    ("int32", { shape = V_Ty (Ty.inferred T_Int32) });
   ]
+  @ types
