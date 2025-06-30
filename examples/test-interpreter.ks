@@ -7,6 +7,6 @@ let print_twice = s => (
 );
 print_twice "Kast is best!";
 # let x = f ();
-let x = 3;
+let xyz = 3;
 _ = 2;
-2 + x
+2 + xyz

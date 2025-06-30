@@ -259,9 +259,10 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
 
             E_Apply
               {
-                f = E_Constant add |> init_expr span;
+                f = E_Constant add |> init_expr (Span.fake "<binop>");
                 arg =
-                  E_Tuple { tuple = Tuple.make [ a; b ] [] } |> init_expr span;
+                  E_Tuple { tuple = Tuple.make [ a; b ] [] }
+                  |> init_expr (Span.fake "<binop>");
               }
             |> init_expr span
         | _ -> fail "bin op must be expr");

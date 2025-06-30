@@ -6,11 +6,12 @@ open Kast_types
 module Compiler = Kast_compiler
 
 type file_state = {
+  uri : Lsp.Uri.t;
   parsed : Parser.result option;
   compiled : expr option;
 }
 
-let process_file (source : source) : file_state =
+let process_file (uri : Lsp.Uri.t) (source : source) : file_state =
   let parsed =
     try
       let result = Parser.parse source Kast_default_syntax.ruleset in
@@ -24,4 +25,4 @@ let process_file (source : source) : file_state =
         let compiler = Compiler.init ~compile_for:interpreter in
         try Some (Compiler.compile compiler Expr ast) with _ -> None)
   in
-  { parsed; compiled }
+  { uri; parsed; compiled }

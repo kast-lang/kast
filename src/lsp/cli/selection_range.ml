@@ -33,15 +33,8 @@ let get (params : Lsp.Types.SelectionRangeParams.t)
   match parsed with
   | Some { ast = Some ast; eof; _ } ->
       params.positions
-      |> List.map (fun (position : Lsp.Types.Position.t) ->
-             let pos : position =
-               {
-                 (* we dont need it *)
-                 index = 0;
-                 line = position.line + 1;
-                 column = position.character + 1;
-               }
-             in
+      |> List.map (fun (pos : Lsp.Types.Position.t) ->
+             let pos = Common.lsp_to_kast_pos pos in
              let full_file : span =
                {
                  start = Position.beginning;

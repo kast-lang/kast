@@ -36,6 +36,10 @@ module Path = struct
 
   type t = path
 
+  let as_file = function
+    | File path -> Some path
+    | _ -> None
+
   let parse = function
     | "-" -> Some Stdin
     | path -> Some (File path)
@@ -77,6 +81,13 @@ module Span = struct
   }
 
   type span = t
+
+  let fake s =
+    {
+      start = Position.beginning;
+      finish = Position.beginning;
+      filename = Special s;
+    }
 
   let touches : position -> span -> bool =
    fun pos span ->

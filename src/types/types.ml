@@ -113,5 +113,6 @@ and pattern = {
 (* OTHER *)
 and binding = {
   name : string;
+  span : span;
   ty : ty;
 }

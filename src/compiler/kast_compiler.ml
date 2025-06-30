@@ -14,12 +14,16 @@ let init : compile_for:Interpreter.state -> state =
   let scope =
     StringMap.fold
       (fun name value scope ->
-        scope |> State.Scope.inject_binding { name; ty = Value.ty_of value })
+        scope
+        |> State.Scope.inject_binding
+             { name; ty = Value.ty_of value; span = Span.fake "<interpreter>" })
       compile_for.scope.bindings scope
   in
   { scope; interpreter = Interpreter.init StringMap.empty }
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
+
+let get_span = Compiler.get_span
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
  fun (type a) (state : state) (kind : a compiled_kind) (ast : Ast.t) : a ->
@@ -52,7 +56,11 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
           match token.shape with
           | Token.Shape.Ident ident ->
               let binding : binding =
-                { name = ident.name; ty = Ty.new_not_inferred () }
+                {
+                  name = ident.name;
+                  ty = Ty.new_not_inferred ();
+                  span = ast.span;
+                }
               in
               state.scope <- state.scope |> State.Scope.inject_binding binding;
               P_Binding binding |> init_pattern span

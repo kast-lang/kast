@@ -33,6 +33,7 @@ class lsp_server =
         inlayHintProvider =
           Some (`InlayHintRegistrationOptions Inlay_hints.options);
         hoverProvider = Some (`HoverOptions Hover.options);
+        definitionProvider = Some (`DefinitionOptions Hover.definition_options);
       }
 
     (* one env per document *)
@@ -51,7 +52,7 @@ class lsp_server =
       Log.info "processing file %S" (Lsp.Uri.to_path uri);
 
       let new_state =
-        Processing.process_file
+        Processing.process_file uri
           { filename = File (Lsp.Types.DocumentUri.to_path uri); contents }
       in
       Hashtbl.replace buffers uri new_state;
@@ -82,7 +83,12 @@ class lsp_server =
 
     method! on_req_hover ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
         (_ : Linol_lwt.doc_state) : Lsp.Types.Hover.t option Linol_lwt.t =
-      Linol_lwt.return (Hashtbl.find buffers uri |> Hover.run pos)
+      Linol_lwt.return (Hashtbl.find buffers uri |> Hover.hover pos)
+
+    method! on_req_definition ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
+        ~partialResultToken:_ (_ : Linol_lwt.doc_state) :
+        Lsp.Types.Locations.t option Linol_lwt.t =
+      Linol_lwt.return (Hashtbl.find buffers uri |> Hover.find_defitinition pos)
 
     method private on_selection_range :
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->

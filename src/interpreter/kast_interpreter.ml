@@ -28,7 +28,7 @@ let assign : state -> Expr.assignee -> value -> unit =
   | A_Unit ->
       (* TODO assert that value is unit *)
       ()
-  | A_Binding { name; ty = _ } ->
+  | A_Binding { name; ty = _; span = _ } ->
       if StringMap.find_opt name state.scope.bindings |> Option.is_none then
         fail "trying to assign to undefined variable %S" name;
       state.scope <-
