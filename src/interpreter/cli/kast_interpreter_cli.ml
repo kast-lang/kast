@@ -15,8 +15,8 @@ module Args = struct
     | first :: _rest -> fail "Unexpected arg %S" first
 end
 
-let eval : Args.t -> unit =
- fun { path } ->
+let eval_and : (value -> unit) -> Args.t -> unit =
+ fun f { path } ->
   let source = Source.read path in
   let parsed = Parser.parse source Kast_default_syntax.ruleset in
   match parsed.ast with
@@ -26,4 +26,7 @@ let eval : Args.t -> unit =
       let compiler = Compiler.init ~compile_for:interpreter in
       let expr : expr = Compiler.compile compiler Expr ast in
       let value : value = Interpreter.eval interpreter expr in
-      println "%a" Value.print value
+      f value
+
+let eval = eval_and (fun value -> println "%a" Value.print value)
+let run = eval_and ignore

@@ -6,3 +6,4 @@ module Args : sig
 end
 
 val eval : Args.t -> unit
+val run : Args.t -> unit
