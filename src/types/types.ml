@@ -115,4 +115,6 @@ and binding = {
   name : string;
   span : span;
   ty : ty;
+  (* Think: maybe this shouldnt be stored here? *)
+  mutable references : span list;
 }

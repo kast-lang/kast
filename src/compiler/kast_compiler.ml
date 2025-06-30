@@ -16,7 +16,12 @@ let init : compile_for:Interpreter.state -> state =
       (fun name value scope ->
         scope
         |> State.Scope.inject_binding
-             { name; ty = Value.ty_of value; span = Span.fake "<interpreter>" })
+             {
+               name;
+               ty = Value.ty_of value;
+               span = Span.fake "<interpreter>";
+               references = [];
+             })
       compile_for.scope.bindings scope
   in
   { scope; interpreter = Interpreter.init StringMap.empty }
@@ -34,7 +39,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
       | Expr -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              E_Binding (State.Scope.find_binding ident state.scope)
+              E_Binding
+                (State.Scope.find_binding ~from:ast.span ident state.scope)
               |> init_expr span
           | Token.Shape.String s ->
               E_Constant { shape = V_String s.contents } |> init_expr span
@@ -46,7 +52,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
       | Assignee -> (
           match token.shape with
           | Token.Shape.Ident ident ->
-              A_Binding (State.Scope.find_binding ident state.scope)
+              A_Binding
+                (State.Scope.find_binding ~from:ast.span ident state.scope)
               |> init_assignee span
           | Token.Shape.String _ -> fail "string can't be assignee"
           | Token.Shape.Number _ -> fail "number can't be assignee"
@@ -60,6 +67,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                   name = ident.name;
                   ty = Ty.new_not_inferred ();
                   span = ast.span;
+                  references = [];
                 }
               in
               state.scope <- state.scope |> State.Scope.inject_binding binding;

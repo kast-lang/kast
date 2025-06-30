@@ -33,6 +33,7 @@ class lsp_server =
         inlayHintProvider =
           Some (`InlayHintRegistrationOptions Inlay_hints.options);
         hoverProvider = Some (`HoverOptions Hover.options);
+        referencesProvider = Some (`ReferenceOptions Hover.references_options);
         definitionProvider = Some (`DefinitionOptions Hover.definition_options);
       }
 
@@ -88,9 +89,9 @@ class lsp_server =
     method! on_req_definition ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
         ~partialResultToken:_ (_ : Linol_lwt.doc_state) :
         Lsp.Types.Locations.t option Linol_lwt.t =
-      Linol_lwt.return (Hashtbl.find buffers uri |> Hover.find_defitinition pos)
+      Linol_lwt.return (Hashtbl.find buffers uri |> Hover.find_definition pos)
 
-    method private on_selection_range :
+    method private on_req_selection_range :
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
         Lsp.Types.SelectionRangeParams.t ->
         Lsp.Types.SelectionRange.t list Lwt.t =
@@ -99,7 +100,7 @@ class lsp_server =
           (Hashtbl.find buffers params.textDocument.uri
           |> Selection_range.get params)
 
-    method private on_format :
+    method private on_req_format :
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
         Lsp.Types.DocumentFormattingParams.t ->
         Lsp.Types.TextEdit.t list option Lwt.t =
@@ -116,6 +117,15 @@ class lsp_server =
           (Hashtbl.find buffers params.textDocument.uri
           |> Semantic_tokens.run params)
 
+    method private on_req_references :
+        notify_back:Linol_lwt.Jsonrpc2.notify_back ->
+        Lsp.Types.ReferenceParams.t ->
+        Lsp.Types.Location.t list option Lwt.t =
+      fun ~notify_back:_ params ->
+        Linol_lwt.return
+          (Hashtbl.find buffers params.textDocument.uri
+          |> Hover.find_references params)
+
     method! on_request_unhandled : type r.
         notify_back:Linol_lwt.Jsonrpc2.notify_back ->
         id:Linol.Server.Req_id.t ->
@@ -123,8 +133,12 @@ class lsp_server =
         r Lwt.t =
       fun ~notify_back ~id:_ request ->
         match request with
-        | SelectionRange params -> self#on_selection_range ~notify_back params
-        | TextDocumentFormatting params -> self#on_format ~notify_back params
+        | SelectionRange params ->
+            self#on_req_selection_range ~notify_back params
+        | TextDocumentFormatting params ->
+            self#on_req_format ~notify_back params
+        | TextDocumentReferences params ->
+            self#on_req_references ~notify_back params
         | SemanticTokensFull params ->
             self#on_semantic_tokens ~notify_back params
         | _ -> Linol_lwt.failwith "TODO handle this request"

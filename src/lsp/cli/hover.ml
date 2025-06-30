@@ -8,40 +8,57 @@ type 'a compiled_kind = 'a Compiler.compiled_kind
 let definition_options : Lsp.Types.DefinitionOptions.t =
   { workDoneProgress = None }
 
+let references_options : Lsp.Types.ReferenceOptions.t =
+  { workDoneProgress = None }
+
 let options : Lsp.Types.HoverOptions.t =
   Lsp.Types.HoverOptions.create ?workDoneProgress:None ()
 
-type definition = { span : span }
+type definition = {
+  span : span;
+  references : span list;
+}
+
+type definition_mode =
+  | DefinedHere of definition
+  | DefinedNotHere of definition
+  | None
 
 type hover_info = {
   ty : ty;
   span : span;
-  definition : definition option;
+  definition_mode : definition_mode;
 }
 
 let hover_text info = make_string "```kast\n%a\n```" Ty.print info.ty
 
 let binding_definition : binding -> definition =
- fun binding -> { span = binding.span }
+ fun binding -> { span = binding.span; references = binding.references }
 
 let hover_specifially : 'a. 'a compiled_kind -> 'a -> hover_info =
  fun (type a) (kind : a compiled_kind) (compiled : a) : hover_info ->
   match kind with
   | Expr ->
-      let definition =
+      let definition_mode =
         match compiled.shape with
-        | E_Binding binding -> Some (binding_definition binding)
+        | E_Binding binding -> DefinedNotHere (binding_definition binding)
         | _ -> None
       in
-      { ty = compiled.ty; span = compiled.span; definition }
+      { ty = compiled.ty; span = compiled.span; definition_mode }
   | Assignee ->
-      let definition =
+      let definition_mode =
         match compiled.shape with
-        | A_Binding binding -> Some (binding_definition binding)
+        | A_Binding binding -> DefinedNotHere (binding_definition binding)
         | _ -> None
       in
-      { ty = compiled.ty; span = compiled.span; definition }
-  | Pattern -> { ty = compiled.ty; span = compiled.span; definition = None }
+      { ty = compiled.ty; span = compiled.span; definition_mode }
+  | Pattern ->
+      let definition_mode =
+        match compiled.shape with
+        | P_Binding binding -> DefinedHere (binding_definition binding)
+        | _ -> None
+      in
+      { ty = compiled.ty; span = compiled.span; definition_mode }
 
 let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position) :
@@ -55,7 +72,7 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
   let* () =
     if span_is_special || span |> Span.contains pos then Some () else None
   in
-  let inner =
+  let inner : hover_info option =
     match kind with
     | Expr -> (
         match compiled.shape with
@@ -93,17 +110,42 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
   | None ->
       if span_is_special then None else Some (hover_specifially kind compiled)
 
-let find_defitinition (pos : Lsp.Types.Position.t)
+let find_definition (pos : Lsp.Types.Position.t)
     ({ compiled; _ } : Processing.file_state) : Lsp.Types.Locations.t option =
   let pos : position = Common.lsp_to_kast_pos pos in
   let* expr = compiled in
   let* hover_info = hover Expr expr pos in
-  let* definition = hover_info.definition in
+  let* definition =
+    match hover_info.definition_mode with
+    | DefinedNotHere definition -> Some definition
+    | DefinedHere _ | None -> None
+  in
   let* path = Path.as_file definition.span.filename in
   let location : Lsp.Types.Location.t =
     { uri = Lsp.Uri.of_path path; range = Common.span_to_range definition.span }
   in
   Some Lsp.Types.Locations.(`Location [ location ])
+
+let find_references (params : Lsp.Types.ReferenceParams.t)
+    ({ compiled; _ } : Processing.file_state) : Lsp.Types.Location.t list option
+    =
+  let pos : position = Common.lsp_to_kast_pos params.position in
+  let* expr = compiled in
+  let* hover_info = hover Expr expr pos in
+  let* definition =
+    match hover_info.definition_mode with
+    | DefinedHere definition | DefinedNotHere definition -> Some definition
+    | None -> None
+  in
+  let declaration_location =
+    if params.context.includeDeclaration then
+      Common.span_location definition.span
+    else None
+  in
+  let references =
+    definition.references |> List.filter_map Common.span_location
+  in
+  Some ((declaration_location |> Option.to_list) @ references)
 
 let hover (pos : Lsp.Types.Position.t) ({ compiled; _ } : Processing.file_state)
     : Lsp.Types.Hover.t option =

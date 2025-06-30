@@ -14,3 +14,10 @@ let lsp_to_kast_pos (pos : Lsp.Types.Position.t) : position =
     line = pos.line + 1;
     column = pos.character + 1;
   }
+
+let span_location (span : span) : Lsp.Types.Location.t option =
+  let* path = Path.as_file span.filename in
+  let location : Lsp.Types.Location.t =
+    { uri = Lsp.Uri.of_path path; range = span_to_range span }
+  in
+  Some location
