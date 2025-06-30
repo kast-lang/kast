@@ -205,7 +205,43 @@ let unit : handler =
         | Expr -> E_Constant { shape = V_Unit } |> init_expr span);
   }
 
-let core = [ apply; then'; stmt; scope; assign; let'; placeholder; fn; unit ]
+let type_ascribe : handler =
+  {
+    name = "type ascribe";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        children
+        span
+        :
+        a
+      ->
+        let expr, expected_ty =
+          children |> Tuple.unwrap_named2 [ "expr"; "type" ]
+        in
+        let expr = C.compile kind expr in
+        let ty = (Compiler.get_data kind expr).ty in
+        let expected_ty_expr = C.compile Expr expected_ty in
+        let expected_ty : ty =
+          expected_ty_expr.data.ty
+          |> Inference.Ty.expect_inferred_as (Ty.inferred T_Ty);
+          let expected_ty =
+            Kast_interpreter.eval C.state.interpreter expected_ty_expr
+          in
+          expected_ty |> Value.expect_ty
+        in
+        ty |> Inference.Ty.expect_inferred_as expected_ty;
+        Compiler.update_data kind expr (fun data ->
+            if data.ty_ascription |> Option.is_some then
+              fail "there is already type ascription";
+            { data with ty_ascription = Some expected_ty_expr }));
+  }
+
+let core =
+  [
+    apply; then'; stmt; scope; assign; let'; placeholder; fn; unit; type_ascribe;
+  ]
 
 (*  TODO remove *)
 

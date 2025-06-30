@@ -47,71 +47,81 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> hover_info =
         | E_Binding binding -> DefinedNotHere (binding_definition binding)
         | _ -> None
       in
-      { ty = compiled.ty; span = compiled.span; definition_mode }
+      { ty = compiled.data.ty; span = compiled.data.span; definition_mode }
   | Assignee ->
       let definition_mode =
         match compiled.shape with
         | A_Binding binding -> DefinedNotHere (binding_definition binding)
         | _ -> None
       in
-      { ty = compiled.ty; span = compiled.span; definition_mode }
+      { ty = compiled.data.ty; span = compiled.data.span; definition_mode }
   | Pattern ->
       let definition_mode =
         match compiled.shape with
         | P_Binding binding -> DefinedHere (binding_definition binding)
         | _ -> None
       in
-      { ty = compiled.ty; span = compiled.span; definition_mode }
+      { ty = compiled.data.ty; span = compiled.data.span; definition_mode }
 
 let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position) :
      hover_info option ->
-  let span = Compiler.get_span kind compiled in
-  let span_is_special =
-    match span.filename with
-    | Special _ -> true
-    | _ -> false
-  in
-  let* () =
-    if span_is_special || span |> Span.contains pos then Some () else None
-  in
-  let inner : hover_info option =
-    match kind with
-    | Expr -> (
-        match compiled.shape with
-        | E_Constant _ -> None
-        | E_Binding _ -> None
-        | E_Then { a; b } ->
-            hover Expr a pos |> Option.or_else (fun () -> hover Expr b pos)
-        | E_Stmt { expr } -> hover Expr expr pos
-        | E_Scope { expr } -> hover Expr expr pos
-        | E_Fn { arg; body } ->
-            hover Pattern arg pos
-            |> Option.or_else (fun () -> hover Expr body pos)
-        | E_Tuple { tuple } ->
-            tuple |> Tuple.to_seq
-            |> Seq.find_map (fun (_member, expr) -> hover Expr expr pos)
-        | E_Apply { f; arg } ->
-            hover Expr f pos |> Option.or_else (fun () -> hover Expr arg pos)
-        | E_Assign { assignee; value } ->
-            hover Assignee assignee pos
-            |> Option.or_else (fun () -> hover Expr value pos))
-    | Assignee -> (
-        match compiled.shape with
-        | A_Placeholder -> None
-        | A_Unit -> None
-        | A_Binding _ -> None
-        | A_Let pattern -> hover Pattern pattern pos)
-    | Pattern -> (
-        match compiled.shape with
-        | P_Placeholder -> None
-        | P_Unit -> None
-        | P_Binding _ -> None)
-  in
-  match inner with
-  | Some result -> Some result
-  | None ->
-      if span_is_special then None else Some (hover_specifially kind compiled)
+  with_return (fun { return } ->
+      let data = Compiler.get_data kind compiled in
+      let span = data.span in
+      let span_is_special =
+        match span.filename with
+        | Special _ -> true
+        | _ -> false
+      in
+      (match data.ty_ascription with
+      | None -> ()
+      | Some ty_ascription_expr -> (
+          match hover Expr ty_ascription_expr pos with
+          | None -> ()
+          | Some hover -> return (Some hover)));
+      let* () =
+        if span_is_special || span |> Span.contains pos then Some () else None
+      in
+      let inner : hover_info option =
+        match kind with
+        | Expr -> (
+            match compiled.shape with
+            | E_Constant _ -> None
+            | E_Binding _ -> None
+            | E_Then { a; b } ->
+                hover Expr a pos |> Option.or_else (fun () -> hover Expr b pos)
+            | E_Stmt { expr } -> hover Expr expr pos
+            | E_Scope { expr } -> hover Expr expr pos
+            | E_Fn { arg; body } ->
+                hover Pattern arg pos
+                |> Option.or_else (fun () -> hover Expr body pos)
+            | E_Tuple { tuple } ->
+                tuple |> Tuple.to_seq
+                |> Seq.find_map (fun (_member, expr) -> hover Expr expr pos)
+            | E_Apply { f; arg } ->
+                hover Expr f pos
+                |> Option.or_else (fun () -> hover Expr arg pos)
+            | E_Assign { assignee; value } ->
+                hover Assignee assignee pos
+                |> Option.or_else (fun () -> hover Expr value pos))
+        | Assignee -> (
+            match compiled.shape with
+            | A_Placeholder -> None
+            | A_Unit -> None
+            | A_Binding _ -> None
+            | A_Let pattern -> hover Pattern pattern pos)
+        | Pattern -> (
+            match compiled.shape with
+            | P_Placeholder -> None
+            | P_Unit -> None
+            | P_Binding _ -> None)
+      in
+      match inner with
+      | Some result -> Some result
+      | None ->
+          if span_is_special then None
+          else Some (hover_specifially kind compiled))
 
 let find_definition (pos : Lsp.Types.Position.t)
     ({ compiled; _ } : Processing.file_state) : Lsp.Types.Locations.t option =

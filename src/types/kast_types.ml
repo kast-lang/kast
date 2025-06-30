@@ -34,8 +34,14 @@ module Value = struct
         Ty.inferred <| T_Tuple { tuple = Tuple.map ty_of tuple }
     | V_Ty _ -> Ty.inferred T_Ty
     | V_Fn { arg; body } ->
-        Ty.inferred <| T_Fn { arg = arg.ty; result = body.ty }
+        Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
+
+  let expect_ty : value -> ty =
+   fun value ->
+    match value.shape with
+    | V_Ty ty -> ty
+    | _ -> fail "expected ty, got %a" print_value value
 
   let print = print_value
 
@@ -100,3 +106,9 @@ module Binding = struct
 end
 
 type binding = Binding.t
+
+module Ir_data = struct
+  type t = ir_data
+end
+
+type ir_data = Ir_data.t

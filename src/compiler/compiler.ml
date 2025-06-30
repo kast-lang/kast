@@ -15,9 +15,17 @@ end
 
 type compiler = { compile : 'a. 'a compiled_kind -> Ast.t -> 'a }
 
-let get_span : 'a. 'a compiled_kind -> 'a -> span =
- fun (type a) (kind : a compiled_kind) (compiled : a) : span ->
+let get_data : 'a. 'a compiled_kind -> 'a -> ir_data =
+ fun (type a) (kind : a compiled_kind) (compiled : a) : ir_data ->
   match kind with
-  | Expr -> compiled.span
-  | Assignee -> compiled.span
-  | Pattern -> compiled.span
+  | Expr -> compiled.data
+  | Assignee -> compiled.data
+  | Pattern -> compiled.data
+
+let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
+ fun (type a) (kind : a compiled_kind) (compiled : a) (f : ir_data -> ir_data) :
+     a ->
+  match kind with
+  | Expr -> { compiled with data = f compiled.data }
+  | Assignee -> { compiled with data = f compiled.data }
+  | Pattern -> { compiled with data = f compiled.data }

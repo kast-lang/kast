@@ -81,8 +81,7 @@ and expr_shape =
 
 and expr = {
   shape : expr_shape;
-  span : span;
-  ty : ty;
+  data : ir_data;
 }
 
 (* ASSIGNEE EXPR *)
@@ -94,8 +93,7 @@ and assignee_expr_shape =
 
 and assignee_expr = {
   shape : assignee_expr_shape;
-  span : span;
-  ty : ty;
+  data : ir_data;
 }
 
 (* PATTERN *)
@@ -106,8 +104,7 @@ and pattern_shape =
 
 and pattern = {
   shape : pattern_shape;
-  span : span;
-  ty : ty;
+  data : ir_data;
 }
 
 (* OTHER *)
@@ -117,4 +114,10 @@ and binding = {
   ty : ty;
   (* Think: maybe this shouldnt be stored here? *)
   mutable references : span list;
+}
+
+and ir_data = {
+  span : span;
+  ty : ty;
+  ty_ascription : expr option;
 }

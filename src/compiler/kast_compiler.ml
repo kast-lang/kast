@@ -8,6 +8,7 @@ open Init
 
 type state = State.t
 
+(* TODO compile_for - figure out *)
 let init : compile_for:Interpreter.state -> state =
  fun ~compile_for ->
   let scope = State.Scope.init () in
@@ -24,11 +25,11 @@ let init : compile_for:Interpreter.state -> state =
              })
       compile_for.scope.bindings scope
   in
-  { scope; interpreter = Interpreter.init StringMap.empty }
+  { scope; interpreter = compile_for }
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
-let get_span = Compiler.get_span
+let get_data = Compiler.get_data
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
  fun (type a) (state : state) (kind : a compiled_kind) (ast : Ast.t) : a ->

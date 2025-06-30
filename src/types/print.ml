@@ -61,16 +61,16 @@ and print_expr_shape :
         print_assignee_expr_with_spans assignee print_expr value
 
 and print_expr_with_spans : formatter -> expr -> unit =
- fun fmt { shape; span; ty = _ } ->
+ fun fmt { shape; data } ->
   fprintf fmt "%a @{<dim>at %a@}"
     (print_expr_shape print_expr_with_spans)
-    shape Span.print span
+    shape Span.print data.span
 
 and print_expr_with_types : formatter -> expr -> unit =
- fun fmt { shape; span = _; ty } ->
+ fun fmt { shape; data } ->
   fprintf fmt "%a @{<dim>:: %a@}"
     (print_expr_shape print_expr_with_types)
-    shape print_ty ty
+    shape print_ty data.ty
 
 (* ASSIGNEE EXPR *)
 
@@ -85,9 +85,9 @@ and print_assignee_expr_shape : formatter -> assignee_expr_shape -> unit =
         print_pattern_with_spans pattern
 
 and print_assignee_expr_with_spans : formatter -> assignee_expr -> unit =
- fun fmt { shape; span; ty = _ } ->
+ fun fmt { shape; data } ->
   fprintf fmt "%a @{<dim>at %a@}" print_assignee_expr_shape shape Span.print
-    span
+    data.span
 
 (* PATTERN *)
 
@@ -99,8 +99,8 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
 
 and print_pattern_with_spans : formatter -> pattern -> unit =
- fun fmt { shape; span; ty = _ } ->
-  fprintf fmt "%a @{<dim>at %a@}" print_pattern_shape shape Span.print span
+ fun fmt { shape; data } ->
+  fprintf fmt "%a @{<dim>at %a@}" print_pattern_shape shape Span.print data.span
 
 (* OTHER *)
 and print_binding : formatter -> binding -> unit =

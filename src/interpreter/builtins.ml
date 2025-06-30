@@ -21,4 +21,5 @@ let builtins =
         | V_String s -> println "%s" s
         | _ -> fail "print expected a string");
         { shape = V_Unit });
+    ("int32", { shape = V_Ty (Ty.inferred T_Int32) });
   ]

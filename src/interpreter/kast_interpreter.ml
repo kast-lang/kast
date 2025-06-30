@@ -45,7 +45,9 @@ let rec eval : state -> expr -> value =
  fun state expr ->
   match expr.shape with
   | E_Constant value -> value
-  | E_Binding binding -> StringMap.find binding.name state.scope.bindings
+  | E_Binding binding ->
+      StringMap.find_opt binding.name state.scope.bindings
+      |> Option.unwrap_or_else (fun () -> fail "%S not found" binding.name)
   | E_Fn fn -> { shape = V_Fn fn }
   | E_Tuple { tuple } ->
       { shape = V_Tuple { tuple = tuple |> Tuple.map (eval state) } }
