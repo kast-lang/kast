@@ -3,6 +3,7 @@ open Kast_util
 open Kast_types
 module Ast = Kast_ast
 open Init
+open Error
 module Interpreter = Kast_interpreter
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
@@ -37,7 +38,7 @@ let apply : handler =
             let f = Compiler.compile Expr f in
             let arg = Compiler.compile Expr arg in
             E_Apply { f; arg } |> init_expr span
-        | _ -> fail "apply must be expr");
+        | _ -> error span "apply must be expr");
   }
 
 (* a; b *)
@@ -61,7 +62,7 @@ let then' : handler =
             let a = Compiler.compile Expr a in
             let b = Compiler.compile Expr b in
             E_Then { a; b } |> init_expr span
-        | _ -> fail "then must be expr");
+        | _ -> error span "then must be expr");
   }
 
 (* expr; *)
@@ -86,7 +87,7 @@ let stmt : handler =
         | Expr ->
             let expr = Compiler.compile Expr expr in
             E_Stmt { expr } |> init_expr span
-        | _ -> fail "stmt must be expr");
+        | _ -> error span "stmt must be expr");
   }
 
 let scope : handler =
@@ -137,7 +138,7 @@ let assign : handler =
             let assignee = Compiler.compile Assignee assignee in
             let value = Compiler.compile Expr value in
             E_Assign { assignee; value } |> init_expr span
-        | _ -> fail "assign must be expr");
+        | _ -> error span "assign must be expr");
   }
 
 let let' : handler =
@@ -161,7 +162,7 @@ let let' : handler =
         | Assignee ->
             let pattern = Compiler.compile Pattern pattern in
             A_Let pattern |> init_assignee span
-        | _ -> fail "assign must be expr");
+        | _ -> error span "assign must be expr");
   }
 
 let placeholder : handler =
@@ -180,7 +181,7 @@ let placeholder : handler =
         match kind with
         | Assignee -> A_Placeholder |> init_assignee span
         | Pattern -> P_Placeholder |> init_pattern span
-        | Expr -> fail "todo _ expr %s" __LOC__
+        | Expr -> error span "todo _ expr %s" __LOC__
         | TyExpr ->
             let ty = Ty.new_not_inferred () in
             let value : value = { shape = V_Ty ty } in
@@ -219,9 +220,9 @@ let fn : handler =
         in
         let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
         match kind with
-        | Assignee -> fail "fn can't be assignee"
-        | Pattern -> fail "fn can't be a pattern"
-        | TyExpr -> fail "fn can't be a ty"
+        | Assignee -> error span "fn can't be assignee"
+        | Pattern -> error span "fn can't be a pattern"
+        | TyExpr -> error span "fn can't be a ty"
         | Expr ->
             let state = C.state |> State.enter_scope in
             let arg = C.compile ~state Pattern arg in
@@ -274,8 +275,8 @@ let type' : handler =
         let ty_ty = Ty.inferred T_Ty in
         let const = E_Constant { shape = V_Ty ty_ty } |> init_expr span in
         match kind with
-        | Assignee -> fail "type can't be assignee"
-        | Pattern -> fail "type can't be a pattern"
+        | Assignee -> error span "type can't be assignee"
+        | Pattern -> error span "type can't be a pattern"
         | Expr -> const
         | TyExpr -> TE_Expr const |> init_ty_expr span);
   }
@@ -297,8 +298,8 @@ let type_expr : handler =
         in
         let expr = Compiler.compile TyExpr expr in
         match kind with
-        | Assignee -> fail "type expr can't be assignee"
-        | Pattern -> fail "type expr can't be a pattern"
+        | Assignee -> error span "type expr can't be assignee"
+        | Pattern -> error span "type expr can't be a pattern"
         | Expr -> E_Ty expr |> init_expr span
         | TyExpr -> expr);
   }
@@ -328,7 +329,7 @@ let type_ascribe : handler =
         ty |> Inference.Ty.expect_inferred_as expected_ty;
         Compiler.update_data kind expr (fun data ->
             if data.ty_ascription |> Option.is_some then
-              fail "there is already type ascription";
+              error span "there is already type ascription";
             { data with ty_ascription = Some expected_ty_expr }));
   }
 
@@ -395,7 +396,7 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
                           | V_Tuple { tuple } ->
                               let a, b = Tuple.unwrap_unnamed2 tuple in
                               { shape = f (a.shape, b.shape) }
-                          | _ -> fail "expected a tuple");
+                          | _ -> error span "expected a tuple");
                     };
               }
             in
@@ -408,7 +409,7 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
                   |> init_expr (Span.fake "<binop>");
               }
             |> init_expr span
-        | _ -> fail "bin op must be expr");
+        | _ -> error span "bin op must be expr");
   }
 
 let todo_remove =

@@ -5,6 +5,7 @@ module Token = Kast_token
 module Interpreter = Kast_interpreter
 module Ast = Kast_ast
 open Init
+include Error
 
 type state = State.t
 
@@ -57,8 +58,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
               A_Binding
                 (State.Scope.find_binding ~from:ast.span ident state.scope)
               |> init_assignee span
-          | Token.Shape.String _ -> fail "string can't be assignee"
-          | Token.Shape.Number _ -> fail "number can't be assignee"
+          | Token.Shape.String _ -> error span "string can't be assignee"
+          | Token.Shape.Number _ -> error span "number can't be assignee"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
               unreachable "!")
       | Pattern -> (
@@ -74,8 +75,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
               in
               state.scope <- state.scope |> State.Scope.inject_binding binding;
               P_Binding binding |> init_pattern span
-          | Token.Shape.String _ -> fail "string can't be pattern"
-          | Token.Shape.Number _ -> fail "number can't be pattern"
+          | Token.Shape.String _ -> error span "string can't be pattern"
+          | Token.Shape.Number _ -> error span "number can't be pattern"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
               unreachable "!"))
   | Ast.Complex { rule; root } -> (
@@ -84,15 +85,15 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
           let handler =
             Core_syntax.handlers |> StringMap.find_opt name
             |> Option.unwrap_or_else (fun () ->
-                   fail "there is no core syntax %S" name)
+                   error span "there is no core syntax %S" name)
           in
           try handler.handle (make_compiler state) kind root ast.span
           with exc ->
             Log.error "While processing core syntax %S at %a" name Span.print
               ast.span;
             raise exc)
-      | None -> fail "todo compile syntax rule %S" rule.name)
-  | Ast.Syntax _ -> fail "todo %s" __LOC__
+      | None -> error span "todo compile syntax rule %S" rule.name)
+  | Ast.Syntax _ -> error span "todo %s" __LOC__
 
 and make_compiler (original_state : state) : (module Compiler.S) =
   (module struct

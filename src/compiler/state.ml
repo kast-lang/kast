@@ -4,6 +4,7 @@ open Kast_types
 module Token = Kast_token
 module Interpreter = Kast_interpreter
 module Ast = Kast_ast
+open Error
 
 module Scope = struct
   type scope = {
@@ -32,7 +33,7 @@ module Scope = struct
     scope
     |> find_binding_opt ~from ident
     |> Option.unwrap_or_else (fun () : binding ->
-           fail "Could not find %S in scope" ident.name)
+           error from "Could not find %S in scope" ident.name)
 
   let inject_binding : binding -> scope -> scope =
    fun binding { parent; bindings } ->
