@@ -100,6 +100,10 @@ module Child = struct
     | Ast ast -> ast
     | Group _ -> fail "expected ast, got group"
 
+  let expect_group = function
+    | Ast _ -> fail "expected group, got ast"
+    | Group group -> group
+
   let print = print_child
 end
 

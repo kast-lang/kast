@@ -24,8 +24,15 @@ let rec inlay_hints :
             (None, Seq.append (inlay_hints Expr a) (inlay_hints Expr b))
         | E_Stmt { expr } -> (None, inlay_hints Expr expr)
         | E_Scope { expr } -> (None, inlay_hints Expr expr)
-        | E_Fn { arg; body } ->
-            (None, Seq.append (inlay_hints Pattern arg) (inlay_hints Expr body))
+        | E_Fn { arg; body; evaled_result } ->
+            ( None,
+              [
+                inlay_hints Pattern arg;
+                inlay_hints Expr body;
+                evaled_result |> Option.to_seq
+                |> Seq.flat_map (inlay_hints Expr);
+              ]
+              |> List.to_seq |> Seq.concat )
         | E_Tuple { tuple } ->
             ( None,
               tuple |> Tuple.to_seq

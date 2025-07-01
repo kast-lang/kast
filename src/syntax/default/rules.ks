@@ -20,5 +20,6 @@ syntax "core:|>" 20 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
 syntax "core:." 20 wrap if_any = <- obj ""/"\n\t" "." method ""/"\\";
 syntax "core:apply" 50 wrap never = <- f " " arg;
 syntax "core:unit" 1000 wrap never = "(" ")";
+syntax "core:unit type" 1000 wrap never = "type" " " "(" ")";
 syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 syntax "core:placeholder" 1000 wrap never = "_";

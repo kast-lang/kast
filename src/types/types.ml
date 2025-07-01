@@ -46,6 +46,7 @@ and ty = { var : ty_shape Inference.var }
 and expr_fn = {
   arg : pattern;
   body : expr;
+  evaled_result : expr option;
 }
 
 and expr_then = {

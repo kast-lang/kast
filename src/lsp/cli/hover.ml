@@ -93,9 +93,12 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 hover Expr a pos |> Option.or_else (fun () -> hover Expr b pos)
             | E_Stmt { expr } -> hover Expr expr pos
             | E_Scope { expr } -> hover Expr expr pos
-            | E_Fn { arg; body } ->
+            | E_Fn { arg; body; evaled_result } ->
                 hover Pattern arg pos
                 |> Option.or_else (fun () -> hover Expr body pos)
+                |> Option.or_else (fun () ->
+                       evaled_result
+                       |> Option.and_then (fun expr -> hover Expr expr pos))
             | E_Tuple { tuple } ->
                 tuple |> Tuple.to_seq
                 |> Seq.find_map (fun (_member, expr) -> hover Expr expr pos)

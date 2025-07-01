@@ -3,6 +3,7 @@ open Kast_util
 open Kast_types
 module Ast = Kast_ast
 open Init
+module Interpreter = Kast_interpreter
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
@@ -186,26 +187,48 @@ let fn : handler =
     name = "fn";
     handle =
       (fun (type a)
-        (module Compiler : Compiler.S)
+        (module C : Compiler.S)
         (kind : a compiled_kind)
         ({ children; _ } : Ast.group)
         span
         :
         a
       ->
-        let arg, body =
+        let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let context =
           children
-          |> Tuple.map Ast.Child.expect_ast
-          |> Tuple.unwrap_named2 [ "arg"; "body" ]
+          |> Tuple.get_named_opt "context"
+          |> Option.map (fun (child : Ast.child) ->
+                 let group = child |> Ast.Child.expect_group in
+                 group.children |> Tuple.unwrap_single_unnamed
+                 |> Ast.Child.expect_ast)
         in
+        let result =
+          children
+          |> Tuple.get_named_opt "result"
+          |> Option.map (fun (child : Ast.child) ->
+                 let group = child |> Ast.Child.expect_group in
+                 group.children |> Tuple.unwrap_single_unnamed
+                 |> Ast.Child.expect_ast)
+        in
+        let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
         match kind with
         | Assignee -> fail "fn can't be assignee"
         | Pattern -> fail "fn can't be a pattern"
         | Expr ->
-            let state = Compiler.state |> State.enter_scope in
-            let arg = Compiler.compile ~state Pattern arg in
-            let body = Compiler.compile ~state Expr body in
-            E_Fn { arg; body } |> init_expr span);
+            let state = C.state |> State.enter_scope in
+            let arg = C.compile ~state Pattern arg in
+            let body = C.compile ~state Expr body in
+            let result_expr =
+              result
+              |> Option.map (fun result ->
+                     let result, result_expr =
+                       Compiler.eval_ty (module C) result
+                     in
+                     body.data.ty |> Inference.Ty.expect_inferred_as result;
+                     result_expr)
+            in
+            E_Fn { arg; body; evaled_result = result_expr } |> init_expr span);
   }
 
 let unit : handler =
@@ -227,6 +250,27 @@ let unit : handler =
         | Expr -> E_Constant { shape = V_Unit } |> init_expr span);
   }
 
+(* TODO remove *)
+let unit_type : handler =
+  {
+    name = "unit type";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        Tuple.assert_empty children;
+        match kind with
+        | Assignee -> A_Unit |> init_assignee span
+        | Pattern -> P_Unit |> init_pattern span
+        | Expr ->
+            E_Constant { shape = V_Ty (Ty.inferred T_Unit) } |> init_expr span);
+  }
+
 let type_ascribe : handler =
   {
     name = "type ascribe";
@@ -246,14 +290,8 @@ let type_ascribe : handler =
         in
         let expr = C.compile kind expr in
         let ty = (Compiler.get_data kind expr).ty in
-        let expected_ty_expr = C.compile Expr expected_ty in
-        let expected_ty : ty =
-          expected_ty_expr.data.ty
-          |> Inference.Ty.expect_inferred_as (Ty.inferred T_Ty);
-          let expected_ty =
-            Kast_interpreter.eval C.state.interpreter expected_ty_expr
-          in
-          expected_ty |> Value.expect_ty
+        let expected_ty, expected_ty_expr =
+          Compiler.eval_ty (module C) expected_ty
         in
         ty |> Inference.Ty.expect_inferred_as expected_ty;
         Compiler.update_data kind expr (fun data ->
@@ -264,7 +302,17 @@ let type_ascribe : handler =
 
 let core =
   [
-    apply; then'; stmt; scope; assign; let'; placeholder; fn; unit; type_ascribe;
+    apply;
+    then';
+    stmt;
+    scope;
+    assign;
+    let';
+    placeholder;
+    fn;
+    unit;
+    unit_type;
+    type_ascribe;
   ]
 
 (*  TODO remove *)

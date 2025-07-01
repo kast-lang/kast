@@ -33,7 +33,7 @@ module Value = struct
     | V_Tuple { tuple } ->
         Ty.inferred <| T_Tuple { tuple = Tuple.map ty_of tuple }
     | V_Ty _ -> Ty.inferred T_Ty
-    | V_Fn { arg; body } ->
+    | V_Fn { arg; body; evaled_result = _ } ->
         Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
 

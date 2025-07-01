@@ -15,6 +15,7 @@ module Tuple = struct
 
   let get_unnamed index tuple = Array.get tuple.unnamed index
   let get_named name tuple = StringMap.find name tuple.named
+  let get_named_opt name tuple = StringMap.find_opt name tuple.named
 
   let get member tuple =
     match member with

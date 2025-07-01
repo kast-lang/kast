@@ -2,6 +2,7 @@ open Std
 open Kast_util
 open Kast_types
 module Ast = Kast_ast
+module Inference = Kast_inference
 
 type _ compiled_kind =
   | Assignee : Expr.assignee compiled_kind
@@ -29,3 +30,15 @@ let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
   | Expr -> { compiled with data = f compiled.data }
   | Assignee -> { compiled with data = f compiled.data }
   | Pattern -> { compiled with data = f compiled.data }
+
+let eval_ty (module C : S) (ast : Ast.t) =
+  let expected_ty_expr = C.compile Expr ast in
+  let expected_ty : ty =
+    expected_ty_expr.data.ty
+    |> Inference.Ty.expect_inferred_as (Ty.inferred T_Ty);
+    let expected_ty =
+      Kast_interpreter.eval C.state.interpreter expected_ty_expr
+    in
+    expected_ty |> Value.expect_ty
+  in
+  (expected_ty, expected_ty_expr)

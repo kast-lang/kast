@@ -47,7 +47,7 @@ and print_expr_shape :
   | E_Scope { expr } ->
       fprintf fmt "@{<magenta>scope@} %a" (Tuple.print print_expr)
         (Tuple.make [ expr ] [])
-  | E_Fn { arg; body } ->
+  | E_Fn { arg; body; evaled_result = _ } ->
       fprintf fmt
         "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
         print_pattern_with_spans arg print_expr body

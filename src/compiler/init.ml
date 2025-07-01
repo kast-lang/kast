@@ -12,7 +12,7 @@ let init_expr : span -> Expr.Shape.t -> expr =
     | E_Then { a; b } -> b.data.ty
     | E_Stmt { expr } -> Ty.inferred T_Unit
     | E_Scope { expr } -> expr.data.ty
-    | E_Fn { arg; body } ->
+    | E_Fn { arg; body; evaled_result = _ } ->
         Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
     | E_Tuple { tuple } ->
         Ty.inferred
