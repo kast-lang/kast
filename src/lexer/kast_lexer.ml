@@ -48,6 +48,7 @@ let init : rule list -> source -> lexer =
     recordings = RecordingTable.create 0;
   }
 
+(* TODO maybe not correct? maybe should be position of peeked token *)
 let position lexer = lexer.reader.position
 
 let peek : lexer -> Token.t =

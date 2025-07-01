@@ -5,21 +5,41 @@ module Lexer = Kast_lexer
 module Syntax = Kast_syntax
 module Ast = Kast_ast
 
-exception Error of (formatter -> unit)
+type error = {
+  msg : formatter -> unit;
+  span : span;
+}
+
+exception Error of error
 
 let () =
   Printexc.register_printer (function
-    | Error f ->
-        eprintln "@{<red>Parse error:@} %a" (fun fmt () -> f fmt) ();
+    | Error { msg; span } ->
+        eprintln "@{<red>Parse error:@} %a @{<dim>at %a@}"
+          (fun fmt () -> msg fmt)
+          () Span.print span;
         exit 1
     | _ -> None)
 
-let error : 'never. ('a, formatter, unit, 'never) format4 -> 'a =
- fun format -> Format.kdprintf (fun f -> raise <| Error f) format
+let error : 'never. span -> ('a, formatter, unit, 'never) format4 -> 'a =
+ fun span format ->
+  Format.kdprintf (fun msg -> raise <| Error { msg; span }) format
 
 let expect_eof : Lexer.t -> unit =
  fun lexer ->
-  try Lexer.expect_eof lexer with Lexer.Error f -> raise <| Error f
+  try Lexer.expect_eof lexer
+  with Lexer.Error msg ->
+    raise
+    <| Error
+         {
+           msg;
+           span =
+             {
+               start = Lexer.position lexer;
+               finish = Lexer.position lexer;
+               filename = (Lexer.source lexer).filename;
+             };
+         }
 
 type parsed_part =
   | Comment of Token.comment
@@ -38,33 +58,34 @@ end
 module Rule = struct
   let parse : Lexer.t -> Syntax.rule =
    fun lexer ->
+    let start = (Lexer.peek lexer).span.start in
     let get_name (token : Token.t) =
       match token.shape with
       | Ident { raw; _ } -> raw
       | String { contents; _ } -> contents
-      | _ -> error "Expected rule name, got %a" Token.print token
+      | _ -> error token.span "Expected rule name, got %a" Token.print token
     in
     let name = get_name (Lexer.next lexer) in
     let priority =
       let token = Lexer.next lexer in
       try Token.Shape.as_float token.shape
       with Invalid_argument _ ->
-        error "Expected rule priority, got %a" Token.print token
+        error token.span "Expected rule priority, got %a" Token.print token
     in
     let wrap_mode =
       let token = Lexer.next lexer in
       if token |> Token.is_raw "wrap" |> not then
-        error "Expected \"wrap\", got %a" Token.print token;
+        error token.span "Expected \"wrap\", got %a" Token.print token;
       let token = Lexer.next lexer in
       match token.shape with
       | Ident { raw = "if_any"; _ } -> Syntax.Rule.WrapMode.IfAny
       | Ident { raw = "always"; _ } -> Syntax.Rule.WrapMode.Always
       | Ident { raw = "never"; _ } -> Syntax.Rule.WrapMode.Never
-      | _ -> error "Expected wrap mode, got %a" Token.print token
+      | _ -> error token.span "Expected wrap mode, got %a" Token.print token
     in
     (let token = Lexer.next lexer in
      if token |> Token.is_raw "=" |> not then
-       error "Expected \"=\", got %a" Token.print token);
+       error token.span "Expected \"=\", got %a" Token.print token);
     let rec collect_parts () : Syntax.Rule.part list =
       let rec part ?(left_assoc = false) () : Syntax.Rule.part option =
         let token = Lexer.peek lexer in
@@ -82,7 +103,9 @@ module Rule = struct
                   let token = Lexer.next lexer in
                   match token.shape with
                   | String { contents; _ } -> contents
-                  | _ -> error "Expected wrap str, got %a" Token.print token)
+                  | _ ->
+                      error token.span "Expected wrap str, got %a" Token.print
+                        token)
                 else nowrap
               in
               Some (Whitespace { nowrap; wrap }))
@@ -120,7 +143,8 @@ module Rule = struct
                       Lexer.advance lexer;
                       let peek = Lexer.peek lexer in
                       if peek |> Token.is_raw "any" |> not then
-                        error "Expected \"any\", got %a" Token.print peek;
+                        error peek.span "Expected \"any\", got %a" Token.print
+                          peek;
                       Lexer.advance lexer;
                       Syntax.Rule.Priority.Any
                   | _ ->
@@ -132,14 +156,21 @@ module Rule = struct
               Some (Value { name; priority })
         | _ ->
             if left_assoc then
-              error "Expected value name, got %a" Token.print token;
+              error token.span "Expected value name, got %a" Token.print token;
             None
       in
       match part () with
       | Some part -> part :: collect_parts ()
       | None -> []
     in
-    { name; priority; parts = collect_parts (); wrap_mode }
+    let finish = Lexer.position lexer in
+    {
+      span = { start; finish; filename = (Lexer.source lexer).filename };
+      name;
+      priority;
+      parts = collect_parts ();
+      wrap_mode;
+    }
 
   type collect_result = {
     parsed : Ast.part list;
@@ -342,8 +373,8 @@ module RuleSet = struct
       | [] -> (
           match node.terminal with
           | Some existing ->
-              error "Duplicate rule: %a and %a" Syntax.Rule.print existing
-                Syntax.Rule.print rule
+              error rule.span "Duplicate rule: %a and %a" Syntax.Rule.print
+                existing Syntax.Rule.print rule
           | None ->
               {
                 terminal = Some rule;
@@ -485,7 +516,9 @@ module Impl = struct
             Log.trace "Parsed %a" Ast.print ast;
             comments_before := !comments_before @ read_comments lexer;
             MadeProgress ast
-        | None -> error "Unexpected %a" Token.print (Lexer.peek lexer)
+        | None ->
+            let token = Lexer.peek lexer in
+            error token.span "Unexpected %a" Token.print token
       else NoProgress
     in
     (* should return bool but we do option because let* makes it easier *)
@@ -573,7 +606,8 @@ module Impl = struct
       in
       let token = Lexer.next lexer in
       if token |> Token.is_raw ";" |> not then
-        error "expected \";\" to finish syntax, got %a" Token.print token;
+        error token.span "expected \";\" to finish syntax, got %a" Token.print
+          token;
       let tokens : Token.t list = Lexer.stop_rec tokens_rec in
       let span : span =
         {

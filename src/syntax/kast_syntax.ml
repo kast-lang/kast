@@ -80,6 +80,7 @@ module Rule = struct
   type wrap_mode = WrapMode.t
 
   type rule = {
+    span : span;
     name : string;
     priority : float;
     parts : part list;

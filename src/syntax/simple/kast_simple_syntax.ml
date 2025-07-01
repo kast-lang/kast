@@ -47,7 +47,8 @@ and collect_children ast : ast tuple =
       if
         Array.length children.unnamed <> 2
         || not (StringMap.is_empty children.named)
-      then Parser.error "comma is incorrect structure: %a" Ast.print ast;
+      then
+        Parser.error ast.span "comma is incorrect structure: %a" Ast.print ast;
       let a = Tuple.get_unnamed 0 children |> collect_children in
       let b = Tuple.get_unnamed 1 children |> collect_children in
       Tuple.merge a b

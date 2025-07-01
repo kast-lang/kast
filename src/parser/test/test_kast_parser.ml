@@ -42,8 +42,11 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
     in
     Log.error "Parsed: %a" (Option.print Ast.print) ast;
     failwith "Parse was supposed to fail"
-  with Parser.Error f | Lexer.Error f ->
-    Log.trace "Test properly failed: %a" (fun fmt () -> f fmt) ()
+  with
+  | Parser.Error { msg; span = _ } ->
+      Log.trace "Test properly failed: %a" (fun fmt () -> msg fmt) ()
+  | Lexer.Error f ->
+      Log.trace "Test properly failed: %a" (fun fmt () -> f fmt) ()
 
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =
@@ -67,30 +70,18 @@ let test ~(source : string) ~(expected : string)
 
 Printexc.record_backtrace true;
 Log.set_max_level Debug;
-try
-  (let then_rule p = make_string "then %d wrap never = _ \";\" _" p in
-   let eq_rule p = make_string "eq %d wrap never = _ \"=\" _ " p in
-   test
-     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 0; eq_rule 1 ])
-     ~source:"a=1;b=2" ~expected:"then( eq( a, 1 ), eq( b, 2 ) )" ();
-   test_should_fail
-     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 2; eq_rule 1 ])
-     "a=1;b=2");
-  test ~source:"Some(Some(String))"
-    ~expected:
-      "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )"
-    ();
-  test ~source:"if f x then a else b"
-    ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )" ();
-  test_should_fail "f if cond then a else b"
-with
-| Failure s ->
-    prerr_endline s;
-    Printexc.print_backtrace stderr;
-    exit 1
-| Parser.Error f ->
-    Format.eprintf "Parse error: ";
-    f Format.err_formatter;
-    eprintln "";
-    Printexc.print_backtrace stderr;
-    exit 1
+(let then_rule p = make_string "then %d wrap never = _ \";\" _" p in
+ let eq_rule p = make_string "eq %d wrap never = _ \"=\" _ " p in
+ test
+   ~ruleset:(Parser.RuleSet.parse_list [ then_rule 0; eq_rule 1 ])
+   ~source:"a=1;b=2" ~expected:"then( eq( a, 1 ), eq( b, 2 ) )" ();
+ test_should_fail
+   ~ruleset:(Parser.RuleSet.parse_list [ then_rule 2; eq_rule 1 ])
+   "a=1;b=2");
+test ~source:"Some(Some(String))"
+  ~expected:
+    "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )"
+  ();
+test ~source:"if f x then a else b"
+  ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )" ();
+test_should_fail "f if cond then a else b"
