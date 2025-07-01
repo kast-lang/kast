@@ -77,7 +77,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
           | Token.Shape.Number _ -> fail "number can't be pattern"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
               unreachable "!"))
-  | Ast.Complex { rule; parts = _; children } -> (
+  | Ast.Complex { rule; parts = _; root } -> (
       match rule.name |> String.strip_prefix ~prefix:"core:" with
       | Some name ->
           let handler =
@@ -85,7 +85,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             |> Option.unwrap_or_else (fun () ->
                    fail "there is no core syntax %S" name)
           in
-          handler.handle (make_compiler state) kind children ast.span
+          handler.handle (make_compiler state) kind root ast.span
       | None -> fail "todo compile syntax rule %S" rule.name)
   | Ast.Syntax _ -> fail "todo %s" __LOC__
 

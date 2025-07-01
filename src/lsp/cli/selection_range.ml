@@ -11,14 +11,18 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
     ::
     (match ast.shape with
     | Simple _ -> []
-    | Complex { children; _ } -> (
-        let child_spans =
+    | Complex { root; _ } -> (
+        let rec find_in_group ({ children } : Ast.group) : span list option =
           children |> Tuple.to_seq
-          |> Seq.find_map (fun (_member, child) ->
-                 let child_spans = find_spans_start_biggest child pos in
-                 if List.length child_spans = 0 then None else Some child_spans)
+          |> Seq.find_map (fun (_member, (child : Ast.child)) ->
+                 match child with
+                 | Ast child ->
+                     let child_spans = find_spans_start_biggest child pos in
+                     if List.length child_spans = 0 then None
+                     else Some child_spans
+                 | Group child -> find_in_group child)
         in
-        match child_spans with
+        match find_in_group root with
         | None -> []
         | Some child_spans -> child_spans)
     | Syntax { value_after; _ } -> (

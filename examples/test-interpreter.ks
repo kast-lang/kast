@@ -1,5 +1,5 @@
 print "Hello, World!";
-let print_times = (s :: string) => (
+let print_times = (s :: string) with _ => (
   let f = () => 123;
   let x = f ();
   print s;

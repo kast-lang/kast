@@ -29,8 +29,14 @@ type part =
 and complex = {
   rule : Syntax.rule;
   parts : part list;
-  children : ast tuple;
+  root : group;
 }
+
+and group = { children : child tuple }
+
+and child =
+  | Ast of ast
+  | Group of group
 
 and syntax = {
   comments_before : Token.comment list;
@@ -55,12 +61,20 @@ let rec print : formatter -> ast -> unit =
  fun fmt { shape; span } ->
   fprintf fmt "%a @{<dim>at %a@}" print_shape shape Span.print span
 
+and print_child : formatter -> child -> unit =
+ fun fmt -> function
+  | Ast ast -> print fmt ast
+  | Group group -> print_group fmt group
+
+and print_group : formatter -> group -> unit =
+ fun fmt { children } -> Tuple.print print_child fmt children
+
 and print_shape : formatter -> shape -> unit =
  fun fmt -> function
   | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
-  | Complex { rule; parts = _; children } ->
+  | Complex { rule; parts = _; root } ->
       fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped rule.name
-        (Tuple.print print) children
+        print_group root
   | Syntax { comments_before = _; mode; value_after; tokens = _ } -> (
       SyntaxMode.print fmt mode;
       match value_after with
@@ -71,4 +85,24 @@ module Kind = struct
   type t = shape
 
   let print = print_shape
+end
+
+module Child = struct
+  type t = child
+
+  let expect_ast = function
+    | Ast ast -> ast
+    | Group _ -> fail "expected ast, got group"
+
+  let print = print_child
+end
+
+module Part = struct
+  type t = part
+
+  let print =
+   fun fmt -> function
+    | Comment _ -> fprintf fmt "<comment>"
+    | Keyword token -> fprintf fmt "keyword %a" Token.print token
+    | Value value -> print fmt value
 end

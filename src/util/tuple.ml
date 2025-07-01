@@ -70,6 +70,10 @@ module Tuple = struct
       (fun tuple (name, value) -> add (Some name) value tuple)
       tuple_of_unnamed named
 
+  let of_list : 'a. (string option * 'a) list -> 'a tuple =
+   fun list ->
+    List.fold_left (fun tuple (name, value) -> add name value tuple) empty list
+
   let merge : 'a. 'a tuple -> 'a tuple -> 'a tuple =
    fun a b ->
     let unnamed = Array.append a.unnamed b.unnamed in

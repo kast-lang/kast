@@ -48,6 +48,7 @@ module Rule = struct
   end
 
   type priority = Priority.t
+  type quantifier = Optional
 
   type binding = {
     name : string option;
@@ -61,6 +62,13 @@ module Rule = struct
       }
     | Keyword of string
     | Value of binding
+    | Group of group
+
+  and group = {
+    name : string option;
+    parts : part list;
+    quantifier : quantifier option;
+  }
 
   module WrapMode = struct
     type t =

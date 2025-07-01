@@ -79,27 +79,43 @@ module Rule = struct
             Lexer.advance lexer;
             let name = if raw = "_" then None else Some raw in
             let peek = Lexer.peek lexer in
-            let priority =
-              if left_assoc then Syntax.Rule.Priority.GreaterOrEqual
-              else
-                match Token.raw peek with
-                | Some "->" ->
+            if peek |> Token.is_raw "=" then (
+              (* group *)
+              Lexer.advance lexer;
+              Lexer.expect_next lexer "(";
+              let parts = collect_parts () in
+              Lexer.expect_next lexer ")";
+              let peek = Lexer.peek lexer in
+              let quantifier =
+                match peek |> Token.raw with
+                | Some "?" ->
                     Lexer.advance lexer;
-                    Syntax.Rule.Priority.GreaterOrEqual
-                | Some ":" ->
-                    Lexer.advance lexer;
-                    let peek = Lexer.peek lexer in
-                    if peek |> Token.is_raw "any" |> not then
-                      error "Expected \"any\", got %a" Token.print peek;
-                    Lexer.advance lexer;
-                    Syntax.Rule.Priority.Any
-                | _ ->
-                    (* defaulting to Greater means we only need
+                    Some Syntax.Rule.Optional
+                | _ -> None
+              in
+              Some (Group { name; parts; quantifier }))
+            else (* Not group *)
+              let priority =
+                if left_assoc then Syntax.Rule.Priority.GreaterOrEqual
+                else
+                  match Token.raw peek with
+                  | Some "->" ->
+                      Lexer.advance lexer;
+                      Syntax.Rule.Priority.GreaterOrEqual
+                  | Some ":" ->
+                      Lexer.advance lexer;
+                      let peek = Lexer.peek lexer in
+                      if peek |> Token.is_raw "any" |> not then
+                        error "Expected \"any\", got %a" Token.print peek;
+                      Lexer.advance lexer;
+                      Syntax.Rule.Priority.Any
+                  | _ ->
+                      (* defaulting to Greater means we only need
                       to annotate with <- or -> where we want associativity
                       or :any where we want parentheses-like behavior *)
-                    Syntax.Rule.Priority.Greater
-            in
-            Some (Value { name; priority })
+                      Syntax.Rule.Priority.Greater
+              in
+              Some (Value { name; priority })
         | _ ->
             if left_assoc then
               error "Expected value name, got %a" Token.print token;
@@ -111,14 +127,13 @@ module Rule = struct
     in
     { name; priority; parts = collect_parts (); wrap_mode }
 
+  type collect_result = {
+    collected : (string option * Ast.child) list;
+    remaining : Ast.part list;
+  }
+
   let collect : Ast.part list -> Syntax.Rule.t -> Ast.t =
    fun parts rule ->
-    let values =
-      parts
-      |> List.filter_map (function
-           | Ast.Value ast -> Some ast
-           | _ -> None)
-    in
     let span : span =
       let spans =
         parts
@@ -133,33 +148,74 @@ module Rule = struct
         filename = (List.head spans).filename;
       }
     in
-    Log.trace "Collecting %d values into %s" (List.length values) rule.name;
-    Log.trace "Collecting %a" (List.print Ast.print) values;
-    let rec collect_children :
-        Ast.t list ->
-        Syntax.Rule.part list ->
-        (Syntax.Rule.binding * Ast.t) list =
-     fun values parts ->
-      match (values, parts) with
-      | _, (Keyword _ | Whitespace _) :: parts_tail ->
-          collect_children values parts_tail
-      | value :: values_tail, Value binding :: parts_tail ->
-          (binding, value) :: collect_children values_tail parts_tail
-      | [], [] -> []
-      | [], _ -> failwith "not enough values supplied"
-      | _, [] -> failwith "too many values supplied"
-    in
-    let children = collect_children values rule.parts in
-    let children =
-      List.fold_left
-        (fun tuple (binding, value) ->
-          let (* because OCaml is OCaml *) binding : Syntax.Rule.binding =
-            binding
+    Log.trace "Collecting %d parts into %s" (List.length parts) rule.name;
+    Log.trace "parts = %a" (List.print Ast.Part.print) parts;
+    let rec collect_children (parsed_parts : Ast.part list)
+        (rule_parts : Syntax.Rule.part list) : collect_result =
+      match (parsed_parts, rule_parts) with
+      | Comment _ :: parsed_parts_tail, _ ->
+          collect_children parsed_parts_tail rule_parts
+      | _, Whitespace _ :: rule_parts_tail ->
+          collect_children parsed_parts rule_parts_tail
+      | ( Keyword parsed_keyword :: parsed_parts_tail,
+          Keyword expected_keyword :: rule_parts_tail ) ->
+          if parsed_keyword |> Token.is_raw expected_keyword |> not then
+            unreachable
+              "Can't collect parsed parts, expected keyword %S, got %a"
+              expected_keyword Token.print parsed_keyword;
+          collect_children parsed_parts_tail rule_parts_tail
+      | Value _ :: _, Keyword _ :: _ ->
+          unreachable "matched value & keyword %s" __LOC__
+      | Keyword _ :: _, Value _ :: _ ->
+          unreachable "matched keyword & value %s" __LOC__
+      | Value value :: parsed_parts_tail, Value binding :: rule_parts_tail ->
+          let { collected; remaining } =
+            collect_children parsed_parts_tail rule_parts_tail
           in
-          Tuple.add binding.name value tuple)
-        Tuple.empty children
+          { collected = (binding.name, Ast value) :: collected; remaining }
+      | _, Group group :: rule_parts_tail -> (
+          let go_in =
+            match group.quantifier with
+            | None -> true
+            | Some Optional -> (
+                let expected_keyword =
+                  match group.parts with
+                  | Keyword keyword :: _ -> keyword
+                  | _ ->
+                      fail "Optional groups should have keyword as first part"
+                in
+                match parsed_parts with
+                | Keyword keyword :: _
+                  when keyword |> Token.is_raw expected_keyword ->
+                    true
+                | _ -> false)
+          in
+          match go_in with
+          | false -> collect_children parsed_parts rule_parts_tail
+          | true ->
+              let { collected = parsed_group; remaining } =
+                collect_children parsed_parts group.parts
+              in
+              let { collected; remaining } =
+                collect_children remaining rule_parts_tail
+              in
+              {
+                collected =
+                  (group.name, Group { children = Tuple.of_list parsed_group })
+                  :: collected;
+                remaining;
+              })
+      | _, [] -> { collected = []; remaining = parsed_parts }
+      | [], _ -> failwith "not enough values supplied"
     in
-    { shape = Ast.Complex { rule; parts; children }; span }
+    let { collected; remaining } = collect_children parts rule.parts in
+    if remaining |> List.length <> 0 then fail "too many values supplied";
+    {
+      shape =
+        Ast.Complex
+          { rule; parts; root = { children = collected |> Tuple.of_list } };
+      span;
+    }
 end
 
 module RuleSet = struct
@@ -255,12 +311,19 @@ module RuleSet = struct
                 next_keywords = node.next_keywords;
               })
       | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
+      | Group { name = _; parts = group_parts; quantifier } :: rest -> (
+          match quantifier with
+          | None -> insert ~prev_prev ~prev (group_parts @ rest) node
+          | Some Optional ->
+              let inserted_without_group = insert ~prev_prev ~prev rest node in
+              insert ~prev_prev ~prev (group_parts @ rest)
+                inserted_without_group)
       | first :: rest ->
           let edge : Edge.t =
             match first with
             | Keyword keyword -> Keyword keyword
             | Value _ -> Value
-            | Whitespace _ -> unreachable ":)"
+            | Group _ | Whitespace _ -> unreachable ":)"
           in
           let merge_next : node option -> node option =
            fun current ->
@@ -281,7 +344,7 @@ module RuleSet = struct
               (match first with
               | Value _ -> node.next_keywords
               | Keyword keyword -> StringSet.add keyword node.next_keywords
-              | Whitespace _ -> unreachable ":)");
+              | Group _ | Whitespace _ -> unreachable ":)");
           }
     in
     {

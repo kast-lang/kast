@@ -7,7 +7,7 @@ open Init
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
 type 'a handle =
-  (module Compiler.S) -> 'a compiled_kind -> Ast.t tuple -> span -> 'a
+  (module Compiler.S) -> 'a compiled_kind -> Ast.group -> span -> 'a
 
 type handler = {
   name : string;
@@ -21,13 +21,15 @@ let apply : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
         let f, arg =
-          children |> Tuple.unwrap2 ~unnamed:0 ~named:[ "f"; "arg" ]
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap2 ~unnamed:0 ~named:[ "f"; "arg" ]
         in
         match kind with
         | Expr ->
@@ -45,12 +47,14 @@ let then' : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
-        let a, b = Tuple.unwrap_unnamed2 children in
+        let a, b =
+          children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
+        in
         match kind with
         | Expr ->
             let a = Compiler.compile Expr a in
@@ -67,12 +71,16 @@ let stmt : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
-        let expr = Tuple.unwrap_single_unnamed children in
+        let expr =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_single_unnamed
+        in
         match kind with
         | Expr ->
             let expr = Compiler.compile Expr expr in
@@ -87,12 +95,16 @@ let scope : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
-        let expr = Tuple.unwrap_single_unnamed children in
+        let expr =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_single_unnamed
+        in
         match kind with
         | Expr ->
             let expr = Compiler.compile Expr expr in
@@ -108,13 +120,15 @@ let assign : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
         let assignee, value =
-          children |> Tuple.unwrap_named2 [ "assignee"; "value" ]
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "assignee"; "value" ]
         in
         match kind with
         | Expr ->
@@ -131,12 +145,16 @@ let let' : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
-        let pattern = children |> Tuple.unwrap_single_named "pattern" in
+        let pattern =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_single_named "pattern"
+        in
         match kind with
         | Assignee ->
             let pattern = Compiler.compile Pattern pattern in
@@ -151,7 +169,7 @@ let placeholder : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
@@ -170,12 +188,16 @@ let fn : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
-        let arg, body = children |> Tuple.unwrap_named2 [ "arg"; "body" ] in
+        let arg, body =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "arg"; "body" ]
+        in
         match kind with
         | Assignee -> fail "fn can't be assignee"
         | Pattern -> fail "fn can't be a pattern"
@@ -193,7 +215,7 @@ let unit : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
@@ -212,13 +234,15 @@ let type_ascribe : handler =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
         let expr, expected_ty =
-          children |> Tuple.unwrap_named2 [ "expr"; "type" ]
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "expr"; "type" ]
         in
         let expr = C.compile kind expr in
         let ty = (Compiler.get_data kind expr).ty in
@@ -252,12 +276,14 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        children
+        ({ children } : Ast.group)
         span
         :
         a
       ->
-        let a, b = Tuple.unwrap_unnamed2 children in
+        let a, b =
+          children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
+        in
         match kind with
         | Expr ->
             let a = Compiler.compile Expr a in
