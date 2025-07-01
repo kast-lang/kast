@@ -21,6 +21,20 @@ let expect_eof : Lexer.t -> unit =
  fun lexer ->
   try Lexer.expect_eof lexer with Lexer.Error f -> raise <| Error f
 
+type parsed_part =
+  | Comment of Token.comment
+  | Keyword of Token.t
+  | Value of Ast.t
+
+module ParsedPart = struct
+  let print : formatter -> parsed_part -> unit =
+   fun fmt -> function
+    | Comment comment ->
+        fprintf fmt "comment %a" Token.Shape.print (Comment comment.shape)
+    | Keyword token -> Token.print fmt token
+    | Value ast -> Ast.print fmt ast
+end
+
 module Rule = struct
   let parse : Lexer.t -> Syntax.rule =
    fun lexer ->
@@ -128,19 +142,20 @@ module Rule = struct
     { name; priority; parts = collect_parts (); wrap_mode }
 
   type collect_result = {
-    collected : (string option * Ast.child) list;
-    remaining : Ast.part list;
+    parsed : Ast.part list;
+    children : (string option * Ast.child) list;
+    remaining : parsed_part list;
   }
 
-  let collect : Ast.part list -> Syntax.Rule.t -> Ast.t =
+  let collect : parsed_part list -> Syntax.Rule.t -> Ast.t =
    fun parts rule ->
     let span : span =
       let spans =
         parts
         |> List.filter_map (function
-             | Ast.Keyword spanned -> Some spanned.span
-             | Ast.Value ast -> Some ast.span
-             | Ast.Comment _ -> None)
+             | Keyword spanned -> Some spanned.span
+             | Value ast -> Some ast.span
+             | Comment _ -> None)
       in
       {
         start = (spans |> List.head |> fun span -> span.start);
@@ -149,12 +164,15 @@ module Rule = struct
       }
     in
     Log.trace "Collecting %d parts into %s" (List.length parts) rule.name;
-    Log.trace "parts = %a" (List.print Ast.Part.print) parts;
-    let rec collect_children (parsed_parts : Ast.part list)
+    Log.trace "parts = %a" (List.print ParsedPart.print) parts;
+    let rec collect_children (parsed_parts : parsed_part list)
         (rule_parts : Syntax.Rule.part list) : collect_result =
       match (parsed_parts, rule_parts) with
-      | Comment _ :: parsed_parts_tail, _ ->
-          collect_children parsed_parts_tail rule_parts
+      | Comment comment :: parsed_parts_tail, _ ->
+          let { parsed; children; remaining } =
+            collect_children parsed_parts_tail rule_parts
+          in
+          { parsed = Comment comment :: parsed; children; remaining }
       | _, Whitespace _ :: rule_parts_tail ->
           collect_children parsed_parts rule_parts_tail
       | ( Keyword parsed_keyword :: parsed_parts_tail,
@@ -163,23 +181,30 @@ module Rule = struct
             unreachable
               "Can't collect parsed parts, expected keyword %S, got %a"
               expected_keyword Token.print parsed_keyword;
-          collect_children parsed_parts_tail rule_parts_tail
+          let { parsed; children; remaining } =
+            collect_children parsed_parts_tail rule_parts_tail
+          in
+          { parsed = Keyword parsed_keyword :: parsed; children; remaining }
       | Value _ :: _, Keyword _ :: _ ->
           unreachable "matched value & keyword %s" __LOC__
       | Keyword _ :: _, Value _ :: _ ->
           unreachable "matched keyword & value %s" __LOC__
       | Value value :: parsed_parts_tail, Value binding :: rule_parts_tail ->
-          let { collected; remaining } =
+          let { parsed; children; remaining } =
             collect_children parsed_parts_tail rule_parts_tail
           in
-          { collected = (binding.name, Ast value) :: collected; remaining }
-      | _, Group group :: rule_parts_tail -> (
+          {
+            parsed = Value value :: parsed;
+            children = (binding.name, Ast value) :: children;
+            remaining;
+          }
+      | _, Group group_rule :: rule_parts_tail -> (
           let go_in =
-            match group.quantifier with
+            match group_rule.quantifier with
             | None -> true
             | Some Optional -> (
                 let expected_keyword =
-                  match group.parts with
+                  match group_rule.parts with
                   | Keyword keyword :: _ -> keyword
                   | _ ->
                       fail "Optional groups should have keyword as first part"
@@ -193,27 +218,45 @@ module Rule = struct
           match go_in with
           | false -> collect_children parsed_parts rule_parts_tail
           | true ->
-              let { collected = parsed_group; remaining } =
-                collect_children parsed_parts group.parts
+              let {
+                parsed = group_parsed;
+                children = group_children;
+                remaining;
+              } =
+                collect_children parsed_parts group_rule.parts
               in
-              let { collected; remaining } =
+              let { parsed; children; remaining } =
                 collect_children remaining rule_parts_tail
               in
+              let group : Ast.group =
+                {
+                  rule = Some group_rule;
+                  parts = group_parsed;
+                  children = group_children |> Tuple.of_list;
+                }
+              in
               {
-                collected =
-                  (group.name, Group { children = Tuple.of_list parsed_group })
-                  :: collected;
+                parsed = Group group :: parsed;
+                children = (group_rule.name, Group group) :: children;
                 remaining;
               })
-      | _, [] -> { collected = []; remaining = parsed_parts }
+      | _, [] -> { parsed = []; children = []; remaining = parsed_parts }
       | [], _ -> failwith "not enough values supplied"
     in
-    let { collected; remaining } = collect_children parts rule.parts in
+    let { parsed; children; remaining } = collect_children parts rule.parts in
     if remaining |> List.length <> 0 then fail "too many values supplied";
     {
       shape =
         Ast.Complex
-          { rule; parts; root = { children = collected |> Tuple.of_list } };
+          {
+            rule;
+            root =
+              {
+                rule = None;
+                parts = parsed;
+                children = children |> Tuple.of_list;
+              };
+          };
       span;
     }
 end
@@ -419,13 +462,13 @@ module Impl = struct
     (match start with
     | None -> Log.trace "Start to parse one"
     | Some _ -> Log.trace "Start to parse one (having value)");
-    let parsed_rev : Ast.part list ref =
-      ref (start |> Option.map (fun ast -> Ast.Value ast) |> Option.to_list)
+    let parsed_rev : parsed_part list ref =
+      ref (start |> Option.map (fun ast -> Value ast) |> Option.to_list)
     in
     let count_comments_before () =
       parsed_rev :=
         (!comments_before |> List.rev
-        |> List.map (fun comment -> Ast.Comment comment))
+        |> List.map (fun comment -> Comment comment))
         @ !parsed_rev;
       comments_before := []
     in

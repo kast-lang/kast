@@ -77,7 +77,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
           | Token.Shape.Number _ -> fail "number can't be pattern"
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
               unreachable "!"))
-  | Ast.Complex { rule; parts = _; root } -> (
+  | Ast.Complex { rule; root } -> (
       match rule.name |> String.strip_prefix ~prefix:"core:" with
       | Some name ->
           let handler =

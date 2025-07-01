@@ -21,7 +21,7 @@ let apply : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -47,7 +47,7 @@ let then' : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -71,7 +71,7 @@ let stmt : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -95,7 +95,7 @@ let scope : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -120,7 +120,7 @@ let assign : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -145,7 +145,7 @@ let let' : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -169,7 +169,7 @@ let placeholder : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -188,7 +188,7 @@ let fn : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -215,7 +215,7 @@ let unit : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -234,7 +234,7 @@ let type_ascribe : handler =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a
@@ -276,7 +276,7 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
-        ({ children } : Ast.group)
+        ({ children; _ } : Ast.group)
         span
         :
         a

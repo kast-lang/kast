@@ -172,13 +172,17 @@ module Common (Output : Output) = struct
     | Simple { comments_before; token } ->
         comments_before |> List.iter (Output.print_comment printer);
         print_token printer Output.print_value token
-    | Complex { parts; _ } ->
-        parts
-        |> List.iter (function
-             | Ast.Value ast -> print_ast printer ast
-             | Ast.Keyword token ->
-                 print_token printer Output.print_keyword token
-             | Ast.Comment comment -> Output.print_comment printer comment)
+    | Complex { root; _ } ->
+        let rec print_group ({ parts; _ } : Ast.group) =
+          parts
+          |> List.iter (function
+               | Ast.Value ast -> print_ast printer ast
+               | Ast.Keyword token ->
+                   print_token printer Output.print_keyword token
+               | Ast.Comment comment -> Output.print_comment printer comment
+               | Ast.Group group -> print_group group)
+        in
+        print_group root
     | Syntax { tokens; value_after; _ } -> (
         tokens |> List.iter (print_token printer Output.print_syntax_part);
         match value_after with

@@ -31,16 +31,20 @@ let rec collect : Ast.t -> token Seq.t =
         |> Seq.map (fun (comment : Token.comment) ->
                { token = Comment comment.shape; span = comment.span }))
         (List.to_seq [ { token = Value token.shape; span = token.span } ])
-  | Ast.Complex { parts; _ } ->
-      parts |> List.to_seq
-      |> Seq.flat_map (function
-           | Ast.Value ast -> collect ast
-           | Ast.Keyword token ->
-               List.to_seq
-                 [ { token = Keyword token.shape; span = token.span } ]
-           | Ast.Comment comment ->
-               List.to_seq
-                 [ { token = Comment comment.shape; span = comment.span } ])
+  | Ast.Complex { root; _ } ->
+      let rec collect_group ({ parts; _ } : Ast.group) : token Seq.t =
+        parts |> List.to_seq
+        |> Seq.flat_map (function
+             | Ast.Value ast -> collect ast
+             | Ast.Keyword token ->
+                 List.to_seq
+                   [ { token = Keyword token.shape; span = token.span } ]
+             | Ast.Comment comment ->
+                 List.to_seq
+                   [ { token = Comment comment.shape; span = comment.span } ]
+             | Ast.Group group -> collect_group group)
+      in
+      collect_group root
   | Ast.Syntax { value_after; tokens; _ } ->
       Seq.append
         (tokens |> List.to_seq

@@ -12,7 +12,7 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
     (match ast.shape with
     | Simple _ -> []
     | Complex { root; _ } -> (
-        let rec find_in_group ({ children } : Ast.group) : span list option =
+        let rec find_in_group ({ children; _ } : Ast.group) : span list option =
           children |> Tuple.to_seq
           |> Seq.find_map (fun (_member, (child : Ast.child)) ->
                  match child with

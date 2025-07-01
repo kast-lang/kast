@@ -97,6 +97,19 @@ module Rule = struct
     |> Seq.filter_map (function
          | Keyword keyword -> Some keyword
          | _ -> None)
+
+  module Part = struct
+    type t = part
+
+    let print : formatter -> part -> unit =
+     fun fmt -> function
+      | Whitespace _ -> fprintf fmt "whitespace"
+      | Keyword keyword -> fprintf fmt "keyword %S" keyword
+      | Value binding ->
+          fprintf fmt "value %a" (Option.print String.print_dbg) binding.name
+      | Group group ->
+          fprintf fmt "group %a" (Option.print String.print_dbg) group.name
+  end
 end
 
 type rule = Rule.t

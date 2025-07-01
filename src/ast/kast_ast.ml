@@ -25,14 +25,19 @@ type part =
   | Comment of Token.comment
   | Value of ast
   | Keyword of Token.t
+  | Group of group
 
 and complex = {
   rule : Syntax.rule;
-  parts : part list;
   root : group;
 }
 
-and group = { children : child tuple }
+and group = {
+  (* TODO rule is only None for root *)
+  rule : Syntax.Rule.group option;
+  parts : part list;
+  children : child tuple;
+}
 
 and child =
   | Ast of ast
@@ -67,12 +72,13 @@ and print_child : formatter -> child -> unit =
   | Group group -> print_group fmt group
 
 and print_group : formatter -> group -> unit =
- fun fmt { children } -> Tuple.print print_child fmt children
+ fun fmt { rule = _; parts = _; children } ->
+  Tuple.print print_child fmt children
 
 and print_shape : formatter -> shape -> unit =
  fun fmt -> function
   | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
-  | Complex { rule; parts = _; root } ->
+  | Complex { rule; root } ->
       fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped rule.name
         print_group root
   | Syntax { comments_before = _; mode; value_after; tokens = _ } -> (
@@ -105,4 +111,5 @@ module Part = struct
     | Comment _ -> fprintf fmt "<comment>"
     | Keyword token -> fprintf fmt "keyword %a" Token.print token
     | Value value -> print fmt value
+    | Group group -> print_group fmt group
 end

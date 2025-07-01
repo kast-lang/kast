@@ -12,7 +12,7 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
   | Simple { token; _ }, Simple expected ->
       Token.raw token |> Option.get = expected
   | Simple _, _ -> false
-  | ( Complex { rule; parts = _; root },
+  | ( Complex { rule; root },
       Complex { name = expected_name; children = expected_children } ) -> (
       (* TODO make tests work with groups *)
       let children = root.children |> Tuple.map Ast.Child.expect_ast in

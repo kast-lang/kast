@@ -28,7 +28,7 @@ let rec process : Ast.t -> ast =
  fun ast ->
   match ast.shape with
   | Simple { token; _ } -> Simple (Token.raw token |> Option.get)
-  | Complex { rule = { name = "complex"; _ }; parts = _; root } ->
+  | Complex { rule = { name = "complex"; _ }; root } ->
       let children = root.children |> Tuple.map Ast.Child.expect_ast in
       Complex
         {
@@ -39,10 +39,10 @@ let rec process : Ast.t -> ast =
 
 and collect_children ast : ast tuple =
   match ast.shape with
-  | Complex { rule = { name = "trailing comma"; _ }; parts = _; root } ->
+  | Complex { rule = { name = "trailing comma"; _ }; root } ->
       let children = root.children |> Tuple.map Ast.Child.expect_ast in
       Tuple.get_unnamed 0 children |> collect_children
-  | Complex { rule = { name = "comma"; _ }; parts = _; root } ->
+  | Complex { rule = { name = "comma"; _ }; root } ->
       let children = root.children |> Tuple.map Ast.Child.expect_ast in
       if
         Array.length children.unnamed <> 2
@@ -51,7 +51,7 @@ and collect_children ast : ast tuple =
       let a = Tuple.get_unnamed 0 children |> collect_children in
       let b = Tuple.get_unnamed 1 children |> collect_children in
       Tuple.merge a b
-  | Complex { rule = { name = "named"; _ }; parts = _; root } ->
+  | Complex { rule = { name = "named"; _ }; root } ->
       let children = root.children |> Tuple.map Ast.Child.expect_ast in
       let name = Tuple.get_named "name" children |> get_name in
       let value = Tuple.get_named "value" children |> process in

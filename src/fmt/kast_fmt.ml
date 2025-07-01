@@ -59,7 +59,7 @@ let format : formatter -> Parser.result -> unit =
                  fprintf fmt "%s" comment.shape.raw);
           preserve_newline_after_comment token.span;
           fprintf fmt "%s" (Token.raw token |> Option.get)
-      | Complex { rule; parts; _ } ->
+      | Complex { rule; root; _ } ->
           let wrapped =
             match parent with
             | Some { wrapped; rule = parent_rule } ->
@@ -69,7 +69,7 @@ let format : formatter -> Parser.result -> unit =
           let wrapped =
             wrapped || ast.span.start.line <> ast.span.finish.line
           in
-          print_parts rule wrapped rule.parts parts
+          print_group rule root.rule wrapped root
       | Syntax { tokens; value_after; _ } -> (
           let pos = ref (List.head tokens).span.start in
           tokens
@@ -82,9 +82,21 @@ let format : formatter -> Parser.result -> unit =
           | Some value ->
               print_newline fmt ();
               print_ast ~parent:None value)
+    and print_group rule (group_rule : Syntax.Rule.group option) wrapped
+        ({ parts; _ } : Ast.group) =
+      print_parts rule wrapped
+        (match group_rule with
+        | None -> rule.parts
+        | Some group -> group.parts)
+        parts
     and print_parts rule wrapped (rule_parts : Syntax.Rule.part list)
         (parts : Ast.part list) =
       match (rule_parts, parts) with
+      | _, Comment comment :: rest_parts ->
+          preserve_newline_after_comment comment.span;
+          fprintf fmt "%s" comment.shape.raw;
+          prev_comment_span := Some comment.span;
+          print_parts rule wrapped rule_parts rest_parts
       | [], [] -> ()
       | Whitespace { nowrap; wrap } :: rest_rule_parts, _ ->
           (match rule.wrap_mode with
@@ -101,12 +113,19 @@ let format : formatter -> Parser.result -> unit =
       | Value _ :: rest_rule_parts, Value value :: rest_parts ->
           print_ast ~parent:(Some { rule; wrapped }) value;
           print_parts rule wrapped rest_rule_parts rest_parts
-      | _, Comment comment :: rest_parts ->
-          preserve_newline_after_comment comment.span;
-          fprintf fmt "%s" comment.shape.raw;
-          prev_comment_span := Some comment.span;
-          print_parts rule wrapped rule_parts rest_parts
-      | _ -> unreachable "todo"
+      | Group rule_group :: rest_rule_parts, Group group :: rest_parts
+        when Some rule_group = group.rule ->
+          print_group rule group.rule wrapped group;
+          print_parts rule wrapped rest_rule_parts rest_parts
+      | Group _ :: rest_rule_parts, _ ->
+          (* Group was skipped *)
+          print_parts rule wrapped rest_rule_parts parts
+      | _ ->
+          unreachable "print_parts %a %a"
+            (Option.print Syntax.Rule.Part.print)
+            (List.head_opt rule_parts)
+            (Option.print Ast.Part.print)
+            (List.head_opt parts)
     in
 
     print_ast ~parent:None ast
