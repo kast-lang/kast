@@ -59,6 +59,7 @@ and print_expr_shape :
       fprintf fmt
         "@{<magenta>assign@} (@;<0 2>@[<v>assignee = %a,@]@;<0 2>@[<v>value = %a@]@ )"
         print_assignee_expr_with_spans assignee print_expr value
+  | E_Ty expr -> fprintf fmt "@{<magenta>type@} %a" print_ty_expr expr
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->
@@ -88,6 +89,17 @@ and print_assignee_expr_with_spans : formatter -> assignee_expr -> unit =
  fun fmt { shape; data } ->
   fprintf fmt "%a @{<dim>at %a@}" print_assignee_expr_shape shape Span.print
     data.span
+
+(* TYPE EXPR *)
+and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
+ fun fmt -> function
+  | TE_Unit -> fprintf fmt "()"
+  | TE_Expr expr ->
+      fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
+
+and print_ty_expr : formatter -> ty_expr -> unit =
+ fun fmt { shape; data } ->
+  fprintf fmt "%a @{<dim>at %a@}" print_ty_expr_shape shape Span.print data.span
 
 (* PATTERN *)
 

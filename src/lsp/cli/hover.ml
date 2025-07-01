@@ -62,6 +62,12 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> hover_info =
         | _ -> None
       in
       { ty = compiled.data.ty; span = compiled.data.span; definition_mode }
+  | TyExpr ->
+      {
+        ty = compiled.data.ty;
+        span = compiled.data.span;
+        definition_mode = None;
+      }
 
 let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position) :
@@ -77,7 +83,7 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
       (match data.ty_ascription with
       | None -> ()
       | Some ty_ascription_expr -> (
-          match hover Expr ty_ascription_expr pos with
+          match hover TyExpr ty_ascription_expr pos with
           | None -> ()
           | Some hover -> return (Some hover)));
       let* () =
@@ -98,7 +104,7 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 |> Option.or_else (fun () -> hover Expr body pos)
                 |> Option.or_else (fun () ->
                        evaled_result
-                       |> Option.and_then (fun expr -> hover Expr expr pos))
+                       |> Option.and_then (fun expr -> hover TyExpr expr pos))
             | E_Tuple { tuple } ->
                 tuple |> Tuple.to_seq
                 |> Seq.find_map (fun (_member, expr) -> hover Expr expr pos)
@@ -107,7 +113,8 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 |> Option.or_else (fun () -> hover Expr arg pos)
             | E_Assign { assignee; value } ->
                 hover Assignee assignee pos
-                |> Option.or_else (fun () -> hover Expr value pos))
+                |> Option.or_else (fun () -> hover Expr value pos)
+            | E_Ty expr -> hover TyExpr expr pos)
         | Assignee -> (
             match compiled.shape with
             | A_Placeholder -> None
@@ -119,6 +126,10 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
             | P_Placeholder -> None
             | P_Unit -> None
             | P_Binding _ -> None)
+        | TyExpr -> (
+            match compiled.shape with
+            | TE_Unit -> None
+            | TE_Expr expr -> hover Expr expr pos)
       in
       match inner with
       | Some result -> Some result

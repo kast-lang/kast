@@ -50,6 +50,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
               E_Constant { shape = V_Int32 value } |> init_expr span
           | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
               unreachable "!")
+      | TyExpr -> TE_Expr (compile state Expr ast) |> init_ty_expr span
       | Assignee -> (
           match token.shape with
           | Token.Shape.Ident ident ->
@@ -79,13 +80,17 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
               unreachable "!"))
   | Ast.Complex { rule; root } -> (
       match rule.name |> String.strip_prefix ~prefix:"core:" with
-      | Some name ->
+      | Some name -> (
           let handler =
             Core_syntax.handlers |> StringMap.find_opt name
             |> Option.unwrap_or_else (fun () ->
                    fail "there is no core syntax %S" name)
           in
-          handler.handle (make_compiler state) kind root ast.span
+          try handler.handle (make_compiler state) kind root ast.span
+          with exc ->
+            Log.error "While processing core syntax %S at %a" name Span.print
+              ast.span;
+            raise exc)
       | None -> fail "todo compile syntax rule %S" rule.name)
   | Ast.Syntax _ -> fail "todo %s" __LOC__
 

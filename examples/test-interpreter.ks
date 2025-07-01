@@ -1,5 +1,7 @@
 print "Hello, World!";
-let print_times = (s :: string) -> type () => (
+let unit_type = type ();
+let unit_value = ();
+let print_times = (s :: string) -> () => (
   let f = () => 123;
   let x = f ();
   print s;

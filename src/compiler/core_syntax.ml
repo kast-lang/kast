@@ -111,7 +111,8 @@ let scope : handler =
             let expr = Compiler.compile Expr expr in
             E_Scope { expr } |> init_expr span
         | Assignee -> Compiler.compile Assignee expr
-        | Pattern -> Compiler.compile Pattern expr);
+        | Pattern -> Compiler.compile Pattern expr
+        | TyExpr -> Compiler.compile TyExpr expr);
   }
 
 let assign : handler =
@@ -179,7 +180,12 @@ let placeholder : handler =
         match kind with
         | Assignee -> A_Placeholder |> init_assignee span
         | Pattern -> P_Placeholder |> init_pattern span
-        | Expr -> fail "todo _ expr %s" __LOC__);
+        | Expr -> fail "todo _ expr %s" __LOC__
+        | TyExpr ->
+            let ty = Ty.new_not_inferred () in
+            let value : value = { shape = V_Ty ty } in
+            let const : expr = E_Constant value |> init_expr span in
+            TE_Expr const |> init_ty_expr span);
   }
 
 let fn : handler =
@@ -215,6 +221,7 @@ let fn : handler =
         match kind with
         | Assignee -> fail "fn can't be assignee"
         | Pattern -> fail "fn can't be a pattern"
+        | TyExpr -> fail "fn can't be a ty"
         | Expr ->
             let state = C.state |> State.enter_scope in
             let arg = C.compile ~state Pattern arg in
@@ -247,13 +254,13 @@ let unit : handler =
         match kind with
         | Assignee -> A_Unit |> init_assignee span
         | Pattern -> P_Unit |> init_pattern span
-        | Expr -> E_Constant { shape = V_Unit } |> init_expr span);
+        | Expr -> E_Constant { shape = V_Unit } |> init_expr span
+        | TyExpr -> TE_Unit |> init_ty_expr span);
   }
 
-(* TODO remove *)
-let unit_type : handler =
+let type' : handler =
   {
-    name = "unit type";
+    name = "type";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
@@ -264,11 +271,36 @@ let unit_type : handler =
         a
       ->
         Tuple.assert_empty children;
+        let ty_ty = Ty.inferred T_Ty in
+        let const = E_Constant { shape = V_Ty ty_ty } |> init_expr span in
         match kind with
-        | Assignee -> A_Unit |> init_assignee span
-        | Pattern -> P_Unit |> init_pattern span
-        | Expr ->
-            E_Constant { shape = V_Ty (Ty.inferred T_Unit) } |> init_expr span);
+        | Assignee -> fail "type can't be assignee"
+        | Pattern -> fail "type can't be a pattern"
+        | Expr -> const
+        | TyExpr -> TE_Expr const |> init_ty_expr span);
+  }
+
+let type_expr : handler =
+  {
+    name = "type expr";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        let expr =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let expr = Compiler.compile TyExpr expr in
+        match kind with
+        | Assignee -> fail "type expr can't be assignee"
+        | Pattern -> fail "type expr can't be a pattern"
+        | Expr -> E_Ty expr |> init_expr span
+        | TyExpr -> expr);
   }
 
 let type_ascribe : handler =
@@ -311,7 +343,8 @@ let core =
     placeholder;
     fn;
     unit;
-    unit_type;
+    type';
+    type_expr;
     type_ascribe;
   ]
 

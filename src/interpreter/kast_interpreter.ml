@@ -78,3 +78,12 @@ let rec eval : state -> expr -> value =
           result
       | V_NativeFn f -> f.impl arg
       | _ -> fail "expected fn")
+  | E_Ty expr -> { shape = V_Ty (eval_ty state expr) }
+
+and eval_ty : state -> Expr.ty -> ty =
+ fun state expr ->
+  match expr.shape with
+  | TE_Unit -> Ty.inferred T_Unit
+  | TE_Expr expr ->
+      let value = eval state expr in
+      value |> Value.expect_ty

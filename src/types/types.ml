@@ -46,7 +46,7 @@ and ty = { var : ty_shape Inference.var }
 and expr_fn = {
   arg : pattern;
   body : expr;
-  evaled_result : expr option;
+  evaled_result : ty_expr option;
 }
 
 and expr_then = {
@@ -79,6 +79,7 @@ and expr_shape =
   | E_Tuple of expr_tuple
   | E_Apply of expr_apply
   | E_Assign of expr_assign
+  | E_Ty of ty_expr
 
 and expr = {
   shape : expr_shape;
@@ -94,6 +95,17 @@ and assignee_expr_shape =
 
 and assignee_expr = {
   shape : assignee_expr_shape;
+  data : ir_data;
+}
+
+(* TYPE EXPR *)
+and ty_expr_shape =
+  | TE_Unit
+  | TE_Expr of expr
+
+and ty_expr = {
+  shape : ty_expr_shape;
+  (* TODO technically only need span for this? *)
   data : ir_data;
 }
 
@@ -120,5 +132,5 @@ and binding = {
 and ir_data = {
   span : span;
   ty : ty;
-  ty_ascription : expr option;
+  ty_ascription : ty_expr option;
 }

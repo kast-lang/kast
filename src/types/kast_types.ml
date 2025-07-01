@@ -81,6 +81,20 @@ module Expr = struct
   end
 
   type assignee = Assignee.t
+
+  module Ty = struct
+    type t = ty_expr
+
+    let print = print_ty_expr
+
+    module Shape = struct
+      type t = ty_expr_shape
+
+      let print = print_ty_expr_shape
+    end
+  end
+
+  type ty = Ty.t
 end
 
 type expr = Expr.t

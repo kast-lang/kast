@@ -30,7 +30,7 @@ let rec inlay_hints :
                 inlay_hints Pattern arg;
                 inlay_hints Expr body;
                 evaled_result |> Option.to_seq
-                |> Seq.flat_map (inlay_hints Expr);
+                |> Seq.flat_map (inlay_hints TyExpr);
               ]
               |> List.to_seq |> Seq.concat )
         | E_Tuple { tuple } ->
@@ -43,7 +43,8 @@ let rec inlay_hints :
             ( None,
               Seq.append
                 (inlay_hints Assignee assignee)
-                (inlay_hints Expr value) ))
+                (inlay_hints Expr value) )
+        | E_Ty expr -> (None, inlay_hints TyExpr expr))
     | Pattern -> (
         match compiled.shape with
         | P_Placeholder -> (None, Seq.empty)
@@ -55,6 +56,10 @@ let rec inlay_hints :
         | A_Unit -> (None, Seq.empty)
         | A_Binding _ -> (None, Seq.empty)
         | A_Let pattern -> (None, inlay_hints Pattern pattern))
+    | TyExpr -> (
+        match compiled.shape with
+        | TE_Unit -> (None, Seq.empty)
+        | TE_Expr expr -> (None, inlay_hints Expr expr))
   in
   let data = Compiler.get_data kind compiled in
   let span = data.span in
@@ -81,7 +86,7 @@ let rec inlay_hints :
            })
   in
   let ascription =
-    data.ty_ascription |> Option.to_seq |> Seq.flat_map (inlay_hints Expr)
+    data.ty_ascription |> Option.to_seq |> Seq.flat_map (inlay_hints TyExpr)
   in
   rest |> Seq.append (hint |> Option.to_seq) |> Seq.append ascription
 
