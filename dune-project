@@ -13,7 +13,8 @@
   ; https://github.com/c-cube/linol/issues/57
   (linol
    (= 0.9))
-  linol-lwt
+  linol-eio
+  eio_main
   js_of_ocaml
   js_of_ocaml-compiler
   js_of_ocaml-ppx))

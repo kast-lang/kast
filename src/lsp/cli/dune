@@ -2,7 +2,8 @@
  (name kast_lsp_cli)
  (libraries
   linol
-  linol-lwt
+  linol-eio
+  eio_main
   std
   kast_util
   kast_default_syntax
