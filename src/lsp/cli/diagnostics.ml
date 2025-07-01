@@ -36,4 +36,23 @@ let get (state : Processing.file_state) : Lsp.Types.Diagnostic.t list =
        }
         : Lsp.Types.Diagnostic.t)
   in
-  (parser_error |> Option.to_list) @ (compiler_error |> Option.to_list)
+  let type_error =
+    let* type_error = state.type_error in
+    Some
+      ({
+         range = type_error.span |> Common.span_to_range;
+         severity = Some Error;
+         code = None;
+         codeDescription = None;
+         source = None;
+         message =
+           `String (make_string "%a" (fun fmt () -> type_error.msg fmt) ());
+         tags = None;
+         relatedInformation = None;
+         data = None;
+       }
+        : Lsp.Types.Diagnostic.t)
+  in
+  (parser_error |> Option.to_list)
+  @ (compiler_error |> Option.to_list)
+  @ (type_error |> Option.to_list)

@@ -38,7 +38,8 @@ let eval_ty (module C : S) (ast : Ast.t) =
   let expected_ty_expr = C.compile TyExpr ast in
   let expected_ty : ty =
     expected_ty_expr.data.ty
-    |> Inference.Ty.expect_inferred_as (Ty.inferred T_Ty);
+    |> Inference.Ty.expect_inferred_as ~span:expected_ty_expr.data.span
+         (Ty.inferred T_Ty);
     Kast_interpreter.eval_ty C.state.interpreter expected_ty_expr
   in
   (expected_ty, expected_ty_expr)

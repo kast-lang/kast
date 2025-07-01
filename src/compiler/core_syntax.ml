@@ -233,7 +233,9 @@ let fn : handler =
                      let result, result_expr =
                        Compiler.eval_ty (module C) result
                      in
-                     body.data.ty |> Inference.Ty.expect_inferred_as result;
+                     body.data.ty
+                     |> Inference.Ty.expect_inferred_as ~span:body.data.span
+                          result;
                      result_expr)
             in
             E_Fn { arg; body; evaled_result = result_expr } |> init_expr span);
@@ -322,11 +324,12 @@ let type_ascribe : handler =
           |> Tuple.unwrap_named2 [ "expr"; "type" ]
         in
         let expr = C.compile kind expr in
-        let ty = (Compiler.get_data kind expr).ty in
+        let expr_data = Compiler.get_data kind expr in
         let expected_ty, expected_ty_expr =
           Compiler.eval_ty (module C) expected_ty
         in
-        ty |> Inference.Ty.expect_inferred_as expected_ty;
+        expr_data.ty
+        |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
         Compiler.update_data kind expr (fun data ->
             if data.ty_ascription |> Option.is_some then
               error span "there is already type ascription";

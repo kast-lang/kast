@@ -26,12 +26,15 @@ let init_expr : span -> Expr.Shape.t -> expr =
           let f_arg = Ty.new_not_inferred () in
           let f_result = Ty.new_not_inferred () in
           f.data.ty
-          |> Inference.Ty.expect_inferred_as
+          |> Inference.Ty.expect_inferred_as ~span:f.data.span
                (Ty.inferred <| T_Fn { arg = f_arg; result = f_result });
-          arg.data.ty |> Inference.Ty.expect_inferred_as f_arg;
+          arg.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:arg.data.span f_arg;
           f_result
       | E_Assign { assignee; value } ->
-          assignee.data.ty |> Inference.Ty.expect_inferred_as value.data.ty;
+          value.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:value.data.span
+               assignee.data.ty;
           Ty.inferred T_Unit
       | E_Ty _ -> Ty.inferred T_Ty
     in
@@ -75,7 +78,9 @@ let init_ty_expr : span -> Expr.Ty.Shape.t -> Expr.ty =
     try
       (match shape with
       | TE_Unit -> ()
-      | TE_Expr expr -> expr.data.ty |> Inference.Ty.expect_inferred_as type_ty);
+      | TE_Expr expr ->
+          expr.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty);
       { shape; data = { span; ty = type_ty; ty_ascription = None } }
     with exc ->
       Log.error "while initializing type expr at %a" Span.print span;

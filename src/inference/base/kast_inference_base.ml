@@ -1,4 +1,8 @@
 open Std
+open Kast_util
+module Error = Error
+
+type 'a unite = span:span -> 'a -> 'a -> 'a
 
 module Var = struct
   type 'a var = { mutable state : 'a var_state }
@@ -44,22 +48,23 @@ module Var = struct
     | Some inferred -> print_inferred fmt inferred
 
   let unite_data =
-   fun unite_inferred { inferred = inferred_a } { inferred = inferred_b } ->
+   fun ~span unite_inferred { inferred = inferred_a }
+       { inferred = inferred_b } ->
     let inferred =
       match (inferred_a, inferred_b) with
       | None, None -> None
       | Some inferred, None | None, Some inferred -> Some inferred
-      | Some a, Some b -> Some (unite_inferred a b)
+      | Some a, Some b -> Some (unite_inferred ~span a b)
     in
     { inferred }
 
-  let unite : 'a. ('a -> 'a -> 'a) -> 'a var -> 'a var -> 'a var =
-   fun unite_inferred a b ->
+  let unite : 'a. 'a unite -> 'a var unite =
+   fun unite_inferred ~span a b ->
     let root_a = find_root_var a in
     let root_b = find_root_var b in
     if root_a == root_b then a
     else
-      let data = unite_data unite_inferred (find_root a) (find_root b) in
+      let data = unite_data ~span unite_inferred (find_root a) (find_root b) in
       let root_a, root_b =
         if Random.bool () then (root_a, root_b) else (root_b, root_a)
       in
@@ -67,15 +72,16 @@ module Var = struct
       root_b.state <- NotRoot { closer_to_root = root_a };
       root_a
 
-  let infer_as : 'a. ('a -> 'a -> 'a) -> 'a -> 'a var -> unit =
-   fun unite_inferred infer_as var ->
+  let infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit =
+   fun unite_inferred ~span infer_as var ->
     let root_data = find_root var in
     let root = find_root_var var in
     root.state <-
       Root
         {
           data =
-            unite_data unite_inferred root_data { inferred = Some infer_as };
+            unite_data ~span unite_inferred root_data
+              { inferred = Some infer_as };
         }
 end
 

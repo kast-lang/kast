@@ -11,7 +11,7 @@ exception Error of error
 let () =
   Printexc.register_printer (function
     | Error error ->
-        eprintln "%a" (fun fmt () -> error.msg fmt) ();
+        eprintln "@{<red>Type error:@} %a" (fun fmt () -> error.msg fmt) ();
         exit 1
     | _ -> None)
 
