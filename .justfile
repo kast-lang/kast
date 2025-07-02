@@ -2,7 +2,8 @@ default:
     just --list
 
 lsp-support:
-    dune build @ocaml-index --watch
+    dune build @ocaml-index src/kast/js/kast_js.bc.js --watch
+    # dune build @ocaml-index --watch
 
 dep-graph:
     dune-deps --exclude .direnv | tred | dot -Tpng > dep-graph.png
