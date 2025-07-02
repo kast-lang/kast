@@ -52,55 +52,54 @@ let rec collect : Ast.t -> token Seq.t =
                { token = Unknown token.shape; span = token.span }))
         (value_after |> Option.to_seq |> Seq.flat_map collect)
 
+let legend =
+  Lsp.Types.SemanticTokensLegend.create
+    ~tokenTypes:
+      [
+        "namespace";
+        "class";
+        "enum";
+        "interface";
+        "struct";
+        "typeParameter";
+        "type";
+        "parameter";
+        "variable";
+        "property";
+        "enumMember";
+        "decorator";
+        "event";
+        "function";
+        "method";
+        "macro";
+        "label";
+        "comment";
+        "string";
+        "keyword";
+        "number";
+        "regexp";
+        "operator";
+      ]
+    ~tokenModifiers:
+      [
+        "declaration";
+        "definition";
+        "readonly";
+        "static";
+        "deprecated";
+        "abstract";
+        "async";
+        "modification";
+        "documentation";
+        "defaultLibrary";
+      ]
+
 let options : Lsp.Types.SemanticTokensRegistrationOptions.t =
-  let legend =
-    Lsp.Types.SemanticTokensLegend.create
-      ~tokenTypes:
-        [
-          "namespace";
-          "class";
-          "enum";
-          "interface";
-          "struct";
-          "typeParameter";
-          "type";
-          "parameter";
-          "variable";
-          "property";
-          "enumMember";
-          "decorator";
-          "event";
-          "function";
-          "method";
-          "macro";
-          "label";
-          "comment";
-          "string";
-          "keyword";
-          "number";
-          "regexp";
-          "operator";
-        ]
-      ~tokenModifiers:
-        [
-          "declaration";
-          "definition";
-          "readonly";
-          "static";
-          "deprecated";
-          "abstract";
-          "async";
-          "modification";
-          "documentation";
-          "defaultLibrary";
-        ]
-  in
   Lsp.Types.SemanticTokensRegistrationOptions.create ~full:(`Bool true) ~legend
     ()
 
-let run (_params : Lsp.Types.SemanticTokensParams.t)
-    ({ parsed; _ } : Processing.file_state) : Lsp.Types.SemanticTokens.t option
-    =
+let run ({ parsed; _ } : Processing.file_state) :
+    Lsp.Types.SemanticTokens.t option =
   Log.info "got semantic tokens request";
   match parsed with
   | None -> None

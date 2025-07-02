@@ -5,6 +5,7 @@ module Token = Kast_token
 module Lexer = Kast_lexer
 module Ast = Kast_ast
 module Parser = Kast_parser
+module Processing = Kast_lsp.Processing
 open Kast_types
 
 module Args = struct
@@ -25,17 +26,21 @@ class lsp_server =
       {
         c with
         documentFormattingProvider =
-          Some (`DocumentFormattingOptions Formatting.options);
+          Some (`DocumentFormattingOptions Kast_lsp.Formatting.options);
         semanticTokensProvider =
-          Some (`SemanticTokensRegistrationOptions Semantic_tokens.options);
+          Some
+            (`SemanticTokensRegistrationOptions Kast_lsp.Semantic_tokens.options);
         selectionRangeProvider =
-          Some (`SelectionRangeRegistrationOptions Selection_range.options);
+          Some
+            (`SelectionRangeRegistrationOptions Kast_lsp.Selection_range.options);
         inlayHintProvider =
-          Some (`InlayHintRegistrationOptions Inlay_hints.options);
-        hoverProvider = Some (`HoverOptions Hover.options);
-        referencesProvider = Some (`ReferenceOptions Hover.references_options);
-        definitionProvider = Some (`DefinitionOptions Hover.definition_options);
-        renameProvider = Some (`RenameOptions Hover.rename_options);
+          Some (`InlayHintRegistrationOptions Kast_lsp.Inlay_hints.options);
+        hoverProvider = Some (`HoverOptions Kast_lsp.Hover.options);
+        referencesProvider =
+          Some (`ReferenceOptions Kast_lsp.Hover.references_options);
+        definitionProvider =
+          Some (`DefinitionOptions Kast_lsp.Hover.definition_options);
+        renameProvider = Some (`RenameOptions Kast_lsp.Hover.rename_options);
       }
 
     (* one env per document *)
@@ -58,7 +63,7 @@ class lsp_server =
           { filename = File (Lsp.Types.DocumentUri.to_path uri); contents }
       in
       Hashtbl.replace buffers uri new_state;
-      let diags = Diagnostics.get new_state in
+      let diags = Kast_lsp.Diagnostics.get new_state in
       notify_back#send_diagnostic diags
 
     (* We now override the [on_notify_doc_did_open] method that will be called
@@ -81,16 +86,17 @@ class lsp_server =
     method! on_req_inlay_hint ~notify_back:_ ~id:_ ~uri
         ~(range : Lsp.Types.Range.t) () :
         Lsp.Types.InlayHint.t list option Linol_eio.t =
-      Linol_eio.return (Hashtbl.find buffers uri |> Inlay_hints.get range)
+      Linol_eio.return (Hashtbl.find buffers uri |> Kast_lsp.Inlay_hints.get)
 
     method! on_req_hover ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
         (_ : Linol_eio.doc_state) : Lsp.Types.Hover.t option Linol_eio.t =
-      Linol_eio.return (Hashtbl.find buffers uri |> Hover.hover pos)
+      Linol_eio.return (Hashtbl.find buffers uri |> Kast_lsp.Hover.hover pos)
 
     method! on_req_definition ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
         ~partialResultToken:_ (_ : Linol_eio.doc_state) :
         Lsp.Types.Locations.t option Linol_eio.t =
-      Linol_eio.return (Hashtbl.find buffers uri |> Hover.find_definition pos)
+      Linol_eio.return
+        (Hashtbl.find buffers uri |> Kast_lsp.Hover.find_definition pos)
 
     method private on_req_selection_range :
         notify_back:Linol_eio.Jsonrpc2.notify_back ->
@@ -99,7 +105,7 @@ class lsp_server =
       fun ~notify_back:_ params ->
         Linol_eio.return
           (Hashtbl.find buffers params.textDocument.uri
-          |> Selection_range.get params)
+          |> Kast_lsp.Selection_range.get params)
 
     method private on_req_format :
         notify_back:Linol_eio.Jsonrpc2.notify_back ->
@@ -107,7 +113,8 @@ class lsp_server =
         Lsp.Types.TextEdit.t list option =
       fun ~notify_back:_ params ->
         Linol_eio.return
-          (Hashtbl.find buffers params.textDocument.uri |> Formatting.run params)
+          (Hashtbl.find buffers params.textDocument.uri
+          |> Kast_lsp.Formatting.run)
 
     method private on_semantic_tokens :
         notify_back:Linol_eio.Jsonrpc2.notify_back ->
@@ -116,7 +123,7 @@ class lsp_server =
       fun ~notify_back:_ params ->
         Linol_eio.return
           (Hashtbl.find buffers params.textDocument.uri
-          |> Semantic_tokens.run params)
+          |> Kast_lsp.Semantic_tokens.run)
 
     method private on_req_references :
         notify_back:Linol_eio.Jsonrpc2.notify_back ->
@@ -125,7 +132,7 @@ class lsp_server =
       fun ~notify_back:_ params ->
         Linol_eio.return
           (Hashtbl.find buffers params.textDocument.uri
-          |> Hover.find_references params)
+          |> Kast_lsp.Hover.find_references params)
 
     method private on_req_rename :
         notify_back:Linol_eio.Jsonrpc2.notify_back ->
@@ -133,7 +140,8 @@ class lsp_server =
         Lsp.Types.WorkspaceEdit.t =
       fun ~notify_back:_ params ->
         let result =
-          Hashtbl.find buffers params.textDocument.uri |> Hover.rename params
+          Hashtbl.find buffers params.textDocument.uri
+          |> Kast_lsp.Hover.rename params.position params.newName
         in
         let edit =
           match result with
@@ -156,7 +164,7 @@ class lsp_server =
       fun ~notify_back:_ params ->
         Linol_eio.return
           (Hashtbl.find buffers params.textDocument.uri
-          |> Hover.prepare_rename params)
+          |> Kast_lsp.Hover.prepare_rename params.position)
 
     method! on_request_unhandled : type r.
         notify_back:Linol_eio.Jsonrpc2.notify_back ->

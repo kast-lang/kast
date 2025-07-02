@@ -93,7 +93,7 @@ let rec inlay_hints :
 let inlay_hints (expr : expr) : Lsp.Types.InlayHint.t list =
   inlay_hints Expr expr |> List.of_seq
 
-let get (_range : Lsp.Types.Range.t) ({ compiled; _ } : Processing.file_state) :
+let get ({ compiled; _ } : Processing.file_state) :
     Lsp.Types.InlayHint.t list option =
   Log.info "got inlay hint req";
   let* expr = compiled in

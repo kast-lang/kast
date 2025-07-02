@@ -174,9 +174,9 @@ let find_references (params : Lsp.Types.ReferenceParams.t)
   in
   Some ((declaration_location |> Option.to_list) @ references)
 
-let prepare_rename (params : Lsp.Types.PrepareRenameParams.t)
+let prepare_rename (pos : Lsp.Types.Position.t)
     ({ compiled; _ } : Processing.file_state) : Lsp.Types.Range.t option =
-  let pos : position = Common.lsp_to_kast_pos params.position in
+  let pos : position = Common.lsp_to_kast_pos pos in
   let* expr = compiled in
   let* hover_info = hover Expr expr pos in
   let* _definition =
@@ -190,13 +190,13 @@ module UriMap = Map.Make (Lsp.Uri)
 
 exception Nope
 
-let rename (params : Lsp.Types.RenameParams.t)
+let rename (position : Lsp.Types.Position.t) (newName : string)
     ({ compiled; _ } : Processing.file_state) : Lsp.Types.WorkspaceEdit.t option
     =
   try
     (* TODO maybe convert into raw ident *)
-    let newText = params.newName in
-    let pos : position = Common.lsp_to_kast_pos params.position in
+    let newText = newName in
+    let pos : position = Common.lsp_to_kast_pos position in
     let* expr = compiled in
     let* hover_info = hover Expr expr pos in
     let* definition =
@@ -244,9 +244,11 @@ let rename (params : Lsp.Types.RenameParams.t)
 let hover (pos : Lsp.Types.Position.t) ({ compiled; _ } : Processing.file_state)
     : Lsp.Types.Hover.t option =
   let pos = Common.lsp_to_kast_pos pos in
+  Log.info "Hovering %a" Position.print pos;
   let* expr = compiled in
   let* hover_info = hover Expr expr pos in
   let hover_text = hover_text hover_info in
+  Log.info "Hover result: %S" hover_text;
   Some
     ({
        contents = `MarkedString { language = None; value = hover_text };

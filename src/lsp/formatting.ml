@@ -4,8 +4,8 @@ open Kast_util
 let options : Lsp.Types.DocumentFormattingOptions.t =
   { workDoneProgress = Some false }
 
-let run (_params : Lsp.Types.DocumentFormattingParams.t)
-    ({ parsed; _ } : Processing.file_state) : Lsp.Types.TextEdit.t list option =
+let run ({ parsed; _ } : Processing.file_state) :
+    Lsp.Types.TextEdit.t list option =
   Log.info "got format request";
   match parsed with
   | None -> None

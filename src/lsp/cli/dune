@@ -1,11 +1,3 @@
 (library
  (name kast_lsp_cli)
- (libraries
-  linol
-  linol-eio
-  eio_main
-  std
-  kast_util
-  kast_default_syntax
-  kast_fmt
-  kast_compiler))
+ (libraries linol linol-eio eio_main kast_lsp))
