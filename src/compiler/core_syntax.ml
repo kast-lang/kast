@@ -485,9 +485,39 @@ let module' : handler =
         let def = C.compile Expr def in
         match kind with
         | Expr -> E_Module { def } |> init_expr span
-        | Assignee -> error span "native must be expr, not assignee expr"
-        | Pattern -> error span "native must be expr, not pattern"
-        | TyExpr -> error span "native must be expr, not type expr");
+        | Assignee -> error span "module must be expr, not assignee expr"
+        | Pattern -> error span "module must be expr, not pattern"
+        | TyExpr -> error span "module must be expr, not type expr");
+  }
+
+let dot : handler =
+  {
+    name = ".";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        let obj, field =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "obj"; "field" ]
+        in
+        let obj = C.compile Expr obj in
+        let field =
+          match field.shape with
+          | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
+          | _ -> error span "field must be ident"
+        in
+        match kind with
+        | Expr -> E_Field { obj; field } |> init_expr span
+        | Assignee -> error span "todo assign to field"
+        | Pattern -> error span "dot must be expr, not pattern"
+        | TyExpr -> error span "todo ty expr field");
   }
 
 let core =
@@ -509,6 +539,7 @@ let core =
     const;
     native;
     module';
+    dot;
   ]
 
 (*  TODO remove *)

@@ -116,7 +116,8 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 |> Option.or_else (fun () -> hover Expr value pos)
             | E_Ty expr -> hover TyExpr expr pos
             | E_Native _ -> None
-            | E_Module { def } -> hover Expr def pos)
+            | E_Module { def } -> hover Expr def pos
+            | E_Field { obj; field = _ } -> hover Expr obj pos)
         | Assignee -> (
             match compiled.shape with
             | A_Placeholder -> None

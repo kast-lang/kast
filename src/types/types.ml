@@ -72,6 +72,11 @@ and expr_assign = {
 and expr_native = { expr : string }
 and expr_module = { def : expr }
 
+and expr_field = {
+  obj : expr;
+  field : string;
+}
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -85,6 +90,7 @@ and expr_shape =
   | E_Ty of ty_expr
   | E_Native of expr_native
   | E_Module of expr_module
+  | E_Field of expr_field
 
 and expr = {
   shape : expr_shape;

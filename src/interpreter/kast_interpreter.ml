@@ -98,6 +98,11 @@ let rec eval : state -> expr -> value =
         |> List.map (fun (name, value) -> (Some name, value))
       in
       { shape = V_Tuple { tuple = fields |> Tuple.of_list } }
+  | E_Field { obj; field } -> (
+      let obj = eval state obj in
+      match obj.shape with
+      | V_Tuple { tuple } -> Tuple.get_named field tuple
+      | _ -> fail "%a doesnt have fields" Value.print obj)
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->

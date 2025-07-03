@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 open Kast_types
+open Error
 module Inference = Kast_inference
 
 let init_expr : span -> Expr.Shape.t -> expr =
@@ -44,6 +45,24 @@ let init_expr : span -> Expr.Shape.t -> expr =
                (Ty.inferred T_Unit);
           (* TODO actually infer as tuple *)
           Ty.new_not_inferred ()
+      | E_Field { obj; field } ->
+          let ty = Ty.new_not_inferred () in
+          obj.data.ty.var
+          |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
+                 let field_ty =
+                   match obj_shape with
+                   | T_Tuple { tuple } -> (
+                       match Tuple.get_named_opt field tuple with
+                       | Some ty -> ty
+                       | None ->
+                           error span "field %a is not there"
+                             String.print_maybe_escaped field)
+                   | other ->
+                       error obj.data.span "%a doesnt have fields"
+                         Ty.Shape.print other
+                 in
+                 ty |> Inference.Ty.expect_inferred_as ~span field_ty);
+          ty
     in
     { shape; data = { span; ty; ty_ascription = None } }
   with exc ->

@@ -11,13 +11,17 @@ module Var = struct
     | Root of { data : 'a var_data }
     | NotRoot of { closer_to_root : 'a var }
 
-  and 'a var_data = { inferred : 'a option }
+  and 'a var_data = {
+    inferred : 'a option;
+    once_inferred : ('a -> unit) list;
+  }
 
   let new_not_inferred : 'a. unit -> 'a var =
-   fun () -> { state = Root { data = { inferred = None } } }
+   fun () -> { state = Root { data = { inferred = None; once_inferred = [] } } }
 
   let new_inferred : 'a. 'a -> 'a var =
-   fun inferred -> { state = Root { data = { inferred = Some inferred } } }
+   fun inferred ->
+    { state = Root { data = { inferred = Some inferred; once_inferred = [] } } }
 
   let rec find_root_var : 'a. 'a var -> 'a var =
    fun var ->
@@ -40,23 +44,32 @@ module Var = struct
 
   type 'a t = 'a var
 
+  let check : 'a. 'a var_data -> 'a var_data =
+   fun { inferred; once_inferred } ->
+    match inferred with
+    | None -> { inferred; once_inferred }
+    | Some value ->
+        once_inferred |> List.iter (fun f -> f value);
+        { inferred; once_inferred = [] }
+
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
-    let { inferred } = find_root var in
+    let { inferred; once_inferred = _ } = find_root var in
     match inferred with
     | None -> fprintf fmt "_"
     | Some inferred -> print_inferred fmt inferred
 
   let unite_data =
-   fun ~span unite_inferred { inferred = inferred_a }
-       { inferred = inferred_b } ->
+   fun ~span unite_inferred
+       { inferred = inferred_a; once_inferred = once_inferred_a }
+       { inferred = inferred_b; once_inferred = once_inferred_b } ->
     let inferred =
       match (inferred_a, inferred_b) with
       | None, None -> None
       | Some inferred, None | None, Some inferred -> Some inferred
       | Some a, Some b -> Some (unite_inferred ~span a b)
     in
-    { inferred }
+    { inferred; once_inferred = once_inferred_a @ once_inferred_b } |> check
 
   let unite : 'a. 'a unite -> 'a var unite =
    fun unite_inferred ~span a b ->
@@ -81,7 +94,19 @@ module Var = struct
         {
           data =
             unite_data ~span unite_inferred root_data
-              { inferred = Some infer_as };
+              { inferred = Some infer_as; once_inferred = [] };
+        }
+
+  let once_inferred : 'a. ('a -> unit) -> 'a var -> unit =
+   fun f var ->
+    let root_data = find_root var in
+    let root = find_root_var var in
+    root.state <-
+      Root
+        {
+          data =
+            { root_data with once_inferred = f :: root_data.once_inferred }
+            |> check;
         }
 end
 
