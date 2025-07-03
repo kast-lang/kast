@@ -83,12 +83,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
     | Ast.Complex { rule; root } -> (
         match rule.name |> String.strip_prefix ~prefix:"core:" with
         | Some name ->
-            let handler =
-              Core_syntax.handlers |> StringMap.find_opt name
-              |> Option.unwrap_or_else (fun () ->
-                     error span "there is no core syntax %S" name)
-            in
-            handler.handle (make_compiler state) kind root ast.span
+            Core_syntax.handle name (make_compiler state) kind ast root
         | None -> error span "todo compile syntax rule %S" rule.name)
     | Ast.Syntax _ -> error span "todo %s" __LOC__
   with exc ->

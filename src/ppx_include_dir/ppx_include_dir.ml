@@ -52,7 +52,7 @@ let rec get_entries ~loc path =
                match Sys.is_directory entry_path with
                | true ->
                    Ast_builder.Default.pexp_construct ~loc
-                     { txt = Lident "Dir"; loc }
+                     { txt = Ldot (Lident "Included_dir", "Dir"); loc }
                      (Some (include_dir ~loc entry_path))
                | false ->
                    let contents =
@@ -72,12 +72,6 @@ let rec get_entries ~loc path =
     in
     Ast_builder.Default.elist ~loc entries
   with _ ->
-    let msg =
-      make_string "trying to read %S, seeing %a" path
-        (Array.print String.print_dbg)
-        (Sys.readdir ".")
-    in
-    location_errorf ~loc "!!! %s" msg;
     location_errorf ~loc "[%%include_dir] could not find or load dir %s" path
 
 and include_dir ~loc path =

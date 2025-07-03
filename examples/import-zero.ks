@@ -1,2 +1,2 @@
 let zero = import "./zero.ks";
-print (int32_to_string zero)
+std.io.print (std.int32_to_string zero)

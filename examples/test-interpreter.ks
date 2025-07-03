@@ -1,7 +1,8 @@
+let print = std.io.print;
 print "Hello, World!";
 let unit_type = type ();
 let unit_value = ();
-let print_times = (s :: string) => (
+let print_times = (s :: std.string) => (
   let f = () => 123;
   let x = f ();
   print s;

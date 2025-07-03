@@ -9,25 +9,26 @@ module Interpreter = Kast_interpreter
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
 type 'a handle =
-  (module Compiler.S) -> 'a compiled_kind -> Ast.group -> span -> 'a
+  (module Compiler.S) -> 'a compiled_kind -> Ast.t -> Ast.group -> 'a
 
-type handler = {
+type core_syntax = {
   name : string;
   handle : 'a. 'a handle;
 }
 
-let apply : handler =
+let apply : core_syntax =
   {
     name = "apply";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let f, arg =
           children
           |> Tuple.map Ast.Child.expect_ast
@@ -42,18 +43,19 @@ let apply : handler =
   }
 
 (* a; b *)
-let then' : handler =
+let then' : core_syntax =
   {
     name = "then";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let a, b =
           children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
         in
@@ -66,18 +68,19 @@ let then' : handler =
   }
 
 (* expr; *)
-let stmt : handler =
+let stmt : core_syntax =
   {
     name = "stmt";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let expr =
           children
           |> Tuple.map Ast.Child.expect_ast
@@ -90,18 +93,19 @@ let stmt : handler =
         | _ -> error span "stmt must be expr");
   }
 
-let scope : handler =
+let scope : core_syntax =
   {
     name = "scope";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let expr =
           children
           |> Tuple.map Ast.Child.expect_ast
@@ -116,18 +120,19 @@ let scope : handler =
         | TyExpr -> Compiler.compile TyExpr expr);
   }
 
-let assign : handler =
+let assign : core_syntax =
   {
     name = "assign";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let assignee, value =
           children
           |> Tuple.map Ast.Child.expect_ast
@@ -141,18 +146,19 @@ let assign : handler =
         | _ -> error span "assign must be expr");
   }
 
-let let' : handler =
+let let' : core_syntax =
   {
     name = "let";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let pattern =
           children
           |> Tuple.map Ast.Child.expect_ast
@@ -165,18 +171,19 @@ let let' : handler =
         | _ -> error span "assign must be expr");
   }
 
-let placeholder : handler =
+let placeholder : core_syntax =
   {
     name = "placeholder";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         Tuple.assert_empty children;
         match kind with
         | Assignee -> A_Placeholder |> init_assignee span
@@ -189,18 +196,19 @@ let placeholder : handler =
             TE_Expr const |> init_ty_expr span);
   }
 
-let fn_type : handler =
+let fn_type : core_syntax =
   {
     name = "fn_type";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
         let context =
           children
@@ -224,18 +232,19 @@ let fn_type : handler =
             TE_Fn { arg; result } |> init_ty_expr span);
   }
 
-let fn : handler =
+let fn : core_syntax =
   {
     name = "fn";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
         let context =
           children
@@ -276,18 +285,19 @@ let fn : handler =
             E_Fn { arg; body; evaled_result = result_expr } |> init_expr span);
   }
 
-let unit : handler =
+let unit : core_syntax =
   {
     name = "unit";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         Tuple.assert_empty children;
         match kind with
         | Assignee -> A_Unit |> init_assignee span
@@ -296,18 +306,19 @@ let unit : handler =
         | TyExpr -> TE_Unit |> init_ty_expr span);
   }
 
-let type' : handler =
+let type' : core_syntax =
   {
     name = "type";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         Tuple.assert_empty children;
         let ty_ty = Ty.inferred T_Ty in
         let const = E_Constant { shape = V_Ty ty_ty } |> init_expr span in
@@ -318,18 +329,19 @@ let type' : handler =
         | TyExpr -> TE_Expr const |> init_ty_expr span);
   }
 
-let type_expr : handler =
+let type_expr : core_syntax =
   {
     name = "type expr";
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let expr =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
@@ -341,18 +353,19 @@ let type_expr : handler =
         | TyExpr -> expr);
   }
 
-let type_ascribe : handler =
+let type_ascribe : core_syntax =
   {
     name = "type ascribe";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let expr, expected_ty =
           children
           |> Tuple.map Ast.Child.expect_ast
@@ -371,18 +384,19 @@ let type_ascribe : handler =
             { data with ty_ascription = Some expected_ty_expr }));
   }
 
-let import : handler =
+let import : core_syntax =
   {
     name = "import";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let path =
           children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
         in
@@ -406,18 +420,19 @@ let import : handler =
         | TyExpr -> error span "Type imports not supported (TODO)");
   }
 
-let include' : handler =
+let include' : core_syntax =
   {
     name = "include";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        (span : span)
         :
         a
       ->
+        let span = ast.span in
         let path =
           children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
         in
@@ -438,18 +453,19 @@ let include' : handler =
         C.compile kind ast);
   }
 
-let const : handler =
+let const : core_syntax =
   {
     name = "const";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let pattern, value =
           children
           |> Tuple.map Ast.Child.expect_ast
@@ -478,18 +494,19 @@ let const : handler =
         | TyExpr -> error span "const must be expr, not type expr");
   }
 
-let native : handler =
+let native : core_syntax =
   {
     name = "native";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let expr =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
@@ -504,18 +521,19 @@ let native : handler =
         | TyExpr -> error span "native must be expr, not type expr");
   }
 
-let module' : handler =
+let module' : core_syntax =
   {
     name = "module";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let def =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
@@ -527,34 +545,36 @@ let module' : handler =
         | TyExpr -> error span "module must be expr, not type expr");
   }
 
-let dot : handler =
+let rec dot : core_syntax =
   {
     name = ".";
     handle =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
-        let obj, field =
-          children
-          |> Tuple.map Ast.Child.expect_ast
-          |> Tuple.unwrap_named2 [ "obj"; "field" ]
-        in
-        let obj = C.compile Expr obj in
-        let field =
-          match field.shape with
-          | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
-          | _ -> error span "field must be ident"
-        in
+        let span = ast.span in
         match kind with
-        | Expr -> E_Field { obj; field } |> init_expr span
         | Assignee -> error span "todo assign to field"
         | Pattern -> error span "dot must be expr, not pattern"
-        | TyExpr -> error span "todo ty expr field");
+        | TyExpr -> TE_Expr (C.compile Expr ast) |> init_ty_expr span
+        | Expr ->
+            let obj, field =
+              children
+              |> Tuple.map Ast.Child.expect_ast
+              |> Tuple.unwrap_named2 [ "obj"; "field" ]
+            in
+            let obj = C.compile Expr obj in
+            let field =
+              match field.shape with
+              | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
+              | _ -> error span "field must be ident"
+            in
+            E_Field { obj; field } |> init_expr span);
   }
 
 let core =
@@ -582,18 +602,20 @@ let core =
 
 (*  TODO remove *)
 
-let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
+let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) :
+    core_syntax =
   {
     name;
     handle =
       (fun (type a)
         (module Compiler : Compiler.S)
         (kind : a compiled_kind)
+        (ast : Ast.t)
         ({ children; _ } : Ast.group)
-        span
         :
         a
       ->
+        let span = ast.span in
         let a, b =
           children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
         in
@@ -644,28 +666,28 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) : handler =
   }
 
 let todo_remove =
-  let add : handler =
+  let add : core_syntax =
     make_binop ~name:"add" (function
       | V_Int32 a, V_Int32 b ->
           let ( + ) = Int32.add in
           V_Int32 (a + b)
       | _ -> fail "todo %s" __LOC__)
   in
-  let sub : handler =
+  let sub : core_syntax =
     make_binop ~name:"sub" (function
       | V_Int32 a, V_Int32 b ->
           let ( - ) = Int32.sub in
           V_Int32 (a - b)
       | _ -> fail "todo %s" __LOC__)
   in
-  let mul : handler =
+  let mul : core_syntax =
     make_binop ~name:"mul" (function
       | V_Int32 a, V_Int32 b ->
           let ( * ) = Int32.mul in
           V_Int32 (a * b)
       | _ -> fail "todo %s" __LOC__)
   in
-  let div : handler =
+  let div : core_syntax =
     make_binop ~name:"div" (function
       | V_Int32 a, V_Int32 b ->
           let ( / ) = Int32.div in
@@ -674,7 +696,12 @@ let todo_remove =
   in
   [ add; sub; mul; div ]
 
-let handlers : handler StringMap.t =
+let all : core_syntax StringMap.t =
   core @ todo_remove
   |> List.map (fun handler -> (handler.name, handler))
   |> StringMap.of_list
+
+let handle name compiler kind (ast : Ast.t) root =
+  match all |> StringMap.find_opt name with
+  | None -> error ast.span "there is no core syntax %S" name
+  | Some core_syntax -> core_syntax.handle compiler kind ast root
