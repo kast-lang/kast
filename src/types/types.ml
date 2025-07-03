@@ -150,4 +150,5 @@ and ir_data = {
   span : span;
   ty : ty;
   ty_ascription : ty_expr option;
+  evaled_exprs : expr list;
 }

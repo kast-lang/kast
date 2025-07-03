@@ -414,7 +414,8 @@ let import : core_syntax =
             let imported_value : value =
               Compiler.import ~span (module C) path
             in
-            E_Constant imported_value |> init_expr span
+            E_Constant imported_value
+            |> init_expr ~evaled_exprs:[ path_expr ] span
         | Assignee -> error span "Can't assign to import"
         | Pattern -> error span "import can't be a pattern"
         | TyExpr -> error span "Type imports not supported (TODO)");
@@ -450,7 +451,9 @@ let include' : core_syntax =
           |> Option.unwrap_or_else (fun () ->
                  error span "included file is empty")
         in
-        C.compile kind ast);
+        let result = C.compile kind ast in
+        Compiler.update_data kind result (fun data ->
+            { data with evaled_exprs = path_expr :: data.evaled_exprs }));
   }
 
 let const : core_syntax =
@@ -483,7 +486,10 @@ let const : core_syntax =
               E_Assign
                 {
                   assignee = A_Let pattern |> init_assignee pattern.data.span;
-                  value = E_Constant value |> init_expr value_expr.data.span;
+                  value =
+                    E_Constant value
+                    |> init_expr ~evaled_exprs:[ value_expr ]
+                         value_expr.data.span;
                 }
               |> init_expr span
             in
@@ -515,7 +521,9 @@ let native : core_syntax =
         in
         let expr_value : string = expr_value |> Value.expect_string in
         match kind with
-        | Expr -> E_Native { expr = expr_value } |> init_expr span
+        | Expr ->
+            E_Native { expr = expr_value }
+            |> init_expr ~evaled_exprs:[ expr ] span
         | Assignee -> error span "native must be expr, not assignee expr"
         | Pattern -> error span "native must be expr, not pattern"
         | TyExpr -> error span "native must be expr, not type expr");

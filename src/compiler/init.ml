@@ -4,8 +4,8 @@ open Kast_types
 open Error
 module Inference = Kast_inference
 
-let init_expr : span -> Expr.Shape.t -> expr =
- fun span shape ->
+let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
+ fun ?(evaled_exprs = []) span shape ->
   try
     let ty =
       match shape with
@@ -64,13 +64,14 @@ let init_expr : span -> Expr.Shape.t -> expr =
                  ty |> Inference.Ty.expect_inferred_as ~span field_ty);
           ty
     in
-    { shape; data = { span; ty; ty_ascription = None } }
+    { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
     Log.error "while initializing expr at %a" Span.print span;
     raise exc
 
-let init_assignee : span -> Expr.Assignee.Shape.t -> Expr.assignee =
- fun span shape ->
+let init_assignee :
+    ?evaled_exprs:expr list -> span -> Expr.Assignee.Shape.t -> Expr.assignee =
+ fun ?(evaled_exprs = []) span shape ->
   try
     let ty =
       match shape with
@@ -79,13 +80,14 @@ let init_assignee : span -> Expr.Assignee.Shape.t -> Expr.assignee =
       | A_Binding binding -> binding.ty
       | A_Let pattern -> pattern.data.ty
     in
-    { shape; data = { span; ty; ty_ascription = None } }
+    { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
     Log.error "while initializing assignee expr at %a" Span.print span;
     raise exc
 
-let init_pattern : span -> Pattern.Shape.t -> pattern =
- fun span shape ->
+let init_pattern : ?evaled_exprs:expr list -> span -> Pattern.Shape.t -> pattern
+    =
+ fun ?(evaled_exprs = []) span shape ->
   try
     let ty =
       match shape with
@@ -93,14 +95,15 @@ let init_pattern : span -> Pattern.Shape.t -> pattern =
       | P_Unit -> Ty.inferred T_Unit
       | P_Binding binding -> binding.ty
     in
-    { shape; data = { span; ty; ty_ascription = None } }
+    { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
     Log.error "while initializing pattern at %a" Span.print span;
     raise exc
 
-let init_ty_expr : span -> Expr.Ty.Shape.t -> Expr.ty =
+let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
+    =
   let type_ty = Ty.inferred T_Ty in
-  fun span shape ->
+  fun ?(evaled_exprs = []) span shape ->
     try
       (match shape with
       | TE_Unit -> ()
@@ -111,7 +114,10 @@ let init_ty_expr : span -> Expr.Ty.Shape.t -> Expr.ty =
       | TE_Expr expr ->
           expr.data.ty
           |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty);
-      { shape; data = { span; ty = type_ty; ty_ascription = None } }
+      {
+        shape;
+        data = { span; ty = type_ty; ty_ascription = None; evaled_exprs };
+      }
     with exc ->
       Log.error "while initializing type expr at %a" Span.print span;
       raise exc

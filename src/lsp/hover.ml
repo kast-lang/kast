@@ -129,6 +129,12 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 |> Option.or_else (fun () -> hover TyExpr result pos)
             | TE_Expr expr -> hover Expr expr pos)
       in
+      let inner =
+        inner
+        |> Option.or_else (fun () ->
+               data.evaled_exprs
+               |> List.find_map (fun expr -> hover Expr expr pos))
+      in
       match inner with
       | Some result -> Some result
       | None ->
