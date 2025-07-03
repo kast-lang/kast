@@ -87,10 +87,19 @@ and print_shape : formatter -> shape -> unit =
       | None -> ()
       | Some value -> fprintf fmt "\n%a" print value)
 
-module Kind = struct
+and print_shape_short : formatter -> shape -> unit =
+ fun fmt -> function
+  | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
+  | Complex { rule; root = _ } ->
+      fprintf fmt "@{<magenta>%a@}" String.print_maybe_escaped rule.name
+  | Syntax { comments_before = _; mode = _; value_after = _; tokens = _ } ->
+      fprintf fmt "<syntax>"
+
+module Shape = struct
   type t = shape
 
   let print = print_shape
+  let print_short = print_shape_short
 end
 
 module Child = struct

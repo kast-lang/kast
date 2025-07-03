@@ -40,14 +40,30 @@ module Scope = struct
     { parent; bindings = bindings |> StringMap.add binding.name binding }
 end
 
+type import =
+  | InProgress
+  | Imported of value
+
+type imported = { mutable by_path : import StringMap.t }
+
+let init_imported () : imported = { by_path = StringMap.empty }
+
 type t = {
   (* TODO do this properly *)
   mutable scope : Scope.t;
+  imported : imported;
   interpreter : Interpreter.state;
 }
 
 type state = t
 
+let blank ~imported =
+  {
+    scope = Scope.init ();
+    imported;
+    interpreter = Interpreter.init StringMap.empty;
+  }
+
 let enter_scope : state -> state =
- fun { scope; interpreter } ->
-  { scope = Scope.enter ~parent:scope; interpreter }
+ fun { scope; interpreter; imported } ->
+  { scope = Scope.enter ~parent:scope; interpreter; imported }

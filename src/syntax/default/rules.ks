@@ -10,6 +10,7 @@ syntax "core:tcomma" 5 wrap never = <- _ ",";
 syntax "core:fn_type" 7 wrap never = arg " " "with" context " " "->" " " result;
 syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->" " " _ " ")? "=>" " " body;
 syntax "core:type ascribe" 8 wrap never = expr " " "::" " " type;
+syntax "core:import" 9 wrap never = "import" " " path;
 syntax "core:or" 10 wrap never = _ " " "or" " " _;
 syntax "core:and" 11 wrap never = _ " " "and" " " _;
 syntax "core:add" 15 wrap if_any = <- _ " "/"\n" "+" " " _;

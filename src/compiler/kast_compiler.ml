@@ -26,7 +26,7 @@ let init : compile_for:Interpreter.state -> state =
              })
       compile_for.scope.bindings scope
   in
-  { scope; interpreter = compile_for }
+  { scope; interpreter = compile_for; imported = State.init_imported () }
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
@@ -35,65 +35,66 @@ let get_data = Compiler.get_data
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
  fun (type a) (state : state) (kind : a compiled_kind) (ast : Ast.t) : a ->
   let { shape = _; span } : Ast.t = ast in
-  match ast.shape with
-  | Ast.Simple { token; _ } -> (
-      match kind with
-      | Expr -> (
-          match token.shape with
-          | Token.Shape.Ident ident ->
-              E_Binding
-                (State.Scope.find_binding ~from:ast.span ident state.scope)
-              |> init_expr span
-          | Token.Shape.String s ->
-              E_Constant { shape = V_String s.contents } |> init_expr span
-          | Token.Shape.Number { raw; _ } ->
-              let value = Int32.of_string raw in
-              E_Constant { shape = V_Int32 value } |> init_expr span
-          | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
-              unreachable "!")
-      | TyExpr -> TE_Expr (compile state Expr ast) |> init_ty_expr span
-      | Assignee -> (
-          match token.shape with
-          | Token.Shape.Ident ident ->
-              A_Binding
-                (State.Scope.find_binding ~from:ast.span ident state.scope)
-              |> init_assignee span
-          | Token.Shape.String _ -> error span "string can't be assignee"
-          | Token.Shape.Number _ -> error span "number can't be assignee"
-          | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
-              unreachable "!")
-      | Pattern -> (
-          match token.shape with
-          | Token.Shape.Ident ident ->
-              let binding : binding =
-                {
-                  name = ident.name;
-                  ty = Ty.new_not_inferred ();
-                  span = ast.span;
-                  references = [];
-                }
-              in
-              state.scope <- state.scope |> State.Scope.inject_binding binding;
-              P_Binding binding |> init_pattern span
-          | Token.Shape.String _ -> error span "string can't be pattern"
-          | Token.Shape.Number _ -> error span "number can't be pattern"
-          | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
-              unreachable "!"))
-  | Ast.Complex { rule; root } -> (
-      match rule.name |> String.strip_prefix ~prefix:"core:" with
-      | Some name -> (
-          let handler =
-            Core_syntax.handlers |> StringMap.find_opt name
-            |> Option.unwrap_or_else (fun () ->
-                   error span "there is no core syntax %S" name)
-          in
-          try handler.handle (make_compiler state) kind root ast.span
-          with exc ->
-            Log.error "While processing core syntax %S at %a" name Span.print
-              ast.span;
-            raise exc)
-      | None -> error span "todo compile syntax rule %S" rule.name)
-  | Ast.Syntax _ -> error span "todo %s" __LOC__
+  try
+    match ast.shape with
+    | Ast.Simple { token; _ } -> (
+        match kind with
+        | Expr -> (
+            match token.shape with
+            | Token.Shape.Ident ident ->
+                E_Binding
+                  (State.Scope.find_binding ~from:ast.span ident state.scope)
+                |> init_expr span
+            | Token.Shape.String s ->
+                E_Constant { shape = V_String s.contents } |> init_expr span
+            | Token.Shape.Number { raw; _ } ->
+                let value = Int32.of_string raw in
+                E_Constant { shape = V_Int32 value } |> init_expr span
+            | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
+                unreachable "!")
+        | TyExpr -> TE_Expr (compile state Expr ast) |> init_ty_expr span
+        | Assignee -> (
+            match token.shape with
+            | Token.Shape.Ident ident ->
+                A_Binding
+                  (State.Scope.find_binding ~from:ast.span ident state.scope)
+                |> init_assignee span
+            | Token.Shape.String _ -> error span "string can't be assignee"
+            | Token.Shape.Number _ -> error span "number can't be assignee"
+            | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
+                unreachable "!")
+        | Pattern -> (
+            match token.shape with
+            | Token.Shape.Ident ident ->
+                let binding : binding =
+                  {
+                    name = ident.name;
+                    ty = Ty.new_not_inferred ();
+                    span = ast.span;
+                    references = [];
+                  }
+                in
+                state.scope <- state.scope |> State.Scope.inject_binding binding;
+                P_Binding binding |> init_pattern span
+            | Token.Shape.String _ -> error span "string can't be pattern"
+            | Token.Shape.Number _ -> error span "number can't be pattern"
+            | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
+                unreachable "!"))
+    | Ast.Complex { rule; root } -> (
+        match rule.name |> String.strip_prefix ~prefix:"core:" with
+        | Some name ->
+            let handler =
+              Core_syntax.handlers |> StringMap.find_opt name
+              |> Option.unwrap_or_else (fun () ->
+                     error span "there is no core syntax %S" name)
+            in
+            handler.handle (make_compiler state) kind root ast.span
+        | None -> error span "todo compile syntax rule %S" rule.name)
+    | Ast.Syntax _ -> error span "todo %s" __LOC__
+  with exc ->
+    Log.error "While compiling %a %a at %a" Compiler.CompiledKind.print kind
+      Ast.Shape.print_short ast.shape Span.print ast.span;
+    raise exc
 
 and make_compiler (original_state : state) : (module Compiler.S) =
   (module struct

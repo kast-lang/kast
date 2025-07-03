@@ -336,6 +336,36 @@ let type_ascribe : handler =
             { data with ty_ascription = Some expected_ty_expr }));
   }
 
+let import : handler =
+  {
+    name = "import";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        let path =
+          children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
+        in
+        match kind with
+        | Expr ->
+            let path, path_expr =
+              Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
+            in
+            let path = path |> Value.expect_string in
+            let imported_value : value =
+              Compiler.import ~span (module C) path
+            in
+            E_Constant imported_value |> init_expr span
+        | Assignee -> error span "Can't assign to import"
+        | Pattern -> error span "import can't be a pattern"
+        | TyExpr -> error span "Type imports not supported (TODO)");
+  }
+
 let core =
   [
     apply;
@@ -350,6 +380,7 @@ let core =
     type';
     type_expr;
     type_ascribe;
+    import;
   ]
 
 (*  TODO remove *)

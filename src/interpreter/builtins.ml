@@ -26,5 +26,10 @@ let builtins =
         match arg.shape with
         | V_Int32 max -> { shape = V_Int32 (Random.int32 max) }
         | _ -> fail "print expected a string");
+    native_fn ~arg:(Ty.inferred T_Int32) ~result:(Ty.inferred T_String)
+      "int32_to_string" (fun arg ->
+        match arg.shape with
+        | V_Int32 value -> { shape = V_String (Int32.to_string value) }
+        | _ -> fail "print expected a string");
   ]
   @ types
