@@ -52,9 +52,7 @@
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
       in {
         legacyPackages = scope';
-
         packages.default = main;
-
         devShells.default = pkgs.mkShell {
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [

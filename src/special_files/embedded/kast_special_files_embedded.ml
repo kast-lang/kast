@@ -11,4 +11,7 @@ let with_special_files f =
         | "lib.ks" ->
             let contents = [%blob "../../../std/lib.ks"] in
             Effect.Deep.continue k contents
+        | "io/_mod.ks" ->
+            let contents = [%blob "../../../std/io/_mod.ks"] in
+            Effect.Deep.continue k contents
         | _ -> fail "not in std: %S" std_path))

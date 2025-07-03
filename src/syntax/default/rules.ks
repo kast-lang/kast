@@ -13,6 +13,7 @@ syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->"
 syntax "core:type ascribe" 8 wrap never = expr " " "::" " " type;
 syntax "core:fn_type" 8.5 wrap never = arg " " context=("with" " " _ " ")? "->" " " result;
 syntax "core:import" 9 wrap never = "import" " " path;
+syntax "core:include" 9 wrap never = "include" " " path;
 syntax "core:native" 9 wrap never = "native" " " _;
 syntax "core:or" 10 wrap never = _ " " "or" " " _;
 syntax "core:and" 11 wrap never = _ " " "and" " " _;

@@ -49,6 +49,24 @@ module Path = struct
     | File path -> fprintf fmt "%s" path
     | Special s -> fprintf fmt "<%s>" s
     | Stdin -> fprintf fmt "<stdin>"
+
+  let relative_to file relative =
+    let relative =
+      relative
+      |> String.strip_prefix ~prefix:"./"
+      |> Option.unwrap_or_else (fun () ->
+             fail "relative path must start with ./")
+    in
+    match file with
+    | File file -> File (Filename.concat (Filename.dirname file) relative)
+    | Special path ->
+        Special
+          (match String.rindex_opt path '/' with
+          | None -> fail "expected a dir"
+          | Some index ->
+              let dir = String.sub path 0 index in
+              make_string "%s/%s" dir relative)
+    | Stdin -> fail "trying to get path relative to stdin???"
 end
 
 module PathMap = Map.Make (Path)

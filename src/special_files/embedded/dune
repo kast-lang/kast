@@ -2,6 +2,6 @@
  (name kast_special_files_embedded)
  (libraries std kast_util)
  (preprocessor_deps
-  (file %{project_root}/std/lib.ks))
+  (source_tree %{project_root}/std))
  (preprocess
   (pps ppx_blob)))

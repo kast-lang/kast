@@ -406,6 +406,38 @@ let import : handler =
         | TyExpr -> error span "Type imports not supported (TODO)");
   }
 
+let include' : handler =
+  {
+    name = "include";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        (span : span)
+        :
+        a
+      ->
+        let path =
+          children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
+        in
+        let path, path_expr =
+          Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
+        in
+        let path = path |> Value.expect_string in
+        let path = Path.relative_to span.filename path in
+        let source = Source.read path in
+        let { ast; _ } : Kast_parser.result =
+          Kast_parser.parse source Kast_default_syntax.ruleset
+        in
+        let ast =
+          ast
+          |> Option.unwrap_or_else (fun () ->
+                 error span "included file is empty")
+        in
+        C.compile kind ast);
+  }
+
 let const : handler =
   {
     name = "const";
@@ -541,6 +573,7 @@ let core =
     type_expr;
     type_ascribe;
     import;
+    include';
     const;
     native;
     module';

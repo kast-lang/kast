@@ -1,2 +1,2 @@
-std.print "hello";
+std.io.print "hello";
 ()# "world" |> print;
