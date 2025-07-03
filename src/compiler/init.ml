@@ -38,6 +38,12 @@ let init_expr : span -> Expr.Shape.t -> expr =
           Ty.inferred T_Unit
       | E_Ty _ -> Ty.inferred T_Ty
       | E_Native _ -> Ty.new_not_inferred ()
+      | E_Module { def } ->
+          def.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:def.data.span
+               (Ty.inferred T_Unit);
+          (* TODO actually infer as tuple *)
+          Ty.new_not_inferred ()
     in
     { shape; data = { span; ty; ty_ascription = None } }
   with exc ->

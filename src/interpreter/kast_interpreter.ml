@@ -90,6 +90,14 @@ let rec eval : state -> expr -> value =
       match StringMap.find_opt expr state.natives.by_name with
       | Some value -> value
       | None -> fail "no native %S" expr)
+  | E_Module { def } ->
+      let new_state = { state with scope = { bindings = StringMap.empty } } in
+      ignore @@ eval new_state def;
+      let fields =
+        new_state.scope.bindings |> StringMap.to_list
+        |> List.map (fun (name, value) -> (Some name, value))
+      in
+      { shape = V_Tuple { tuple = fields |> Tuple.of_list } }
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->

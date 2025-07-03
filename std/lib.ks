@@ -1,3 +1,4 @@
+module:
 const int32 :: type = native "int32";
 const string :: type = native "string";
 const print :: string -> () = native "print";

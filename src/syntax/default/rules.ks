@@ -1,4 +1,5 @@
 syntax from_scratch;
+syntax "core:module" 0 wrap always = "module" ":" "\n" _:any;
 syntax "core:then" 0 wrap always = _ ";" "\n" _ ->;
 syntax "core:stmt" 0 wrap always = _ ";";
 syntax "core:use .*" 1 wrap never = "use" " " _ ".*";

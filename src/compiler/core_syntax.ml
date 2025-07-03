@@ -467,6 +467,29 @@ let native : handler =
         | TyExpr -> error span "native must be expr, not type expr");
   }
 
+let module' : handler =
+  {
+    name = "module";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        let def =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let def = C.compile Expr def in
+        match kind with
+        | Expr -> E_Module { def } |> init_expr span
+        | Assignee -> error span "native must be expr, not assignee expr"
+        | Pattern -> error span "native must be expr, not pattern"
+        | TyExpr -> error span "native must be expr, not type expr");
+  }
+
 let core =
   [
     apply;
@@ -485,6 +508,7 @@ let core =
     import;
     const;
     native;
+    module';
   ]
 
 (*  TODO remove *)

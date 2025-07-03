@@ -61,6 +61,7 @@ and print_expr_shape :
         print_assignee_expr_with_spans assignee print_expr value
   | E_Ty expr -> fprintf fmt "@{<magenta>type@} %a" print_ty_expr expr
   | E_Native { expr } -> fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
+  | E_Module { def } -> fprintf fmt "@{<magenta>module@} %a" print_expr def
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->

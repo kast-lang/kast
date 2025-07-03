@@ -70,6 +70,7 @@ and expr_assign = {
 }
 
 and expr_native = { expr : string }
+and expr_module = { def : expr }
 
 and expr_shape =
   | E_Constant of value
@@ -83,6 +84,7 @@ and expr_shape =
   | E_Assign of expr_assign
   | E_Ty of ty_expr
   | E_Native of expr_native
+  | E_Module of expr_module
 
 and expr = {
   shape : expr_shape;

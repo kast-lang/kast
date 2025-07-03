@@ -45,7 +45,8 @@ let rec inlay_hints :
                 (inlay_hints Assignee assignee)
                 (inlay_hints Expr value) )
         | E_Ty expr -> (None, inlay_hints TyExpr expr)
-        | E_Native _ -> (None, Seq.empty))
+        | E_Native _ -> (None, Seq.empty)
+        | E_Module { def } -> (None, inlay_hints Expr def))
     | Pattern -> (
         match compiled.shape with
         | P_Placeholder -> (None, Seq.empty)

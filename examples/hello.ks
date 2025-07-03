@@ -1,3 +1,2 @@
-use std.*;
-print "hello";
-"world" |> print;
+std.print "hello";
+()# "world" |> print;  
