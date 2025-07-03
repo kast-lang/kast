@@ -60,6 +60,7 @@ and print_expr_shape :
         "@{<magenta>assign@} (@;<0 2>@[<v>assignee = %a,@]@;<0 2>@[<v>value = %a@]@ )"
         print_assignee_expr_with_spans assignee print_expr value
   | E_Ty expr -> fprintf fmt "@{<magenta>type@} %a" print_ty_expr expr
+  | E_Native { expr } -> fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->
@@ -94,6 +95,10 @@ and print_assignee_expr_with_spans : formatter -> assignee_expr -> unit =
 and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
  fun fmt -> function
   | TE_Unit -> fprintf fmt "()"
+  | TE_Fn { arg; result } ->
+      fprintf fmt "@{<magenta>fn@} %a"
+        (Tuple.print print_ty_expr)
+        (Tuple.make [] [ ("arg", arg); ("result", result) ])
   | TE_Expr expr ->
       fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
 

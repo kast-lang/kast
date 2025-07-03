@@ -4,13 +4,19 @@ open Kast_types
 
 type bindings = value StringMap.t
 type scope = { bindings : bindings }
-type state = { mutable scope : scope }
+
+type state = {
+  natives : Natives.t;
+  mutable scope : scope;
+}
 
 let add_bindings =
   StringMap.union (fun _name _old_value new_value -> Some new_value)
 
-let init : value StringMap.t -> state = fun bindings -> { scope = { bindings } }
-let default () = init (StringMap.of_list Builtins.builtins)
+let init : value StringMap.t -> state =
+ fun bindings -> { scope = { bindings }; natives = Natives.natives }
+
+let default () = init StringMap.empty
 
 let pattern_match : value -> pattern -> bindings =
  fun value pattern ->
@@ -70,6 +76,7 @@ let rec eval : state -> expr -> value =
           let new_bindings = pattern_match arg f.arg in
           let new_state =
             {
+              state with
               scope =
                 { bindings = add_bindings state.scope.bindings new_bindings };
             }
@@ -79,11 +86,19 @@ let rec eval : state -> expr -> value =
       | V_NativeFn f -> f.impl arg
       | _ -> fail "expected fn")
   | E_Ty expr -> { shape = V_Ty (eval_ty state expr) }
+  | E_Native { expr } -> (
+      match StringMap.find_opt expr state.natives.by_name with
+      | Some value -> value
+      | None -> fail "no native %S" expr)
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
   match expr.shape with
   | TE_Unit -> Ty.inferred T_Unit
+  | TE_Fn { arg; result } ->
+      let arg = eval_ty state arg in
+      let result = eval_ty state result in
+      Ty.inferred (T_Fn { arg; result })
   | TE_Expr expr ->
       let value = eval state expr in
       value |> Value.expect_ty

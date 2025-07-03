@@ -114,7 +114,8 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
             | E_Assign { assignee; value } ->
                 hover Assignee assignee pos
                 |> Option.or_else (fun () -> hover Expr value pos)
-            | E_Ty expr -> hover TyExpr expr pos)
+            | E_Ty expr -> hover TyExpr expr pos
+            | E_Native _ -> None)
         | Assignee -> (
             match compiled.shape with
             | A_Placeholder -> None
@@ -129,6 +130,9 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
         | TyExpr -> (
             match compiled.shape with
             | TE_Unit -> None
+            | TE_Fn { arg; result } ->
+                hover TyExpr arg pos
+                |> Option.or_else (fun () -> hover TyExpr result pos)
             | TE_Expr expr -> hover Expr expr pos)
       in
       match inner with

@@ -189,6 +189,41 @@ let placeholder : handler =
             TE_Expr const |> init_ty_expr span);
   }
 
+let fn_type : handler =
+  {
+    name = "fn_type";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let context =
+          children
+          |> Tuple.get_named_opt "context"
+          |> Option.map (fun (child : Ast.child) ->
+                 let group = child |> Ast.Child.expect_group in
+                 group.children |> Tuple.unwrap_single_unnamed
+                 |> Ast.Child.expect_ast)
+        in
+        let result =
+          children |> Tuple.get_named "result" |> Ast.Child.expect_ast
+        in
+        match kind with
+        | Assignee -> error span "fn_type can't be assignee"
+        | Pattern -> error span "fn_type can't be a pattern"
+        | Expr -> error span "fn_type can't be a expr"
+        | TyExpr ->
+            let state = C.state |> State.enter_scope in
+            let arg = C.compile ~state TyExpr arg in
+            let result = C.compile ~state TyExpr result in
+            TE_Fn { arg; result } |> init_ty_expr span);
+  }
+
 let fn : handler =
   {
     name = "fn";
@@ -366,6 +401,72 @@ let import : handler =
         | TyExpr -> error span "Type imports not supported (TODO)");
   }
 
+let const : handler =
+  {
+    name = "const";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        let pattern, value =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "pattern"; "value" ]
+        in
+        match kind with
+        | Expr ->
+            let pattern = C.compile Pattern pattern in
+            let value_expr = C.compile Expr value in
+            value_expr.data.ty
+            |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span
+                 pattern.data.ty;
+            let value = Interpreter.eval C.state.interpreter value_expr in
+            let let_expr =
+              E_Assign
+                {
+                  assignee = A_Let pattern |> init_assignee pattern.data.span;
+                  value = E_Constant value |> init_expr value_expr.data.span;
+                }
+              |> init_expr span
+            in
+            ignore @@ Interpreter.eval C.state.interpreter let_expr;
+            let_expr
+        | Assignee -> error span "const must be expr, not assignee expr"
+        | Pattern -> error span "const must be expr, not pattern"
+        | TyExpr -> error span "const must be expr, not type expr");
+  }
+
+let native : handler =
+  {
+    name = "native";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        ({ children; _ } : Ast.group)
+        span
+        :
+        a
+      ->
+        let expr =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let expr_value, expr =
+          Compiler.eval ~ty:(Ty.inferred T_String) (module C) expr
+        in
+        let expr_value : string = expr_value |> Value.expect_string in
+        match kind with
+        | Expr -> E_Native { expr = expr_value } |> init_expr span
+        | Assignee -> error span "native must be expr, not assignee expr"
+        | Pattern -> error span "native must be expr, not pattern"
+        | TyExpr -> error span "native must be expr, not type expr");
+  }
+
 let core =
   [
     apply;
@@ -375,12 +476,15 @@ let core =
     assign;
     let';
     placeholder;
+    fn_type;
     fn;
     unit;
     type';
     type_expr;
     type_ascribe;
     import;
+    const;
+    native;
   ]
 
 (*  TODO remove *)

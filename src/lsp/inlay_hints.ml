@@ -44,7 +44,8 @@ let rec inlay_hints :
               Seq.append
                 (inlay_hints Assignee assignee)
                 (inlay_hints Expr value) )
-        | E_Ty expr -> (None, inlay_hints TyExpr expr))
+        | E_Ty expr -> (None, inlay_hints TyExpr expr)
+        | E_Native _ -> (None, Seq.empty))
     | Pattern -> (
         match compiled.shape with
         | P_Placeholder -> (None, Seq.empty)
@@ -59,6 +60,9 @@ let rec inlay_hints :
     | TyExpr -> (
         match compiled.shape with
         | TE_Unit -> (None, Seq.empty)
+        | TE_Fn { arg; result } ->
+            ( None,
+              Seq.append (inlay_hints TyExpr arg) (inlay_hints TyExpr result) )
         | TE_Expr expr -> (None, inlay_hints Expr expr))
   in
   let data = Compiler.get_data kind compiled in

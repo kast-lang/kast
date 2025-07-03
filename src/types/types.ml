@@ -69,6 +69,8 @@ and expr_assign = {
   value : expr;
 }
 
+and expr_native = { expr : string }
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -80,6 +82,7 @@ and expr_shape =
   | E_Apply of expr_apply
   | E_Assign of expr_assign
   | E_Ty of ty_expr
+  | E_Native of expr_native
 
 and expr = {
   shape : expr_shape;
@@ -99,8 +102,14 @@ and assignee_expr = {
 }
 
 (* TYPE EXPR *)
+and ty_expr_fn = {
+  arg : ty_expr;
+  result : ty_expr;
+}
+
 and ty_expr_shape =
   | TE_Unit
+  | TE_Fn of ty_expr_fn
   | TE_Expr of expr
 
 and ty_expr = {
