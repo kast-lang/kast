@@ -4,7 +4,8 @@ open Js_of_ocaml
 
 type file_state = Kast_lsp.Processing.file_state
 
-let cross_js f = Kast_special_files_embedded.with_special_files f
+let cross_js : 'a. (unit -> 'a) -> 'a =
+ fun f -> Kast_special_files_embedded.with_special_files f
 
 let yojson_to_js (json : Yojson.Safe.t) : Js.Unsafe.any =
   let json_str = Yojson.Safe.to_string json in

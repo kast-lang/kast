@@ -1,7 +1,7 @@
 (library
  (name kast_special_files_embedded)
- (libraries std kast_util)
+ (libraries std kast_util included_dir)
  (preprocessor_deps
   (source_tree %{project_root}/std))
  (preprocess
-  (pps ppx_blob)))
+  (pps ppx_include_dir)))

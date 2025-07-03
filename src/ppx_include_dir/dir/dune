@@ -1,0 +1,3 @@
+(library
+ (name included_dir)
+ (libraries std))
