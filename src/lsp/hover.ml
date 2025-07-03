@@ -75,20 +75,12 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
   with_return (fun { return } ->
       let data = Compiler.get_data kind compiled in
       let span = data.span in
-      let span_is_special =
-        match span.filename with
-        | Special _ -> true
-        | _ -> false
-      in
       (match data.ty_ascription with
       | None -> ()
       | Some ty_ascription_expr -> (
           match hover TyExpr ty_ascription_expr pos with
           | None -> ()
           | Some hover -> return (Some hover)));
-      let* () =
-        if span_is_special || span |> Span.contains pos then Some () else None
-      in
       let inner : hover_info option =
         match kind with
         | Expr -> (
@@ -140,8 +132,9 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
       match inner with
       | Some result -> Some result
       | None ->
-          if span_is_special then None
-          else Some (hover_specifially kind compiled))
+          if span |> Span.contains pos then
+            Some (hover_specifially kind compiled)
+          else None)
 
 let find_definition (pos : Lsp.Types.Position.t)
     ({ compiled; _ } : Processing.file_state) : Lsp.Types.Locations.t option =
