@@ -1,4 +1,4 @@
 (library
  (name ppx_include_dir)
  (kind ppx_rewriter)
- (libraries ppxlib))
+ (libraries std ppxlib))

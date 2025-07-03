@@ -1,3 +1,4 @@
+open Std
 open Ppxlib
 
 let location_errorf ~loc =
@@ -71,6 +72,12 @@ let rec get_entries ~loc path =
     in
     Ast_builder.Default.elist ~loc entries
   with _ ->
+    let msg =
+      make_string "trying to read %S, seeing %a" path
+        (Array.print String.print_dbg)
+        (Sys.readdir ".")
+    in
+    location_errorf ~loc "!!! %s" msg;
     location_errorf ~loc "[%%include_dir] could not find or load dir %s" path
 
 and include_dir ~loc path =
@@ -95,8 +102,19 @@ and include_dir ~loc path =
   in
   Ast_builder.Default.pexp_constraint ~loc expr ty
 
+let rec to_project_root ~loc from : string =
+  if not (Sys.file_exists from) then
+    location_errorf ~loc "could not find project root";
+  if Sys.file_exists (Filename.concat from "src") then from
+  else to_project_root ~loc (Filename.concat from "..")
+
+(* dune build runs ppx from project root, but ocamllsp does it from near the specific dune file *)
+let normalize_path_for_ppx ~loc path : string =
+  Filename.concat (to_project_root ~loc ".") path
+
 let expand ~ctxt path =
   let loc = Expansion_context.Extension.extension_point_loc ctxt in
+  let path = normalize_path_for_ppx ~loc path in
   include_dir ~loc path
 
 let extension =
