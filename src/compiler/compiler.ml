@@ -76,8 +76,7 @@ let import ~(span : span) (module C : S) (path : path) : value =
                 File (Filename.concat (Filename.dirname current) relative)
             | _ -> error span "imports only work from regular files")
         | None -> error span "only relative paths are supported for now")
-    | Special "std" -> File "std/lib.ks"
-    | other -> other
+    | _ -> path
   in
   let source = Source.read path in
   let imported = C.state.imported in

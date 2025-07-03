@@ -1,0 +1,3 @@
+(library
+ (name kast_special_files_detached)
+ (libraries std kast_util))

@@ -62,15 +62,15 @@ module Source = struct
   }
 
   type t = source
+  type _ Effect.t += ReadSpecial : string -> string Effect.t
 
   let read (path : path) : source =
-    let channel =
+    let contents =
       match path with
-      | File path -> In_channel.open_text path
-      | Special s -> fail "No idea how to open special %S" s
-      | Stdin -> In_channel.stdin
+      | File path -> In_channel.input_all (In_channel.open_text path)
+      | Special s -> Effect.perform (ReadSpecial s)
+      | Stdin -> In_channel.input_all In_channel.stdin
     in
-    let contents = In_channel.input_all channel in
     { contents; filename = path }
 end
 

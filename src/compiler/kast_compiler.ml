@@ -109,7 +109,7 @@ let default () : state =
   let bootstrap = init ~compile_for:interpreter_wihthout_std in
   let std =
     Compiler.import ~span:(Span.fake "std") (make_compiler bootstrap)
-      (Special "std")
+      (Special "std/lib.ks")
   in
   let interpreter_with_std = Interpreter.init (StringMap.singleton "std" std) in
   init ~compile_for:interpreter_with_std

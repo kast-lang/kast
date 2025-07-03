@@ -1,7 +1,7 @@
 (executable
  (name kast_js)
  (modes js)
- (libraries js_of_ocaml kast kast_lsp)
+ (libraries js_of_ocaml kast kast_lsp kast_special_files_embedded)
  (preprocess
   (pps js_of_ocaml-ppx))
  (js_of_ocaml

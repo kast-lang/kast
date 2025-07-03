@@ -1,6 +1,6 @@
 open Std
 
-let () =
+let main () =
   let args = Cli.parse () in
   match args.command with
   | Cli.Command.Tokenize args -> Kast_lexer_cli.run args
@@ -13,3 +13,5 @@ let () =
   | Cli.Command.Compile args -> Kast_compiler_cli.run args
   | Cli.Command.Help ->
       println "Hello, I am Kast :)\nhelp is not implemented yet"
+
+let () = Kast_special_files_detached.with_special_files main
