@@ -65,25 +65,31 @@ let eval ~(ty : ty) (module C : S) (ast : Ast.t) : value * expr =
   in
   (value, expr)
 
-let import ~(span : span) (module C : S) (path : string) : value =
-  let path =
-    match path |> String.strip_prefix ~prefix:"./" with
-    | Some relative -> (
-        match span.filename with
-        | File current -> Filename.concat (Filename.dirname current) relative
-        | _ -> error span "imports only work from regular files")
-    | None -> error span "only relative paths are supported for now"
+let import ~(span : span) (module C : S) (path : path) : value =
+  let path : path =
+    match path with
+    | File path -> (
+        match path |> String.strip_prefix ~prefix:"./" with
+        | Some relative -> (
+            match span.filename with
+            | File current ->
+                File (Filename.concat (Filename.dirname current) relative)
+            | _ -> error span "imports only work from regular files")
+        | None -> error span "only relative paths are supported for now")
+    | Special "std" -> File "std/lib.ks"
+    | other -> other
   in
+  let source = Source.read path in
   let imported = C.state.imported in
-  match StringMap.find_opt path imported.by_path with
+  match PathMap.find_opt path imported.by_path with
   | None ->
       let state = State.blank ~imported in
       (* TODO *)
       let state = C.state in
       imported.by_path <-
-        StringMap.add path (InProgress : State.import) imported.by_path;
+        PathMap.add path (InProgress : State.import) imported.by_path;
       let ({ ast; _ } : Kast_parser.result) =
-        Kast_parser.parse (Source.read (File path)) Kast_default_syntax.ruleset
+        Kast_parser.parse source Kast_default_syntax.ruleset
       in
       let value : value =
         match ast with
@@ -93,7 +99,7 @@ let import ~(span : span) (module C : S) (path : string) : value =
         | None -> { shape = V_Unit }
       in
       imported.by_path <-
-        StringMap.add path (Imported value : State.import) imported.by_path;
+        PathMap.add path (Imported value : State.import) imported.by_path;
       value
   | Some (Imported value) -> value
   | Some InProgress -> error span "No recursive imports!"

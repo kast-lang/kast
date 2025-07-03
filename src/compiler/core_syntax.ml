@@ -392,6 +392,11 @@ let import : handler =
               Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
             in
             let path = path |> Value.expect_string in
+            let path : path =
+              match path |> String.strip ~prefix:"<" ~suffix:">" with
+              | Some special -> Special special
+              | None -> File path
+            in
             let imported_value : value =
               Compiler.import ~span (module C) path
             in

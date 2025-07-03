@@ -29,12 +29,13 @@ end
 type position = Position.t
 
 module Path = struct
-  type path =
+  type t =
     | File of string
     | Special of string
     | Stdin
+  [@@deriving eq, ord]
 
-  type t = path
+  type path = t
 
   let as_file = function
     | File path -> Some path
@@ -50,6 +51,8 @@ module Path = struct
     | Stdin -> fprintf fmt "<stdin>"
 end
 
+module PathMap = Map.Make (Path)
+
 type path = Path.t
 
 module Source = struct
@@ -64,7 +67,7 @@ module Source = struct
     let channel =
       match path with
       | File path -> In_channel.open_text path
-      | Special s -> fail "No idea how to open %S" s
+      | Special s -> fail "No idea how to open special %S" s
       | Stdin -> In_channel.stdin
     in
     let contents = In_channel.input_all channel in

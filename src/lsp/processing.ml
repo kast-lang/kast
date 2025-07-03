@@ -30,8 +30,7 @@ let process_file (uri : Lsp.Uri.t) (source : source) : file_state =
   let type_error = ref None in
   let compiled =
     Option.bind ast (fun ast ->
-        let interpreter = Kast_interpreter.default () in
-        let compiler = Compiler.init ~compile_for:interpreter in
+        let compiler = Compiler.default () in
         try Some (Compiler.compile compiler Expr ast) with
         | Compiler.Error error ->
             compiler_error := Some error;

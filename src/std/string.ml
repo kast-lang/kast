@@ -1,5 +1,6 @@
 open Char
 open Format
+open Option
 
 module String = struct
   include Stdlib.String
@@ -34,4 +35,7 @@ module String = struct
   let strip_suffix ~suffix s =
     if ends_with ~suffix s then Some (sub s 0 (length s - length suffix))
     else None
+
+  let strip ~prefix ~suffix s =
+    s |> strip_prefix ~prefix |> Option.and_then (strip_suffix ~suffix)
 end

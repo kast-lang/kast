@@ -103,3 +103,13 @@ and make_compiler (original_state : state) : (module Compiler.S) =
     let compile (type b) ?state (kind : b compiled_kind) (ast : Ast.t) : b =
       compile (state |> Option.value ~default:original_state) kind ast
   end : Compiler.S)
+
+let default () : state =
+  let interpreter_wihthout_std = Interpreter.default () in
+  let bootstrap = init ~compile_for:interpreter_wihthout_std in
+  let std =
+    Compiler.import ~span:(Span.fake "std") (make_compiler bootstrap)
+      (Special "std")
+  in
+  let interpreter_with_std = Interpreter.init (StringMap.singleton "std" std) in
+  init ~compile_for:interpreter_with_std

@@ -86,8 +86,9 @@ let () =
          match parsed.ast with
          | None -> ()
          | Some ast ->
-             let interpreter = Interpreter.default () in
-             let compiler = Compiler.init ~compile_for:interpreter in
+             let compiler = Compiler.default () in
+             (* TODO *)
+             let interpreter = compiler.interpreter in
              let expr : expr = Compiler.compile compiler Expr ast in
              let value : value = Interpreter.eval interpreter expr in
              ignore value

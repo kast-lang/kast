@@ -44,9 +44,9 @@ type import =
   | InProgress
   | Imported of value
 
-type imported = { mutable by_path : import StringMap.t }
+type imported = { mutable by_path : import PathMap.t }
 
-let init_imported () : imported = { by_path = StringMap.empty }
+let init_imported () : imported = { by_path = PathMap.empty }
 
 type t = {
   (* TODO do this properly *)
