@@ -19,17 +19,16 @@ let main () =
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->
       Effect.Deep.continue k (Uri.file "std")
-  | effect Source.Read uri, k -> (
-      try
-        match Uri.scheme uri with
-        | Some "file" ->
-            let path = Uri.path uri in
-            Effect.Deep.continue k (read_from_filesystem path)
-        | Some "stdin" -> Effect.Deep.continue k (In_channel.input_all stdin)
-        | scheme ->
-            fail "unsupported uri scheme %a"
-              (Option.print String.print_dbg)
-              scheme
-      with exc -> Effect.Deep.discontinue k exc)
+  | effect Source.Read uri, k ->
+      Effect.continue_with k (fun () ->
+          match Uri.scheme uri with
+          | Some "file" ->
+              let path = Uri.path uri in
+              read_from_filesystem path
+          | Some "stdin" -> In_channel.input_all stdin
+          | scheme ->
+              fail "unsupported uri scheme %a"
+                (Option.print String.print_dbg)
+                scheme)
 
 let () = main ()

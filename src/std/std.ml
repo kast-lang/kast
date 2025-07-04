@@ -11,6 +11,7 @@ include Log
 include Bool
 include Set
 include Int
+include Effect
 
 let unreachable format =
   Format.fprintf Format.str_formatter "unreachable reached: ";
