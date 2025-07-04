@@ -18,7 +18,12 @@ let main () =
   with
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->
-      Effect.Deep.continue k (Uri.file (Sys.getcwd () ^ "/std"))
+      let stdlib_path =
+        match Sys.getenv_opt "KAST_STD" with
+        | Some path -> path
+        | None -> Sys.getcwd () ^ "/std"
+      in
+      Effect.Deep.continue k (Uri.file stdlib_path)
   | effect Source.Read uri, k ->
       Effect.continue_with k (fun () ->
           match Uri.scheme uri with

@@ -52,7 +52,12 @@
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
       in {
         legacyPackages = scope';
-        packages.default = main;
+        packages.default = main.overrideAttrs {
+          buildInputs = [ pkgs.makeWrapper ];
+          postFixup = ''
+            wrapProgram $out/bin/kast --set KAST_STD ${./std}
+          '';
+        };
         devShells.default = pkgs.mkShell {
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
