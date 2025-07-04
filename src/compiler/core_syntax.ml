@@ -442,18 +442,21 @@ let include' : core_syntax =
         in
         let path = path |> Value.expect_string in
         let path = Path.relative_to span.filename path in
+        Log.info "Trying to read when including %a from %a" Path.print path
+          Path.print span.filename;
         let source = Source.read path in
-        let { ast; _ } : Kast_parser.result =
+        Log.info "Sucessfully read when including %a" Path.print path;
+        let parsed : Kast_parser.result =
           Kast_parser.parse source Kast_default_syntax.ruleset
         in
         let ast =
-          ast
+          parsed.ast
           |> Option.unwrap_or_else (fun () ->
                  error span "included file is empty")
         in
         let compiled = C.compile kind ast in
         Effect.perform
-          (Compiler.Effect.FileIncluded { path; ast; kind; compiled });
+          (Compiler.Effect.FileIncluded { path; parsed; kind; compiled });
         Compiler.update_data kind compiled (fun data ->
             { data with evaled_exprs = path_expr :: data.evaled_exprs }));
   }

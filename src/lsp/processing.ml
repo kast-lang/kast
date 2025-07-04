@@ -16,7 +16,6 @@ and workspace_state = {
 and processed_project = { roots : file_state list }
 
 and file_state = {
-  uri : Lsp.Uri.t;
   parser_error : Parser.error option;
   parsed : Parser.result option;
   compiler_error : Compiler.error option;
@@ -26,13 +25,14 @@ and file_state = {
 
 type read_file = {
   uri : Lsp.Uri.t;
+  rel_path : string;
   contents : string;
 }
 
 let process_file (file : read_file) : file_state =
-  Log.info "PROJECT: processing %S" (Lsp.Uri.to_string file.uri);
+  Log.info "PROJECT: processing %S" file.rel_path;
   let source : source =
-    { contents = file.contents; filename = File (Lsp.Uri.to_path file.uri) }
+    { contents = file.contents; filename = File file.rel_path }
   in
   let parser_error, parsed =
     try
@@ -60,7 +60,6 @@ let process_file (file : read_file) : file_state =
   in
   {
     parser_error;
-    uri = file.uri;
     parsed;
     compiler_error = !compiler_error;
     type_error = !type_error;
@@ -80,41 +79,70 @@ let process_project ~(read_file : string -> read_file)
       project_roots.tuple.unnamed |> Array.to_list
       |> List.map Value.expect_string
     in
+    Log.info "PROJECT ROOTS = %a" (List.print String.print_dbg) project_roots;
     let roots =
       project_roots
       |> List.map (fun path ->
+             Log.info "START %S" path;
              let processed = process_file (read_file path) in
+             Log.info "END %S" path;
              handle_processed path processed;
              processed)
     in
     { roots }
-  with effect Compiler.Effect.FileIncluded { path; ast; kind; compiled }, k ->
-    Log.info "PROJECT: file included %a" Path.print path;
-    Effect.Deep.continue k ()
-
-let read_from_filesystem path =
-  let ch = In_channel.open_text path in
-  Fun.protect
-    (fun () -> In_channel.input_all ch)
-    ~finally:(fun () -> In_channel.close ch)
+  with
+  | effect Compiler.Effect.FileIncluded { path; parsed; kind; compiled }, k ->
+      Log.info "PROJECT: file included %a" Path.print path;
+      (match path with
+      | File path -> (
+          match kind with
+          | Expr ->
+              handle_processed path
+                ({
+                   parser_error = None;
+                   parsed = Some parsed;
+                   compiler_error = None;
+                   type_error = None;
+                   compiled = Some compiled;
+                 }
+                  : file_state)
+          | _ -> ())
+      | _ -> ());
+      Effect.Deep.continue k ()
+  | effect Source.Read path, k ->
+      Log.info "handling source.read %S" path;
+      let file = read_file path in
+      Effect.Deep.continue k file.contents
 
 let init_workspace (root : Lsp.Uri.t) : workspace_state =
   Log.info "PROJECT: Initializing state at %S" (Lsp.Uri.to_string root);
   let root_path = Lsp.Uri.to_path root in
   let vfs = ref ({ root = { entries = StringMap.empty } } : Vfs.t) in
   let read_file =
-   fun path ->
-    let path = Filename.concat root_path path in
-    let contents = read_from_filesystem path in
-    vfs := Vfs.write_file !vfs ~path contents;
-    { uri = Lsp.Uri.of_path path; contents }
+   fun rel_path ->
+    if rel_path |> String.starts_with ~prefix:"/" then
+      fail "Must read relative path, got %S" rel_path;
+    try
+      let path = Filename.concat root_path rel_path in
+      let contents = read_from_filesystem path in
+      vfs := Vfs.write_file !vfs ~path contents;
+      { uri = Lsp.Uri.of_path path; rel_path; contents }
+    with exc ->
+      Printexc.print_backtrace stderr;
+      Log.error "PROJECT: Couldn't read %S" rel_path;
+      raise exc
   in
   let files = ref StringMap.empty in
   let handle_processed path processed =
+    Log.info "PROJECT: file processed %S" path;
     files := StringMap.add path processed !files
   in
   let processed =
-    try Some (process_project ~read_file ~handle_processed) with _ -> None
+    try Some (process_project ~read_file ~handle_processed)
+    with exc ->
+      Log.error "PROJECT: error while processing %s" (Printexc.to_string exc);
+      Printexc.print_backtrace stderr;
+      None
   in
   { root; vfs = !vfs; processed; files = !files }
 
@@ -135,7 +163,14 @@ let file_state (state : global_state) (uri : Lsp.Uri.t) : file_state option =
            let* path = child_relative_path ~parent:workspace.root ~child:uri in
            Some (workspace, path))
   with
-  | Some (workspace, path) -> StringMap.find_opt path workspace.files
+  | Some (workspace, path) ->
+      let result = StringMap.find_opt path workspace.files in
+      if result |> Option.is_none then
+        Log.error "PROJECT: processed file %S not found, got %a" path
+          (List.print String.print_dbg)
+          (workspace.files |> StringMap.to_list
+          |> List.map (fun (key, _value) -> key));
+      result
   | None -> None
 
 let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
@@ -152,12 +187,12 @@ let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
         (Lsp.Uri.to_string workspace.root);
       workspace.vfs <- Vfs.write_file workspace.vfs ~path source;
       let read_file =
-       fun path ->
+       fun rel_path ->
         let contents =
-          try Vfs.read_file workspace.vfs path
+          try Vfs.read_file workspace.vfs rel_path
           with _ ->
             let path =
-              Filename.concat (workspace.root |> Lsp.Uri.to_path) path
+              Filename.concat (workspace.root |> Lsp.Uri.to_path) rel_path
             in
             read_from_filesystem path
           (* | Failure s -> fail "Can't read %S: %s" path s
@@ -166,7 +201,8 @@ let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
         {
           uri =
             Lsp.Uri.of_path
-              (Filename.concat (Lsp.Uri.to_path workspace.root) path);
+              (Filename.concat (Lsp.Uri.to_path workspace.root) rel_path);
+          rel_path;
           contents;
         }
       in

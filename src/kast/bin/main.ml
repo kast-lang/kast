@@ -1,4 +1,5 @@
 open Std
+open Kast_util
 
 let main () =
   try
@@ -14,7 +15,11 @@ let main () =
     | Cli.Command.Compile args -> Kast_compiler_cli.run args
     | Cli.Command.Help ->
         println "Hello, I am Kast :)\nhelp is not implemented yet"
-  with effect Kast_compiler.Effect.FileIncluded _, k ->
-    Effect.Deep.continue k ()
+  with
+  | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
+  | effect Kast_compiler.Effect.FindStd, k ->
+      Effect.Deep.continue k (File "std")
+  | effect Source.Read path, k ->
+      Effect.Deep.continue k (read_from_filesystem path)
 
 let () = Kast_special_files_detached.with_special_files main

@@ -34,3 +34,9 @@ let () =
 
 let ( <| ) = ( @@ )
 let fail f = Format.kdprintf (fun f -> raise <| FailFormat f) f
+
+let read_from_filesystem path =
+  let ch = In_channel.open_text path in
+  Fun.protect
+    (fun () -> In_channel.input_all ch)
+    ~finally:(fun () -> In_channel.close ch)

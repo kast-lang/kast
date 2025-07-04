@@ -10,8 +10,8 @@ exception Error of error
 
 let () =
   Printexc.register_printer (function
-    | Error error ->
-        eprintln "%a" (fun fmt () -> error.msg fmt) ();
+    | Error { msg; span } ->
+        eprintln "%a at %a" (fun fmt () -> msg fmt) () Span.print span;
         exit 1
     | _ -> None)
 

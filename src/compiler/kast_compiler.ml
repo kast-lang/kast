@@ -9,6 +9,8 @@ include Error
 
 type state = State.t
 
+module Effect = Compiler.Effect
+
 (* TODO compile_for - figure out *)
 let init : compile_for:Interpreter.state -> state =
  fun ~compile_for ->
@@ -29,8 +31,6 @@ let init : compile_for:Interpreter.state -> state =
   { scope; interpreter = compile_for; imported = State.init_imported () }
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
-
-module Effect = Compiler.Effect
 
 let get_data = Compiler.get_data
 
@@ -106,7 +106,7 @@ let default () : state =
   let bootstrap = init ~compile_for:interpreter_wihthout_std in
   let std =
     Compiler.import ~span:(Span.fake "std") (make_compiler bootstrap)
-      (Special "std/lib.ks")
+      (Path.concat (Stdlib.Effect.perform Effect.FindStd) "./lib.ks")
   in
   let interpreter_with_std = Interpreter.init (StringMap.singleton "std" std) in
   init ~compile_for:interpreter_with_std

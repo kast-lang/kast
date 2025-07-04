@@ -50,6 +50,18 @@ module Path = struct
     | Special s -> fprintf fmt "<%s>" s
     | Stdin -> fprintf fmt "<stdin>"
 
+  let concat path relative =
+    let relative =
+      relative
+      |> String.strip_prefix ~prefix:"./"
+      |> Option.unwrap_or_else (fun () ->
+             fail "relative path must start with ./")
+    in
+    match path with
+    | File path -> File (Filename.concat path relative)
+    | Special path -> Special (make_string "%s/%s" path relative)
+    | Stdin -> fail "trying to get path relative to stdin???"
+
   let relative_to file relative =
     let relative =
       relative
@@ -81,11 +93,12 @@ module Source = struct
 
   type t = source
   type _ Effect.t += ReadSpecial : string -> string Effect.t
+  type _ Effect.t += Read : string -> string Effect.t
 
   let read (path : path) : source =
     let contents =
       match path with
-      | File path -> In_channel.input_all (In_channel.open_text path)
+      | File path -> Effect.perform (Read path)
       | Special s -> Effect.perform (ReadSpecial s)
       | Stdin -> In_channel.input_all In_channel.stdin
     in

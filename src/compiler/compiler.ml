@@ -74,11 +74,15 @@ let import ~(span : span) (module C : S) (path : path) : value =
             match span.filename with
             | File current ->
                 File (Filename.concat (Filename.dirname current) relative)
-            | _ -> error span "imports only work from regular files")
-        | None -> error span "only relative paths are supported for now")
+            | _ ->
+                error span "imports only work from regular files - got %a"
+                  Path.print span.filename)
+        | None -> File path)
     | _ -> path
   in
+  Log.info "Reading when importing %a" Path.print path;
   let source = Source.read path in
+  Log.info "Sucessfully read when importing %a" Path.print path;
   let imported = C.state.imported in
   match PathMap.find_opt path imported.by_path with
   | None ->
@@ -106,10 +110,11 @@ let import ~(span : span) (module C : S) (path : path) : value =
 module Effect = struct
   type 'a file_included = {
     path : path;
-    ast : Ast.t;
+    parsed : Kast_parser.result;
     kind : 'a compiled_kind;
     compiled : 'a;
   }
 
   type _ Effect.t += FileIncluded : 'a. 'a file_included -> unit Effect.t
+  type _ Effect.t += FindStd : path Effect.t
 end
