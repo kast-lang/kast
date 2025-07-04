@@ -102,3 +102,14 @@ let import ~(span : span) (module C : S) (path : path) : value =
       value
   | Some (Imported value) -> value
   | Some InProgress -> error span "No recursive imports!"
+
+module Effect = struct
+  type 'a file_included = {
+    path : path;
+    ast : Ast.t;
+    kind : 'a compiled_kind;
+    compiled : 'a;
+  }
+
+  type _ Effect.t += FileIncluded : 'a. 'a file_included -> unit Effect.t
+end

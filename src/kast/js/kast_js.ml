@@ -122,7 +122,8 @@ let () =
 
        method processFile (uri : string) (source : string) :
            Kast_lsp.Processing.file_state =
-         cross_js (fun () ->
+         failwith @@ "TODO" ^ __LOC__
+       (* cross_js (fun () ->
              Kast_lsp.Processing.process_file (Lsp.Uri.of_string uri)
-               { contents = source; filename = File uri })
+               { contents = source; filename = File uri }) *)
     end)

@@ -451,8 +451,10 @@ let include' : core_syntax =
           |> Option.unwrap_or_else (fun () ->
                  error span "included file is empty")
         in
-        let result = C.compile kind ast in
-        Compiler.update_data kind result (fun data ->
+        let compiled = C.compile kind ast in
+        Effect.perform
+          (Compiler.Effect.FileIncluded { path; ast; kind; compiled });
+        Compiler.update_data kind compiled (fun data ->
             { data with evaled_exprs = path_expr :: data.evaled_exprs }));
   }
 

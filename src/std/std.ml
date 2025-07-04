@@ -28,13 +28,8 @@ exception FailFormat of (formatter -> unit)
 let () =
   Printexc.register_printer (function
     | FailFormat f ->
-        eprintln "@{<red>Error:@} %a" (fun fmt () -> f fmt) ();
-        Printexc.print_backtrace stderr;
-        exit 1
-    | Failure s ->
-        eprintln "@{<red>Error:@} %s" s;
-        Printexc.print_backtrace stderr;
-        exit 1
+        f Format.str_formatter;
+        Some (Format.flush_str_formatter ())
     | _ -> None)
 
 let ( <| ) = ( @@ )

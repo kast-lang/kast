@@ -30,6 +30,8 @@ let init : compile_for:Interpreter.state -> state =
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
+module Effect = Compiler.Effect
+
 let get_data = Compiler.get_data
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =

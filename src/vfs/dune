@@ -1,0 +1,3 @@
+(library
+ (name vfs)
+ (libraries std kast_util))

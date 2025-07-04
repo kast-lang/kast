@@ -1,2 +1,7 @@
 "std/lib.ks",
-"examples/*.ks",
+"examples/example.ks",
+"examples/guess-a-number.ks",
+"examples/hello.ks",
+"examples/import-zero.ks",
+"examples/test-interpreter.ks",
+"examples/zero.ks",
