@@ -140,4 +140,8 @@ let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
   let uri = Common.uri_from_lsp uri in
   Log.info "PROJECT: update %a" Uri.print uri;
   state.vfs <- UriMap.add uri source state.vfs;
-  state.workspaces |> List.iter process_workspace
+  try state.workspaces |> List.iter process_workspace
+  with effect (Source.Read uri as eff), k -> (
+    match UriMap.find_opt uri state.vfs with
+    | Some contents -> Effect.continue k contents
+    | None -> Effect.continue k (Effect.perform eff))
