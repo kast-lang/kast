@@ -585,6 +585,49 @@ let rec dot : core_syntax =
             E_Field { obj; field } |> init_expr span);
   }
 
+let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
+    (ast : Ast.t) : a =
+  let span = ast.span in
+  let children = ast |> Ast.collect_list ~binary_rule_name:"core:comma" in
+  let children = children |> List.map (fun child -> C.compile kind child) in
+  match kind with
+  | Assignee -> error span "todo comma assignee"
+  | Pattern -> error span "todo comma pattern"
+  | TyExpr -> error span "todo comma ty expr"
+  | Expr -> E_Tuple { tuple = Tuple.make children [] } |> init_expr span
+
+let comma : core_syntax =
+  {
+    name = "comma";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (_ : Ast.group)
+        :
+        a
+      -> comma_impl (module C) kind ast);
+  }
+
+let trailing_comma : core_syntax =
+  {
+    name = "trailing comma";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (_ : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let ast =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        comma_impl (module C) kind ast);
+  }
+
 let core =
   [
     apply;
@@ -606,6 +649,8 @@ let core =
     native;
     module';
     dot;
+    comma;
+    trailing_comma;
   ]
 
 (*  TODO remove *)

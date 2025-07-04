@@ -8,7 +8,7 @@ syntax "core:const" 2 wrap never = "const" " " pattern " " "=" " " value;
 syntax "core:let" 3 wrap never = "let" " " pattern;
 syntax "core:if" 4 wrap never = "if" " " cond " " "then" " " then " " "else" " " else ->;
 syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
-syntax "core:tcomma" 5 wrap never = <- _ ",";
+syntax "core:trailing comma" 5 wrap never = <- _ ",";
 syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->" " " _ " ")? "=>" " " body;
 syntax "core:type ascribe" 8 wrap never = expr " " "::" " " type;
 syntax "core:fn_type" 8.5 wrap never = arg " " context=("with" " " _ " ")? "->" " " result;

@@ -126,3 +126,14 @@ module Part = struct
     | Value value -> print fmt value
     | Group group -> print_group fmt group
 end
+
+let rec collect_list ~(binary_rule_name : string) (ast : ast) : ast list =
+  match ast.shape with
+  | Complex { rule = { name; _ }; root } when name = binary_rule_name ->
+      let a, b =
+        root.children |> Tuple.map Child.expect_ast |> Tuple.unwrap_unnamed2
+      in
+      let a = collect_list ~binary_rule_name a in
+      let b = collect_list ~binary_rule_name b in
+      a @ b
+  | _ -> [ ast ]
