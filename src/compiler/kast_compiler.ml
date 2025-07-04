@@ -102,13 +102,32 @@ and make_compiler (original_state : state) : (module Compiler.S) =
   end : Compiler.S)
 
 let default () : state =
-  let interpreter_wihthout_std = Interpreter.default () in
-  let bootstrap = init ~compile_for:interpreter_wihthout_std in
+  let interpreter_without_std = Interpreter.default () in
+  let bootstrap = init ~compile_for:interpreter_without_std in
+  let std_uri =
+    Uri.append_if_relative
+      (Stdlib.Effect.perform Effect.FindStd)
+      (Uri.of_string "./lib.ks")
+  in
   let std =
-    Compiler.import ~span:(Span.fake "std") (make_compiler bootstrap)
-      (Uri.append_if_relative
-         (Stdlib.Effect.perform Effect.FindStd)
-         (Uri.of_string "./lib.ks"))
+    Compiler.import
+      ~span:(Span.fake "std-bootstrap")
+      (make_compiler bootstrap) std_uri
   in
   let interpreter_with_std = Interpreter.init (StringMap.singleton "std" std) in
-  init ~compile_for:interpreter_with_std
+  let scope = State.Scope.init () in
+  let scope =
+    scope
+    |> State.Scope.inject_binding
+         {
+           name = "std";
+           ty = Value.ty_of std;
+           span = Span.beginning_of std_uri;
+           references = [];
+         }
+  in
+  {
+    scope;
+    interpreter = interpreter_with_std;
+    imported = State.init_imported ();
+  }

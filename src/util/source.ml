@@ -104,12 +104,10 @@ module Span = struct
 
   type span = t
 
-  let fake desc =
-    {
-      start = Position.beginning;
-      finish = Position.beginning;
-      uri = Uri.of_string ("fake:" ^ desc);
-    }
+  let beginning_of uri =
+    { start = Position.beginning; finish = Position.beginning; uri }
+
+  let fake desc = beginning_of <| Uri.of_string ("fake:" ^ desc)
 
   let touches : position -> span -> bool =
    fun pos span ->

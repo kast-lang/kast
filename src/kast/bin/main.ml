@@ -18,7 +18,7 @@ let main () =
   with
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->
-      Effect.Deep.continue k (Uri.file "std")
+      Effect.Deep.continue k (Uri.file (Sys.getcwd () ^ "/std"))
   | effect Source.Read uri, k ->
       Effect.continue_with k (fun () ->
           match Uri.scheme uri with
