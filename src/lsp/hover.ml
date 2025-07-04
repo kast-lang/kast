@@ -152,9 +152,11 @@ let find_definition (pos : Lsp.Types.Position.t)
     | DefinedNotHere definition -> Some definition
     | DefinedHere _ | None -> None
   in
-  let* path = Path.as_file definition.span.filename in
   let location : Lsp.Types.Location.t =
-    { uri = Lsp.Uri.of_path path; range = Common.span_to_range definition.span }
+    {
+      uri = Common.uri_to_lsp definition.span.uri;
+      range = Common.span_to_range definition.span;
+    }
   in
   Some Lsp.Types.Locations.(`Location [ location ])
 
@@ -191,8 +193,6 @@ let prepare_rename (pos : Lsp.Types.Position.t)
   in
   Some (hover_info.span |> Common.span_to_range)
 
-module UriMap = Map.Make (Lsp.Uri)
-
 exception Nope
 
 let rename (position : Lsp.Types.Position.t) (newName : string)
@@ -214,26 +214,23 @@ let rename (position : Lsp.Types.Position.t) (newName : string)
       spans
       |> List.fold_left
            (fun changes (span : span) ->
-             match Path.as_file span.filename with
-             | None -> raise Nope
-             | Some path ->
-                 let uri = Lsp.Uri.of_path path in
-                 UriMap.update uri
-                   (fun current ->
-                     let current =
-                       match current with
-                       | None -> []
-                       | Some current -> current
-                     in
-                     let edit : Lsp.Types.TextEdit.t =
-                       { range = span |> Common.span_to_range; newText }
-                     in
-                     Some (edit :: current))
-                   changes)
+             UriMap.update span.uri
+               (fun current ->
+                 let current =
+                   match current with
+                   | None -> []
+                   | Some current -> current
+                 in
+                 let edit : Lsp.Types.TextEdit.t =
+                   { range = span |> Common.span_to_range; newText }
+                 in
+                 Some (edit :: current))
+               changes)
            UriMap.empty
     in
     let changes : (Lsp.Uri.t * Lsp.Types.TextEdit.t list) list =
       UriMap.to_list changes
+      |> List.map (fun (uri, edits) -> (Common.uri_to_lsp uri, edits))
     in
     let edit : Lsp.Types.WorkspaceEdit.t =
       {

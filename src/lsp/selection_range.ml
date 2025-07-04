@@ -43,7 +43,7 @@ let get (params : Lsp.Types.SelectionRangeParams.t)
                {
                  start = Position.beginning;
                  finish = eof;
-                 filename = File (params.textDocument.uri |> Lsp.Uri.to_path);
+                 uri = params.textDocument.uri |> Common.uri_from_lsp;
                }
              in
              let spans = full_file :: find_spans_start_biggest ast pos in

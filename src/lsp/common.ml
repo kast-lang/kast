@@ -16,8 +16,15 @@ let lsp_to_kast_pos (pos : Lsp.Types.Position.t) : position =
   }
 
 let span_location (span : span) : Lsp.Types.Location.t option =
-  let* path = Path.as_file span.filename in
   let location : Lsp.Types.Location.t =
-    { uri = Lsp.Uri.of_path path; range = span_to_range span }
+    {
+      uri = Lsp.Uri.of_string (Uri.to_string span.uri);
+      range = span_to_range span;
+    }
   in
   Some location
+
+let uri_to_lsp (uri : Uri.t) : Lsp.Uri.t = Lsp.Uri.of_string (Uri.to_string uri)
+
+let uri_from_lsp (uri : Lsp.Uri.t) : Uri.t =
+  Uri.of_string (Lsp.Uri.to_string uri)

@@ -106,7 +106,9 @@ let default () : state =
   let bootstrap = init ~compile_for:interpreter_wihthout_std in
   let std =
     Compiler.import ~span:(Span.fake "std") (make_compiler bootstrap)
-      (Path.concat (Stdlib.Effect.perform Effect.FindStd) "./lib.ks")
+      (Uri.append_if_relative
+         (Stdlib.Effect.perform Effect.FindStd)
+         (Uri.of_string "./lib.ks"))
   in
   let interpreter_with_std = Interpreter.init (StringMap.singleton "std" std) in
   init ~compile_for:interpreter_with_std

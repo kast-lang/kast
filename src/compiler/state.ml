@@ -44,9 +44,9 @@ type import =
   | InProgress
   | Imported of value
 
-type imported = { mutable by_path : import PathMap.t }
+type imported = { mutable by_uri : import UriMap.t }
 
-let init_imported () : imported = { by_path = PathMap.empty }
+let init_imported () : imported = { by_uri = UriMap.empty }
 
 type t = {
   (* TODO do this properly *)

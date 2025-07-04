@@ -6,12 +6,12 @@ module Interpreter = Kast_interpreter
 open Kast_types
 
 module Args = struct
-  type args = { path : path }
+  type args = { path : Uri.t }
   type t = args
 
   let parse : string list -> args = function
-    | [] -> { path = Stdin }
-    | [ path ] -> { path = File path }
+    | [] -> { path = Uri.stdin }
+    | [ path ] -> { path = Uri.file path }
     | first :: _rest -> fail "Unexpected arg %S" first
 end
 

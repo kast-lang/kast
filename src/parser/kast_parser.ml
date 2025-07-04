@@ -37,7 +37,7 @@ let expect_eof : Lexer.t -> unit =
              {
                start = Lexer.position lexer;
                finish = Lexer.position lexer;
-               filename = (Lexer.source lexer).filename;
+               uri = (Lexer.source lexer).uri;
              };
          }
 
@@ -165,7 +165,7 @@ module Rule = struct
     in
     let finish = Lexer.position lexer in
     {
-      span = { start; finish; filename = (Lexer.source lexer).filename };
+      span = { start; finish; uri = (Lexer.source lexer).uri };
       name;
       priority;
       parts = collect_parts ();
@@ -191,7 +191,7 @@ module Rule = struct
       {
         start = (spans |> List.head |> fun span -> span.start);
         finish = (spans |> List.last |> fun span -> span.finish);
-        filename = (List.head spans).filename;
+        uri = (List.head spans).uri;
       }
     in
     Log.trace "Collecting %d parts into %s" (List.length parts) rule.name;
@@ -442,7 +442,7 @@ module RuleSet = struct
     |> List.map (fun line ->
            let lexer =
              Lexer.init Lexer.default_rules
-               { contents = line; filename = Special "rule" }
+               { contents = line; uri = Uri.of_string "ocaml:parse_list/rule" }
            in
            let rule = Rule.parse lexer in
            expect_eof lexer;
@@ -613,7 +613,7 @@ module Impl = struct
         {
           start = (List.head tokens).span.start;
           finish = (List.last tokens).span.start;
-          filename = (List.head tokens).span.filename;
+          uri = (List.head tokens).span.uri;
         }
       in
       let new_ruleset =

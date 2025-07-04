@@ -1,6 +1,6 @@
 (library
- (name kast_special_files_embedded)
- (libraries std kast_util included_dir)
+ (name kast_embedded_std)
+ (libraries std kast_util included_dir kast_compiler)
  (preprocessor_deps
   (source_tree %{project_root}/std))
  (preprocess

@@ -131,7 +131,7 @@ let run ({ parsed; _ } : Processing.file_state) :
                        {
                          start = fakepos !pos;
                          finish = fakepos next_pos;
-                         filename = span.filename;
+                         uri = span.uri;
                        }
                      in
                      pos := next_pos;

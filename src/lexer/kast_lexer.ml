@@ -60,8 +60,7 @@ let peek : lexer -> Token.t =
        let* shape = rule reader in
        let finish = reader.position in
        Some
-         ({ shape; span = { start; finish; filename = lexer.source.filename } }
-           : Token.t)
+         ({ shape; span = { start; finish; uri = lexer.source.uri } } : Token.t)
      in
      let token : Token.t =
        match List.find_map try_rule lexer.rules with

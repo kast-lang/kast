@@ -6,7 +6,7 @@ module Parser = Kast_parser
 
 module Args = struct
   type args = {
-    path : path;
+    path : Uri.t;
     output : output;
   }
 
@@ -14,16 +14,16 @@ module Args = struct
 
   let parse : string list -> args = function
     (* stdin *)
-    | [] -> { path = Stdin; output = Term }
-    | [ "--html" ] -> { path = Stdin; output = Html }
-    | [ ("--term" | "--terminal") ] -> { path = Stdin; output = Term }
+    | [] -> { path = Uri.stdin; output = Term }
+    | [ "--html" ] -> { path = Uri.stdin; output = Html }
+    | [ ("--term" | "--terminal") ] -> { path = Uri.stdin; output = Term }
     (* file *)
-    | [ path ] -> { path = File path; output = Term }
+    | [ path ] -> { path = Uri.file path; output = Term }
     | [ "--html"; path ] | [ path; "--html" ] ->
-        { path = File path; output = Html }
+        { path = Uri.file path; output = Html }
     | [ ("--term" | "--terminal"); path ] | [ path; ("--term" | "--terminal") ]
       ->
-        { path = File path; output = Term }
+        { path = Uri.file path; output = Term }
     | _ :: first :: _rest ->
         fail "Unexpected arg %S, expecting --html or --term" first
 end

@@ -406,14 +406,10 @@ let import : core_syntax =
               Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
             in
             let path = path |> Value.expect_string in
-            let path : path =
-              match path |> String.strip ~prefix:"<" ~suffix:">" with
-              | Some special -> Special special
-              | None -> File path
+            let uri =
+              Uri.maybe_relative_to_file span.uri (Uri.of_string path)
             in
-            let imported_value : value =
-              Compiler.import ~span (module C) path
-            in
+            let imported_value : value = Compiler.import ~span (module C) uri in
             E_Constant imported_value
             |> init_expr ~evaled_exprs:[ path_expr ] span
         | Assignee -> error span "Can't assign to import"
@@ -441,11 +437,8 @@ let include' : core_syntax =
           Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
         in
         let path = path |> Value.expect_string in
-        let path = Path.relative_to span.filename path in
-        Log.info "Trying to read when including %a from %a" Path.print path
-          Path.print span.filename;
-        let source = Source.read path in
-        Log.info "Sucessfully read when including %a" Path.print path;
+        let uri = Uri.maybe_relative_to_file span.uri (Uri.of_string path) in
+        let source = Source.read uri in
         let parsed : Kast_parser.result =
           Kast_parser.parse source Kast_default_syntax.ruleset
         in
@@ -456,7 +449,7 @@ let include' : core_syntax =
         in
         let compiled = C.compile kind ast in
         Effect.perform
-          (Compiler.Effect.FileIncluded { path; parsed; kind; compiled });
+          (Compiler.Effect.FileIncluded { uri; parsed; kind; compiled });
         Compiler.update_data kind compiled (fun data ->
             { data with evaled_exprs = path_expr :: data.evaled_exprs }));
   }

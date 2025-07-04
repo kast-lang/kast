@@ -37,7 +37,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
   try
     let { ast; trailing_comments = _; eof = _ } : Parser.result =
       Parser.parse
-        { contents = source; filename = Special "test" }
+        { contents = source; uri = Uri.of_string "ocaml:test" }
         (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
     in
     Log.error "Parsed: %a" (Option.print Ast.print) ast;
@@ -51,12 +51,13 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =
   let expected =
-    Kast_simple_syntax.parse { contents = expected; filename = Special "test" }
+    Kast_simple_syntax.parse
+      { contents = expected; uri = Uri.of_string "ocaml:test" }
     |> Option.get
   in
   let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse
-      { contents = source; filename = Special "test" }
+      { contents = source; uri = Uri.of_string "ocaml:test" }
       (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
   in
   match ast with

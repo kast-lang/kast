@@ -17,7 +17,8 @@
   eio_main
   js_of_ocaml
   js_of_ocaml-compiler
-  js_of_ocaml-ppx))
+  js_of_ocaml-ppx
+  uri))
 
 (generate_opam_files)
 

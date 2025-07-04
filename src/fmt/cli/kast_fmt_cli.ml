@@ -5,7 +5,7 @@ module Parser = Kast_parser
 
 module Args = struct
   type args = {
-    path : path;
+    path : Uri.t;
     hl_output : Kast_highlight.output option;
   }
 
@@ -13,26 +13,26 @@ module Args = struct
 
   let parse : string list -> args = function
     (* stdin, no --highlight specified *)
-    | [] -> { path = Stdin; hl_output = Some Term }
+    | [] -> { path = Uri.stdin; hl_output = Some Term }
     (* file, no --highlight specified *)
-    | [ path ] -> { path = File path; hl_output = Some Term }
+    | [ path ] -> { path = Uri.file path; hl_output = Some Term }
     (* stdin, --highlight specified *)
-    | [ "--highlight"; "none" ] -> { path = Stdin; hl_output = None }
-    | [ "--highlight"; "html" ] -> { path = Stdin; hl_output = Some Html }
+    | [ "--highlight"; "none" ] -> { path = Uri.stdin; hl_output = None }
+    | [ "--highlight"; "html" ] -> { path = Uri.stdin; hl_output = Some Html }
     | [ "--highlight"; ("term" | "terminal") ] ->
-        { path = Stdin; hl_output = Some Term }
+        { path = Uri.stdin; hl_output = Some Term }
     | [ "--highlight"; output ] ->
         fail
           "Unexpected highlight output '%S', only 'html', 'term' or 'none' are allowed"
           output
     (* file, --highlight specified *)
     | [ "--highlight"; "none"; path ] | [ path; "--highlight"; "none" ] ->
-        { path = File path; hl_output = None }
+        { path = Uri.file path; hl_output = None }
     | [ "--highlight"; "html"; path ] | [ path; "--highlight"; "html" ] ->
-        { path = File path; hl_output = Some Html }
+        { path = Uri.file path; hl_output = Some Html }
     | [ "--highlight"; ("term" | "terminal"); path ]
     | [ path; "--highlight"; ("term" | "terminal") ] ->
-        { path = File path; hl_output = Some Term }
+        { path = Uri.file path; hl_output = Some Term }
     | [ "--highlight"; output; _ ] ->
         fail
           "Unexpected highlight output '%S', only 'html', 'term' or 'none' are allowed"
@@ -52,7 +52,7 @@ let run : Args.t -> unit =
   | Some output ->
       let parsed =
         Parser.parse
-          { contents = formatted; filename = Special "formatted" }
+          { contents = formatted; uri = Uri.of_string "ocaml:formatted" }
           ruleset
       in
       let highlight_print =

@@ -65,32 +65,16 @@ let eval ~(ty : ty) (module C : S) (ast : Ast.t) : value * expr =
   in
   (value, expr)
 
-let import ~(span : span) (module C : S) (path : path) : value =
-  let path : path =
-    match path with
-    | File path -> (
-        match path |> String.strip_prefix ~prefix:"./" with
-        | Some relative -> (
-            match span.filename with
-            | File current ->
-                File (Filename.concat (Filename.dirname current) relative)
-            | _ ->
-                error span "imports only work from regular files - got %a"
-                  Path.print span.filename)
-        | None -> File path)
-    | _ -> path
-  in
-  Log.info "Reading when importing %a" Path.print path;
-  let source = Source.read path in
-  Log.info "Sucessfully read when importing %a" Path.print path;
+let import ~(span : span) (module C : S) (uri : Uri.t) : value =
+  let source = Source.read uri in
   let imported = C.state.imported in
-  match PathMap.find_opt path imported.by_path with
+  match UriMap.find_opt uri imported.by_uri with
   | None ->
       let state = State.blank ~imported in
       (* TODO *)
       let state = C.state in
-      imported.by_path <-
-        PathMap.add path (InProgress : State.import) imported.by_path;
+      imported.by_uri <-
+        UriMap.add uri (InProgress : State.import) imported.by_uri;
       let ({ ast; _ } : Kast_parser.result) =
         Kast_parser.parse source Kast_default_syntax.ruleset
       in
@@ -101,20 +85,20 @@ let import ~(span : span) (module C : S) (path : path) : value =
             Kast_interpreter.eval state.interpreter expr
         | None -> { shape = V_Unit }
       in
-      imported.by_path <-
-        PathMap.add path (Imported value : State.import) imported.by_path;
+      imported.by_uri <-
+        UriMap.add uri (Imported value : State.import) imported.by_uri;
       value
   | Some (Imported value) -> value
   | Some InProgress -> error span "No recursive imports!"
 
 module Effect = struct
   type 'a file_included = {
-    path : path;
+    uri : Uri.t;
     parsed : Kast_parser.result;
     kind : 'a compiled_kind;
     compiled : 'a;
   }
 
   type _ Effect.t += FileIncluded : 'a. 'a file_included -> unit Effect.t
-  type _ Effect.t += FindStd : path Effect.t
+  type _ Effect.t += FindStd : Uri.t Effect.t
 end

@@ -4,16 +4,15 @@ module Parser = Kast_parser
 module Compiler = Kast_compiler
 open Kast_types
 
-type global_state = { workspaces : workspace_state list }
-
-and workspace_state = {
-  root : Lsp.Uri.t;
-  mutable processed : processed_project option;
-  mutable files : file_state StringMap.t;
-  mutable vfs : Vfs.t;
+type global_state = {
+  workspaces : workspace_state list;
+  mutable vfs : string UriMap.t;
 }
 
-and processed_project = { roots : file_state list }
+and workspace_state = {
+  root : Uri.t;
+  mutable files : file_state UriMap.t;
+}
 
 and file_state = {
   parser_error : Parser.error option;
@@ -23,17 +22,8 @@ and file_state = {
   compiled : expr option;
 }
 
-type read_file = {
-  uri : Lsp.Uri.t;
-  rel_path : string;
-  contents : string;
-}
-
-let process_file (file : read_file) : file_state =
-  Log.info "PROJECT: processing %S" file.rel_path;
-  let source : source =
-    { contents = file.contents; filename = File file.rel_path }
-  in
+let process_file (source : source) : file_state =
+  Log.info "PROJECT: processing %a" Uri.print source.uri;
   let parser_error, parsed =
     try
       let result = Parser.parse source Kast_default_syntax.ruleset in
@@ -66,153 +56,88 @@ let process_file (file : read_file) : file_state =
     compiled;
   }
 
-let process_project ~(read_file : string -> read_file)
-    ~(handle_processed : string -> file_state -> unit) : processed_project =
-  try
-    let project_ks = read_file "project.ks" in
-    let processed_project_ks = process_file project_ks in
-    handle_processed "project.ks" processed_project_ks;
-    let compiled = processed_project_ks.compiled |> Option.get in
-    let evaled = Kast_interpreter.eval (Kast_interpreter.default ()) compiled in
-    let project_roots = evaled |> Value.expect_tuple in
-    let project_roots =
-      project_roots.tuple.unnamed |> Array.to_list
-      |> List.map Value.expect_string
-    in
-    Log.info "PROJECT ROOTS = %a" (List.print String.print_dbg) project_roots;
-    let roots =
-      project_roots
-      |> List.map (fun path ->
-             Log.info "START %S" path;
-             let processed = process_file (read_file path) in
-             Log.info "END %S" path;
-             handle_processed path processed;
-             processed)
-    in
-    { roots }
-  with
-  | effect Compiler.Effect.FileIncluded { path; parsed; kind; compiled }, k ->
-      Log.info "PROJECT: file included %a" Path.print path;
-      (match path with
-      | File path -> (
-          match kind with
-          | Expr ->
-              handle_processed path
-                ({
-                   parser_error = None;
-                   parsed = Some parsed;
-                   compiler_error = None;
-                   type_error = None;
-                   compiled = Some compiled;
-                 }
-                  : file_state)
-          | _ -> ())
-      | _ -> ());
-      Effect.Deep.continue k ()
-  | effect Source.Read path, k ->
-      Log.info "handling source.read %S" path;
-      let file = read_file path in
-      Effect.Deep.continue k file.contents
+let workspace_file (root : Uri.t) (path : string) =
+  Uri.with_path root (Uri.path root ^ "/" ^ path)
 
-let init_workspace (root : Lsp.Uri.t) : workspace_state =
-  Log.info "PROJECT: Initializing state at %S" (Lsp.Uri.to_string root);
-  let root_path = Lsp.Uri.to_path root in
-  let vfs = ref ({ root = { entries = StringMap.empty } } : Vfs.t) in
-  let read_file =
-   fun rel_path ->
-    if rel_path |> String.starts_with ~prefix:"/" then
-      fail "Must read relative path, got %S" rel_path;
+let process_workspace (workspace : workspace_state) =
+  workspace.files <- UriMap.empty;
+  try
+    let handle_processed uri file_state =
+      Log.info "File processed %a" Uri.print uri;
+      workspace.files <- UriMap.add uri file_state workspace.files
+    in
     try
-      let path = Filename.concat root_path rel_path in
-      let contents = read_from_filesystem path in
-      vfs := Vfs.write_file !vfs ~path contents;
-      { uri = Lsp.Uri.of_path path; rel_path; contents }
-    with exc ->
-      Printexc.print_backtrace stderr;
-      Log.error "PROJECT: Couldn't read %S" rel_path;
-      raise exc
-  in
-  let files = ref StringMap.empty in
-  let handle_processed path processed =
-    Log.info "PROJECT: file processed %S" path;
-    files := StringMap.add path processed !files
-  in
-  let processed =
-    try Some (process_project ~read_file ~handle_processed)
-    with exc ->
-      Log.error "PROJECT: error while processing %s" (Printexc.to_string exc);
-      Printexc.print_backtrace stderr;
-      None
-  in
-  { root; vfs = !vfs; processed; files = !files }
+      let workspace_ks =
+        Source.read (workspace_file workspace.root "workspace.ks")
+      in
+      let processed_workspace_ks = process_file workspace_ks in
+      handle_processed workspace_ks.uri processed_workspace_ks;
+      let compiled = processed_workspace_ks.compiled |> Option.get in
+      let evaled =
+        Kast_interpreter.eval (Kast_interpreter.default ()) compiled
+      in
+      let workspace_roots = evaled |> Value.expect_tuple in
+      let workspace_roots =
+        workspace_roots.tuple.unnamed |> Array.to_list
+        |> List.map Value.expect_string
+      in
+      Log.info "WORKSPACE ROOTS = %a"
+        (List.print String.print_dbg)
+        workspace_roots;
+      workspace_roots
+      |> List.iter (fun path ->
+             let uri = workspace_file workspace.root path in
+             let processed = process_file (Source.read uri) in
+             handle_processed uri processed)
+    with
+    | effect Compiler.Effect.FileIncluded { uri; parsed; kind; compiled }, k ->
+        (match kind with
+        | Expr ->
+            let file_state : file_state =
+              {
+                parser_error = None;
+                parsed = Some parsed;
+                compiler_error = None;
+                type_error = None;
+                compiled = Some compiled;
+              }
+            in
+            handle_processed uri file_state
+        | _ -> ());
+        Effect.Deep.continue k ()
+    | effect (Source.Read uri as eff), k ->
+        if Uri.scheme uri = Some "workspace" then
+          let uri = Uri.with_scheme uri None in
+          let uri = Uri.append_if_relative workspace.root uri in
+          let contents = Effect.perform (Source.Read uri) in
+          Effect.Deep.continue k contents
+        else Effect.Deep.continue k (Effect.perform eff)
+  with exc ->
+    Log.error "Failed to process workspace: %s" (Printexc.to_string exc);
+    ()
+
+let init_workspace (root : Uri.t) : workspace_state =
+  Log.info "Initializing workspace at %a" Uri.print root;
+  let workspace : workspace_state = { root; files = UriMap.empty } in
+  process_workspace workspace;
+  workspace
 
 let init (workspaces : Lsp.Uri.t list) : global_state =
-  { workspaces = workspaces |> List.map init_workspace }
-
-let child_relative_path ~(parent : Lsp.Uri.t) ~(child : Lsp.Uri.t) :
-    string option =
-  let parent = parent |> Lsp.Uri.to_path in
-  let child = child |> Lsp.Uri.to_path in
-  child |> String.strip_prefix ~prefix:(parent ^ "/")
+  {
+    workspaces =
+      workspaces |> List.map Common.uri_from_lsp |> List.map init_workspace;
+    vfs = UriMap.empty;
+  }
 
 let file_state (state : global_state) (uri : Lsp.Uri.t) : file_state option =
-  Log.info "PROJECT: find file state %S" (Lsp.Uri.to_string uri);
-  match
-    state.workspaces
-    |> List.find_map (fun workspace ->
-           let* path = child_relative_path ~parent:workspace.root ~child:uri in
-           Some (workspace, path))
-  with
-  | Some (workspace, path) ->
-      let result = StringMap.find_opt path workspace.files in
-      if result |> Option.is_none then
-        Log.error "PROJECT: processed file %S not found, got %a" path
-          (List.print String.print_dbg)
-          (workspace.files |> StringMap.to_list
-          |> List.map (fun (key, _value) -> key));
-      result
-  | None -> None
+  let uri = Common.uri_from_lsp uri in
+  Log.info "PROJECT: find file state %a" Uri.print uri;
+  state.workspaces
+  |> List.find_map (fun workspace -> UriMap.find_opt uri workspace.files)
 
 let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
     unit =
-  Log.info "PROJECT: update %S" (Lsp.Uri.to_string uri);
-  match
-    state.workspaces
-    |> List.find_map (fun workspace ->
-           let* path = child_relative_path ~parent:workspace.root ~child:uri in
-           Some (workspace, path))
-  with
-  | Some (workspace, path) ->
-      Log.info "PROJECT: Updating file %S as part of %S" path
-        (Lsp.Uri.to_string workspace.root);
-      workspace.vfs <- Vfs.write_file workspace.vfs ~path source;
-      let read_file =
-       fun rel_path ->
-        let contents =
-          try Vfs.read_file workspace.vfs rel_path
-          with _ ->
-            let path =
-              Filename.concat (workspace.root |> Lsp.Uri.to_path) rel_path
-            in
-            read_from_filesystem path
-          (* | Failure s -> fail "Can't read %S: %s" path s
-          | Not_found -> fail "%S not found" path *)
-        in
-        {
-          uri =
-            Lsp.Uri.of_path
-              (Filename.concat (Lsp.Uri.to_path workspace.root) rel_path);
-          rel_path;
-          contents;
-        }
-      in
-      workspace.files <- StringMap.empty;
-      let handle_processed path processed =
-        workspace.files <- StringMap.add path processed workspace.files
-      in
-      workspace.processed <-
-        (try Some (process_project ~read_file ~handle_processed)
-         with exc ->
-           Log.error "PROJECT ERROR: %s" (Printexc.to_string exc);
-           None)
-  | None -> Log.info "PROJECT: %S is not part of state" (Lsp.Uri.to_string uri)
+  let uri = Common.uri_from_lsp uri in
+  Log.info "PROJECT: update %a" Uri.print uri;
+  state.vfs <- UriMap.add uri source state.vfs;
+  state.workspaces |> List.iter process_workspace

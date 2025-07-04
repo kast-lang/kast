@@ -19,12 +19,13 @@ let rec find_in : Included_dir.included_dir -> string -> string =
       | Some _ -> fail "%S is not a file" path
       | None -> fail "%S doesnt exist" path)
 
-let with_special_files : 'a. (unit -> 'a) -> 'a =
+let with_embedded_std : 'a. (unit -> 'a) -> 'a =
  fun (type a) (f : unit -> a) ->
-  try f ()
-  with effect Source.ReadSpecial s, k -> (
-    match s |> String.strip_prefix ~prefix:"std/" with
-    | None -> fail "Unknown special file %S" s
-    | Some std_path ->
-        let contents = find_in std std_path in
-        Effect.Deep.continue k contents)
+  try f () with
+  | effect Kast_compiler.Effect.FindStd, k ->
+      Effect.Deep.continue k (Uri.of_string "std:")
+  | effect Source.Read uri, k when Uri.scheme uri = Some "std" -> (
+      try
+        let contents = find_in std (Uri.path uri) in
+        Effect.Deep.continue k contents
+      with exc -> Effect.Deep.discontinue k exc)

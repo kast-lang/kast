@@ -38,7 +38,7 @@ let test ~(source : string) ~(expected : expected_token list) : unit =
   let expected = expected @ [ Eof ] in
   let tokens =
     Lexer.read_all Lexer.default_rules
-      { contents = source; filename = Special "test" }
+      { contents = source; uri = Uri.of_string "ocaml:test" }
   in
   if
     List.compare_lengths expected tokens <> 0
