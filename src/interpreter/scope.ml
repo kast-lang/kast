@@ -44,6 +44,10 @@ let add_locals (new_locals : locals) (scope : scope) : unit =
           scope.locals.by_symbol new_locals.by_symbol;
     }
 
+let add_local (symbol : symbol) (value : value) (scope : scope) : unit =
+  scope.locals <-
+    { by_symbol = scope.locals.by_symbol |> SymbolMap.add symbol value }
+
 let rec print_all : formatter -> scope -> unit =
  fun fmt scope ->
   scope.locals.by_symbol

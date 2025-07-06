@@ -108,6 +108,14 @@ module Var = struct
             { root_data with once_inferred = f :: root_data.once_inferred }
             |> check;
         }
+
+  let await_inferred : 'a. 'a var -> 'a =
+   fun var ->
+    (* TODO actually async *)
+    let root_data = find_root var in
+    match root_data.inferred with
+    | Some inferred -> inferred
+    | None -> fail "todo await inferred"
 end
 
 type 'a var = 'a Var.t

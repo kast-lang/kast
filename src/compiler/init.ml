@@ -63,6 +63,7 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
                  in
                  ty |> Inference.Ty.expect_inferred_as ~span field_ty);
           ty
+      | E_UseDotStar { used = _; bindings = _ } -> Ty.inferred T_Unit
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->

@@ -66,6 +66,9 @@ and print_expr_shape :
       fprintf fmt
         "@{<magenta>field@} (@;<0 2>@[<v>obj = %a,@]@;<0 2>@[<v>field = %a@]@ )"
         print_expr obj String.print_maybe_escaped field
+  | E_UseDotStar { used; bindings = _ } ->
+      fprintf fmt "@{<magenta>use .*@} (@;<0 2>@[<v>used = %a,@]@ )" print_expr
+        used
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->

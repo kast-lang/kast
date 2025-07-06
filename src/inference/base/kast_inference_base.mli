@@ -14,6 +14,7 @@ module Var : sig
   val unite : 'a. 'a unite -> 'a var unite
   val infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit
   val once_inferred : 'a. ('a -> unit) -> 'a var -> unit
+  val await_inferred : 'a. 'a var -> 'a
 end
 
 type 'a var = 'a Var.t

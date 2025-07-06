@@ -629,6 +629,51 @@ let trailing_comma : core_syntax =
         comma_impl (module C) kind ast);
   }
 
+let use_dot_star : core_syntax =
+  {
+    name = "use .*";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let used =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let span = ast.span in
+        match kind with
+        | Expr ->
+            let used = C.compile Expr used in
+            let bindings =
+              match Inference.Var.await_inferred used.data.ty.var with
+              | T_Tuple { tuple } ->
+                  tuple.named |> StringMap.to_list
+                  |> List.map (fun (name, field_ty) ->
+                         let field_span =
+                           (* TODO *)
+                           span
+                         in
+                         ({
+                            name = Symbol.create name;
+                            span = field_span;
+                            ty = field_ty;
+                            references = [];
+                          }
+                           : binding))
+              | other -> error span "can't use .* %a" Ty.Shape.print other
+            in
+            bindings
+            |> List.iter (fun binding ->
+                   C.state |> Compiler.inject_binding binding);
+            let result = E_UseDotStar { used; bindings } |> init_expr span in
+            result
+        | _ -> error span "use .* must be expr");
+  }
+
 let core =
   [
     apply;
@@ -652,6 +697,7 @@ let core =
     dot;
     comma;
     trailing_comma;
+    use_dot_star;
   ]
 
 (*  TODO remove *)

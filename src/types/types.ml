@@ -82,6 +82,11 @@ and expr_field = {
   field : string;
 }
 
+and expr_use_dot_star = {
+  used : expr;
+  bindings : binding list;
+}
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -96,6 +101,7 @@ and expr_shape =
   | E_Native of expr_native
   | E_Module of expr_module
   | E_Field of expr_field
+  | E_UseDotStar of expr_use_dot_star
 
 and expr = {
   shape : expr_shape;

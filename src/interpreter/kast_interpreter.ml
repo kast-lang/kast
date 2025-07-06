@@ -94,6 +94,16 @@ let rec eval : state -> expr -> value =
       match obj.shape with
       | V_Tuple { tuple } -> Tuple.get_named field tuple
       | _ -> fail "%a doesnt have fields" Value.print obj)
+  | E_UseDotStar { used; bindings } -> (
+      let used = eval state used in
+      match used.shape with
+      | V_Tuple { tuple } ->
+          bindings
+          |> List.iter (fun (binding : binding) ->
+                 let value = tuple |> Tuple.get_named binding.name.name in
+                 state.scope |> Scope.add_local binding.name value);
+          { shape = V_Unit }
+      | _ -> fail "can't use .* %a" Value.print used)
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->

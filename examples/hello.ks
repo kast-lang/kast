@@ -1,2 +1,3 @@
-std.io.print "hello";
-()# "world" |> print;
+use std.prelude.*;
+print "hello";
+()# "world" |> print; 
