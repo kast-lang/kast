@@ -43,3 +43,13 @@ let add_locals (new_locals : locals) (scope : scope) : unit =
           (fun _name _old_value new_value -> Some new_value)
           scope.locals.by_symbol new_locals.by_symbol;
     }
+
+let rec print_all : formatter -> scope -> unit =
+ fun fmt scope ->
+  scope.locals.by_symbol
+  |> SymbolMap.iter (fun symbol _value -> fprintf fmt "%a," Symbol.print symbol);
+  match scope.parent with
+  | None -> ()
+  | Some parent ->
+      fprintf fmt "^";
+      print_all fmt parent

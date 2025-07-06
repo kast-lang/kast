@@ -125,7 +125,7 @@ let assign : core_syntax =
     name = "assign";
     handle =
       (fun (type a)
-        (module Compiler : Compiler.S)
+        (module C : Compiler.S)
         (kind : a compiled_kind)
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
@@ -140,8 +140,9 @@ let assign : core_syntax =
         in
         match kind with
         | Expr ->
-            let assignee = Compiler.compile Assignee assignee in
-            let value = Compiler.compile Expr value in
+            let assignee = C.compile Assignee assignee in
+            let value = C.compile Expr value in
+            C.state |> Compiler.inject_assignee_bindings assignee;
             E_Assign { assignee; value } |> init_expr span
         | _ -> error span "assign must be expr");
   }
@@ -270,6 +271,7 @@ let fn : core_syntax =
         | Expr ->
             let state = C.state |> State.enter_scope in
             let arg = C.compile ~state Pattern arg in
+            state |> Compiler.inject_pattern_bindings arg;
             let body = C.compile ~state Expr body in
             let result_expr =
               result
@@ -491,6 +493,7 @@ let const : core_syntax =
                 }
               |> init_expr span
             in
+            C.state |> Compiler.inject_pattern_bindings pattern;
             ignore @@ Interpreter.eval C.state.interpreter let_expr;
             let_expr
         | Assignee -> error span "const must be expr, not assignee expr"

@@ -76,7 +76,6 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                     references = [];
                   }
                 in
-                state.scope <- state.scope |> State.Scope.inject_binding binding;
                 P_Binding binding |> init_pattern span
             | Token.Shape.String _ -> error span "string can't be pattern"
             | Token.Shape.Number _ -> error span "number can't be pattern"
