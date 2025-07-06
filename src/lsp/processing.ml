@@ -38,8 +38,10 @@ let process_file (source : source) : file_state =
   let type_error = ref None in
   let compiled =
     Option.bind ast (fun ast ->
-        let compiler = Compiler.default () in
-        try Some (Compiler.compile compiler Expr ast) with
+        try
+          let compiler = Compiler.default () in
+          Some (Compiler.compile compiler Expr ast)
+        with
         | Compiler.Error error ->
             compiler_error := Some error;
             None
