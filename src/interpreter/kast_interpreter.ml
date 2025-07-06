@@ -2,30 +2,25 @@ open Std
 open Kast_util
 open Kast_types
 
-type bindings = value StringMap.t
-type scope = { bindings : bindings }
-
 type state = {
   natives : Natives.t;
-  mutable scope : scope;
+  scope : Scope.t;
 }
 
-let add_bindings =
-  StringMap.union (fun _name _old_value new_value -> Some new_value)
+let init : Scope.locals -> state =
+ fun values ->
+  { scope = Scope.with_values ~parent:None values; natives = Natives.natives }
 
-let init : value StringMap.t -> state =
- fun bindings -> { scope = { bindings }; natives = Natives.natives }
+let default () = init Scope.Locals.empty
 
-let default () = init StringMap.empty
-
-let pattern_match : value -> pattern -> bindings =
+let pattern_match : value -> pattern -> Scope.locals =
  fun value pattern ->
   match pattern.shape with
-  | P_Placeholder -> StringMap.empty
+  | P_Placeholder -> Scope.Locals.empty
   | P_Unit ->
       (* TODO assert that value is unit *)
-      StringMap.empty
-  | P_Binding binding -> StringMap.singleton binding.name value
+      Scope.Locals.empty
+  | P_Binding binding -> { by_symbol = SymbolMap.singleton binding.name value }
 
 let assign : state -> Expr.assignee -> value -> unit =
  fun state assignee value ->
@@ -35,26 +30,20 @@ let assign : state -> Expr.assignee -> value -> unit =
       (* TODO assert that value is unit *)
       ()
   | A_Binding { name; ty = _; span = _; references = _ } ->
-      if StringMap.find_opt name state.scope.bindings |> Option.is_none then
-        fail "trying to assign to undefined variable %S" name;
-      state.scope <-
-        {
-          bindings =
-            add_bindings state.scope.bindings (StringMap.singleton name value);
-        }
+      state.scope |> Scope.assign_to_existing name value
   | A_Let pattern ->
       let new_bindings = pattern_match value pattern in
-      state.scope <-
-        { bindings = add_bindings state.scope.bindings new_bindings }
+      state.scope |> Scope.add_locals new_bindings
 
 let rec eval : state -> expr -> value =
  fun state expr ->
   match expr.shape with
   | E_Constant value -> value
   | E_Binding binding ->
-      StringMap.find_opt binding.name state.scope.bindings
-      |> Option.unwrap_or_else (fun () -> fail "%S not found" binding.name)
-  | E_Fn fn -> { shape = V_Fn fn }
+      Scope.find_opt binding.name state.scope
+      |> Option.unwrap_or_else (fun () ->
+             fail "%a not found" Symbol.print binding.name)
+  | E_Fn def -> { shape = V_Fn { def; captured = state.scope } }
   | E_Tuple { tuple } ->
       { shape = V_Tuple { tuple = tuple |> Tuple.map (eval state) } }
   | E_Then { a; b } ->
@@ -72,16 +61,15 @@ let rec eval : state -> expr -> value =
       let f = eval state f in
       let arg = eval state arg in
       match f.shape with
-      | V_Fn f ->
-          let new_bindings = pattern_match arg f.arg in
+      | V_Fn { def; captured } ->
+          let arg_bindings = pattern_match arg def.arg in
           let new_state =
             {
               state with
-              scope =
-                { bindings = add_bindings state.scope.bindings new_bindings };
+              scope = Scope.with_values ~parent:(Some captured) arg_bindings;
             }
           in
-          let result = eval new_state f.body in
+          let result = eval new_state def.body in
           result
       | V_NativeFn f -> f.impl arg
       | _ -> fail "expected fn")
@@ -91,11 +79,13 @@ let rec eval : state -> expr -> value =
       | Some value -> value
       | None -> fail "no native %S" expr)
   | E_Module { def } ->
-      let new_state = { state with scope = { bindings = StringMap.empty } } in
+      let module_scope = Scope.init ~parent:(Some state.scope) in
+      let new_state = { state with scope = module_scope } in
       ignore @@ eval new_state def;
       let fields =
-        new_state.scope.bindings |> StringMap.to_list
-        |> List.map (fun (name, value) -> (Some name, value))
+        module_scope.locals.by_symbol |> SymbolMap.to_list
+        |> List.map (fun ((symbol : symbol), value) ->
+               (Some symbol.name, value))
       in
       { shape = V_Tuple { tuple = fields |> Tuple.of_list } }
   | E_Field { obj; field } -> (

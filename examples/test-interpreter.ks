@@ -2,13 +2,16 @@ let print = std.io.print;
 print "Hello, World!";
 let unit_type = type ();
 let unit_value = ();
-let print_times = (s :: std.string) => (
-  let f = () => 123;
-  let x = f ();
+let x = 123;
+let print_twice = (s :: std.string) => (
+  let f = () => 1234;
+  let xyz = f ();
   print s;
   print s;
+  print (std.int32_to_string x);
 );
-print_times "Kast is best!";
+# print (std.int32_to_string xyz);
+print_twice "Kast is best!";
 # let x = f ();
 let x = 3;
 _ = 2;

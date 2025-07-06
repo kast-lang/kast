@@ -15,7 +15,12 @@ and value_shape =
   | V_NativeFn of value_native_fn
 
 and value = { shape : value_shape }
-and value_fn = expr_fn
+
+and value_fn = {
+  def : expr_fn;
+  captured : interpreter_scope;
+}
+
 and value_tuple = { tuple : value tuple }
 
 and value_native_fn = {
@@ -137,9 +142,17 @@ and pattern = {
   data : ir_data;
 }
 
+(* SCOPE *)
+and interpreter_locals = { by_symbol : value SymbolMap.t }
+
+and interpreter_scope = {
+  mutable locals : interpreter_locals;
+  parent : interpreter_scope option;
+}
+
 (* OTHER *)
 and binding = {
-  name : string;
+  name : symbol;
   span : span;
   ty : ty;
   (* Think: maybe this shouldnt be stored here? *)

@@ -9,6 +9,8 @@ module Id = struct
     { value }
 
   let compare a b = Int.compare a.value b.value
+  let equal a b = Int.equal a.value b.value
+  let hash id = Int.hash id.value
 end
 
 type id = Id.t

@@ -33,7 +33,7 @@ module Value = struct
     | V_Tuple { tuple } ->
         Ty.inferred <| T_Tuple { tuple = Tuple.map ty_of tuple }
     | V_Ty _ -> Ty.inferred T_Ty
-    | V_Fn { arg; body; evaled_result = _ } ->
+    | V_Fn { def = { arg; body; evaled_result = _ }; captured = _ } ->
         Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
 
@@ -124,6 +124,16 @@ module Pattern = struct
 end
 
 type pattern = Pattern.t
+
+module InterpreterScope = struct
+  type t = interpreter_scope
+
+  module Locals = struct
+    type t = interpreter_locals
+  end
+
+  type locals = Locals.t
+end
 
 module Binding = struct
   type t = binding

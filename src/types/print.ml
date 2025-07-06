@@ -126,4 +126,4 @@ and print_pattern_with_spans : formatter -> pattern -> unit =
 
 (* OTHER *)
 and print_binding : formatter -> binding -> unit =
- fun fmt binding -> fprintf fmt "%a" String.print_maybe_escaped binding.name
+ fun fmt binding -> fprintf fmt "%a" Symbol.print binding.name

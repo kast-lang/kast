@@ -16,7 +16,7 @@ let init : compile_for:Interpreter.state -> state =
  fun ~compile_for ->
   let scope = State.Scope.init () in
   let scope =
-    StringMap.fold
+    SymbolMap.fold
       (fun name value scope ->
         scope
         |> State.Scope.inject_binding
@@ -26,7 +26,7 @@ let init : compile_for:Interpreter.state -> state =
                span = Span.fake "<interpreter>";
                references = [];
              })
-      compile_for.scope.bindings scope
+      compile_for.scope.locals.by_symbol scope
   in
   { scope; interpreter = compile_for; imported = State.init_imported () }
 
@@ -70,7 +70,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | Token.Shape.Ident ident ->
                 let binding : binding =
                   {
-                    name = ident.name;
+                    name = Symbol.create ident.name;
                     ty = Ty.new_not_inferred ();
                     span = ast.span;
                     references = [];
@@ -114,13 +114,16 @@ let default () : state =
       ~span:(Span.fake "std-bootstrap")
       (make_compiler bootstrap) std_uri
   in
-  let interpreter_with_std = Interpreter.init (StringMap.singleton "std" std) in
+  let std_symbol = Symbol.create "std" in
+  let interpreter_with_std =
+    Interpreter.init { by_symbol = SymbolMap.singleton std_symbol std }
+  in
   let scope = State.Scope.init () in
   let scope =
     scope
     |> State.Scope.inject_binding
          {
-           name = "std";
+           name = std_symbol;
            ty = Value.ty_of std;
            span = Span.beginning_of std_uri;
            references = [];

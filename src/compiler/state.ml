@@ -37,7 +37,7 @@ module Scope = struct
 
   let inject_binding : binding -> scope -> scope =
    fun binding { parent; bindings } ->
-    { parent; bindings = bindings |> StringMap.add binding.name binding }
+    { parent; bindings = bindings |> StringMap.add binding.name.name binding }
 end
 
 type import =
@@ -58,11 +58,7 @@ type t = {
 type state = t
 
 let blank ~imported =
-  {
-    scope = Scope.init ();
-    imported;
-    interpreter = Interpreter.init StringMap.empty;
-  }
+  { scope = Scope.init (); imported; interpreter = Interpreter.default () }
 
 let enter_scope : state -> state =
  fun { scope; interpreter; imported } ->
