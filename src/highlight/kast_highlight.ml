@@ -168,21 +168,20 @@ module Common (Output : Output) = struct
     printer.position <- token.span.finish
 
   let rec print_ast (printer : printer) (ast : Ast.t) : unit =
+    let rec print_parts (parts : Ast.part list) =
+      parts
+      |> List.iter (function
+           | Ast.Value ast -> print_ast printer ast
+           | Ast.Keyword token -> print_token printer Output.print_keyword token
+           | Ast.Comment comment -> Output.print_comment printer comment
+           | Ast.Group group -> print_parts group.parts)
+    in
     match ast.shape with
+    | Error { parts } -> print_parts parts
     | Simple { comments_before; token } ->
         comments_before |> List.iter (Output.print_comment printer);
         print_token printer Output.print_value token
-    | Complex { root; _ } ->
-        let rec print_group ({ parts; _ } : Ast.group) =
-          parts
-          |> List.iter (function
-               | Ast.Value ast -> print_ast printer ast
-               | Ast.Keyword token ->
-                   print_token printer Output.print_keyword token
-               | Ast.Comment comment -> Output.print_comment printer comment
-               | Ast.Group group -> print_group group)
-        in
-        print_group root
+    | Complex { root; _ } -> print_parts root.parts
     | Syntax { tokens; value_after; _ } -> (
         tokens |> List.iter (print_token printer Output.print_syntax_part);
         match value_after with

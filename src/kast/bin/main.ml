@@ -2,6 +2,7 @@ open Std
 open Kast_util
 
 let main () =
+  (* Log.set_max_level Trace; *)
   try
     let args = Cli.parse () in
     match args.command with
@@ -16,6 +17,9 @@ let main () =
     | Cli.Command.Help ->
         println "Hello, I am Kast :)\nhelp is not implemented yet"
   with
+  | effect Kast_parser.Error.Error error, k ->
+      Log.error "%a" Kast_parser.Error.print error;
+      Effect.continue k ()
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->
       let stdlib_path =

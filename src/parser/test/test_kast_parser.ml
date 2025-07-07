@@ -9,6 +9,7 @@ type expected = Kast_simple_syntax.ast
 
 let rec matches (ast : Ast.t) (expected : expected) : bool =
   match (ast.shape, expected) with
+  | Error _, _ -> false
   | Simple { token; _ }, Simple expected ->
       Token.raw token |> Option.get = expected
   | Simple _, _ -> false
@@ -43,7 +44,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
     Log.error "Parsed: %a" (Option.print Ast.print) ast;
     failwith "Parse was supposed to fail"
   with
-  | Parser.Error { msg; span = _ } ->
+  | effect Parser.Error.Error { msg; span = _ }, _k ->
       Log.trace "Test properly failed: %a" (fun fmt () -> msg fmt) ()
   | Lexer.Error f ->
       Log.trace "Test properly failed: %a" (fun fmt () -> f fmt) ()
@@ -71,18 +72,21 @@ let test ~(source : string) ~(expected : string)
 
 Printexc.record_backtrace true;
 Log.set_max_level Debug;
-(let then_rule p = make_string "then %d wrap never = _ \";\" _" p in
- let eq_rule p = make_string "eq %d wrap never = _ \"=\" _ " p in
- test
-   ~ruleset:(Parser.RuleSet.parse_list [ then_rule 0; eq_rule 1 ])
-   ~source:"a=1;b=2" ~expected:"then( eq( a, 1 ), eq( b, 2 ) )" ();
- test_should_fail
-   ~ruleset:(Parser.RuleSet.parse_list [ then_rule 2; eq_rule 1 ])
-   "a=1;b=2");
-test ~source:"Some(Some(String))"
-  ~expected:
-    "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )"
-  ();
-test ~source:"if f x then a else b"
-  ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )" ();
-test_should_fail "f if cond then a else b"
+try
+  (let then_rule p = make_string "then %d wrap never = _ \";\" _" p in
+   let eq_rule p = make_string "eq %d wrap never = _ \"=\" _ " p in
+   test
+     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 0; eq_rule 1 ])
+     ~source:"a=1;b=2" ~expected:"then( eq( a, 1 ), eq( b, 2 ) )" ();
+   test_should_fail
+     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 2; eq_rule 1 ])
+     "a=1;b=2");
+  test ~source:"Some(Some(String))"
+    ~expected:
+      "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )"
+    ();
+  test ~source:"if f x then a else b"
+    ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )" ();
+  test_should_fail "f if cond then a else b"
+with effect Parser.Error.Error error, k ->
+  Effect.discontinue k (Failure (make_string "%a" Parser.Error.print error))

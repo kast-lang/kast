@@ -4,33 +4,18 @@ module Token = Kast_token
 module Lexer = Kast_lexer
 module Syntax = Kast_syntax
 module Ast = Kast_ast
+module Error = Error
 
-type error = {
-  msg : formatter -> unit;
-  span : span;
-}
+type error = Error.t
 
-exception Error of error
-
-let () =
-  Printexc.register_printer (function
-    | Error { msg; span } ->
-        eprintln "@{<red>Parse error:@} %a @{<dim>at %a@}"
-          (fun fmt () -> msg fmt)
-          () Span.print span;
-        exit 1
-    | _ -> None)
-
-let error : 'never. span -> ('a, formatter, unit, 'never) format4 -> 'a =
- fun span format ->
-  Format.kdprintf (fun msg -> raise <| Error { msg; span }) format
+let error = Error.error
 
 let expect_eof : Lexer.t -> unit =
  fun lexer ->
   try Lexer.expect_eof lexer
   with Lexer.Error msg ->
-    raise
-    <| Error
+    Effect.perform
+    <| Error.Error
          {
            msg;
            span =
@@ -63,29 +48,29 @@ module Rule = struct
       match token.shape with
       | Ident { raw; _ } -> raw
       | String { contents; _ } -> contents
-      | _ -> error token.span "Expected rule name, got %a" Token.print token
+      | _ -> fail "Expected rule name, got %a" Token.print token
     in
     let name = get_name (Lexer.next lexer) in
     let priority =
       let token = Lexer.next lexer in
       try Token.Shape.as_float token.shape
       with Invalid_argument _ ->
-        error token.span "Expected rule priority, got %a" Token.print token
+        fail "Expected rule priority, got %a" Token.print token
     in
     let wrap_mode =
       let token = Lexer.next lexer in
       if token |> Token.is_raw "wrap" |> not then
-        error token.span "Expected \"wrap\", got %a" Token.print token;
+        fail "Expected \"wrap\", got %a" Token.print token;
       let token = Lexer.next lexer in
       match token.shape with
       | Ident { raw = "if_any"; _ } -> Syntax.Rule.WrapMode.IfAny
       | Ident { raw = "always"; _ } -> Syntax.Rule.WrapMode.Always
       | Ident { raw = "never"; _ } -> Syntax.Rule.WrapMode.Never
-      | _ -> error token.span "Expected wrap mode, got %a" Token.print token
+      | _ -> fail "Expected wrap mode, got %a" Token.print token
     in
     (let token = Lexer.next lexer in
      if token |> Token.is_raw "=" |> not then
-       error token.span "Expected \"=\", got %a" Token.print token);
+       fail "Expected \"=\", got %a" Token.print token);
     let rec collect_parts () : Syntax.Rule.part list =
       let rec part ?(left_assoc = false) () : Syntax.Rule.part option =
         let token = Lexer.peek lexer in
@@ -103,9 +88,7 @@ module Rule = struct
                   let token = Lexer.next lexer in
                   match token.shape with
                   | String { contents; _ } -> contents
-                  | _ ->
-                      error token.span "Expected wrap str, got %a" Token.print
-                        token)
+                  | _ -> fail "Expected wrap str, got %a" Token.print token)
                 else nowrap
               in
               Some (Whitespace { nowrap; wrap }))
@@ -374,7 +357,8 @@ module RuleSet = struct
           match node.terminal with
           | Some existing ->
               error rule.span "Duplicate rule: %a and %a" Syntax.Rule.print
-                existing Syntax.Rule.print rule
+                existing Syntax.Rule.print rule;
+              node
           | None ->
               {
                 terminal = Some rule;
@@ -503,12 +487,9 @@ module Impl = struct
         @ !parsed_rev;
       comments_before := []
     in
-    let made_progress : unit -> bool =
-      let start_index = (Lexer.peek lexer).span.start.index in
-      fun () -> (Lexer.peek lexer).span.start.index <> start_index
-    in
+    let made_progress = ref false in
     let terminate (node : RuleSet.node) : parse_result =
-      if made_progress () then
+      if !made_progress then
         match node.terminal with
         | Some rule ->
             let parsed = List.rev !parsed_rev in
@@ -516,20 +497,61 @@ module Impl = struct
             Log.trace "Parsed %a" Ast.print ast;
             comments_before := !comments_before @ read_comments lexer;
             MadeProgress ast
-        | None ->
-            let token = Lexer.peek lexer in
-            error token.span "Unexpected %a" Token.print token
+        | None -> (
+            let single_value =
+              !parsed_rev
+              |> List.fold_left
+                   (fun acc part ->
+                     match part with
+                     | Comment _ -> acc
+                     | Keyword _ -> Some None
+                     | Value value -> (
+                         match acc with
+                         | None -> Some (Some value)
+                         | Some _ -> Some None))
+                   None
+            in
+            match single_value with
+            | Some (Some ast) -> MadeProgress ast
+            | _ ->
+                let token = Lexer.peek lexer in
+                error token.span "Unexpected %a" Token.print token;
+                let parts = !parsed_rev |> List.rev in
+                Log.error "Parsed: %a" (List.print ParsedPart.print) parts;
+                let spans =
+                  parts
+                  |> List.map (function
+                       | Comment comment -> comment.span
+                       | Value value -> value.span
+                       | Keyword keyword -> keyword.span)
+                in
+                let parts =
+                  parts
+                  |> List.map (function
+                       | Comment comment -> Ast.Comment comment
+                       | Value value -> Ast.Value value
+                       | Keyword keyword -> Ast.Keyword keyword)
+                in
+                let span : span =
+                  {
+                    start = (spans |> List.head).start;
+                    finish = (spans |> List.last).finish;
+                    uri = token.span.uri;
+                  }
+                in
+                MadeProgress { shape = Error { parts }; span })
       else NoProgress
     in
     (* should return bool but we do option because let* makes it easier *)
     let continue_with (node : RuleSet.node) : unit option =
       let* () =
-        if made_progress () then Some ()
+        if !made_progress then Some ()
         else
           (* On the **first** iteration need to check that start value satisfies prev filter *)
           let start_priority : Syntax.Rule.priority option =
             Option.bind start (fun start ->
                 match start.shape with
+                | Ast.Error _ -> None
                 | Ast.Simple _ -> None
                 | Ast.Complex { rule; _ } -> Some rule.priority
                 | Ast.Syntax _ -> None (* TODO check *))
@@ -545,7 +567,7 @@ module Impl = struct
       Syntax.Rule.Priority.check_filter_with_range range filter
       |> Bool.then_some ()
     in
-    let rec go (node : RuleSet.node) : parse_result =
+    let rec go ~(used_keyword : bool) (node : RuleSet.node) : parse_result =
       comments_before := !comments_before @ read_comments lexer;
       let token = Lexer.peek lexer in
       let raw_token = Token.raw token in
@@ -553,7 +575,10 @@ module Impl = struct
         (* try to follow with token as a keyword *)
         let* keyword = raw_token in
         let* () =
-          if continuation_keywords |> StringSet.contains keyword then None
+          if
+            (not used_keyword)
+            && continuation_keywords |> StringSet.contains keyword
+          then None
           else Some ()
         in
         let edge : RuleSet.edge = Keyword keyword in
@@ -562,14 +587,15 @@ module Impl = struct
         count_comments_before ();
         parsed_rev := Keyword token :: !parsed_rev;
         Log.trace "Followed with keyword %S" keyword;
+        made_progress := true;
         Lexer.advance lexer;
-        Some (go next)
+        Some (go ~used_keyword:true next)
       in
       let+ () =
         (* try to follow with a value *)
         let* () =
           (* actually don't if we are just starting *)
-          match made_progress () || start |> Option.is_some with
+          match !made_progress || start |> Option.is_some with
           | true -> Some ()
           | false -> None
         in
@@ -578,7 +604,7 @@ module Impl = struct
         let* () = continue_with next in
         let inner_continuation_keywords =
           match next.value_filter with
-          | None | Some Any -> StringSet.empty
+          | None | Some Any -> next.next_keywords
           | _ -> StringSet.union continuation_keywords next.next_keywords
         in
         let* value : Ast.t =
@@ -589,9 +615,37 @@ module Impl = struct
         in
         parsed_rev := Value value :: !parsed_rev;
         Log.trace "Followed with value %a" Ast.print value;
-        Some (go next)
+        made_progress := true;
+        Some (go ~used_keyword next)
       in
-      terminate node
+      let token = Lexer.peek lexer in
+      let raw_token = Token.raw token in
+      let should_skip_token_because_error =
+        let x =
+          raw_token
+          |> Option.map_or false (fun raw ->
+                 continuation_keywords |> StringSet.contains raw |> not
+                 && ruleset.root.next_keywords |> StringSet.contains raw |> not
+                 && ruleset.root.next |> RuleSet.EdgeMap.find Value
+                    |> fun node ->
+                    node.next_keywords |> StringSet.contains raw |> not)
+        in
+        match token.shape with
+        | Token.Shape.Punct _ -> x
+        | Token.Shape.Ident _ -> false
+        | Token.Shape.String _ -> false
+        | Token.Shape.Number _ -> false
+        | Token.Shape.Comment _ -> unreachable "comment???"
+        | Token.Shape.Eof -> false
+      in
+      if should_skip_token_because_error then (
+        error token.span "Skipping unexpected %a" Token.print token;
+        (* Log.error "continuation keywords: %a"
+          (List.print String.print_dbg)
+          (continuation_keywords |> StringSet.to_list); *)
+        Lexer.advance lexer;
+        go ~used_keyword node)
+      else terminate node
     in
     let parse_syntax_extension () : Ast.t =
       let tokens_rec = Lexer.start_rec lexer in
@@ -668,16 +722,24 @@ module Impl = struct
           Some ({ shape; span = { peek.span with start } } : Ast.t))
     in
 
-    let start = start |> Option.or_else parse_simple in
+    let start =
+      start
+      |> Option.or_else (fun () ->
+             let simple = parse_simple () in
+             (match simple with
+             | Some _ -> made_progress := true
+             | None -> ());
+             simple)
+    in
     let result =
       match start with
       | Some start -> (
-          if made_progress () then MadeProgress start
+          if !made_progress then MadeProgress start
           else
             match RuleSet.EdgeMap.find_opt Value ruleset.root.next with
             | None -> NoProgress (* no rules starting with a value *)
-            | Some node -> go node)
-      | None -> go ruleset.root
+            | Some node -> go ~used_keyword:false node)
+      | None -> go ~used_keyword:false ruleset.root
     in
 
     (match result with

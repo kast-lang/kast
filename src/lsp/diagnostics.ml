@@ -56,3 +56,4 @@ let get (state : Processing.file_state) : Lsp.Types.Diagnostic.t list =
   (parser_error |> Option.to_list)
   @ (compiler_error |> Option.to_list)
   @ (type_error |> Option.to_list)
+  @ state.diagnostics

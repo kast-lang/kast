@@ -39,6 +39,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   let { shape = _; span } : Ast.t = ast in
   try
     match ast.shape with
+    | Ast.Error _ -> error span "Trying to compile error node"
     | Ast.Simple { token; _ } -> (
         match kind with
         | Expr -> (

@@ -50,10 +50,13 @@ and syntax = {
   value_after : ast option;
 }
 
+and error = { parts : part list }
+
 and shape =
   | Simple of simple
   | Complex of complex
   | Syntax of syntax
+  | Error of error
 
 and ast = {
   shape : shape;
@@ -65,6 +68,13 @@ type t = ast
 let rec print : formatter -> ast -> unit =
  fun fmt { shape; span } ->
   fprintf fmt "%a @{<dim>at %a@}" print_shape shape Span.print span
+
+and print_part =
+ fun fmt -> function
+  | Comment _ -> fprintf fmt "<comment>"
+  | Keyword token -> fprintf fmt "keyword %a" Token.print token
+  | Value value -> print fmt value
+  | Group group -> print_group fmt group
 
 and print_child : formatter -> child -> unit =
  fun fmt -> function
@@ -86,6 +96,8 @@ and print_shape : formatter -> shape -> unit =
       match value_after with
       | None -> ()
       | Some value -> fprintf fmt "\n%a" print value)
+  | Error { parts } ->
+      fprintf fmt "@{<red><error> %a@}" (List.print print_part) parts
 
 and print_shape_short : formatter -> shape -> unit =
  fun fmt -> function
@@ -94,6 +106,7 @@ and print_shape_short : formatter -> shape -> unit =
       fprintf fmt "@{<magenta>%a@}" String.print_maybe_escaped rule.name
   | Syntax { comments_before = _; mode = _; value_after = _; tokens = _ } ->
       fprintf fmt "<syntax>"
+  | Error _ -> fprintf fmt "@{<red><error>@}"
 
 module Shape = struct
   type t = shape
@@ -119,12 +132,7 @@ end
 module Part = struct
   type t = part
 
-  let print =
-   fun fmt -> function
-    | Comment _ -> fprintf fmt "<comment>"
-    | Keyword token -> fprintf fmt "keyword %a" Token.print token
-    | Value value -> print fmt value
-    | Group group -> print_group fmt group
+  let print = print_part
 end
 
 let rec collect_list ~(binary_rule_name : string) (ast : ast) : ast list =

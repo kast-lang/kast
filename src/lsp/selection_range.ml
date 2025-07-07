@@ -10,6 +10,7 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
     ast.span
     ::
     (match ast.shape with
+    | Error _ -> []
     | Simple _ -> []
     | Complex { root; _ } -> (
         let rec find_in_group ({ children; _ } : Ast.group) : span list option =

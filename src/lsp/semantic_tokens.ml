@@ -22,29 +22,28 @@ type token = {
   span : span;
 }
 
-let rec collect : Ast.t -> token Seq.t =
+let rec collect_parts (parts : Ast.part list) : token Seq.t =
+  parts |> List.to_seq
+  |> Seq.flat_map (function
+       | Ast.Value ast -> collect ast
+       | Ast.Keyword token ->
+           List.to_seq [ { token = Keyword token.shape; span = token.span } ]
+       | Ast.Comment comment ->
+           List.to_seq
+             [ { token = Comment comment.shape; span = comment.span } ]
+       | Ast.Group group -> collect_parts group.parts)
+
+and collect : Ast.t -> token Seq.t =
  fun { shape; span = _ } ->
   match shape with
+  | Ast.Error { parts } -> collect_parts parts
   | Ast.Simple { comments_before; token } ->
       Seq.append
         (comments_before |> List.to_seq
         |> Seq.map (fun (comment : Token.comment) ->
                { token = Comment comment.shape; span = comment.span }))
         (List.to_seq [ { token = Value token.shape; span = token.span } ])
-  | Ast.Complex { root; _ } ->
-      let rec collect_group ({ parts; _ } : Ast.group) : token Seq.t =
-        parts |> List.to_seq
-        |> Seq.flat_map (function
-             | Ast.Value ast -> collect ast
-             | Ast.Keyword token ->
-                 List.to_seq
-                   [ { token = Keyword token.shape; span = token.span } ]
-             | Ast.Comment comment ->
-                 List.to_seq
-                   [ { token = Comment comment.shape; span = comment.span } ]
-             | Ast.Group group -> collect_group group)
-      in
-      collect_group root
+  | Ast.Complex { root; _ } -> collect_parts root.parts
   | Ast.Syntax { value_after; tokens; _ } ->
       Seq.append
         (tokens |> List.to_seq

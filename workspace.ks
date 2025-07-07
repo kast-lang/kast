@@ -5,3 +5,4 @@
 "examples/import-zero.ks",
 "examples/test-interpreter.ks",
 "examples/zero.ks",
+"examples/doesnt-parse.ks",
