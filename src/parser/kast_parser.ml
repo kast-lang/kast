@@ -22,15 +22,21 @@ type result = {
 
 let parse_with_lexer : Lexer.t -> ruleset -> result =
  fun lexer ruleset ->
-  let comments_before = ref [] in
+  let unused_comments_rev = ref [] in
   let result =
-    Impl.parse ruleset ~comments_before ~continuation_keywords:StringSet.empty
-      ~filter:Any lexer
+    Impl.parse_value
+      {
+        continuation_keywords = StringSet.empty;
+        filter = Any;
+        lexer;
+        ruleset;
+        unused_comments_rev;
+      }
   in
   Impl.expect_eof lexer;
   {
     ast = result;
-    trailing_comments = !comments_before;
+    trailing_comments = !unused_comments_rev |> List.rev;
     eof = Lexer.position lexer;
   }
 
