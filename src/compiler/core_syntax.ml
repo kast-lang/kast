@@ -647,9 +647,11 @@ let use_dot_star : core_syntax =
         let span = ast.span in
         match kind with
         | Expr ->
-            let used = C.compile Expr used in
+            let used, used_expr =
+              Compiler.eval ~ty:(Ty.new_not_inferred ()) (module C) used
+            in
             let bindings =
-              match Inference.Var.await_inferred used.data.ty.var with
+              match (Value.ty_of used).var |> Inference.Var.await_inferred with
               | T_Tuple { tuple } ->
                   tuple.named |> StringMap.to_list
                   |> List.map (fun (name, field_ty) ->
@@ -669,7 +671,12 @@ let use_dot_star : core_syntax =
             bindings
             |> List.iter (fun binding ->
                    C.state |> Compiler.inject_binding binding);
-            let result = E_UseDotStar { used; bindings } |> init_expr span in
+            let result =
+              E_UseDotStar
+                { used = E_Constant used |> init_expr span; bindings }
+              |> init_expr ~evaled_exprs:[ used_expr ] span
+            in
+            ignore @@ Interpreter.eval C.state.interpreter result;
             result
         | _ -> error span "use .* must be expr");
   }
