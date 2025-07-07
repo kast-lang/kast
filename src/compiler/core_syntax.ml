@@ -752,6 +752,35 @@ let comptime : core_syntax =
         | _ -> error span "comptime must be expr");
   }
 
+let if' : core_syntax =
+  {
+    name = "if";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let cond, then_case, else_case =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named3 [ "cond"; "then_case"; "else_case" ]
+        in
+        let cond = C.compile Expr cond in
+        match kind with
+        | Expr ->
+            let then_case = C.compile Expr then_case in
+            let else_case = C.compile Expr else_case in
+            E_If { cond; then_case; else_case } |> init_expr span
+        | TyExpr -> error span "if can't be assignee"
+        | Assignee -> error span "if can't be assignee"
+        | Pattern -> error span "if can't be assignee");
+  }
+
 let core =
   [
     apply;
@@ -779,6 +808,7 @@ let core =
     comptime;
     true';
     false';
+    if';
   ]
 
 (*  TODO remove *)

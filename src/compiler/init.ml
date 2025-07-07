@@ -64,6 +64,16 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
                  ty |> Inference.Ty.expect_inferred_as ~span field_ty);
           ty
       | E_UseDotStar { used = _; bindings = _ } -> Ty.inferred T_Unit
+      | E_If { cond; then_case; else_case } ->
+          cond.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:cond.data.span
+               (Ty.inferred T_Bool);
+          let ty = Ty.new_not_inferred () in
+          then_case.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:then_case.data.span ty;
+          else_case.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:else_case.data.span ty;
+          ty
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->

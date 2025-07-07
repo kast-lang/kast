@@ -48,7 +48,15 @@ let rec inlay_hints :
         | E_Native _ -> (None, Seq.empty)
         | E_Module { def } -> (None, inlay_hints Expr def)
         | E_Field { obj; field = _ } -> (None, inlay_hints Expr obj)
-        | E_UseDotStar { used; bindings = _ } -> (None, inlay_hints Expr used))
+        | E_UseDotStar { used; bindings = _ } -> (None, inlay_hints Expr used)
+        | E_If { cond; then_case; else_case } ->
+            ( None,
+              [
+                inlay_hints Expr cond;
+                inlay_hints Expr then_case;
+                inlay_hints Expr else_case;
+              ]
+              |> List.to_seq |> Seq.concat ))
     | Pattern -> (
         match compiled.shape with
         | P_Placeholder -> (None, Seq.empty)

@@ -89,6 +89,12 @@ and expr_use_dot_star = {
   bindings : binding list;
 }
 
+and expr_if = {
+  cond : expr;
+  then_case : expr;
+  else_case : expr;
+}
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -104,6 +110,7 @@ and expr_shape =
   | E_Module of expr_module
   | E_Field of expr_field
   | E_UseDotStar of expr_use_dot_star
+  | E_If of expr_if
 
 and expr = {
   shape : expr_shape;

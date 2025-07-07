@@ -110,7 +110,11 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
             | E_Native _ -> None
             | E_Module { def } -> hover Expr def pos
             | E_Field { obj; field = _ } -> hover Expr obj pos
-            | E_UseDotStar { used; bindings = _ } -> hover Expr used pos)
+            | E_UseDotStar { used; bindings = _ } -> hover Expr used pos
+            | E_If { cond; then_case; else_case } ->
+                hover Expr cond pos
+                |> Option.or_else (fun () -> hover Expr then_case pos)
+                |> Option.or_else (fun () -> hover Expr else_case pos))
         | Assignee -> (
             match compiled.shape with
             | A_Placeholder -> None

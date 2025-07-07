@@ -104,6 +104,12 @@ let rec eval : state -> expr -> value =
                  state.scope |> Scope.add_local binding.name value);
           { shape = V_Unit }
       | _ -> fail "can't use .* %a" Value.print used)
+  | E_If { cond; then_case; else_case } -> (
+      let cond = eval state cond in
+      match cond.shape with
+      | V_Bool true -> eval state then_case
+      | V_Bool false -> eval state else_case
+      | _ -> fail "if cond must be bool, got %a" Value.print cond)
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->

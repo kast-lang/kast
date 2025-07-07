@@ -71,6 +71,12 @@ and print_expr_shape :
   | E_UseDotStar { used; bindings = _ } ->
       fprintf fmt "@{<magenta>use .*@} (@;<0 2>@[<v>used = %a,@]@ )" print_expr
         used
+  | E_If { cond; then_case; else_case } ->
+      fprintf fmt "@{<magenta>if@} %a" (Tuple.print print_expr)
+        (Tuple.make []
+           [
+             ("cond", cond); ("then_case", then_case); ("else_case", else_case);
+           ])
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->

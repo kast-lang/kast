@@ -6,7 +6,7 @@ syntax "core:use .*" 1 wrap never = "use" " " _ ".*";
 syntax "core:assign" 2 wrap never = assignee " " "=" " " value;
 syntax "core:const" 2 wrap never = "const" " " pattern " " "=" " " value;
 syntax "core:let" 3 wrap never = "let" " " pattern;
-syntax "core:if" 4 wrap never = "if" " " cond " " "then" " " then " " "else" " " else ->;
+syntax "core:if" 4 wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
 syntax "core:trailing comma" 5 wrap never = <- _ ",";
 syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->" " " _ " ")? "=>" " " body;
