@@ -674,6 +674,31 @@ let use_dot_star : core_syntax =
         | _ -> error span "use .* must be expr");
   }
 
+let comptime : core_syntax =
+  {
+    name = "comptime";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let expr =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let span = ast.span in
+        match kind with
+        | Expr ->
+            let value, value_expr =
+              Compiler.eval ~ty:(Ty.new_not_inferred ()) (module C) expr
+            in
+            E_Constant value |> init_expr ~evaled_exprs:[ value_expr ] span
+        | _ -> error span "comptime must be expr");
+  }
+
 let core =
   [
     apply;
@@ -698,6 +723,7 @@ let core =
     comma;
     trailing_comma;
     use_dot_star;
+    comptime;
   ]
 
 (*  TODO remove *)
