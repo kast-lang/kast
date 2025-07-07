@@ -331,6 +331,52 @@ let type' : core_syntax =
         | TyExpr -> TE_Expr const |> init_ty_expr span);
   }
 
+let false' : core_syntax =
+  {
+    name = "false";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        Tuple.assert_empty children;
+        let ty_ty = Ty.inferred T_Ty in
+        let const = E_Constant { shape = V_Bool false } |> init_expr span in
+        match kind with
+        | Assignee -> error span "false can't be assignee"
+        | Pattern -> error span "false can't be a pattern"
+        | Expr -> const
+        | TyExpr -> error span "false can't be a type");
+  }
+
+let true' : core_syntax =
+  {
+    name = "true";
+    handle =
+      (fun (type a)
+        (module Compiler : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        Tuple.assert_empty children;
+        let ty_ty = Ty.inferred T_Ty in
+        let const = E_Constant { shape = V_Bool true } |> init_expr span in
+        match kind with
+        | Assignee -> error span "true can't be assignee"
+        | Pattern -> error span "true can't be a pattern"
+        | Expr -> const
+        | TyExpr -> error span "true can't be a type");
+  }
+
 let type_expr : core_syntax =
   {
     name = "type expr";
@@ -731,6 +777,8 @@ let core =
     trailing_comma;
     use_dot_star;
     comptime;
+    true';
+    false';
   ]
 
 (*  TODO remove *)

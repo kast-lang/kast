@@ -14,6 +14,8 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
   match (a, b) with
   | T_Unit, T_Unit -> T_Unit
   | T_Unit, _ -> fail ()
+  | T_Bool, T_Bool -> T_Bool
+  | T_Bool, _ -> fail ()
   | T_Int32, T_Int32 -> T_Int32
   | T_Int32, _ -> fail ()
   | T_String, T_String -> T_String

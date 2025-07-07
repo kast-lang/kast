@@ -28,6 +28,7 @@ module Value = struct
    fun { shape } ->
     match shape with
     | V_Unit -> Ty.inferred T_Unit
+    | V_Bool _ -> Ty.inferred T_Bool
     | V_Int32 _ -> Ty.inferred T_Int32
     | V_String _ -> Ty.inferred T_String
     | V_Tuple { tuple } ->

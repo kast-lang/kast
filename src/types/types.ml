@@ -7,6 +7,7 @@ type _unused
 (* VALUE *)
 and value_shape =
   | V_Unit
+  | V_Bool of bool
   | V_Int32 of int32
   | V_String of string
   | V_Tuple of value_tuple
@@ -39,6 +40,7 @@ and ty_fn = {
 (* TY *)
 and ty_shape =
   | T_Unit
+  | T_Bool
   | T_Int32
   | T_String
   | T_Tuple of ty_tuple
