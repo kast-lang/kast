@@ -5,6 +5,8 @@ module Lexer = Kast_lexer
 module Syntax = Kast_syntax
 module Ast = Kast_ast
 module Error = Error
+module Parsed_part = Parsed_part
+module Ruleset = Ruleset
 
 type error = Error.t
 
@@ -26,431 +28,13 @@ let expect_eof : Lexer.t -> unit =
              };
          }
 
-type parsed_part =
-  | Comment of Token.comment
-  | Keyword of Token.t
-  | Value of Ast.t
-
-module ParsedPart = struct
-  let print : formatter -> parsed_part -> unit =
-   fun fmt -> function
-    | Comment comment ->
-        fprintf fmt "comment %a" Token.Shape.print (Comment comment.shape)
-    | Keyword token -> Token.print fmt token
-    | Value ast -> Ast.print fmt ast
-end
-
-module Rule = struct
-  let parse : Lexer.t -> Syntax.rule =
-   fun lexer ->
-    let start = (Lexer.peek lexer).span.start in
-    let get_name (token : Token.t) =
-      match token.shape with
-      | Ident { raw; _ } -> raw
-      | String { contents; _ } -> contents
-      | _ -> fail "Expected rule name, got %a" Token.print token
-    in
-    let name = get_name (Lexer.next lexer) in
-    let priority =
-      let token = Lexer.next lexer in
-      try Token.Shape.as_float token.shape
-      with Invalid_argument _ ->
-        fail "Expected rule priority, got %a" Token.print token
-    in
-    let wrap_mode =
-      let token = Lexer.next lexer in
-      if token |> Token.is_raw "wrap" |> not then
-        fail "Expected \"wrap\", got %a" Token.print token;
-      let token = Lexer.next lexer in
-      match token.shape with
-      | Ident { raw = "if_any"; _ } -> Syntax.Rule.WrapMode.IfAny
-      | Ident { raw = "always"; _ } -> Syntax.Rule.WrapMode.Always
-      | Ident { raw = "never"; _ } -> Syntax.Rule.WrapMode.Never
-      | _ -> fail "Expected wrap mode, got %a" Token.print token
-    in
-    (let token = Lexer.next lexer in
-     if token |> Token.is_raw "=" |> not then
-       fail "Expected \"=\", got %a" Token.print token);
-    let rec collect_parts () : Syntax.Rule.part list =
-      let rec part ?(left_assoc = false) () : Syntax.Rule.part option =
-        let token = Lexer.peek lexer in
-        match token.shape with
-        | Punct { raw = "<-"; _ } when not left_assoc ->
-            Lexer.advance lexer;
-            part ~left_assoc:true ()
-        | String { contents; _ } when not left_assoc ->
-            if String.is_whitespace contents then (
-              Lexer.advance lexer;
-              let nowrap = contents in
-              let wrap : string =
-                if lexer |> Lexer.peek |> Token.is_raw "/" then (
-                  Lexer.advance lexer;
-                  let token = Lexer.next lexer in
-                  match token.shape with
-                  | String { contents; _ } -> contents
-                  | _ -> fail "Expected wrap str, got %a" Token.print token)
-                else nowrap
-              in
-              Some (Whitespace { nowrap; wrap }))
-            else (
-              Lexer.advance lexer;
-              Some (Keyword contents))
-        | Ident { raw; _ } when raw <> "syntax" ->
-            Lexer.advance lexer;
-            let name = if raw = "_" then None else Some raw in
-            let peek = Lexer.peek lexer in
-            if peek |> Token.is_raw "=" then (
-              (* group *)
-              Lexer.advance lexer;
-              Lexer.expect_next lexer "(";
-              let parts = collect_parts () in
-              Lexer.expect_next lexer ")";
-              let peek = Lexer.peek lexer in
-              let quantifier =
-                match peek |> Token.raw with
-                | Some "?" ->
-                    Lexer.advance lexer;
-                    Some Syntax.Rule.Optional
-                | _ -> None
-              in
-              Some (Group { name; parts; quantifier }))
-            else (* Not group *)
-              let priority =
-                if left_assoc then Syntax.Rule.Priority.GreaterOrEqual
-                else
-                  match Token.raw peek with
-                  | Some "->" ->
-                      Lexer.advance lexer;
-                      Syntax.Rule.Priority.GreaterOrEqual
-                  | Some ":" ->
-                      Lexer.advance lexer;
-                      let peek = Lexer.peek lexer in
-                      if peek |> Token.is_raw "any" |> not then
-                        error peek.span "Expected \"any\", got %a" Token.print
-                          peek;
-                      Lexer.advance lexer;
-                      Syntax.Rule.Priority.Any
-                  | _ ->
-                      (* defaulting to Greater means we only need
-                      to annotate with <- or -> where we want associativity
-                      or :any where we want parentheses-like behavior *)
-                      Syntax.Rule.Priority.Greater
-              in
-              Some (Value { name; priority })
-        | _ ->
-            if left_assoc then
-              error token.span "Expected value name, got %a" Token.print token;
-            None
-      in
-      match part () with
-      | Some part -> part :: collect_parts ()
-      | None -> []
-    in
-    let finish = Lexer.position lexer in
-    {
-      span = { start; finish; uri = (Lexer.source lexer).uri };
-      name;
-      priority;
-      parts = collect_parts ();
-      wrap_mode;
-    }
-
-  type collect_result = {
-    parsed : Ast.part list;
-    children : (string option * Ast.child) list;
-    remaining : parsed_part list;
-  }
-
-  let collect : parsed_part list -> Syntax.Rule.t -> Ast.t =
-   fun parts rule ->
-    let span : span =
-      let spans =
-        parts
-        |> List.filter_map (function
-             | Keyword spanned -> Some spanned.span
-             | Value ast -> Some ast.span
-             | Comment _ -> None)
-      in
-      {
-        start = (spans |> List.head |> fun span -> span.start);
-        finish = (spans |> List.last |> fun span -> span.finish);
-        uri = (List.head spans).uri;
-      }
-    in
-    Log.trace "Collecting %d parts into %s" (List.length parts) rule.name;
-    Log.trace "parts = %a" (List.print ParsedPart.print) parts;
-    let rec collect_children (parsed_parts : parsed_part list)
-        (rule_parts : Syntax.Rule.part list) : collect_result =
-      match (parsed_parts, rule_parts) with
-      | Comment comment :: parsed_parts_tail, _ ->
-          let { parsed; children; remaining } =
-            collect_children parsed_parts_tail rule_parts
-          in
-          { parsed = Comment comment :: parsed; children; remaining }
-      | _, Whitespace _ :: rule_parts_tail ->
-          collect_children parsed_parts rule_parts_tail
-      | ( Keyword parsed_keyword :: parsed_parts_tail,
-          Keyword expected_keyword :: rule_parts_tail ) ->
-          if parsed_keyword |> Token.is_raw expected_keyword |> not then
-            unreachable
-              "Can't collect parsed parts, expected keyword %S, got %a"
-              expected_keyword Token.print parsed_keyword;
-          let { parsed; children; remaining } =
-            collect_children parsed_parts_tail rule_parts_tail
-          in
-          { parsed = Keyword parsed_keyword :: parsed; children; remaining }
-      | Value _ :: _, Keyword _ :: _ ->
-          unreachable "matched value & keyword %s" __LOC__
-      | Keyword _ :: _, Value _ :: _ ->
-          unreachable "matched keyword & value %s" __LOC__
-      | Value value :: parsed_parts_tail, Value binding :: rule_parts_tail ->
-          let { parsed; children; remaining } =
-            collect_children parsed_parts_tail rule_parts_tail
-          in
-          {
-            parsed = Value value :: parsed;
-            children = (binding.name, Ast value) :: children;
-            remaining;
-          }
-      | _, Group group_rule :: rule_parts_tail -> (
-          let go_in =
-            match group_rule.quantifier with
-            | None -> true
-            | Some Optional -> (
-                let expected_keyword =
-                  match group_rule.parts with
-                  | Keyword keyword :: _ -> keyword
-                  | _ ->
-                      fail "Optional groups should have keyword as first part"
-                in
-                match parsed_parts with
-                | Keyword keyword :: _
-                  when keyword |> Token.is_raw expected_keyword ->
-                    true
-                | _ -> false)
-          in
-          match go_in with
-          | false -> collect_children parsed_parts rule_parts_tail
-          | true ->
-              let {
-                parsed = group_parsed;
-                children = group_children;
-                remaining;
-              } =
-                collect_children parsed_parts group_rule.parts
-              in
-              let { parsed; children; remaining } =
-                collect_children remaining rule_parts_tail
-              in
-              let group : Ast.group =
-                {
-                  rule = Some group_rule;
-                  parts = group_parsed;
-                  children = group_children |> Tuple.of_list;
-                }
-              in
-              {
-                parsed = Group group :: parsed;
-                children = (group_rule.name, Group group) :: children;
-                remaining;
-              })
-      | _, [] -> { parsed = []; children = []; remaining = parsed_parts }
-      | [], _ -> failwith "not enough values supplied"
-    in
-    let { parsed; children; remaining } = collect_children parts rule.parts in
-    if remaining |> List.length <> 0 then fail "too many values supplied";
-    {
-      shape =
-        Ast.Complex
-          {
-            rule;
-            root =
-              {
-                rule = None;
-                parts = parsed;
-                children = children |> Tuple.of_list;
-              };
-          };
-      span;
-    }
-end
-
-module RuleSet = struct
-  module Edge = struct
-    type t =
-      | Keyword of string
-      | Value
-    [@@deriving eq, ord]
-  end
-
-  type edge = Edge.t
-
-  (* TODO maybe hashmap *)
-  module EdgeMap = Map.Make (Edge)
-
-  type node = {
-    terminal : Syntax.rule option;
-    value_filter : Syntax.Rule.Priority.filter option;
-    prev_value_filter : Syntax.Rule.Priority.filter option;
-    priority_range : Syntax.Rule.priority Range.inclusive option;
-    next : node EdgeMap.t;
-    next_keywords : StringSet.t;
-  }
-
-  module Node = struct
-    let empty : node =
-      {
-        terminal = None;
-        value_filter = None;
-        prev_value_filter = None;
-        priority_range = None;
-        next = EdgeMap.empty;
-        next_keywords = StringSet.empty;
-      }
-  end
-
-  type ruleset = {
-    rules : Syntax.rule StringMap.t;
-    keywords : StringSet.t;
-    root : node;
-  }
-
-  type t = ruleset
-
-  let empty : ruleset =
-    { rules = StringMap.empty; keywords = StringSet.empty; root = Node.empty }
-
-  let update_value_filter (rule : Syntax.rule) (part : Syntax.Rule.part option)
-      current_filter =
-    match part with
-    | Some (Value { priority; _ }) ->
-        let priority_filter =
-          Syntax.Rule.Priority.make_filter priority rule.priority
-        in
-        Some
-          (match current_filter with
-          | Some current ->
-              Syntax.Rule.Priority.stricter_filter current priority_filter
-          | None -> priority_filter)
-    | _ -> current_filter
-
-  let add : Syntax.rule -> ruleset -> ruleset =
-   fun rule ruleset ->
-    let rec insert ~(prev_prev : Syntax.Rule.part option)
-        ~(prev : Syntax.Rule.part option) (parts : Syntax.Rule.part list)
-        (node : node) : node =
-      let updated_value_filter =
-        update_value_filter rule prev node.value_filter
-      in
-      let updated_prev_value_filter =
-        update_value_filter rule prev_prev node.prev_value_filter
-      in
-      let updated_priority_range =
-        Some
-          (let point = Range.Inclusive.point rule.priority in
-           Option.map_or point
-             (Range.Inclusive.unite Syntax.Rule.Priority.compare point)
-             node.priority_range)
-      in
-      match parts with
-      | [] -> (
-          match node.terminal with
-          | Some existing ->
-              error rule.span "Duplicate rule: %a and %a" Syntax.Rule.print
-                existing Syntax.Rule.print rule;
-              node
-          | None ->
-              {
-                terminal = Some rule;
-                value_filter = updated_value_filter;
-                prev_value_filter = updated_prev_value_filter;
-                priority_range = updated_priority_range;
-                next = node.next;
-                next_keywords = node.next_keywords;
-              })
-      | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
-      | Group { name = _; parts = group_parts; quantifier } :: rest -> (
-          match quantifier with
-          | None -> insert ~prev_prev ~prev (group_parts @ rest) node
-          | Some Optional ->
-              let inserted_without_group = insert ~prev_prev ~prev rest node in
-              insert ~prev_prev ~prev (group_parts @ rest)
-                inserted_without_group)
-      | first :: rest ->
-          let edge : Edge.t =
-            match first with
-            | Keyword keyword -> Keyword keyword
-            | Value _ -> Value
-            | Group _ | Whitespace _ -> unreachable ":)"
-          in
-          let merge_next : node option -> node option =
-           fun current ->
-            let next =
-              match current with
-              | None -> Node.empty
-              | Some existing -> existing
-            in
-            Some (insert ~prev_prev:prev ~prev:(Some first) rest next)
-          in
-          {
-            terminal = node.terminal;
-            value_filter = updated_value_filter;
-            prev_value_filter = updated_prev_value_filter;
-            priority_range = updated_priority_range;
-            next = EdgeMap.update edge merge_next node.next;
-            next_keywords =
-              (match first with
-              | Value _ -> node.next_keywords
-              | Keyword keyword -> StringSet.add keyword node.next_keywords
-              | Group _ | Whitespace _ -> unreachable ":)");
-          }
-    in
-    {
-      rules = StringMap.add rule.name rule ruleset.rules;
-      keywords = StringSet.add_seq (Syntax.Rule.keywords rule) ruleset.keywords;
-      root = insert ~prev_prev:None ~prev:None rule.parts ruleset.root;
-    }
-
-  let is_keyword : string -> ruleset -> bool =
-   fun word ruleset -> StringSet.contains word ruleset.keywords
-
-  let find_rule : string -> ruleset -> Syntax.rule =
-   fun name ruleset -> StringMap.find name ruleset.rules
-
-  let of_list : Syntax.rule list -> ruleset =
-   fun rules -> List.fold_right add rules empty
-
-  let parse_list : string list -> ruleset =
-   fun rules ->
-    rules
-    |> List.map (fun line ->
-           let lexer =
-             Lexer.init Lexer.default_rules
-               { contents = line; uri = Uri.of_string "ocaml:parse_list/rule" }
-           in
-           let rule = Rule.parse lexer in
-           expect_eof lexer;
-           rule)
-    |> of_list
-
-  let parse_lines : string -> ruleset =
-   fun s ->
-    s |> String.split_on_char '\n'
-    |> List.filter (fun s ->
-           not (String.is_whitespace s || String.starts_with ~prefix:"#" s))
-    |> List.map (fun s -> String.strip_prefix ~prefix:"syntax " s |> Option.get)
-    |> List.map (fun s -> String.strip_suffix ~suffix:";" s |> Option.get)
-    |> List.filter (fun line -> String.trim line <> "from_scratch")
-    |> parse_list
-end
-
-type ruleset = RuleSet.t
+type ruleset = Ruleset.t
 type parser = { mutable ruleset : ruleset }
 
 let init : ruleset -> parser = fun ruleset -> { ruleset }
 
 let add_rule : Syntax.rule -> parser -> unit =
- fun rule parser -> parser.ruleset <- RuleSet.add rule parser.ruleset
+ fun rule parser -> parser.ruleset <- Ruleset.add rule parser.ruleset
 
 let rec read_comments lexer : Token.comment list =
   let peek = Lexer.peek lexer in
@@ -477,18 +61,21 @@ module Impl = struct
     (match start with
     | None -> Log.trace "Start to parse one"
     | Some _ -> Log.trace "Start to parse one (having value)");
-    let parsed_rev : parsed_part list ref =
-      ref (start |> Option.map (fun ast -> Value ast) |> Option.to_list)
+    let parsed_rev : Parsed_part.t list ref =
+      ref
+        (start
+        |> Option.map (fun ast -> Parsed_part.Value ast)
+        |> Option.to_list)
     in
     let count_comments_before () =
       parsed_rev :=
         (!comments_before |> List.rev
-        |> List.map (fun comment -> Comment comment))
+        |> List.map (fun comment -> Parsed_part.Comment comment))
         @ !parsed_rev;
       comments_before := []
     in
     let made_progress = ref false in
-    let terminate (node : RuleSet.node) : parse_result =
+    let terminate (node : Ruleset.node) : parse_result =
       if !made_progress then
         match node.terminal with
         | Some rule ->
@@ -503,9 +90,9 @@ module Impl = struct
               |> List.fold_left
                    (fun acc part ->
                      match part with
-                     | Comment _ -> acc
-                     | Keyword _ -> Some None
-                     | Value value -> (
+                     | Parsed_part.Comment _ -> acc
+                     | Parsed_part.Keyword _ -> Some None
+                     | Parsed_part.Value value -> (
                          match acc with
                          | None -> Some (Some value)
                          | Some _ -> Some None))
@@ -517,20 +104,20 @@ module Impl = struct
                 let token = Lexer.peek lexer in
                 error token.span "Unexpected %a" Token.print token;
                 let parts = !parsed_rev |> List.rev in
-                Log.error "Parsed: %a" (List.print ParsedPart.print) parts;
+                Log.error "Parsed: %a" (List.print Parsed_part.print) parts;
                 let spans =
                   parts
                   |> List.map (function
-                       | Comment comment -> comment.span
-                       | Value value -> value.span
-                       | Keyword keyword -> keyword.span)
+                       | Parsed_part.Comment comment -> comment.span
+                       | Parsed_part.Value value -> value.span
+                       | Parsed_part.Keyword keyword -> keyword.span)
                 in
                 let parts =
                   parts
                   |> List.map (function
-                       | Comment comment -> Ast.Comment comment
-                       | Value value -> Ast.Value value
-                       | Keyword keyword -> Ast.Keyword keyword)
+                       | Parsed_part.Comment comment -> Ast.Comment comment
+                       | Parsed_part.Value value -> Ast.Value value
+                       | Parsed_part.Keyword keyword -> Ast.Keyword keyword)
                 in
                 let span : span =
                   {
@@ -543,7 +130,7 @@ module Impl = struct
       else NoProgress
     in
     (* should return bool but we do option because let* makes it easier *)
-    let continue_with (node : RuleSet.node) : unit option =
+    let continue_with (node : Ruleset.node) : unit option =
       let* () =
         if !made_progress then Some ()
         else
@@ -567,7 +154,7 @@ module Impl = struct
       Syntax.Rule.Priority.check_filter_with_range range filter
       |> Bool.then_some ()
     in
-    let rec go ~(used_keyword : bool) (node : RuleSet.node) : parse_result =
+    let rec go ~(used_keyword : bool) (node : Ruleset.node) : parse_result =
       comments_before := !comments_before @ read_comments lexer;
       let token = Lexer.peek lexer in
       let raw_token = Token.raw token in
@@ -581,8 +168,8 @@ module Impl = struct
           then None
           else Some ()
         in
-        let edge : RuleSet.edge = Keyword keyword in
-        let* next = RuleSet.EdgeMap.find_opt edge node.next in
+        let edge : Ruleset.edge = Keyword keyword in
+        let* next = Ruleset.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
         count_comments_before ();
         parsed_rev := Keyword token :: !parsed_rev;
@@ -599,8 +186,8 @@ module Impl = struct
           | true -> Some ()
           | false -> None
         in
-        let edge : RuleSet.edge = Value in
-        let* next = RuleSet.EdgeMap.find_opt edge node.next in
+        let edge : Ruleset.edge = Value in
+        let* next = Ruleset.EdgeMap.find_opt edge node.next in
         let* () = continue_with next in
         let inner_continuation_keywords =
           match next.value_filter with
@@ -626,7 +213,7 @@ module Impl = struct
           |> Option.map_or false (fun raw ->
                  continuation_keywords |> StringSet.contains raw |> not
                  && ruleset.root.next_keywords |> StringSet.contains raw |> not
-                 && ruleset.root.next |> RuleSet.EdgeMap.find Value
+                 && ruleset.root.next |> Ruleset.EdgeMap.find Value
                     |> fun node ->
                     node.next_keywords |> StringSet.contains raw |> not)
         in
@@ -672,8 +259,8 @@ module Impl = struct
       in
       let new_ruleset =
         match mode with
-        | Define rule -> RuleSet.add rule ruleset
-        | FromScratch -> RuleSet.empty
+        | Define rule -> Ruleset.add rule ruleset
+        | FromScratch -> Ruleset.empty
       in
       let value_after : Ast.t option =
         parse new_ruleset ~comments_before:(ref []) ~continuation_keywords
@@ -709,7 +296,7 @@ module Impl = struct
             | Ident { raw = "syntax"; _ } ->
                 return <| Some (parse_syntax_extension ())
             | Ident { raw; _ } ->
-                if RuleSet.is_keyword raw ruleset then None
+                if Ruleset.is_keyword raw ruleset then None
                 else
                   Some
                     (Ast.Simple
@@ -736,7 +323,7 @@ module Impl = struct
       | Some start -> (
           if !made_progress then MadeProgress start
           else
-            match RuleSet.EdgeMap.find_opt Value ruleset.root.next with
+            match Ruleset.EdgeMap.find_opt Value ruleset.root.next with
             | None -> NoProgress (* no rules starting with a value *)
             | Some node -> go ~used_keyword:false node)
       | None -> go ~used_keyword:false ruleset.root

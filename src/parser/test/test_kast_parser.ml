@@ -76,10 +76,10 @@ try
   (let then_rule p = make_string "then %d wrap never = _ \";\" _" p in
    let eq_rule p = make_string "eq %d wrap never = _ \"=\" _ " p in
    test
-     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 0; eq_rule 1 ])
+     ~ruleset:(Parser.Ruleset.parse_list [ then_rule 0; eq_rule 1 ])
      ~source:"a=1;b=2" ~expected:"then( eq( a, 1 ), eq( b, 2 ) )" ();
    test_should_fail
-     ~ruleset:(Parser.RuleSet.parse_list [ then_rule 2; eq_rule 1 ])
+     ~ruleset:(Parser.Ruleset.parse_list [ then_rule 2; eq_rule 1 ])
      "a=1;b=2");
   test ~source:"Some(Some(String))"
     ~expected:
