@@ -70,7 +70,7 @@ let repl (args : Args.t) =
         let value : value = Interpreter.eval interpreter expr in
         match value.shape with
         | V_Unit -> ()
-        | _ -> println "%a\n" Value.print value));
+        | _ -> println "%a" Value.print value));
     loop ()
   in
   loop ()
