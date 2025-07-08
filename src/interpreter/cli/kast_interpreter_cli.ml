@@ -70,9 +70,7 @@ let repl (args : Args.t) =
         let value : value = Interpreter.eval interpreter expr in
         match value.shape with
         | V_Unit -> ()
-        | _ ->
-            Format.printf "%a\n" Value.print value;
-            Format.print_flush ()));
+        | _ -> println "%a\n" Value.print value));
     loop ()
   in
   loop ()
