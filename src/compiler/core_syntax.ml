@@ -713,12 +713,12 @@ let dot : core_syntax =
 let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
     (ast : Ast.t) ({ children; _ } : Ast.group) : string * a =
   let span = ast.span in
-  let label = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
+  let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
   let label =
-    match label.shape with
+    match label_ast.shape with
     | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
     | _ ->
-        Error.error label.span "field label must be ident";
+        Error.error label_ast.span "field label must be ident";
         invalid_arg "tuple field"
   in
   let ty =
@@ -751,7 +751,13 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
         match value with
         | Some value -> C.compile Pattern value
         | None ->
-            P_Binding { name = Symbol.create label; ty; references = []; span }
+            P_Binding
+              {
+                name = Symbol.create label;
+                ty;
+                references = [];
+                span = label_ast.span;
+              }
             |> init_pattern span
       in
       (label, value)
