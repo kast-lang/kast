@@ -86,7 +86,8 @@ try
       "apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )"
     ();
   test ~source:"if f x then a else b"
-    ~expected:"if( cond = apply( f = f, arg = x ), then = a, else = b )" ();
+    ~expected:
+      "if( cond = apply( f = f, arg = x ), then_case = a, else_case = b )" ();
   test_should_fail "f if cond then a else b"
 with effect Parser.Error.Error error, k ->
   Effect.discontinue k (Failure (make_string "%a" Parser.Error.print error))
