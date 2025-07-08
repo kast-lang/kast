@@ -26,24 +26,29 @@ let rec pattern_match : value -> pattern -> Scope.locals =
   | P_Tuple { tuple = tuple_pattern } -> (
       match value.shape with
       | V_Tuple { tuple } ->
-          {
-            by_symbol =
-              Tuple.zip_order_a tuple_pattern tuple
-              |> Tuple.to_seq
-              |> Seq.fold_left
-                   (fun acc (_member, (field_pattern, field_value)) ->
-                     let field_matches =
-                       pattern_match field_value field_pattern
-                     in
-                     SymbolMap.union
-                       (fun symbol _a b ->
-                         Error.error pattern.data.span
-                           "multiple bindings of same symbol %a" Symbol.print
-                           symbol;
-                         Some b)
-                       acc field_matches.by_symbol)
-                   SymbolMap.empty;
-          }
+          with_return (fun { return } : Scope.locals ->
+              {
+                by_symbol =
+                  (try Tuple.zip_order_a tuple_pattern tuple
+                   with Invalid_argument _ ->
+                     Error.error pattern.data.span
+                       "Tuple has different set of fields";
+                     return Scope.Locals.empty)
+                  |> Tuple.to_seq
+                  |> Seq.fold_left
+                       (fun acc (_member, (field_pattern, field_value)) ->
+                         let field_matches =
+                           pattern_match field_value field_pattern
+                         in
+                         SymbolMap.union
+                           (fun symbol _a b ->
+                             Error.error pattern.data.span
+                               "multiple bindings of same symbol %a"
+                               Symbol.print symbol;
+                             Some b)
+                           acc field_matches.by_symbol)
+                       SymbolMap.empty;
+              })
       | _ ->
           Error.error pattern.data.span "Expected tuple, got %a" Value.print
             value;

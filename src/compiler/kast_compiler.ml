@@ -53,7 +53,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             match token.shape with
             | Token.Shape.Ident ident ->
                 E_Binding
-                  (State.Scope.find_binding ~from:ast.span ident state.scope)
+                  (State.Scope.find_binding ~from:ast.span ident.name
+                     state.scope)
                 |> init_expr span
             | Token.Shape.String s ->
                 E_Constant { shape = V_String s.contents } |> init_expr span
@@ -67,7 +68,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             match token.shape with
             | Token.Shape.Ident ident ->
                 A_Binding
-                  (State.Scope.find_binding ~from:ast.span ident state.scope)
+                  (State.Scope.find_binding ~from:ast.span ident.name
+                     state.scope)
                 |> init_assignee span
             | Token.Shape.String _ ->
                 Error.error span "string can't be assignee";

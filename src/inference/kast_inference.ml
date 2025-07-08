@@ -22,13 +22,15 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
   | T_Int32, _ -> fail ()
   | T_String, T_String -> T_String
   | T_String, _ -> fail ()
-  | T_Tuple { tuple = a }, T_Tuple { tuple = b } ->
-      T_Tuple
-        {
-          tuple =
-            Tuple.zip_order_a a b
-            |> Tuple.map (fun (a, b) -> unite_ty ~span a b);
-        }
+  | T_Tuple { tuple = a }, T_Tuple { tuple = b } -> (
+      try
+        T_Tuple
+          {
+            tuple =
+              Tuple.zip_order_a a b
+              |> Tuple.map (fun (a, b) -> unite_ty ~span a b);
+          }
+      with Invalid_argument _ -> fail ())
   | T_Tuple _, _ -> fail ()
   | T_Ty, T_Ty -> T_Ty
   | T_Ty, _ -> fail ()

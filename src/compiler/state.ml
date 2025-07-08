@@ -19,23 +19,22 @@ module Scope = struct
   let enter ~(parent : scope) : scope =
     { parent = Some parent; bindings = StringMap.empty }
 
-  let rec find_binding_opt :
-      from:span -> Token.Shape.ident -> scope -> binding option =
+  let rec find_binding_opt : from:span -> string -> scope -> binding option =
    fun ~from ident scope ->
-    match StringMap.find_opt ident.name scope.bindings with
+    match StringMap.find_opt ident scope.bindings with
     | Some binding ->
         binding.references <- from :: binding.references;
         Some binding
     | None -> scope.parent |> Option.and_then (find_binding_opt ~from ident)
 
-  let find_binding : from:span -> Token.Shape.ident -> scope -> binding =
+  let find_binding : from:span -> string -> scope -> binding =
    fun ~from ident scope ->
     scope
     |> find_binding_opt ~from ident
     |> Option.unwrap_or_else (fun () : binding ->
-           error from "Could not find %S in scope" ident.name;
+           error from "Could not find %S in scope" ident;
            {
-             name = Symbol.create ident.name;
+             name = Symbol.create ident;
              span = from;
              ty = Ty.new_not_inferred ();
              references = [];

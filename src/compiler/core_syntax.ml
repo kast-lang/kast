@@ -738,8 +738,15 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
   in
   match kind with
   | Expr ->
-      error span "todo %s" __LOC__;
-      invalid_arg "todo"
+      let value =
+        match value with
+        | Some value -> C.compile Expr value
+        | None ->
+            E_Binding
+              (State.Scope.find_binding ~from:label_ast.span label C.state.scope)
+            |> init_expr span
+      in
+      (label, value)
   | TyExpr ->
       error span "todo %s" __LOC__;
       invalid_arg "todo"

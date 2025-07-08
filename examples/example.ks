@@ -19,5 +19,6 @@ fn f (x, .a, .b) => (
   print a;
   print (std.int32_to_string b);
 );
+f ("hi", .a = "a", .b = 5);
 let ast = `(2 + 2);
 `(2 + \ast)
