@@ -229,10 +229,17 @@ and try_skipping_token_because_error (state : parse_one_state)
         return None;
       if context.ruleset.root.next_keywords |> StringSet.contains raw_token then
         return None;
-      if
-        context.ruleset.root.next |> Ruleset.EdgeMap.find Value |> fun node ->
-        node.next_keywords |> StringSet.contains raw_token
-      then return None;
+      (match
+         context.ruleset.root.next |> Ruleset.EdgeMap.find Value |> fun node ->
+         node.next |> Ruleset.EdgeMap.find_opt (Keyword raw_token)
+       with
+      | Some node -> (
+          match (state.node.priority_range, node.prev_value_filter) with
+          | Some range, Some filter
+            when Syntax.Rule.Priority.check_filter_with_range range filter ->
+              return None
+          | _ -> ())
+      | None -> ());
       Error.error peek.span "Skipping unexpected %a" Token.print peek;
       context.lexer |> Lexer.advance;
       Some (parse_one_from state context))
