@@ -115,6 +115,9 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 hover Expr cond pos
                 |> Option.or_else (fun () -> hover Expr then_case pos)
                 |> Option.or_else (fun () -> hover Expr else_case pos)
+            | E_QuoteAst _ ->
+                (* TODO *)
+                None
             | E_Error -> None)
         | Assignee -> (
             match compiled.shape with

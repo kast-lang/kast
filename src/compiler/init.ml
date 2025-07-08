@@ -76,6 +76,9 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
           else_case.data.ty
           |> Inference.Ty.expect_inferred_as ~span:else_case.data.span ty;
           ty
+      | E_QuoteAst _ ->
+          (* TODO assert all children are ast *)
+          Ty.inferred T_Ast
       | E_Error -> Ty.new_not_inferred ()
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }

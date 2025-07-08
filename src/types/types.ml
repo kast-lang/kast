@@ -1,5 +1,7 @@
 open Std
 open Kast_util
+module Ast = Kast_ast
+module Syntax = Kast_syntax
 module Inference = Kast_inference_base
 
 type _unused
@@ -14,6 +16,7 @@ and value_shape =
   | V_Ty of ty
   | V_Fn of value_fn
   | V_NativeFn of value_native_fn
+  | V_Ast of Ast.t
   | V_Error
 
 and value = { shape : value_shape }
@@ -47,6 +50,7 @@ and ty_shape =
   | T_Tuple of ty_tuple
   | T_Ty
   | T_Fn of ty_fn
+  | T_Ast
   | T_Error
 
 and ty = { var : ty_shape Inference.var }
@@ -97,6 +101,20 @@ and expr_if = {
   else_case : expr;
 }
 
+and expr_quote_ast_child =
+  | Group of expr_quote_ast_group
+  | Ast of expr
+
+and expr_quote_ast_group = {
+  rule : Syntax.Rule.group option;
+  children : expr_quote_ast_child tuple;
+}
+
+and expr_quote_ast = {
+  rule : Syntax.rule;
+  root : expr_quote_ast_group;
+}
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -113,6 +131,7 @@ and expr_shape =
   | E_Field of expr_field
   | E_UseDotStar of expr_use_dot_star
   | E_If of expr_if
+  | E_QuoteAst of expr_quote_ast
   | E_Error
 
 and expr = {

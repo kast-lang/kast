@@ -57,6 +57,9 @@ let rec inlay_hints :
                 inlay_hints Expr else_case;
               ]
               |> List.to_seq |> Seq.concat )
+        | E_QuoteAst _ ->
+            (* TODO *)
+            (None, Seq.empty)
         | E_Error -> (None, Seq.empty))
     | Pattern -> (
         match compiled.shape with

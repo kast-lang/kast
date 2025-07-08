@@ -37,6 +37,7 @@ module Value = struct
     | V_Fn { def = { arg; body; evaled_result = _ }; captured = _ } ->
         Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
+    | V_Ast _ -> Ty.inferred T_Ast
     | V_Error -> Ty.inferred T_Error
 
   let expect_ty : value -> ty =
@@ -84,6 +85,9 @@ module Expr = struct
 
   module Shape = struct
     type t = expr_shape
+    type quote_ast_child = expr_quote_ast_child
+    type quote_ast_group = expr_quote_ast_group
+    type quote_ast = expr_quote_ast
 
     let print = print_expr_shape
   end

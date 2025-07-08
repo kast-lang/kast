@@ -196,7 +196,7 @@ let default_rules : rule list =
       | _ -> true
     in
     let is_single_punct = function
-      | c when String.contains "(){}[]&^$;" c -> true
+      | c when String.contains "(){}[]&^$;\\" c -> true
       | _ -> false
     in
     if is_punct c then (

@@ -1003,10 +1003,40 @@ let quote : core_syntax =
         a
       ->
         let span = ast.span in
+        let body =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
         match kind with
         | Expr ->
-            error span "todo %s" __LOC__;
-            init_error span kind
+            let rec construct (ast : Ast.t) : expr =
+              match ast.shape with
+              | Ast.Error _ | Ast.Simple _ ->
+                  E_Constant { shape = V_Ast ast } |> init_expr ast.span
+              | Ast.Complex { rule; root } when rule.name = "core:unquote" ->
+                  let unquote =
+                    root.children |> Tuple.unwrap_single_unnamed
+                    |> Ast.Child.expect_ast
+                  in
+                  C.compile kind unquote
+              | Ast.Complex { rule; root } ->
+                  E_QuoteAst { rule; root = construct_group root }
+                  |> init_expr ast.span
+              | Ast.Syntax _ -> fail "TODO"
+            and construct_group (group : Ast.group) : Expr.Shape.quote_ast_group
+                =
+              {
+                rule = group.rule;
+                children =
+                  group.children
+                  |> Tuple.map
+                       (fun (child : Ast.child) : Expr.Shape.quote_ast_child ->
+                         match child with
+                         | Group child_group ->
+                             Group (construct_group child_group)
+                         | Ast child -> Ast (construct child));
+              }
+            in
+            construct body
         | _ ->
             error span "quote must be expr";
             init_error span kind);

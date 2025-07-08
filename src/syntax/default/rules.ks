@@ -35,4 +35,4 @@ syntax "core:unit" 1000 wrap never = "(" ")";
 syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 syntax "core:placeholder" 1000 wrap never = "_";
 syntax "core:quote" 1000 wrap if_any = "`" "(" ""/"\n\t"  _:any ""/"\\\n" ")";
-syntax "core:unquote" 1000 wrap if_any = "\\" "(" ""/"\n\t"  _:any ""/"\\\n" ")";
+syntax "core:unquote" 1000 wrap never = "\\" _ ->;

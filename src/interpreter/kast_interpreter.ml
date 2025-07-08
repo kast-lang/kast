@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 open Kast_types
+module Ast = Kast_ast
 module Error = Error
 
 type state = {
@@ -156,7 +157,32 @@ let rec eval : state -> expr -> value =
           Error.error cond_expr.data.span "if cond must be bool, got %a"
             Value.print cond;
           { shape = V_Error })
+  | E_QuoteAst expr -> { shape = V_Ast (quote_ast state expr) }
   | E_Error -> { shape = V_Error }
+
+and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
+ fun state expr ->
+  let rec quote_group (group : Expr.Shape.quote_ast_group) : Ast.group =
+    {
+      rule = group.rule;
+      parts = [];
+      children =
+        group.children
+        |> Tuple.map (fun (child : Expr.Shape.quote_ast_child) : Ast.child ->
+               match child with
+               | Group child_group -> Group (quote_group child_group)
+               | Ast child ->
+                   Ast
+                     (let child = eval state child in
+                      match child.shape with
+                      | V_Ast ast -> ast
+                      | _ -> fail "child must be ast"));
+    }
+  in
+  {
+    shape = Complex { rule = expr.rule; root = quote_group expr.root };
+    span = Span.fake "todo";
+  }
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->

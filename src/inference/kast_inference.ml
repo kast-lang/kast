@@ -32,6 +32,8 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
   | T_Tuple _, _ -> fail ()
   | T_Ty, T_Ty -> T_Ty
   | T_Ty, _ -> fail ()
+  | T_Ast, T_Ast -> T_Ast
+  | T_Ast, _ -> fail ()
   | T_Fn a, T_Fn b ->
       T_Fn
         {

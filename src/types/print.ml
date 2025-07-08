@@ -15,6 +15,7 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_Tuple { tuple } -> fprintf fmt "%a" (Tuple.print print_value) tuple
   | V_Fn f -> fprintf fmt "@{<italic><fn>@}"
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
+  | V_Ast ast -> fprintf fmt "%a" Ast.print ast
   | V_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_value : formatter -> value -> unit =
@@ -30,6 +31,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Tuple { tuple } -> fprintf fmt "%a" (Tuple.print print_ty) tuple
   | T_Ty -> fprintf fmt "type"
   | T_Fn { arg; result } -> fprintf fmt "%a -> %a" print_ty arg print_ty result
+  | T_Ast -> fprintf fmt "ast"
   | T_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty : formatter -> ty -> unit =
@@ -80,6 +82,7 @@ and print_expr_shape :
              ("cond", cond); ("then_case", then_case); ("else_case", else_case);
            ])
   | E_Error -> fprintf fmt "@{<red><error>@}"
+  | E_QuoteAst expr -> fprintf fmt "@{<magenta>quote_ast ...@}"
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->

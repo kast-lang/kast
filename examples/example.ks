@@ -12,3 +12,5 @@ let f = (x, .a, .b) => (
   print a;
   print (std.int32_to_string b);
 );
+let ast = `(2 + 2);
+`(2 + \ast)
