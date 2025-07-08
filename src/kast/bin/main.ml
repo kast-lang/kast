@@ -17,6 +17,9 @@ let main () =
     | Cli.Command.Help ->
         println "Hello, I am Kast :)\nhelp is not implemented yet"
   with
+  | effect Kast_interpreter.Error.Error error, k ->
+      Log.error "%a" Kast_interpreter.Error.print error;
+      Effect.continue k ()
   | effect Kast_compiler.Error.Error error, k ->
       Log.error "%a" Kast_compiler.Error.print error;
       Effect.continue k ()

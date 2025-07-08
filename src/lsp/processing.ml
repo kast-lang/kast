@@ -56,6 +56,24 @@ let process_file (source : source) : file_state =
           let compiler = Compiler.default () in
           Some (Compiler.compile compiler Expr ast)
         with
+        | effect Kast_interpreter.Error.Error error, k ->
+            Log.error "%a" Kast_interpreter.Error.print error;
+            (* TODO might be from another file? *)
+            diagnostics :=
+              ({
+                 range = error.span |> Common.span_to_range;
+                 severity = Some Error;
+                 code = None;
+                 codeDescription = None;
+                 source = None;
+                 message = `String (make_string "%t" error.msg);
+                 tags = None;
+                 relatedInformation = None;
+                 data = None;
+               }
+                : Lsp.Types.Diagnostic.t)
+              :: !diagnostics;
+            Effect.continue k ()
         | effect Compiler.Error.Error error, k ->
             Log.error "%a" Compiler.Error.print error;
             (* TODO might be from another file? *)

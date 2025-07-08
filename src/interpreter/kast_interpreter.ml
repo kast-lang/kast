@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 open Kast_types
+module Error = Error
 
 type state = {
   natives : Natives.t;
@@ -31,7 +32,8 @@ let assign : state -> Expr.assignee -> value -> unit =
       (* TODO assert that value is unit *)
       ()
   | A_Binding { name; ty = _; span = _; references = _ } ->
-      state.scope |> Scope.assign_to_existing name value
+      state.scope
+      |> Scope.assign_to_existing ~span:assignee.data.span name value
   | A_Let pattern ->
       let new_bindings = pattern_match value pattern in
       state.scope |> Scope.add_locals new_bindings
@@ -43,9 +45,10 @@ let rec eval : state -> expr -> value =
   | E_Constant value -> value
   | E_Binding binding ->
       Scope.find_opt binding.name state.scope
-      |> Option.unwrap_or_else (fun () ->
-             Log.error "all in scope: %a" Scope.print_all state.scope;
-             fail "%a not found" Symbol.print binding.name)
+      |> Option.unwrap_or_else (fun () : value ->
+             Log.trace "all in scope: %a" Scope.print_all state.scope;
+             Error.error expr.data.span "%a not found" Symbol.print binding.name;
+             { shape = V_Error })
   | E_Fn def -> { shape = V_Fn { def; captured = state.scope } }
   | E_Tuple { tuple } ->
       { shape = V_Tuple { tuple = tuple |> Tuple.map (eval state) } }
@@ -74,13 +77,17 @@ let rec eval : state -> expr -> value =
           in
           let result = eval new_state def.body in
           result
-      | V_NativeFn f -> f.impl arg
-      | _ -> fail "expected fn")
+      | V_NativeFn f -> f.impl ~caller:expr.data.span arg
+      | _ ->
+          Error.error expr.data.span "expected fn";
+          { shape = V_Error })
   | E_Ty expr -> { shape = V_Ty (eval_ty state expr) }
-  | E_Native { expr } -> (
-      match StringMap.find_opt expr state.natives.by_name with
+  | E_Native { expr = native_expr } -> (
+      match StringMap.find_opt native_expr state.natives.by_name with
       | Some value -> value
-      | None -> fail "no native %S" expr)
+      | None ->
+          Error.error expr.data.span "no native %S" native_expr;
+          { shape = V_Error })
   | E_Module { def } ->
       let module_scope = Scope.init ~parent:(Some state.scope) in
       let new_state = { state with scope = module_scope } in
@@ -95,7 +102,9 @@ let rec eval : state -> expr -> value =
       let obj = eval state obj in
       match obj.shape with
       | V_Tuple { tuple } -> Tuple.get_named field tuple
-      | _ -> fail "%a doesnt have fields" Value.print obj)
+      | _ ->
+          Error.error expr.data.span "%a doesnt have fields" Value.print obj;
+          { shape = V_Error })
   | E_UseDotStar { used; bindings } -> (
       let used = eval state used in
       match used.shape with
@@ -105,13 +114,18 @@ let rec eval : state -> expr -> value =
                  let value = tuple |> Tuple.get_named binding.name.name in
                  state.scope |> Scope.add_local binding.name value);
           { shape = V_Unit }
-      | _ -> fail "can't use .* %a" Value.print used)
-  | E_If { cond; then_case; else_case } -> (
-      let cond = eval state cond in
+      | _ ->
+          Error.error expr.data.span "can't use .* %a" Value.print used;
+          { shape = V_Error })
+  | E_If { cond = cond_expr; then_case; else_case } -> (
+      let cond = eval state cond_expr in
       match cond.shape with
       | V_Bool true -> eval state then_case
       | V_Bool false -> eval state else_case
-      | _ -> fail "if cond must be bool, got %a" Value.print cond)
+      | _ ->
+          Error.error cond_expr.data.span "if cond must be bool, got %a"
+            Value.print cond;
+          { shape = V_Error })
   | E_Error -> { shape = V_Error }
 
 and eval_ty : state -> Expr.ty -> ty =

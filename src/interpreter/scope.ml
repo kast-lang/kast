@@ -16,16 +16,20 @@ type locals = Locals.t
 let with_values ~parent values : scope = { locals = values; parent }
 let init ~parent = with_values ~parent Locals.empty
 
-let rec assign_to_existing (name : symbol) (value : value) (scope : scope) :
-    unit =
+let rec assign_to_existing ~(span : span) (name : symbol) (value : value)
+    (scope : scope) : unit =
   match SymbolMap.find_opt name scope.locals.by_symbol with
   | Some _ ->
       scope.locals <-
         { by_symbol = scope.locals.by_symbol |> SymbolMap.add name value }
   | None -> (
       match scope.parent with
-      | Some parent -> parent |> assign_to_existing name value
-      | None -> fail "Trying to assign to non-existing %a" Symbol.print name)
+      | Some parent -> parent |> assign_to_existing ~span name value
+      | None ->
+          Error.error span "Trying to assign to non-existing %a" Symbol.print
+            name;
+          scope.locals <-
+            { by_symbol = scope.locals.by_symbol |> SymbolMap.add name value })
 
 let rec find_opt (name : symbol) (scope : scope) : value option =
   match SymbolMap.find_opt name scope.locals.by_symbol with

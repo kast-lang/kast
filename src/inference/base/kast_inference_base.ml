@@ -73,29 +73,37 @@ module Var = struct
 
   let unite : 'a. 'a unite -> 'a var unite =
    fun unite_inferred ~span a b ->
-    let root_a = find_root_var a in
-    let root_b = find_root_var b in
-    if root_a == root_b then a
-    else
-      let data = unite_data ~span unite_inferred (find_root a) (find_root b) in
-      let root_a, root_b =
-        if Random.bool () then (root_a, root_b) else (root_b, root_a)
-      in
-      root_a.state <- Root { data };
-      root_b.state <- NotRoot { closer_to_root = root_a };
-      root_a
+    try
+      let root_a = find_root_var a in
+      let root_b = find_root_var b in
+      if root_a == root_b then a
+      else
+        let data =
+          unite_data ~span unite_inferred (find_root a) (find_root b)
+        in
+        let root_a, root_b =
+          if Random.bool () then (root_a, root_b) else (root_b, root_a)
+        in
+        root_a.state <- Root { data };
+        root_b.state <- NotRoot { closer_to_root = root_a };
+        root_a
+    with effect (Error.Error _ as eff), _k ->
+      Effect.perform eff;
+      a
 
   let infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit =
    fun unite_inferred ~span infer_as var ->
-    let root_data = find_root var in
-    let root = find_root_var var in
-    root.state <-
-      Root
-        {
-          data =
-            unite_data ~span unite_inferred root_data
-              { inferred = Some infer_as; once_inferred = [] };
-        }
+    try
+      let root_data = find_root var in
+      let root = find_root_var var in
+      root.state <-
+        Root
+          {
+            data =
+              unite_data ~span unite_inferred root_data
+                { inferred = Some infer_as; once_inferred = [] };
+          }
+    with effect (Error.Error _ as eff), _k -> Effect.perform eff
 
   let once_inferred : 'a. ('a -> unit) -> 'a var -> unit =
    fun f var ->

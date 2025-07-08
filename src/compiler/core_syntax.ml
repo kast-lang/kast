@@ -908,8 +908,9 @@ let core =
 
 (*  TODO remove *)
 
-let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) :
-    core_syntax =
+let make_binop ~name
+    (f : caller:span -> Value.shape * Value.shape -> Value.shape) : core_syntax
+    =
   {
     name;
     handle =
@@ -950,13 +951,13 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) :
                         };
                       name;
                       impl =
-                        (fun arg ->
+                        (fun ~caller arg ->
                           match arg.shape with
                           | V_Tuple { tuple } ->
                               let a, b = Tuple.unwrap_unnamed2 tuple in
-                              { shape = f (a.shape, b.shape) }
+                              { shape = f ~caller (a.shape, b.shape) }
                           | _ ->
-                              error span "expected a tuple";
+                              error caller "bin op %S expected a tuple" name;
                               { shape = V_Error });
                     };
               }
@@ -977,32 +978,40 @@ let make_binop ~name (f : Value.shape * Value.shape -> Value.shape) :
 
 let todo_remove =
   let add : core_syntax =
-    make_binop ~name:"add" (function
+    make_binop ~name:"add" (fun ~caller -> function
       | V_Int32 a, V_Int32 b ->
           let ( + ) = Int32.add in
           V_Int32 (a + b)
-      | _ -> fail "todo %s" __LOC__)
+      | _ ->
+          Error.error caller "todo %s" __LOC__;
+          V_Error)
   in
   let sub : core_syntax =
-    make_binop ~name:"sub" (function
+    make_binop ~name:"sub" (fun ~caller -> function
       | V_Int32 a, V_Int32 b ->
           let ( - ) = Int32.sub in
           V_Int32 (a - b)
-      | _ -> fail "todo %s" __LOC__)
+      | _ ->
+          Error.error caller "todo %s" __LOC__;
+          V_Error)
   in
   let mul : core_syntax =
-    make_binop ~name:"mul" (function
+    make_binop ~name:"mul" (fun ~caller -> function
       | V_Int32 a, V_Int32 b ->
           let ( * ) = Int32.mul in
           V_Int32 (a * b)
-      | _ -> fail "todo %s" __LOC__)
+      | _ ->
+          Error.error caller "todo %s" __LOC__;
+          V_Error)
   in
   let div : core_syntax =
-    make_binop ~name:"div" (function
+    make_binop ~name:"div" (fun ~caller -> function
       | V_Int32 a, V_Int32 b ->
           let ( / ) = Int32.div in
           V_Int32 (a / b)
-      | _ -> fail "todo %s" __LOC__)
+      | _ ->
+          Error.error caller "todo %s" __LOC__;
+          V_Error)
   in
   [ add; sub; mul; div ]
 

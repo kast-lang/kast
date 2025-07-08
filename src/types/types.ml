@@ -28,7 +28,7 @@ and value_tuple = { tuple : value tuple }
 and value_native_fn = {
   name : string;
   ty : ty_fn;
-  impl : value -> value;
+  impl : caller:span -> value -> value;
 }
 
 and ty_tuple = { tuple : ty tuple }
