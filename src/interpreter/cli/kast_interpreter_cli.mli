@@ -7,3 +7,4 @@ end
 
 val eval : Args.t -> unit
 val run : Args.t -> unit
+val repl : Args.t -> unit

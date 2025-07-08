@@ -14,6 +14,7 @@ let main () =
     | Cli.Command.Eval args -> Kast_interpreter_cli.eval args
     | Cli.Command.Run args -> Kast_interpreter_cli.run args
     | Cli.Command.Compile args -> Kast_compiler_cli.run args
+    | Cli.Command.Repl args -> Kast_interpreter_cli.repl args
     | Cli.Command.Help ->
         println "Hello, I am Kast :)\nhelp is not implemented yet"
   with

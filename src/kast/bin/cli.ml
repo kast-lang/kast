@@ -9,13 +9,14 @@ module Command = struct
     | Fmt of Kast_fmt_cli.Args.t
     | Eval of Kast_interpreter_cli.Args.t
     | Run of Kast_interpreter_cli.Args.t
+    | Repl of Kast_interpreter_cli.Args.t
     | Compile of Kast_compiler_cli.Args.t
     | Help
 
   type t = command
 
   let parse = function
-    | [] -> Help
+    | [] -> Repl (Kast_interpreter_cli.Args.parse [])
     | ("lex" | "tokenize") :: args -> Tokenize (Kast_lexer_cli.Args.parse args)
     | "parse" :: args -> Parse (Kast_parser_cli.Args.parse args)
     | ("cat" | "highlight") :: args ->
@@ -25,7 +26,8 @@ module Command = struct
     | "eval" :: args -> Eval (Kast_interpreter_cli.Args.parse args)
     | "run" :: args -> Run (Kast_interpreter_cli.Args.parse args)
     | "compile" :: args -> Compile (Kast_compiler_cli.Args.parse args)
-    | arg :: _rest -> fail "Unexpected arg %S" arg
+    | "repl" :: args -> Repl (Kast_interpreter_cli.Args.parse args)
+    | args -> Run (Kast_interpreter_cli.Args.parse args)
 end
 
 type args = { command : Command.t }
