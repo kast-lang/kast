@@ -104,7 +104,7 @@ let scope : core_syntax =
     name = "scope";
     handle =
       (fun (type a)
-        (module Compiler : Compiler.S)
+        (module C : Compiler.S)
         (kind : a compiled_kind)
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
@@ -117,13 +117,14 @@ let scope : core_syntax =
           |> Tuple.map Ast.Child.expect_ast
           |> Tuple.unwrap_single_unnamed
         in
+        let state = C.state |> State.enter_scope in
         match kind with
         | Expr ->
-            let expr = Compiler.compile Expr expr in
+            let expr = C.compile ~state Expr expr in
             E_Scope { expr } |> init_expr span
-        | Assignee -> Compiler.compile Assignee expr
-        | Pattern -> Compiler.compile Pattern expr
-        | TyExpr -> Compiler.compile TyExpr expr);
+        | Assignee -> C.compile ~state Assignee expr
+        | Pattern -> C.compile ~state Pattern expr
+        | TyExpr -> C.compile ~state TyExpr expr);
   }
 
 let assign : core_syntax =
