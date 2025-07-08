@@ -14,6 +14,7 @@ and value_shape =
   | V_Ty of ty
   | V_Fn of value_fn
   | V_NativeFn of value_native_fn
+  | V_Error
 
 and value = { shape : value_shape }
 
@@ -46,6 +47,7 @@ and ty_shape =
   | T_Tuple of ty_tuple
   | T_Ty
   | T_Fn of ty_fn
+  | T_Error
 
 and ty = { var : ty_shape Inference.var }
 
@@ -111,6 +113,7 @@ and expr_shape =
   | E_Field of expr_field
   | E_UseDotStar of expr_use_dot_star
   | E_If of expr_if
+  | E_Error
 
 and expr = {
   shape : expr_shape;
@@ -123,6 +126,7 @@ and assignee_expr_shape =
   | A_Unit
   | A_Binding of binding
   | A_Let of pattern
+  | A_Error
 
 and assignee_expr = {
   shape : assignee_expr_shape;
@@ -139,6 +143,7 @@ and ty_expr_shape =
   | TE_Unit
   | TE_Fn of ty_expr_fn
   | TE_Expr of expr
+  | TE_Error
 
 and ty_expr = {
   shape : ty_expr_shape;
@@ -151,6 +156,7 @@ and pattern_shape =
   | P_Placeholder
   | P_Unit
   | P_Binding of binding
+  | P_Error
 
 and pattern = {
   shape : pattern_shape;

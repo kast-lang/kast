@@ -89,7 +89,9 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
         UriMap.add uri (Imported value : State.import) imported.by_uri;
       value
   | Some (Imported value) -> value
-  | Some InProgress -> error span "No recursive imports!"
+  | Some InProgress ->
+      error span "No recursive imports!";
+      { shape = V_Error }
 
 let inject_binding (binding : binding) (state : State.t) : unit =
   state.scope <- state.scope |> State.Scope.inject_binding binding
@@ -99,6 +101,7 @@ let inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
   | P_Placeholder -> ()
   | P_Unit -> ()
   | P_Binding binding -> state |> inject_binding binding
+  | P_Error -> ()
 
 let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit
     =
@@ -107,6 +110,7 @@ let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit
   | A_Unit -> ()
   | A_Binding _ -> ()
   | A_Let pattern -> state |> inject_pattern_bindings pattern
+  | A_Error -> ()
 
 module Effect = struct
   type 'a file_included = {

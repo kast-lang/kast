@@ -5,7 +5,7 @@ module Token = Kast_token
 module Interpreter = Kast_interpreter
 module Ast = Kast_ast
 open Init
-include Error
+module Error = Error
 
 type state = State.t
 
@@ -39,7 +39,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   let { shape = _; span } : Ast.t = ast in
   try
     match ast.shape with
-    | Ast.Error _ -> error span "Trying to compile error node"
+    | Ast.Error _ ->
+        Error.error span "Trying to compile error node";
+        init_error span kind
     | Ast.Simple { token; _ } -> (
         match kind with
         | Expr -> (
@@ -62,8 +64,12 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 A_Binding
                   (State.Scope.find_binding ~from:ast.span ident state.scope)
                 |> init_assignee span
-            | Token.Shape.String _ -> error span "string can't be assignee"
-            | Token.Shape.Number _ -> error span "number can't be assignee"
+            | Token.Shape.String _ ->
+                Error.error span "string can't be assignee";
+                init_error span kind
+            | Token.Shape.Number _ ->
+                Error.error span "number can't be assignee";
+                init_error span kind
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!")
         | Pattern -> (
@@ -78,16 +84,24 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                   }
                 in
                 P_Binding binding |> init_pattern span
-            | Token.Shape.String _ -> error span "string can't be pattern"
-            | Token.Shape.Number _ -> error span "number can't be pattern"
+            | Token.Shape.String _ ->
+                Error.error span "string can't be pattern";
+                init_error span kind
+            | Token.Shape.Number _ ->
+                Error.error span "number can't be pattern";
+                init_error span kind
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!"))
     | Ast.Complex { rule; root } -> (
         match rule.name |> String.strip_prefix ~prefix:"core:" with
         | Some name ->
             Core_syntax.handle name (make_compiler state) kind ast root
-        | None -> error span "todo compile syntax rule %S" rule.name)
-    | Ast.Syntax _ -> error span "todo %s" __LOC__
+        | None ->
+            Error.error span "todo compile syntax rule %S" rule.name;
+            init_error span kind)
+    | Ast.Syntax _ ->
+        Error.error span "todo %s" __LOC__;
+        init_error span kind
   with exc ->
     Log.error "While compiling %a %a at %a" Compiler.CompiledKind.print kind
       Ast.Shape.print_short ast.shape Span.print ast.span;

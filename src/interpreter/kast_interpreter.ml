@@ -21,6 +21,7 @@ let pattern_match : value -> pattern -> Scope.locals =
       (* TODO assert that value is unit *)
       Scope.Locals.empty
   | P_Binding binding -> { by_symbol = SymbolMap.singleton binding.name value }
+  | P_Error -> Scope.Locals.empty
 
 let assign : state -> Expr.assignee -> value -> unit =
  fun state assignee value ->
@@ -34,6 +35,7 @@ let assign : state -> Expr.assignee -> value -> unit =
   | A_Let pattern ->
       let new_bindings = pattern_match value pattern in
       state.scope |> Scope.add_locals new_bindings
+  | A_Error -> ()
 
 let rec eval : state -> expr -> value =
  fun state expr ->
@@ -110,6 +112,7 @@ let rec eval : state -> expr -> value =
       | V_Bool true -> eval state then_case
       | V_Bool false -> eval state else_case
       | _ -> fail "if cond must be bool, got %a" Value.print cond)
+  | E_Error -> { shape = V_Error }
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
@@ -122,3 +125,4 @@ and eval_ty : state -> Expr.ty -> ty =
   | TE_Expr expr ->
       let value = eval state expr in
       value |> Value.expect_ty
+  | TE_Error -> Ty.inferred T_Error

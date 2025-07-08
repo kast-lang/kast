@@ -15,6 +15,7 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_Tuple { tuple } -> fprintf fmt "%a" (Tuple.print print_value) tuple
   | V_Fn f -> fprintf fmt "@{<italic><fn>@}"
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
+  | V_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_value : formatter -> value -> unit =
  fun fmt { shape } -> print_value_shape fmt shape
@@ -29,6 +30,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Tuple { tuple } -> fprintf fmt "%a" (Tuple.print print_ty) tuple
   | T_Ty -> fprintf fmt "type"
   | T_Fn { arg; result } -> fprintf fmt "%a -> %a" print_ty arg print_ty result
+  | T_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty : formatter -> ty -> unit =
  fun fmt { var } -> Inference.Var.print print_ty_shape fmt var
@@ -77,6 +79,7 @@ and print_expr_shape :
            [
              ("cond", cond); ("then_case", then_case); ("else_case", else_case);
            ])
+  | E_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->
@@ -101,6 +104,7 @@ and print_assignee_expr_shape : formatter -> assignee_expr_shape -> unit =
   | A_Let pattern ->
       fprintf fmt "@{<magenta>let@} (@;<0 2>pattern = %a@ )"
         print_pattern_with_spans pattern
+  | A_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_assignee_expr_with_spans : formatter -> assignee_expr -> unit =
  fun fmt { shape; data } ->
@@ -117,6 +121,7 @@ and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
         (Tuple.make [] [ ("arg", arg); ("result", result) ])
   | TE_Expr expr ->
       fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
+  | TE_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty_expr : formatter -> ty_expr -> unit =
  fun fmt { shape; data } ->
@@ -130,6 +135,7 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
   | P_Unit -> fprintf fmt "()"
   | P_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
+  | P_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_pattern_with_spans : formatter -> pattern -> unit =
  fun fmt { shape; data } ->

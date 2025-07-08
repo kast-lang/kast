@@ -15,10 +15,7 @@ and workspace_state = {
 }
 
 and file_state = {
-  parser_error : Parser.error option;
   parsed : Parser.result option;
-  compiler_error : Compiler.error option;
-  type_error : Kast_inference.error option;
   compiled : expr option;
   diagnostics : Lsp.Types.Diagnostic.t list;
 }
@@ -26,10 +23,10 @@ and file_state = {
 let process_file (source : source) : file_state =
   Log.info "PROJECT: processing %a" Uri.print source.uri;
   let diagnostics = ref [] in
-  let parser_error, parsed =
+  let parsed =
     try
       let result = Parser.parse source Kast_default_syntax.ruleset in
-      (None, Some result)
+      Some result
     with
     | effect Parser.Error.Error error, k ->
         Log.error "%a" Parser.Error.print error;
@@ -50,33 +47,54 @@ let process_file (source : source) : file_state =
           :: !diagnostics;
         Effect.continue k ()
     (* TODO msg about crash? *)
-    | _ -> (None, None)
+    | _ -> None
   in
   let ast = Option.bind parsed (fun ({ ast; _ } : Parser.result) -> ast) in
-  let compiler_error = ref None in
-  let type_error = ref None in
   let compiled =
     Option.bind ast (fun ast ->
         try
           let compiler = Compiler.default () in
           Some (Compiler.compile compiler Expr ast)
         with
-        | Compiler.Error error ->
-            compiler_error := Some error;
-            None
-        | Kast_inference.Error error ->
-            type_error := Some error;
-            None
+        | effect Compiler.Error.Error error, k ->
+            Log.error "%a" Compiler.Error.print error;
+            (* TODO might be from another file? *)
+            diagnostics :=
+              ({
+                 range = error.span |> Common.span_to_range;
+                 severity = Some Error;
+                 code = None;
+                 codeDescription = None;
+                 source = None;
+                 message = `String (make_string "%t" error.msg);
+                 tags = None;
+                 relatedInformation = None;
+                 data = None;
+               }
+                : Lsp.Types.Diagnostic.t)
+              :: !diagnostics;
+            Effect.continue k ()
+        | effect Kast_inference.Error.Error error, k ->
+            Log.error "%a" Kast_inference.Error.print error;
+            (* TODO might be from another file? *)
+            diagnostics :=
+              ({
+                 range = error.span |> Common.span_to_range;
+                 severity = Some Error;
+                 code = None;
+                 codeDescription = None;
+                 source = None;
+                 message = `String (make_string "%t" error.msg);
+                 tags = None;
+                 relatedInformation = None;
+                 data = None;
+               }
+                : Lsp.Types.Diagnostic.t)
+              :: !diagnostics;
+            Effect.continue k ()
         | _ -> None)
   in
-  {
-    parser_error;
-    parsed;
-    compiler_error = !compiler_error;
-    type_error = !type_error;
-    compiled;
-    diagnostics = !diagnostics;
-  }
+  { parsed; compiled; diagnostics = !diagnostics }
 
 let workspace_file (root : Uri.t) (path : string) =
   Uri.with_path root (Uri.path root ^ "/" ^ path)
@@ -117,10 +135,7 @@ let process_workspace (workspace : workspace_state) =
         | Expr ->
             let file_state : file_state =
               {
-                parser_error = None;
                 parsed = Some parsed;
-                compiler_error = None;
-                type_error = None;
                 compiled = Some compiled;
                 diagnostics = [];
               }

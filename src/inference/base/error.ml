@@ -6,15 +6,13 @@ type error = {
   span : span;
 }
 
-exception Error of error
+type _ Effect.t += Error : error -> unit Effect.t
 
-let () =
-  Printexc.register_printer (function
-    | Error error ->
-        eprintln "@{<red>Type error:@} %a" (fun fmt () -> error.msg fmt) ();
-        exit 1
-    | _ -> None)
-
-let error : 'a 'never. span -> ('a, formatter, unit, 'never) format4 -> 'a =
+let error : 'a. span -> ('a, formatter, unit, unit) format4 -> 'a =
  fun span format ->
-  Format.kdprintf (fun msg -> raise <| Error { msg; span }) format
+  Format.kdprintf (fun msg -> Effect.perform <| Error { msg; span }) format
+
+let print : formatter -> error -> unit =
+ fun fmt error ->
+  fprintf fmt "@{<red>Inference error:@} %t @{<dim>at %a@}" error.msg Span.print
+    error.span

@@ -114,25 +114,29 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
             | E_If { cond; then_case; else_case } ->
                 hover Expr cond pos
                 |> Option.or_else (fun () -> hover Expr then_case pos)
-                |> Option.or_else (fun () -> hover Expr else_case pos))
+                |> Option.or_else (fun () -> hover Expr else_case pos)
+            | E_Error -> None)
         | Assignee -> (
             match compiled.shape with
             | A_Placeholder -> None
             | A_Unit -> None
             | A_Binding _ -> None
-            | A_Let pattern -> hover Pattern pattern pos)
+            | A_Let pattern -> hover Pattern pattern pos
+            | A_Error -> None)
         | Pattern -> (
             match compiled.shape with
             | P_Placeholder -> None
             | P_Unit -> None
-            | P_Binding _ -> None)
+            | P_Binding _ -> None
+            | P_Error -> None)
         | TyExpr -> (
             match compiled.shape with
             | TE_Unit -> None
             | TE_Fn { arg; result } ->
                 hover TyExpr arg pos
                 |> Option.or_else (fun () -> hover TyExpr result pos)
-            | TE_Expr expr -> hover Expr expr pos)
+            | TE_Expr expr -> hover Expr expr pos
+            | TE_Error -> None)
       in
       let inner =
         inner

@@ -37,6 +37,7 @@ module Value = struct
     | V_Fn { def = { arg; body; evaled_result = _ }; captured = _ } ->
         Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
+    | V_Error -> Ty.inferred T_Error
 
   let expect_ty : value -> ty =
    fun value ->

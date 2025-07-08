@@ -56,10 +56,12 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
                        | Some ty -> ty
                        | None ->
                            error span "field %a is not there"
-                             String.print_maybe_escaped field)
+                             String.print_maybe_escaped field;
+                           Ty.new_not_inferred ())
                    | other ->
                        error obj.data.span "%a doesnt have fields"
-                         Ty.Shape.print other
+                         Ty.Shape.print other;
+                       Ty.new_not_inferred ()
                  in
                  ty |> Inference.Ty.expect_inferred_as ~span field_ty);
           ty
@@ -74,6 +76,7 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
           else_case.data.ty
           |> Inference.Ty.expect_inferred_as ~span:else_case.data.span ty;
           ty
+      | E_Error -> Ty.new_not_inferred ()
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
@@ -90,6 +93,7 @@ let init_assignee :
       | A_Unit -> Ty.inferred T_Unit
       | A_Binding binding -> binding.ty
       | A_Let pattern -> pattern.data.ty
+      | A_Error -> Ty.new_not_inferred ()
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
@@ -105,6 +109,7 @@ let init_pattern : ?evaled_exprs:expr list -> span -> Pattern.Shape.t -> pattern
       | P_Placeholder -> Ty.new_not_inferred ()
       | P_Unit -> Ty.inferred T_Unit
       | P_Binding binding -> binding.ty
+      | P_Error -> Ty.new_not_inferred ()
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
@@ -124,7 +129,8 @@ let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
           ()
       | TE_Expr expr ->
           expr.data.ty
-          |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty);
+          |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty
+      | TE_Error -> ());
       {
         shape;
         data = { span; ty = type_ty; ty_ascription = None; evaled_exprs };
@@ -132,3 +138,11 @@ let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
     with exc ->
       Log.error "while initializing type expr at %a" Span.print span;
       raise exc
+
+let init_error : 'a. span -> 'a Compiler.compiled_kind -> 'a =
+ fun (type a) span (kind : a Compiler.compiled_kind) : a ->
+  match kind with
+  | Expr -> E_Error |> init_expr span
+  | Pattern -> P_Error |> init_pattern span
+  | Assignee -> A_Error |> init_assignee span
+  | TyExpr -> TE_Error |> init_ty_expr span

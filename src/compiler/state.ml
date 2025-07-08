@@ -33,7 +33,13 @@ module Scope = struct
     scope
     |> find_binding_opt ~from ident
     |> Option.unwrap_or_else (fun () : binding ->
-           error from "Could not find %S in scope" ident.name)
+           error from "Could not find %S in scope" ident.name;
+           {
+             name = Symbol.create ident.name;
+             span = from;
+             ty = Ty.new_not_inferred ();
+             references = [];
+           })
 
   let inject_binding : binding -> scope -> scope =
    fun binding { parent; bindings } ->

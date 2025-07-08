@@ -56,25 +56,29 @@ let rec inlay_hints :
                 inlay_hints Expr then_case;
                 inlay_hints Expr else_case;
               ]
-              |> List.to_seq |> Seq.concat ))
+              |> List.to_seq |> Seq.concat )
+        | E_Error -> (None, Seq.empty))
     | Pattern -> (
         match compiled.shape with
         | P_Placeholder -> (None, Seq.empty)
         | P_Unit -> (None, Seq.empty)
-        | P_Binding _ -> (Some compiled.data.ty, Seq.empty))
+        | P_Binding _ -> (Some compiled.data.ty, Seq.empty)
+        | P_Error -> (None, Seq.empty))
     | Assignee -> (
         match compiled.shape with
         | A_Placeholder -> (None, Seq.empty)
         | A_Unit -> (None, Seq.empty)
         | A_Binding _ -> (None, Seq.empty)
-        | A_Let pattern -> (None, inlay_hints Pattern pattern))
+        | A_Let pattern -> (None, inlay_hints Pattern pattern)
+        | A_Error -> (None, Seq.empty))
     | TyExpr -> (
         match compiled.shape with
         | TE_Unit -> (None, Seq.empty)
         | TE_Fn { arg; result } ->
             ( None,
               Seq.append (inlay_hints TyExpr arg) (inlay_hints TyExpr result) )
-        | TE_Expr expr -> (None, inlay_hints Expr expr))
+        | TE_Expr expr -> (None, inlay_hints Expr expr)
+        | TE_Error -> (None, Seq.empty))
   in
   let data = Compiler.get_data kind compiled in
   let span = data.span in

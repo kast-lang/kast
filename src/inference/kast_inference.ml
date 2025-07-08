@@ -8,10 +8,12 @@ let rec _unused = ()
 
 and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
  fun ~span a b ->
-  let fail () =
-    error span "type check failed: %a != %a" Ty.Shape.print a Ty.Shape.print b
+  let fail () : Ty.Shape.t =
+    error span "type check failed: %a != %a" Ty.Shape.print a Ty.Shape.print b;
+    T_Error
   in
   match (a, b) with
+  | T_Error, smth | smth, T_Error -> smth
   | T_Unit, T_Unit -> T_Unit
   | T_Unit, _ -> fail ()
   | T_Bool, T_Bool -> T_Bool
