@@ -7,14 +7,18 @@ const foo = f ();
 use foo.*;
 std.io.print s;
 let x = 123;
-syntax inline_fn 100 wrap never = "fn" " " name " " arg " " "=>" " " body;
-impl syntax (fn name arg => body) = `(
-  let \name = \arg => \body
+syntax inline_fn 100 wrap always = "fn" " " name "(" arg:any ")" " " "(" "\n\t" body:any ""/"\\\n" ")";
+impl syntax (
+  fn name(arg) (
+    body
+  )
+) = `(
+  let \name :: _ = \arg => \body
 );
 # impl syntax "inline_fn" = (.name, .arg, .body) => `(
 #   let \name = \arg => \body
 # );
-fn f (x, .a, .b) => (
+fn f(x, .a, .b) (
   print x;
   print a;
   print (std.int32_to_string b);
