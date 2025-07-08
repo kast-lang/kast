@@ -709,22 +709,73 @@ let dot : core_syntax =
                 E_Field { obj; field } |> init_expr span));
   }
 
+let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
+    (ast : Ast.t) ({ children; _ } : Ast.group) : string * a =
+  let span = ast.span in
+  let label = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
+  let label =
+    match label.shape with
+    | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
+    | _ ->
+        Error.error label.span "field label must be ident";
+        invalid_arg "tuple field"
+  in
+  let ty =
+    children |> Tuple.get_named_opt "type"
+    |> Option.map (fun ty ->
+           let group = ty |> Ast.Child.expect_group in
+           group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
+  in
+  (* TODO *)
+  let ty = Ty.new_not_inferred () in
+  let value =
+    children
+    |> Tuple.get_named_opt "value"
+    |> Option.map (fun value ->
+           let group = value |> Ast.Child.expect_group in
+           group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
+  in
+  match kind with
+  | Expr ->
+      error span "todo %s" __LOC__;
+      invalid_arg "todo"
+  | TyExpr ->
+      error span "todo %s" __LOC__;
+      invalid_arg "todo"
+  | Assignee ->
+      error span "todo %s" __LOC__;
+      invalid_arg "todo"
+  | Pattern ->
+      let value =
+        match value with
+        | Some value -> C.compile Pattern value
+        | None ->
+            P_Binding { name = Symbol.create label; ty; references = []; span }
+            |> init_pattern span
+      in
+      (label, value)
+
 let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
     (ast : Ast.t) : a =
   let span = ast.span in
   let children = ast |> Ast.collect_list ~binary_rule_name:"core:comma" in
-  let children = children |> List.map (fun child -> C.compile kind child) in
+  let tuple = ref Tuple.empty in
+  children
+  |> List.iter (fun (child : Ast.t) ->
+         match child.shape with
+         | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
+             let name, value = tuple_field (module C) kind child root in
+             tuple := !tuple |> Tuple.add (Some name) value
+         | _ -> tuple := !tuple |> Tuple.add None (C.compile kind child));
   match kind with
   | Assignee ->
       error span "todo comma assignee";
       init_error span kind
-  | Pattern ->
-      error span "todo comma pattern";
-      init_error span kind
+  | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span
   | TyExpr ->
       error span "todo comma ty expr";
       init_error span kind
-  | Expr -> E_Tuple { tuple = Tuple.make children [] } |> init_expr span
+  | Expr -> E_Tuple { tuple = !tuple } |> init_expr span
 
 let comma : core_syntax =
   {
@@ -876,6 +927,91 @@ let if' : core_syntax =
             init_error span kind);
   }
 
+let impl_syntax : core_syntax =
+  {
+    name = "impl syntax";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        match kind with
+        | Expr ->
+            let name, impl =
+              children
+              |> Tuple.map Ast.Child.expect_ast
+              |> Tuple.unwrap_named2 [ "name"; "impl" ]
+            in
+            let name, name_expr =
+              Compiler.eval ~ty:(Ty.inferred T_String) (module C) name
+            in
+            let name = name |> Value.expect_string in
+            let impl, impl_expr =
+              Compiler.eval
+                ~ty:
+                  ((* TODO *)
+                   Ty.new_not_inferred ())
+                (module C)
+                impl
+            in
+            let rule =
+              Kast_default_syntax.ruleset |> Kast_parser.Ruleset.find_rule name
+            in
+            Hashtbl.add C.state.custom_syntax_impls rule.id impl;
+            E_Constant { shape = V_Unit }
+            |> init_expr ~evaled_exprs:[ name_expr; impl_expr ] span
+        | TyExpr ->
+            error span "impl syntax can't be assignee";
+            init_error span kind
+        | Assignee ->
+            error span "impl syntax can't be assignee";
+            init_error span kind
+        | Pattern ->
+            error span "impl syntax can't be assignee";
+            init_error span kind);
+  }
+
+let field_init : core_syntax =
+  {
+    name = "field init";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (_ : Ast.group)
+        :
+        a
+      -> comma_impl (module C) kind ast);
+  }
+
+let quote : core_syntax =
+  {
+    name = "quote";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        match kind with
+        | Expr ->
+            error span "todo %s" __LOC__;
+            init_error span kind
+        | _ ->
+            error span "quote must be expr";
+            init_error span kind);
+  }
+
 let core =
   [
     apply;
@@ -904,6 +1040,9 @@ let core =
     true';
     false';
     if';
+    impl_syntax;
+    field_init;
+    quote;
   ]
 
 (*  TODO remove *)

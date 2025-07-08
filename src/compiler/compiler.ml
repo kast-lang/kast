@@ -96,11 +96,15 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
 let inject_binding (binding : binding) (state : State.t) : unit =
   state.scope <- state.scope |> State.Scope.inject_binding binding
 
-let inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
+let rec inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
   match pattern.shape with
   | P_Placeholder -> ()
   | P_Unit -> ()
   | P_Binding binding -> state |> inject_binding binding
+  | P_Tuple { tuple } ->
+      tuple |> Tuple.to_seq
+      |> Seq.iter (fun (_member, field_pattern) ->
+             state |> inject_pattern_bindings field_pattern)
   | P_Error -> ()
 
 let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit

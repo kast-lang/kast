@@ -14,7 +14,7 @@ let init : Scope.locals -> state =
 
 let default () = init Scope.Locals.empty
 
-let pattern_match : value -> pattern -> Scope.locals =
+let rec pattern_match : value -> pattern -> Scope.locals =
  fun value pattern ->
   match pattern.shape with
   | P_Placeholder -> Scope.Locals.empty
@@ -22,6 +22,31 @@ let pattern_match : value -> pattern -> Scope.locals =
       (* TODO assert that value is unit *)
       Scope.Locals.empty
   | P_Binding binding -> { by_symbol = SymbolMap.singleton binding.name value }
+  | P_Tuple { tuple = tuple_pattern } -> (
+      match value.shape with
+      | V_Tuple { tuple } ->
+          {
+            by_symbol =
+              Tuple.zip_order_a tuple_pattern tuple
+              |> Tuple.to_seq
+              |> Seq.fold_left
+                   (fun acc (_member, (field_pattern, field_value)) ->
+                     let field_matches =
+                       pattern_match field_value field_pattern
+                     in
+                     SymbolMap.union
+                       (fun symbol _a b ->
+                         Error.error pattern.data.span
+                           "multiple bindings of same symbol %a" Symbol.print
+                           symbol;
+                         Some b)
+                       acc field_matches.by_symbol)
+                   SymbolMap.empty;
+          }
+      | _ ->
+          Error.error pattern.data.span "Expected tuple, got %a" Value.print
+            value;
+          Scope.Locals.empty)
   | P_Error -> Scope.Locals.empty
 
 let assign : state -> Expr.assignee -> value -> unit =

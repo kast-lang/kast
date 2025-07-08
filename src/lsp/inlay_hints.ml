@@ -63,6 +63,11 @@ let rec inlay_hints :
         | P_Placeholder -> (None, Seq.empty)
         | P_Unit -> (None, Seq.empty)
         | P_Binding _ -> (Some compiled.data.ty, Seq.empty)
+        | P_Tuple { tuple } ->
+            ( None,
+              tuple |> Tuple.to_seq
+              |> Seq.flat_map (fun (_member, field_pattern) ->
+                     inlay_hints Pattern field_pattern) )
         | P_Error -> (None, Seq.empty))
     | Assignee -> (
         match compiled.shape with

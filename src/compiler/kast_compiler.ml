@@ -28,7 +28,12 @@ let init : compile_for:Interpreter.state -> state =
              })
       compile_for.scope.locals.by_symbol scope
   in
-  { scope; interpreter = compile_for; imported = State.init_imported () }
+  {
+    scope;
+    interpreter = compile_for;
+    imported = State.init_imported ();
+    custom_syntax_impls = Hashtbl.create 0;
+  }
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
 
@@ -147,4 +152,5 @@ let default () : state =
     scope;
     interpreter = interpreter_with_std;
     imported = State.init_imported ();
+    custom_syntax_impls = Hashtbl.create 0;
   }

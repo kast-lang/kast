@@ -109,6 +109,15 @@ let init_pattern : ?evaled_exprs:expr list -> span -> Pattern.Shape.t -> pattern
       | P_Placeholder -> Ty.new_not_inferred ()
       | P_Unit -> Ty.inferred T_Unit
       | P_Binding binding -> binding.ty
+      | P_Tuple { tuple } ->
+          Ty.inferred
+            (T_Tuple
+               {
+                 tuple =
+                   tuple
+                   |> Tuple.map (fun (field_pattern : pattern) ->
+                          field_pattern.data.ty);
+               })
       | P_Error -> Ty.new_not_inferred ()
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }

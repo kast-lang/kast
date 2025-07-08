@@ -51,6 +51,12 @@ module Value = struct
     | V_String s -> s
     | _ -> fail "expected string, got %a" print_value value
 
+  let expect_fn : value -> value_fn =
+   fun value ->
+    match value.shape with
+    | V_Fn f -> f
+    | _ -> fail "expected fn, got %a" print_value value
+
   let expect_tuple : value -> value_tuple =
    fun value ->
     match value.shape with

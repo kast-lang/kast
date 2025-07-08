@@ -6,3 +6,4 @@
 "examples/test-interpreter.ks",
 "examples/zero.ks",
 "examples/doesnt-parse.ks",
+"examples/custom-syntax.ks",

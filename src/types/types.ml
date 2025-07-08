@@ -152,10 +152,13 @@ and ty_expr = {
 }
 
 (* PATTERN *)
+and pattern_tuple = { tuple : pattern tuple }
+
 and pattern_shape =
   | P_Placeholder
   | P_Unit
   | P_Binding of binding
+  | P_Tuple of pattern_tuple
   | P_Error
 
 and pattern = {

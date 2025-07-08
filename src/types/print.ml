@@ -135,6 +135,10 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
   | P_Unit -> fprintf fmt "()"
   | P_Binding binding ->
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
+  | P_Tuple { tuple } ->
+      fprintf fmt "@{<magenta>tuple@} %a"
+        (Tuple.print print_pattern_with_spans)
+        tuple
   | P_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_pattern_with_spans : formatter -> pattern -> unit =

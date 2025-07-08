@@ -113,6 +113,7 @@ let parse : Lexer.t -> Syntax.rule =
   in
   let finish = Lexer.position lexer in
   {
+    id = Id.gen ();
     span = { start; finish; uri = (Lexer.source lexer).uri };
     name;
     priority;
@@ -182,9 +183,14 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
           | None -> true
           | Some Optional -> (
               let expected_keyword =
-                match group_rule.parts with
-                | Keyword keyword :: _ -> keyword
-                | _ -> fail "Optional groups should have keyword as first part"
+                group_rule.parts
+                |> List.find_map (function
+                     | Syntax.Rule.Whitespace _ -> None
+                     | Syntax.Rule.Keyword keyword -> Some keyword
+                     | _ ->
+                         fail
+                           "Optional groups should have keyword as first part")
+                |> Option.get
               in
               match parsed_parts with
               | Keyword keyword :: _

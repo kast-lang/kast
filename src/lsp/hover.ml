@@ -128,6 +128,10 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
             | P_Placeholder -> None
             | P_Unit -> None
             | P_Binding _ -> None
+            | P_Tuple { tuple } ->
+                tuple |> Tuple.to_seq
+                |> Seq.find_map (fun (_member, field_pattern) ->
+                       hover Pattern field_pattern pos)
             | P_Error -> None)
         | TyExpr -> (
             match compiled.shape with

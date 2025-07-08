@@ -59,13 +59,24 @@ type t = {
   mutable scope : Scope.t;
   imported : imported;
   interpreter : Interpreter.state;
+  custom_syntax_impls : (Id.t, value) Hashtbl.t;
 }
 
 type state = t
 
 let blank ~imported =
-  { scope = Scope.init (); imported; interpreter = Interpreter.default () }
+  {
+    scope = Scope.init ();
+    imported;
+    interpreter = Interpreter.default ();
+    custom_syntax_impls = Hashtbl.create 0;
+  }
 
 let enter_scope : state -> state =
- fun { scope; interpreter; imported } ->
-  { scope = Scope.enter ~parent:scope; interpreter; imported }
+ fun { scope; interpreter; imported; custom_syntax_impls } ->
+  {
+    scope = Scope.enter ~parent:scope;
+    interpreter;
+    imported;
+    custom_syntax_impls;
+  }
