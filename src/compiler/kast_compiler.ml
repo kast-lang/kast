@@ -101,9 +101,33 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
         match rule.name |> String.strip_prefix ~prefix:"core:" with
         | Some name ->
             Core_syntax.handle name (make_compiler state) kind ast root
-        | None ->
-            Error.error span "todo compile syntax rule %S" rule.name;
-            init_error span kind)
+        | None -> (
+            match Hashtbl.find_opt state.custom_syntax_impls rule.id with
+            | Some impl -> (
+                (* TODO *)
+                let args =
+                  root.children
+                  |> Tuple.map Ast.Child.expect_ast
+                  |> Tuple.map (fun ast : value -> { shape = V_Ast ast })
+                in
+                let arg : value = { shape = V_Tuple { tuple = args } } in
+                let expr =
+                  E_Apply
+                    {
+                      f = E_Constant impl |> init_expr span;
+                      arg = E_Constant arg |> init_expr span;
+                    }
+                  |> init_expr span
+                in
+                let result = Interpreter.eval state.interpreter expr in
+                match result.shape with
+                | V_Ast result -> compile state kind result
+                | _ ->
+                    Error.error span "macro expanded not to ast???";
+                    init_error span kind)
+            | None ->
+                Error.error span "Must impl rule before using it: %S" rule.name;
+                init_error span kind))
     | Ast.Syntax _ ->
         Error.error span "todo %s" __LOC__;
         init_error span kind
@@ -152,5 +176,5 @@ let default () : state =
     scope;
     interpreter = interpreter_with_std;
     imported = State.init_imported ();
-    custom_syntax_impls = Hashtbl.create 0;
+    custom_syntax_impls = bootstrap.custom_syntax_impls;
   }
