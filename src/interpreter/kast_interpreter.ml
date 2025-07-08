@@ -101,7 +101,12 @@ let rec eval : state -> expr -> value =
   | E_Field { obj; field } -> (
       let obj = eval state obj in
       match obj.shape with
-      | V_Tuple { tuple } -> Tuple.get_named field tuple
+      | V_Tuple { tuple } -> (
+          match Tuple.get_named_opt field tuple with
+          | Some field -> field
+          | None ->
+              Error.error expr.data.span "field %S doesnt exist" field;
+              { shape = V_Error })
       | _ ->
           Error.error expr.data.span "%a doesnt have fields" Value.print obj;
           { shape = V_Error })
