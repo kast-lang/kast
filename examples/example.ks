@@ -7,10 +7,25 @@ const foo = f ();
 use foo.*;
 std.io.print s;
 let x = 123;
-let f = (x, .a, .b) => (
+syntax inline_fn 100 wrap never = "fn" " " name " " arg " " "=>" " " body;
+impl syntax (fn name arg => body) = `(
+  let \name = \arg => \body
+);
+# impl syntax "inline_fn" = (.name, .arg, .body) => `(
+#   let \name = \arg => \body
+# );
+fn f (x, .a, .b) => (
   print x;
   print a;
   print (std.int32_to_string b);
 );
 let ast = `(2 + 2);
-`(2 + \ast)
+`(2 + \ast);
+syntax for 10 wrap never = "for" " " elem " " "in" " " iterator " " "do" " " body;
+impl syntax (for x in a do e) = `(
+  # not a real loop
+  let \x = \a;
+  \e
+);
+impl syntax "for" = (.elem = x, .iterator = a, .body = e) => `(same thing);
+for x in "123" do print x

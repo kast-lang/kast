@@ -143,6 +143,9 @@ let is_keyword : string -> ruleset -> bool =
 let find_rule : string -> ruleset -> Syntax.rule =
  fun name ruleset -> StringMap.find name ruleset.rules
 
+let find_rule_opt : string -> ruleset -> Syntax.rule option =
+ fun name ruleset -> StringMap.find_opt name ruleset.rules
+
 let of_list : Syntax.rule list -> ruleset =
  fun rules -> List.fold_right add rules empty
 

@@ -948,30 +948,67 @@ let impl_syntax : core_syntax =
       ->
         let span = ast.span in
         match kind with
-        | Expr ->
+        | Expr -> (
             let name, impl =
               children
               |> Tuple.map Ast.Child.expect_ast
               |> Tuple.unwrap_named2 [ "name"; "impl" ]
             in
-            let name, name_expr =
-              Compiler.eval ~ty:(Ty.inferred T_String) (module C) name
-            in
-            let name = name |> Value.expect_string in
-            let impl, impl_expr =
-              Compiler.eval
-                ~ty:
-                  ((* TODO *)
-                   Ty.new_not_inferred ())
-                (module C)
-                impl
-            in
-            let rule =
-              Kast_default_syntax.ruleset |> Kast_parser.Ruleset.find_rule name
-            in
-            Hashtbl.add C.state.custom_syntax_impls rule.id impl;
-            E_Constant { shape = V_Unit }
-            |> init_expr ~evaled_exprs:[ name_expr; impl_expr ] span
+            match name.shape with
+            | Complex
+                { rule = { name = "core:scope"; _ }; root = { children; _ } } ->
+                let inner =
+                  children |> Tuple.unwrap_single_unnamed
+                  |> Ast.Child.expect_ast
+                  |> function
+                  | { shape = Complex inner; _ } -> inner
+                  | _ -> failwith __LOC__
+                in
+                let rule = inner.rule in
+                let fields =
+                  inner.root.children |> Tuple.map Ast.Child.expect_ast
+                in
+                let impl_expr =
+                  let state = State.enter_scope C.state in
+                  let arg =
+                    P_Tuple
+                      {
+                        tuple =
+                          fields
+                          |> Tuple.map (fun field ->
+                                 C.compile ~state Pattern field);
+                      }
+                    |> init_pattern name.span
+                  in
+                  state |> Compiler.inject_pattern_bindings arg;
+                  let body = C.compile ~state Expr impl in
+                  E_Fn { arg; body; evaled_result = None } |> init_expr span
+                in
+                let impl = Interpreter.eval C.state.interpreter impl_expr in
+                Hashtbl.add C.state.custom_syntax_impls rule.id impl;
+                E_Constant { shape = V_Unit }
+                |> init_expr ~evaled_exprs:[ impl_expr ] span
+            | _ ->
+                let name, name_expr =
+                  Compiler.eval ~ty:(Ty.inferred T_String) (module C) name
+                in
+                let name = name |> Value.expect_string in
+                let impl, impl_expr =
+                  Compiler.eval
+                    ~ty:
+                      ((* TODO *)
+                       Ty.new_not_inferred ())
+                    (module C)
+                    impl
+                in
+                ( Kast_default_syntax.ruleset
+                |> Kast_parser.Ruleset.find_rule_opt name
+                |> function
+                  | Some rule ->
+                      Hashtbl.add C.state.custom_syntax_impls rule.id impl
+                  | None -> Error.error span "Syntax rule not found: %S" name );
+                E_Constant { shape = V_Unit }
+                |> init_expr ~evaled_exprs:[ name_expr; impl_expr ] span)
         | TyExpr ->
             error span "impl syntax can't be assignee";
             init_error span kind

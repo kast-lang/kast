@@ -128,9 +128,15 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | None ->
                 Error.error span "Must impl rule before using it: %S" rule.name;
                 init_error span kind))
-    | Ast.Syntax _ ->
-        Error.error span "todo %s" __LOC__;
-        init_error span kind
+    | Ast.Syntax { mode; value_after; comments_before = _; tokens = _ } -> (
+        match value_after with
+        | Some value -> compile state kind value
+        | None -> (
+            match kind with
+            | Expr -> E_Constant { shape = V_Unit } |> init_expr span
+            | _ ->
+                Error.error span "expected a value after syntax";
+                init_error span kind))
   with exc ->
     Log.error "While compiling %a %a at %a" Compiler.CompiledKind.print kind
       Ast.Shape.print_short ast.shape Span.print ast.span;
