@@ -115,6 +115,8 @@ and expr_quote_ast = {
   root : expr_quote_ast_group;
 }
 
+and expr_loop = { body : expr }
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -132,6 +134,7 @@ and expr_shape =
   | E_UseDotStar of expr_use_dot_star
   | E_If of expr_if
   | E_QuoteAst of expr_quote_ast
+  | E_Loop of expr_loop
   | E_Error
 
 and expr = {

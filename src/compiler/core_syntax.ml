@@ -1118,6 +1118,32 @@ let quote : core_syntax =
             init_error span kind);
   }
 
+let loop : core_syntax =
+  {
+    name = "loop";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let body =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        match kind with
+        | Expr ->
+            E_Loop
+              { body = C.compile ~state:(State.enter_scope C.state) Expr body }
+            |> init_expr span
+        | _ ->
+            error span "loop must be expr";
+            init_error span kind);
+  }
+
 let core =
   [
     apply;
@@ -1149,6 +1175,7 @@ let core =
     impl_syntax;
     field_init;
     quote;
+    loop;
   ]
 
 (*  TODO remove *)

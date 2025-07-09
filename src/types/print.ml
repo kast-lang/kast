@@ -82,6 +82,9 @@ and print_expr_shape :
              ("cond", cond); ("then_case", then_case); ("else_case", else_case);
            ])
   | E_Error -> fprintf fmt "@{<red><error>@}"
+  | E_Loop { body } ->
+      fprintf fmt "@{<magenta>loop@} (@;<0 2>@[<v>body = %a,@]@ )" print_expr
+        body
   | E_QuoteAst expr -> fprintf fmt "@{<magenta>quote_ast ...@}"
 
 and print_expr_with_spans : formatter -> expr -> unit =

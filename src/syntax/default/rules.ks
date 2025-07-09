@@ -38,6 +38,7 @@ syntax "core:type expr" 1000 wrap never = "type" " " _ ->;
 syntax "core:type" 1000 wrap never = "type";
 syntax "core:true" 1000 wrap never = "true";
 syntax "core:false" 1000 wrap never = "false";
+syntax "core:loop" 1000 wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 syntax "core:unit" 1000 wrap never = "(" ")";
 syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 syntax "core:placeholder" 1000 wrap never = "_";

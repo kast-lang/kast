@@ -57,6 +57,7 @@ let rec inlay_hints :
                 inlay_hints Expr else_case;
               ]
               |> List.to_seq |> Seq.concat )
+        | E_Loop { body } -> (None, inlay_hints Expr body)
         | E_QuoteAst _ ->
             (* TODO *)
             (None, Seq.empty)

@@ -115,6 +115,7 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 hover Expr cond pos
                 |> Option.or_else (fun () -> hover Expr then_case pos)
                 |> Option.or_else (fun () -> hover Expr else_case pos)
+            | E_Loop { body } -> hover Expr body pos
             | E_QuoteAst _ ->
                 (* TODO *)
                 None

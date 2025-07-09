@@ -79,6 +79,7 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
       | E_QuoteAst _ ->
           (* TODO assert all children are ast *)
           Ty.inferred T_Ast
+      | E_Loop { body } -> Ty.new_not_inferred ()
       | E_Error -> Ty.new_not_inferred ()
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }

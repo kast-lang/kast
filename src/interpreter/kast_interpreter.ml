@@ -9,6 +9,12 @@ type state = {
   scope : Scope.t;
 }
 
+let enter_scope state : state =
+  {
+    state with
+    scope = { parent = Some state.scope; locals = Scope.Locals.empty };
+  }
+
 let init : Scope.locals -> state =
  fun values ->
   { scope = Scope.with_values ~parent:None values; natives = Natives.natives }
@@ -89,7 +95,9 @@ let rec eval : state -> expr -> value =
   | E_Stmt { expr } ->
       ignore <| eval state expr;
       { shape = V_Unit }
-  | E_Scope { expr } -> eval state expr
+  | E_Scope { expr } ->
+      let state = state |> enter_scope in
+      eval state expr
   | E_Assign { assignee; value } ->
       let value = eval state value in
       assign state assignee value;
@@ -163,6 +171,11 @@ let rec eval : state -> expr -> value =
             Value.print cond;
           { shape = V_Error })
   | E_QuoteAst expr -> { shape = V_Ast (quote_ast state expr) }
+  | E_Loop { body } ->
+      let state = state |> enter_scope in
+      while true do
+        ignore @@ eval state body
+      done
   | E_Error -> { shape = V_Error }
 
 and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
