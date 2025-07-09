@@ -15,7 +15,7 @@ let format : formatter -> Parser.result -> unit =
  fun fmt { ast; trailing_comments; eof = _ } ->
   let print_indent level =
     for _ = 1 to level do
-      fprintf fmt "  "
+      fprintf fmt "    "
     done
   in
 
