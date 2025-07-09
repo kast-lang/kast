@@ -21,7 +21,7 @@ and file_state = {
 }
 
 let process_file (source : source) : file_state =
-  Log.info "PROJECT: processing %a" Uri.print source.uri;
+  Log.trace "PROJECT: processing %a" Uri.print source.uri;
   let diagnostics = ref [] in
   let parsed =
     try
@@ -121,7 +121,7 @@ let process_workspace (workspace : workspace_state) =
   workspace.files <- UriMap.empty;
   try
     let handle_processed uri file_state =
-      Log.info "File processed %a" Uri.print uri;
+      Log.trace "File processed %a" Uri.print uri;
       workspace.files <- UriMap.add uri file_state workspace.files
     in
     try
@@ -139,7 +139,7 @@ let process_workspace (workspace : workspace_state) =
         workspace_roots.tuple.unnamed |> Array.to_list
         |> List.map (fun value -> value |> Value.expect_string |> Option.get)
       in
-      Log.info "WORKSPACE ROOTS = %a"
+      Log.trace "WORKSPACE ROOTS = %a"
         (List.print String.print_dbg)
         workspace_roots;
       workspace_roots
@@ -173,7 +173,7 @@ let process_workspace (workspace : workspace_state) =
     ()
 
 let init_workspace (root : Uri.t) : workspace_state =
-  Log.info "Initializing workspace at %a" Uri.print root;
+  Log.trace "Initializing workspace at %a" Uri.print root;
   let workspace : workspace_state = { root; files = UriMap.empty } in
   process_workspace workspace;
   workspace
@@ -187,14 +187,14 @@ let init (workspaces : Lsp.Uri.t list) : global_state =
 
 let file_state (state : global_state) (uri : Lsp.Uri.t) : file_state option =
   let uri = Common.uri_from_lsp uri in
-  Log.info "PROJECT: find file state %a" Uri.print uri;
+  Log.trace "PROJECT: find file state %a" Uri.print uri;
   state.workspaces
   |> List.find_map (fun workspace -> UriMap.find_opt uri workspace.files)
 
 let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
     unit =
   let uri = Common.uri_from_lsp uri in
-  Log.info "PROJECT: update %a" Uri.print uri;
+  Log.trace "PROJECT: update %a" Uri.print uri;
   state.vfs <- UriMap.add uri source state.vfs;
   try state.workspaces |> List.iter process_workspace
   with effect (Source.Read uri as eff), k -> (

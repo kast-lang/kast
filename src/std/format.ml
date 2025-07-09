@@ -53,8 +53,15 @@ module Format = struct
   let eprintln format = fprintln err_formatter format
   let println format = fprintln std_formatter format
 
-  let make_string : 'a. ('a, formatter, unit, tag) format4 -> 'a =
-   fun format -> kfprintf (fun _ -> flush_str_formatter ()) str_formatter format
+  let make_string : 'a. ('a, formatter, unit, string) format4 -> 'a =
+   fun format ->
+    let buffer = Buffer.create 32 in
+    let fmt = formatter_of_buffer buffer in
+    kfprintf
+      (fun _ ->
+        pp_print_flush fmt ();
+        buffer |> Buffer.contents)
+      fmt format
 
   let ansi_escape : string -> string * string = function
     | "bold" -> ("1", "22")

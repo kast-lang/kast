@@ -86,13 +86,19 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         |> Latest_state.spawn ~domain_mgr (fun () ->
                Processing.update_file (self#get_state ()) uri contents);
 
-      let new_state = self#file_state uri in
-      let diags =
-        match new_state with
-        | Some new_state -> Kast_lsp.Diagnostics.get new_state
-        | None -> []
-      in
-      notify_back#send_diagnostic diags
+      Eio.Fiber.fork ~sw (fun () ->
+          let new_state = self#file_state uri in
+          let diags =
+            match new_state with
+            | Some new_state -> Kast_lsp.Diagnostics.get new_state
+            | None -> []
+          in
+          let print_diag fmt diag =
+            fprintf fmt "%s"
+              (diag |> Lsp.Types.Diagnostic.yojson_of_t |> Yojson.Safe.to_string)
+          in
+          Log.info "sending diags %a" (List.print print_diag) diags;
+          notify_back#send_diagnostic diags)
 
     (* We now override the [on_notify_doc_did_open] method that will be called
        by the server each time a new document is opened. *)
