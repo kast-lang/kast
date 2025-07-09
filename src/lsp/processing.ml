@@ -195,7 +195,9 @@ let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
     unit =
   let uri = Common.uri_from_lsp uri in
   Log.trace "PROJECT: update %a" Uri.print uri;
-  state.vfs <- UriMap.add uri source state.vfs;
+  state.vfs <- UriMap.add uri source state.vfs
+
+let recalculate (state : global_state) =
   try state.workspaces |> List.iter process_workspace
   with effect (Source.Read uri as eff), k -> (
     match UriMap.find_opt uri state.vfs with

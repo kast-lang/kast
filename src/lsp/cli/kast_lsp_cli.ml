@@ -81,10 +81,11 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         (uri : Lsp.Types.DocumentUri.t) (contents : string) =
       Log.info "_on_doc %S" (Lsp.Uri.to_path uri);
 
-      if changed then
+      if changed then (
+        Processing.update_file (self#get_state ()) uri contents;
         updates
         |> Latest_state.spawn ~domain_mgr (fun () ->
-               Processing.update_file (self#get_state ()) uri contents);
+               !state |> Option.get |> Processing.recalculate));
 
       Eio.Fiber.fork ~sw (fun () ->
           let new_state = self#file_state uri in
