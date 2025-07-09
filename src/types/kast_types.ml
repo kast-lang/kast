@@ -40,29 +40,29 @@ module Value = struct
     | V_Ast _ -> Ty.inferred T_Ast
     | V_Error -> Ty.inferred T_Error
 
-  let expect_ty : value -> ty =
+  let expect_ty : value -> ty option =
    fun value ->
     match value.shape with
-    | V_Ty ty -> ty
-    | _ -> fail "expected ty, got %a" print_value value
+    | V_Ty ty -> Some ty
+    | _ -> None
 
-  let expect_string : value -> string =
+  let expect_string : value -> string option =
    fun value ->
     match value.shape with
-    | V_String s -> s
-    | _ -> fail "expected string, got %a" print_value value
+    | V_String s -> Some s
+    | _ -> None
 
-  let expect_fn : value -> value_fn =
+  let expect_fn : value -> value_fn option =
    fun value ->
     match value.shape with
-    | V_Fn f -> f
-    | _ -> fail "expected fn, got %a" print_value value
+    | V_Fn f -> Some f
+    | _ -> None
 
-  let expect_tuple : value -> value_tuple =
+  let expect_tuple : value -> value_tuple option =
    fun value ->
     match value.shape with
-    | V_Tuple value -> value
-    | _ -> fail "expected tuple, got %a" print_value value
+    | V_Tuple value -> Some value
+    | _ -> None
 
   let print = print_value
 

@@ -134,10 +134,10 @@ let process_workspace (workspace : workspace_state) =
       let evaled =
         Kast_interpreter.eval (Kast_interpreter.default ()) compiled
       in
-      let workspace_roots = evaled |> Value.expect_tuple in
+      let workspace_roots = evaled |> Value.expect_tuple |> Option.get in
       let workspace_roots =
         workspace_roots.tuple.unnamed |> Array.to_list
-        |> List.map Value.expect_string
+        |> List.map (fun value -> value |> Value.expect_string |> Option.get)
       in
       Log.info "WORKSPACE ROOTS = %a"
         (List.print String.print_dbg)

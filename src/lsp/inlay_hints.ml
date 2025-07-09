@@ -86,6 +86,11 @@ let rec inlay_hints :
             ( None,
               Seq.append (inlay_hints TyExpr arg) (inlay_hints TyExpr result) )
         | TE_Expr expr -> (None, inlay_hints Expr expr)
+        | TE_Tuple { tuple } ->
+            ( None,
+              tuple |> Tuple.to_seq
+              |> Seq.flat_map (fun (_member, expr) -> inlay_hints TyExpr expr)
+            )
         | TE_Error -> (None, Seq.empty))
   in
   let data = Compiler.get_data kind compiled in

@@ -200,4 +200,7 @@ and eval_ty : state -> Expr.ty -> ty =
   | TE_Expr expr ->
       let value = eval state expr in
       value |> Value.expect_ty
+      |> Option.unwrap_or_else (fun () -> Ty.inferred T_Error)
+  | TE_Tuple { tuple } ->
+      Ty.inferred (T_Tuple { tuple = tuple |> Tuple.map (eval_ty state) })
   | TE_Error -> Ty.inferred T_Error

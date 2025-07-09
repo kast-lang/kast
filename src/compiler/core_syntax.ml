@@ -489,31 +489,40 @@ let import : core_syntax =
         :
         a
       ->
-        let span = ast.span in
-        let path =
-          children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
-        in
-        match kind with
-        | Expr ->
-            let path, path_expr =
-              Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
+        with_return (fun { return } : a ->
+            let span = ast.span in
+            let path =
+              children
+              |> Tuple.unwrap_single_named "path"
+              |> Ast.Child.expect_ast
             in
-            let path = path |> Value.expect_string in
-            let uri =
-              Uri.maybe_relative_to_file span.uri (Uri.of_string path)
-            in
-            let imported_value : value = Compiler.import ~span (module C) uri in
-            E_Constant imported_value
-            |> init_expr ~evaled_exprs:[ path_expr ] span
-        | Assignee ->
-            error span "Can't assign to import";
-            init_error span kind
-        | Pattern ->
-            error span "import can't be a pattern";
-            init_error span kind
-        | TyExpr ->
-            error span "Type imports not supported (TODO)";
-            init_error span kind);
+            match kind with
+            | Expr ->
+                let path, path_expr =
+                  Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
+                in
+                let path =
+                  path |> Value.expect_string
+                  |> Option.unwrap_or_else (fun () ->
+                         return <| init_error span kind)
+                in
+                let uri =
+                  Uri.maybe_relative_to_file span.uri (Uri.of_string path)
+                in
+                let imported_value : value =
+                  Compiler.import ~span (module C) uri
+                in
+                E_Constant imported_value
+                |> init_expr ~evaled_exprs:[ path_expr ] span
+            | Assignee ->
+                error span "Can't assign to import";
+                init_error span kind
+            | Pattern ->
+                error span "import can't be a pattern";
+                init_error span kind
+            | TyExpr ->
+                error span "Type imports not supported (TODO)";
+                init_error span kind));
   }
 
 let include' : core_syntax =
@@ -528,30 +537,39 @@ let include' : core_syntax =
         :
         a
       ->
-        let span = ast.span in
-        let path =
-          children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
-        in
-        let path, path_expr =
-          Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
-        in
-        let path = path |> Value.expect_string in
-        let uri = Uri.maybe_relative_to_file span.uri (Uri.of_string path) in
-        let source = Source.read uri in
-        let parsed : Kast_parser.result =
-          Kast_parser.parse source Kast_default_syntax.ruleset
-        in
-        let ast =
-          parsed.ast
-          |> Option.unwrap_or_else (fun () : Ast.t ->
-                 error span "included file is empty";
-                 { shape = Ast.Error { parts = [] }; span })
-        in
-        let compiled = C.compile kind ast in
-        Effect.perform
-          (Compiler.Effect.FileIncluded { uri; parsed; kind; compiled });
-        Compiler.update_data kind compiled (fun data ->
-            { data with evaled_exprs = path_expr :: data.evaled_exprs }));
+        with_return (fun { return } ->
+            let span = ast.span in
+            let path =
+              children
+              |> Tuple.unwrap_single_named "path"
+              |> Ast.Child.expect_ast
+            in
+            let path, path_expr =
+              Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
+            in
+            let path =
+              path |> Value.expect_string
+              |> Option.unwrap_or_else (fun () ->
+                     return <| init_error span kind)
+            in
+            let uri =
+              Uri.maybe_relative_to_file span.uri (Uri.of_string path)
+            in
+            let source = Source.read uri in
+            let parsed : Kast_parser.result =
+              Kast_parser.parse source Kast_default_syntax.ruleset
+            in
+            let ast =
+              parsed.ast
+              |> Option.unwrap_or_else (fun () : Ast.t ->
+                     error span "included file is empty";
+                     { shape = Ast.Error { parts = [] }; span })
+            in
+            let compiled = C.compile kind ast in
+            Effect.perform
+              (Compiler.Effect.FileIncluded { uri; parsed; kind; compiled });
+            Compiler.update_data kind compiled (fun data ->
+                { data with evaled_exprs = path_expr :: data.evaled_exprs })));
   }
 
 let const : core_syntax =
@@ -617,27 +635,32 @@ let native : core_syntax =
         :
         a
       ->
-        let span = ast.span in
-        let expr =
-          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
-        in
-        let expr_value, expr =
-          Compiler.eval ~ty:(Ty.inferred T_String) (module C) expr
-        in
-        let expr_value : string = expr_value |> Value.expect_string in
-        match kind with
-        | Expr ->
-            E_Native { expr = expr_value }
-            |> init_expr ~evaled_exprs:[ expr ] span
-        | Assignee ->
-            error span "native must be expr, not assignee expr";
-            init_error span kind
-        | Pattern ->
-            error span "native must be expr, not pattern";
-            init_error span kind
-        | TyExpr ->
-            error span "native must be expr, not type expr";
-            init_error span kind);
+        with_return (fun { return } ->
+            let span = ast.span in
+            let expr =
+              children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+            in
+            let expr_value, expr =
+              Compiler.eval ~ty:(Ty.inferred T_String) (module C) expr
+            in
+            let expr_value : string =
+              expr_value |> Value.expect_string
+              |> Option.unwrap_or_else (fun () ->
+                     return <| init_error span kind)
+            in
+            match kind with
+            | Expr ->
+                E_Native { expr = expr_value }
+                |> init_expr ~evaled_exprs:[ expr ] span
+            | Assignee ->
+                error span "native must be expr, not assignee expr";
+                init_error span kind
+            | Pattern ->
+                error span "native must be expr, not pattern";
+                init_error span kind
+            | TyExpr ->
+                error span "native must be expr, not type expr";
+                init_error span kind));
   }
 
 let module' : core_syntax =
@@ -786,9 +809,7 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
       error span "todo comma assignee";
       init_error span kind
   | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span
-  | TyExpr ->
-      error span "todo comma ty expr";
-      init_error span kind
+  | TyExpr -> TE_Tuple { tuple = !tuple } |> init_ty_expr span
   | Expr -> E_Tuple { tuple = !tuple } |> init_expr span
 
 let comma : core_syntax =
@@ -1008,12 +1029,16 @@ let impl_syntax : core_syntax =
                     (module C)
                     impl
                 in
-                ( Kast_default_syntax.ruleset
-                |> Kast_parser.Ruleset.find_rule_opt name
-                |> function
-                  | Some rule ->
-                      Hashtbl.add C.state.custom_syntax_impls rule.id impl
-                  | None -> Error.error span "Syntax rule not found: %S" name );
+                (match name with
+                | Some name -> (
+                    Kast_default_syntax.ruleset
+                    |> Kast_parser.Ruleset.find_rule_opt name
+                    |> function
+                    | Some rule ->
+                        Hashtbl.add C.state.custom_syntax_impls rule.id impl
+                    | None -> Error.error span "Syntax rule not found: %S" name)
+                | None ->
+                    Error.error name_expr.data.span "Name must be a string");
                 E_Constant { shape = V_Unit }
                 |> init_expr ~evaled_exprs:[ name_expr; impl_expr ] span)
         | TyExpr ->

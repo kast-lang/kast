@@ -124,6 +124,8 @@ and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
         (Tuple.make [] [ ("arg", arg); ("result", result) ])
   | TE_Expr expr ->
       fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
+  | TE_Tuple { tuple } ->
+      fprintf fmt "@{<magenta>tuple@} %a" (Tuple.print print_ty_expr) tuple
   | TE_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty_expr : formatter -> ty_expr -> unit =

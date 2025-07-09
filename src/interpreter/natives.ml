@@ -6,7 +6,13 @@ type natives = { by_name : value StringMap.t }
 type t = natives
 
 let types : (string * Ty.Shape.t) list =
-  [ ("unit", T_Unit); ("int32", T_Int32); ("string", T_String); ("type", T_Ty) ]
+  [
+    ("unit", T_Unit);
+    ("int32", T_Int32);
+    ("string", T_String);
+    ("type", T_Ty);
+    ("bool", T_Bool);
+  ]
 
 let types =
   types
@@ -16,6 +22,26 @@ let types =
 let natives : natives =
   let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
     (name, { shape = V_NativeFn { ty = { arg; result }; name; impl } })
+  in
+  let cmp_fn name op =
+    native_fn
+      ~arg:
+        (Ty.inferred
+           (T_Tuple
+              {
+                tuple =
+                  Tuple.make [ Ty.inferred T_Int32; Ty.inferred T_Int32 ] [];
+              }))
+      ~result:(Ty.inferred T_Bool) name
+      (fun ~caller value ->
+        match value.shape with
+        | V_Tuple { tuple } ->
+            let a, b = tuple |> Tuple.unwrap_unnamed2 in
+            let result : bool = op a b in
+            { shape = V_Bool result }
+        | _ ->
+            Error.error caller "cmp op %S expected a tuple as arg" name;
+            { shape = V_Error })
   in
   let list : (string * value) list =
     [
@@ -65,6 +91,12 @@ let natives : natives =
           | _ ->
               Error.error caller "string_to_int32 expected a string";
               { shape = V_Error });
+      cmp_fn "<" ( < );
+      cmp_fn "<=" ( <= );
+      cmp_fn "==" ( == );
+      cmp_fn "!=" ( != );
+      cmp_fn ">=" ( >= );
+      cmp_fn ">" ( > );
     ]
     @ types
   in

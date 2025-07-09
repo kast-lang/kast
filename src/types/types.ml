@@ -158,10 +158,13 @@ and ty_expr_fn = {
   result : ty_expr;
 }
 
+and ty_expr_tuple = { tuple : ty_expr tuple }
+
 and ty_expr_shape =
   | TE_Unit
   | TE_Fn of ty_expr_fn
   | TE_Expr of expr
+  | TE_Tuple of ty_expr_tuple
   | TE_Error
 
 and ty_expr = {

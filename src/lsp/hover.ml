@@ -143,6 +143,9 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
                 hover TyExpr arg pos
                 |> Option.or_else (fun () -> hover TyExpr result pos)
             | TE_Expr expr -> hover Expr expr pos
+            | TE_Tuple { tuple } ->
+                tuple |> Tuple.to_seq
+                |> Seq.find_map (fun (_member, expr) -> hover TyExpr expr pos)
             | TE_Error -> None)
       in
       let inner =
