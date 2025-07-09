@@ -43,6 +43,37 @@ let natives : natives =
             Error.error caller "cmp op %S expected a tuple as arg" name;
             { shape = V_Error })
   in
+  let bin_op name (op : int32 -> int32 -> int32) =
+    native_fn
+      ~arg:
+        (Ty.inferred
+           (T_Tuple
+              {
+                tuple =
+                  Tuple.make [ Ty.inferred T_Int32; Ty.inferred T_Int32 ] [];
+              }))
+      ~result:(Ty.inferred T_Int32) name
+      (fun ~caller value ->
+        match value.shape with
+        | V_Tuple { tuple } ->
+            with_return (fun { return } : value ->
+                let a, b = tuple |> Tuple.unwrap_unnamed2 in
+                let a =
+                  a |> Value.expect_int32
+                  |> Option.unwrap_or_else (fun () ->
+                         return ({ shape = V_Error } : value))
+                in
+                let b =
+                  b |> Value.expect_int32
+                  |> Option.unwrap_or_else (fun () ->
+                         return ({ shape = V_Error } : value))
+                in
+                let result : int32 = op a b in
+                { shape = V_Int32 result })
+        | _ ->
+            Error.error caller "bin op %S expected a tuple as arg" name;
+            { shape = V_Error })
+  in
   let list : (string * value) list =
     [
       native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Unit) "print"
@@ -97,6 +128,10 @@ let natives : natives =
       cmp_fn "!=" ( != );
       cmp_fn ">=" ( >= );
       cmp_fn ">" ( > );
+      bin_op "+" Int32.add;
+      bin_op "-" Int32.sub;
+      bin_op "*" Int32.mul;
+      bin_op "/" Int32.div;
     ]
     @ types
   in

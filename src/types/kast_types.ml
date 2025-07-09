@@ -40,6 +40,24 @@ module Value = struct
     | V_Ast _ -> Ty.inferred T_Ast
     | V_Error -> Ty.inferred T_Error
 
+  let expect_unit : value -> unit option =
+   fun value ->
+    match value.shape with
+    | V_Unit -> Some ()
+    | _ -> None
+
+  let expect_bool : value -> bool option =
+   fun value ->
+    match value.shape with
+    | V_Bool value -> Some value
+    | _ -> None
+
+  let expect_int32 : value -> int32 option =
+   fun value ->
+    match value.shape with
+    | V_Int32 value -> Some value
+    | _ -> None
+
   let expect_ty : value -> ty option =
    fun value ->
     match value.shape with

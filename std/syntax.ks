@@ -24,3 +24,15 @@ impl syntax (a >= b) = `(
 impl syntax (a > b) = `(
     std.cmp.greater ($a, $b)
 );
+impl syntax (a + b) = `(
+    std.op.add ($a, $b)
+);
+impl syntax (a - b) = `(
+    std.op.sub ($a, $b)
+);
+impl syntax (a * b) = `(
+    std.op.mul ($a, $b)
+);
+impl syntax (a / b) = `(
+    std.op.div ($a, $b)
+);
