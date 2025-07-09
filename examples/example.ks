@@ -13,7 +13,7 @@ impl syntax (
         body
     )
 ) = `(
-    let \name :: _ = \arg => \body
+    let $name :: _ = $arg => $body
 );
 # impl syntax "inline_fn" = (.name, .arg, .body) => `(
 #   let \name = \arg => \body
@@ -25,4 +25,4 @@ fn f(x, .a, .b) (
 );
 f ("hi", .a = "a", .b = 5);
 let ast = `(2 + 2);
-`(2 + \ast)
+`(2 + $ast)
