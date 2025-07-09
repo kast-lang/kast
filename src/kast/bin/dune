@@ -3,6 +3,7 @@
  (name main)
  (libraries
   std
+  kast
   kast_lexer_cli
   kast_parser_cli
   kast_fmt_cli

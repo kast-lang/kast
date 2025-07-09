@@ -17,9 +17,10 @@ module Args = struct
     | arg :: _rest -> fail "Unexpected arg %S" arg
 end
 
-class lsp_server =
+class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
   object (self)
     inherit Linol_eio.Jsonrpc2.server as super
+    val updates : unit Latest_state.t = Latest_state.init ~sw
     val state : Processing.global_state option ref = ref None
 
     method private get_state () =
@@ -28,6 +29,7 @@ class lsp_server =
       | None -> fail "Trying to get state before initialize"
 
     method private file_state uri =
+      updates |> Latest_state.get_latest_result |> ignore;
       Processing.file_state (self#get_state ()) uri
 
     method! on_req_initialize ~notify_back (i : Lsp.Types.InitializeParams.t) :
@@ -79,7 +81,10 @@ class lsp_server =
         (uri : Lsp.Types.DocumentUri.t) (contents : string) =
       Log.info "_on_doc %S" (Lsp.Uri.to_path uri);
 
-      if changed then Processing.update_file (self#get_state ()) uri contents;
+      if changed then
+        updates
+        |> Latest_state.spawn ~domain_mgr (fun () ->
+               Processing.update_file (self#get_state ()) uri contents);
 
       let new_state = self#file_state uri in
       let diags =
@@ -208,16 +213,17 @@ class lsp_server =
 
 let run ({ dummy = () } : Args.t) =
   Eio_main.run (fun env ->
-      Log.info "Starting Kast LSP";
-      let s = new lsp_server in
-      let server = Linol_eio.Jsonrpc2.create_stdio ~env s in
-      let task () =
-        let shutdown () = s#get_status = `ReceivedExit in
-        Linol_eio.Jsonrpc2.run ~shutdown server
-      in
-      match task () with
-      | () -> Log.info "Exiting Kast LSP"
-      | exception e ->
-          let e = Printexc.to_string e in
-          Printf.eprintf "error: %s\n%!" e;
-          exit 1)
+      Eio.Switch.run (fun sw ->
+          Log.info "Starting Kast LSP";
+          let s = new lsp_server ~sw ~domain_mgr:(Eio.Stdenv.domain_mgr env) in
+          let server = Linol_eio.Jsonrpc2.create_stdio ~env s in
+          let task () =
+            let shutdown () = s#get_status = `ReceivedExit in
+            Linol_eio.Jsonrpc2.run ~shutdown server
+          in
+          match task () with
+          | () -> Log.info "Exiting Kast LSP"
+          | exception e ->
+              let e = Printexc.to_string e in
+              Printf.eprintf "error: %s\n%!" e;
+              exit 1))
