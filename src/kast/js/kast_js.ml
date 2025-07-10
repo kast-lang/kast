@@ -85,6 +85,12 @@ let lsp =
               `List (result |> List.map Lsp.Types.InlayHint.yojson_of_t)
               |> yojson_to_js
           | None -> Js.Unsafe.inject Js.null)
+
+    method diagnostics (state : file_state) =
+      cross_js (fun () ->
+          let result = Kast_lsp.Diagnostics.get state in
+          `List (result |> List.map Lsp.Types.Diagnostic.yojson_of_t)
+          |> yojson_to_js)
   end
 
 let () =
