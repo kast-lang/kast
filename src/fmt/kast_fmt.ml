@@ -21,33 +21,47 @@ let format : formatter -> Parser.result -> unit =
 
   let current_indent = ref 0 in
 
-  let print_newline fmt () =
+  let printed_newline = ref true in
+
+  let print_newline () =
     fprintf fmt "\n";
-    print_indent !current_indent
+    print_indent !current_indent;
+    printed_newline := true
   in
 
-  let prev_comment_span : span option ref = ref None in
-
-  let preserve_newline_after_comment (after : span) =
-    match !prev_comment_span with
-    | Some before ->
-        if before.finish.line <> after.start.line then print_newline fmt ()
-        else fprintf fmt " ";
-        prev_comment_span := None
-    | None -> ()
+  let print_newline_if_not_yet () =
+    if not !printed_newline then print_newline ()
   in
 
-  let print_ast : formatter -> Ast.t -> unit =
-   fun fmt ast ->
+  let printf format =
+    printed_newline := false;
+    fprintf fmt format
+  in
+
+  let prev_span : span ref = ref <| Span.beginning_of Uri.empty in
+  let prev_was_comment : bool ref = ref false in
+
+  let print ?(is_comment = false) (span : span) f value =
+    if is_comment || !prev_was_comment then
+      if !prev_span.finish.line = span.start.line then printf " "
+      else print_newline_if_not_yet ();
+    f fmt value;
+    printed_newline := false;
+    prev_span := span;
+    prev_was_comment := is_comment
+  in
+
+  let print_ast : Ast.t -> unit =
+   fun ast ->
     let print_whitespace (s : string) =
       s
       |> String.iter (function
-           | '\n' -> print_newline fmt ()
+           | '\n' -> print_newline ()
            | '\t' ->
                print_indent 1;
                current_indent := !current_indent + 1
            | '\\' -> current_indent := !current_indent - 1
-           | c -> fprintf fmt "%c" c)
+           | c -> printf "%c" c)
     in
     let rec print_ast ~parent (ast : Ast.t) =
       match ast.shape with
@@ -55,11 +69,9 @@ let format : formatter -> Parser.result -> unit =
       | Simple { comments_before; token } ->
           comments_before
           |> List.iter (fun (comment : Token.comment) ->
-                 preserve_newline_after_comment comment.span;
-                 prev_comment_span := Some comment.span;
-                 fprintf fmt "%s" comment.shape.raw);
-          preserve_newline_after_comment token.span;
-          fprintf fmt "%s" (Token.raw token |> Option.get)
+                 print ~is_comment:true comment.span String.print
+                   comment.shape.raw);
+          print token.span String.print (Token.raw token |> Option.get)
       | Complex { rule; root; _ } ->
           let wrapped =
             match parent with
@@ -75,13 +87,13 @@ let format : formatter -> Parser.result -> unit =
           let pos = ref (List.head tokens).span.start in
           tokens
           |> List.iter (fun (token : Token.t) ->
-                 if token.span.start > !pos then fprintf fmt " ";
-                 fprintf fmt "%s" (Token.raw token |> Option.get);
+                 if token.span.start > !pos then printf " ";
+                 print token.span String.print (Token.raw token |> Option.get);
                  pos := token.span.finish);
           match value_after with
           | None -> ()
           | Some value ->
-              print_newline fmt ();
+              print_newline ();
               print_ast ~parent:None value)
     and print_group rule (group_rule : Syntax.Rule.group option) wrapped
         ({ parts; _ } : Ast.group) =
@@ -94,9 +106,7 @@ let format : formatter -> Parser.result -> unit =
         (parts : Ast.part list) =
       match (rule_parts, parts) with
       | _, Comment comment :: rest_parts ->
-          preserve_newline_after_comment comment.span;
-          fprintf fmt "%s" comment.shape.raw;
-          prev_comment_span := Some comment.span;
+          print ~is_comment:true comment.span String.print comment.shape.raw;
           print_parts rule wrapped rule_parts rest_parts
       | [], [] -> ()
       | Whitespace { nowrap; wrap } :: rest_rule_parts, _ ->
@@ -108,8 +118,7 @@ let format : formatter -> Parser.result -> unit =
           print_parts rule wrapped rest_rule_parts parts
       | Keyword keyword :: rest_rule_parts, Keyword keyword_token :: rest_parts
         ->
-          preserve_newline_after_comment keyword_token.span;
-          fprintf fmt "%s" keyword;
+          print keyword_token.span String.print keyword;
           print_parts rule wrapped rest_rule_parts rest_parts
       | Value _ :: rest_rule_parts, Value value :: rest_parts ->
           print_ast ~parent:(Some { rule; wrapped }) value;
@@ -132,11 +141,9 @@ let format : formatter -> Parser.result -> unit =
     print_ast ~parent:None ast
   in
   (match ast with
-  | Some ast -> print_ast fmt ast
+  | Some ast -> print_ast ast
   | None -> ());
   trailing_comments
   |> List.iter (fun (comment : Token.comment) ->
-         preserve_newline_after_comment comment.span;
-         prev_comment_span := Some comment.span;
-         fprintf fmt "%s" comment.shape.raw);
-  fprintf fmt "\n"
+         print ~is_comment:true comment.span String.print comment.shape.raw);
+  print_newline ()
