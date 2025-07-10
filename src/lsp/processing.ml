@@ -15,6 +15,7 @@ and workspace_state = {
 }
 
 and file_state = {
+  uri : Uri.t;
   parsed : Parser.result option;
   compiled : expr option;
   diagnostics : Lsp.Types.Diagnostic.t list;
@@ -112,7 +113,7 @@ let process_file (source : source) : file_state =
             Effect.continue k ()
         | _ -> None)
   in
-  { parsed; compiled; diagnostics = !diagnostics }
+  { uri = source.uri; parsed; compiled; diagnostics = !diagnostics }
 
 let workspace_file (root : Uri.t) (path : string) =
   Uri.with_path root (Uri.path root ^ "/" ^ path)
@@ -153,6 +154,7 @@ let process_workspace (workspace : workspace_state) =
         | Expr ->
             let file_state : file_state =
               {
+                uri;
                 parsed = Some parsed;
                 compiled = Some compiled;
                 diagnostics = [];
