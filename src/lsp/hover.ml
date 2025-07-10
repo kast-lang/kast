@@ -33,7 +33,7 @@ type hover_info = {
   definition_mode : definition_mode;
 }
 
-let hover_text info = make_string "```kast\n%a\n```" Ty.print info.ty
+let hover_text info = make_string "```kast@\n@[<v>%a@]\n```" Ty.print info.ty
 
 let binding_definition : binding -> definition =
  fun binding -> { span = binding.span; references = binding.references }
