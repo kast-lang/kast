@@ -86,24 +86,56 @@ module Tuple = struct
     in
     { unnamed; named; named_order_rev }
 
-  let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a tuple -> unit =
-   fun print_value fmt { unnamed; named; named_order_rev } ->
-    Format.pp_print_custom_break fmt ~fits:("(", 1, "") ~breaks:("(", 2, "");
-    let comma fmt () =
-      Format.pp_print_custom_break fmt ~fits:(",", 1, "") ~breaks:(",", 2, "")
+  type print_options = {
+    named_field_before : string;
+    named_field_middle : string;
+    field_sep : string;
+    open_ : string;
+    close : string;
+  }
+
+  let default_print_options : print_options =
+    {
+      open_ = "(";
+      field_sep = ",";
+      named_field_before = ".";
+      named_field_middle = " = ";
+      close = ")";
+    }
+
+  let print :
+      'a.
+      ?options:print_options ->
+      (formatter -> 'a -> unit) ->
+      formatter ->
+      'a tuple ->
+      unit =
+   fun ?(options = default_print_options) print_value fmt
+       { unnamed; named; named_order_rev } ->
+    Format.pp_print_custom_break fmt ~fits:(options.open_, 1, "")
+      ~breaks:(options.open_, 2, "");
+    let sep fmt () =
+      Format.pp_print_custom_break fmt ~fits:(options.field_sep, 1, "")
+        ~breaks:(options.field_sep, 2, "")
     in
     let print_unnamed fmt value = fprintf fmt "@[<v>%a@]" print_value value in
-    Format.pp_print_iter ~pp_sep:comma Array.iter print_unnamed fmt unnamed;
-    if Array.length unnamed <> 0 && StringMap.cardinal named <> 0 then
-      comma fmt ();
+    Format.pp_print_iter ~pp_sep:sep Array.iter print_unnamed fmt unnamed;
+    let has_unnamed = Array.length unnamed <> 0 in
+    let has_named = not (StringMap.is_empty named) in
+    if has_unnamed && has_named then sep fmt ();
     let print_named fmt name =
       let value = StringMap.find name named in
-      fprintf fmt "@[<v>%a = %a@]" String.print_maybe_escaped name print_value
+      fprintf fmt "@[<v>%s%a%s%a@]" options.named_field_before
+        String.print_maybe_escaped name options.named_field_middle print_value
         value
     in
-    Format.pp_print_iter ~pp_sep:comma List.iter print_named fmt
+    Format.pp_print_iter ~pp_sep:sep List.iter print_named fmt
       (List.rev named_order_rev);
-    Format.pp_print_custom_break fmt ~fits:("", 1, ")") ~breaks:(",", 0, ")")
+    Format.pp_print_custom_break fmt ~fits:("", 1, options.close)
+      ~breaks:
+        ( (if has_named || has_unnamed then options.field_sep else ""),
+          0,
+          options.close )
 
   let map : 'a 'b. ('a -> 'b) -> 'a tuple -> 'b tuple =
    fun f { unnamed; named; named_order_rev } ->
