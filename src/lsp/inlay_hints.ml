@@ -107,7 +107,8 @@ let rec inlay_hints :
   let span = data.span in
   let type_hint =
     if data.ty_ascription |> Option.is_some then None
-    else type_hint |> Option.map (fun ty -> make_string ":: %a" Ty.print ty)
+    else
+      type_hint |> Option.map (fun ty -> make_string "@[<h>:: %a@]" Ty.print ty)
   in
   let hint : Lsp.Types.InlayHint.t option =
     if span.uri <> uri then None
