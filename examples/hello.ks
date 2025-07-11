@@ -1,3 +1,3 @@
 use std.prelude.*;
 print "hello";
-()# "world" |> print; 
+# "world" |> print;

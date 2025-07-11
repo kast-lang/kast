@@ -7,6 +7,7 @@ open Kast_types
 type global_state = {
   workspaces : workspace_state list;
   mutable vfs : string UriMap.t;
+  imported : Compiler.imported;
 }
 
 and workspace_state = {
@@ -21,7 +22,7 @@ and file_state = {
   diagnostics : Lsp.Types.Diagnostic.t list;
 }
 
-let process_file (source : source) : file_state =
+let process_file (global : global_state) (source : source) : file_state =
   Log.trace (fun log -> log "PROJECT: processing %a" Uri.print source.uri);
   let diagnostics = ref [] in
   let parsed =
@@ -54,7 +55,7 @@ let process_file (source : source) : file_state =
   let compiled =
     Option.bind ast (fun ast ->
         try
-          let compiler = Compiler.default () in
+          let compiler = Compiler.default ~imported:global.imported () in
           Some (Compiler.compile compiler Expr ast)
         with
         | effect Kast_interpreter.Error.Error error, k ->
@@ -118,7 +119,7 @@ let process_file (source : source) : file_state =
 let workspace_file (root : Uri.t) (path : string) =
   Uri.with_path root (Uri.path root ^ "/" ^ path)
 
-let process_workspace (workspace : workspace_state) =
+let process_workspace (global : global_state) (workspace : workspace_state) =
   workspace.files <- UriMap.empty;
   try
     let handle_processed uri file_state =
@@ -129,7 +130,7 @@ let process_workspace (workspace : workspace_state) =
       let workspace_ks =
         Source.read (workspace_file workspace.root "workspace.ks")
       in
-      let processed_workspace_ks = process_file workspace_ks in
+      let processed_workspace_ks = process_file global workspace_ks in
       handle_processed workspace_ks.uri processed_workspace_ks;
       let compiled = processed_workspace_ks.compiled |> Option.get in
       let evaled =
@@ -147,7 +148,7 @@ let process_workspace (workspace : workspace_state) =
       workspace_roots
       |> List.iter (fun path ->
              let uri = workspace_file workspace.root path in
-             let processed = process_file (Source.read uri) in
+             let processed = process_file global (Source.read uri) in
              handle_processed uri processed)
     with
     | effect Compiler.Effect.FileIncluded { uri; parsed; kind; compiled }, k ->
@@ -176,17 +177,26 @@ let process_workspace (workspace : workspace_state) =
         log "Failed to process workspace: %s" (Printexc.to_string exc));
     ()
 
-let init_workspace (root : Uri.t) : workspace_state =
+let init_workspace (global : global_state) (root : Uri.t) : workspace_state =
   Log.trace (fun log -> log "Initializing workspace at %a" Uri.print root);
   let workspace : workspace_state = { root; files = UriMap.empty } in
-  process_workspace workspace;
+  process_workspace global workspace;
   workspace
 
 let init (workspaces : Lsp.Uri.t list) : global_state =
+  let bootstrap : global_state =
+    {
+      workspaces = [];
+      vfs = UriMap.empty;
+      imported = Compiler.init_imported ();
+    }
+  in
   {
+    bootstrap with
     workspaces =
-      workspaces |> List.map Common.uri_from_lsp |> List.map init_workspace;
-    vfs = UriMap.empty;
+      workspaces
+      |> List.map Common.uri_from_lsp
+      |> List.map (init_workspace bootstrap);
   }
 
 let file_state (state : global_state) (uri : Lsp.Uri.t) : file_state option =
@@ -195,16 +205,16 @@ let file_state (state : global_state) (uri : Lsp.Uri.t) : file_state option =
   state.workspaces
   |> List.find_map (fun workspace -> UriMap.find_opt uri workspace.files)
 
-let update_file (state : global_state) (uri : Lsp.Uri.t) (source : string) :
+let update_file (global : global_state) (uri : Lsp.Uri.t) (source : string) :
     unit =
   let uri = Common.uri_from_lsp uri in
   Log.trace (fun log -> log "PROJECT: update %a" Uri.print uri);
-  state.vfs <- UriMap.add uri source state.vfs
+  global.vfs <- UriMap.add uri source global.vfs
 
-let recalculate (state : global_state) : unit =
+let recalculate (global : global_state) : unit =
   timed "recalculating lsp stuff" (fun () ->
-      try state.workspaces |> List.iter process_workspace
+      try global.workspaces |> List.iter (process_workspace global)
       with effect (Source.Read uri as eff), k -> (
-        match UriMap.find_opt uri state.vfs with
+        match UriMap.find_opt uri global.vfs with
         | Some contents -> Effect.continue k contents
         | None -> Effect.continue k (Effect.perform eff)))

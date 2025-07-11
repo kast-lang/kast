@@ -95,9 +95,10 @@ let lsp =
 
 let () =
   Js.export "Kast"
-    (object%js
+    (object%js (self)
        val lsp = lsp
        val semanticTokensProvider = semanticTokensProvider
+       val global = Kast_lsp.Processing.init []
 
        method run (source : string) =
          cross_js (fun () ->
@@ -132,6 +133,6 @@ let () =
        method processFile (uri : string) (source : string) :
            Kast_lsp.Processing.file_state =
          cross_js (fun () ->
-             Kast_lsp.Processing.process_file
+             Kast_lsp.Processing.process_file self##.global
                { contents = source; uri = Uri.of_string uri })
     end)
