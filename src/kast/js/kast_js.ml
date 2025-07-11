@@ -6,6 +6,9 @@ type file_state = Kast_lsp.Processing.file_state
 
 let global = Kast_lsp.Processing.init []
 
+let current_input : (string -> string Promise.t) ref =
+  ref (fun _s -> failwith "input not set")
+
 let cross_js : 'a. (unit -> 'a) -> 'a =
  fun f ->
   try Kast_embedded_std.with_embedded_std f with
@@ -13,6 +16,12 @@ let cross_js : 'a. (unit -> 'a) -> 'a =
       Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
+
+let cross_js_async : 'a. (unit -> 'a) -> 'a Promise.t =
+ fun f ->
+  try Promise.return (cross_js f)
+  with effect Kast_interpreter.Natives.Input s, k ->
+    !current_input s |> Promise.bind (fun line : 'a -> Effect.continue k line)
 
 let yojson_to_js (json : Yojson.Safe.t) : Js.Unsafe.any =
   let json_str = Yojson.Safe.to_string json in
@@ -104,7 +113,7 @@ let () =
        val semanticTokensProvider = semanticTokensProvider
 
        method run (source : string) =
-         cross_js (fun () ->
+         cross_js_async (fun () ->
              let source : source =
                { contents = source; uri = Uri.of_string "ocaml:source" }
              in
@@ -132,6 +141,8 @@ let () =
                }
              in
              Format.set_formatter_out_functions out_fns)
+
+       method setInput (f : string -> string Promise.t) = current_input := f
 
        method processFile (uri : string) (source : string) :
            Kast_lsp.Processing.file_state =

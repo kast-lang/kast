@@ -18,6 +18,7 @@
   js_of_ocaml
   js_of_ocaml-compiler
   js_of_ocaml-ppx
+  promise_jsoo
   uri))
 
 (generate_opam_files)

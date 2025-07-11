@@ -46,3 +46,8 @@ let handle_effects : 'a. (unit -> 'a) -> 'a =
               fail "unsupported uri scheme %a"
                 (Option.print String.print_dbg)
                 scheme)
+  | effect Interpreter.Natives.Input s, k ->
+      print_string s;
+      flush stdout;
+      let line = read_line () in
+      Effect.continue k line

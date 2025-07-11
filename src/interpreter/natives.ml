@@ -4,6 +4,7 @@ open Kast_types
 
 type natives = { by_name : value StringMap.t }
 type t = natives
+type _ Effect.t += Input : string -> string Effect.t
 
 let types : (string * Ty.Shape.t) list =
   [
@@ -86,9 +87,7 @@ let natives : natives =
         "input" (fun ~caller value ->
           match value.shape with
           | V_String s ->
-              print_string s;
-              flush stdout;
-              let line = read_line () in
+              let line = Effect.perform (Input s) in
               { shape = V_String line }
           | _ ->
               Error.error caller "input expected a string";

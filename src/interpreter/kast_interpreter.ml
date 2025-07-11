@@ -3,6 +3,7 @@ open Kast_util
 open Kast_types
 module Ast = Kast_ast
 module Error = Error
+module Natives = Natives
 
 type state = {
   natives : Natives.t;
