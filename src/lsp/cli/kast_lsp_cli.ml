@@ -76,9 +76,12 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
       Eio.Fiber.fork ~sw (fun () ->
           updates |> Latest_state.get_latest_result |> ignore;
           let state = self#get_state () in
-          Kast_lsp.Diagnostics.get state
+          let diags = Kast_lsp.Diagnostics.get state in
+          Log.info (fun log ->
+              log "send diags actually (size=%d)" (List.length diags));
+          diags
           |> List.iter (fun (uri, diags) ->
-                 Log.trace (fun log ->
+                 Log.info (fun log ->
                      let print_diag fmt diag =
                        fprintf fmt "%s"
                          (diag |> Lsp.Types.Diagnostic.yojson_of_t

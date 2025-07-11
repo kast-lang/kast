@@ -28,6 +28,7 @@ let process_file (global : global_state) (source : source) : file_state =
   Hashtbl.remove global.root_of_included source.uri;
 
   let add_diagnostic uri (diag : Lsp.Types.Diagnostic.t) : unit =
+    Log.trace (fun log -> log "Added diag for %a" Uri.print uri);
     global.diagnostics <-
       UriMap.update uri
         (fun prev ->
@@ -150,6 +151,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
              handle_processed uri processed)
     with
     | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
+        Log.trace (fun log -> log "removed diags for %a" Uri.print uri);
         global.diagnostics <- UriMap.remove uri global.diagnostics;
         Effect.Deep.continue k ()
     | effect
@@ -199,13 +201,12 @@ let init (workspaces : Lsp.Uri.t list) : global_state =
       root_of_included = Hashtbl.create 0;
     }
   in
-  {
-    bootstrap with
-    workspaces =
-      workspaces
-      |> List.map Common.uri_from_lsp
-      |> List.map (init_workspace bootstrap);
-  }
+  let workspaces =
+    workspaces
+    |> List.map Common.uri_from_lsp
+    |> List.map (init_workspace bootstrap)
+  in
+  { bootstrap with workspaces }
 
 let file_state (state : global_state) (uri : Lsp.Uri.t) : file_state option =
   let uri = Common.uri_from_lsp uri in
