@@ -26,5 +26,6 @@ module CompilerEffect = struct
 
   type _ Effect.t += FileIncluded : 'a. 'a file_included -> unit Effect.t
   type _ Effect.t += FileImported : file_imported -> unit Effect.t
+  type _ Effect.t += FileStartedProcessing : Uri.t -> unit Effect.t
   type _ Effect.t += FindStd : Uri.t Effect.t
 end

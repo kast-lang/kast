@@ -554,6 +554,7 @@ let include' : core_syntax =
             let uri =
               Uri.maybe_relative_to_file span.uri (Uri.of_string path)
             in
+            Effect.perform (CompilerEffect.FileStartedProcessing uri);
             let source = Source.read uri in
             let parsed : Kast_parser.result =
               Kast_parser.parse source Kast_default_syntax.ruleset

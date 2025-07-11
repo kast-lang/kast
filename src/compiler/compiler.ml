@@ -65,11 +65,18 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
   match UriMap.find_opt uri imported.by_uri with
   | None ->
       Log.trace (fun log -> log "Importing %a" Uri.print uri);
+      Effect.perform (CompilerEffect.FileStartedProcessing uri);
       imported.by_uri <-
         UriMap.add uri (InProgress : State.import) imported.by_uri;
-      let state = State.blank ~imported in
-      (* TODO *)
-      let state = { C.state with currently_compiled_file = Some uri } in
+      let state : State.t =
+        {
+          currently_compiled_file = Some uri;
+          custom_syntax_impls = Hashtbl.create 0;
+          scope = C.state.scope;
+          imported;
+          interpreter = C.state.interpreter;
+        }
+      in
       let source = Source.read uri in
       let parsed = Kast_parser.parse source Kast_default_syntax.ruleset in
       let expr =

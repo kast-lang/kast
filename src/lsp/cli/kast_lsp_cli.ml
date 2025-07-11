@@ -45,6 +45,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
              |> Seq.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
                     workspace.uri)
              |> List.of_seq));
+      self#send_diagnostics ~notify_back ();
       super#on_req_initialize ~notify_back i
 
     method! config_modify_capabilities (c : Lsp.Types.ServerCapabilities.t) :
@@ -71,6 +72,28 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
 
     method spawn_query_handler f = Linol_eio.spawn f
 
+    method private send_diagnostics ~notify_back () =
+      Eio.Fiber.fork ~sw (fun () ->
+          updates |> Latest_state.get_latest_result |> ignore;
+          let state = self#get_state () in
+          Kast_lsp.Diagnostics.get state
+          |> List.iter (fun (uri, diags) ->
+                 Log.trace (fun log ->
+                     let print_diag fmt diag =
+                       fprintf fmt "%s"
+                         (diag |> Lsp.Types.Diagnostic.yojson_of_t
+                        |> Yojson.Safe.to_string)
+                     in
+                     log "sending diags for %a %a" Uri.print
+                       (Kast_lsp.Common.uri_from_lsp uri)
+                       (List.print print_diag) diags);
+                 let notification =
+                   Lsp.Server_notification.PublishDiagnostics
+                     (Lsp.Types.PublishDiagnosticsParams.create ~uri
+                        ~diagnostics:diags ())
+                 in
+                 notify_back#send_notification notification))
+
     (* We define here a helper method that will:
        - process a document
        - store the state resulting from the processing
@@ -87,20 +110,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         |> Latest_state.spawn ~domain_mgr (fun () ->
                !state |> Option.get |> Processing.recalculate));
 
-      Eio.Fiber.fork ~sw (fun () ->
-          let new_state = self#file_state uri in
-          let diags =
-            match new_state with
-            | Some new_state -> Kast_lsp.Diagnostics.get new_state
-            | None -> []
-          in
-          let print_diag fmt diag =
-            fprintf fmt "%s"
-              (diag |> Lsp.Types.Diagnostic.yojson_of_t |> Yojson.Safe.to_string)
-          in
-          Log.info (fun log ->
-              log "sending diags %a" (List.print print_diag) diags);
-          notify_back#send_diagnostic diags)
+      self#send_diagnostics ~notify_back ()
 
     (* We now override the [on_notify_doc_did_open] method that will be called
        by the server each time a new document is opened. *)

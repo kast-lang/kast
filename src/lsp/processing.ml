@@ -8,6 +8,7 @@ type global_state = {
   workspaces : workspace_state list;
   mutable vfs : string UriMap.t;
   imported : Compiler.imported;
+  mutable diagnostics : Lsp.Types.Diagnostic.t list UriMap.t;
   root_of_included : (Uri.t, Uri.t) Hashtbl.t;
 }
 
@@ -20,13 +21,20 @@ and file_state = {
   uri : Uri.t;
   parsed : Parser.result option;
   compiled : expr option;
-  diagnostics : Lsp.Types.Diagnostic.t list;
 }
 
 let process_file (global : global_state) (source : source) : file_state =
   Log.trace (fun log -> log "PROJECT: processing %a" Uri.print source.uri);
   Hashtbl.remove global.root_of_included source.uri;
-  let diagnostics = ref [] in
+
+  let add_diagnostic uri (diag : Lsp.Types.Diagnostic.t) : unit =
+    global.diagnostics <-
+      UriMap.update uri
+        (fun prev ->
+          let current = prev |> Option.unwrap_or_else (fun () -> []) in
+          Some (diag :: current))
+        global.diagnostics
+  in
   let parsed =
     try
       let result = Parser.parse source Kast_default_syntax.ruleset in
@@ -34,21 +42,18 @@ let process_file (global : global_state) (source : source) : file_state =
     with
     | effect Parser.Error.Error error, k ->
         Log.error (fun log -> log "%a" Parser.Error.print error);
-        (* TODO might be from another file? *)
-        diagnostics :=
-          ({
-             range = error.span |> Common.span_to_range;
-             severity = Some Error;
-             code = None;
-             codeDescription = None;
-             source = None;
-             message = `String (make_string "%t" error.msg);
-             tags = None;
-             relatedInformation = None;
-             data = None;
-           }
-            : Lsp.Types.Diagnostic.t)
-          :: !diagnostics;
+        add_diagnostic error.span.uri
+          {
+            range = error.span |> Common.span_to_range;
+            severity = Some Error;
+            code = None;
+            codeDescription = None;
+            source = None;
+            message = `String (make_string "%t" error.msg);
+            tags = None;
+            relatedInformation = None;
+            data = None;
+          };
         Effect.continue k ()
     (* TODO msg about crash? *)
     | _ -> None
@@ -62,61 +67,52 @@ let process_file (global : global_state) (source : source) : file_state =
         with
         | effect Kast_interpreter.Error.Error error, k ->
             Log.error (fun log -> log "%a" Kast_interpreter.Error.print error);
-            (* TODO might be from another file? *)
-            diagnostics :=
-              ({
-                 range = error.span |> Common.span_to_range;
-                 severity = Some Error;
-                 code = None;
-                 codeDescription = None;
-                 source = None;
-                 message = `String (make_string "%t" error.msg);
-                 tags = None;
-                 relatedInformation = None;
-                 data = None;
-               }
-                : Lsp.Types.Diagnostic.t)
-              :: !diagnostics;
+            add_diagnostic error.span.uri
+              {
+                range = error.span |> Common.span_to_range;
+                severity = Some Error;
+                code = None;
+                codeDescription = None;
+                source = None;
+                message = `String (make_string "%t" error.msg);
+                tags = None;
+                relatedInformation = None;
+                data = None;
+              };
             Effect.continue k ()
         | effect Compiler.Error.Error error, k ->
             Log.error (fun log -> log "%a" Compiler.Error.print error);
-            (* TODO might be from another file? *)
-            diagnostics :=
-              ({
-                 range = error.span |> Common.span_to_range;
-                 severity = Some Error;
-                 code = None;
-                 codeDescription = None;
-                 source = None;
-                 message = `String (make_string "%t" error.msg);
-                 tags = None;
-                 relatedInformation = None;
-                 data = None;
-               }
-                : Lsp.Types.Diagnostic.t)
-              :: !diagnostics;
+            add_diagnostic error.span.uri
+              {
+                range = error.span |> Common.span_to_range;
+                severity = Some Error;
+                code = None;
+                codeDescription = None;
+                source = None;
+                message = `String (make_string "%t" error.msg);
+                tags = None;
+                relatedInformation = None;
+                data = None;
+              };
             Effect.continue k ()
         | effect Kast_inference.Error.Error error, k ->
             Log.error (fun log -> log "%a" Kast_inference.Error.print error);
-            (* TODO might be from another file? *)
-            diagnostics :=
-              ({
-                 range = error.span |> Common.span_to_range;
-                 severity = Some Error;
-                 code = None;
-                 codeDescription = None;
-                 source = None;
-                 message = `String (make_string "%t" error.msg);
-                 tags = None;
-                 relatedInformation = None;
-                 data = None;
-               }
-                : Lsp.Types.Diagnostic.t)
-              :: !diagnostics;
+            add_diagnostic error.span.uri
+              {
+                range = error.span |> Common.span_to_range;
+                severity = Some Error;
+                code = None;
+                codeDescription = None;
+                source = None;
+                message = `String (make_string "%t" error.msg);
+                tags = None;
+                relatedInformation = None;
+                data = None;
+              };
             Effect.continue k ()
         | _ -> None)
   in
-  { uri = source.uri; parsed; compiled; diagnostics = !diagnostics }
+  { uri = source.uri; parsed; compiled }
 
 let workspace_file (root : Uri.t) (path : string) =
   Uri.with_path root (Uri.path root ^ "/" ^ path)
@@ -153,18 +149,16 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
              let processed = process_file global (Source.read uri) in
              handle_processed uri processed)
     with
+    | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
+        global.diagnostics <- UriMap.remove uri global.diagnostics;
+        Effect.Deep.continue k ()
     | effect
         Compiler.Effect.FileIncluded { root; uri; parsed; kind; compiled }, k ->
         Hashtbl.add global.root_of_included uri root;
         (match kind with
         | Expr ->
             let file_state : file_state =
-              {
-                uri;
-                parsed = Some parsed;
-                compiled = Some compiled;
-                diagnostics = [];
-              }
+              { uri; parsed = Some parsed; compiled = Some compiled }
             in
             handle_processed uri file_state
         | _ -> ());
@@ -173,12 +167,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
         Compiler.Effect.FileImported { uri; parsed; compiled; value = _ }, k ->
         Hashtbl.remove global.root_of_included uri;
         let file_state : file_state =
-          {
-            uri;
-            parsed = Some parsed;
-            compiled = Some compiled;
-            diagnostics = [];
-          }
+          { uri; parsed = Some parsed; compiled = Some compiled }
         in
         handle_processed uri file_state;
         Effect.Deep.continue k ()
@@ -206,6 +195,7 @@ let init (workspaces : Lsp.Uri.t list) : global_state =
       workspaces = [];
       vfs = UriMap.empty;
       imported = Compiler.init_imported ();
+      diagnostics = UriMap.empty;
       root_of_included = Hashtbl.create 0;
     }
   in

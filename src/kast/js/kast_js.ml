@@ -4,9 +4,13 @@ open Js_of_ocaml
 
 type file_state = Kast_lsp.Processing.file_state
 
+let global = Kast_lsp.Processing.init []
+
 let cross_js : 'a. (unit -> 'a) -> 'a =
  fun f ->
   try Kast_embedded_std.with_embedded_std f with
+  | effect Kast_compiler.Effect.FileStartedProcessing _, k ->
+      Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
 
@@ -88,17 +92,16 @@ let lsp =
 
     method diagnostics (state : file_state) =
       cross_js (fun () ->
-          let result = Kast_lsp.Diagnostics.get state in
+          let result = Kast_lsp.Diagnostics.get_for_file global state in
           `List (result |> List.map Lsp.Types.Diagnostic.yojson_of_t)
           |> yojson_to_js)
   end
 
 let () =
   Js.export "Kast"
-    (object%js (self)
+    (object%js
        val lsp = lsp
        val semanticTokensProvider = semanticTokensProvider
-       val global = Kast_lsp.Processing.init []
 
        method run (source : string) =
          cross_js (fun () ->
@@ -133,8 +136,6 @@ let () =
        method processFile (uri : string) (source : string) :
            Kast_lsp.Processing.file_state =
          cross_js (fun () ->
-             Kast_lsp.Processing.process_file self##.global
+             Kast_lsp.Processing.process_file global
                { contents = source; uri = Uri.of_string uri })
     end)
-(* because self *)
-[@@warning "-27"]
