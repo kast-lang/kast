@@ -95,7 +95,7 @@ and should_continue_with (next_node : Ruleset.node) (state : parse_one_state)
 
 and try_continue_with_keyword (state : parse_one_state) (context : context) :
     parse_result option =
-  Log.trace "trying to continue with keyword";
+  Log.trace (fun log -> log "trying to continue with keyword");
   with_return (fun { return } ->
       let token = context |> peek_token in
       let* keyword = token |> Token.raw in
@@ -103,14 +103,15 @@ and try_continue_with_keyword (state : parse_one_state) (context : context) :
         (not state.made_progress)
         && context.continuation_keywords |> StringSet.contains keyword
       then (
-        Log.trace
-          "Not continuing with keyword because %S is in continuation keywords"
-          keyword;
+        Log.trace (fun log ->
+            log
+              "Not continuing with keyword because %S is in continuation keywords"
+              keyword);
         return None);
       let edge : Ruleset.edge = Keyword keyword in
       let* next_node = state.node.next |> Ruleset.EdgeMap.find_opt edge in
       if not (should_continue_with next_node state context) then return None;
-      Log.trace "Following with keyword %S" keyword;
+      Log.trace (fun log -> log "Following with keyword %S" keyword);
       Lexer.advance context.lexer;
       let new_state : parse_one_state =
         {
@@ -128,7 +129,7 @@ and try_continue_with_value (state : parse_one_state) (context : context) :
     parse_result option =
   with_return (fun { return } ->
       if state.parsed_rev |> List.is_empty then return None;
-      Log.trace "trying to continue with value";
+      Log.trace (fun log -> log "trying to continue with value");
       let edge : Ruleset.edge = Value in
       let* next_node = state.node.next |> Ruleset.EdgeMap.find_opt edge in
       if not (should_continue_with next_node state context) then return None;
@@ -146,9 +147,9 @@ and try_continue_with_value (state : parse_one_state) (context : context) :
           unused_comments_rev = context.unused_comments_rev;
         }
       in
-      Log.trace "Trying to parse value to follow with";
+      Log.trace (fun log -> log "Trying to parse value to follow with");
       let* value : Ast.t = parse_value inner_context in
-      Log.trace "Following with value %a" Ast.print value;
+      Log.trace (fun log -> log "Following with value %a" Ast.print value);
       let new_state : parse_one_state =
         {
           made_progress = true;
@@ -159,14 +160,14 @@ and try_continue_with_value (state : parse_one_state) (context : context) :
       Some (parse_one_from new_state context))
 
 and terminate (state : parse_one_state) (context : context) : parse_result =
-  Log.trace "trying to terminate";
+  Log.trace (fun log -> log "trying to terminate");
   with_return (fun { return } ->
       if not state.made_progress then return NoProgress;
       (match state.node.terminal with
       | Some rule ->
           let parsed = state.parsed_rev |> List.rev in
           let ast = Rule.collect parsed rule in
-          Log.trace "Parsed %a" Ast.print ast;
+          Log.trace (fun log -> log "Parsed %a" Ast.print ast);
           return (MadeProgress ast)
       | None -> ());
       (let single_value =
@@ -188,7 +189,8 @@ and terminate (state : parse_one_state) (context : context) : parse_result =
       let token = context |> peek_token in
       Error.error token.span "Unexpected %a" Token.print token;
       let parts = state.parsed_rev |> List.rev in
-      Log.trace "Parsed: %a" (List.print Parsed_part.print) parts;
+      Log.trace (fun log ->
+          log "Parsed: %a" (List.print Parsed_part.print) parts);
       let spans =
         parts
         |> List.map (function
@@ -274,7 +276,7 @@ and parse_simple (context : context) : Ast.t option =
                 { comments_before = context |> take_comments; token = peek }
         | Comment _ -> unreachable "comments were skipped"
       in
-      Log.trace "Parsed simple %a" Ast.Shape.print shape;
+      Log.trace (fun log -> log "Parsed simple %a" Ast.Shape.print shape);
       context.lexer |> Lexer.advance;
       Some ({ shape; span = { peek.span with start } } : Ast.t))
 
@@ -347,7 +349,7 @@ and parse_value (context : context) : Ast.t option =
   let rec loop ~(already_parsed : Ast.t option) : Ast.t option =
     match parse_or_extend_minimal already_parsed context with
     | MadeProgress ast ->
-        Log.trace "Made progress: %a" Ast.print ast;
+        Log.trace (fun log -> log "Made progress: %a" Ast.print ast);
         loop ~already_parsed:(Some ast)
     | NoProgress -> already_parsed
   in

@@ -79,7 +79,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
     method private _on_doc ~(changed : bool)
         ~(notify_back : Linol_eio.Jsonrpc2.notify_back)
         (uri : Lsp.Types.DocumentUri.t) (contents : string) =
-      Log.info "_on_doc %S" (Lsp.Uri.to_path uri);
+      Log.info (fun log -> log "_on_doc %S" (Lsp.Uri.to_path uri));
 
       if changed then (
         Processing.update_file (self#get_state ()) uri contents;
@@ -98,7 +98,8 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
             fprintf fmt "%s"
               (diag |> Lsp.Types.Diagnostic.yojson_of_t |> Yojson.Safe.to_string)
           in
-          Log.info "sending diags %a" (List.print print_diag) diags;
+          Log.info (fun log ->
+              log "sending diags %a" (List.print print_diag) diags);
           notify_back#send_diagnostic diags)
 
     (* We now override the [on_notify_doc_did_open] method that will be called
@@ -186,7 +187,8 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
               }
         in
         let json = Lsp.Types.WorkspaceEdit.yojson_of_t edit in
-        Log.info "Rename reply: %a" (Yojson.Safe.pretty_print ~std:true) json;
+        Log.info (fun log ->
+            log "Rename reply: %a" (Yojson.Safe.pretty_print ~std:true) json);
         edit
 
     method private on_req_prepare_rename :
@@ -221,7 +223,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
 let run ({ dummy = () } : Args.t) =
   Eio_main.run (fun env ->
       Eio.Switch.run (fun sw ->
-          Log.info "Starting Kast LSP";
+          Log.info (fun log -> log "Starting Kast LSP");
           let s = new lsp_server ~sw ~domain_mgr:(Eio.Stdenv.domain_mgr env) in
           let server = Linol_eio.Jsonrpc2.create_stdio ~env s in
           let task () =
@@ -229,7 +231,7 @@ let run ({ dummy = () } : Args.t) =
             Linol_eio.Jsonrpc2.run ~shutdown server
           in
           match task () with
-          | () -> Log.info "Exiting Kast LSP"
+          | () -> Log.info (fun log -> log "Exiting Kast LSP")
           | exception e ->
               let e = Printexc.to_string e in
               Printf.eprintf "error: %s\n%!" e;

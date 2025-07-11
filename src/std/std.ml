@@ -41,3 +41,10 @@ let read_from_filesystem path =
   Fun.protect
     (fun () -> In_channel.input_all ch)
     ~finally:(fun () -> In_channel.close ch)
+
+let timed name f =
+  let start = Sys.time () in
+  let result = f () in
+  let time = Sys.time () -. start in
+  Log.info (fun log -> log "time for %S = %f s" name time);
+  result

@@ -64,5 +64,5 @@ let parse : source -> ast option =
   let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse source ruleset
   in
-  Log.trace "Parsed: %a" (Option.print Ast.print) ast;
+  Log.trace (fun log -> log "Parsed: %a" (Option.print Ast.print) ast);
   ast |> Option.map process

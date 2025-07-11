@@ -6,7 +6,7 @@ let options : Lsp.Types.DocumentFormattingOptions.t =
 
 let run ({ parsed; _ } : Processing.file_state) :
     Lsp.Types.TextEdit.t list option =
-  Log.info "got format request";
+  Log.info (fun log -> log "got format request");
   match parsed with
   | None -> None
   | Some parsed ->

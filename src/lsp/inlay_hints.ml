@@ -141,7 +141,7 @@ let inlay_hints ~uri (expr : expr) : Lsp.Types.InlayHint.t list =
 
 let get ({ uri; compiled; _ } : Processing.file_state) :
     Lsp.Types.InlayHint.t list option =
-  Log.info "got inlay hint req";
+  Log.info (fun log -> log "got inlay hint req");
   let* expr = compiled in
   let hints = inlay_hints ~uri expr in
   Some hints

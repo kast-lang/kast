@@ -28,7 +28,8 @@ let rec start_queued_if_needed : 'a. domain_mgr:_ -> 'a state -> unit =
                              state.currently_executing <- None)
                            (fun () -> state.result <- Some (f ()))
                        with exc ->
-                         Log.error "DOMAIN PANIC: %s" (Printexc.to_string exc)));
+                         Log.error (fun log ->
+                             log "DOMAIN PANIC: %s" (Printexc.to_string exc))));
                start_queued_if_needed ~domain_mgr state)))
 
 let spawn (type a) ~domain_mgr (f : unit -> a) (state : a state) : unit =

@@ -143,8 +143,9 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
       uri = (List.head spans).uri;
     }
   in
-  Log.trace "Collecting %d parts into %s" (List.length parts) rule.name;
-  Log.trace "parts = %a" (List.print Parsed_part.print) parts;
+  Log.trace (fun log ->
+      log "Collecting %d parts into %s" (List.length parts) rule.name);
+  Log.trace (fun log -> log "parts = %a" (List.print Parsed_part.print) parts);
   let rec collect_children (parsed_parts : Parsed_part.t list)
       (rule_parts : Syntax.Rule.part list) : collect_result =
     match (parsed_parts, rule_parts) with

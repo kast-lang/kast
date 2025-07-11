@@ -41,13 +41,12 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
         { contents = source; uri = Uri.of_string "ocaml:test" }
         (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
     in
-    Log.error "Parsed: %a" (Option.print Ast.print) ast;
+    Log.error (fun log -> log "Parsed: %a" (Option.print Ast.print) ast);
     failwith "Parse was supposed to fail"
   with
   | effect Parser.Error.Error { msg; span = _ }, _k ->
-      Log.trace "Test properly failed: %a" (fun fmt () -> msg fmt) ()
-  | Lexer.Error f ->
-      Log.trace "Test properly failed: %a" (fun fmt () -> f fmt) ()
+      Log.trace (fun log -> log "Test properly failed: %t" msg)
+  | Lexer.Error f -> Log.trace (fun log -> log "Test properly failed: %t" f)
 
 let test ~(source : string) ~(expected : string)
     ?(ruleset : Parser.ruleset option) () : unit =
@@ -64,8 +63,9 @@ let test ~(source : string) ~(expected : string)
   match ast with
   | Some ast ->
       if not (matches ast expected) then (
-        Log.error "Parsed: %a" Ast.print ast;
-        Log.error "Expected %a" Kast_simple_syntax.print expected;
+        Log.error (fun log -> log "Parsed: %a" Ast.print ast);
+        Log.error (fun log ->
+            log "Expected %a" Kast_simple_syntax.print expected);
         failwith "Test failed")
   | None -> failwith "nothing was parsed"
 ;;

@@ -34,7 +34,7 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
 
 let get (params : Lsp.Types.SelectionRangeParams.t)
     ({ parsed; _ } : Processing.file_state) : Lsp.Types.SelectionRange.t list =
-  Log.info "got selection range request";
+  Log.info (fun log -> log "got selection range request");
   match parsed with
   | Some { ast = Some ast; eof; _ } ->
       params.positions
@@ -48,7 +48,7 @@ let get (params : Lsp.Types.SelectionRangeParams.t)
                }
              in
              let spans = full_file :: find_spans_start_biggest ast pos in
-             Log.info "SPANS: %a" (List.print Span.print) spans;
+             Log.info (fun log -> log "SPANS: %a" (List.print Span.print) spans);
              spans
              |> List.fold_left
                   (fun parent (span : span) ->

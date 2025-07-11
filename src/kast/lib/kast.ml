@@ -14,16 +14,16 @@ let handle_effects : 'a. (unit -> 'a) -> 'a =
  fun f ->
   try f () with
   | effect Kast_interpreter.Error.Error error, k ->
-      Log.error "%a" Kast_interpreter.Error.print error;
+      Log.error (fun log -> log "%a" Kast_interpreter.Error.print error);
       Effect.continue k ()
   | effect Kast_compiler.Error.Error error, k ->
-      Log.error "%a" Kast_compiler.Error.print error;
+      Log.error (fun log -> log "%a" Kast_compiler.Error.print error);
       Effect.continue k ()
   | effect Kast_inference_base.Error.Error error, k ->
-      Log.error "%a" Kast_inference_base.Error.print error;
+      Log.error (fun log -> log "%a" Kast_inference_base.Error.print error);
       Effect.continue k ()
   | effect Kast_parser.Error.Error error, k ->
-      Log.error "%a" Kast_parser.Error.print error;
+      Log.error (fun log -> log "%a" Kast_parser.Error.print error);
       Effect.continue k ()
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->

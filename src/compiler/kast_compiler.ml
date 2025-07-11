@@ -140,8 +140,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 Error.error span "expected a value after syntax";
                 init_error span kind))
   with exc ->
-    Log.error "While compiling %a %a at %a" Compiler.CompiledKind.print kind
-      Ast.Shape.print_short ast.shape Span.print ast.span;
+    Log.error (fun log ->
+        log "While compiling %a %a at %a" Compiler.CompiledKind.print kind
+          Ast.Shape.print_short ast.shape Span.print ast.span);
     raise exc
 
 and make_compiler (original_state : state) : (module Compiler.S) =

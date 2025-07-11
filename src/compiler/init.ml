@@ -84,7 +84,7 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
-    Log.error "while initializing expr at %a" Span.print span;
+    Log.error (fun log -> log "while initializing expr at %a" Span.print span);
     raise exc
 
 let init_assignee :
@@ -101,7 +101,8 @@ let init_assignee :
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
-    Log.error "while initializing assignee expr at %a" Span.print span;
+    Log.error (fun log ->
+        log "while initializing assignee expr at %a" Span.print span);
     raise exc
 
 let init_pattern : ?evaled_exprs:expr list -> span -> Pattern.Shape.t -> pattern
@@ -126,7 +127,8 @@ let init_pattern : ?evaled_exprs:expr list -> span -> Pattern.Shape.t -> pattern
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->
-    Log.error "while initializing pattern at %a" Span.print span;
+    Log.error (fun log ->
+        log "while initializing pattern at %a" Span.print span);
     raise exc
 
 let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
@@ -150,7 +152,8 @@ let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
         data = { span; ty = type_ty; ty_ascription = None; evaled_exprs };
       }
     with exc ->
-      Log.error "while initializing type expr at %a" Span.print span;
+      Log.error (fun log ->
+          log "while initializing type expr at %a" Span.print span);
       raise exc
 
 let init_error : 'a. span -> 'a Compiler.compiled_kind -> 'a =

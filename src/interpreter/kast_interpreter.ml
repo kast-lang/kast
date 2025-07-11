@@ -83,7 +83,8 @@ let rec eval : state -> expr -> value =
   | E_Binding binding ->
       Scope.find_opt binding.name state.scope
       |> Option.unwrap_or_else (fun () : value ->
-             Log.trace "all in scope: %a" Scope.print_all state.scope;
+             Log.trace (fun log ->
+                 log "all in scope: %a" Scope.print_all state.scope);
              Error.error expr.data.span "%a not found" Symbol.print binding.name;
              { shape = V_Error })
   | E_Fn def -> { shape = V_Fn { def; captured = state.scope } }
