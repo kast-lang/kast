@@ -7,7 +7,7 @@ open Kast_types
 type global_state = {
   workspaces : workspace_state list;
   mutable vfs : string UriMap.t;
-  imported : Compiler.imported;
+  import_cache : Compiler.import_cache;
   mutable diagnostics : Lsp.Types.Diagnostic.t list UriMap.t;
   root_of_included : (Uri.t, Uri.t) Hashtbl.t;
 }
@@ -63,7 +63,9 @@ let process_file (global : global_state) (source : source) : file_state =
   let compiled =
     Option.bind ast (fun ast ->
         try
-          let compiler = Compiler.default ~imported:global.imported () in
+          let compiler =
+            Compiler.default ~import_cache:global.import_cache ()
+          in
           Some (Compiler.compile compiler Expr ast)
         with
         | effect Kast_interpreter.Error.Error error, k ->
@@ -196,7 +198,7 @@ let init (workspaces : Lsp.Uri.t list) : global_state =
     {
       workspaces = [];
       vfs = UriMap.empty;
-      imported = Compiler.init_imported ();
+      import_cache = Compiler.init_import_cache ();
       diagnostics = UriMap.empty;
       root_of_included = Hashtbl.create 0;
     }
@@ -218,10 +220,10 @@ let update_file (global : global_state) (uri : Lsp.Uri.t) (source : string) :
     unit =
   let uri = Common.uri_from_lsp uri in
   Log.trace (fun log -> log "PROJECT: update %a" Uri.print uri);
-  global.imported.by_uri <-
+  global.import_cache.by_uri <-
     UriMap.remove
       (Hashtbl.find_opt global.root_of_included uri |> Option.value ~default:uri)
-      global.imported.by_uri;
+      global.import_cache.by_uri;
   global.vfs <- UriMap.add uri source global.vfs
 
 let recalculate (global : global_state) : unit =

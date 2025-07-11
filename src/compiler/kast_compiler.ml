@@ -8,15 +8,15 @@ open Init
 module Error = Error
 
 type state = State.t
-type imported = State.imported
+type import_cache = State.import_cache
 
-let init_imported = State.init_imported
+let init_import_cache = State.init_import_cache
 
 module Effect = Types.CompilerEffect
 
 (* TODO compile_for - figure out *)
-let init : imported:State.imported -> compile_for:Interpreter.state -> state =
- fun ~imported ~compile_for ->
+let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
+ fun ~import_cache ~compile_for ->
   let scope = State.Scope.init () in
   let scope =
     SymbolMap.fold
@@ -35,7 +35,7 @@ let init : imported:State.imported -> compile_for:Interpreter.state -> state =
     scope;
     currently_compiled_file = None;
     interpreter = compile_for;
-    imported;
+    import_cache;
     custom_syntax_impls = Hashtbl.create 0;
   }
 
@@ -157,12 +157,12 @@ and make_compiler (original_state : state) : (module Compiler.S) =
       compile (state |> Option.value ~default:original_state) kind ast
   end : Compiler.S)
 
-let default ?(imported : State.imported option) () : state =
-  let imported =
-    imported |> Option.unwrap_or_else (fun () -> State.init_imported ())
+let default ?(import_cache : import_cache option) () : state =
+  let import_cache =
+    import_cache |> Option.unwrap_or_else (fun () -> State.init_import_cache ())
   in
   let interpreter_without_std = Interpreter.default () in
-  let bootstrap = init ~imported ~compile_for:interpreter_without_std in
+  let bootstrap = init ~import_cache ~compile_for:interpreter_without_std in
   let std_uri =
     Uri.append_if_relative
       (Stdlib.Effect.perform Effect.FindStd)
@@ -192,7 +192,7 @@ let default ?(imported : State.imported option) () : state =
     scope;
     currently_compiled_file = None;
     interpreter = interpreter_with_std;
-    imported;
+    import_cache;
     custom_syntax_impls = bootstrap.custom_syntax_impls;
   }
 

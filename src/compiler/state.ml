@@ -45,30 +45,35 @@ module Scope = struct
     { parent; bindings = bindings |> StringMap.add binding.name.name binding }
 end
 
+type imported = {
+  custom_syntax_impls : (Id.t, value) Hashtbl.t;
+  value : value;
+}
+
 type import =
   | InProgress
-  | Imported of value
+  | Imported of imported
 
-type imported = { mutable by_uri : import UriMap.t }
+type import_cache = { mutable by_uri : import UriMap.t }
 
-let init_imported () : imported = { by_uri = UriMap.empty }
+let init_import_cache () : import_cache = { by_uri = UriMap.empty }
 
 type t = {
   (* TODO do this properly *)
   mutable scope : Scope.t;
   mutable currently_compiled_file : Uri.t option;
-  imported : imported;
+  import_cache : import_cache;
   interpreter : Interpreter.state;
   custom_syntax_impls : (Id.t, value) Hashtbl.t;
 }
 
 type state = t
 
-let blank ~imported =
+let blank ~import_cache =
   {
     scope = Scope.init ();
     currently_compiled_file = None;
-    imported;
+    import_cache;
     interpreter = Interpreter.default ();
     custom_syntax_impls = Hashtbl.create 0;
   }
@@ -78,13 +83,13 @@ let enter_scope : state -> state =
        scope;
        currently_compiled_file;
        interpreter;
-       imported;
+       import_cache;
        custom_syntax_impls;
      } ->
   {
     scope = Scope.enter ~parent:scope;
     currently_compiled_file;
     interpreter;
-    imported;
+    import_cache;
     custom_syntax_impls;
   }

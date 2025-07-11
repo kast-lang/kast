@@ -61,42 +61,50 @@ let eval ~(ty : ty) (module C : S) (ast : Ast.t) : value * expr =
   (value, expr)
 
 let import ~(span : span) (module C : S) (uri : Uri.t) : value =
-  let imported = C.state.imported in
-  match UriMap.find_opt uri imported.by_uri with
-  | None ->
-      Log.trace (fun log -> log "Importing %a" Uri.print uri);
-      Effect.perform (CompilerEffect.FileStartedProcessing uri);
-      imported.by_uri <-
-        UriMap.add uri (InProgress : State.import) imported.by_uri;
-      let state : State.t =
-        {
-          currently_compiled_file = Some uri;
-          custom_syntax_impls = Hashtbl.create 0;
-          scope = C.state.scope;
-          imported;
-          interpreter = C.state.interpreter;
-        }
-      in
-      let source = Source.read uri in
-      let parsed = Kast_parser.parse source Kast_default_syntax.ruleset in
-      let expr =
-        match parsed.ast with
-        | Some ast -> C.compile ~state Expr ast
-        | None ->
-            E_Constant { shape = V_Unit }
-            |> Init.init_expr (Span.beginning_of source.uri)
-      in
-      let value : value = Kast_interpreter.eval state.interpreter expr in
-      Effect.perform
-        (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
-      imported.by_uri <-
-        UriMap.add uri (Imported value : State.import) imported.by_uri;
-      Log.info (fun log -> log "Imported %a" Uri.print uri);
-      value
-  | Some (Imported value) -> value
-  | Some InProgress ->
-      error span "No recursive imports!";
-      { shape = V_Error }
+  let import_cache = C.state.import_cache in
+  let result : State.imported =
+    match UriMap.find_opt uri import_cache.by_uri with
+    | None ->
+        Log.trace (fun log -> log "Importing %a" Uri.print uri);
+        Effect.perform (CompilerEffect.FileStartedProcessing uri);
+        import_cache.by_uri <-
+          UriMap.add uri (InProgress : State.import) import_cache.by_uri;
+        let state : State.t =
+          {
+            currently_compiled_file = Some uri;
+            custom_syntax_impls = Hashtbl.create 0;
+            scope = C.state.scope;
+            import_cache;
+            interpreter = C.state.interpreter;
+          }
+        in
+        let source = Source.read uri in
+        let parsed = Kast_parser.parse source Kast_default_syntax.ruleset in
+        let expr =
+          match parsed.ast with
+          | Some ast -> C.compile ~state Expr ast
+          | None ->
+              E_Constant { shape = V_Unit }
+              |> Init.init_expr (Span.beginning_of source.uri)
+        in
+        let value : value = Kast_interpreter.eval state.interpreter expr in
+        Effect.perform
+          (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
+        let imported : State.imported =
+          { value; custom_syntax_impls = state.custom_syntax_impls }
+        in
+        import_cache.by_uri <-
+          UriMap.add uri (Imported imported : State.import) import_cache.by_uri;
+        Log.info (fun log -> log "Imported %a" Uri.print uri);
+        imported
+    | Some (Imported value) -> value
+    | Some InProgress ->
+        error span "No recursive imports!";
+        { value = { shape = V_Error }; custom_syntax_impls = Hashtbl.create 0 }
+  in
+  Hashtbl.add_seq C.state.custom_syntax_impls
+    (Hashtbl.to_seq result.custom_syntax_impls);
+  result.value
 
 let inject_binding (binding : binding) (state : State.t) : unit =
   state.scope <- state.scope |> State.Scope.inject_binding binding
