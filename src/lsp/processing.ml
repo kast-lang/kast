@@ -26,6 +26,7 @@ and file_state = {
 let process_file (global : global_state) (source : source) : file_state =
   Log.trace (fun log -> log "PROJECT: processing %a" Uri.print source.uri);
   Hashtbl.remove global.root_of_included source.uri;
+  global.diagnostics <- global.diagnostics |> UriMap.add source.uri [];
 
   let add_diagnostic uri (diag : Lsp.Types.Diagnostic.t) : unit =
     Log.trace (fun log -> log "Added diag for %a" Uri.print uri);
@@ -154,7 +155,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
     with
     | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
         Log.trace (fun log -> log "removed diags for %a" Uri.print uri);
-        global.diagnostics <- UriMap.remove uri global.diagnostics;
+        global.diagnostics <- global.diagnostics |> UriMap.add uri [];
         Effect.Deep.continue k ()
     | effect
         Compiler.Effect.FileIncluded { root; uri; parsed; kind; compiled }, k ->

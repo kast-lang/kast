@@ -1,5 +1,5 @@
 use std.prelude.*;
-let main = () => (
+let main = () with io => (
     print "Welcome to the Guessing Number Game :-)";
     let picked = std.rng.gen_int32 10;
     print "The number has been picked!";
