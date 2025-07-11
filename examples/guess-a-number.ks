@@ -1,7 +1,7 @@
 use std.prelude.*;
 let main = () with io => (
     print "Welcome to the Guessing Number Game :-)";
-    let picked = std.rng.gen_int32 10;
+    let picked = std.rng.gen_int32 (.min = 1, .max = 10);
     print "The number has been picked!";
     # print <| int32_to_string picked;
     let first = true;

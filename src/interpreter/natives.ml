@@ -92,13 +92,31 @@ let natives : natives =
           | _ ->
               Error.error caller "input expected a string";
               { shape = V_Error });
-      native_fn ~arg:(Ty.inferred T_Int32) ~result:(Ty.inferred T_Int32) "rng"
+      native_fn
+        ~arg:
+          (Ty.inferred
+             (T_Tuple
+                {
+                  tuple =
+                    Tuple.make []
+                      [
+                        ("min", Ty.inferred T_Int32);
+                        ("max", Ty.inferred T_Int32);
+                      ];
+                }))
+        ~result:(Ty.inferred T_Int32) "rng"
         (fun ~caller arg ->
-          match arg.shape with
-          | V_Int32 max -> { shape = V_Int32 (Random.int32 max) }
-          | _ ->
-              Error.error caller "rng expected int32";
-              { shape = V_Error });
+          try
+            let { tuple } : Kast_types.Types.value_tuple =
+              arg |> Value.expect_tuple |> Option.get
+            in
+            let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
+            let min = min |> Value.expect_int32 |> Option.get in
+            let max = max |> Value.expect_int32 |> Option.get in
+            { shape = V_Int32 (Random.int32_in_range ~min ~max) }
+          with exc ->
+            Error.error caller "rng: %s" (Printexc.to_string exc);
+            { shape = V_Error });
       native_fn ~arg:(Ty.inferred T_Int32) ~result:(Ty.inferred T_String)
         "int32_to_string" (fun ~caller arg ->
           match arg.shape with

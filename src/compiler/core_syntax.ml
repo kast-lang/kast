@@ -757,8 +757,6 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
            let group = ty |> Ast.Child.expect_group in
            group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
   in
-  (* TODO *)
-  let ty = Ty.new_not_inferred () in
   let value =
     children
     |> Tuple.get_named_opt "value"
@@ -767,7 +765,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
            group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
   in
   match kind with
-  | Expr ->
+  | Expr -> (
       let value =
         match value with
         | Some value -> C.compile Expr value
@@ -776,14 +774,36 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
               (State.Scope.find_binding ~from:label_ast.span label C.state.scope)
             |> init_expr span
       in
-      (label, value)
+      match ty |> Option.map (Compiler.eval_ty (module C)) with
+      | None -> (label, value)
+      | Some (ty, ty_expr) ->
+          value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
+          ( label,
+            {
+              value with
+              data = { value.data with ty_ascription = Some ty_expr };
+            } ))
   | TyExpr ->
-      error span "todo %s" __LOC__;
-      invalid_arg "todo"
+      (match value with
+      | None -> ()
+      | Some _ -> error span "unexpected value");
+      let value =
+        match ty with
+        | Some value -> C.compile TyExpr value
+        | None ->
+            let expr =
+              E_Binding
+                (State.Scope.find_binding ~from:label_ast.span label
+                   C.state.scope)
+              |> init_expr span
+            in
+            TE_Expr expr |> init_ty_expr span
+      in
+      (label, value)
   | Assignee ->
       error span "todo %s" __LOC__;
       invalid_arg "todo"
-  | Pattern ->
+  | Pattern -> (
       let value =
         match value with
         | Some value -> C.compile Pattern value
@@ -791,13 +811,21 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
             P_Binding
               {
                 name = Symbol.create label;
-                ty;
+                ty = Ty.new_not_inferred ();
                 references = [];
                 span = label_ast.span;
               }
             |> init_pattern span
       in
-      (label, value)
+      match ty |> Option.map (Compiler.eval_ty (module C)) with
+      | None -> (label, value)
+      | Some (ty, ty_expr) ->
+          value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
+          ( label,
+            {
+              value with
+              data = { value.data with ty_ascription = Some ty_expr };
+            } ))
 
 let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
     (ast : Ast.t) : a =
