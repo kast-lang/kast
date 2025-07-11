@@ -12,7 +12,7 @@ type imported = State.imported
 
 let init_imported = State.init_imported
 
-module Effect = Compiler.Effect
+module Effect = Types.CompilerEffect
 
 (* TODO compile_for - figure out *)
 let init : imported:State.imported -> compile_for:Interpreter.state -> state =
@@ -39,7 +39,7 @@ let init : imported:State.imported -> compile_for:Interpreter.state -> state =
     custom_syntax_impls = Hashtbl.create 0;
   }
 
-type 'a compiled_kind = 'a Compiler.compiled_kind
+type 'a compiled_kind = 'a Types.compiled_kind
 
 let get_data = Compiler.get_data
 

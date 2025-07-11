@@ -6,9 +6,9 @@ type file_state = Kast_lsp.Processing.file_state
 
 let cross_js : 'a. (unit -> 'a) -> 'a =
  fun f ->
-  try Kast_embedded_std.with_embedded_std f
-  with effect Kast_compiler.Effect.FileIncluded _, k ->
-    Effect.Deep.continue k ()
+  try Kast_embedded_std.with_embedded_std f with
+  | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
+  | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
 
 let yojson_to_js (json : Yojson.Safe.t) : Js.Unsafe.any =
   let json_str = Yojson.Safe.to_string json in

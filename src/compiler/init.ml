@@ -3,6 +3,7 @@ open Kast_util
 open Kast_types
 open Error
 module Inference = Kast_inference
+open Types
 
 let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
  fun ?(evaled_exprs = []) span shape ->
@@ -156,8 +157,8 @@ let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
           log "while initializing type expr at %a" Span.print span);
       raise exc
 
-let init_error : 'a. span -> 'a Compiler.compiled_kind -> 'a =
- fun (type a) span (kind : a Compiler.compiled_kind) : a ->
+let init_error : 'a. span -> 'a compiled_kind -> 'a =
+ fun (type a) span (kind : a compiled_kind) : a ->
   match kind with
   | Expr -> E_Error |> init_expr span
   | Pattern -> P_Error |> init_pattern span

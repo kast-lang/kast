@@ -5,8 +5,7 @@ module Ast = Kast_ast
 open Init
 open Error
 module Interpreter = Kast_interpreter
-
-type 'a compiled_kind = 'a Compiler.compiled_kind
+open Types
 
 type 'a handle =
   (module Compiler.S) -> 'a compiled_kind -> Ast.t -> Ast.group -> 'a
@@ -567,7 +566,7 @@ let include' : core_syntax =
             in
             let compiled = C.compile kind ast in
             Effect.perform
-              (Compiler.Effect.FileIncluded
+              (CompilerEffect.FileIncluded
                  {
                    root = C.state.currently_compiled_file |> Option.get;
                    uri;

@@ -4,12 +4,7 @@ open Kast_types
 open Error
 module Ast = Kast_ast
 module Inference = Kast_inference
-
-type _ compiled_kind =
-  | Assignee : Expr.assignee compiled_kind
-  | Expr : expr compiled_kind
-  | TyExpr : Expr.ty compiled_kind
-  | Pattern : pattern compiled_kind
+open Types
 
 module CompiledKind = struct
   type 'a t = 'a compiled_kind
@@ -76,16 +71,17 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
       (* TODO *)
       let state = { C.state with currently_compiled_file = Some uri } in
       let source = Source.read uri in
-      let ({ ast; _ } : Kast_parser.result) =
-        Kast_parser.parse source Kast_default_syntax.ruleset
+      let parsed = Kast_parser.parse source Kast_default_syntax.ruleset in
+      let expr =
+        match parsed.ast with
+        | Some ast -> C.compile ~state Expr ast
+        | None ->
+            E_Constant { shape = V_Unit }
+            |> Init.init_expr (Span.beginning_of source.uri)
       in
-      let value : value =
-        match ast with
-        | Some ast ->
-            let expr = C.compile ~state Expr ast in
-            Kast_interpreter.eval state.interpreter expr
-        | None -> { shape = V_Unit }
-      in
+      let value : value = Kast_interpreter.eval state.interpreter expr in
+      Effect.perform
+        (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
       imported.by_uri <-
         UriMap.add uri (Imported value : State.import) imported.by_uri;
       Log.info (fun log -> log "Imported %a" Uri.print uri);
@@ -117,16 +113,3 @@ let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit
   | A_Binding _ -> ()
   | A_Let pattern -> state |> inject_pattern_bindings pattern
   | A_Error -> ()
-
-module Effect = struct
-  type 'a file_included = {
-    root : Uri.t;
-    uri : Uri.t;
-    parsed : Kast_parser.result;
-    kind : 'a compiled_kind;
-    compiled : 'a;
-  }
-
-  type _ Effect.t += FileIncluded : 'a. 'a file_included -> unit Effect.t
-  type _ Effect.t += FindStd : Uri.t Effect.t
-end

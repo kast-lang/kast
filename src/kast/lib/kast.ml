@@ -26,6 +26,7 @@ let handle_effects : 'a. (unit -> 'a) -> 'a =
       Log.error (fun log -> log "%a" Kast_parser.Error.print error);
       Effect.continue k ()
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
+  | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->
       let stdlib_path =
         match Sys.getenv_opt "KAST_STD" with

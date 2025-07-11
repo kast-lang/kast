@@ -25,6 +25,7 @@ and file_state = {
 
 let process_file (global : global_state) (source : source) : file_state =
   Log.trace (fun log -> log "PROJECT: processing %a" Uri.print source.uri);
+  Hashtbl.remove global.root_of_included source.uri;
   let diagnostics = ref [] in
   let parsed =
     try
@@ -121,7 +122,7 @@ let workspace_file (root : Uri.t) (path : string) =
   Uri.with_path root (Uri.path root ^ "/" ^ path)
 
 let process_workspace (global : global_state) (workspace : workspace_state) =
-  workspace.files <- UriMap.empty;
+  (* workspace.files <- UriMap.empty; *)
   try
     let handle_processed uri file_state =
       Log.trace (fun log -> log "File processed %a" Uri.print uri);
@@ -167,6 +168,19 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
             in
             handle_processed uri file_state
         | _ -> ());
+        Effect.Deep.continue k ()
+    | effect
+        Compiler.Effect.FileImported { uri; parsed; compiled; value = _ }, k ->
+        Hashtbl.remove global.root_of_included uri;
+        let file_state : file_state =
+          {
+            uri;
+            parsed = Some parsed;
+            compiled = Some compiled;
+            diagnostics = [];
+          }
+        in
+        handle_processed uri file_state;
         Effect.Deep.continue k ()
     | effect (Source.Read uri as eff), k ->
         if Uri.scheme uri = Some "workspace" then
