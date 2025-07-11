@@ -36,6 +36,9 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
   | T_Ty, _ -> fail ()
   | T_Ast, T_Ast -> T_Ast
   | T_Ast, _ -> fail ()
+  | T_UnwindToken { result = a }, T_UnwindToken { result = b } ->
+      T_UnwindToken { result = unite_ty ~span a b }
+  | T_UnwindToken _, _ -> fail ()
   | T_Fn a, T_Fn b ->
       T_Fn
         {

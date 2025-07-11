@@ -2,12 +2,14 @@ open Std
 open Kast_util
 open Types
 open Print
+module Types = Types
 
 module Ty = struct
   type t = ty
 
   let print = print_ty
   let new_not_inferred () : ty = { var = Inference.Var.new_not_inferred () }
+  let never = new_not_inferred
 
   let inferred (shape : ty_shape) : ty =
     { var = Inference.Var.new_inferred shape }
@@ -38,12 +40,20 @@ module Value = struct
         Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
     | V_Ast _ -> Ty.inferred T_Ast
+    | V_UnwindToken { result_ty; id = _ } ->
+        Ty.inferred (T_UnwindToken { result = result_ty })
     | V_Error -> Ty.inferred T_Error
 
   let expect_unit : value -> unit option =
    fun value ->
     match value.shape with
     | V_Unit -> Some ()
+    | _ -> None
+
+  let expect_unwind_token : value -> Types.value_unwind_token option =
+   fun value ->
+    match value.shape with
+    | V_UnwindToken token -> Some token
     | _ -> None
 
   let expect_bool : value -> bool option =

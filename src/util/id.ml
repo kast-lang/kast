@@ -1,3 +1,5 @@
+open Format
+
 module Id = struct
   type t = { value : int }
 
@@ -11,6 +13,9 @@ module Id = struct
   let compare a b = Int.compare a.value b.value
   let equal a b = Int.equal a.value b.value
   let hash id = Int.hash id.value
+
+  let print : formatter -> t -> unit =
+   fun fmt { value } -> fprintf fmt "#%d" value
 end
 
 type id = Id.t

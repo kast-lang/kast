@@ -119,6 +119,12 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
             | E_QuoteAst _ ->
                 (* TODO *)
                 None
+            | E_Unwindable { token; body } ->
+                hover Pattern token pos
+                |> Option.or_else (fun () -> hover Expr body pos)
+            | E_Unwind { token; value } ->
+                hover Expr token pos
+                |> Option.or_else (fun () -> hover Expr value pos)
             | E_Error -> None)
         | Assignee -> (
             match compiled.shape with

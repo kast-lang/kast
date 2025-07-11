@@ -16,6 +16,7 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_Fn f -> fprintf fmt "@{<italic><fn>@}"
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
   | V_Ast ast -> fprintf fmt "%a" Ast.print ast
+  | V_UnwindToken { id; result_ty = _ } -> fprintf fmt "<unwind %a>" Id.print id
   | V_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_value : formatter -> value -> unit =
@@ -33,6 +34,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Fn { arg; result } ->
       fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
   | T_Ast -> fprintf fmt "ast"
+  | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
   | T_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty : formatter -> ty -> unit =
@@ -87,6 +89,14 @@ and print_expr_shape :
       fprintf fmt "@{<magenta>loop@} (@;<0 2>@[<v>body = %a,@]@ )" print_expr
         body
   | E_QuoteAst expr -> fprintf fmt "@{<magenta>quote_ast ...@}"
+  | E_Unwindable { token; body } ->
+      fprintf fmt
+        "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
+        print_pattern_with_spans token print_expr body
+  | E_Unwind { token; value } ->
+      fprintf fmt
+        "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
+        print_expr token print_expr value
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->

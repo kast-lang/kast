@@ -1,10 +1,10 @@
 open Std
 open Kast_util
+open Compiler_types
 open Kast_types
 open Error
 module Ast = Kast_ast
 module Inference = Kast_inference
-open Types
 
 module CompiledKind = struct
   type 'a t = 'a compiled_kind
@@ -95,7 +95,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
         in
         import_cache.by_uri <-
           UriMap.add uri (Imported imported : State.import) import_cache.by_uri;
-        Log.info (fun log -> log "Imported %a" Uri.print uri);
+        Log.trace (fun log -> log "Imported %a" Uri.print uri);
         imported
     | Some (Imported value) -> value
     | Some InProgress ->

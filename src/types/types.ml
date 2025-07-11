@@ -17,9 +17,15 @@ and value_shape =
   | V_Fn of value_fn
   | V_NativeFn of value_native_fn
   | V_Ast of Ast.t
+  | V_UnwindToken of value_unwind_token
   | V_Error
 
 and value = { shape : value_shape }
+
+and value_unwind_token = {
+  id : Id.t;
+  result_ty : ty;
+}
 
 and value_fn = {
   def : expr_fn;
@@ -34,6 +40,7 @@ and value_native_fn = {
   impl : caller:span -> value -> value;
 }
 
+(* TY *)
 and ty_tuple = { tuple : ty tuple }
 
 and ty_fn = {
@@ -41,7 +48,8 @@ and ty_fn = {
   result : ty;
 }
 
-(* TY *)
+and ty_unwind_token = { result : ty }
+
 and ty_shape =
   | T_Unit
   | T_Bool
@@ -51,6 +59,7 @@ and ty_shape =
   | T_Ty
   | T_Fn of ty_fn
   | T_Ast
+  | T_UnwindToken of ty_unwind_token
   | T_Error
 
 and ty = { var : ty_shape Inference.var }
@@ -117,6 +126,16 @@ and expr_quote_ast = {
 
 and expr_loop = { body : expr }
 
+and expr_unwindable = {
+  token : pattern;
+  body : expr;
+}
+
+and expr_unwind = {
+  token : expr;
+  value : expr;
+}
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -135,6 +154,8 @@ and expr_shape =
   | E_If of expr_if
   | E_QuoteAst of expr_quote_ast
   | E_Loop of expr_loop
+  | E_Unwindable of expr_unwindable
+  | E_Unwind of expr_unwind
   | E_Error
 
 and expr = {

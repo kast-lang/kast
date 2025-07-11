@@ -1,9 +1,9 @@
 open Std
 open Kast_util
+open Compiler_types
 open Kast_types
 open Error
 module Inference = Kast_inference
-open Types
 
 let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
  fun ?(evaled_exprs = []) span shape ->
@@ -82,6 +82,16 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
           Ty.inferred T_Ast
       | E_Loop { body } -> Ty.new_not_inferred ()
       | E_Error -> Ty.new_not_inferred ()
+      | E_Unwindable { token; body } ->
+          token.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:token.data.span
+               (Ty.inferred (T_UnwindToken { result = body.data.ty }));
+          body.data.ty
+      | E_Unwind { token; value } ->
+          token.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:token.data.span
+               (Ty.inferred (T_UnwindToken { result = value.data.ty }));
+          Ty.never ()
     in
     { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
   with exc ->

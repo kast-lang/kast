@@ -68,6 +68,16 @@ let rec inlay_hints :
         | E_QuoteAst _ ->
             (* TODO *)
             (None, Seq.empty)
+        | E_Unwindable { token; body } ->
+            ( None,
+              Seq.append
+                (inlay_hints ~uri Pattern token)
+                (inlay_hints ~uri Expr body) )
+        | E_Unwind { token; value } ->
+            ( None,
+              Seq.append
+                (inlay_hints ~uri Expr token)
+                (inlay_hints ~uri Expr value) )
         | E_Error -> (None, Seq.empty))
     | Pattern -> (
         match compiled.shape with

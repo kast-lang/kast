@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Effect = Compiler_types.CompilerEffect
 open Kast_types
 module Token = Kast_token
 module Interpreter = Kast_interpreter
@@ -11,8 +12,6 @@ type state = State.t
 type import_cache = State.import_cache
 
 let init_import_cache = State.init_import_cache
-
-module Effect = Types.CompilerEffect
 
 (* TODO compile_for - figure out *)
 let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
@@ -39,7 +38,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
     custom_syntax_impls = Hashtbl.create 0;
   }
 
-type 'a compiled_kind = 'a Types.compiled_kind
+type 'a compiled_kind = 'a Compiler_types.compiled_kind
 
 let get_data = Compiler.get_data
 

@@ -9,6 +9,12 @@ type state = {
   scope : Scope.t;
 }
 
+exception
+  Unwind of {
+    token : Types.value_unwind_token;
+    value : value;
+  }
+
 let enter_scope state : state =
   {
     state with
@@ -178,6 +184,25 @@ let rec eval : state -> expr -> value =
         ignore @@ eval state body
       done
   | E_Error -> { shape = V_Error }
+  | E_Unwindable { token = token_pattern; body } -> (
+      let id = Id.gen () in
+      let token : Types.value_unwind_token = { id; result_ty = body.data.ty } in
+      let token : value = { shape = V_UnwindToken token } in
+      let inner_state = enter_scope state in
+      inner_state.scope |> Scope.add_locals (pattern_match token token_pattern);
+      try eval inner_state body
+      with Unwind { token; value } when token.id = id -> value)
+  | E_Unwind { token = token_expr; value } ->
+      with_return (fun { return } ->
+          let token =
+            eval state token_expr |> Value.expect_unwind_token
+            |> Option.unwrap_or_else (fun () ->
+                   Error.error token_expr.data.span
+                     "Unwind token was incorrect type";
+                   return ({ shape = V_Error } : value))
+          in
+          let value = eval state value in
+          raise <| Unwind { token; value })
 
 and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
  fun state expr ->

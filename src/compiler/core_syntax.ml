@@ -1,11 +1,11 @@
 open Std
 open Kast_util
+open Compiler_types
 open Kast_types
 module Ast = Kast_ast
 open Init
 open Error
 module Interpreter = Kast_interpreter
-open Types
 
 type 'a handle =
   (module Compiler.S) -> 'a compiled_kind -> Ast.t -> Ast.group -> 'a
@@ -1151,6 +1151,64 @@ let loop : core_syntax =
             init_error span kind);
   }
 
+let unwindable : core_syntax =
+  {
+    name = "unwindable";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let token, body =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "token"; "body" ]
+        in
+        match kind with
+        | Expr ->
+            let token = C.compile Pattern token in
+            let state = State.enter_scope C.state in
+            state |> Compiler.inject_pattern_bindings token;
+            let body = C.compile ~state Expr body in
+            E_Unwindable { token; body } |> init_expr span
+        | _ ->
+            error span "unwindable must be expr";
+            init_error span kind);
+  }
+
+let unwind : core_syntax =
+  {
+    name = "unwind";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let token, value =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "token"; "value" ]
+        in
+        match kind with
+        | Expr ->
+            E_Unwind
+              { token = C.compile Expr token; value = C.compile Expr value }
+            |> init_expr span
+        | _ ->
+            error span "unwind must be expr";
+            init_error span kind);
+  }
+
 let core =
   [
     apply;
@@ -1183,6 +1241,8 @@ let core =
     field_init;
     quote;
     loop;
+    unwindable;
+    unwind;
   ]
 
 let all : core_syntax StringMap.t =
