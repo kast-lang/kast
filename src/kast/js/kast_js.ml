@@ -107,6 +107,7 @@ let lsp =
   end
 
 let () =
+  Random.self_init ();
   Js.export "Kast"
     (object%js
        val lsp = lsp

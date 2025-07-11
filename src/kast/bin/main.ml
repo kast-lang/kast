@@ -2,6 +2,7 @@ open Std
 open Kast_util
 
 let main () =
+  Random.self_init ();
   (* Log.set_max_level Trace; *)
   let args = Cli.parse () in
   match args.command with
