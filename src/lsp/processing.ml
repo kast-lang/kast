@@ -8,6 +8,7 @@ type global_state = {
   workspaces : workspace_state list;
   mutable vfs : string UriMap.t;
   imported : Compiler.imported;
+  root_of_included : (Uri.t, Uri.t) Hashtbl.t;
 }
 
 and workspace_state = {
@@ -151,7 +152,9 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
              let processed = process_file global (Source.read uri) in
              handle_processed uri processed)
     with
-    | effect Compiler.Effect.FileIncluded { uri; parsed; kind; compiled }, k ->
+    | effect
+        Compiler.Effect.FileIncluded { root; uri; parsed; kind; compiled }, k ->
+        Hashtbl.add global.root_of_included uri root;
         (match kind with
         | Expr ->
             let file_state : file_state =
@@ -189,6 +192,7 @@ let init (workspaces : Lsp.Uri.t list) : global_state =
       workspaces = [];
       vfs = UriMap.empty;
       imported = Compiler.init_imported ();
+      root_of_included = Hashtbl.create 0;
     }
   in
   {
@@ -209,6 +213,10 @@ let update_file (global : global_state) (uri : Lsp.Uri.t) (source : string) :
     unit =
   let uri = Common.uri_from_lsp uri in
   Log.trace (fun log -> log "PROJECT: update %a" Uri.print uri);
+  global.imported.by_uri <-
+    UriMap.remove
+      (Hashtbl.find_opt global.root_of_included uri |> Option.value ~default:uri)
+      global.imported.by_uri;
   global.vfs <- UriMap.add uri source global.vfs
 
 let recalculate (global : global_state) : unit =

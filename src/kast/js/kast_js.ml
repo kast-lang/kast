@@ -136,3 +136,5 @@ let () =
              Kast_lsp.Processing.process_file self##.global
                { contents = source; uri = Uri.of_string uri })
     end)
+(* because self *)
+[@@warning "-27"]

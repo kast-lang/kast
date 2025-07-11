@@ -567,7 +567,14 @@ let include' : core_syntax =
             in
             let compiled = C.compile kind ast in
             Effect.perform
-              (Compiler.Effect.FileIncluded { uri; parsed; kind; compiled });
+              (Compiler.Effect.FileIncluded
+                 {
+                   root = C.state.currently_compiled_file |> Option.get;
+                   uri;
+                   parsed;
+                   kind;
+                   compiled;
+                 });
             Compiler.update_data kind compiled (fun data ->
                 { data with evaled_exprs = path_expr :: data.evaled_exprs })));
   }

@@ -66,15 +66,16 @@ let eval ~(ty : ty) (module C : S) (ast : Ast.t) : value * expr =
   (value, expr)
 
 let import ~(span : span) (module C : S) (uri : Uri.t) : value =
-  let source = Source.read uri in
   let imported = C.state.imported in
   match UriMap.find_opt uri imported.by_uri with
   | None ->
-      let state = State.blank ~imported in
-      (* TODO *)
-      let state = C.state in
+      Log.trace (fun log -> log "Importing %a" Uri.print uri);
       imported.by_uri <-
         UriMap.add uri (InProgress : State.import) imported.by_uri;
+      let state = State.blank ~imported in
+      (* TODO *)
+      let state = { C.state with currently_compiled_file = Some uri } in
+      let source = Source.read uri in
       let ({ ast; _ } : Kast_parser.result) =
         Kast_parser.parse source Kast_default_syntax.ruleset
       in
@@ -87,6 +88,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
       in
       imported.by_uri <-
         UriMap.add uri (Imported value : State.import) imported.by_uri;
+      Log.info (fun log -> log "Imported %a" Uri.print uri);
       value
   | Some (Imported value) -> value
   | Some InProgress ->
@@ -118,6 +120,7 @@ let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit
 
 module Effect = struct
   type 'a file_included = {
+    root : Uri.t;
     uri : Uri.t;
     parsed : Kast_parser.result;
     kind : 'a compiled_kind;

@@ -33,6 +33,7 @@ let init : imported:State.imported -> compile_for:Interpreter.state -> state =
   in
   {
     scope;
+    currently_compiled_file = None;
     interpreter = compile_for;
     imported;
     custom_syntax_impls = Hashtbl.create 0;
@@ -189,7 +190,16 @@ let default ?(imported : State.imported option) () : state =
   in
   {
     scope;
+    currently_compiled_file = None;
     interpreter = interpreter_with_std;
-    imported = State.init_imported ();
+    imported;
     custom_syntax_impls = bootstrap.custom_syntax_impls;
   }
+
+let compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
+ fun state kind ast ->
+  Fun.protect
+    (fun () ->
+      state.currently_compiled_file <- Some ast.span.uri;
+      compile state kind ast)
+    ~finally:(fun () -> state.currently_compiled_file <- None)

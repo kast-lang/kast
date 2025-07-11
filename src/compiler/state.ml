@@ -56,6 +56,7 @@ let init_imported () : imported = { by_uri = UriMap.empty }
 type t = {
   (* TODO do this properly *)
   mutable scope : Scope.t;
+  mutable currently_compiled_file : Uri.t option;
   imported : imported;
   interpreter : Interpreter.state;
   custom_syntax_impls : (Id.t, value) Hashtbl.t;
@@ -66,15 +67,23 @@ type state = t
 let blank ~imported =
   {
     scope = Scope.init ();
+    currently_compiled_file = None;
     imported;
     interpreter = Interpreter.default ();
     custom_syntax_impls = Hashtbl.create 0;
   }
 
 let enter_scope : state -> state =
- fun { scope; interpreter; imported; custom_syntax_impls } ->
+ fun {
+       scope;
+       currently_compiled_file;
+       interpreter;
+       imported;
+       custom_syntax_impls;
+     } ->
   {
     scope = Scope.enter ~parent:scope;
+    currently_compiled_file;
     interpreter;
     imported;
     custom_syntax_impls;

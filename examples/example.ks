@@ -1,5 +1,6 @@
 use std.prelude.*;
-const f = () => comptime (
+const T = import "./import-test.ks";
+const f = (arg :: T) => comptime (
     module:
     let s = "Hello, World!";
 );
