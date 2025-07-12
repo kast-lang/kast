@@ -1,0 +1,3 @@
+(executable
+ (name kast_core)
+ (libraries std kast_util kast_ast))
