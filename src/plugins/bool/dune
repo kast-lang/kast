@@ -1,3 +1,0 @@
-(library
- (name kast_bool)
- (libraries kast_core))

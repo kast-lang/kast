@@ -1,3 +1,3 @@
 (library
- (name kast_int32)
+ (name kast_basic_types)
  (libraries kast_core))
