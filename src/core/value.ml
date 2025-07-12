@@ -33,3 +33,4 @@ end
 type t = { shape : Shape.t }
 
 let print fmt { shape } = Shape.print fmt shape
+let typeof { shape } = Shape.typeof shape
