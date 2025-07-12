@@ -9,18 +9,22 @@ module Shape = struct
   include T
   include Print.Make (T)
 
-  type T.t += Error : T.t
+  module Error = struct
+    type T.t += T
 
-  let () =
-    register_print (fun expr ->
-        match expr with
-        | Error -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
-        | _ -> None)
+    let init () =
+      register_print (fun expr ->
+          match expr with
+          | T -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
+          | _ -> None)
+  end
+
+  type T.t += Error = Error.T
 
   module Binding = struct
     type T.t += T of Binding.t
 
-    let () =
+    let init () =
       register_print (fun expr ->
           match expr with
           | T binding ->
@@ -35,7 +39,7 @@ module Shape = struct
   module Unit = struct
     type T.t += T
 
-    let () =
+    let init () =
       register_print (fun expr ->
           match expr with
           | T -> Some (fun fmt -> fprintf fmt "()")
@@ -43,6 +47,11 @@ module Shape = struct
   end
 
   type T.t += Unit = Unit.T
+
+  let init () =
+    Error.init ();
+    Binding.init ();
+    Unit.init ()
 end
 
 type t = {
@@ -50,3 +59,5 @@ type t = {
   span : span;
   ty : Ty.t;
 }
+
+let init () = Shape.init ()

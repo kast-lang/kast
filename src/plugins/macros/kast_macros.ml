@@ -1,5 +1,6 @@
 module AstP = Ast
 open Kast_core
+open Util
 
 module CompilerState = struct
   type t = { custom_syntax_impls : (Id.t, Value.t) Hashtbl.t }
@@ -42,6 +43,7 @@ let custom_syntax_handler (type a) (span : span) ({ rule; root } : Ast.complex)
       Error.throw span "Must impl rule before using it: %S" rule.name;
       Result.error ()
 
-let () =
+let init () =
+  AstP.init ();
   Compiler.Plugin.register (module CompilerState);
   Compiler.register_custom_syntax_handler { expand = custom_syntax_handler }

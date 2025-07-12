@@ -118,7 +118,7 @@ module PatternMatch = struct
   let register : match_fn -> unit =
    fun f -> Atomic.set match_impls (f :: Atomic.get match_impls)
 
-  let () =
+  let init () =
     register (fun pattern ->
         match pattern.shape with
         | Pattern.Shape.Unit -> Some (fun _ -> SymbolMap.empty)
@@ -138,3 +138,4 @@ module PatternMatch = struct
 end
 
 let pattern_match = PatternMatch.perform
+let init () = PatternMatch.init ()

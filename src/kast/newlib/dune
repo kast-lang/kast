@@ -1,0 +1,9 @@
+(library
+ (name kast_new)
+ (libraries
+  kast_lexer
+  kast_parser
+  kast_core
+  kast_basic_types
+  kast_macros
+  kast_default_syntax))

@@ -1,5 +1,6 @@
 open Std
 open Kast_core
+open Util
 
 module TyImpl = struct
   type t = { tuple : Ty.t tuple }
@@ -8,7 +9,7 @@ module TyImpl = struct
   let print fmt { tuple } = fprintf fmt "%a" (Tuple.print Ty.print) tuple
 end
 
-let () = Plugin.Ty.register (module TyImpl)
+let init_ty () = Plugin.Ty.register (module TyImpl)
 
 module ValueImpl = struct
   type t = { tuple : Value.t tuple }
@@ -20,7 +21,11 @@ module ValueImpl = struct
     Ty.inferred (TyImpl.T { tuple = tuple |> Tuple.map Value.typeof })
 end
 
-let () = Plugin.Value.register (module ValueImpl)
+let init_value () = Plugin.Value.register (module ValueImpl)
 
 module Ty = TyImpl
 module Value = ValueImpl
+
+let init () =
+  init_ty ();
+  init_value ()

@@ -21,7 +21,7 @@ module Make (R : R) = struct
     module Error = struct
       type T.t += T : T.t
 
-      let () =
+      let init () =
         register_print (fun expr ->
             match expr with
             | T -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
@@ -33,7 +33,7 @@ module Make (R : R) = struct
     module Const = struct
       type T.t += T of R.t
 
-      let () =
+      let init () =
         register_print (fun expr ->
             match expr with
             | T value ->
@@ -47,7 +47,7 @@ module Make (R : R) = struct
     module Binding = struct
       type T.t += T of Binding.t
 
-      let () =
+      let init () =
         register_print (fun expr ->
             match expr with
             | T binding ->
@@ -62,7 +62,7 @@ module Make (R : R) = struct
     module Unit = struct
       type T.t += T
 
-      let () =
+      let init () =
         register_print (fun expr ->
             match expr with
             | T -> Some (fun fmt -> fprintf fmt "()")
@@ -70,6 +70,12 @@ module Make (R : R) = struct
     end
 
     type T.t += Unit = Unit.T
+
+    let init () =
+      Error.init ();
+      Const.init ();
+      Binding.init ();
+      Unit.init ()
   end
 
   type t = {
@@ -77,4 +83,6 @@ module Make (R : R) = struct
     span : span;
     ty : Ty.t;
   }
+
+  let init () = Shape.init ()
 end

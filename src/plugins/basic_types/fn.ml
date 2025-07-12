@@ -1,5 +1,6 @@
 open Std
 open Kast_core
+open Util
 
 module TyImpl = struct
   type t = {
@@ -13,7 +14,7 @@ module TyImpl = struct
     fprintf fmt "%a -> %a" Ty.print arg Ty.print result
 end
 
-let () = Plugin.Ty.register (module TyImpl)
+let init_ty () = Plugin.Ty.register (module TyImpl)
 
 module ValueImpl = struct
   type t = {
@@ -30,7 +31,7 @@ module ValueImpl = struct
     Ty.inferred (TyImpl.T { arg = arg.ty; result = body.ty })
 end
 
-let () = Plugin.Value.register (module ValueImpl)
+let init_value () = Plugin.Value.register (module ValueImpl)
 
 module Native = struct
   type t = {
@@ -45,7 +46,7 @@ module Native = struct
   let typeof { name = _; ty; impl = _ } = Ty.inferred (TyImpl.T ty)
 end
 
-let () = Plugin.Value.register (module Native)
+let init_native () = Plugin.Value.register (module Native)
 
 module ExprImpl = struct
   module Apply = struct
@@ -77,9 +78,15 @@ module ExprImpl = struct
           Value.error ()
   end
 
-  let () = Plugin.Expr.register (module Apply)
+  let init () = Plugin.Expr.register (module Apply)
 end
 
 module Ty = TyImpl
 module Value = ValueImpl
 module Expr = ExprImpl
+
+let init () =
+  init_ty ();
+  init_value ();
+  init_native ();
+  Expr.init ()

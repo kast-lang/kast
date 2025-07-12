@@ -136,6 +136,7 @@ let registered_core_syntax : core_syntax StringMap.t Atomic.t =
 
 let register_core_syntax : core_syntax -> unit =
  fun core_syntax ->
+  Log.info (fun log -> log "Registered core syntax %S" core_syntax.name);
   Atomic.set registered_core_syntax
     (Atomic.get registered_core_syntax
     |> StringMap.add core_syntax.name core_syntax)
@@ -327,3 +328,21 @@ let rec compile : 'a. 'a Compilable.t -> Ast.t -> t -> 'a =
         log "While compiling %a %a at %a" Compilable.print kind
           Ast.Shape.print_short ast.shape Span.print ast.span);
     raise exc
+
+module Eval = struct
+  type _ Effect.t += Evaled : 'a. ('a Compilable.t * 'a) -> unit Effect.t
+
+  let ty ast compiler =
+    let compiled = compiler |> compile TyExpr ast in
+    Effect.perform (Evaled (TyExpr, compiled));
+    let result = compiler.interpreter |> Interpreter.Eval.ty compiled in
+    result
+
+  let expr ast compiler =
+    let compiled = compiler |> compile Expr ast in
+    Effect.perform (Evaled (Expr, compiled));
+    let result = compiler.interpreter |> Interpreter.Eval.expr compiled in
+    result
+end
+
+let init () = ()

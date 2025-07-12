@@ -8,7 +8,7 @@ module TyImpl = struct
   let print fmt () = fprintf fmt "bool"
 end
 
-let () = Plugin.Ty.register (module TyImpl)
+let init_ty () = Plugin.Ty.register (module TyImpl)
 
 module ValueImpl = struct
   type t = bool
@@ -18,9 +18,8 @@ module ValueImpl = struct
   let typeof _value = Ty.inferred (TyImpl.T ())
 end
 
-let () = Plugin.Value.register (module ValueImpl)
-
-let () =
+let init_value () =
+  Plugin.Value.register (module ValueImpl);
   let register name value =
     Compiler.register_core_syntax
       {
@@ -55,3 +54,7 @@ let () =
 
 module Ty = TyImpl
 module Value = ValueImpl
+
+let init () =
+  init_ty ();
+  init_value ()

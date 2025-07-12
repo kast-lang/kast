@@ -8,7 +8,7 @@ module TyImpl = struct
   let print fmt () = fprintf fmt "string"
 end
 
-let () = Plugin.Ty.register (module TyImpl)
+let init_ty () = Plugin.Ty.register (module TyImpl)
 
 module ValueImpl = struct
   type t = string
@@ -18,7 +18,11 @@ module ValueImpl = struct
   let typeof _value = Ty.inferred (TyImpl.T ())
 end
 
-let () = Plugin.Value.register (module ValueImpl)
+let init_value () = Plugin.Value.register (module ValueImpl)
 
 module Ty = TyImpl
 module Value = ValueImpl
+
+let init () =
+  init_ty ();
+  init_value ()

@@ -35,3 +35,29 @@ let print (type a) fmt (kind : a t) =
     | Pattern -> "pattern"
   in
   fprintf fmt "%s" s
+
+module Data = struct
+  type data = {
+    span : span;
+    ty : Ty.t;
+  }
+
+  let get (type a) (kind : a t) (expr : a) : data =
+    match kind with
+    | Expr -> { span = expr.span; ty = expr.ty }
+    | TyExpr -> { span = expr.span; ty = expr.ty }
+    | Assignee -> { span = expr.span; ty = expr.ty }
+    | Pattern -> { span = expr.span; ty = expr.ty }
+
+  let set (type a) (kind : a t) (expr : a) ({ span; ty } : data) : a =
+    match kind with
+    | Expr -> { expr with span; ty }
+    | TyExpr -> { expr with span; ty }
+    | Assignee -> { expr with span; ty }
+    | Pattern -> { expr with span; ty }
+
+  let update (type a) (kind : a t) (expr : a) (f : data -> data) : a =
+    set kind expr (f (get kind expr))
+
+  type t = data
+end

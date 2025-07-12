@@ -10,7 +10,7 @@ module Shape = struct
 
   type T.t += Error : T.t
 
-  let () =
+  let init () =
     register_print (fun expr ->
         match expr with
         | Error -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
@@ -35,3 +35,4 @@ type t = { shape : Shape.t }
 let error () = { shape = Shape.Error }
 let print fmt { shape } = Shape.print fmt shape
 let typeof { shape } = Shape.typeof shape
+let init () = Shape.init ()
