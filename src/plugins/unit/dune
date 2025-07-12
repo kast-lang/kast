@@ -1,0 +1,3 @@
+(library
+ (name kast_unit)
+ (libraries kast_core kast_const))
