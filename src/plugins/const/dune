@@ -1,3 +1,0 @@
-(library
- (name kast_const)
- (libraries kast_core))

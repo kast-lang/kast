@@ -1,44 +1,57 @@
 open Std
 open Kast_core
 
-module BoolTy = struct
+module TyImpl = struct
   type t = unit
-  type Ty.t += T of t
+  type Ty.Shape.t += T of t
 
   let print fmt () = fprintf fmt "bool"
 end
 
-let () = Plugin.Ty.register (module BoolTy)
+let () = Plugin.Ty.register (module TyImpl)
 
-module BoolValue = struct
+module ValueImpl = struct
   type t = bool
-  type Value.t += T of t
+  type Value.Shape.t += T of t
 
   let print fmt value = fprintf fmt "%b" value
-  let typeof _value = BoolTy.T ()
+  let typeof _value = Ty.inferred (TyImpl.T ())
 end
 
-let () = Plugin.Value.register (module BoolValue)
+let () = Plugin.Value.register (module ValueImpl)
 
 let () =
-  Compiler.register_core_syntax
-    {
-      name = "true";
-      impl =
-        (fun (type a) (kind : a Compiler.compilable) _ast _compiler : a ->
-          match kind with
-          | Expr -> Kast_const.Expr.T { value = BoolValue.T true });
-    }
+  let register name value =
+    Compiler.register_core_syntax
+      {
+        name;
+        impl =
+          (fun (type a)
+            compiler
+            (kind : a Compilable.t)
+            (ast : Ast.t)
+            _group
+            :
+            a
+          ->
+            let span = ast.span in
+            match kind with
+            | Expr ->
+                Expr.Shape.Const { shape = ValueImpl.T value }
+                |> Compiler.Init.expr span compiler
+            | TyExpr ->
+                Error.throw span "%s must be expr" name;
+                Compilable.error span kind
+            | Pattern ->
+                Error.throw span "%s must be expr" name;
+                Compilable.error span kind
+            | Assignee ->
+                Error.throw span "%s must be expr" name;
+                Compilable.error span kind);
+      }
+  in
+  register "true" true;
+  register "false" false
 
-let () =
-  Compiler.register_core_syntax
-    {
-      name = "false";
-      impl =
-        (fun (type a) (kind : a Compiler.compilable) _ast _compiler : a ->
-          match kind with
-          | Expr -> Kast_const.Expr.T { value = BoolValue.T false });
-    }
-
-module Ty = BoolTy
-module Value = BoolValue
+module Ty = TyImpl
+module Value = ValueImpl

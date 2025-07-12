@@ -1,6 +1,2 @@
-module T = struct
-  type _ t = ..
-end
-
-include T
-include Print.MakeGadt (T)
+include Abstract_expr.Make (Value)
+module Ty = Abstract_expr.Make (Ty)

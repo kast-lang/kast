@@ -1,24 +1,24 @@
 open Std
 open Kast_core
 
-module TyI = struct
+module TyImpl = struct
   type t = unit
-  type Ty.t += T of t
+  type Ty.Shape.t += T of t
 
   let print fmt () = fprintf fmt "int32"
 end
 
-let () = Plugin.Ty.register (module TyI)
+let () = Plugin.Ty.register (module TyImpl)
 
-module ValueI = struct
+module ValueImpl = struct
   type t = int32
-  type Value.t += T of t
+  type Value.Shape.t += T of t
 
   let print fmt value = fprintf fmt "%ld" value
-  let typeof _value = TyI.T ()
+  let typeof _value = Ty.inferred (TyImpl.T ())
 end
 
-let () = Plugin.Value.register (module ValueI)
+let () = Plugin.Value.register (module ValueImpl)
 
-module Ty = TyI
-module Value = ValueI
+module Ty = TyImpl
+module Value = ValueImpl
