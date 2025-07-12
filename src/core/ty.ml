@@ -35,6 +35,7 @@ end
 
 type t = { shape : Shape.t }
 
+let error () = { shape = Shape.Error }
 let inferred shape = { shape }
 let new_not_inferred () = { shape = Shape.Error }
 let print fmt { shape } = Shape.print fmt shape

@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 module Token = Kast_token
+module Syntax = Kast_syntax
 module Ast = Kast_ast
 
 module Scope = struct
@@ -63,13 +64,45 @@ module Import = struct
   end
 end
 
+module Plugin = struct
+  module type S = sig
+    type t
+
+    val id : Id.t
+    val init : unit -> t
+  end
+
+  type data = Data : 'a. (module S with type t = 'a) * 'a -> data
+
+  let registered : (Id.t, (module S)) Hashtbl.t = Hashtbl.create 0
+
+  let register : (module S) -> unit =
+   fun (module P) -> Hashtbl.add registered P.id (module P)
+
+  module Storage = struct
+    type t = (Id.t, data) Hashtbl.t
+
+    let init () = Hashtbl.create 0
+
+    let get : 'a. (module S with type t = 'a) -> t -> 'a =
+     fun (type a) (module P : S with type t = a) (storage : t) : a ->
+      let (Data ((module AlsoP), data)) =
+        Hashtbl.find_opt storage P.id
+        |> Option.unwrap_or_else (fun () ->
+               fail "Compiler plugin wasn't registered")
+      in
+      (* HAHA *)
+      Obj.magic data
+  end
+end
+
 type t = {
   (* TODO do this properly *)
   mutable scope : Scope.t;
   mutable currently_compiled_file : Uri.t option;
   import_cache : Import.Cache.t;
   interpreter : Interpreter.t;
-      (* custom_syntax_impls : (Id.t, Value.t) Hashtbl.t; *)
+  plugins : Plugin.Storage.t;
 }
 
 type state = t
@@ -80,23 +113,17 @@ let blank ~import_cache =
     currently_compiled_file = None;
     import_cache;
     interpreter = Interpreter.default ();
-    (* custom_syntax_impls = Hashtbl.create 0; *)
+    plugins = Plugin.Storage.init ();
   }
 
 let enter_scope : state -> state =
- fun {
-       scope;
-       currently_compiled_file;
-       interpreter;
-       import_cache;
-     (* custom_syntax_impls; *)
-     } ->
+ fun { scope; currently_compiled_file; interpreter; import_cache; plugins } ->
   {
     scope = Scope.enter ~parent:scope;
     currently_compiled_file;
     interpreter;
     import_cache;
-    (* custom_syntax_impls; *)
+    plugins;
   }
 
 type core_syntax = {
@@ -181,6 +208,20 @@ module Init = struct
    fun span _compiler shape -> { shape; span; ty = Ty.inferred Ty.Shape.Ty }
 end
 
+type custom_syntax_handler = {
+  expand :
+    'a. span -> Ast.complex -> t -> 'a Compilable.t -> (Ast.t, unit) Result.t;
+}
+
+let custom_syntax_handler : custom_syntax_handler option Atomic.t =
+  Atomic.make None
+
+let register_custom_syntax_handler : custom_syntax_handler -> unit =
+ fun f ->
+  if Atomic.get custom_syntax_handler |> Option.is_some then
+    fail "Custom syntax handler was set twice";
+  Atomic.set custom_syntax_handler (Some f)
+
 let rec compile : 'a. 'a Compilable.t -> Ast.t -> t -> 'a =
  fun (type a) (kind : a Compilable.t) (ast : Ast.t) (compiler : t) : a ->
   let span = ast.span in
@@ -264,36 +305,19 @@ let rec compile : 'a. 'a Compilable.t -> Ast.t -> t -> 'a =
             | None ->
                 Error.throw span "Unknown core syntax %S" name;
                 Compilable.error span kind)
-        | None ->
-            (* match Hashtbl.find_opt compiler.custom_syntax_impls rule.id with
-            | Some impl -> (
-                (* TODO *)
-                let args =
-                  root.children
-                  |> Tuple.map Ast.Child.expect_ast
-                  |> Tuple.map (fun ast : Value.t -> { shape = V_Ast ast })
-                in
-                let arg : value = { shape = V_Tuple { tuple = args } } in
-                let expr =
-                  E_Apply
-                    {
-                      f = E_Constant impl |> init_expr span;
-                      arg = E_Constant arg |> init_expr span;
-                    }
-                  |> init_expr span
-                in
-                let result = Interpreter.eval compiler.interpreter expr in
-                match result.shape with
-                | V_Ast result -> compile compiler kind result
-                | _ ->
-                    Error.error span "macro expanded not to ast???";
-                    init_error span kind)
-            | None ->
-                Error.error span "Must impl rule before using it: %S" rule.name;
-                init_error span kind
-                *)
-            Error.throw span "TODO custom syntax";
-            Compilable.error span kind)
+        | None -> (
+            let custom_syntax_handler =
+              Atomic.get custom_syntax_handler
+              |> Option.unwrap_or_else (fun () ->
+                     fail "Custom syntax handler not set")
+            in
+            match
+              custom_syntax_handler.expand span { rule; root } compiler kind
+            with
+            | Ok expanded -> compiler |> compile kind expanded
+            | Error () ->
+                Error.throw span "Failed to expand custom syntax";
+                Compilable.error span kind))
     | Ast.Syntax { mode; value_after; comments_before = _; tokens = _ } -> (
         match value_after with
         | Some value -> compiler |> compile kind value

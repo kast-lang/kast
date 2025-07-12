@@ -10,13 +10,11 @@ type 'a t =
 let error : 'a. span -> 'a t -> 'a =
  fun (type a) (span : span) (kind : a t) : a ->
   match kind with
-  | Expr -> { shape = Expr.Shape.Error; span; ty = Ty.inferred Ty.Shape.Error }
+  | Expr -> { shape = Expr.Shape.Error; span; ty = Ty.error () }
   | TyExpr ->
       { shape = Expr.Ty.Shape.Error; span; ty = Ty.inferred Ty.Shape.Ty }
-  | Assignee ->
-      { shape = Assignee.Shape.Error; span; ty = Ty.inferred Ty.Shape.Error }
-  | Pattern ->
-      { shape = Pattern.Shape.Error; span; ty = Ty.inferred Ty.Shape.Error }
+  | Assignee -> { shape = Assignee.Shape.Error; span; ty = Ty.error () }
+  | Pattern -> { shape = Pattern.Shape.Error; span; ty = Ty.error () }
 
 let unit : 'a. span -> 'a t -> 'a =
  fun (type a) (span : span) (kind : a t) : a ->

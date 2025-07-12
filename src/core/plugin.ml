@@ -59,14 +59,14 @@ module ExprP = struct
       type t
       type E.Shape.t += T of t
 
-      val eval : t -> Interpreter.t -> E.result
+      val eval : span -> t -> Interpreter.t -> E.result
     end
 
     let register : (module S) -> unit =
      fun (module P) ->
       E.Eval.register (fun (expr : E.t) : (Interpreter.t -> E.result) option ->
           match expr.shape with
-          | P.T value -> Some (fun i -> P.eval value i)
+          | P.T value -> Some (fun i -> P.eval expr.span value i)
           | _ -> None)
   end
 
