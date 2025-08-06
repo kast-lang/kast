@@ -1,14 +1,8 @@
 open Std
 open Kast_util
 
-module type R = sig
-  type t
-
-  val print : formatter -> t -> unit
-end
-
-module Make (R : R) = struct
-  type result = R.t
+module Make (R : Shaped.S) = struct
+  module Result = R
 
   module Shape = struct
     module T = struct
@@ -84,5 +78,10 @@ module Make (R : R) = struct
     ty : Ty.t;
   }
 
+  let error () =
+    { shape = Shape.Error.T; span = Span.fake "error"; ty = Ty.error () }
+
+  let shape { shape; _ } = shape
+  let print formatter { shape; span = _; ty = _ } = Shape.print formatter shape
   let init () = Shape.init ()
 end

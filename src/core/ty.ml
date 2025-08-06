@@ -9,14 +9,17 @@ module Shape = struct
   include T
   include Print.Make (T)
 
-  type T.t += Error : T.t
+  module Error = struct
+    type T.t += T : T.t
+  end
+
   type T.t += Ty
   type T.t += Unit
 
   let init () =
     register_print (fun ty ->
         match ty with
-        | Error -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
+        | Error.T -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
         | Ty -> Some (fun fmt -> fprintf fmt "type")
         | Unit -> Some (fun fmt -> fprintf fmt "()")
         | _ -> None)
@@ -25,7 +28,7 @@ end
 type t = { var : Shape.t Inference.Var.t }
 
 let inferred shape = { var = Inference.Var.new_inferred shape }
-let error () = inferred Shape.Error
+let error () = inferred Shape.Error.T
 let new_not_inferred () = { var = Inference.Var.new_not_inferred () }
 let print fmt { var } = Inference.Var.print Shape.print fmt var
 
@@ -48,13 +51,13 @@ module InferenceImpl = struct
   let fail span a b =
     Error.throw span "type inference failed: %a != %a" Shape.print a Shape.print
       b;
-    Some Shape.Error
+    Some Shape.Error.T
 
   let init () =
     register (fun span a b ->
         let fail () = fail span a b in
         match (a, b) with
-        | Shape.Error, _ | _, Shape.Error -> Some Shape.Error
+        | Shape.Error.T, _ | _, Shape.Error.T -> Some Shape.Error.T
         | Shape.Ty, Shape.Ty -> Some Shape.Ty
         | Shape.Ty, _ | _, Shape.Ty -> fail ()
         | Shape.Unit, Shape.Unit -> Some Shape.Unit

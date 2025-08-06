@@ -37,7 +37,7 @@ end
 
 module ExprP = struct
   module type E = sig
-    type result
+    module Result : Shaped.S
 
     module Shape : sig
       type t = ..
@@ -50,7 +50,7 @@ module ExprP = struct
     }
 
     module Eval : sig
-      val register : (t -> (Interpreter.t -> result) option) -> unit
+      val register : (t -> (Interpreter.t -> Result.t) option) -> unit
     end
   end
 
@@ -59,12 +59,13 @@ module ExprP = struct
       type t
       type E.Shape.t += T of t
 
-      val eval : span -> t -> Interpreter.t -> E.result
+      val eval : span -> t -> Interpreter.t -> E.Result.t
     end
 
     let register : (module S) -> unit =
      fun (module P) ->
-      E.Eval.register (fun (expr : E.t) : (Interpreter.t -> E.result) option ->
+      E.Eval.register
+        (fun (expr : E.t) : (Interpreter.t -> E.Result.t) option ->
           match expr.shape with
           | P.T value -> Some (fun i -> P.eval expr.span value i)
           | _ -> None)

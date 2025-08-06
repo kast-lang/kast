@@ -8,12 +8,14 @@ module Shape = struct
   include T
   include Print.Make (T)
 
-  type T.t += Error : T.t
+  module Error = struct
+    type T.t += T : T.t
+  end
 
   let init () =
     register_print (fun expr ->
         match expr with
-        | Error -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
+        | Error.T -> Some (fun fmt -> fprintf fmt "@{<red><error>@}")
         | _ -> None)
 
   type typeof_fn = t -> Ty.t option
@@ -32,7 +34,8 @@ end
 
 type t = { shape : Shape.t }
 
-let error () = { shape = Shape.Error }
+let error () = { shape = Shape.Error.T }
+let shape { shape } = shape
 let print fmt { shape } = Shape.print fmt shape
 let typeof { shape } = Shape.typeof shape
 let init () = Shape.init ()

@@ -73,26 +73,31 @@ let default () : t = { scope = Scope.init ~parent:None }
 
 module AbstractEval = struct
   module type E = sig
-    type t
-    type result
+    include Shaped.S
+    module Result : Shaped.S
+
+    val shape : t -> Shape.t
   end
 
   module Make (E : E) = struct
-    type eval_fn = E.t -> (t -> E.result) option
+    type eval_fn = E.t -> (t -> E.Result.t) option
 
     let eval_impls : eval_fn list Atomic.t = Atomic.make []
 
     let register : eval_fn -> unit =
      fun f -> Atomic.set eval_impls (f :: Atomic.get eval_impls)
 
-    let eval : E.t -> t -> E.result =
+    let eval : E.t -> t -> E.Result.t =
      fun expr state ->
-      let f =
-        Atomic.get eval_impls
-        |> List.find_map (fun f -> f expr)
-        |> Option.unwrap_or_else (fun () -> failwith __LOC__)
-      in
-      f state
+      match E.shape expr with
+      | E.Shape.Error.T -> E.Result.error ()
+      | _ ->
+          let f =
+            Atomic.get eval_impls
+            |> List.find_map (fun f -> f expr)
+            |> Option.unwrap_or_else (fun () -> failwith __LOC__)
+          in
+          f state
   end
 end
 
