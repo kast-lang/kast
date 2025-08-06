@@ -69,7 +69,7 @@
             nodejs # for running js output
             graphviz # for dep-graph
             caddy # serve html
-            nixfmt # nix formatter
+            nixfmt-classic # nix formatter
             nil # nix lsp
           ]);
           shellHook = ''
@@ -80,6 +80,6 @@
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
           '';
         };
-        formatter = pkgs.nixfmt;
+        formatter = pkgs.nixfmt-classic;
       });
 }
