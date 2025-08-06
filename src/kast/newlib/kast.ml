@@ -3,7 +3,7 @@ include Kast_core
 module Parser = Kast_parser
 
 module Plugins = struct
-  module BasicTypes = Kast_basic_types
+  module Basic = Kast_basic
   module Macros = Kast_macros
 end
 
@@ -14,5 +14,5 @@ end
 
 let init () =
   Kast_core.init ();
-  Plugins.BasicTypes.init ();
+  Plugins.Basic.init ();
   Plugins.Macros.init ()

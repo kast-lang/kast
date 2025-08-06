@@ -23,10 +23,10 @@ let custom_syntax_handler (type a) (span : span) ({ rule; root } : Ast.complex)
         |> Tuple.map (fun ast : Value.t -> { shape = AstP.Value.T ast })
       in
       let arg : Value.t =
-        { shape = Kast_basic_types.Tuple.Value.T { tuple = args } }
+        { shape = Kast_basic.Tuple.Value.T { tuple = args } }
       in
       let expr =
-        Kast_basic_types.Fn.Expr.Apply.T
+        Kast_basic.Fn.Expr.Apply.T
           {
             f = Expr.Shape.Const impl |> Compiler.Init.expr span compiler;
             arg = Expr.Shape.Const arg |> Compiler.Init.expr span compiler;

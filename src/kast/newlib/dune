@@ -4,6 +4,6 @@
   kast_lexer
   kast_parser
   kast_core
-  kast_basic_types
+  kast_basic
   kast_macros
   kast_default_syntax))
