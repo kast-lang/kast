@@ -68,6 +68,7 @@ module Plugin = struct
   module type S = sig
     type t
 
+    val plugin_name : string
     val id : Id.t
     val init : unit -> t
   end
@@ -77,19 +78,25 @@ module Plugin = struct
   let registered : (Id.t, (module S)) Hashtbl.t = Hashtbl.create 0
 
   let register : (module S) -> unit =
-   fun (module P) -> Hashtbl.add registered P.id (module P)
+   fun (module P) ->
+    Log.info (fun log -> log "Registering compiler plugin %S" P.plugin_name);
+    Hashtbl.add registered P.id (module P)
 
   module Storage = struct
     type t = (Id.t, data) Hashtbl.t
 
-    let init () = Hashtbl.create 0
+    let init () : t =
+      registered |> Hashtbl.to_seq
+      |> Seq.map (fun (id, (module P : S)) ->
+             (id, Data ((module P), P.init ())))
+      |> Hashtbl.of_seq
 
     let get : 'a. (module S with type t = 'a) -> t -> 'a =
      fun (type a) (module P : S with type t = a) (storage : t) : a ->
       let (Data ((module AlsoP), data)) =
         Hashtbl.find_opt storage P.id
         |> Option.unwrap_or_else (fun () ->
-               fail "Compiler plugin wasn't registered")
+               fail "Compiler plugin %S wasn't registered" P.plugin_name)
       in
       (* HAHA *)
       Obj.magic data
@@ -172,7 +179,9 @@ module Init = struct
         (let f =
            Atomic.get registered_exprs
            |> List.find_map (fun f -> f shape)
-           |> Option.unwrap_or_else (fun () -> failwith __LOC__)
+           |> Option.unwrap_or_else (fun () ->
+                  fail "Expr %a was not registered in compiler" Expr.Shape.print
+                    shape)
          in
          f span compiler);
     }

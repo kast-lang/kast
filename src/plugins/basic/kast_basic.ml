@@ -4,6 +4,7 @@ module String = String
 module Tuple = Tuple
 module Fn = Fn
 module TypeAscribe = Type_ascribe
+module Then = Then
 
 let init () =
   Bool.init ();
@@ -11,4 +12,5 @@ let init () =
   String.init ();
   Tuple.init ();
   Fn.init ();
-  TypeAscribe.init ()
+  TypeAscribe.init ();
+  Then.init ()

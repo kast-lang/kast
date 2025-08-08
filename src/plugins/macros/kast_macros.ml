@@ -5,6 +5,7 @@ open Util
 module CompilerState = struct
   type t = { custom_syntax_impls : (Id.t, Value.t) Hashtbl.t }
 
+  let plugin_name = "CompilerState"
   let id = Id.gen ()
   let init () = { custom_syntax_impls = Hashtbl.create 0 }
 end
