@@ -232,6 +232,12 @@ and binding = {
 and ir_data = {
   span : span;
   ty : ty;
+  compiler_scope : compiler_scope;
   ty_ascription : ty_expr option;
   evaled_exprs : expr list;
+}
+
+and compiler_scope = {
+  parent : compiler_scope option;
+  bindings : binding StringMap.t;
 }

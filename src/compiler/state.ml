@@ -7,11 +7,7 @@ module Ast = Kast_ast
 open Error
 
 module Scope = struct
-  type scope = {
-    parent : scope option;
-    bindings : binding StringMap.t;
-  }
-
+  type scope = Types.compiler_scope
   type t = scope
 
   let init () : scope = { parent = None; bindings = StringMap.empty }

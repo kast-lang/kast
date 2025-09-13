@@ -85,7 +85,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
           | Some ast -> C.compile ~state Expr ast
           | None ->
               E_Constant { shape = V_Unit }
-              |> Init.init_expr (Span.beginning_of source.uri)
+              |> Init.init_expr (Span.beginning_of source.uri) state
         in
         let value : value = Kast_interpreter.eval state.interpreter expr in
         Effect.perform

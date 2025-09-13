@@ -5,8 +5,9 @@ open Kast_types
 open Error
 module Inference = Kast_inference
 
-let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
- fun ?(evaled_exprs = []) span shape ->
+let init_expr :
+    ?evaled_exprs:expr list -> span -> State.t -> Expr.Shape.t -> expr =
+ fun ?(evaled_exprs = []) span state shape ->
   try
     let ty =
       match shape with
@@ -93,14 +94,28 @@ let init_expr : ?evaled_exprs:expr list -> span -> Expr.Shape.t -> expr =
                (Ty.inferred (T_UnwindToken { result = value.data.ty }));
           Ty.never ()
     in
-    { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
+    {
+      shape;
+      data =
+        {
+          span;
+          ty;
+          ty_ascription = None;
+          evaled_exprs;
+          compiler_scope = state.scope;
+        };
+    }
   with exc ->
     Log.error (fun log -> log "while initializing expr at %a" Span.print span);
     raise exc
 
 let init_assignee :
-    ?evaled_exprs:expr list -> span -> Expr.Assignee.Shape.t -> Expr.assignee =
- fun ?(evaled_exprs = []) span shape ->
+    ?evaled_exprs:expr list ->
+    span ->
+    State.t ->
+    Expr.Assignee.Shape.t ->
+    Expr.assignee =
+ fun ?(evaled_exprs = []) span state shape ->
   try
     let ty =
       match shape with
@@ -110,15 +125,25 @@ let init_assignee :
       | A_Let pattern -> pattern.data.ty
       | A_Error -> Ty.new_not_inferred ()
     in
-    { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
+    {
+      shape;
+      data =
+        {
+          span;
+          ty;
+          ty_ascription = None;
+          compiler_scope = state.scope;
+          evaled_exprs;
+        };
+    }
   with exc ->
     Log.error (fun log ->
         log "while initializing assignee expr at %a" Span.print span);
     raise exc
 
-let init_pattern : ?evaled_exprs:expr list -> span -> Pattern.Shape.t -> pattern
-    =
- fun ?(evaled_exprs = []) span shape ->
+let init_pattern :
+    ?evaled_exprs:expr list -> span -> State.t -> Pattern.Shape.t -> pattern =
+ fun ?(evaled_exprs = []) span state shape ->
   try
     let ty =
       match shape with
@@ -136,16 +161,26 @@ let init_pattern : ?evaled_exprs:expr list -> span -> Pattern.Shape.t -> pattern
                })
       | P_Error -> Ty.new_not_inferred ()
     in
-    { shape; data = { span; ty; ty_ascription = None; evaled_exprs } }
+    {
+      shape;
+      data =
+        {
+          span;
+          ty;
+          ty_ascription = None;
+          compiler_scope = state.scope;
+          evaled_exprs;
+        };
+    }
   with exc ->
     Log.error (fun log ->
         log "while initializing pattern at %a" Span.print span);
     raise exc
 
-let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
-    =
+let init_ty_expr :
+    ?evaled_exprs:expr list -> span -> State.t -> Expr.Ty.Shape.t -> Expr.ty =
   let type_ty = Ty.inferred T_Ty in
-  fun ?(evaled_exprs = []) span shape ->
+  fun ?(evaled_exprs = []) span state shape ->
     try
       (match shape with
       | TE_Unit -> ()
@@ -160,17 +195,24 @@ let init_ty_expr : ?evaled_exprs:expr list -> span -> Expr.Ty.Shape.t -> Expr.ty
       | TE_Error -> ());
       {
         shape;
-        data = { span; ty = type_ty; ty_ascription = None; evaled_exprs };
+        data =
+          {
+            span;
+            ty = type_ty;
+            ty_ascription = None;
+            compiler_scope = state.scope;
+            evaled_exprs;
+          };
       }
     with exc ->
       Log.error (fun log ->
           log "while initializing type expr at %a" Span.print span);
       raise exc
 
-let init_error : 'a. span -> 'a compiled_kind -> 'a =
- fun (type a) span (kind : a compiled_kind) : a ->
+let init_error : 'a. span -> State.t -> 'a compiled_kind -> 'a =
+ fun (type a) span state (kind : a compiled_kind) : a ->
   match kind with
-  | Expr -> E_Error |> init_expr span
-  | Pattern -> P_Error |> init_pattern span
-  | Assignee -> A_Error |> init_assignee span
-  | TyExpr -> TE_Error |> init_ty_expr span
+  | Expr -> E_Error |> init_expr span state
+  | Pattern -> P_Error |> init_pattern span state
+  | Assignee -> A_Error |> init_assignee span state
+  | TyExpr -> TE_Error |> init_ty_expr span state

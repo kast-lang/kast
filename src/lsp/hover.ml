@@ -81,85 +81,10 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
           match hover TyExpr ty_ascription_expr pos with
           | None -> ()
           | Some hover -> return (Some hover)));
-      let inner : hover_info option =
-        match kind with
-        | Expr -> (
-            match compiled.shape with
-            | E_Constant _ -> None
-            | E_Binding _ -> None
-            | E_Then { a; b } ->
-                hover Expr a pos |> Option.or_else (fun () -> hover Expr b pos)
-            | E_Stmt { expr } -> hover Expr expr pos
-            | E_Scope { expr } -> hover Expr expr pos
-            | E_Fn { arg; body; evaled_result } ->
-                hover Pattern arg pos
-                |> Option.or_else (fun () -> hover Expr body pos)
-                |> Option.or_else (fun () ->
-                       evaled_result
-                       |> Option.and_then (fun expr -> hover TyExpr expr pos))
-            | E_Tuple { tuple } ->
-                tuple |> Tuple.to_seq
-                |> Seq.find_map (fun (_member, expr) -> hover Expr expr pos)
-            | E_Apply { f; arg } ->
-                hover Expr f pos
-                |> Option.or_else (fun () -> hover Expr arg pos)
-            | E_Assign { assignee; value } ->
-                hover Assignee assignee pos
-                |> Option.or_else (fun () -> hover Expr value pos)
-            | E_Ty expr -> hover TyExpr expr pos
-            | E_Native _ -> None
-            | E_Module { def } -> hover Expr def pos
-            | E_Field { obj; field = _ } -> hover Expr obj pos
-            | E_UseDotStar { used; bindings = _ } -> hover Expr used pos
-            | E_If { cond; then_case; else_case } ->
-                hover Expr cond pos
-                |> Option.or_else (fun () -> hover Expr then_case pos)
-                |> Option.or_else (fun () -> hover Expr else_case pos)
-            | E_Loop { body } -> hover Expr body pos
-            | E_QuoteAst _ ->
-                (* TODO *)
-                None
-            | E_Unwindable { token; body } ->
-                hover Pattern token pos
-                |> Option.or_else (fun () -> hover Expr body pos)
-            | E_Unwind { token; value } ->
-                hover Expr token pos
-                |> Option.or_else (fun () -> hover Expr value pos)
-            | E_Error -> None)
-        | Assignee -> (
-            match compiled.shape with
-            | A_Placeholder -> None
-            | A_Unit -> None
-            | A_Binding _ -> None
-            | A_Let pattern -> hover Pattern pattern pos
-            | A_Error -> None)
-        | Pattern -> (
-            match compiled.shape with
-            | P_Placeholder -> None
-            | P_Unit -> None
-            | P_Binding _ -> None
-            | P_Tuple { tuple } ->
-                tuple |> Tuple.to_seq
-                |> Seq.find_map (fun (_member, field_pattern) ->
-                       hover Pattern field_pattern pos)
-            | P_Error -> None)
-        | TyExpr -> (
-            match compiled.shape with
-            | TE_Unit -> None
-            | TE_Fn { arg; result } ->
-                hover TyExpr arg pos
-                |> Option.or_else (fun () -> hover TyExpr result pos)
-            | TE_Expr expr -> hover Expr expr pos
-            | TE_Tuple { tuple } ->
-                tuple |> Tuple.to_seq
-                |> Seq.find_map (fun (_member, expr) -> hover TyExpr expr pos)
-            | TE_Error -> None)
-      in
       let inner =
-        inner
-        |> Option.or_else (fun () ->
-               data.evaled_exprs
-               |> List.find_map (fun expr -> hover Expr expr pos))
+        Common.inner_compiled kind compiled
+        |> Seq.find_map (fun (Common.CompiledThing (kind, inner)) ->
+               hover kind inner pos)
       in
       match inner with
       | Some result -> Some result

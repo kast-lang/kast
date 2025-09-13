@@ -68,6 +68,15 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         definitionProvider =
           Some (`DefinitionOptions Kast_lsp.Hover.definition_options);
         renameProvider = Some (`RenameOptions Kast_lsp.Hover.rename_options);
+        completionProvider =
+          Some
+            {
+              allCommitCharacters = None;
+              completionItem = None;
+              resolveProvider = None;
+              triggerCharacters = None;
+              workDoneProgress = None;
+            };
       }
 
     method spawn_query_handler f = Linol_eio.spawn f
@@ -129,6 +138,16 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
     (* On document closes, we remove the state associated to the file from the global
        hashtable state, to avoid leaking memory. *)
     method on_notif_doc_did_close ~notify_back:_ _ : unit = ()
+
+    method! on_req_completion ~notify_back:_ ~id:_ ~uri ~pos ~ctx:_
+        ~workDoneToken:_ ~partialResultToken:_ (_ : Linol_eio.doc_state) :
+        [ `CompletionList of Lsp.Types.CompletionList.t
+        | `List of Lsp.Types.CompletionItem.t list
+        ]
+        option =
+      Log.info (fun log -> log "Got completion request");
+      let* file_state = self#file_state uri in
+      Some (`List (file_state |> Kast_lsp.Completion.completions pos))
 
     method! on_req_inlay_hint ~notify_back:_ ~id:_ ~uri
         ~(range : Lsp.Types.Range.t) () : Lsp.Types.InlayHint.t list option =

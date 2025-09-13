@@ -15,6 +15,12 @@ module Option = struct
     | Some x -> Some x
     | None -> f ()
 
+  let or_ : 'a. 'a option -> 'a option -> 'a option =
+   fun other opt ->
+    match opt with
+    | Some x -> Some x
+    | None -> other
+
   let unwrap_or_else : 'a. (unit -> 'a) -> 'a option -> 'a =
    fun f opt ->
     match opt with

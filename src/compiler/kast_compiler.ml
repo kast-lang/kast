@@ -49,7 +49,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
     match ast.shape with
     | Ast.Error _ ->
         Error.error span "Trying to compile error node";
-        init_error span kind
+        init_error span state kind
     | Ast.Simple { token; _ } -> (
         match kind with
         | Expr -> (
@@ -58,28 +58,29 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 E_Binding
                   (State.Scope.find_binding ~from:ast.span ident.name
                      state.scope)
-                |> init_expr span
+                |> init_expr span state
             | Token.Shape.String s ->
-                E_Constant { shape = V_String s.contents } |> init_expr span
+                E_Constant { shape = V_String s.contents }
+                |> init_expr span state
             | Token.Shape.Number { raw; _ } ->
                 let value = Int32.of_string raw in
-                E_Constant { shape = V_Int32 value } |> init_expr span
+                E_Constant { shape = V_Int32 value } |> init_expr span state
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!")
-        | TyExpr -> TE_Expr (compile state Expr ast) |> init_ty_expr span
+        | TyExpr -> TE_Expr (compile state Expr ast) |> init_ty_expr span state
         | Assignee -> (
             match token.shape with
             | Token.Shape.Ident ident ->
                 A_Binding
                   (State.Scope.find_binding ~from:ast.span ident.name
                      state.scope)
-                |> init_assignee span
+                |> init_assignee span state
             | Token.Shape.String _ ->
                 Error.error span "string can't be assignee";
-                init_error span kind
+                init_error span state kind
             | Token.Shape.Number _ ->
                 Error.error span "number can't be assignee";
-                init_error span kind
+                init_error span state kind
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!")
         | Pattern -> (
@@ -93,13 +94,13 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                     references = [];
                   }
                 in
-                P_Binding binding |> init_pattern span
+                P_Binding binding |> init_pattern span state
             | Token.Shape.String _ ->
                 Error.error span "string can't be pattern";
-                init_error span kind
+                init_error span state kind
             | Token.Shape.Number _ ->
                 Error.error span "number can't be pattern";
-                init_error span kind
+                init_error span state kind
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!"))
     | Ast.Complex { rule; root } -> (
@@ -119,29 +120,29 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 let expr =
                   E_Apply
                     {
-                      f = E_Constant impl |> init_expr span;
-                      arg = E_Constant arg |> init_expr span;
+                      f = E_Constant impl |> init_expr span state;
+                      arg = E_Constant arg |> init_expr span state;
                     }
-                  |> init_expr span
+                  |> init_expr span state
                 in
                 let result = Interpreter.eval state.interpreter expr in
                 match result.shape with
                 | V_Ast result -> compile state kind result
                 | _ ->
                     Error.error span "macro expanded not to ast???";
-                    init_error span kind)
+                    init_error span state kind)
             | None ->
                 Error.error span "Must impl rule before using it: %S" rule.name;
-                init_error span kind))
+                init_error span state kind))
     | Ast.Syntax { mode; value_after; comments_before = _; tokens = _ } -> (
         match value_after with
         | Some value -> compile state kind value
         | None -> (
             match kind with
-            | Expr -> E_Constant { shape = V_Unit } |> init_expr span
+            | Expr -> E_Constant { shape = V_Unit } |> init_expr span state
             | _ ->
                 Error.error span "expected a value after syntax";
-                init_error span kind))
+                init_error span state kind))
   with exc ->
     Log.error (fun log ->
         log "While compiling %a %a at %a" Compiler.CompiledKind.print kind

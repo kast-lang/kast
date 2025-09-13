@@ -37,10 +37,10 @@ let apply : core_syntax =
         | Expr ->
             let f = Compiler.compile Expr f in
             let arg = Compiler.compile Expr arg in
-            E_Apply { f; arg } |> init_expr span
+            E_Apply { f; arg } |> init_expr span Compiler.state
         | _ ->
             error span "apply must be expr";
-            init_error span kind);
+            init_error span Compiler.state kind);
   }
 
 (* a; b *)
@@ -64,10 +64,10 @@ let then' : core_syntax =
         | Expr ->
             let a = Compiler.compile Expr a in
             let b = Compiler.compile Expr b in
-            E_Then { a; b } |> init_expr span
+            E_Then { a; b } |> init_expr span Compiler.state
         | _ ->
             error span "then must be expr";
-            init_error span kind);
+            init_error span Compiler.state kind);
   }
 
 (* expr; *)
@@ -92,10 +92,10 @@ let stmt : core_syntax =
         match kind with
         | Expr ->
             let expr = Compiler.compile Expr expr in
-            E_Stmt { expr } |> init_expr span
+            E_Stmt { expr } |> init_expr span Compiler.state
         | _ ->
             error span "stmt must be expr";
-            init_error span kind);
+            init_error span Compiler.state kind);
   }
 
 let scope : core_syntax =
@@ -103,7 +103,7 @@ let scope : core_syntax =
     name = "scope";
     handle =
       (fun (type a)
-        (module C : Compiler.S)
+        (module Compiler : Compiler.S)
         (kind : a compiled_kind)
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
@@ -116,14 +116,14 @@ let scope : core_syntax =
           |> Tuple.map Ast.Child.expect_ast
           |> Tuple.unwrap_single_unnamed
         in
-        let state = C.state |> State.enter_scope in
+        let state = Compiler.state |> State.enter_scope in
         match kind with
         | Expr ->
-            let expr = C.compile ~state Expr expr in
-            E_Scope { expr } |> init_expr span
-        | Assignee -> C.compile ~state Assignee expr
-        | Pattern -> C.compile ~state Pattern expr
-        | TyExpr -> C.compile ~state TyExpr expr);
+            let expr = Compiler.compile ~state Expr expr in
+            E_Scope { expr } |> init_expr span Compiler.state
+        | Assignee -> Compiler.compile ~state Assignee expr
+        | Pattern -> Compiler.compile ~state Pattern expr
+        | TyExpr -> Compiler.compile ~state TyExpr expr);
   }
 
 let assign : core_syntax =
@@ -149,10 +149,10 @@ let assign : core_syntax =
             let assignee = C.compile Assignee assignee in
             let value = C.compile Expr value in
             C.state |> Compiler.inject_assignee_bindings assignee;
-            E_Assign { assignee; value } |> init_expr span
+            E_Assign { assignee; value } |> init_expr span C.state
         | _ ->
             error span "assign must be expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let let' : core_syntax =
@@ -176,10 +176,10 @@ let let' : core_syntax =
         match kind with
         | Assignee ->
             let pattern = Compiler.compile Pattern pattern in
-            A_Let pattern |> init_assignee span
+            A_Let pattern |> init_assignee span Compiler.state
         | _ ->
             error span "assign must be expr";
-            init_error span kind);
+            init_error span Compiler.state kind);
   }
 
 let placeholder : core_syntax =
@@ -197,16 +197,18 @@ let placeholder : core_syntax =
         let span = ast.span in
         Tuple.assert_empty children;
         match kind with
-        | Assignee -> A_Placeholder |> init_assignee span
-        | Pattern -> P_Placeholder |> init_pattern span
+        | Assignee -> A_Placeholder |> init_assignee span Compiler.state
+        | Pattern -> P_Placeholder |> init_pattern span Compiler.state
         | Expr ->
             error span "todo _ expr %s" __LOC__;
-            init_error span kind
+            init_error span Compiler.state kind
         | TyExpr ->
             let ty = Ty.new_not_inferred () in
             let value : value = { shape = V_Ty ty } in
-            let const : expr = E_Constant value |> init_expr span in
-            TE_Expr const |> init_ty_expr span);
+            let const : expr =
+              E_Constant value |> init_expr span Compiler.state
+            in
+            TE_Expr const |> init_ty_expr span Compiler.state);
   }
 
 let fn_type : core_syntax =
@@ -237,18 +239,18 @@ let fn_type : core_syntax =
         match kind with
         | Assignee ->
             error span "fn_type can't be assignee";
-            init_error span kind
+            init_error span C.state kind
         | Pattern ->
             error span "fn_type can't be a pattern";
-            init_error span kind
+            init_error span C.state kind
         | Expr ->
             error span "fn_type can't be a expr";
-            init_error span kind
+            init_error span C.state kind
         | TyExpr ->
             let state = C.state |> State.enter_scope in
             let arg = C.compile ~state TyExpr arg in
             let result = C.compile ~state TyExpr result in
-            TE_Fn { arg; result } |> init_ty_expr span);
+            TE_Fn { arg; result } |> init_ty_expr span C.state);
   }
 
 let fn : core_syntax =
@@ -285,13 +287,13 @@ let fn : core_syntax =
         match kind with
         | Assignee ->
             error span "fn can't be assignee";
-            init_error span kind
+            init_error span C.state kind
         | Pattern ->
             error span "fn can't be a pattern";
-            init_error span kind
+            init_error span C.state kind
         | TyExpr ->
             error span "fn can't be a ty";
-            init_error span kind
+            init_error span C.state kind
         | Expr ->
             let state = C.state |> State.enter_scope in
             let arg = C.compile ~state Pattern arg in
@@ -308,7 +310,8 @@ let fn : core_syntax =
                           result;
                      result_expr)
             in
-            E_Fn { arg; body; evaled_result = result_expr } |> init_expr span);
+            E_Fn { arg; body; evaled_result = result_expr }
+            |> init_expr span C.state);
   }
 
 let unit : core_syntax =
@@ -326,10 +329,10 @@ let unit : core_syntax =
         let span = ast.span in
         Tuple.assert_empty children;
         match kind with
-        | Assignee -> A_Unit |> init_assignee span
-        | Pattern -> P_Unit |> init_pattern span
-        | Expr -> E_Constant { shape = V_Unit } |> init_expr span
-        | TyExpr -> TE_Unit |> init_ty_expr span);
+        | Assignee -> A_Unit |> init_assignee span Compiler.state
+        | Pattern -> P_Unit |> init_pattern span Compiler.state
+        | Expr -> E_Constant { shape = V_Unit } |> init_expr span Compiler.state
+        | TyExpr -> TE_Unit |> init_ty_expr span Compiler.state);
   }
 
 let type' : core_syntax =
@@ -347,16 +350,18 @@ let type' : core_syntax =
         let span = ast.span in
         Tuple.assert_empty children;
         let ty_ty = Ty.inferred T_Ty in
-        let const = E_Constant { shape = V_Ty ty_ty } |> init_expr span in
+        let const =
+          E_Constant { shape = V_Ty ty_ty } |> init_expr span Compiler.state
+        in
         match kind with
         | Assignee ->
             error span "type can't be assignee";
-            init_error span kind
+            init_error span Compiler.state kind
         | Pattern ->
             error span "type can't be a pattern";
-            init_error span kind
+            init_error span Compiler.state kind
         | Expr -> const
-        | TyExpr -> TE_Expr const |> init_ty_expr span);
+        | TyExpr -> TE_Expr const |> init_ty_expr span Compiler.state);
   }
 
 let false' : core_syntax =
@@ -374,18 +379,20 @@ let false' : core_syntax =
         let span = ast.span in
         Tuple.assert_empty children;
         let ty_ty = Ty.inferred T_Ty in
-        let const = E_Constant { shape = V_Bool false } |> init_expr span in
+        let const =
+          E_Constant { shape = V_Bool false } |> init_expr span Compiler.state
+        in
         match kind with
         | Expr -> const
         | Assignee ->
             error span "false can't be assignee";
-            init_error span kind
+            init_error span Compiler.state kind
         | Pattern ->
             error span "false can't be a pattern";
-            init_error span kind
+            init_error span Compiler.state kind
         | TyExpr ->
             error span "false can't be a type";
-            init_error span kind);
+            init_error span Compiler.state kind);
   }
 
 let true' : core_syntax =
@@ -403,18 +410,20 @@ let true' : core_syntax =
         let span = ast.span in
         Tuple.assert_empty children;
         let ty_ty = Ty.inferred T_Ty in
-        let const = E_Constant { shape = V_Bool true } |> init_expr span in
+        let const =
+          E_Constant { shape = V_Bool true } |> init_expr span Compiler.state
+        in
         match kind with
         | Expr -> const
         | Assignee ->
             error span "true can't be assignee";
-            init_error span kind
+            init_error span Compiler.state kind
         | Pattern ->
             error span "true can't be a pattern";
-            init_error span kind
+            init_error span Compiler.state kind
         | TyExpr ->
             error span "true can't be a type";
-            init_error span kind);
+            init_error span Compiler.state kind);
   }
 
 let type_expr : core_syntax =
@@ -435,14 +444,14 @@ let type_expr : core_syntax =
         in
         let expr = Compiler.compile TyExpr expr in
         match kind with
-        | Expr -> E_Ty expr |> init_expr span
+        | Expr -> E_Ty expr |> init_expr span Compiler.state
         | TyExpr -> expr
         | Assignee ->
             error span "type expr can't be assignee";
-            init_error span kind
+            init_error span Compiler.state kind
         | Pattern ->
             error span "type expr can't be a pattern";
-            init_error span kind);
+            init_error span Compiler.state kind);
   }
 
 let type_ascribe : core_syntax =
@@ -503,7 +512,7 @@ let import : core_syntax =
                 let path =
                   path |> Value.expect_string
                   |> Option.unwrap_or_else (fun () ->
-                         return <| init_error span kind)
+                         return <| init_error span C.state kind)
                 in
                 let uri =
                   Uri.maybe_relative_to_file span.uri (Uri.of_string path)
@@ -512,16 +521,16 @@ let import : core_syntax =
                   Compiler.import ~span (module C) uri
                 in
                 E_Constant imported_value
-                |> init_expr ~evaled_exprs:[ path_expr ] span
+                |> init_expr ~evaled_exprs:[ path_expr ] span C.state
             | Assignee ->
                 error span "Can't assign to import";
-                init_error span kind
+                init_error span C.state kind
             | Pattern ->
                 error span "import can't be a pattern";
-                init_error span kind
+                init_error span C.state kind
             | TyExpr ->
                 error span "Type imports not supported (TODO)";
-                init_error span kind));
+                init_error span C.state kind));
   }
 
 let include' : core_syntax =
@@ -549,7 +558,7 @@ let include' : core_syntax =
             let path =
               path |> Value.expect_string
               |> Option.unwrap_or_else (fun () ->
-                     return <| init_error span kind)
+                     return <| init_error span C.state kind)
             in
             let uri =
               Uri.maybe_relative_to_file span.uri (Uri.of_string path)
@@ -608,26 +617,27 @@ let const : core_syntax =
             let let_expr =
               E_Assign
                 {
-                  assignee = A_Let pattern |> init_assignee pattern.data.span;
+                  assignee =
+                    A_Let pattern |> init_assignee pattern.data.span C.state;
                   value =
                     E_Constant value
                     |> init_expr ~evaled_exprs:[ value_expr ]
-                         value_expr.data.span;
+                         value_expr.data.span C.state;
                 }
-              |> init_expr span
+              |> init_expr span C.state
             in
             C.state |> Compiler.inject_pattern_bindings pattern;
             ignore @@ Interpreter.eval C.state.interpreter let_expr;
             let_expr
         | Assignee ->
             error span "const must be expr, not assignee expr";
-            init_error span kind
+            init_error span C.state kind
         | Pattern ->
             error span "const must be expr, not pattern";
-            init_error span kind
+            init_error span C.state kind
         | TyExpr ->
             error span "const must be expr, not type expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let native : core_syntax =
@@ -653,21 +663,21 @@ let native : core_syntax =
             let expr_value : string =
               expr_value |> Value.expect_string
               |> Option.unwrap_or_else (fun () ->
-                     return <| init_error span kind)
+                     return <| init_error span C.state kind)
             in
             match kind with
             | Expr ->
                 E_Native { expr = expr_value }
-                |> init_expr ~evaled_exprs:[ expr ] span
+                |> init_expr ~evaled_exprs:[ expr ] span C.state
             | Assignee ->
                 error span "native must be expr, not assignee expr";
-                init_error span kind
+                init_error span C.state kind
             | Pattern ->
                 error span "native must be expr, not pattern";
-                init_error span kind
+                init_error span C.state kind
             | TyExpr ->
                 error span "native must be expr, not type expr";
-                init_error span kind));
+                init_error span C.state kind));
   }
 
 let module' : core_syntax =
@@ -688,16 +698,16 @@ let module' : core_syntax =
         in
         let def = C.compile Expr def in
         match kind with
-        | Expr -> E_Module { def } |> init_expr span
+        | Expr -> E_Module { def } |> init_expr span C.state
         | Assignee ->
             error span "module must be expr, not assignee expr";
-            init_error span kind
+            init_error span C.state kind
         | Pattern ->
             error span "module must be expr, not pattern";
-            init_error span kind
+            init_error span C.state kind
         | TyExpr ->
             error span "module must be expr, not type expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let dot : core_syntax =
@@ -717,11 +727,12 @@ let dot : core_syntax =
             match kind with
             | Assignee ->
                 error span "todo assign to field";
-                init_error span kind
+                init_error span C.state kind
             | Pattern ->
                 error span "dot must be expr, not pattern";
-                init_error span kind
-            | TyExpr -> TE_Expr (C.compile Expr ast) |> init_ty_expr span
+                init_error span C.state kind
+            | TyExpr ->
+                TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
             | Expr ->
                 let obj, field =
                   children
@@ -735,9 +746,9 @@ let dot : core_syntax =
                       ident.name
                   | _ ->
                       error span "field must be ident";
-                      return <| init_error span kind
+                      return <| init_error span C.state kind
                 in
-                E_Field { obj; field } |> init_expr span));
+                E_Field { obj; field } |> init_expr span C.state));
   }
 
 let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
@@ -772,7 +783,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
         | None ->
             E_Binding
               (State.Scope.find_binding ~from:label_ast.span label C.state.scope)
-            |> init_expr span
+            |> init_expr span C.state
       in
       match ty |> Option.map (Compiler.eval_ty (module C)) with
       | None -> (label, value)
@@ -795,9 +806,9 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
               E_Binding
                 (State.Scope.find_binding ~from:label_ast.span label
                    C.state.scope)
-              |> init_expr span
+              |> init_expr span C.state
             in
-            TE_Expr expr |> init_ty_expr span
+            TE_Expr expr |> init_ty_expr span C.state
       in
       (label, value)
   | Assignee ->
@@ -815,7 +826,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
                 references = [];
                 span = label_ast.span;
               }
-            |> init_pattern span
+            |> init_pattern span C.state
       in
       match ty |> Option.map (Compiler.eval_ty (module C)) with
       | None -> (label, value)
@@ -842,10 +853,10 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
   match kind with
   | Assignee ->
       error span "todo comma assignee";
-      init_error span kind
-  | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span
-  | TyExpr -> TE_Tuple { tuple = !tuple } |> init_ty_expr span
-  | Expr -> E_Tuple { tuple = !tuple } |> init_expr span
+      init_error span C.state kind
+  | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span C.state
+  | TyExpr -> TE_Tuple { tuple = !tuple } |> init_ty_expr span C.state
+  | Expr -> E_Tuple { tuple = !tuple } |> init_expr span C.state
 
 let comma : core_syntax =
   {
@@ -925,14 +936,14 @@ let use_dot_star : core_syntax =
                    C.state |> Compiler.inject_binding binding);
             let result =
               E_UseDotStar
-                { used = E_Constant used |> init_expr span; bindings }
-              |> init_expr ~evaled_exprs:[ used_expr ] span
+                { used = E_Constant used |> init_expr span C.state; bindings }
+              |> init_expr ~evaled_exprs:[ used_expr ] span C.state
             in
             ignore @@ Interpreter.eval C.state.interpreter result;
             result
         | _ ->
             error span "use .* must be expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let comptime : core_syntax =
@@ -956,10 +967,11 @@ let comptime : core_syntax =
             let value, value_expr =
               Compiler.eval ~ty:(Ty.new_not_inferred ()) (module C) expr
             in
-            E_Constant value |> init_expr ~evaled_exprs:[ value_expr ] span
+            E_Constant value
+            |> init_expr ~evaled_exprs:[ value_expr ] span C.state
         | _ ->
             error span "comptime must be expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let if' : core_syntax =
@@ -985,16 +997,16 @@ let if' : core_syntax =
         | Expr ->
             let then_case = C.compile Expr then_case in
             let else_case = C.compile Expr else_case in
-            E_If { cond; then_case; else_case } |> init_expr span
+            E_If { cond; then_case; else_case } |> init_expr span C.state
         | TyExpr ->
             error span "if can't be assignee";
-            init_error span kind
+            init_error span C.state kind
         | Assignee ->
             error span "if can't be assignee";
-            init_error span kind
+            init_error span C.state kind
         | Pattern ->
             error span "if can't be assignee";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let impl_syntax : core_syntax =
@@ -1041,16 +1053,17 @@ let impl_syntax : core_syntax =
                           |> Tuple.map (fun field ->
                                  C.compile ~state Pattern field);
                       }
-                    |> init_pattern name.span
+                    |> init_pattern name.span C.state
                   in
                   state |> Compiler.inject_pattern_bindings arg;
                   let body = C.compile ~state Expr impl in
-                  E_Fn { arg; body; evaled_result = None } |> init_expr span
+                  E_Fn { arg; body; evaled_result = None }
+                  |> init_expr span C.state
                 in
                 let impl = Interpreter.eval C.state.interpreter impl_expr in
                 Hashtbl.add C.state.custom_syntax_impls rule.id impl;
                 E_Constant { shape = V_Unit }
-                |> init_expr ~evaled_exprs:[ impl_expr ] span
+                |> init_expr ~evaled_exprs:[ impl_expr ] span C.state
             | _ ->
                 let name, name_expr =
                   Compiler.eval ~ty:(Ty.inferred T_String) (module C) name
@@ -1075,16 +1088,17 @@ let impl_syntax : core_syntax =
                 | None ->
                     Error.error name_expr.data.span "Name must be a string");
                 E_Constant { shape = V_Unit }
-                |> init_expr ~evaled_exprs:[ name_expr; impl_expr ] span)
+                |> init_expr ~evaled_exprs:[ name_expr; impl_expr ] span C.state
+            )
         | TyExpr ->
             error span "impl syntax can't be assignee";
-            init_error span kind
+            init_error span C.state kind
         | Assignee ->
             error span "impl syntax can't be assignee";
-            init_error span kind
+            init_error span C.state kind
         | Pattern ->
             error span "impl syntax can't be assignee";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let field_init : core_syntax =
@@ -1122,7 +1136,7 @@ let quote : core_syntax =
             let rec construct (ast : Ast.t) : expr =
               match ast.shape with
               | Ast.Error _ | Ast.Simple _ ->
-                  E_Constant { shape = V_Ast ast } |> init_expr ast.span
+                  E_Constant { shape = V_Ast ast } |> init_expr ast.span C.state
               | Ast.Complex { rule; root } when rule.name = "core:unquote" ->
                   let unquote =
                     root.children |> Tuple.unwrap_single_unnamed
@@ -1131,7 +1145,7 @@ let quote : core_syntax =
                   C.compile kind unquote
               | Ast.Complex { rule; root } ->
                   E_QuoteAst { rule; root = construct_group root }
-                  |> init_expr ast.span
+                  |> init_expr ast.span C.state
               | Ast.Syntax _ -> fail "TODO"
             and construct_group (group : Ast.group) : Expr.Shape.quote_ast_group
                 =
@@ -1150,7 +1164,7 @@ let quote : core_syntax =
             construct body
         | _ ->
             error span "quote must be expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let loop : core_syntax =
@@ -1173,10 +1187,10 @@ let loop : core_syntax =
         | Expr ->
             E_Loop
               { body = C.compile ~state:(State.enter_scope C.state) Expr body }
-            |> init_expr span
+            |> init_expr span C.state
         | _ ->
             error span "loop must be expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let unwindable : core_syntax =
@@ -1203,10 +1217,10 @@ let unwindable : core_syntax =
             let state = State.enter_scope C.state in
             state |> Compiler.inject_pattern_bindings token;
             let body = C.compile ~state Expr body in
-            E_Unwindable { token; body } |> init_expr span
+            E_Unwindable { token; body } |> init_expr span C.state
         | _ ->
             error span "unwindable must be expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let unwind : core_syntax =
@@ -1231,10 +1245,10 @@ let unwind : core_syntax =
         | Expr ->
             E_Unwind
               { token = C.compile Expr token; value = C.compile Expr value }
-            |> init_expr span
+            |> init_expr span C.state
         | _ ->
             error span "unwind must be expr";
-            init_error span kind);
+            init_error span C.state kind);
   }
 
 let core =
@@ -1276,9 +1290,9 @@ let core =
 let all : core_syntax StringMap.t =
   core |> List.map (fun handler -> (handler.name, handler)) |> StringMap.of_list
 
-let handle name compiler kind (ast : Ast.t) root =
+let handle name (module C : Compiler.S) kind (ast : Ast.t) root =
   match all |> StringMap.find_opt name with
   | None ->
       error ast.span "there is no core syntax %S" name;
-      init_error ast.span kind
-  | Some core_syntax -> core_syntax.handle compiler kind ast root
+      init_error ast.span C.state kind
+  | Some core_syntax -> core_syntax.handle (module C) kind ast root
