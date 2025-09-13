@@ -1,3 +1,5 @@
-use std.prelude.*;
-print "hello";
-# "world" |> print;
+(
+    let xyz = 123;
+    
+    let abc = 4356;
+)

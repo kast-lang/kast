@@ -67,6 +67,13 @@ let lsp =
           | Some result -> result |> Lsp.Types.Hover.yojson_of_t |> yojson_to_js
           | None -> Js.Unsafe.inject Js.null)
 
+    method complete (pos : Js.Unsafe.any) (state : file_state) =
+      cross_js (fun () ->
+          let pos = pos |> js_to_yojson |> Lsp.Types.Position.t_of_yojson in
+          let result = Kast_lsp.Completion.completions pos state in
+          `List (result |> List.map Lsp.Types.CompletionItem.yojson_of_t)
+          |> yojson_to_js)
+
     method rename (pos : Js.Unsafe.any) (newName : string) (state : file_state)
         =
       cross_js (fun () ->
