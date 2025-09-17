@@ -35,47 +35,39 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope) :
   StringMap.merge (fun _ a b -> b |> Option.or_ a) parent_completions locals
 
 let rec find_expr :
-    'a.
-    'a compiled_kind ->
-    'a ->
-    position ->
-    check_touch:bool ->
-    Common.compiled_thing option =
- fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position)
-     ~check_touch ->
-  let data = Compiler.get_data kind compiled in
-  if (not check_touch) || data.span |> Span.touches pos then (
-    Log.info (fun log -> log "Looking in %a" Span.print data.span);
-    let inner =
-      Common.inner_compiled kind compiled
-      |> Seq.find_map (fun (Common.CompiledThing (kind, compiled)) ->
-             find_expr kind compiled pos ~check_touch:true)
-    in
-    match inner with
-    | Some inner -> Some inner
-    | None -> Some (CompiledThing (kind, compiled)))
-  else None
-
-let rec find_expr :
     'a. 'a compiled_kind -> 'a -> position -> Common.compiled_thing option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position) ->
   let data = Compiler.get_data kind compiled in
-  if data.span.finish <= pos then Some (Common.CompiledThing (kind, compiled))
+  Log.trace (fun log -> log "Considering %a" Span.print data.span);
+  if Position.compare data.span.finish pos <= 0 then
+    Some (Common.CompiledThing (kind, compiled))
   else if data.span |> Span.contains pos then
     let inner =
       Common.inner_compiled kind compiled
       |> Seq.filter_map (fun (Common.CompiledThing (kind, compiled)) ->
              find_expr kind compiled pos)
-      |> Seq.last
+      |> Seq.fold_left
+           (fun acc (Common.CompiledThing (kind, compiled) as b) ->
+             match acc with
+             | Some (Common.CompiledThing (akind, acompiled) as a) ->
+                 let adata = Compiler.get_data akind acompiled in
+                 let data = Compiler.get_data kind compiled in
+                 Some
+                   (if Position.compare adata.span.finish data.span.finish > 0
+                    then a
+                    else b)
+             | None -> Some b)
+           None
     in
-    inner |> Option.or_ (Some (Common.CompiledThing (kind, compiled)))
+    inner (* |> Option.or_ (Some (Common.CompiledThing (kind, compiled))) *)
   else None
 
 let complete (type a) (kind : a compiled_kind) (compiled : a) (pos : position) =
   let* (CompiledThing (kind, compiled)) = find_expr kind compiled pos in
   let data = Compiler.get_data kind compiled in
+  Log.trace (fun log -> log "Completing from %a" Span.print data.span);
   let completions = complete_from_compiler_scope data.compiler_scope in
-  Log.info (fun log ->
+  Log.trace (fun log ->
       log "Completed with %a"
         (List.print String.print_dbg)
         (completions |> StringMap.to_list |> List.map (fun (key, _) -> key)));
