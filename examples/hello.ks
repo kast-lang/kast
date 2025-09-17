@@ -1,5 +1,3 @@
-(
-    let xyz = 123;
-    
-    let abc = 4356;
-)
+use std.prelude.*;
+print "hello";
+"world" |> print;
