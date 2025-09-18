@@ -1,3 +1,0 @@
-(executable
- (name main_new)
- (libraries kast_new))
