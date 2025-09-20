@@ -4,5 +4,5 @@ impl syntax (for x in a do e) = `(
     let $x = $a;
     $e
 );
-impl syntax "for" = (.elem = x, .iterator = a, .body = e) => `(same thing);
+# impl syntax "for" = (.elem = x, .iterator = a, .body = e) => `(same thing);
 for x in "123" do std.io.print x

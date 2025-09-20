@@ -7,3 +7,4 @@
 "examples/zero.ks",
 "examples/doesnt-parse.ks",
 "examples/custom-syntax.ks",
+"examples/transpile-ocaml-test.ks",
