@@ -696,18 +696,20 @@ let module' : core_syntax =
         let def =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
-        let def = C.compile Expr def in
+        (* TODO recursive scope *)
+        let state = C.state |> State.enter_scope in
+        let def = C.compile ~state Expr def in
         match kind with
-        | Expr -> E_Module { def } |> init_expr span C.state
+        | Expr -> E_Module { def } |> init_expr span state
         | Assignee ->
             error span "module must be expr, not assignee expr";
-            init_error span C.state kind
+            init_error span state kind
         | Pattern ->
             error span "module must be expr, not pattern";
-            init_error span C.state kind
+            init_error span state kind
         | TyExpr ->
             error span "module must be expr, not type expr";
-            init_error span C.state kind);
+            init_error span state kind);
   }
 
 let dot : core_syntax =
