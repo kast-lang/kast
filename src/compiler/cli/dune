@@ -1,3 +1,8 @@
 (library
  (name kast_compiler_cli)
- (libraries std kast_parser kast_compiler kast_default_syntax))
+ (libraries
+  std
+  kast_parser
+  kast_compiler
+  kast_default_syntax
+  kast_transpiler_ocaml))

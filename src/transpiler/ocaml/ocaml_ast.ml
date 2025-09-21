@@ -1,12 +1,7 @@
 open Std
 
-let () =
-  let a = 123 and c = 456 in
-  ();
-  let b = 123 in
-  ()
-
 type ocaml_ast =
+  | RawCode of string
   | UnitType
   | Bool of bool
   | Int32 of int32
@@ -60,6 +55,7 @@ let single_let binding =
 
 let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
   match ast with
+  | RawCode s -> fprintf fmt "@{<blue>%s@}" s
   | UnitType -> fprintf fmt "@{<magenta>unit@}"
   | Bool value -> fprintf fmt "@{<magenta>%B@}" value
   | Int32 value -> fprintf fmt "@{<italic>%ld@}" value
@@ -108,7 +104,9 @@ let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
                           print pattern print value);
                  fprintf fmt "@{<magenta>in@}@,";
                  if i + 1 >= let_then_len then fprintf fmt "@{<magenta>()@}"
-             | Then expr -> fprintf fmt "%a@{<magenta>;@}@," print expr)
+             | Then expr ->
+                 print fmt expr;
+                 if i + 1 < let_then_len then fprintf fmt "@{<magenta>;@}@,")
   | Match { expr; branches } ->
       fprintf fmt "@{<magenta>(match@} %a @{<magenta>with@}" print expr;
       branches

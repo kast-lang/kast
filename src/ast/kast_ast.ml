@@ -135,8 +135,13 @@ module Part = struct
   let print = print_part
 end
 
-let rec collect_list ~(binary_rule_name : string) (ast : ast) : ast list =
+let rec collect_list ~(binary_rule_name : string)
+    ?(trailing_or_leading_rule_name : string option) (ast : ast) : ast list =
   match ast.shape with
+  | Complex { rule = { name; _ }; root }
+    when Some name = trailing_or_leading_rule_name ->
+      collect_list ~binary_rule_name
+        (root.children |> Tuple.unwrap_single_unnamed |> Child.expect_ast)
   | Complex { rule = { name; _ }; root } when name = binary_rule_name ->
       let a, b =
         root.children |> Tuple.map Child.expect_ast |> Tuple.unwrap_unnamed2

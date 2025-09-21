@@ -125,6 +125,7 @@ let rec eval : state -> expr -> value =
           let result = eval new_state def.body in
           result
       | V_NativeFn f -> f.impl ~caller:expr.data.span arg
+      | V_Error -> { shape = V_Error }
       | _ ->
           Error.error expr.data.span "expected fn";
           { shape = V_Error })
@@ -154,6 +155,13 @@ let rec eval : state -> expr -> value =
           | None ->
               Error.error expr.data.span "field %S doesnt exist" field;
               { shape = V_Error })
+      | V_Target { name } -> (
+          match field with
+          | "name" -> { shape = V_String name }
+          | _ ->
+              Error.error expr.data.span "field %S doesnt exist in target" field;
+              { shape = V_Error })
+      | V_Error -> { shape = V_Error }
       | _ ->
           Error.error expr.data.span "%a doesnt have fields" Value.print obj;
           { shape = V_Error })
@@ -204,6 +212,35 @@ let rec eval : state -> expr -> value =
           in
           let value = eval state value in
           raise <| Unwind { token; value })
+  | E_TargetDependent { branches } ->
+      with_return (fun { return } ->
+          let chosen_branch =
+            find_target_dependent_branch state branches { name = "interpreter" }
+            |> Option.unwrap_or_else (fun () ->
+                   Error.error expr.data.span
+                     "No target dependent branch matched";
+                   return ({ shape = V_Error } : value))
+          in
+          eval state chosen_branch.body)
+
+and find_target_dependent_branch :
+    state ->
+    Types.expr_target_dependent_branch list ->
+    Types.value_target ->
+    Types.expr_target_dependent_branch option =
+ fun state branches target ->
+  branches
+  |> List.find_map (fun (branch : Types.expr_target_dependent_branch) ->
+         let scope_with_target = Scope.init ~parent:(Some state.scope) in
+         scope_with_target
+         |> Scope.add_local Types.target_symbol
+              ({ shape = V_Target target } : value);
+         let state_with_target = { state with scope = scope_with_target } in
+         match eval state_with_target branch.cond |> Value.expect_bool with
+         | None ->
+             Error.error branch.cond.data.span "Cond didn't evaluate to a bool";
+             None
+         | Some cond -> if cond then Some branch else None)
 
 and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
  fun state expr ->

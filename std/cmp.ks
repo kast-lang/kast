@@ -1,7 +1,37 @@
 module:
-const less :: (int32, int32) -> bool = native "<";
-const less_or_equal :: (int32, int32) -> bool = native "<=";
-const equal :: (int32, int32) -> bool = native "==";
-const not_equal :: (int32, int32) -> bool = native "!=";
-const greater_or_equal :: (int32, int32) -> bool = native ">=";
-const greater :: (int32, int32) -> bool = native ">";
+const less = (a :: int32, b :: int32) -> bool => (
+    cfg_if (
+        | (native "==") (target.name, "interpreter") => (native "<") (a, b)
+        | (native "==") (target.name, "ocaml") => native "({a} < {b})"
+    )
+);
+const less_or_equal = (a :: int32, b :: int32) -> bool => (
+    cfg_if (
+        | (native "==") (target.name, "interpreter") => (native "<=") (a, b)
+        | (native "==") (target.name, "ocaml") => native "({a} <= {b})"
+    )
+);
+const equal = (a :: int32, b :: int32) -> bool => (
+    cfg_if (
+        | (native "==") (target.name, "interpreter") => (native "==") (a, b)
+        | (native "==") (target.name, "ocaml") => native "({a} = {b})"
+    )
+);
+const not_equal = (a :: int32, b :: int32) -> bool => (
+    cfg_if (
+        | (native "==") (target.name, "interpreter") => (native "!=") (a, b)
+        | (native "==") (target.name, "ocaml") => native "({a} <> {b})"
+    )
+);
+const greater_or_equal = (a :: int32, b :: int32) -> bool => (
+    cfg_if (
+        | (native "==") (target.name, "interpreter") => (native ">=") (a, b)
+        | (native "==") (target.name, "ocaml") => native "({a} >= {b})"
+    )
+);
+const greater = (a :: int32, b :: int32) -> bool => (
+    cfg_if (
+        | (native "==") (target.name, "interpreter") => (native ">") (a, b)
+        | (native "==") (target.name, "ocaml") => native "({a} > {b})"
+    )
+);

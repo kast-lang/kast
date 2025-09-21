@@ -141,8 +141,8 @@ let natives : natives =
               { shape = V_Error });
       cmp_fn "<" ( < );
       cmp_fn "<=" ( <= );
-      cmp_fn "==" ( == );
-      cmp_fn "!=" ( != );
+      cmp_fn "==" ( = );
+      cmp_fn "!=" ( <> );
       cmp_fn ">=" ( >= );
       cmp_fn ">" ( > );
       bin_op "+" Int32.add;

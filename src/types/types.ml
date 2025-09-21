@@ -18,9 +18,11 @@ and value_shape =
   | V_NativeFn of value_native_fn
   | V_Ast of Ast.t
   | V_UnwindToken of value_unwind_token
+  | V_Target of value_target
   | V_Error
 
 and value = { shape : value_shape }
+and value_target = { name : string }
 
 and value_unwind_token = {
   id : Id.t;
@@ -60,6 +62,7 @@ and ty_shape =
   | T_Fn of ty_fn
   | T_Ast
   | T_UnwindToken of ty_unwind_token
+  | T_Target
   | T_Error
 
 and ty = { var : ty_shape Inference.var }
@@ -136,6 +139,13 @@ and expr_unwind = {
   value : expr;
 }
 
+and expr_target_dependent = { branches : expr_target_dependent_branch list }
+
+and expr_target_dependent_branch = {
+  cond : expr;
+  body : expr;
+}
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -156,6 +166,7 @@ and expr_shape =
   | E_Loop of expr_loop
   | E_Unwindable of expr_unwindable
   | E_Unwind of expr_unwind
+  | E_TargetDependent of expr_target_dependent
   | E_Error
 
 and expr = {
@@ -241,3 +252,5 @@ and compiler_scope = {
   parent : compiler_scope option;
   bindings : binding StringMap.t;
 }
+
+let target_symbol : symbol = Symbol.create "target"

@@ -5,6 +5,15 @@ module Inference = Kast_inference_base
 module OcamlAst = Ocaml_ast
 
 let binding_name (binding : binding) : string = binding.name.name
+let interpreter_cached = ref None
+
+let interpreter () =
+  match !interpreter_cached with
+  | Some x -> x
+  | None ->
+      let x = (Kast_compiler.default ()).interpreter in
+      interpreter_cached := Some x;
+      x
 
 let get_tuple_field ~(index : int) ~(length : int) (expr : OcamlAst.t) :
     OcamlAst.t =
@@ -45,13 +54,15 @@ and transpile_value : Value.t -> OcamlAst.t =
   | Types.V_Int32 value -> OcamlAst.Int32 value
   | Types.V_String value -> OcamlAst.String value
   | Types.V_Tuple tuple -> transpile_tuple transpile_value tuple.tuple
-  | Types.V_Ty _ -> fail "Tried to transpile type"
+  | Types.V_Ty _ -> OcamlAst.unit_value
   | Types.V_Fn { def; captured = _ } ->
       OcamlAst.Fun
         { args = [ transpile_pattern def.arg ]; body = transpile_expr def.body }
-  | Types.V_NativeFn _ -> fail "Tried to transpile interpreter native fn"
+  | Types.V_NativeFn { name; _ } ->
+      fail "Tried to transpile interpreter native fn %S" name
   | Types.V_Ast _ -> failwith __LOC__
   | Types.V_UnwindToken _ -> failwith __LOC__
+  | Types.V_Target _ -> fail "Tried to transpile target value"
   | Types.V_Error -> fail "Tried to transpile error node"
 
 and transpile_pattern : Pattern.t -> OcamlAst.t =
@@ -73,7 +84,15 @@ and transpile_expr : Expr.t -> OcamlAst.t =
       let b = transpile_expr b in
       OcamlAst.merge_let_then a b
   | Types.E_Stmt { expr } ->
-      OcamlAst.Call { f = OcamlAst.Var "ignore"; arg = transpile_expr expr }
+      with_return (fun { return } ->
+          let expr = transpile_expr expr in
+          (match expr with
+          | OcamlAst.LetThen parts -> (
+              match parts |> List.last with
+              | Let _ -> return expr
+              | _ -> ())
+          | _ -> ());
+          OcamlAst.single_let { pattern = OcamlAst.Placeholder; value = expr })
   | Types.E_Scope { expr } -> OcamlAst.Scope (transpile_expr expr)
   | Types.E_Fn def ->
       OcamlAst.Fun
@@ -97,7 +116,11 @@ and transpile_expr : Expr.t -> OcamlAst.t =
            { pattern = OcamlAst.Var value_ident; value = transpile_expr value })
         (perform_assign assignee (OcamlAst.Var value_ident))
   | Types.E_Ty _ -> fail "Tried to transpile type expr"
-  | Types.E_Native _ -> failwith __LOC__
+  | Types.E_Native { expr } ->
+      OcamlAst.RawCode
+        (expr |> String.to_seq
+        |> Seq.filter (fun c -> c <> '{' && c <> '}')
+        |> String.of_seq)
   | Types.E_Module { def } ->
       OcamlAst.Scope
         (let def = transpile_expr def in
@@ -143,4 +166,12 @@ and transpile_expr : Expr.t -> OcamlAst.t =
   | Types.E_Loop _ -> failwith __LOC__
   | Types.E_Unwindable _ -> failwith __LOC__
   | Types.E_Unwind _ -> failwith __LOC__
+  | Types.E_TargetDependent { branches } ->
+      let branch =
+        Kast_interpreter.find_target_dependent_branch (interpreter ()) branches
+          { name = "ocaml" }
+        |> Option.unwrap_or_else (fun () ->
+               fail "no branch for ocaml %a" Span.print expr.data.span)
+      in
+      transpile_expr branch.body
   | Types.E_Error -> fail "Tried to transpile error node"

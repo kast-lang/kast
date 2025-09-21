@@ -42,6 +42,7 @@ module Value = struct
     | V_Ast _ -> Ty.inferred T_Ast
     | V_UnwindToken { result_ty; id = _ } ->
         Ty.inferred (T_UnwindToken { result = result_ty })
+    | V_Target _ -> Ty.inferred T_Target
     | V_Error -> Ty.inferred T_Error
 
   let expect_unit : value -> unit option =

@@ -7,5 +7,4 @@
   kast_interpreter
   kast_inference
   kast_parser
-  kast_default_syntax
-  kast_transpiler_ocaml))
+  kast_default_syntax))

@@ -67,6 +67,13 @@ let init_expr :
                            error span "field %a is not there"
                              String.print_maybe_escaped field;
                            Ty.new_not_inferred ())
+                   | T_Target -> (
+                       match field with
+                       | "name" -> Ty.inferred T_String
+                       | _ ->
+                           error span "field %a is not in target"
+                             String.print_maybe_escaped field;
+                           Ty.new_not_inferred ())
                    | other ->
                        error obj.data.span "%a doesnt have fields"
                          Ty.Shape.print other;
@@ -95,6 +102,18 @@ let init_expr :
           |> Inference.Ty.expect_inferred_as ~span:token.data.span
                (Ty.inferred (T_UnwindToken { result = body.data.ty }));
           body.data.ty
+      | E_TargetDependent { branches } ->
+          let result = Ty.new_not_inferred () in
+          branches
+          |> List.iter
+               (fun ({ cond; body } : Types.expr_target_dependent_branch) ->
+                 cond.data.ty
+                 |> Inference.Ty.expect_inferred_as ~span:cond.data.span
+                      (Ty.inferred T_Bool);
+                 result
+                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
+                      body.data.ty);
+          result
       | E_Unwind { token; value } ->
           token.data.ty
           |> Inference.Ty.expect_inferred_as ~span:token.data.span

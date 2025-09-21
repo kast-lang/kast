@@ -81,6 +81,15 @@ let inner_compiled_with_handler =
       | E_Unwind { token; value } ->
           handler.handle Expr token;
           handler.handle Expr value
+      | E_TargetDependent { branches } ->
+          branches
+          |> List.iter
+               (fun
+                 ({ cond; body } :
+                   Kast_types.Types.expr_target_dependent_branch)
+               ->
+                 handler.handle Expr cond;
+                 handler.handle Expr body)
       | E_Error -> ())
   | Assignee -> (
       match compiled.shape with

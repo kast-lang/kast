@@ -10,6 +10,10 @@ syntax "core:let" 3 wrap never = "let" " " pattern;
 syntax "core:if" 4 wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
 syntax "core:trailing comma" 5 wrap never = <- _ ",";
+
+syntax "core:leading union" 4.99 wrap never = "|" " " _;
+syntax "core:union" 5 wrap if_any = <- _ " "/"\n" "|" " " _;
+
 syntax "core:field init" 6 wrap never = "." label type=(" " "::" " " _)? value=(" " "=" " " _)?;
 syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->" " " _ " ")? "=>" " " body;
 syntax "core:type ascribe" 8 wrap never = expr " " "::" " " type;
@@ -46,3 +50,4 @@ syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 syntax "core:placeholder" 1000 wrap never = "_";
 syntax "core:quote" 1000 wrap if_any = "`" "(" ""/"\n\t"  _:any ""/"\\\n" ")";
 syntax "core:unquote" 1000 wrap never = "$" _ ->;
+syntax "core:target_dependent" 1000 wrap always = "cfg_if" " " "(" ""/"\n\t" branches:any ""/"\\\n" ")";

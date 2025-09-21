@@ -1253,6 +1253,76 @@ let unwind : core_syntax =
             init_error span C.state kind);
   }
 
+let target_dependent : core_syntax =
+  {
+    name = "target_dependent";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let branches =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_single_named "branches"
+        in
+        let branches =
+          Ast.collect_list ~binary_rule_name:"core:union"
+            ~trailing_or_leading_rule_name:"core:leading union" branches
+        in
+        let branches =
+          branches
+          |> List.filter_map (fun (branch : Ast.t) ->
+                 match branch.shape with
+                 | Complex { rule = { name = "core:fn"; _ }; root; _ } ->
+                     let cond =
+                       root.children |> Tuple.get_named "arg"
+                       |> Ast.Child.expect_ast
+                     in
+                     let body =
+                       root.children |> Tuple.get_named "body"
+                       |> Ast.Child.expect_ast
+                     in
+                     let scope_with_target =
+                       C.state.scope
+                       |> State.Scope.inject_binding
+                            ({
+                               name = Types.target_symbol;
+                               span;
+                               ty = Ty.inferred T_Target;
+                               references = [];
+                             }
+                              : binding)
+                     in
+                     let state_with_target =
+                       { C.state with scope = scope_with_target }
+                     in
+                     Some
+                       ({
+                          cond = C.compile ~state:state_with_target Expr cond;
+                          body =
+                            C.compile
+                              ~state:(C.state |> State.enter_scope)
+                              Expr body;
+                        }
+                         : Types.expr_target_dependent_branch)
+                 | _ ->
+                     error branch.span
+                       "target dependent branch must use fn syntax";
+                     None)
+        in
+        match kind with
+        | Expr -> E_TargetDependent { branches } |> init_expr span C.state
+        | _ ->
+            error span "target dependent must be expr";
+            init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -1287,6 +1357,7 @@ let core =
     loop;
     unwindable;
     unwind;
+    target_dependent;
   ]
 
 let all : core_syntax StringMap.t =

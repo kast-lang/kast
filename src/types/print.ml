@@ -18,6 +18,7 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_Ast ast -> fprintf fmt "%a" Ast.print ast
   | V_UnwindToken { id; result_ty = _ } -> fprintf fmt "<unwind %a>" Id.print id
   | V_Error -> fprintf fmt "@{<red><error>@}"
+  | V_Target target -> print_target fmt target
 
 and print_value : formatter -> value -> unit =
  fun fmt { shape } -> print_value_shape fmt shape
@@ -35,6 +36,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
       fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
   | T_Ast -> fprintf fmt "ast"
   | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
+  | T_Target -> fprintf fmt "target"
   | T_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty : formatter -> ty -> unit =
@@ -97,6 +99,18 @@ and print_expr_shape :
       fprintf fmt
         "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
         print_expr token print_expr value
+  | E_TargetDependent { branches } ->
+      fprintf fmt "@{<magenta>target dependent@} (";
+      branches
+      |> List.iter (fun branch ->
+             fprintf fmt "@;<0 2>@[<v>%a@]" print_target_dependent_branch branch);
+      fprintf fmt " )"
+
+and print_target_dependent_branch :
+    formatter -> expr_target_dependent_branch -> unit =
+ fun fmt { cond; body } ->
+  let print_expr = print_expr_with_spans in
+  fprintf fmt "%a => %a" print_expr cond print_expr body
 
 and print_expr_with_spans : formatter -> expr -> unit =
  fun fmt { shape; data } ->
@@ -167,3 +181,6 @@ and print_pattern_with_spans : formatter -> pattern -> unit =
 (* OTHER *)
 and print_binding : formatter -> binding -> unit =
  fun fmt binding -> fprintf fmt "%a" Symbol.print binding.name
+
+and print_target : formatter -> value_target -> unit =
+ fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name
