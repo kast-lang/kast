@@ -1,5 +1,11 @@
 open Std
 
+let () =
+  let a = 123 and c = 456 in
+  ();
+  let b = 123 in
+  ()
+
 type ocaml_ast =
   | UnitType
   | Bool of bool
@@ -8,11 +14,11 @@ type ocaml_ast =
   | Tuple of ocaml_ast list
   | Placeholder
   | Var of string
+  | LetThen of let_then list
   | Fun of {
       args : ocaml_ast list;
       body : ocaml_ast;
     }
-  (* | Then of ocaml_ast list *)
   | Call of {
       f : ocaml_ast;
       arg : ocaml_ast;
@@ -23,15 +29,17 @@ type ocaml_ast =
       then_case : ocaml_ast;
       else_case : ocaml_ast;
     }
-  | Let of {
-      bindings : let_binding list;
-      recursive : bool;
-      expr_after : ocaml_ast;
-    }
   | Match of {
       expr : ocaml_ast;
       branches : match_branch list;
     }
+
+and let_then =
+  | Let of {
+      bindings : let_binding list;
+      recursive : bool;
+    }
+  | Then of ocaml_ast
 
 and match_branch = {
   pattern : ocaml_ast;
@@ -47,8 +55,8 @@ type t = ocaml_ast
 
 let unit_value = Tuple []
 
-let single_let binding e =
-  Let { recursive = false; bindings = [ binding ]; expr_after = e }
+let single_let binding =
+  LetThen [ Let { recursive = false; bindings = [ binding ] } ]
 
 let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
   match ast with
@@ -78,21 +86,29 @@ let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
       |> List.iteri (fun i expr ->
              print fmt expr;
              if i + 1 < length then fprintf fmt "@{<magenta>;@}@,") *)
-  | Call { f; arg } -> fprintf fmt "%a (%a)" print f print arg
-  | Scope expr -> fprintf fmt "(@;<0 2>@[<v>%a@]@,)" print expr
+  | Call { f; arg } ->
+      fprintf fmt "%a @{<magenta>(@}%a@{<magenta>)@}" print f print arg
+  | Scope expr ->
+      fprintf fmt "@{<magenta>(@}@;<0 2>@[<v>%a@]@,@{<magenta>)@}" print expr
   | If { cond; then_case; else_case } ->
       fprintf fmt
         "@{<magenta>if@} %a @{<magenta>then@}@;<0 2>@[<v>%a@]@,@{<magenta>else@}@;<0 2>@[<v>%a@]"
         print cond print then_case print else_case
-  | Let { bindings; recursive; expr_after } ->
-      let length = bindings |> List.length in
-      bindings
-      |> List.iteri (fun i { pattern; value } ->
-             fprintf fmt "@{<magenta>%s@} %a @{<magenta>=@} %a@{<magenta>%s@}@,"
-               (if i = 0 then if recursive then "let rec" else "let" else "and")
-               print pattern print value
-               (if i + 1 < length then ";" else " in"));
-      print fmt expr_after
+  | LetThen let_thens ->
+      let let_then_len = let_thens |> List.length in
+      let_thens
+      |> List.iteri (fun i let_then ->
+             match let_then with
+             | Let { bindings; recursive } ->
+                 bindings
+                 |> List.iteri (fun i { pattern; value } ->
+                        fprintf fmt "@{<magenta>%s@} %a @{<magenta>=@} %a@,"
+                          (if i = 0 then if recursive then "let rec" else "let"
+                           else "and")
+                          print pattern print value);
+                 fprintf fmt "@{<magenta>in@}@,";
+                 if i + 1 >= let_then_len then fprintf fmt "@{<magenta>()@}"
+             | Then expr -> fprintf fmt "%a@{<magenta>;@}@," print expr)
   | Match { expr; branches } ->
       fprintf fmt "@{<magenta>(match@} %a @{<magenta>with@}" print expr;
       branches
@@ -100,3 +116,16 @@ let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
              fprintf fmt "@,@{<magenta>|@} %a @{<magenta>->@} %a" print pattern
                print body);
       fprintf fmt "@{<magenta>)@}"
+
+let merge_let_then a b =
+  let a =
+    match a with
+    | LetThen a -> a
+    | _ -> [ Then a ]
+  in
+  let b =
+    match b with
+    | LetThen b -> b
+    | _ -> [ Then b ]
+  in
+  LetThen (a @ b)

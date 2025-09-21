@@ -1,5 +1,10 @@
-module:
-let x = 123;
-let g = y => y;
-let f = x => g x;
-f x;
+let foo = (
+    module:
+    let x = "123";
+);
+# const foo = (
+#     module:
+#     let x = "123";
+# );
+# std.io.print foo.x;
+# let x, y = 1, 2

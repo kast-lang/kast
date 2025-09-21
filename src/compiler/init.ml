@@ -45,8 +45,15 @@ let init_expr :
           def.data.ty
           |> Inference.Ty.expect_inferred_as ~span:def.data.span
                (Ty.inferred T_Unit);
-          (* TODO actually infer as tuple *)
-          Ty.new_not_inferred ()
+          Ty.inferred
+            (T_Tuple
+               {
+                 tuple =
+                   Tuple.make []
+                     (state.scope.bindings |> StringMap.to_list
+                     |> List.map (fun (name, (binding : binding)) ->
+                            (name, binding.ty)));
+               })
       | E_Field { obj; field } ->
           let ty = Ty.new_not_inferred () in
           obj.data.ty.var

@@ -68,23 +68,10 @@ and transpile_expr : Expr.t -> OcamlAst.t =
   match expr.shape with
   | Types.E_Constant value -> transpile_value value
   | Types.E_Binding binding -> OcamlAst.Var (binding_name binding)
-  | Types.E_Then { a; b } -> (
+  | Types.E_Then { a; b } ->
       let a = transpile_expr a in
       let b = transpile_expr b in
-      let rec chain (expr : OcamlAst.t) (after : OcamlAst.t) : OcamlAst.t option
-          =
-        match expr with
-        | Let ({ expr_after = Tuple []; _ } as let') ->
-            Some (Let { let' with expr_after = after })
-        | Let ({ expr_after = after_let; _ } as let') ->
-            chain after_let after
-            |> Option.map (fun after : OcamlAst.t ->
-                   Let { let' with expr_after = after })
-        | _ -> None
-      in
-      match chain a b with
-      | Some result -> result
-      | None -> OcamlAst.single_let { pattern = Placeholder; value = a } b)
+      OcamlAst.merge_let_then a b
   | Types.E_Stmt { expr } ->
       OcamlAst.Call { f = OcamlAst.Var "ignore"; arg = transpile_expr expr }
   | Types.E_Scope { expr } -> OcamlAst.Scope (transpile_expr expr)
@@ -102,18 +89,29 @@ and transpile_expr : Expr.t -> OcamlAst.t =
         | Types.A_Placeholder | Types.A_Unit -> OcamlAst.unit_value
         | Types.A_Binding _ -> fail "todo support mutation"
         | Types.A_Let pattern ->
-            OcamlAst.single_let
-              { pattern = transpile_pattern pattern; value }
-              OcamlAst.unit_value
+            OcamlAst.single_let { pattern = transpile_pattern pattern; value }
         | Types.A_Error -> fail "Tried to transpile error node"
       in
-      let assign_expr = perform_assign assignee (OcamlAst.Var value_ident) in
-      OcamlAst.single_let
-        { pattern = OcamlAst.Var value_ident; value = transpile_expr value }
-        assign_expr
+      OcamlAst.merge_let_then
+        (OcamlAst.single_let
+           { pattern = OcamlAst.Var value_ident; value = transpile_expr value })
+        (perform_assign assignee (OcamlAst.Var value_ident))
   | Types.E_Ty _ -> fail "Tried to transpile type expr"
   | Types.E_Native _ -> failwith __LOC__
-  | Types.E_Module _ -> failwith __LOC__
+  | Types.E_Module { def } ->
+      OcamlAst.Scope
+        (let def = transpile_expr def in
+         let module_ty = expr.data.ty.var |> Inference.Var.await_inferred in
+         let module_result =
+           match module_ty with
+           | Types.T_Tuple { tuple } ->
+               assert (tuple.unnamed |> Array.length = 0);
+               OcamlAst.Tuple
+                 (tuple.named |> StringMap.to_list
+                 |> List.map (fun (name, _ty) -> OcamlAst.Var name))
+           | _ -> fail "module ty is not tuple???"
+         in
+         OcamlAst.merge_let_then def module_result)
   | Types.E_Field { obj; field } -> (
       let obj_ty = obj.data.ty.var |> Inference.Var.await_inferred in
       match obj_ty with
