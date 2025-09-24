@@ -30,7 +30,13 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Bool -> fprintf fmt "bool"
   | T_Int32 -> fprintf fmt "int32"
   | T_String -> fprintf fmt "string"
-  | T_Tuple { tuple } -> fprintf fmt "%a" (Tuple.print print_ty) tuple
+  | T_Tuple { tuple } ->
+      fprintf fmt "%a"
+        (Tuple.print
+           ~options:
+             { Tuple.default_print_options with named_field_middle = " :: " }
+           print_ty)
+        tuple
   | T_Ty -> fprintf fmt "type"
   | T_Fn { arg; result } ->
       fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
