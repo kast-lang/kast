@@ -10,6 +10,10 @@ type ocaml_ast =
   | Placeholder
   | Var of string
   | LetThen of let_then list
+  | Field of {
+      obj : ocaml_ast;
+      field : string;
+    }
   | Fun of {
       args : ocaml_ast list;
       body : ocaml_ast;
@@ -69,6 +73,7 @@ let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
       fprintf fmt "@{<magenta>)@}"
   | Placeholder -> fprintf fmt "_"
   | Var name -> fprintf fmt "%s" name
+  | Field { obj; field } -> fprintf fmt "%a@{<magenta>.@}%s" print obj field
   | Fun { args; body } ->
       fprintf fmt "@{<magenta>fun@}";
       args

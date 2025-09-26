@@ -154,7 +154,35 @@ and transpile_expr : Expr.t -> OcamlAst.t =
             (transpile_expr obj)
       | _ -> fail "trying to get field of not a tuple: %a" Ty.Shape.print obj_ty
       )
-  | Types.E_UseDotStar _ -> OcamlAst.unit_value
+  | Types.E_UseDotStar { used; bindings } ->
+      OcamlAst.LetThen
+        [
+          OcamlAst.Let
+            {
+              recursive = false;
+              bindings =
+                [
+                  {
+                    pattern = OcamlAst.Var "_used";
+                    value = transpile_expr used;
+                  };
+                ];
+            };
+          OcamlAst.Let
+            {
+              recursive = false;
+              bindings =
+                bindings
+                |> List.map (fun binding : OcamlAst.let_binding ->
+                       let name = binding_name binding in
+                       {
+                         pattern = OcamlAst.Var name;
+                         value =
+                           OcamlAst.Field
+                             { obj = OcamlAst.Var "_used"; field = name };
+                       });
+            };
+        ]
   | Types.E_If { cond; then_case; else_case } ->
       OcamlAst.If
         {
