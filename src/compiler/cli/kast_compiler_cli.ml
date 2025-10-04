@@ -44,5 +44,5 @@ let run : Args.t -> unit =
       match output_type with
       | Ir -> println "%a" Expr.print_with_types expr
       | Ocaml ->
-          let ocaml_ast = Kast_transpiler_ocaml.transpile_expr expr in
+          let ocaml_ast = Kast_transpiler_ocaml.Full.transpile_expr expr in
           println "%a" Kast_transpiler_ocaml.OcamlAst.print ocaml_ast)
