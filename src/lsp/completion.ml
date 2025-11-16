@@ -41,7 +41,7 @@ let rec find_expr :
   Log.trace (fun log -> log "Considering %a" Span.print data.span);
   if Position.compare data.span.finish pos <= 0 then
     Some (Common.CompiledThing (kind, compiled))
-  else if data.span |> Span.contains pos then
+  else if data.span |> Span.contains_position pos then
     let inner =
       Common.inner_compiled kind compiled
       |> Seq.filter_map (fun (Common.CompiledThing (kind, compiled)) ->

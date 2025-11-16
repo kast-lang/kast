@@ -69,27 +69,29 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> hover_info =
         definition_mode = None;
       }
 
-let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
- fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position) :
+let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
+ fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
      hover_info option ->
   let data = Compiler.get_data kind compiled in
   let span = data.span in
   let inner =
     Common.inner_compiled kind compiled
     |> Seq.find_map (fun (Common.CompiledThing (kind, inner)) ->
-           hover kind inner pos)
+           hover kind inner hover_span)
   in
   match inner with
   | Some result -> Some result
   | None ->
-      if span |> Span.contains pos then Some (hover_specifially kind compiled)
+      if span |> Span.contains_span hover_span then
+        Some (hover_specifially kind compiled)
       else None
 
 let find_definition (pos : Lsp.Types.Position.t)
-    ({ compiled; _ } : Processing.file_state) : Lsp.Types.Locations.t option =
+    ({ uri; compiled; _ } : Processing.file_state) :
+    Lsp.Types.Locations.t option =
   let pos : position = Common.lsp_to_kast_pos pos in
   let* expr = compiled in
-  let* hover_info = hover Expr expr pos in
+  let* hover_info = hover Expr expr (Span.single_char pos uri) in
   let* definition =
     match hover_info.definition_mode with
     | DefinedNotHere definition -> Some definition
@@ -104,11 +106,11 @@ let find_definition (pos : Lsp.Types.Position.t)
   Some Lsp.Types.Locations.(`Location [ location ])
 
 let find_references (params : Lsp.Types.ReferenceParams.t)
-    ({ compiled; _ } : Processing.file_state) : Lsp.Types.Location.t list option
-    =
+    ({ uri; compiled; _ } : Processing.file_state) :
+    Lsp.Types.Location.t list option =
   let pos : position = Common.lsp_to_kast_pos params.position in
   let* expr = compiled in
-  let* hover_info = hover Expr expr pos in
+  let* hover_info = hover Expr expr (Span.single_char pos uri) in
   let* definition =
     match hover_info.definition_mode with
     | DefinedHere definition | DefinedNotHere definition -> Some definition
@@ -125,10 +127,10 @@ let find_references (params : Lsp.Types.ReferenceParams.t)
   Some ((declaration_location |> Option.to_list) @ references)
 
 let prepare_rename (pos : Lsp.Types.Position.t)
-    ({ compiled; _ } : Processing.file_state) : Lsp.Types.Range.t option =
+    ({ uri; compiled; _ } : Processing.file_state) : Lsp.Types.Range.t option =
   let pos : position = Common.lsp_to_kast_pos pos in
   let* expr = compiled in
-  let* hover_info = hover Expr expr pos in
+  let* hover_info = hover Expr expr (Span.single_char pos uri) in
   let* _definition =
     match hover_info.definition_mode with
     | DefinedHere definition | DefinedNotHere definition -> Some definition
@@ -139,14 +141,14 @@ let prepare_rename (pos : Lsp.Types.Position.t)
 exception Nope
 
 let rename (position : Lsp.Types.Position.t) (newName : string)
-    ({ compiled; _ } : Processing.file_state) : Lsp.Types.WorkspaceEdit.t option
-    =
+    ({ uri; compiled; _ } : Processing.file_state) :
+    Lsp.Types.WorkspaceEdit.t option =
   try
     (* TODO maybe convert into raw ident *)
     let newText = newName in
     let pos : position = Common.lsp_to_kast_pos position in
     let* expr = compiled in
-    let* hover_info = hover Expr expr pos in
+    let* hover_info = hover Expr expr (Span.single_char pos uri) in
     let* definition =
       match hover_info.definition_mode with
       | DefinedHere definition | DefinedNotHere definition -> Some definition
@@ -186,12 +188,12 @@ let rename (position : Lsp.Types.Position.t) (newName : string)
     Some edit
   with Nope -> None
 
-let hover (pos : Lsp.Types.Position.t) ({ compiled; _ } : Processing.file_state)
-    : Lsp.Types.Hover.t option =
+let hover (pos : Lsp.Types.Position.t)
+    ({ uri; compiled; _ } : Processing.file_state) : Lsp.Types.Hover.t option =
   let pos = Common.lsp_to_kast_pos pos in
   Log.info (fun log -> log "Hovering %a" Position.print pos);
   let* expr = compiled in
-  let* hover_info = hover Expr expr pos in
+  let* hover_info = hover Expr expr (Span.single_char pos uri) in
   let hover_text = hover_text hover_info in
   Log.info (fun log -> log "Hover result: %S" hover_text);
   Some

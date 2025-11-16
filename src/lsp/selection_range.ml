@@ -6,7 +6,7 @@ let options : Lsp.Types.SelectionRangeRegistrationOptions.t =
   { workDoneProgress = None; id = None; documentSelector = None }
 
 let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
-  if Span.contains pos ast.span then
+  if Span.contains_position pos ast.span then
     ast.span
     ::
     (match ast.shape with

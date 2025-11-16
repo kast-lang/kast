@@ -107,6 +107,7 @@ module Span = struct
   let beginning_of uri =
     { start = Position.beginning; finish = Position.beginning; uri }
 
+  let single_char pos uri = { start = pos; finish = pos; uri }
   let fake desc = beginning_of <| Uri.of_string ("fake:" ^ desc)
 
   let touches : position -> span -> bool =
@@ -114,9 +115,15 @@ module Span = struct
     Position.compare span.start pos <= 0
     && Position.compare pos span.finish <= 0
 
-  let contains : position -> span -> bool =
+  let contains_position : position -> span -> bool =
    fun pos span ->
     Position.compare span.start pos <= 0 && Position.compare pos span.finish < 0
+
+  let contains_span : span -> span -> bool =
+   fun inner outer ->
+    Uri.equal inner.uri outer.uri
+    && Position.compare outer.start inner.start <= 0
+    && Position.compare inner.finish outer.finish <= 0
 
   let print : 'a. formatter -> span -> unit =
    fun fmt { start; finish; uri } ->
