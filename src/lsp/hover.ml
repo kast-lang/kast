@@ -72,26 +72,18 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> hover_info =
 let rec hover : 'a. 'a compiled_kind -> 'a -> position -> hover_info option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position) :
      hover_info option ->
-  with_return (fun { return } ->
-      let data = Compiler.get_data kind compiled in
-      let span = data.span in
-      (match data.ty_ascription with
-      | None -> ()
-      | Some ty_ascription_expr -> (
-          match hover TyExpr ty_ascription_expr pos with
-          | None -> ()
-          | Some hover -> return (Some hover)));
-      let inner =
-        Common.inner_compiled kind compiled
-        |> Seq.find_map (fun (Common.CompiledThing (kind, inner)) ->
-               hover kind inner pos)
-      in
-      match inner with
-      | Some result -> Some result
-      | None ->
-          if span |> Span.contains pos then
-            Some (hover_specifially kind compiled)
-          else None)
+  let data = Compiler.get_data kind compiled in
+  let span = data.span in
+  let inner =
+    Common.inner_compiled kind compiled
+    |> Seq.find_map (fun (Common.CompiledThing (kind, inner)) ->
+           hover kind inner pos)
+  in
+  match inner with
+  | Some result -> Some result
+  | None ->
+      if span |> Span.contains pos then Some (hover_specifially kind compiled)
+      else None
 
 let find_definition (pos : Lsp.Types.Position.t)
     ({ compiled; _ } : Processing.file_state) : Lsp.Types.Locations.t option =

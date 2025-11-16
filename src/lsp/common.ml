@@ -120,7 +120,10 @@ let inner_compiled_with_handler =
           |> Seq.iter (fun (_member, expr) -> handler.handle TyExpr expr)
       | TE_Error -> ()));
   let data = Compiler.get_data kind compiled in
-  data.evaled_exprs |> List.iter (fun expr -> handler.handle Expr expr)
+  data.evaled_exprs |> List.iter (fun expr -> handler.handle Expr expr);
+  match data.ty_ascription with
+  | Some ty_expr -> handler.handle TyExpr ty_expr
+  | None -> ()
 
 type compiled_thing =
   | CompiledThing : 'a. 'a compiled_kind * 'a -> compiled_thing
