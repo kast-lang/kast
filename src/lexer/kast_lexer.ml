@@ -107,64 +107,69 @@ let default_rules : rule list =
     ignore <| Reader.read_while Char.is_whitespace reader;
     None
   in
+  let read_string_impl reader : Token.Shape.string =
+    let c = Reader.peek reader |> Option.get in
+    let delimeter = c in
+    let raw = Reader.start_rec reader in
+    Reader.advance reader;
+    let contents = Buffer.create 0 in
+    let rec loop =
+     fun () ->
+      let/ c = Reader.peek reader in
+      if c = delimeter then ()
+      else (
+        Reader.advance reader;
+        let c =
+          if c = '\\' then (
+            let c =
+              match Reader.peek reader with
+              | Some c -> c
+              | None ->
+                  error
+                    "Expected escaped char, got @{<italic><eof>@} @{<dim>at %a@}"
+                    Position.print reader.position
+            in
+            let result =
+              match c with
+              | '\\' -> '\\'
+              | 'n' -> '\n'
+              | 't' -> '\t'
+              | _ ->
+                  error
+                    "Incorrect escape charater %C @{<italic><eof>@} @{<dim>at %a@}"
+                    c Position.print reader.position
+            in
+            Reader.advance reader;
+            result)
+          else c
+        in
+        Buffer.add_char contents c;
+        loop ())
+    in
+    loop ();
+    (match Reader.peek reader with
+    | Some c when c = delimeter -> Reader.advance reader
+    | Some c ->
+        error "Expected %C, got %C @{<dim>at %a@}" delimeter c Position.print
+          reader.position
+    | None ->
+        error "Expected %C, got @{<italic><eof>@} @{<dim>at %a@}" delimeter
+          Position.print reader.position);
+    { raw = Reader.finish_rec raw; contents = Buffer.contents contents }
+  in
+
   let read_string reader =
     with_return (fun { return } ->
         let* c = Reader.peek reader in
         if c != '\'' && c != '"' then return None;
-        let delimeter = c in
-        let raw = Reader.start_rec reader in
-        Reader.advance reader;
-        let contents = Buffer.create 0 in
-        let rec loop =
-         fun () ->
-          let/ c = Reader.peek reader in
-          if c = delimeter then ()
-          else (
-            Reader.advance reader;
-            let c =
-              if c = '\\' then (
-                let c =
-                  match Reader.peek reader with
-                  | Some c -> c
-                  | None ->
-                      error
-                        "Expected escaped char, got @{<italic><eof>@} @{<dim>at %a@}"
-                        Position.print reader.position
-                in
-                let result =
-                  match c with
-                  | '\\' -> '\\'
-                  | 'n' -> '\n'
-                  | 't' -> '\t'
-                  | _ ->
-                      error
-                        "Incorrect escape charater %C @{<italic><eof>@} @{<dim>at %a@}"
-                        c Position.print reader.position
-                in
-                Reader.advance reader;
-                result)
-              else c
-            in
-            Buffer.add_char contents c;
-            loop ())
-        in
-        loop ();
-        (match Reader.peek reader with
-        | Some c when c = delimeter -> Reader.advance reader
-        | Some c ->
-            error "Expected %C, got %C @{<dim>at %a@}" delimeter c
-              Position.print reader.position
-        | None ->
-            error "Expected %C, got @{<italic><eof>@} @{<dim>at %a@}" delimeter
-              Position.print reader.position);
-        let token : Token.Shape.string =
-          { raw = Reader.finish_rec raw; contents = Buffer.contents contents }
-        in
+        let token = read_string_impl reader in
         Some (Token.Shape.String token))
   in
+  let is_ident_start (c : char) : bool = Char.is_alpha c || c = '_' in
+
   let read_ident reader =
     let* c = Reader.peek reader in
-    if Char.is_alpha c || c = '_' then
+    if is_ident_start c then
       let raw =
         Reader.read_while (fun c -> Char.is_alphanumeric c || c = '_') reader
       in
@@ -245,9 +250,30 @@ let default_rules : rule list =
     done;
     Some (Token.Shape.Comment { raw = Reader.finish_rec raw })
   in
+  let read_raw_ident reader =
+    let* () = if Reader.peek reader = Some '@' then Some () else None in
+    let* () = if Reader.peek2 reader = Some '"' then Some () else None in
+    let raw = Reader.start_rec reader in
+    Reader.advance reader;
+    let string_token = read_string_impl reader in
+    Some
+      (Token.Shape.Ident
+         { raw = Reader.finish_rec raw; name = string_token.contents })
+  in
+  let read_raw_keyword reader =
+    let* () = if Reader.peek reader = Some '@' then Some () else None in
+    let* peek2 = Reader.peek2 reader in
+    let* () = if is_ident_start peek2 then Some () else None in
+    let raw = Reader.start_rec reader in
+    Reader.advance reader;
+    let _ident = read_ident reader |> Option.get in
+    Some (Token.Shape.Punct { raw = Reader.finish_rec raw })
+  in
   [
     read_whitespace;
     read_eof;
+    read_raw_ident;
+    read_raw_keyword;
     read_ident;
     read_number;
     read_string;
