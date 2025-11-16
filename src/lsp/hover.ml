@@ -144,8 +144,7 @@ let rename (position : Lsp.Types.Position.t) (newName : string)
     ({ uri; compiled; _ } : Processing.file_state) :
     Lsp.Types.WorkspaceEdit.t option =
   try
-    (* TODO maybe convert into raw ident *)
-    let newText = newName in
+    let newText = Kast_lexer.maybe_convert_to_raw_ident newName in
     let pos : position = Common.lsp_to_kast_pos position in
     let* expr = compiled in
     let* hover_info = hover Expr expr (Span.single_char pos uri) in

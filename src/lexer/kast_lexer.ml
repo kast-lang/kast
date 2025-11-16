@@ -97,16 +97,16 @@ let expect_eof : lexer -> unit =
   | Eof -> ()
   | _ -> error "Expected %a, got %a" Token.Shape.print Eof Token.print peek
 
-let default_rules : rule list =
+module DefaultRules = struct
   let read_eof reader =
     match Reader.peek reader with
     | Some _ -> None
     | None -> Some Token.Shape.Eof
-  in
+
   let read_whitespace reader =
     ignore <| Reader.read_while Char.is_whitespace reader;
     None
-  in
+
   let read_string_impl reader : Token.Shape.string =
     let c = Reader.peek reader |> Option.get in
     let delimeter = c in
@@ -156,7 +156,6 @@ let default_rules : rule list =
         error "Expected %C, got @{<italic><eof>@} @{<dim>at %a@}" delimeter
           Position.print reader.position);
     { raw = Reader.finish_rec raw; contents = Buffer.contents contents }
-  in
 
   let read_string reader =
     with_return (fun { return } ->
@@ -164,8 +163,8 @@ let default_rules : rule list =
         if c != '\'' && c != '"' then return None;
         let token = read_string_impl reader in
         Some (Token.Shape.String token))
-  in
-  let is_ident_start (c : char) : bool = Char.is_alpha c || c = '_' in
+
+  let is_ident_start (c : char) : bool = Char.is_alpha c || c = '_'
 
   let read_ident reader =
     let* c = Reader.peek reader in
@@ -176,7 +175,7 @@ let default_rules : rule list =
       let ident : Token.Shape.ident = { raw; name = raw } in
       Some (Token.Shape.Ident ident)
     else None
-  in
+
   let read_number reader =
     let* c = Reader.peek reader in
     let* () = if Char.is_digit c then Some () else None in
@@ -191,7 +190,7 @@ let default_rules : rule list =
            | _ -> false)
     in
     Some (Token.Shape.Number { raw })
-  in
+
   let read_punct reader =
     let* c = Reader.peek reader in
     let is_punct : char -> bool = function
@@ -218,13 +217,13 @@ let default_rules : rule list =
       let token : Token.Shape.punct = { raw } in
       Some (Token.Shape.Punct token))
     else None
-  in
+
   let read_line_comment reader =
     let* c = Reader.peek reader in
     let* () = if c = '#' then Some () else None in
     let raw = reader |> Reader.read_while (fun c -> c <> '\n') in
     Some (Token.Shape.Comment { raw })
-  in
+
   let read_block_comment reader =
     let* () = if Reader.peek reader = Some '(' then Some () else None in
     let* () = if Reader.peek2 reader = Some '#' then Some () else None in
@@ -249,7 +248,7 @@ let default_rules : rule list =
       else Reader.advance reader
     done;
     Some (Token.Shape.Comment { raw = Reader.finish_rec raw })
-  in
+
   let read_raw_ident reader =
     let* () = if Reader.peek reader = Some '@' then Some () else None in
     let* () = if Reader.peek2 reader = Some '"' then Some () else None in
@@ -259,7 +258,7 @@ let default_rules : rule list =
     Some
       (Token.Shape.Ident
          { raw = Reader.finish_rec raw; name = string_token.contents })
-  in
+
   let read_raw_keyword reader =
     let* () = if Reader.peek reader = Some '@' then Some () else None in
     let* peek2 = Reader.peek2 reader in
@@ -268,19 +267,23 @@ let default_rules : rule list =
     Reader.advance reader;
     let _ident = read_ident reader |> Option.get in
     Some (Token.Shape.Punct { raw = Reader.finish_rec raw })
-  in
-  [
-    read_whitespace;
-    read_eof;
-    read_raw_ident;
-    read_raw_keyword;
-    read_ident;
-    read_number;
-    read_string;
-    read_line_comment;
-    read_block_comment;
-    read_punct;
-  ]
+
+  let rules =
+    [
+      read_whitespace;
+      read_eof;
+      read_raw_ident;
+      read_raw_keyword;
+      read_ident;
+      read_number;
+      read_string;
+      read_line_comment;
+      read_block_comment;
+      read_punct;
+    ]
+end
+
+let default_rules : rule list = DefaultRules.rules
 
 let read_all : rule list -> source -> Token.t list =
  fun rules source ->
@@ -313,3 +316,13 @@ let stop_rec : recording -> Token.t list =
  fun { recording; lexer } ->
   RecordingTable.remove lexer.recordings recording;
   recording.tokens_rev |> List.rev
+
+let maybe_convert_to_raw_ident : string -> string =
+ fun name ->
+  let reader = Reader.init name in
+  let convert_to_raw =
+    match DefaultRules.read_ident reader with
+    | None -> true
+    | Some _ident -> reader |> Reader.peek |> Option.is_some
+  in
+  if convert_to_raw then Format.sprintf "@%S" name else name

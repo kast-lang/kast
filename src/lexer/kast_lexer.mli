@@ -25,3 +25,4 @@ type recording
 
 val start_rec : lexer -> recording
 val stop_rec : recording -> Token.t list
+val maybe_convert_to_raw_ident : string -> string
