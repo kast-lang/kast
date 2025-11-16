@@ -26,6 +26,7 @@
           dune-deps = "*";
           odoc = "*";
           odig = "*";
+          utop = "*";
         };
         query = devPackagesQuery // {
           ## You can force versions of certain packages here, e.g:
@@ -50,7 +51,8 @@
         # Packages from devPackagesQuery
         devPackages = builtins.attrValues
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
-      in {
+      in
+      {
         legacyPackages = scope';
         packages.default = main.overrideAttrs {
           buildInputs = [ pkgs.makeWrapper ];
