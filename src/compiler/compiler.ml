@@ -116,8 +116,9 @@ let rec inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
   | P_Binding binding -> state |> inject_binding binding
   | P_Tuple { tuple } ->
       tuple |> Tuple.to_seq
-      |> Seq.iter (fun (_member, (~field_name_span:_, field_pattern)) ->
-          state |> inject_pattern_bindings field_pattern)
+      |> Seq.iter
+           (fun (_member, (~field_span:_, ~field_label:_, field_pattern)) ->
+             state |> inject_pattern_bindings field_pattern)
   | P_Error -> ()
 
 let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit

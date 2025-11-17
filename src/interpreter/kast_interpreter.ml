@@ -41,12 +41,7 @@ let rec pattern_match : value -> pattern -> Scope.locals =
           SymbolMap.singleton binding.name
             ({
                value;
-               ty_field =
-                 {
-                   span = binding.span;
-                   ty = Value.ty_of value;
-                   references = [];
-                 };
+               ty_field = { ty = Value.ty_of value; label = binding.label };
              }
               : Types.interpreter_local);
       }
@@ -64,7 +59,7 @@ let rec pattern_match : value -> pattern -> Scope.locals =
                   |> Tuple.to_seq
                   |> Seq.fold_left
                        (fun acc (_member, (field_pattern, field_value)) ->
-                         let ~field_name_span:_, field_pattern =
+                         let ~field_span:_, ~field_label:_, field_pattern =
                            field_pattern
                          in
                          let field_value : Types.value_tuple_field =
@@ -95,7 +90,7 @@ let assign : state -> Expr.assignee -> value -> unit =
   | A_Unit ->
       (* TODO assert that value is unit *)
       ()
-  | A_Binding { name; ty = _; span = _; references = _ } ->
+  | A_Binding { name; ty = _; span = _; label = _ } ->
       state.scope
       |> Scope.assign_to_existing ~span:assignee.data.span name value
   | A_Let pattern ->
@@ -130,13 +125,13 @@ let rec eval : state -> expr -> value =
                 |> Tuple.mapi
                      (fun
                        member
-                       (~field_name_span, field_expr)
+                       (~field_span, ~field_label:_, field_expr)
                        :
                        Types.value_tuple_field
                      ->
                        let value = field_expr |> eval state in
                        let ty_field = ty.tuple |> Tuple.get member in
-                       { value; span = field_name_span; ty_field });
+                       { value; span = field_span; ty_field });
             };
       }
   | E_Then { a; b } ->
@@ -189,13 +184,13 @@ let rec eval : state -> expr -> value =
                ( Some symbol.name,
                  ({
                     value = local.value;
-                    span = local.ty_field.span;
+                    span = local.ty_field.label |> Label.get_span;
                     ty_field = local.ty_field;
                   }
                    : Types.value_tuple_field) ))
       in
       { shape = V_Tuple { tuple = fields |> Tuple.of_list } }
-  | E_Field { obj; field; field_span = _ } -> (
+  | E_Field { obj; field; field_span = _; label = _ } -> (
       let obj = eval state obj in
       match obj.shape with
       | V_Tuple { tuple } -> (
@@ -334,8 +329,11 @@ and eval_ty : state -> Expr.ty -> ty =
                tuple
                |> Tuple.map
                     (fun
-                      (~field_name_span, field_expr) : Types.ty_tuple_field ->
+                      (~field_span:_, ~field_label, field_expr)
+                      :
+                      Types.ty_tuple_field
+                    ->
                       let ty = field_expr |> eval_ty state in
-                      { ty; span = field_name_span; references = [] });
+                      { ty; label = field_label });
            })
   | TE_Error -> Ty.inferred T_Error

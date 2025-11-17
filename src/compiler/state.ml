@@ -19,7 +19,7 @@ module Scope = struct
    fun ~from ident scope ->
     match StringMap.find_opt ident scope.bindings with
     | Some binding ->
-        binding.references <- from :: binding.references;
+        Label.add_reference from binding.label;
         Some binding
     | None -> scope.parent |> Option.and_then (find_binding_opt ~from ident)
 
@@ -28,13 +28,13 @@ module Scope = struct
     scope
     |> find_binding_opt ~from ident
     |> Option.unwrap_or_else (fun () : binding ->
-           error from "Could not find %S in scope" ident;
-           {
-             name = Symbol.create ident;
-             span = from;
-             ty = Ty.new_not_inferred ();
-             references = [];
-           })
+        error from "Could not find %S in scope" ident;
+        {
+          name = Symbol.create ident;
+          span = from;
+          ty = Ty.new_not_inferred ();
+          label = Label.create_definition from ident;
+        })
 
   let inject_binding : binding -> scope -> scope =
    fun binding { parent; bindings } ->

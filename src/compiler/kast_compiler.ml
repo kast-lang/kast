@@ -26,7 +26,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
                name;
                ty = Value.ty_of local.value;
                span = Span.fake "<interpreter>";
-               references = [];
+               label = local.ty_field.label;
              })
       compile_for.scope.locals.by_symbol scope
   in
@@ -91,7 +91,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                     name = Symbol.create ident.name;
                     ty = Ty.new_not_inferred ();
                     span = ast.span;
-                    references = [];
+                    label = Label.create_definition ast.span ident.name;
                   }
                 in
                 P_Binding binding |> init_pattern span state
@@ -119,9 +119,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                         value = { shape = V_Ast ast };
                         ty_field =
                           {
-                            span = ast.span;
                             ty = Ty.inferred T_Ast;
-                            references = [];
+                            label = Label.create_definition ast.span "<TODO>";
                           };
                         span =
                           ast.span
@@ -186,6 +185,9 @@ let default ?(import_cache : import_cache option) () : state =
       (make_compiler bootstrap) std_uri
   in
   let std_symbol = Symbol.create "std" in
+  let std_label =
+    Label.create_definition (Span.beginning_of std_uri) std_symbol.name
+  in
   let interpreter_with_std =
     Interpreter.init
       {
@@ -193,12 +195,7 @@ let default ?(import_cache : import_cache option) () : state =
           SymbolMap.singleton std_symbol
             ({
                value = std;
-               ty_field =
-                 {
-                   ty = Value.ty_of std;
-                   span = Span.beginning_of std_uri;
-                   references = [];
-                 };
+               ty_field = { ty = Value.ty_of std; label = std_label };
              }
               : Types.interpreter_local);
       }
@@ -211,7 +208,7 @@ let default ?(import_cache : import_cache option) () : state =
            name = std_symbol;
            ty = Value.ty_of std;
            span = Span.beginning_of std_uri;
-           references = [];
+           label = std_label;
          }
   in
   {

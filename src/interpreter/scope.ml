@@ -36,8 +36,10 @@ let rec assign_to_existing ~(span : span) (name : symbol) (value : value)
                         ty_field =
                           {
                             ty = Value.ty_of value;
-                            span (* TODO maybe should add name's span *);
-                            references = [];
+                            label =
+                              Label.create_definition
+                                span (* TODO maybe should add name's span *)
+                                name.name;
                           };
                       }
                        : Types.interpreter_local);
@@ -74,7 +76,11 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
         |> SymbolMap.add symbol
              ({
                 value;
-                ty_field = { ty = Value.ty_of value; span; references = [] };
+                ty_field =
+                  {
+                    ty = Value.ty_of value;
+                    label = Label.create_definition span symbol.name;
+                  };
               }
                : Types.interpreter_local);
     }

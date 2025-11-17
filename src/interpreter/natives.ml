@@ -35,14 +35,14 @@ let natives : natives =
                     [
                       ({
                          ty = Ty.inferred T_Int32;
-                         span = Span.of_ocaml __POS__;
-                         references = [];
+                         label =
+                           Label.create_definition (Span.of_ocaml __POS__) "0";
                        }
                         : Types.ty_tuple_field);
                       ({
                          ty = Ty.inferred T_Int32;
-                         span = Span.of_ocaml __POS__;
-                         references = [];
+                         label =
+                           Label.create_definition (Span.of_ocaml __POS__) "1";
                        }
                         : Types.ty_tuple_field);
                     ]
@@ -70,14 +70,14 @@ let natives : natives =
                     [
                       ({
                          ty = Ty.inferred T_Int32;
-                         span = Span.of_ocaml __POS__;
-                         references = [];
+                         label =
+                           Label.create_definition (Span.of_ocaml __POS__) "0";
                        }
                         : Types.ty_tuple_field);
                       ({
                          ty = Ty.inferred T_Int32;
-                         span = Span.of_ocaml __POS__;
-                         references = [];
+                         label =
+                           Label.create_definition (Span.of_ocaml __POS__) "1";
                        }
                         : Types.ty_tuple_field);
                     ]
@@ -133,15 +133,17 @@ let natives : natives =
                         ( "min",
                           ({
                              ty = Ty.inferred T_Int32;
-                             span = Span.of_ocaml __POS__;
-                             references = [];
+                             label =
+                               Label.create_definition (Span.of_ocaml __POS__)
+                                 "min";
                            }
                             : Types.ty_tuple_field) );
                         ( "max",
                           ({
                              ty = Ty.inferred T_Int32;
-                             span = Span.of_ocaml __POS__;
-                             references = [];
+                             label =
+                               Label.create_definition (Span.of_ocaml __POS__)
+                                 "max";
                            }
                             : Types.ty_tuple_field) );
                       ];

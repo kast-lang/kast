@@ -3,6 +3,7 @@ open Kast_util
 module Ast = Kast_ast
 module Syntax = Kast_syntax
 module Inference = Kast_inference_base
+module Label = Label
 
 type _unused
 
@@ -51,9 +52,7 @@ and value_native_fn = {
 (* TY *)
 and ty_tuple_field = {
   ty : ty;
-  span : span;
-  (* Think: maybe this shouldnt be stored here? *)
-  mutable references : span list;
+  label : Label.t;
 }
 
 and ty_tuple = { tuple : ty_tuple_field tuple }
@@ -92,8 +91,9 @@ and expr_then = {
   b : expr;
 }
 
+and 'a tuple_field_of = field_span:span * field_label:Label.t * 'a
 and expr_stmt = { expr : expr }
-and expr_tuple = { tuple : (field_name_span:span * expr) tuple }
+and expr_tuple = { tuple : expr tuple_field_of tuple }
 
 and expr_apply = {
   f : expr;
@@ -114,6 +114,7 @@ and expr_field = {
   obj : expr;
   field : string;
   field_span : span;
+  label : Label.t;
 }
 
 and expr_use_dot_star = {
@@ -207,7 +208,7 @@ and ty_expr_fn = {
   result : ty_expr;
 }
 
-and ty_expr_tuple = { tuple : (field_name_span:span * ty_expr) tuple }
+and ty_expr_tuple = { tuple : ty_expr tuple_field_of tuple }
 
 and ty_expr_shape =
   | TE_Unit
@@ -223,7 +224,7 @@ and ty_expr = {
 }
 
 (* PATTERN *)
-and pattern_tuple = { tuple : (field_name_span:span * pattern) tuple }
+and pattern_tuple = { tuple : pattern tuple_field_of tuple }
 
 and pattern_shape =
   | P_Placeholder
@@ -255,8 +256,7 @@ and binding = {
   name : symbol;
   span : span;
   ty : ty;
-  (* Think: maybe this shouldnt be stored here? *)
-  mutable references : span list;
+  label : Label.t;
 }
 
 and ir_data = {

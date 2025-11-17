@@ -26,16 +26,12 @@ let init_expr :
                    tuple
                    |> Tuple.map
                         (fun
-                          (~field_name_span, field_expr)
+                          (~field_span:_, ~field_label, field_expr)
                           :
                           Types.ty_tuple_field
                         ->
                           let field_expr : expr = field_expr in
-                          {
-                            ty = field_expr.data.ty;
-                            span = field_name_span;
-                            references = [];
-                          });
+                          { ty = field_expr.data.ty; label = field_label });
                }
       | E_Apply { f; arg } ->
           let f_arg = Ty.new_not_inferred () in
@@ -65,15 +61,10 @@ let init_expr :
                      (state.scope.bindings |> StringMap.to_list
                      |> List.map (fun (name, (binding : binding)) ->
                          ( name,
-                           ({
-                              ty = binding.ty;
-                              span = binding.span;
-                              references = binding.references;
-                              (* TODO i need reference to the list to keep same *)
-                            }
+                           ({ ty = binding.ty; label = binding.label }
                              : Types.ty_tuple_field) )));
                })
-      | E_Field { obj; field; field_span } ->
+      | E_Field { obj; field; field_span = _; label } ->
           let ty = Ty.new_not_inferred () in
           obj.data.ty.var
           |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
@@ -82,7 +73,7 @@ let init_expr :
                 | T_Tuple { tuple } -> (
                     match Tuple.get_named_opt field tuple with
                     | Some ty_field ->
-                        ty_field.references <- field_span :: ty_field.references;
+                        ignore <| Label.unite label ty_field.label;
                         ty_field.ty
                     | None ->
                         error span "field %a is not there"
@@ -205,16 +196,12 @@ let init_pattern :
                    tuple
                    |> Tuple.map
                         (fun
-                          (~field_name_span, field_pattern)
+                          (~field_span:_, ~field_label, field_pattern)
                           :
                           Types.ty_tuple_field
                         ->
                           let field_pattern : pattern = field_pattern in
-                          {
-                            ty = field_pattern.data.ty;
-                            span = field_name_span;
-                            references = [];
-                          });
+                          { ty = field_pattern.data.ty; label = field_label });
                })
       | P_Error -> Ty.new_not_inferred ()
     in

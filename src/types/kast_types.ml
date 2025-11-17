@@ -3,6 +3,7 @@ open Kast_util
 open Types
 open Print
 module Types = Types
+module Label = Label
 
 module Ty = struct
   type t = ty

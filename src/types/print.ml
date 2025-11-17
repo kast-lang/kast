@@ -74,7 +74,7 @@ and print_expr_shape :
         print_pattern_with_spans arg print_expr body
   | E_Tuple { tuple } ->
       fprintf fmt "tuple %a"
-        (Tuple.print (fun fmt (~field_name_span:_, field_expr) ->
+        (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
              print_expr fmt field_expr))
         tuple
   | E_Apply { f; arg } ->
@@ -87,7 +87,7 @@ and print_expr_shape :
   | E_Ty expr -> fprintf fmt "@{<magenta>type@} %a" print_ty_expr expr
   | E_Native { expr } -> fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
   | E_Module { def } -> fprintf fmt "@{<magenta>module@} %a" print_expr def
-  | E_Field { obj; field; field_span = _ } ->
+  | E_Field { obj; field; field_span = _; label = _ } ->
       fprintf fmt
         "@{<magenta>field@} (@;<0 2>@[<v>obj = %a,@]@;<0 2>@[<v>field = %a@]@ )"
         print_expr obj String.print_maybe_escaped field
@@ -168,7 +168,7 @@ and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
       fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
   | TE_Tuple { tuple } ->
       fprintf fmt "@{<magenta>tuple@} %a"
-        (Tuple.print (fun fmt (~field_name_span:_, field_expr) ->
+        (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
              print_ty_expr fmt field_expr))
         tuple
   | TE_Error -> fprintf fmt "@{<red><error>@}"
@@ -187,7 +187,7 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
   | P_Tuple { tuple } ->
       fprintf fmt "@{<magenta>tuple@} %a"
-        (Tuple.print (fun fmt (~field_name_span:_, field_pattern) ->
+        (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_pattern) ->
              print_pattern_with_spans fmt field_pattern))
         tuple
   | P_Error -> fprintf fmt "@{<red><error>@}"

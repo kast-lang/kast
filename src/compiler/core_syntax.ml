@@ -749,13 +749,19 @@ let dot : core_syntax =
                       error span "field must be ident";
                       return <| init_error span C.state kind
                 in
-                E_Field { obj; field; field_span = field_ast.span }
+                E_Field
+                  {
+                    obj;
+                    field;
+                    field_span = field_ast.span;
+                    label = Label.create_reference field_ast.span field;
+                  }
                 |> init_expr span C.state));
   }
 
 let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
     (ast : Ast.t) ({ children; _ } : Ast.group) :
-    string * field_name_span:span * a =
+    string * field_span:span * field_label:Label.t * a =
   let span = ast.span in
   let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
   let label =
@@ -789,11 +795,16 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
             |> init_expr span C.state
       in
       match ty |> Option.map (Compiler.eval_ty (module C)) with
-      | None -> (label, ~field_name_span:label_ast.span, value)
+      | None ->
+          ( label,
+            ~field_span:label_ast.span,
+            ~field_label:(Label.create_reference label_ast.span label),
+            value )
       | Some (ty, ty_expr) ->
           value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
           ( label,
-            ~field_name_span:label_ast.span,
+            ~field_span:label_ast.span,
+            ~field_label:(Label.create_reference label_ast.span label),
             {
               value with
               data = { value.data with ty_ascription = Some ty_expr };
@@ -814,7 +825,10 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
             in
             TE_Expr expr |> init_ty_expr span C.state
       in
-      (label, ~field_name_span:label_ast.span, value)
+      ( label,
+        ~field_span:label_ast.span,
+        ~field_label:(Label.create_definition label_ast.span label),
+        value )
   | Assignee ->
       error span "todo %s" __LOC__;
       invalid_arg "todo"
@@ -827,17 +841,22 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
               {
                 name = Symbol.create label;
                 ty = Ty.new_not_inferred ();
-                references = [];
                 span = label_ast.span;
+                label = Label.create_reference label_ast.span label;
               }
             |> init_pattern span C.state
       in
       match ty |> Option.map (Compiler.eval_ty (module C)) with
-      | None -> (label, ~field_name_span:label_ast.span, value)
+      | None ->
+          ( label,
+            ~field_span:label_ast.span,
+            ~field_label:(Label.create_reference label_ast.span label),
+            value )
       | Some (ty, ty_expr) ->
           value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
           ( label,
-            ~field_name_span:label_ast.span,
+            ~field_span:label_ast.span,
+            ~field_label:(Label.create_reference label_ast.span label),
             {
               value with
               data = { value.data with ty_ascription = Some ty_expr };
@@ -852,14 +871,28 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
   |> List.iter (fun (child : Ast.t) ->
       match child.shape with
       | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
-          let name, ~field_name_span, value =
+          let name, ~field_span, ~field_label, value =
             tuple_field (module C) kind child root
           in
-          tuple := !tuple |> Tuple.add (Some name) (~field_name_span, value)
+          tuple :=
+            !tuple |> Tuple.add (Some name) (~field_span, ~field_label, value)
       | _ ->
+          let field_label =
+            match kind with
+            | TyExpr -> Label.create_reference
+            | _ -> Label.create_definition
+          in
+          let label =
+            match child.shape with
+            | Simple { token; _ } -> Kast_token.raw token |> Option.get
+            | _ -> ""
+          in
           tuple :=
             !tuple
-            |> Tuple.add None (~field_name_span:child.span, C.compile kind child));
+            |> Tuple.add None
+                 ( ~field_span:child.span,
+                   ~field_label:(field_label child.span label),
+                   C.compile kind child ));
   match kind with
   | Assignee ->
       error span "todo comma assignee";
@@ -929,9 +962,9 @@ let use_dot_star : core_syntax =
                       let field : Types.ty_tuple_field = field in
                       ({
                          name = Symbol.create name;
-                         span = field.span;
+                         span = field.label |> Label.get_span;
                          ty = field.ty;
-                         references = [];
+                         label = field.label;
                        }
                         : binding))
               | other ->
@@ -1058,7 +1091,9 @@ let impl_syntax : core_syntax =
                         tuple =
                           fields
                           |> Tuple.map (fun (field : Ast.t) ->
-                              ( ~field_name_span:field.span (* TODO wrong span *),
+                              ( ~field_span:field.span,
+                                ~field_label:(Label.create_definition field.span
+                                                (* TODO wrong span *) "<TODO>"),
                                 C.compile ~state Pattern field ));
                       }
                     |> init_pattern name.span C.state
@@ -1301,7 +1336,9 @@ let target_dependent : core_syntax =
                             name = Types.target_symbol;
                             span;
                             ty = Ty.inferred T_Target;
-                            references = [];
+                            label =
+                              Label.create_definition span
+                                Types.target_symbol.name;
                           }
                            : binding)
                   in

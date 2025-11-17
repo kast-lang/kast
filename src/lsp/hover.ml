@@ -27,6 +27,10 @@ type definition_mode =
   | DefinedHere of definition
   | DefinedNotHere of definition
 
+let label_definition (label : Label.t) : definition =
+  let data : Label.label_data = label |> Label.get_data in
+  { span = label |> Label.get_span; references = data.references }
+
 type hover_info_ty = {
   ty : ty;
   span : span;
@@ -45,10 +49,10 @@ type hover_info = {
 let hover_text info = make_string "```kast@\n@[<v>%a@]\n```" Ty.print info.ty.ty
 
 let binding_definition : binding -> definition =
- fun binding -> { span = binding.span; references = binding.references }
+ fun binding -> label_definition binding.label
 
 let get_tuple (type a) (kind : a compiled_kind) (compiled : a) :
-    (field_name_span:span * a) tuple option =
+    (field_span:span * field_label:Label.t * a) tuple option =
   match kind with
   | Expr -> (
       match compiled.shape with
@@ -72,36 +76,20 @@ let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
      hover_info option ->
   let* tuple = get_tuple kind compiled in
   tuple |> Tuple.to_seq
-  |> Seq.find_map (fun (member, (~field_name_span, field)) ->
-      if field_name_span |> Span.contains_span hover_span then
+  |> Seq.find_map (fun (_member, (~field_span, ~field_label, field)) ->
+      if field_span |> Span.contains_span hover_span then
         let data = Compiler.get_data kind field in
         Some
           {
-            ty = { span = field_name_span; ty = data.ty };
+            ty = { span = field_span; ty = data.ty };
             rename =
               Some
                 {
-                  span = field_name_span;
+                  span = field_span;
                   definition_mode =
                     (match kind with
-                    | TyExpr ->
-                        DefinedHere
-                          { span = field_name_span; references = [] (* TODO *) }
-                    | _ ->
-                        (* TODO not panic with Option.get *)
-                        let compiled_ty =
-                          (Compiler.get_data kind compiled).ty.var
-                          |> Kast_inference_base.Var.inferred_opt |> Option.get
-                          |> Ty.Shape.expect_tuple |> Option.get
-                        in
-                        let ty_field : Types.ty_tuple_field =
-                          compiled_ty.tuple |> Tuple.get member
-                        in
-                        DefinedNotHere
-                          {
-                            span = ty_field.span;
-                            references = ty_field.references;
-                          });
+                    | TyExpr -> DefinedHere (label_definition field_label)
+                    | _ -> DefinedNotHere (label_definition field_label));
                 };
           }
       else None)
@@ -123,29 +111,12 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                     definition_mode =
                       DefinedNotHere (binding_definition binding);
                   }
-            | E_Field { obj; field; field_span = _ } -> (
-                let obj_shape =
-                  obj.data.ty.var |> Kast_inference_base.Var.inferred_opt
-                in
-                match obj_shape with
-                | None -> None
-                | Some obj_shape -> (
-                    match obj_shape with
-                    | T_Tuple { tuple } -> (
-                        match Tuple.get_named_opt field tuple with
-                        | Some field ->
-                            Some
-                              {
-                                span = field.span;
-                                definition_mode =
-                                  DefinedNotHere
-                                    {
-                                      span = field.span;
-                                      references = field.references;
-                                    };
-                              }
-                        | None -> None)
-                    | _ -> None))
+            | E_Field { obj; field; field_span; label } ->
+                Some
+                  {
+                    span = field_span;
+                    definition_mode = DefinedNotHere (label_definition label);
+                  }
             | _ -> None
           in
           { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
