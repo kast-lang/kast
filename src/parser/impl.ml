@@ -194,16 +194,16 @@ and terminate (state : parse_one_state) (context : context) : parse_result =
       let spans =
         parts
         |> List.map (function
-             | Parsed_part.Comment comment -> comment.span
-             | Parsed_part.Value value -> value.span
-             | Parsed_part.Keyword keyword -> keyword.span)
+          | Parsed_part.Comment comment -> comment.span
+          | Parsed_part.Value value -> value.span
+          | Parsed_part.Keyword keyword -> keyword.span)
       in
       let parts =
         parts
         |> List.map (function
-             | Parsed_part.Comment comment -> Ast.Comment comment
-             | Parsed_part.Value value -> Ast.Value value
-             | Parsed_part.Keyword keyword -> Ast.Keyword keyword)
+          | Parsed_part.Comment comment -> Ast.Comment comment
+          | Parsed_part.Value value -> Ast.Value value
+          | Parsed_part.Keyword keyword -> Ast.Keyword keyword)
       in
       let span : span =
         {
@@ -259,15 +259,13 @@ and parse_simple (context : context) : Ast.t option =
       let start = peek.span.start in
       let shape =
         match peek.shape with
-        | Eof -> return None
-        | Punct _ -> return None
         | Number _ ->
             Ast.Simple
               { comments_before = context |> take_comments; token = peek }
         | String _ ->
             Ast.Simple
               { comments_before = context |> take_comments; token = peek }
-        | Ident { raw = "syntax"; _ } ->
+        | Punct { raw = "@syntax"; _ } ->
             return <| Some (parse_syntax_extension context)
         | Ident { raw; _ } ->
             if Ruleset.is_keyword raw context.ruleset then return None
@@ -275,6 +273,8 @@ and parse_simple (context : context) : Ast.t option =
               Ast.Simple
                 { comments_before = context |> take_comments; token = peek }
         | Comment _ -> unreachable "comments were skipped"
+        | Eof -> return None
+        | Punct _ -> return None
       in
       Log.trace (fun log -> log "Parsed simple %a" Ast.Shape.print shape);
       context.lexer |> Lexer.advance;
@@ -306,7 +306,7 @@ and parse_or_extend_minimal (start_value : Ast.t option) (context : context) :
 and parse_syntax_extension (context : context) : Ast.t =
   let tokens_rec = context.lexer |> Lexer.start_rec in
   let token = context.lexer |> Lexer.next in
-  if token |> Token.is_raw "syntax" |> not then fail "expected \"syntax\"";
+  if token |> Token.is_raw "@syntax" |> not then fail "expected \"@syntax\"";
   let comments_before = context |> take_comments in
   let mode =
     match context |> peek_token |> Token.raw with

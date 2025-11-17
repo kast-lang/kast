@@ -167,7 +167,7 @@ let parse_lines : string -> ruleset =
   s |> String.split_on_char '\n'
   |> List.filter (fun s ->
          not (String.is_whitespace s || String.starts_with ~prefix:"#" s))
-  |> List.map (fun s -> String.strip_prefix ~prefix:"syntax " s |> Option.get)
+  |> List.map (fun s -> String.strip_prefix ~prefix:"@syntax " s |> Option.get)
   |> List.map (fun s -> String.strip_suffix ~suffix:";" s |> Option.get)
   |> List.filter (fun line -> String.trim line <> "from_scratch")
   |> parse_list

@@ -8,7 +8,7 @@ const foo = f ();
 use foo.*;
 std.io.print s;
 let x = 123;
-syntax inline_fn 100 wrap always = "fn" " " name "(" arg:any ")" " " "(" "\n\t" body:any ""/"\\\n" ")";
+@syntax inline_fn 100 wrap always = "fn" " " name "(" arg:any ")" " " "(" "\n\t" body:any ""/"\\\n" ")";
 impl syntax (
     fn name(arg) (
         body

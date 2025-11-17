@@ -59,7 +59,7 @@ let parse : Lexer.t -> Syntax.rule =
           else (
             Lexer.advance lexer;
             Some (Keyword contents))
-      | Ident { raw; _ } when raw <> "syntax" ->
+      | Ident { raw; _ } ->
           Lexer.advance lexer;
           let name = if raw = "_" then None else Some raw in
           let peek = Lexer.peek lexer in
@@ -133,9 +133,9 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
     let spans =
       parts
       |> List.filter_map (function
-           | Parsed_part.Keyword spanned -> Some spanned.span
-           | Parsed_part.Value ast -> Some ast.span
-           | Parsed_part.Comment _ -> None)
+        | Parsed_part.Keyword spanned -> Some spanned.span
+        | Parsed_part.Value ast -> Some ast.span
+        | Parsed_part.Comment _ -> None)
     in
     {
       start = (spans |> List.head |> fun span -> span.start);
@@ -186,11 +186,10 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
               let expected_keyword =
                 group_rule.parts
                 |> List.find_map (function
-                     | Syntax.Rule.Whitespace _ -> None
-                     | Syntax.Rule.Keyword keyword -> Some keyword
-                     | _ ->
-                         fail
-                           "Optional groups should have keyword as first part")
+                  | Syntax.Rule.Whitespace _ -> None
+                  | Syntax.Rule.Keyword keyword -> Some keyword
+                  | _ ->
+                      fail "Optional groups should have keyword as first part")
                 |> Option.get
               in
               match parsed_parts with

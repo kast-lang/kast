@@ -1,4 +1,4 @@
-syntax for 10 wrap never = "for" " " elem " " "in" " " iterator " " "do" " " body;
+@syntax for 10 wrap never = "for" " " elem " " "in" " " iterator " " "do" " " body;
 impl syntax (for x in a do e) = `(
     # not a real loop
     let $x = $a;
