@@ -37,6 +37,7 @@ and value_fn = {
 and value_tuple_field = {
   value : value;
   span : span;
+  ty_field : ty_tuple_field;
 }
 
 and value_tuple = { tuple : value_tuple_field tuple }
@@ -51,6 +52,8 @@ and value_native_fn = {
 and ty_tuple_field = {
   ty : ty;
   span : span;
+  (* Think: maybe this shouldnt be stored here? *)
+  mutable references : span list;
 }
 
 and ty_tuple = { tuple : ty_tuple_field tuple }
@@ -110,6 +113,7 @@ and expr_module = { def : expr }
 and expr_field = {
   obj : expr;
   field : string;
+  field_span : span;
 }
 
 and expr_use_dot_star = {
@@ -236,7 +240,7 @@ and pattern = {
 (* SCOPE *)
 and interpreter_local = {
   mutable value : value;
-  span : span;
+  ty_field : ty_tuple_field;
 }
 
 and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }

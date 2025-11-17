@@ -39,7 +39,16 @@ let rec pattern_match : value -> pattern -> Scope.locals =
       {
         by_symbol =
           SymbolMap.singleton binding.name
-            ({ value; span = binding.span } : Types.interpreter_local);
+            ({
+               value;
+               ty_field =
+                 {
+                   span = binding.span;
+                   ty = Value.ty_of value;
+                   references = [];
+                 };
+             }
+              : Types.interpreter_local);
       }
   | P_Tuple { tuple = tuple_pattern } -> (
       match value.shape with
@@ -107,20 +116,27 @@ let rec eval : state -> expr -> value =
           { shape = V_Error })
   | E_Fn def -> { shape = V_Fn { def; captured = state.scope } }
   | E_Tuple { tuple } ->
+      (*  TODO dont panic - get rid of Option.get *)
+      let ty =
+        expr.data.ty.var |> Kast_inference_base.Var.inferred_opt |> Option.get
+        |> Ty.Shape.expect_tuple |> Option.get
+      in
       {
         shape =
           V_Tuple
             {
               tuple =
                 tuple
-                |> Tuple.map
+                |> Tuple.mapi
                      (fun
+                       member
                        (~field_name_span, field_expr)
                        :
                        Types.value_tuple_field
                      ->
                        let value = field_expr |> eval state in
-                       { value; span = field_name_span });
+                       let ty_field = ty.tuple |> Tuple.get member in
+                       { value; span = field_name_span; ty_field });
             };
       }
   | E_Then { a; b } ->
@@ -171,11 +187,15 @@ let rec eval : state -> expr -> value =
         |> List.map
              (fun ((symbol : symbol), (local : Types.interpreter_local)) ->
                ( Some symbol.name,
-                 ({ value = local.value; span = local.span }
+                 ({
+                    value = local.value;
+                    span = local.ty_field.span;
+                    ty_field = local.ty_field;
+                  }
                    : Types.value_tuple_field) ))
       in
       { shape = V_Tuple { tuple = fields |> Tuple.of_list } }
-  | E_Field { obj; field } -> (
+  | E_Field { obj; field; field_span = _ } -> (
       let obj = eval state obj in
       match obj.shape with
       | V_Tuple { tuple } -> (
@@ -316,6 +336,6 @@ and eval_ty : state -> Expr.ty -> ty =
                     (fun
                       (~field_name_span, field_expr) : Types.ty_tuple_field ->
                       let ty = field_expr |> eval_ty state in
-                      { ty; span = field_name_span });
+                      { ty; span = field_name_span; references = [] });
            })
   | TE_Error -> Ty.inferred T_Error

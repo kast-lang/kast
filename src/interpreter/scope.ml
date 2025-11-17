@@ -31,7 +31,15 @@ let rec assign_to_existing ~(span : span) (name : symbol) (value : value)
               by_symbol =
                 scope.locals.by_symbol
                 |> SymbolMap.add name
-                     ({ value; span (* TODO maybe should add name's span *) }
+                     ({
+                        value;
+                        ty_field =
+                          {
+                            ty = Value.ty_of value;
+                            span (* TODO maybe should add name's span *);
+                            references = [];
+                          };
+                      }
                        : Types.interpreter_local);
             })
 
@@ -63,7 +71,12 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
     {
       by_symbol =
         scope.locals.by_symbol
-        |> SymbolMap.add symbol ({ value; span } : Types.interpreter_local);
+        |> SymbolMap.add symbol
+             ({
+                value;
+                ty_field = { ty = Value.ty_of value; span; references = [] };
+              }
+               : Types.interpreter_local);
     }
 
 let rec print_all : formatter -> scope -> unit =

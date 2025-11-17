@@ -87,7 +87,7 @@ and print_expr_shape :
   | E_Ty expr -> fprintf fmt "@{<magenta>type@} %a" print_ty_expr expr
   | E_Native { expr } -> fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
   | E_Module { def } -> fprintf fmt "@{<magenta>module@} %a" print_expr def
-  | E_Field { obj; field } ->
+  | E_Field { obj; field; field_span = _ } ->
       fprintf fmt
         "@{<magenta>field@} (@;<0 2>@[<v>obj = %a,@]@;<0 2>@[<v>field = %a@]@ )"
         print_expr obj String.print_maybe_escaped field

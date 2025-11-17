@@ -38,6 +38,7 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
                        ty = unite_ty ~span a.ty b.ty;
                        (* TODO maybe there should be multiple spans? *)
                        span = a.span;
+                       references = b.span :: (a.references @ b.references);
                      });
           }
       with Invalid_argument _ -> fail ())

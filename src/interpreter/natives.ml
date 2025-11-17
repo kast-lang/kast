@@ -36,11 +36,13 @@ let natives : natives =
                       ({
                          ty = Ty.inferred T_Int32;
                          span = Span.of_ocaml __POS__;
+                         references = [];
                        }
                         : Types.ty_tuple_field);
                       ({
                          ty = Ty.inferred T_Int32;
                          span = Span.of_ocaml __POS__;
+                         references = [];
                        }
                         : Types.ty_tuple_field);
                     ]
@@ -69,11 +71,13 @@ let natives : natives =
                       ({
                          ty = Ty.inferred T_Int32;
                          span = Span.of_ocaml __POS__;
+                         references = [];
                        }
                         : Types.ty_tuple_field);
                       ({
                          ty = Ty.inferred T_Int32;
                          span = Span.of_ocaml __POS__;
+                         references = [];
                        }
                         : Types.ty_tuple_field);
                     ]
@@ -130,12 +134,14 @@ let natives : natives =
                           ({
                              ty = Ty.inferred T_Int32;
                              span = Span.of_ocaml __POS__;
+                             references = [];
                            }
                             : Types.ty_tuple_field) );
                         ( "max",
                           ({
                              ty = Ty.inferred T_Int32;
                              span = Span.of_ocaml __POS__;
+                             references = [];
                            }
                             : Types.ty_tuple_field) );
                       ];

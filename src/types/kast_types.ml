@@ -18,6 +18,10 @@ module Ty = struct
     type t = ty_shape
 
     let print = print_ty_shape
+
+    let expect_tuple : t -> ty_tuple option = function
+      | T_Tuple tuple -> Some tuple
+      | _ -> None
   end
 end
 
@@ -39,8 +43,7 @@ module Value = struct
              {
                tuple =
                  Tuple.map
-                   (fun (field : value_tuple_field) ->
-                     { ty = ty_of field.value; span = field.span })
+                   (fun (field : value_tuple_field) -> field.ty_field)
                    tuple;
              }
     | V_Ty _ -> Ty.inferred T_Ty

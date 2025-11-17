@@ -735,21 +735,22 @@ let dot : core_syntax =
             | TyExpr ->
                 TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
             | Expr ->
-                let obj, field =
+                let obj, field_ast =
                   children
                   |> Tuple.map Ast.Child.expect_ast
                   |> Tuple.unwrap_named2 [ "obj"; "field" ]
                 in
                 let obj = C.compile Expr obj in
                 let field =
-                  match field.shape with
+                  match field_ast.shape with
                   | Simple { token = { shape = Ident ident; _ }; _ } ->
                       ident.name
                   | _ ->
                       error span "field must be ident";
                       return <| init_error span C.state kind
                 in
-                E_Field { obj; field } |> init_expr span C.state));
+                E_Field { obj; field; field_span = field_ast.span }
+                |> init_expr span C.state));
   }
 
 let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)

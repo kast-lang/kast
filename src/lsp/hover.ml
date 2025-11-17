@@ -85,10 +85,23 @@ let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
                   definition_mode =
                     (match kind with
                     | TyExpr ->
-                        DefinedHere { span = field_name_span; references = [] }
+                        DefinedHere
+                          { span = field_name_span; references = [] (* TODO *) }
                     | _ ->
+                        (* TODO not panic with Option.get *)
+                        let compiled_ty =
+                          (Compiler.get_data kind compiled).ty.var
+                          |> Kast_inference_base.Var.inferred_opt |> Option.get
+                          |> Ty.Shape.expect_tuple |> Option.get
+                        in
+                        let ty_field : Types.ty_tuple_field =
+                          compiled_ty.tuple |> Tuple.get member
+                        in
                         DefinedNotHere
-                          { span = field_name_span; references = [] });
+                          {
+                            span = ty_field.span;
+                            references = ty_field.references;
+                          });
                 };
           }
       else None)
@@ -110,7 +123,7 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                     definition_mode =
                       DefinedNotHere (binding_definition binding);
                   }
-            | E_Field { obj; field } -> (
+            | E_Field { obj; field; field_span = _ } -> (
                 let obj_shape =
                   obj.data.ty.var |> Kast_inference_base.Var.inferred_opt
                 in
@@ -128,7 +141,7 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                                   DefinedNotHere
                                     {
                                       span = field.span;
-                                      references = [] (* TODO *);
+                                      references = field.references;
                                     };
                               }
                         | None -> None)

@@ -69,7 +69,7 @@ let inner_compiled_with_handler =
       | E_Ty expr -> handler.handle TyExpr expr
       | E_Native _ -> ()
       | E_Module { def } -> handler.handle Expr def
-      | E_Field { obj; field = _ } -> handler.handle Expr obj
+      | E_Field { obj; field = _; field_span = _ } -> handler.handle Expr obj
       | E_UseDotStar { used; bindings = _ } -> handler.handle Expr used
       | E_If { cond; then_case; else_case } ->
           handler.handle Expr cond;

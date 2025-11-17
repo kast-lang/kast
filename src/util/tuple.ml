@@ -33,7 +33,7 @@ module Tuple = struct
       try
         named_order_rev
         |> List.map (fun name ->
-               (name, (StringMap.find name a.named, StringMap.find name b.named)))
+            (name, (StringMap.find name a.named, StringMap.find name b.named)))
         |> StringMap.of_list
       with Not_found -> invalid_arg "Tuple.zip (named)"
     in
@@ -145,8 +145,21 @@ module Tuple = struct
       named =
         named_order_rev |> List.rev
         |> List.map (fun name ->
-               let current = StringMap.find name named in
-               (name, f current))
+            let current = StringMap.find name named in
+            (name, f current))
+        |> StringMap.of_list;
+    }
+
+  let mapi : 'a 'b. (member -> 'a -> 'b) -> 'a tuple -> 'b tuple =
+   fun f { unnamed; named; named_order_rev } ->
+    {
+      unnamed = unnamed |> Array.mapi (fun i -> f (Index i));
+      named_order_rev;
+      named =
+        named_order_rev |> List.rev
+        |> List.map (fun name ->
+            let current = StringMap.find name named in
+            (name, f (Name name) current))
         |> StringMap.of_list;
     }
 

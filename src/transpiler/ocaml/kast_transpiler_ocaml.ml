@@ -155,7 +155,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
            | _ -> fail "module ty is not tuple???"
          in
          OcamlAst.merge_let_then def module_result)
-  | Types.E_Field { obj; field } -> (
+  | Types.E_Field { obj; field; field_span = _ } -> (
       let obj_ty = obj.data.ty.var |> Inference.Var.await_inferred in
       match obj_ty with
       | Types.T_Tuple { tuple = _ } ->

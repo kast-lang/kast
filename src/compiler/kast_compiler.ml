@@ -117,6 +117,12 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                   |> Tuple.map (fun ast : Types.value_tuple_field ->
                       {
                         value = { shape = V_Ast ast };
+                        ty_field =
+                          {
+                            span = ast.span;
+                            ty = Ty.inferred T_Ast;
+                            references = [];
+                          };
                         span =
                           ast.span
                           (* TODO not sure if this is correct span, but there is no span? *);
@@ -185,7 +191,15 @@ let default ?(import_cache : import_cache option) () : state =
       {
         by_symbol =
           SymbolMap.singleton std_symbol
-            ({ value = std; span = Span.beginning_of std_uri }
+            ({
+               value = std;
+               ty_field =
+                 {
+                   ty = Value.ty_of std;
+                   span = Span.beginning_of std_uri;
+                   references = [];
+                 };
+             }
               : Types.interpreter_local);
       }
   in
