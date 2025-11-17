@@ -51,7 +51,7 @@ let natives : natives =
         match value.shape with
         | V_Tuple { tuple } ->
             let a, b = tuple |> Tuple.unwrap_unnamed2 in
-            let result : bool = op a b in
+            let result : bool = op a.value b.value in
             { shape = V_Bool result }
         | _ ->
             Error.error caller "cmp op %S expected a tuple as arg" name;
