@@ -26,14 +26,12 @@ let init_expr :
                    tuple
                    |> Tuple.map
                         (fun
-                          (field : Types.expr_tuple_field)
+                          (~field_name_span, field_expr)
                           :
                           Types.ty_tuple_field
                         ->
-                          {
-                            ty = field.expr.data.ty;
-                            span = field.field_name_span;
-                          });
+                          let field_expr : expr = field_expr in
+                          { ty = field_expr.data.ty; span = field_name_span });
                }
       | E_Apply { f; arg } ->
           let f_arg = Ty.new_not_inferred () in
@@ -196,14 +194,12 @@ let init_pattern :
                    tuple
                    |> Tuple.map
                         (fun
-                          (field : Types.pattern_tuple_field)
+                          (~field_name_span, field_pattern)
                           :
                           Types.ty_tuple_field
                         ->
-                          {
-                            ty = field.pattern.data.ty;
-                            span = field.field_name_span;
-                          });
+                          let field_pattern : pattern = field_pattern in
+                          { ty = field_pattern.data.ty; span = field_name_span });
                })
       | P_Error -> Ty.new_not_inferred ()
     in

@@ -863,36 +863,9 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
   | Assignee ->
       error span "todo comma assignee";
       init_error span C.state kind
-  | Pattern ->
-      P_Tuple
-        {
-          tuple =
-            !tuple
-            |> Tuple.map
-                 (fun (~field_name_span, pattern) : Types.pattern_tuple_field ->
-                   { field_name_span; pattern });
-        }
-      |> init_pattern span C.state
-  | TyExpr ->
-      TE_Tuple
-        {
-          tuple =
-            !tuple
-            |> Tuple.map
-                 (fun (~field_name_span, expr) : Types.ty_expr_tuple_field ->
-                   { field_name_span; expr });
-        }
-      |> init_ty_expr span C.state
-  | Expr ->
-      E_Tuple
-        {
-          tuple =
-            !tuple
-            |> Tuple.map
-                 (fun (~field_name_span, expr) : Types.expr_tuple_field ->
-                   { field_name_span; expr });
-        }
-      |> init_expr span C.state
+  | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span C.state
+  | TyExpr -> TE_Tuple { tuple = !tuple } |> init_ty_expr span C.state
+  | Expr -> E_Tuple { tuple = !tuple } |> init_expr span C.state
 
 let comma : core_syntax =
   {
@@ -1083,12 +1056,9 @@ let impl_syntax : core_syntax =
                       {
                         tuple =
                           fields
-                          |> Tuple.map (fun field : Types.pattern_tuple_field ->
-                              {
-                                pattern = C.compile ~state Pattern field;
-                                field_name_span =
-                                  field.span (* TODO wrong span *);
-                              });
+                          |> Tuple.map (fun (field : Ast.t) ->
+                              ( ~field_name_span:field.span (* TODO wrong span *),
+                                C.compile ~state Pattern field ));
                       }
                     |> init_pattern name.span C.state
                   in

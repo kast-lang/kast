@@ -74,8 +74,8 @@ and print_expr_shape :
         print_pattern_with_spans arg print_expr body
   | E_Tuple { tuple } ->
       fprintf fmt "tuple %a"
-        (Tuple.print (fun fmt (field : expr_tuple_field) ->
-             print_expr fmt field.expr))
+        (Tuple.print (fun fmt (~field_name_span:_, field_expr) ->
+             print_expr fmt field_expr))
         tuple
   | E_Apply { f; arg } ->
       fprintf fmt "@{<magenta>apply@} %a" (Tuple.print print_expr)
@@ -168,8 +168,8 @@ and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
       fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
   | TE_Tuple { tuple } ->
       fprintf fmt "@{<magenta>tuple@} %a"
-        (Tuple.print (fun fmt (field : ty_expr_tuple_field) ->
-             print_ty_expr fmt field.expr))
+        (Tuple.print (fun fmt (~field_name_span:_, field_expr) ->
+             print_ty_expr fmt field_expr))
         tuple
   | TE_Error -> fprintf fmt "@{<red><error>@}"
 
@@ -187,8 +187,8 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
   | P_Tuple { tuple } ->
       fprintf fmt "@{<magenta>tuple@} %a"
-        (Tuple.print (fun fmt (field : pattern_tuple_field) ->
-             print_pattern_with_spans fmt field.pattern))
+        (Tuple.print (fun fmt (~field_name_span:_, field_pattern) ->
+             print_pattern_with_spans fmt field_pattern))
         tuple
   | P_Error -> fprintf fmt "@{<red><error>@}"
 

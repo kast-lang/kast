@@ -58,8 +58,8 @@ let inner_compiled_with_handler =
           | None -> ())
       | E_Tuple { tuple } ->
           tuple |> Tuple.to_seq
-          |> Seq.iter (fun (_member, (field : Types.expr_tuple_field)) ->
-              handler.handle Expr field.expr)
+          |> Seq.iter (fun (_member, (~field_name_span, field_expr)) ->
+              handler.handle Expr field_expr)
       | E_Apply { f; arg } ->
           handler.handle Expr f;
           handler.handle Expr arg
@@ -109,8 +109,8 @@ let inner_compiled_with_handler =
       | P_Binding _ -> ()
       | P_Tuple { tuple } ->
           tuple |> Tuple.to_seq
-          |> Seq.iter (fun ((_member, field) : _ * Types.pattern_tuple_field) ->
-              handler.handle Pattern field.pattern)
+          |> Seq.iter (fun (_member, (~field_name_span:_, field_pattern)) ->
+              handler.handle Pattern field_pattern)
       | P_Error -> ())
   | TyExpr -> (
       match compiled.shape with
@@ -121,8 +121,8 @@ let inner_compiled_with_handler =
       | TE_Expr expr -> handler.handle Expr expr
       | TE_Tuple { tuple } ->
           tuple |> Tuple.to_seq
-          |> Seq.iter (fun ((_member, field) : _ * Types.ty_expr_tuple_field) ->
-              handler.handle TyExpr field.expr)
+          |> Seq.iter (fun (_member, (~field_name_span:_, field_expr)) ->
+              handler.handle TyExpr field_expr)
       | TE_Error -> ()));
   let data = Compiler.get_data kind compiled in
   data.evaled_exprs |> List.iter (fun expr -> handler.handle Expr expr);

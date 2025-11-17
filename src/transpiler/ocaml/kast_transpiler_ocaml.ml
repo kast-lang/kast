@@ -77,8 +77,8 @@ and transpile_pattern : Pattern.t -> state -> OcamlAst.t =
   | Types.P_Tuple tuple ->
       state
       |> transpile_tuple
-           (fun (field : Types.pattern_tuple_field) ->
-             transpile_pattern field.pattern)
+           (fun (~field_name_span:_, field_pattern) ->
+             transpile_pattern field_pattern)
            tuple.tuple
   | Types.P_Error -> fail "Tried to transpile error node"
 
@@ -111,7 +111,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_Tuple tuple ->
       state
       |> transpile_tuple
-           (fun (field : Types.expr_tuple_field) -> transpile_expr field.expr)
+           (fun (~field_name_span:_, field_expr) -> transpile_expr field_expr)
            tuple.tuple
   | Types.E_Apply { f; arg } ->
       OcamlAst.Call

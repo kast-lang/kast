@@ -55,14 +55,14 @@ let rec pattern_match : value -> pattern -> Scope.locals =
                   |> Tuple.to_seq
                   |> Seq.fold_left
                        (fun acc (_member, (field_pattern, field_value)) ->
-                         let field_pattern : Types.pattern_tuple_field =
+                         let ~field_name_span:_, field_pattern =
                            field_pattern
                          in
                          let field_value : Types.value_tuple_field =
                            field_value
                          in
                          let field_matches =
-                           pattern_match field_value.value field_pattern.pattern
+                           pattern_match field_value.value field_pattern
                          in
                          SymbolMap.union
                            (fun symbol _a b ->
@@ -115,12 +115,12 @@ let rec eval : state -> expr -> value =
                 tuple
                 |> Tuple.map
                      (fun
-                       (field : Types.expr_tuple_field)
+                       (~field_name_span, field_expr)
                        :
                        Types.value_tuple_field
                      ->
-                       let value = field.expr |> eval state in
-                       { value; span = field.field_name_span });
+                       let value = field_expr |> eval state in
+                       { value; span = field_name_span });
             };
       }
   | E_Then { a; b } ->
@@ -312,8 +312,10 @@ and eval_ty : state -> Expr.ty -> ty =
            {
              tuple =
                tuple
-               |> Tuple.map (fun (field : Types.ty_expr_tuple_field) ->
-                   let ty = field.expr |> eval_ty state in
-                   ({ ty; span = field.field_name_span } : Types.ty_tuple_field));
+               |> Tuple.map
+                    (fun
+                      (~field_name_span, field_expr) : Types.ty_tuple_field ->
+                      let ty = field_expr |> eval_ty state in
+                      { ty; span = field_name_span });
            })
   | TE_Error -> Ty.inferred T_Error

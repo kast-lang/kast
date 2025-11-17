@@ -47,73 +47,125 @@ let hover_text info = make_string "```kast@\n@[<v>%a@]\n```" Ty.print info.ty.ty
 let binding_definition : binding -> definition =
  fun binding -> { span = binding.span; references = binding.references }
 
-let hover_specifially : 'a. 'a compiled_kind -> 'a -> hover_info =
- fun (type a) (kind : a compiled_kind) (compiled : a) : hover_info ->
+let get_tuple (type a) (kind : a compiled_kind) (compiled : a) :
+    (field_name_span:span * a) tuple option =
   match kind with
-  | Expr ->
-      let rename : hover_info_rename option =
-        match compiled.shape with
-        | E_Binding binding ->
-            Some
-              {
-                span = binding.span;
-                definition_mode = DefinedNotHere (binding_definition binding);
-              }
-        | E_Field { obj; field } -> (
-            let obj_shape =
-              obj.data.ty.var |> Kast_inference_base.Var.inferred_opt
-            in
-            match obj_shape with
-            | None -> None
-            | Some obj_shape -> (
+  | Expr -> (
+      match compiled.shape with
+      | E_Tuple { tuple } -> Some tuple
+      | _ -> None)
+  | Assignee -> (
+      match compiled.shape with
+      (* TODO | A_Tuple { tuple } -> Some tuple *)
+      | _ -> None)
+  | TyExpr -> (
+      match compiled.shape with
+      | TE_Tuple { tuple } -> Some tuple
+      | _ -> None)
+  | Pattern -> (
+      match compiled.shape with
+      | P_Tuple { tuple } -> Some tuple
+      | _ -> None)
+
+let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
+ fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
+     hover_info option ->
+  let* tuple = get_tuple kind compiled in
+  tuple |> Tuple.to_seq
+  |> Seq.find_map (fun (member, (~field_name_span, field)) ->
+      if field_name_span |> Span.contains_span hover_span then
+        let data = Compiler.get_data kind field in
+        Some
+          {
+            ty = { span = field_name_span; ty = data.ty };
+            rename =
+              Some
+                {
+                  span = field_name_span;
+                  definition_mode =
+                    (match kind with
+                    | TyExpr ->
+                        DefinedHere { span = field_name_span; references = [] }
+                    | _ ->
+                        DefinedNotHere
+                          { span = field_name_span; references = [] });
+                };
+          }
+      else None)
+
+let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
+ fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
+     hover_info ->
+  match hover_tuple kind compiled hover_span with
+  | Some result -> result
+  | None -> (
+      match kind with
+      | Expr ->
+          let rename : hover_info_rename option =
+            match compiled.shape with
+            | E_Binding binding ->
+                Some
+                  {
+                    span = binding.span;
+                    definition_mode =
+                      DefinedNotHere (binding_definition binding);
+                  }
+            | E_Field { obj; field } -> (
+                let obj_shape =
+                  obj.data.ty.var |> Kast_inference_base.Var.inferred_opt
+                in
                 match obj_shape with
-                | T_Tuple { tuple } -> (
-                    match Tuple.get_named_opt field tuple with
-                    | Some field ->
-                        Some
-                          {
-                            span = field.span;
-                            definition_mode =
-                              DefinedNotHere
-                                {
-                                  span = field.span;
-                                  references = [] (* TODO *);
-                                };
-                          }
-                    | None -> None)
-                | _ -> None))
-        | _ -> None
-      in
-      { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
-  | Assignee ->
-      let rename =
-        match compiled.shape with
-        | A_Binding binding ->
-            Some
-              {
-                span = binding.span;
-                definition_mode = DefinedNotHere (binding_definition binding);
-              }
-        | _ -> None
-      in
-      { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
-  | Pattern ->
-      let rename =
-        match compiled.shape with
-        | P_Binding binding ->
-            Some
-              {
-                span = binding.span;
-                definition_mode = DefinedHere (binding_definition binding);
-              }
-        | _ -> None
-      in
-      { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
-  | TyExpr ->
-      {
-        ty = { ty = compiled.data.ty; span = compiled.data.span };
-        rename = None;
-      }
+                | None -> None
+                | Some obj_shape -> (
+                    match obj_shape with
+                    | T_Tuple { tuple } -> (
+                        match Tuple.get_named_opt field tuple with
+                        | Some field ->
+                            Some
+                              {
+                                span = field.span;
+                                definition_mode =
+                                  DefinedNotHere
+                                    {
+                                      span = field.span;
+                                      references = [] (* TODO *);
+                                    };
+                              }
+                        | None -> None)
+                    | _ -> None))
+            | _ -> None
+          in
+          { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
+      | Assignee ->
+          let rename =
+            match compiled.shape with
+            | A_Binding binding ->
+                Some
+                  {
+                    span = binding.span;
+                    definition_mode =
+                      DefinedNotHere (binding_definition binding);
+                  }
+            | _ -> None
+          in
+          { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
+      | Pattern ->
+          let rename =
+            match compiled.shape with
+            | P_Binding binding ->
+                Some
+                  {
+                    span = binding.span;
+                    definition_mode = DefinedHere (binding_definition binding);
+                  }
+            | _ -> None
+          in
+          { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
+      | TyExpr ->
+          {
+            ty = { ty = compiled.data.ty; span = compiled.data.span };
+            rename = None;
+          })
 
 let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
@@ -129,7 +181,7 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
   | Some result -> Some result
   | None ->
       if span |> Span.contains_span hover_span then
-        Some (hover_specifially kind compiled)
+        Some (hover_specifially kind compiled hover_span)
       else None
 
 let find_definition (pos : Lsp.Types.Position.t)

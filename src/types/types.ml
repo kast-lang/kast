@@ -90,13 +90,7 @@ and expr_then = {
 }
 
 and expr_stmt = { expr : expr }
-
-and expr_tuple_field = {
-  expr : expr;
-  field_name_span : span;
-}
-
-and expr_tuple = { tuple : expr_tuple_field tuple }
+and expr_tuple = { tuple : (field_name_span:span * expr) tuple }
 
 and expr_apply = {
   f : expr;
@@ -209,12 +203,7 @@ and ty_expr_fn = {
   result : ty_expr;
 }
 
-and ty_expr_tuple_field = {
-  field_name_span : span;
-  expr : ty_expr;
-}
-
-and ty_expr_tuple = { tuple : ty_expr_tuple_field tuple }
+and ty_expr_tuple = { tuple : (field_name_span:span * ty_expr) tuple }
 
 and ty_expr_shape =
   | TE_Unit
@@ -230,12 +219,7 @@ and ty_expr = {
 }
 
 (* PATTERN *)
-and pattern_tuple_field = {
-  pattern : pattern;
-  field_name_span : span;
-}
-
-and pattern_tuple = { tuple : pattern_tuple_field tuple }
+and pattern_tuple = { tuple : (field_name_span:span * pattern) tuple }
 
 and pattern_shape =
   | P_Placeholder
