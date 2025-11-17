@@ -19,12 +19,12 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
   let scope = State.Scope.init () in
   let scope =
     SymbolMap.fold
-      (fun name value scope ->
+      (fun name (local : Types.interpreter_local) scope ->
         scope
         |> State.Scope.inject_binding
              {
                name;
-               ty = Value.ty_of value;
+               ty = Value.ty_of local.value;
                span = Span.fake "<interpreter>";
                references = [];
              })
@@ -114,7 +114,13 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 let args =
                   root.children
                   |> Tuple.map Ast.Child.expect_ast
-                  |> Tuple.map (fun ast : value -> { shape = V_Ast ast })
+                  |> Tuple.map (fun ast : Types.value_tuple_field ->
+                      {
+                        value = { shape = V_Ast ast };
+                        span =
+                          ast.span
+                          (* TODO not sure if this is correct span, but there is no span? *);
+                      })
                 in
                 let arg : value = { shape = V_Tuple { tuple = args } } in
                 let expr =
@@ -175,7 +181,13 @@ let default ?(import_cache : import_cache option) () : state =
   in
   let std_symbol = Symbol.create "std" in
   let interpreter_with_std =
-    Interpreter.init { by_symbol = SymbolMap.singleton std_symbol std }
+    Interpreter.init
+      {
+        by_symbol =
+          SymbolMap.singleton std_symbol
+            ({ value = std; span = Span.beginning_of std_uri }
+              : Types.interpreter_local);
+      }
   in
   let scope = State.Scope.init () in
   let scope =

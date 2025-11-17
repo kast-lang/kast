@@ -34,7 +34,12 @@ and value_fn = {
   captured : interpreter_scope;
 }
 
-and value_tuple = { tuple : value tuple }
+and value_tuple_field = {
+  value : value;
+  span : span;
+}
+
+and value_tuple = { tuple : value_tuple_field tuple }
 
 and value_native_fn = {
   name : string;
@@ -43,7 +48,12 @@ and value_native_fn = {
 }
 
 (* TY *)
-and ty_tuple = { tuple : ty tuple }
+and ty_tuple_field = {
+  ty : ty;
+  span : span;
+}
+
+and ty_tuple = { tuple : ty_tuple_field tuple }
 
 and ty_fn = {
   arg : ty;
@@ -80,7 +90,13 @@ and expr_then = {
 }
 
 and expr_stmt = { expr : expr }
-and expr_tuple = { tuple : expr tuple }
+
+and expr_tuple_field = {
+  expr : expr;
+  field_name_span : span;
+}
+
+and expr_tuple = { tuple : expr_tuple_field tuple }
 
 and expr_apply = {
   f : expr;
@@ -193,7 +209,12 @@ and ty_expr_fn = {
   result : ty_expr;
 }
 
-and ty_expr_tuple = { tuple : ty_expr tuple }
+and ty_expr_tuple_field = {
+  field_name_span : span;
+  expr : ty_expr;
+}
+
+and ty_expr_tuple = { tuple : ty_expr_tuple_field tuple }
 
 and ty_expr_shape =
   | TE_Unit
@@ -209,7 +230,12 @@ and ty_expr = {
 }
 
 (* PATTERN *)
-and pattern_tuple = { tuple : pattern tuple }
+and pattern_tuple_field = {
+  pattern : pattern;
+  field_name_span : span;
+}
+
+and pattern_tuple = { tuple : pattern_tuple_field tuple }
 
 and pattern_shape =
   | P_Placeholder
@@ -224,7 +250,12 @@ and pattern = {
 }
 
 (* SCOPE *)
-and interpreter_locals = { by_symbol : value SymbolMap.t }
+and interpreter_local = {
+  mutable value : value;
+  span : span;
+}
+
+and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }
 
 and interpreter_scope = {
   mutable locals : interpreter_locals;

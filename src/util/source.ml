@@ -48,7 +48,7 @@ module Uri = struct
           path
           |> String.strip_prefix ~prefix:"./"
           |> Option.or_else (fun () : string option ->
-                 if String.starts_with ~prefix:"/" path then None else Some path)
+              if String.starts_with ~prefix:"/" path then None else Some path)
         in
         match relative with
         | Some relative ->
@@ -64,7 +64,7 @@ module Uri = struct
           path
           |> String.strip_prefix ~prefix:"./"
           |> Option.or_else (fun () : string option ->
-                 if String.starts_with ~prefix:"/" path then None else Some path)
+              if String.starts_with ~prefix:"/" path then None else Some path)
         in
         match relative with
         | Some relative ->
@@ -109,6 +109,14 @@ module Span = struct
 
   let single_char pos uri = { start = pos; finish = pos; uri }
   let fake desc = beginning_of <| Uri.of_string ("fake:" ^ desc)
+
+  let of_ocaml : string * int * int * int -> span =
+   fun (file, line, col, _enum) ->
+    {
+      uri = Uri.of_string file;
+      start = { index = 0; line; column = col };
+      finish = { index = 0; line; column = col };
+    }
 
   let touches : position -> span -> bool =
    fun pos span ->

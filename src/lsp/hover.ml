@@ -26,15 +26,23 @@ type definition = {
 type definition_mode =
   | DefinedHere of definition
   | DefinedNotHere of definition
-  | None
 
-type hover_info = {
+type hover_info_ty = {
   ty : ty;
   span : span;
-  definition_mode : definition_mode;
 }
 
-let hover_text info = make_string "```kast@\n@[<v>%a@]\n```" Ty.print info.ty
+type hover_info_rename = {
+  definition_mode : definition_mode;
+  span : span;
+}
+
+type hover_info = {
+  ty : hover_info_ty;
+  rename : hover_info_rename option;
+}
+
+let hover_text info = make_string "```kast@\n@[<v>%a@]\n```" Ty.print info.ty.ty
 
 let binding_definition : binding -> definition =
  fun binding -> { span = binding.span; references = binding.references }
@@ -43,31 +51,68 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> hover_info =
  fun (type a) (kind : a compiled_kind) (compiled : a) : hover_info ->
   match kind with
   | Expr ->
-      let definition_mode =
+      let rename : hover_info_rename option =
         match compiled.shape with
-        | E_Binding binding -> DefinedNotHere (binding_definition binding)
+        | E_Binding binding ->
+            Some
+              {
+                span = binding.span;
+                definition_mode = DefinedNotHere (binding_definition binding);
+              }
+        | E_Field { obj; field } -> (
+            let obj_shape =
+              obj.data.ty.var |> Kast_inference_base.Var.inferred_opt
+            in
+            match obj_shape with
+            | None -> None
+            | Some obj_shape -> (
+                match obj_shape with
+                | T_Tuple { tuple } -> (
+                    match Tuple.get_named_opt field tuple with
+                    | Some field ->
+                        Some
+                          {
+                            span = field.span;
+                            definition_mode =
+                              DefinedNotHere
+                                {
+                                  span = field.span;
+                                  references = [] (* TODO *);
+                                };
+                          }
+                    | None -> None)
+                | _ -> None))
         | _ -> None
       in
-      { ty = compiled.data.ty; span = compiled.data.span; definition_mode }
+      { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
   | Assignee ->
-      let definition_mode =
+      let rename =
         match compiled.shape with
-        | A_Binding binding -> DefinedNotHere (binding_definition binding)
+        | A_Binding binding ->
+            Some
+              {
+                span = binding.span;
+                definition_mode = DefinedNotHere (binding_definition binding);
+              }
         | _ -> None
       in
-      { ty = compiled.data.ty; span = compiled.data.span; definition_mode }
+      { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
   | Pattern ->
-      let definition_mode =
+      let rename =
         match compiled.shape with
-        | P_Binding binding -> DefinedHere (binding_definition binding)
+        | P_Binding binding ->
+            Some
+              {
+                span = binding.span;
+                definition_mode = DefinedHere (binding_definition binding);
+              }
         | _ -> None
       in
-      { ty = compiled.data.ty; span = compiled.data.span; definition_mode }
+      { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
   | TyExpr ->
       {
-        ty = compiled.data.ty;
-        span = compiled.data.span;
-        definition_mode = None;
+        ty = { ty = compiled.data.ty; span = compiled.data.span };
+        rename = None;
       }
 
 let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
@@ -94,9 +139,9 @@ let find_definition (pos : Lsp.Types.Position.t)
   let* expr = compiled in
   let* hover_info = hover Expr expr (Span.single_char pos uri) in
   let* definition =
-    match hover_info.definition_mode with
-    | DefinedNotHere definition -> Some definition
-    | DefinedHere _ | None -> None
+    match hover_info.rename with
+    | Some { definition_mode = DefinedNotHere definition; _ } -> Some definition
+    | Some { definition_mode = DefinedHere _; _ } | None -> None
   in
   let location : Lsp.Types.Location.t =
     {
@@ -113,8 +158,13 @@ let find_references (params : Lsp.Types.ReferenceParams.t)
   let* expr = compiled in
   let* hover_info = hover Expr expr (Span.single_char pos uri) in
   let* definition =
-    match hover_info.definition_mode with
-    | DefinedHere definition | DefinedNotHere definition -> Some definition
+    match hover_info.rename with
+    | Some
+        {
+          definition_mode = DefinedHere definition | DefinedNotHere definition;
+          _;
+        } ->
+        Some definition
     | None -> None
   in
   let declaration_location =
@@ -132,12 +182,8 @@ let prepare_rename (pos : Lsp.Types.Position.t)
   let pos : position = Common.lsp_to_kast_pos pos in
   let* expr = compiled in
   let* hover_info = hover Expr expr (Span.single_char pos uri) in
-  let* _definition =
-    match hover_info.definition_mode with
-    | DefinedHere definition | DefinedNotHere definition -> Some definition
-    | None -> None
-  in
-  Some (hover_info.span |> Common.span_to_range)
+  let* rename = hover_info.rename in
+  Some (rename.span |> Common.span_to_range)
 
 exception Nope
 
@@ -149,10 +195,10 @@ let rename (position : Lsp.Types.Position.t) (newName : string)
     let pos : position = Common.lsp_to_kast_pos position in
     let* expr = compiled in
     let* hover_info = hover Expr expr (Span.single_char pos uri) in
-    let* definition =
-      match hover_info.definition_mode with
-      | DefinedHere definition | DefinedNotHere definition -> Some definition
-      | None -> None
+    let* rename = hover_info.rename in
+    let definition =
+      match rename.definition_mode with
+      | DefinedHere definition | DefinedNotHere definition -> definition
     in
     let spans = definition.span :: definition.references in
     let changes : Lsp.Types.TextEdit.t list UriMap.t =
@@ -199,6 +245,6 @@ let hover (pos : Lsp.Types.Position.t)
   Some
     ({
        contents = `MarkedString { language = None; value = hover_text };
-       range = Some (Common.span_to_range hover_info.span);
+       range = Some (Common.span_to_range hover_info.ty.span);
      }
       : Lsp.Types.Hover.t)

@@ -48,7 +48,12 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
   | Types.V_Bool value -> OcamlAst.Bool value
   | Types.V_Int32 value -> OcamlAst.Int32 value
   | Types.V_String value -> OcamlAst.String value
-  | Types.V_Tuple tuple -> state |> transpile_tuple transpile_value tuple.tuple
+  | Types.V_Tuple tuple ->
+      state
+      |> transpile_tuple
+           (fun (field : Types.value_tuple_field) ->
+             transpile_value field.value)
+           tuple.tuple
   | Types.V_Ty _ -> OcamlAst.unit_value
   | Types.V_Fn { def; captured = _ } ->
       OcamlAst.Fun
@@ -70,7 +75,11 @@ and transpile_pattern : Pattern.t -> state -> OcamlAst.t =
   | Types.P_Unit -> OcamlAst.unit_value
   | Types.P_Binding binding -> OcamlAst.Var (binding_name binding)
   | Types.P_Tuple tuple ->
-      state |> transpile_tuple transpile_pattern tuple.tuple
+      state
+      |> transpile_tuple
+           (fun (field : Types.pattern_tuple_field) ->
+             transpile_pattern field.pattern)
+           tuple.tuple
   | Types.P_Error -> fail "Tried to transpile error node"
 
 and transpile_expr : Expr.t -> state -> OcamlAst.t =
@@ -99,7 +108,11 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
           args = [ state |> transpile_pattern def.arg ];
           body = state |> transpile_expr def.body;
         }
-  | Types.E_Tuple tuple -> state |> transpile_tuple transpile_expr tuple.tuple
+  | Types.E_Tuple tuple ->
+      state
+      |> transpile_tuple
+           (fun (field : Types.expr_tuple_field) -> transpile_expr field.expr)
+           tuple.tuple
   | Types.E_Apply { f; arg } ->
       OcamlAst.Call
         { f = state |> transpile_expr f; arg = state |> transpile_expr arg }
@@ -170,13 +183,13 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
               bindings =
                 bindings
                 |> List.map (fun binding : OcamlAst.let_binding ->
-                       let name = binding_name binding in
-                       {
-                         pattern = OcamlAst.Var name;
-                         value =
-                           OcamlAst.Field
-                             { obj = OcamlAst.Var "_used"; field = name };
-                       });
+                    let name = binding_name binding in
+                    {
+                      pattern = OcamlAst.Var name;
+                      value =
+                        OcamlAst.Field
+                          { obj = OcamlAst.Var "_used"; field = name };
+                    });
             };
         ]
   | Types.E_If { cond; then_case; else_case } ->
@@ -195,7 +208,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
         Kast_interpreter.find_target_dependent_branch (interpreter ()) branches
           { name = "ocaml" }
         |> Option.unwrap_or_else (fun () ->
-               fail "no branch for ocaml %a" Span.print expr.data.span)
+            fail "no branch for ocaml %a" Span.print expr.data.span)
       in
       state |> transpile_expr branch.body
   | Types.E_Error -> fail "Tried to transpile error node"

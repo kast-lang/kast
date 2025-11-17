@@ -229,9 +229,9 @@ let fn_type : core_syntax =
           children
           |> Tuple.get_named_opt "context"
           |> Option.map (fun (child : Ast.child) ->
-                 let group = child |> Ast.Child.expect_group in
-                 group.children |> Tuple.unwrap_single_unnamed
-                 |> Ast.Child.expect_ast)
+              let group = child |> Ast.Child.expect_group in
+              group.children |> Tuple.unwrap_single_unnamed
+              |> Ast.Child.expect_ast)
         in
         let result =
           children |> Tuple.get_named "result" |> Ast.Child.expect_ast
@@ -271,17 +271,17 @@ let fn : core_syntax =
           children
           |> Tuple.get_named_opt "context"
           |> Option.map (fun (child : Ast.child) ->
-                 let group = child |> Ast.Child.expect_group in
-                 group.children |> Tuple.unwrap_single_unnamed
-                 |> Ast.Child.expect_ast)
+              let group = child |> Ast.Child.expect_group in
+              group.children |> Tuple.unwrap_single_unnamed
+              |> Ast.Child.expect_ast)
         in
         let result =
           children
           |> Tuple.get_named_opt "result"
           |> Option.map (fun (child : Ast.child) ->
-                 let group = child |> Ast.Child.expect_group in
-                 group.children |> Tuple.unwrap_single_unnamed
-                 |> Ast.Child.expect_ast)
+              let group = child |> Ast.Child.expect_group in
+              group.children |> Tuple.unwrap_single_unnamed
+              |> Ast.Child.expect_ast)
         in
         let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
         match kind with
@@ -302,13 +302,12 @@ let fn : core_syntax =
             let result_expr =
               result
               |> Option.map (fun result ->
-                     let result, result_expr =
-                       Compiler.eval_ty (module C) result
-                     in
-                     body.data.ty
-                     |> Inference.Ty.expect_inferred_as ~span:body.data.span
-                          result;
-                     result_expr)
+                  let result, result_expr =
+                    Compiler.eval_ty (module C) result
+                  in
+                  body.data.ty
+                  |> Inference.Ty.expect_inferred_as ~span:body.data.span result;
+                  result_expr)
             in
             E_Fn { arg; body; evaled_result = result_expr }
             |> init_expr span C.state);
@@ -512,7 +511,7 @@ let import : core_syntax =
                 let path =
                   path |> Value.expect_string
                   |> Option.unwrap_or_else (fun () ->
-                         return <| init_error span C.state kind)
+                      return <| init_error span C.state kind)
                 in
                 let uri =
                   Uri.maybe_relative_to_file span.uri (Uri.of_string path)
@@ -558,7 +557,7 @@ let include' : core_syntax =
             let path =
               path |> Value.expect_string
               |> Option.unwrap_or_else (fun () ->
-                     return <| init_error span C.state kind)
+                  return <| init_error span C.state kind)
             in
             let uri =
               Uri.maybe_relative_to_file span.uri (Uri.of_string path)
@@ -571,8 +570,8 @@ let include' : core_syntax =
             let ast =
               parsed.ast
               |> Option.unwrap_or_else (fun () : Ast.t ->
-                     error span "included file is empty";
-                     { shape = Ast.Error { parts = [] }; span })
+                  error span "included file is empty";
+                  { shape = Ast.Error { parts = [] }; span })
             in
             let compiled = C.compile kind ast in
             Effect.perform
@@ -663,7 +662,7 @@ let native : core_syntax =
             let expr_value : string =
               expr_value |> Value.expect_string
               |> Option.unwrap_or_else (fun () ->
-                     return <| init_error span C.state kind)
+                  return <| init_error span C.state kind)
             in
             match kind with
             | Expr ->
@@ -754,7 +753,8 @@ let dot : core_syntax =
   }
 
 let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
-    (ast : Ast.t) ({ children; _ } : Ast.group) : string * a =
+    (ast : Ast.t) ({ children; _ } : Ast.group) :
+    string * field_name_span:span * a =
   let span = ast.span in
   let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
   let label =
@@ -767,15 +767,15 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
   let ty =
     children |> Tuple.get_named_opt "type"
     |> Option.map (fun ty ->
-           let group = ty |> Ast.Child.expect_group in
-           group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
+        let group = ty |> Ast.Child.expect_group in
+        group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
   in
   let value =
     children
     |> Tuple.get_named_opt "value"
     |> Option.map (fun value ->
-           let group = value |> Ast.Child.expect_group in
-           group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
+        let group = value |> Ast.Child.expect_group in
+        group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
   in
   match kind with
   | Expr -> (
@@ -788,10 +788,11 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
             |> init_expr span C.state
       in
       match ty |> Option.map (Compiler.eval_ty (module C)) with
-      | None -> (label, value)
+      | None -> (label, ~field_name_span:label_ast.span, value)
       | Some (ty, ty_expr) ->
           value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
           ( label,
+            ~field_name_span:label_ast.span,
             {
               value with
               data = { value.data with ty_ascription = Some ty_expr };
@@ -812,7 +813,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
             in
             TE_Expr expr |> init_ty_expr span C.state
       in
-      (label, value)
+      (label, ~field_name_span:label_ast.span, value)
   | Assignee ->
       error span "todo %s" __LOC__;
       invalid_arg "todo"
@@ -831,10 +832,11 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
             |> init_pattern span C.state
       in
       match ty |> Option.map (Compiler.eval_ty (module C)) with
-      | None -> (label, value)
+      | None -> (label, ~field_name_span:label_ast.span, value)
       | Some (ty, ty_expr) ->
           value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
           ( label,
+            ~field_name_span:label_ast.span,
             {
               value with
               data = { value.data with ty_ascription = Some ty_expr };
@@ -847,18 +849,50 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
   let tuple = ref Tuple.empty in
   children
   |> List.iter (fun (child : Ast.t) ->
-         match child.shape with
-         | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
-             let name, value = tuple_field (module C) kind child root in
-             tuple := !tuple |> Tuple.add (Some name) value
-         | _ -> tuple := !tuple |> Tuple.add None (C.compile kind child));
+      match child.shape with
+      | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
+          let name, ~field_name_span, value =
+            tuple_field (module C) kind child root
+          in
+          tuple := !tuple |> Tuple.add (Some name) (~field_name_span, value)
+      | _ ->
+          tuple :=
+            !tuple
+            |> Tuple.add None (~field_name_span:child.span, C.compile kind child));
   match kind with
   | Assignee ->
       error span "todo comma assignee";
       init_error span C.state kind
-  | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span C.state
-  | TyExpr -> TE_Tuple { tuple = !tuple } |> init_ty_expr span C.state
-  | Expr -> E_Tuple { tuple = !tuple } |> init_expr span C.state
+  | Pattern ->
+      P_Tuple
+        {
+          tuple =
+            !tuple
+            |> Tuple.map
+                 (fun (~field_name_span, pattern) : Types.pattern_tuple_field ->
+                   { field_name_span; pattern });
+        }
+      |> init_pattern span C.state
+  | TyExpr ->
+      TE_Tuple
+        {
+          tuple =
+            !tuple
+            |> Tuple.map
+                 (fun (~field_name_span, expr) : Types.ty_expr_tuple_field ->
+                   { field_name_span; expr });
+        }
+      |> init_ty_expr span C.state
+  | Expr ->
+      E_Tuple
+        {
+          tuple =
+            !tuple
+            |> Tuple.map
+                 (fun (~field_name_span, expr) : Types.expr_tuple_field ->
+                   { field_name_span; expr });
+        }
+      |> init_expr span C.state
 
 let comma : core_syntax =
   {
@@ -917,25 +951,22 @@ let use_dot_star : core_syntax =
               match (Value.ty_of used).var |> Inference.Var.await_inferred with
               | T_Tuple { tuple } ->
                   tuple.named |> StringMap.to_list
-                  |> List.map (fun (name, field_ty) ->
-                         let field_span =
-                           (* TODO *)
-                           span
-                         in
-                         ({
-                            name = Symbol.create name;
-                            span = field_span;
-                            ty = field_ty;
-                            references = [];
-                          }
-                           : binding))
+                  |> List.map (fun (name, field) ->
+                      let field : Types.ty_tuple_field = field in
+                      ({
+                         name = Symbol.create name;
+                         span = field.span;
+                         ty = field.ty;
+                         references = [];
+                       }
+                        : binding))
               | other ->
                   error span "can't use .* %a" Ty.Shape.print other;
                   []
             in
             bindings
             |> List.iter (fun binding ->
-                   C.state |> Compiler.inject_binding binding);
+                C.state |> Compiler.inject_binding binding);
             let result =
               E_UseDotStar
                 { used = E_Constant used |> init_expr span C.state; bindings }
@@ -1052,8 +1083,12 @@ let impl_syntax : core_syntax =
                       {
                         tuple =
                           fields
-                          |> Tuple.map (fun field ->
-                                 C.compile ~state Pattern field);
+                          |> Tuple.map (fun field : Types.pattern_tuple_field ->
+                              {
+                                pattern = C.compile ~state Pattern field;
+                                field_name_span =
+                                  field.span (* TODO wrong span *);
+                              });
                       }
                     |> init_pattern name.span C.state
                   in
@@ -1278,43 +1313,42 @@ let target_dependent : core_syntax =
         let branches =
           branches
           |> List.filter_map (fun (branch : Ast.t) ->
-                 match branch.shape with
-                 | Complex { rule = { name = "core:fn"; _ }; root; _ } ->
-                     let cond =
-                       root.children |> Tuple.get_named "arg"
-                       |> Ast.Child.expect_ast
-                     in
-                     let body =
-                       root.children |> Tuple.get_named "body"
-                       |> Ast.Child.expect_ast
-                     in
-                     let scope_with_target =
-                       C.state.scope
-                       |> State.Scope.inject_binding
-                            ({
-                               name = Types.target_symbol;
-                               span;
-                               ty = Ty.inferred T_Target;
-                               references = [];
-                             }
-                              : binding)
-                     in
-                     let state_with_target =
-                       { C.state with scope = scope_with_target }
-                     in
-                     Some
-                       ({
-                          cond = C.compile ~state:state_with_target Expr cond;
-                          body =
-                            C.compile
-                              ~state:(C.state |> State.enter_scope)
-                              Expr body;
-                        }
-                         : Types.expr_target_dependent_branch)
-                 | _ ->
-                     error branch.span
-                       "target dependent branch must use fn syntax";
-                     None)
+              match branch.shape with
+              | Complex { rule = { name = "core:fn"; _ }; root; _ } ->
+                  let cond =
+                    root.children |> Tuple.get_named "arg"
+                    |> Ast.Child.expect_ast
+                  in
+                  let body =
+                    root.children |> Tuple.get_named "body"
+                    |> Ast.Child.expect_ast
+                  in
+                  let scope_with_target =
+                    C.state.scope
+                    |> State.Scope.inject_binding
+                         ({
+                            name = Types.target_symbol;
+                            span;
+                            ty = Ty.inferred T_Target;
+                            references = [];
+                          }
+                           : binding)
+                  in
+                  let state_with_target =
+                    { C.state with scope = scope_with_target }
+                  in
+                  Some
+                    ({
+                       cond = C.compile ~state:state_with_target Expr cond;
+                       body =
+                         C.compile
+                           ~state:(C.state |> State.enter_scope)
+                           Expr body;
+                     }
+                      : Types.expr_target_dependent_branch)
+              | _ ->
+                  error branch.span "target dependent branch must use fn syntax";
+                  None)
         in
         match kind with
         | Expr -> E_TargetDependent { branches } |> init_expr span C.state

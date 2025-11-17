@@ -12,7 +12,11 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_Ty ty -> print_ty fmt ty
   | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
   | V_String value -> fprintf fmt "@{<green>%S@}" value
-  | V_Tuple { tuple } -> fprintf fmt "%a" (Tuple.print print_value) tuple
+  | V_Tuple { tuple } ->
+      fprintf fmt "%a"
+        (Tuple.print (fun fmt (field : value_tuple_field) ->
+             print_value fmt field.value))
+        tuple
   | V_Fn f -> fprintf fmt "@{<italic><fn>@}"
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
   | V_Ast ast -> fprintf fmt "%a" Ast.print ast
@@ -35,7 +39,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
         (Tuple.print
            ~options:
              { Tuple.default_print_options with named_field_middle = " :: " }
-           print_ty)
+           (fun fmt (field : ty_tuple_field) -> print_ty fmt field.ty))
         tuple
   | T_Ty -> fprintf fmt "type"
   | T_Fn { arg; result } ->
@@ -68,7 +72,11 @@ and print_expr_shape :
       fprintf fmt
         "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
         print_pattern_with_spans arg print_expr body
-  | E_Tuple { tuple } -> fprintf fmt "tuple %a" (Tuple.print print_expr) tuple
+  | E_Tuple { tuple } ->
+      fprintf fmt "tuple %a"
+        (Tuple.print (fun fmt (field : expr_tuple_field) ->
+             print_expr fmt field.expr))
+        tuple
   | E_Apply { f; arg } ->
       fprintf fmt "@{<magenta>apply@} %a" (Tuple.print print_expr)
         (Tuple.make [] [ ("f", f); ("arg", arg) ])
@@ -109,7 +117,7 @@ and print_expr_shape :
       fprintf fmt "@{<magenta>target dependent@} (";
       branches
       |> List.iter (fun branch ->
-             fprintf fmt "@;<0 2>@[<v>%a@]" print_target_dependent_branch branch);
+          fprintf fmt "@;<0 2>@[<v>%a@]" print_target_dependent_branch branch);
       fprintf fmt " )"
 
 and print_target_dependent_branch :
@@ -159,7 +167,10 @@ and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
   | TE_Expr expr ->
       fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
   | TE_Tuple { tuple } ->
-      fprintf fmt "@{<magenta>tuple@} %a" (Tuple.print print_ty_expr) tuple
+      fprintf fmt "@{<magenta>tuple@} %a"
+        (Tuple.print (fun fmt (field : ty_expr_tuple_field) ->
+             print_ty_expr fmt field.expr))
+        tuple
   | TE_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty_expr : formatter -> ty_expr -> unit =
@@ -176,7 +187,8 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
       fprintf fmt "@{<magenta>binding@} %a" print_binding binding
   | P_Tuple { tuple } ->
       fprintf fmt "@{<magenta>tuple@} %a"
-        (Tuple.print print_pattern_with_spans)
+        (Tuple.print (fun fmt (field : pattern_tuple_field) ->
+             print_pattern_with_spans fmt field.pattern))
         tuple
   | P_Error -> fprintf fmt "@{<red><error>@}"
 

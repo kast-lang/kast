@@ -142,7 +142,8 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
       let workspace_roots = evaled |> Value.expect_tuple |> Option.get in
       let workspace_roots =
         workspace_roots.tuple.unnamed |> Array.to_list
-        |> List.map (fun value -> value |> Value.expect_string |> Option.get)
+        |> List.map (fun (field : Types.value_tuple_field) ->
+            field.value |> Value.expect_string |> Option.get)
       in
       Log.trace (fun log ->
           log "WORKSPACE ROOTS = %a"

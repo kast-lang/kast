@@ -18,7 +18,7 @@ let types : (string * Ty.Shape.t) list =
 let types =
   types
   |> List.map (fun (name, ty) : (string * value) ->
-         (name, { shape = V_Ty (Ty.inferred ty) }))
+      (name, { shape = V_Ty (Ty.inferred ty) }))
 
 let natives : natives =
   let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
@@ -31,7 +31,20 @@ let natives : natives =
            (T_Tuple
               {
                 tuple =
-                  Tuple.make [ Ty.inferred T_Int32; Ty.inferred T_Int32 ] [];
+                  Tuple.make
+                    [
+                      ({
+                         ty = Ty.inferred T_Int32;
+                         span = Span.of_ocaml __POS__;
+                       }
+                        : Types.ty_tuple_field);
+                      ({
+                         ty = Ty.inferred T_Int32;
+                         span = Span.of_ocaml __POS__;
+                       }
+                        : Types.ty_tuple_field);
+                    ]
+                    [];
               }))
       ~result:(Ty.inferred T_Bool) name
       (fun ~caller value ->
@@ -51,7 +64,20 @@ let natives : natives =
            (T_Tuple
               {
                 tuple =
-                  Tuple.make [ Ty.inferred T_Int32; Ty.inferred T_Int32 ] [];
+                  Tuple.make
+                    [
+                      ({
+                         ty = Ty.inferred T_Int32;
+                         span = Span.of_ocaml __POS__;
+                       }
+                        : Types.ty_tuple_field);
+                      ({
+                         ty = Ty.inferred T_Int32;
+                         span = Span.of_ocaml __POS__;
+                       }
+                        : Types.ty_tuple_field);
+                    ]
+                    [];
               }))
       ~result:(Ty.inferred T_Int32) name
       (fun ~caller value ->
@@ -60,14 +86,14 @@ let natives : natives =
             with_return (fun { return } : value ->
                 let a, b = tuple |> Tuple.unwrap_unnamed2 in
                 let a =
-                  a |> Value.expect_int32
+                  a.value |> Value.expect_int32
                   |> Option.unwrap_or_else (fun () ->
-                         return ({ shape = V_Error } : value))
+                      return ({ shape = V_Error } : value))
                 in
                 let b =
-                  b |> Value.expect_int32
+                  b.value |> Value.expect_int32
                   |> Option.unwrap_or_else (fun () ->
-                         return ({ shape = V_Error } : value))
+                      return ({ shape = V_Error } : value))
                 in
                 let result : int32 = op a b in
                 { shape = V_Int32 result })
@@ -100,8 +126,18 @@ let natives : natives =
                   tuple =
                     Tuple.make []
                       [
-                        ("min", Ty.inferred T_Int32);
-                        ("max", Ty.inferred T_Int32);
+                        ( "min",
+                          ({
+                             ty = Ty.inferred T_Int32;
+                             span = Span.of_ocaml __POS__;
+                           }
+                            : Types.ty_tuple_field) );
+                        ( "max",
+                          ({
+                             ty = Ty.inferred T_Int32;
+                             span = Span.of_ocaml __POS__;
+                           }
+                            : Types.ty_tuple_field) );
                       ];
                 }))
         ~result:(Ty.inferred T_Int32) "rng"
@@ -111,8 +147,8 @@ let natives : natives =
               arg |> Value.expect_tuple |> Option.get
             in
             let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
-            let min = min |> Value.expect_int32 |> Option.get in
-            let max = max |> Value.expect_int32 |> Option.get in
+            let min = min.value |> Value.expect_int32 |> Option.get in
+            let max = max.value |> Value.expect_int32 |> Option.get in
             { shape = V_Int32 (Random.int32_in_range ~min ~max) }
           with exc ->
             Error.error caller "rng: %s" (Printexc.to_string exc);

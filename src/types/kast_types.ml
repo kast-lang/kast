@@ -34,7 +34,15 @@ module Value = struct
     | V_Int32 _ -> Ty.inferred T_Int32
     | V_String _ -> Ty.inferred T_String
     | V_Tuple { tuple } ->
-        Ty.inferred <| T_Tuple { tuple = Tuple.map ty_of tuple }
+        Ty.inferred
+        <| T_Tuple
+             {
+               tuple =
+                 Tuple.map
+                   (fun (field : value_tuple_field) ->
+                     { ty = ty_of field.value; span = field.span })
+                   tuple;
+             }
     | V_Ty _ -> Ty.inferred T_Ty
     | V_Fn { def = { arg; body; evaled_result = _ }; captured = _ } ->
         Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }

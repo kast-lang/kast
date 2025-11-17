@@ -28,7 +28,17 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
           {
             tuple =
               Tuple.zip_order_a a b
-              |> Tuple.map (fun (a, b) -> unite_ty ~span a b);
+              |> Tuple.map
+                   (fun
+                     ((a, b) : Types.ty_tuple_field * Types.ty_tuple_field)
+                     :
+                     Types.ty_tuple_field
+                   ->
+                     {
+                       ty = unite_ty ~span a.ty b.ty;
+                       (* TODO maybe there should be multiple spans? *)
+                       span = a.span;
+                     });
           }
       with Invalid_argument _ -> fail ())
   | T_Tuple _, _ -> fail ()

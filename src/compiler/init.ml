@@ -23,7 +23,17 @@ let init_expr :
           <| T_Tuple
                {
                  tuple =
-                   tuple |> Tuple.map (fun (field : expr) -> field.data.ty);
+                   tuple
+                   |> Tuple.map
+                        (fun
+                          (field : Types.expr_tuple_field)
+                          :
+                          Types.ty_tuple_field
+                        ->
+                          {
+                            ty = field.expr.data.ty;
+                            span = field.field_name_span;
+                          });
                }
       | E_Apply { f; arg } ->
           let f_arg = Ty.new_not_inferred () in
@@ -52,34 +62,36 @@ let init_expr :
                    Tuple.make []
                      (state.scope.bindings |> StringMap.to_list
                      |> List.map (fun (name, (binding : binding)) ->
-                            (name, binding.ty)));
+                         ( name,
+                           ({ ty = binding.ty; span = binding.span }
+                             : Types.ty_tuple_field) )));
                })
       | E_Field { obj; field } ->
           let ty = Ty.new_not_inferred () in
           obj.data.ty.var
           |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
-                 let field_ty =
-                   match obj_shape with
-                   | T_Tuple { tuple } -> (
-                       match Tuple.get_named_opt field tuple with
-                       | Some ty -> ty
-                       | None ->
-                           error span "field %a is not there"
-                             String.print_maybe_escaped field;
-                           Ty.new_not_inferred ())
-                   | T_Target -> (
-                       match field with
-                       | "name" -> Ty.inferred T_String
-                       | _ ->
-                           error span "field %a is not in target"
-                             String.print_maybe_escaped field;
-                           Ty.new_not_inferred ())
-                   | other ->
-                       error obj.data.span "%a doesnt have fields"
-                         Ty.Shape.print other;
-                       Ty.new_not_inferred ()
-                 in
-                 ty |> Inference.Ty.expect_inferred_as ~span field_ty);
+              let field_ty =
+                match obj_shape with
+                | T_Tuple { tuple } -> (
+                    match Tuple.get_named_opt field tuple with
+                    | Some ty -> ty.ty
+                    | None ->
+                        error span "field %a is not there"
+                          String.print_maybe_escaped field;
+                        Ty.new_not_inferred ())
+                | T_Target -> (
+                    match field with
+                    | "name" -> Ty.inferred T_String
+                    | _ ->
+                        error span "field %a is not in target"
+                          String.print_maybe_escaped field;
+                        Ty.new_not_inferred ())
+                | other ->
+                    error obj.data.span "%a doesnt have fields" Ty.Shape.print
+                      other;
+                    Ty.new_not_inferred ()
+              in
+              ty |> Inference.Ty.expect_inferred_as ~span field_ty);
           ty
       | E_UseDotStar { used = _; bindings = _ } -> Ty.inferred T_Unit
       | E_If { cond; then_case; else_case } ->
@@ -182,8 +194,16 @@ let init_pattern :
                {
                  tuple =
                    tuple
-                   |> Tuple.map (fun (field_pattern : pattern) ->
-                          field_pattern.data.ty);
+                   |> Tuple.map
+                        (fun
+                          (field : Types.pattern_tuple_field)
+                          :
+                          Types.ty_tuple_field
+                        ->
+                          {
+                            ty = field.pattern.data.ty;
+                            span = field.field_name_span;
+                          });
                })
       | P_Error -> Ty.new_not_inferred ()
     in
