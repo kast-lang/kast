@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Lsp = Linol_lsp
 module Parser = Kast_parser
 module Compiler = Kast_compiler
 open Kast_types
@@ -149,9 +150,9 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
             workspace_roots);
       workspace_roots
       |> List.iter (fun path ->
-             let uri = workspace_file workspace.root path in
-             let processed = process_file global (Source.read uri) in
-             handle_processed uri processed)
+          let uri = workspace_file workspace.root path in
+          let processed = process_file global (Source.read uri) in
+          handle_processed uri processed)
     with
     | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
         Log.trace (fun log -> log "removed diags for %a" Uri.print uri);
@@ -194,7 +195,7 @@ let init_workspace (global : global_state) (root : Uri.t) : workspace_state =
   process_workspace global workspace;
   workspace
 
-let init (workspaces : Lsp.Uri.t list) : global_state =
+let init (workspaces : Lsp.Uri0.t list) : global_state =
   let bootstrap : global_state =
     {
       workspaces = [];
@@ -211,13 +212,13 @@ let init (workspaces : Lsp.Uri.t list) : global_state =
   in
   { bootstrap with workspaces }
 
-let file_state (state : global_state) (uri : Lsp.Uri.t) : file_state option =
+let file_state (state : global_state) (uri : Lsp.Uri0.t) : file_state option =
   let uri = Common.uri_from_lsp uri in
   Log.trace (fun log -> log "PROJECT: find file state %a" Uri.print uri);
   state.workspaces
   |> List.find_map (fun workspace -> UriMap.find_opt uri workspace.files)
 
-let update_file (global : global_state) (uri : Lsp.Uri.t) (source : string) :
+let update_file (global : global_state) (uri : Lsp.Uri0.t) (source : string) :
     unit =
   let uri = Common.uri_from_lsp uri in
   Log.trace (fun log -> log "PROJECT: update %a" Uri.print uri);

@@ -1,5 +1,6 @@
 open Std
 open Kast
+module Lsp = Linol_lsp
 open Js_of_ocaml
 
 type file_state = Kast_lsp.Processing.file_state
@@ -116,45 +117,47 @@ let lsp =
 let () =
   Random.self_init ();
   Js.export "Kast"
-    (object%js
-       val lsp = lsp
-       val semanticTokensProvider = semanticTokensProvider
+    object%js
+      val lsp = lsp
+      val semanticTokensProvider = semanticTokensProvider
 
-       method run (source : string) =
-         cross_js_async (fun () ->
-             let source : source =
-               { contents = source; uri = Uri.of_string "ocaml:source" }
-             in
-             let parsed = Parser.parse source Kast_default_syntax.ruleset in
-             match parsed.ast with
-             | None -> ()
-             | Some ast ->
-                 let compiler = Compiler.default () in
-                 (* TODO *)
-                 let interpreter = compiler.interpreter in
-                 let expr : expr = Compiler.compile compiler Expr ast in
-                 let value : value = Interpreter.eval interpreter expr in
-                 ignore value)
+      method run (source : string) =
+        cross_js_async (fun () ->
+            let source : source =
+              { contents = source; uri = Uri.of_string "ocaml:source" }
+            in
+            let parsed = Parser.parse source Kast_default_syntax.ruleset in
+            match parsed.ast with
+            | None -> ()
+            | Some ast ->
+                let compiler = Compiler.default () in
+                (* TODO *)
+                let interpreter = compiler.interpreter in
+                let expr : expr = Compiler.compile compiler Expr ast in
+                let value : value = Interpreter.eval interpreter expr in
+                ignore value)
 
-       method setOutput (f : string -> unit) =
-         cross_js (fun () ->
-             let out_fns : Format.formatter_out_functions =
-               {
-                 out_string : string -> int -> int -> unit =
-                   (fun s p n -> f (String.sub s p n));
-                 out_flush : unit -> unit = (fun () -> ());
-                 out_newline : unit -> unit = (fun () -> f "\n");
-                 out_spaces : int -> unit = (fun n -> f (String.make n ' '));
-                 out_indent : int -> unit = (fun n -> f (String.make n '\t'));
-               }
-             in
-             Format.set_formatter_out_functions out_fns)
+      method setOutput (f : string -> unit) =
+        cross_js (fun () ->
+            let out_fns : Format.formatter_out_functions =
+              {
+                out_string : string -> int -> int -> unit =
+                  (fun s p n -> f (String.sub s p n));
+                out_flush : unit -> unit = (fun () -> ());
+                out_newline : unit -> unit = (fun () -> f "\n");
+                out_spaces : int -> unit = (fun n -> f (String.make n ' '));
+                out_indent : int -> unit = (fun n -> f (String.make n '\t'));
+                out_width : string -> pos:int -> len:int -> int =
+                  (fun _s ~pos:_pos ~len -> len);
+              }
+            in
+            Format.set_formatter_out_functions out_fns)
 
-       method setInput (f : string -> string Promise.t) = current_input := f
+      method setInput (f : string -> string Promise.t) = current_input := f
 
-       method processFile (uri : string) (source : string) :
-           Kast_lsp.Processing.file_state =
-         cross_js (fun () ->
-             Kast_lsp.Processing.process_file global
-               { contents = source; uri = Uri.of_string uri })
-    end)
+      method processFile (uri : string) (source : string) :
+          Kast_lsp.Processing.file_state =
+        cross_js (fun () ->
+            Kast_lsp.Processing.process_file global
+              { contents = source; uri = Uri.of_string uri })
+    end

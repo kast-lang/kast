@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Lsp = Linol_lsp
 
 let options : Lsp.Types.DocumentFormattingOptions.t =
   { workDoneProgress = Some false }

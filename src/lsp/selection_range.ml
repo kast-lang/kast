@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Lsp = Linol_lsp
 module Ast = Kast_ast
 
 let options : Lsp.Types.SelectionRangeRegistrationOptions.t =
@@ -16,12 +17,11 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
         let rec find_in_group ({ children; _ } : Ast.group) : span list option =
           children |> Tuple.to_seq
           |> Seq.find_map (fun (_member, (child : Ast.child)) ->
-                 match child with
-                 | Ast child ->
-                     let child_spans = find_spans_start_biggest child pos in
-                     if List.length child_spans = 0 then None
-                     else Some child_spans
-                 | Group child -> find_in_group child)
+              match child with
+              | Ast child ->
+                  let child_spans = find_spans_start_biggest child pos in
+                  if List.length child_spans = 0 then None else Some child_spans
+              | Group child -> find_in_group child)
         in
         match find_in_group root with
         | None -> []
@@ -39,22 +39,22 @@ let get (params : Lsp.Types.SelectionRangeParams.t)
   | Some { ast = Some ast; eof; _ } ->
       params.positions
       |> List.map (fun (pos : Lsp.Types.Position.t) ->
-             let pos = Common.lsp_to_kast_pos pos in
-             let full_file : span =
-               {
-                 start = Position.beginning;
-                 finish = eof;
-                 uri = params.textDocument.uri |> Common.uri_from_lsp;
-               }
-             in
-             let spans = full_file :: find_spans_start_biggest ast pos in
-             Log.info (fun log -> log "SPANS: %a" (List.print Span.print) spans);
-             spans
-             |> List.fold_left
-                  (fun parent (span : span) ->
-                    Some
-                      ({ parent; range = span |> Common.span_to_range }
-                        : Lsp.Types.SelectionRange.t))
-                  None
-             |> Option.get)
+          let pos = Common.lsp_to_kast_pos pos in
+          let full_file : span =
+            {
+              start = Position.beginning;
+              finish = eof;
+              uri = params.textDocument.uri |> Common.uri_from_lsp;
+            }
+          in
+          let spans = full_file :: find_spans_start_biggest ast pos in
+          Log.info (fun log -> log "SPANS: %a" (List.print Span.print) spans);
+          spans
+          |> List.fold_left
+               (fun parent (span : span) ->
+                 Some
+                   ({ parent; range = span |> Common.span_to_range }
+                     : Lsp.Types.SelectionRange.t))
+               None
+          |> Option.get)
   | Some { ast = None; _ } | None -> []

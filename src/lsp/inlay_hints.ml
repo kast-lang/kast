@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 open Kast_types
 
@@ -29,7 +30,7 @@ let rec inlay_hints :
   let rest =
     Common.inner_compiled kind compiled
     |> Seq.flat_map (fun (Common.CompiledThing (kind, compiled)) ->
-           inlay_hints ~uri kind compiled)
+        inlay_hints ~uri kind compiled)
   in
   let data = Compiler.get_data kind compiled in
   let span = data.span in
@@ -43,20 +44,20 @@ let rec inlay_hints :
     else
       type_hint
       |> Option.map (fun type_hint : Lsp.Types.InlayHint.t ->
-             {
-               position =
-                 {
-                   line = span.finish.line - 1;
-                   character = span.finish.column - 1;
-                 };
-               label = `String type_hint;
-               kind = Some Type;
-               textEdits = None;
-               tooltip = None;
-               paddingLeft = Some true;
-               paddingRight = Some false;
-               data = None;
-             })
+          {
+            position =
+              {
+                line = span.finish.line - 1;
+                character = span.finish.column - 1;
+              };
+            label = `String type_hint;
+            kind = Some Type;
+            textEdits = None;
+            tooltip = None;
+            paddingLeft = Some true;
+            paddingRight = Some false;
+            data = None;
+          })
   in
   let ascription =
     data.ty_ascription |> Option.to_seq

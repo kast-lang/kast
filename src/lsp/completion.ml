@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 open Kast_types
+module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
@@ -15,22 +16,22 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope) :
   let locals =
     scope.bindings
     |> StringMap.map (fun (binding : binding) ->
-           let label = binding.name.name in
-           let detail = make_string "@[<v>%a@]" Ty.print binding.ty in
-           let kind : Lsp.Types.CompletionItemKind.t =
-             match binding.ty.var |> Kast_inference_base.Var.inferred_opt with
-             | None -> Variable
-             | Some ty -> (
-                 match ty with
-                 | Types.T_Unit -> Unit
-                 | Types.T_Ast | Types.T_UnwindToken _ | Types.T_Error
-                 | Types.T_Bool | Types.T_Int32 | Types.T_String
-                 | Types.T_Tuple _ | Types.T_Target ->
-                     Variable
-                 | Types.T_Ty -> TypeParameter
-                 | Types.T_Fn _ -> Function)
-           in
-           Lsp.Types.CompletionItem.create ~label ~detail ~kind ())
+        let label = binding.name.name in
+        let detail = make_string "@[<v>%a@]" Ty.print binding.ty in
+        let kind : Lsp.Types.CompletionItemKind.t =
+          match binding.ty.var |> Kast_inference_base.Var.inferred_opt with
+          | None -> Variable
+          | Some ty -> (
+              match ty with
+              | Types.T_Unit -> Unit
+              | Types.T_Ast | Types.T_UnwindToken _ | Types.T_Error
+              | Types.T_Bool | Types.T_Int32 | Types.T_String | Types.T_Tuple _
+              | Types.T_Target ->
+                  Variable
+              | Types.T_Ty -> TypeParameter
+              | Types.T_Fn _ -> Function)
+        in
+        Lsp.Types.CompletionItem.create ~label ~detail ~kind ())
   in
   StringMap.merge (fun _ a b -> b |> Option.or_ a) parent_completions locals
 
@@ -45,7 +46,7 @@ let rec find_expr :
     let inner =
       Common.inner_compiled kind compiled
       |> Seq.filter_map (fun (Common.CompiledThing (kind, compiled)) ->
-             find_expr kind compiled pos)
+          find_expr kind compiled pos)
       |> Seq.fold_left
            (fun acc (Common.CompiledThing (kind, compiled) as b) ->
              match acc with

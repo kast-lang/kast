@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
@@ -21,16 +22,17 @@ let lsp_to_kast_pos (pos : Lsp.Types.Position.t) : position =
 let span_location (span : span) : Lsp.Types.Location.t option =
   let location : Lsp.Types.Location.t =
     {
-      uri = Lsp.Uri.of_string (Uri.to_string span.uri);
+      uri = Lsp.Uri0.of_string (Uri.to_string span.uri);
       range = span_to_range span;
     }
   in
   Some location
 
-let uri_to_lsp (uri : Uri.t) : Lsp.Uri.t = Lsp.Uri.of_string (Uri.to_string uri)
+let uri_to_lsp (uri : Uri.t) : Lsp.Uri0.t =
+  Lsp.Uri0.of_string (Uri.to_string uri)
 
-let uri_from_lsp (uri : Lsp.Uri.t) : Uri.t =
-  Uri.of_string (Lsp.Uri.to_string uri)
+let uri_from_lsp (uri : Lsp.Uri0.t) : Uri.t =
+  Uri.of_string (Lsp.Uri0.to_string uri)
 
 type inner_compiled_handler = { handle : 'a. 'a compiled_kind -> 'a -> unit }
 
@@ -106,7 +108,7 @@ let inner_compiled_with_handler =
       | P_Tuple { tuple } ->
           tuple |> Tuple.to_seq
           |> Seq.iter (fun (_member, field_pattern) ->
-                 handler.handle Pattern field_pattern)
+              handler.handle Pattern field_pattern)
       | P_Error -> ())
   | TyExpr -> (
       match compiled.shape with

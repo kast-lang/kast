@@ -1,5 +1,6 @@
 open Std
 open Kast_util
+module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 module Token = Kast_token
 module Lexer = Kast_lexer
@@ -43,7 +44,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
           (Processing.init
              (workspace_folders
              |> Seq.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
-                    workspace.uri)
+                 workspace.uri)
              |> List.of_seq));
       self#send_diagnostics ~notify_back ();
       super#on_req_initialize ~notify_back i
@@ -90,21 +91,21 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
               log "send diags actually (size=%d)" (List.length diags));
           diags
           |> List.iter (fun (uri, diags) ->
-                 Log.info (fun log ->
-                     let print_diag fmt diag =
-                       fprintf fmt "%s"
-                         (diag |> Lsp.Types.Diagnostic.yojson_of_t
-                        |> Yojson.Safe.to_string)
-                     in
-                     log "sending diags for %a %a" Uri.print
-                       (Kast_lsp.Common.uri_from_lsp uri)
-                       (List.print print_diag) diags);
-                 let notification =
-                   Lsp.Server_notification.PublishDiagnostics
-                     (Lsp.Types.PublishDiagnosticsParams.create ~uri
-                        ~diagnostics:diags ())
-                 in
-                 notify_back#send_notification notification))
+              Log.info (fun log ->
+                  let print_diag fmt diag =
+                    fprintf fmt "%s"
+                      (diag |> Lsp.Types.Diagnostic.yojson_of_t
+                     |> Yojson.Safe.to_string)
+                  in
+                  log "sending diags for %a %a" Uri.print
+                    (Kast_lsp.Common.uri_from_lsp uri)
+                    (List.print print_diag) diags);
+              let notification =
+                Lsp.Server_notification.PublishDiagnostics
+                  (Lsp.Types.PublishDiagnosticsParams.create ~uri
+                     ~diagnostics:diags ())
+              in
+              notify_back#send_notification notification))
 
     (* We define here a helper method that will:
        - process a document
@@ -114,13 +115,13 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
     method private _on_doc ~(changed : bool)
         ~(notify_back : Linol_eio.Jsonrpc2.notify_back)
         (uri : Lsp.Types.DocumentUri.t) (contents : string) =
-      Log.info (fun log -> log "_on_doc %S" (Lsp.Uri.to_path uri));
+      Log.info (fun log -> log "_on_doc %S" (Lsp.Uri0.to_path uri));
 
       if changed then (
         Processing.update_file (self#get_state ()) uri contents;
         updates
         |> Latest_state.spawn ~domain_mgr (fun () ->
-               !state |> Option.get |> Processing.recalculate));
+            !state |> Option.get |> Processing.recalculate));
 
       self#send_diagnostics ~notify_back ()
 

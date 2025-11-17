@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 open Kast_types
+module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 
 type 'a compiled_kind = 'a Compiler.compiled_kind
@@ -77,7 +78,7 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
   let inner =
     Common.inner_compiled kind compiled
     |> Seq.find_map (fun (Common.CompiledThing (kind, inner)) ->
-           hover kind inner hover_span)
+        hover kind inner hover_span)
   in
   match inner with
   | Some result -> Some result
@@ -172,7 +173,7 @@ let rename (position : Lsp.Types.Position.t) (newName : string)
                changes)
            UriMap.empty
     in
-    let changes : (Lsp.Uri.t * Lsp.Types.TextEdit.t list) list =
+    let changes : (Lsp.Uri0.t * Lsp.Types.TextEdit.t list) list =
       UriMap.to_list changes
       |> List.map (fun (uri, edits) -> (Common.uri_to_lsp uri, edits))
     in

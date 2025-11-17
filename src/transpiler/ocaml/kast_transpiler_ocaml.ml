@@ -13,6 +13,7 @@ end
 type state = State.t
 
 let binding_name (binding : binding) : string = binding.name.name
+let field_name (field : string) : string = field
 let interpreter_cached = ref None
 
 let interpreter () =
@@ -22,24 +23,6 @@ let interpreter () =
       let x = (Kast_compiler.default ()).interpreter in
       interpreter_cached := Some x;
       x
-
-let get_tuple_field ~(index : int) ~(length : int) (expr : OcamlAst.t) :
-    OcamlAst.t =
-  OcamlAst.Match
-    {
-      expr;
-      branches =
-        [
-          {
-            pattern =
-              OcamlAst.Tuple
-                (List.init length (fun i ->
-                     if i = index then OcamlAst.Var "_field"
-                     else OcamlAst.Placeholder));
-            body = OcamlAst.Var "_field";
-          };
-        ];
-    }
 
 let rec _unused = ()
 and transpile_module : Value.t -> OcamlAst.t = fun _ -> failwith __LOC__
@@ -162,20 +145,9 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_Field { obj; field } -> (
       let obj_ty = obj.data.ty.var |> Inference.Var.await_inferred in
       match obj_ty with
-      | Types.T_Tuple { tuple } ->
-          let named_index =
-            tuple.named |> StringMap.to_seq
-            |> Seq.find_index (fun (key, _) -> key = field)
-          in
-          let named_index =
-            named_index
-            |> Option.unwrap_or_else (fun _ ->
-                   fail "No field %s in %a" field Ty.Shape.print obj_ty)
-          in
-          let field_index = Array.length tuple.unnamed + named_index in
-          get_tuple_field ~index:field_index
-            ~length:(Array.length tuple.unnamed + StringMap.cardinal tuple.named)
-            (state |> transpile_expr obj)
+      | Types.T_Tuple { tuple = _ } ->
+          OcamlAst.Field
+            { obj = state |> transpile_expr obj; field = field_name field }
       | _ -> fail "trying to get field of not a tuple: %a" Ty.Shape.print obj_ty
       )
   | Types.E_UseDotStar { used; bindings } ->
