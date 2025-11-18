@@ -877,6 +877,7 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
   let span = ast.span in
   let children = ast |> Ast.collect_list ~binary_rule_name:"core:comma" in
   let tuple = ref Tuple.empty in
+  let unnamed_idx = ref 0 in
   children
   |> List.iter (fun (child : Ast.t) ->
       match child.shape with
@@ -892,11 +893,8 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
             | TyExpr -> Label.create_reference
             | _ -> Label.create_definition
           in
-          let label =
-            match child.shape with
-            | Simple { token; _ } -> Kast_token.raw token |> Option.get
-            | _ -> ""
-          in
+          let label = Int.to_string !unnamed_idx in
+          unnamed_idx := !unnamed_idx + 1;
           tuple :=
             !tuple
             |> Tuple.add None

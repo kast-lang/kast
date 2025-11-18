@@ -29,10 +29,12 @@ let get_name { var } =
   let data = var |> Inference.Var.inferred_opt |> Option.get in
   data.name
 
-let get_span { var } =
-  let data = var |> Inference.Var.inferred_opt |> Option.get in
+let get_data_span data =
   data.definition
   |> Option.unwrap_or_else (fun () -> data.references |> List.head)
+
+let get_span { var } =
+  var |> Inference.Var.inferred_opt |> Option.get |> get_data_span
 
 let get_data { var } = var |> Inference.Var.inferred_opt |> Option.get
 
@@ -42,7 +44,9 @@ let unite_data ~span:_ a b =
     (* TODO *)
     | "<TODO>", name | name, "<TODO>" -> name
     | _ ->
-        if a.name <> b.name then failwith "tried uniting different labels"
+        if a.name <> b.name then
+          fail "tried uniting different labels %S (%a) and %S (%a)" a.name
+            Span.print (get_data_span a) b.name Span.print (get_data_span b)
         else a.name
   in
   let result =
