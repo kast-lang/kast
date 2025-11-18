@@ -3,6 +3,16 @@ open Kast
 module Lsp = Linol_lsp
 open Js_of_ocaml
 
+type js_string = Js.js_string Js.t
+
+let to_js_string = Js.string
+let from_js_string = Js.to_string
+
+(* type js_string = string
+
+let to_js_string = fun s -> s
+let from_js_string = fun s -> s *)
+
 type file_state = Kast_lsp.Processing.file_state
 
 let global = Kast_lsp.Processing.init []
@@ -75,8 +85,9 @@ let lsp =
           `List (result |> List.map Lsp.Types.CompletionItem.yojson_of_t)
           |> yojson_to_js)
 
-    method rename (pos : Js.Unsafe.any) (newName : string) (state : file_state)
-        =
+    method rename (pos : Js.Unsafe.any) (newName : js_string)
+        (state : file_state) =
+      let newName = from_js_string newName in
       cross_js (fun () ->
           let pos = pos |> js_to_yojson |> Lsp.Types.Position.t_of_yojson in
           match Kast_lsp.Hover.rename pos newName state with
@@ -121,8 +132,10 @@ let () =
       val lsp = lsp
       val semanticTokensProvider = semanticTokensProvider
 
-      method run (source : string) =
+      method run (source : js_string) =
+        let source = from_js_string source in
         cross_js_async (fun () ->
+            Js_of_ocaml.Console.console##log source;
             let source : source =
               { contents = source; uri = Uri.of_string "ocaml:source" }
             in
@@ -137,7 +150,8 @@ let () =
                 let value : value = Interpreter.eval interpreter expr in
                 ignore value)
 
-      method setOutput (f : string -> unit) =
+      method setOutput (f : js_string -> unit) =
+        let f = fun s -> f (to_js_string s) in
         cross_js (fun () ->
             let out_fns : Format.formatter_out_functions =
               {
@@ -153,10 +167,14 @@ let () =
             in
             Format.set_formatter_out_functions out_fns)
 
-      method setInput (f : string -> string Promise.t) = current_input := f
+      method setInput (f : js_string -> js_string Promise.t) =
+        current_input :=
+          fun s -> f (to_js_string s) |> Promise.map from_js_string
 
-      method processFile (uri : string) (source : string) :
+      method processFile (uri : js_string) (source : js_string) :
           Kast_lsp.Processing.file_state =
+        let uri = from_js_string uri in
+        let source = from_js_string source in
         cross_js (fun () ->
             Kast_lsp.Processing.process_file global
               { contents = source; uri = Uri.of_string uri })
