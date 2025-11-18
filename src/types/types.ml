@@ -265,6 +265,7 @@ and ir_data = {
   compiler_scope : compiler_scope;
   ty_ascription : ty_expr option;
   evaled_exprs : expr list;
+  included_file : Uri.t option;
 }
 
 and compiler_scope = {

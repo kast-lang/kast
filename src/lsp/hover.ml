@@ -44,6 +44,7 @@ type hover_info_rename = {
 type hover_info = {
   ty : hover_info_ty;
   rename : hover_info_rename option;
+  file : Uri.t option;
 }
 
 let hover_text info = make_string "```kast@\n@[<v>%a@]\n```" Ty.print info.ty.ty
@@ -91,12 +92,14 @@ let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
                     | TyExpr -> DefinedHere (label_definition field_label)
                     | _ -> DefinedNotHere (label_definition field_label));
                 };
+            file = None;
           }
       else None)
 
 let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
  fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
      hover_info ->
+  let included_file = (Compiler.get_data kind compiled).included_file in
   match hover_tuple kind compiled hover_span with
   | Some result -> result
   | None -> (
@@ -119,7 +122,11 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                   }
             | _ -> None
           in
-          { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
+          {
+            ty = { ty = compiled.data.ty; span = compiled.data.span };
+            rename;
+            file = included_file;
+          }
       | Assignee ->
           let rename =
             match compiled.shape with
@@ -132,7 +139,11 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                   }
             | _ -> None
           in
-          { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
+          {
+            ty = { ty = compiled.data.ty; span = compiled.data.span };
+            rename;
+            file = included_file;
+          }
       | Pattern ->
           let rename =
             match compiled.shape with
@@ -144,11 +155,16 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                   }
             | _ -> None
           in
-          { ty = { ty = compiled.data.ty; span = compiled.data.span }; rename }
+          {
+            ty = { ty = compiled.data.ty; span = compiled.data.span };
+            rename;
+            file = included_file;
+          }
       | TyExpr ->
           {
             ty = { ty = compiled.data.ty; span = compiled.data.span };
             rename = None;
+            file = included_file;
           })
 
 let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
@@ -174,18 +190,29 @@ let find_definition (pos : Lsp.Types.Position.t)
   let pos : position = Common.lsp_to_kast_pos pos in
   let* expr = compiled in
   let* hover_info = hover Expr expr (Span.single_char pos uri) in
-  let* definition =
-    match hover_info.rename with
-    | Some { definition_mode = DefinedNotHere definition; _ } -> Some definition
-    | Some { definition_mode = DefinedHere _; _ } | None -> None
-  in
-  let location : Lsp.Types.Location.t =
-    {
-      uri = Common.uri_to_lsp definition.span.uri;
-      range = Common.span_to_range definition.span;
-    }
-  in
-  Some Lsp.Types.Locations.(`Location [ location ])
+  match hover_info.file with
+  | Some file ->
+      let location : Lsp.Types.Location.t =
+        {
+          uri = Common.uri_to_lsp file;
+          range = Common.span_to_range (Span.beginning_of file);
+        }
+      in
+      Some Lsp.Types.Locations.(`Location [ location ])
+  | None ->
+      let* definition =
+        match hover_info.rename with
+        | Some { definition_mode = DefinedNotHere definition; _ } ->
+            Some definition
+        | Some { definition_mode = DefinedHere _; _ } | None -> None
+      in
+      let location : Lsp.Types.Location.t =
+        {
+          uri = Common.uri_to_lsp definition.span.uri;
+          range = Common.span_to_range definition.span;
+        }
+      in
+      Some Lsp.Types.Locations.(`Location [ location ])
 
 let find_references (params : Lsp.Types.ReferenceParams.t)
     ({ uri; compiled; _ } : Processing.file_state) :

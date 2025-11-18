@@ -516,6 +516,10 @@ let import : core_syntax =
                 let uri =
                   Uri.maybe_relative_to_file span.uri (Uri.of_string path)
                 in
+                let path_expr =
+                  Compiler.update_data Expr path_expr (fun data ->
+                      { data with included_file = Some uri })
+                in
                 let imported_value : value =
                   Compiler.import ~span (module C) uri
                 in
@@ -563,6 +567,10 @@ let include' : core_syntax =
               Uri.maybe_relative_to_file span.uri (Uri.of_string path)
             in
             Effect.perform (CompilerEffect.FileStartedProcessing uri);
+            let path_expr =
+              Compiler.update_data Expr path_expr (fun data ->
+                  { data with included_file = Some uri })
+            in
             let source = Source.read uri in
             let parsed : Kast_parser.result =
               Kast_parser.parse source Kast_default_syntax.ruleset

@@ -141,6 +141,7 @@ let init_expr :
           ty_ascription = None;
           evaled_exprs;
           compiler_scope = state.scope;
+          included_file = None;
         };
     }
   with exc ->
@@ -172,6 +173,7 @@ let init_assignee :
           ty_ascription = None;
           compiler_scope = state.scope;
           evaled_exprs;
+          included_file = None;
         };
     }
   with exc ->
@@ -214,6 +216,7 @@ let init_pattern :
           ty_ascription = None;
           compiler_scope = state.scope;
           evaled_exprs;
+          included_file = None;
         };
     }
   with exc ->
@@ -246,6 +249,7 @@ let init_ty_expr :
             ty_ascription = None;
             compiler_scope = state.scope;
             evaled_exprs;
+            included_file = None;
           };
       }
     with exc ->
