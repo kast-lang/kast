@@ -1,12 +1,13 @@
 open Std
 open Kast_util
 open Kast_types
+module Inference = Kast_inference
 
 type natives = { by_name : value StringMap.t }
 type t = natives
 type _ Effect.t += Input : string -> string Effect.t
 
-let types : (string * Ty.Shape.t) list =
+let plain_types : (string * Ty.Shape.t) list =
   [
     ("unit", T_Unit);
     ("int32", T_Int32);
@@ -15,10 +16,42 @@ let types : (string * Ty.Shape.t) list =
     ("bool", T_Bool);
   ]
 
+let generic_types : (string * (Ty.Shape.t -> Ty.Shape.t)) list =
+  [
+    ("unwind_token", fun result -> T_UnwindToken { result = Ty.inferred result });
+  ]
+
 let types =
-  types
+  (plain_types
   |> List.map (fun (name, ty) : (string * value) ->
-      (name, { shape = V_Ty (Ty.inferred ty) }))
+      (name, { shape = V_Ty (Ty.inferred ty) })))
+  @ (generic_types
+    |> List.map (fun (name, f) : (string * value) ->
+        let impl =
+         fun ~caller arg ->
+          with_return (fun { return } : value ->
+              let error () =
+                return ({ shape = V_Ty (Ty.inferred T_Error) } : value)
+              in
+              let arg =
+                arg |> Value.expect_ty
+                |> Option.unwrap_or_else (fun () ->
+                    Error.error caller "%S expected a type arg" name;
+                    error ())
+                |> fun ty -> Inference.Var.await_inferred ty.var
+              in
+              { shape = V_Ty (Ty.inferred (f arg)) })
+        in
+        ( name,
+          {
+            shape =
+              V_NativeFn
+                {
+                  name;
+                  ty = { arg = Ty.inferred T_Ty; result = Ty.inferred T_Ty };
+                  impl;
+                };
+          } )))
 
 let natives : natives =
   let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
