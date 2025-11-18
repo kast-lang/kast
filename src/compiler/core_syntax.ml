@@ -20,7 +20,7 @@ let apply : core_syntax =
     name = "apply";
     handle =
       (fun (type a)
-        (module Compiler : Compiler.S)
+        (module C : Compiler.S)
         (kind : a compiled_kind)
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
@@ -35,12 +35,13 @@ let apply : core_syntax =
         in
         match kind with
         | Expr ->
-            let f = Compiler.compile Expr f in
-            let arg = Compiler.compile Expr arg in
-            E_Apply { f; arg } |> init_expr span Compiler.state
-        | _ ->
+            let f = C.compile Expr f in
+            let arg = C.compile Expr arg in
+            E_Apply { f; arg } |> init_expr span C.state
+        | TyExpr -> TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
             error span "apply must be expr";
-            init_error span Compiler.state kind);
+            init_error span C.state kind);
   }
 
 (* a; b *)
