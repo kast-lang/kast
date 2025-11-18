@@ -3,6 +3,7 @@
 @syntax "core:then" 0 wrap always = _ ";" "\n" _ ->;
 @syntax "core:stmt" 0 wrap always = _ ";";
 @syntax "core:use .*" 1 wrap never = "use" " " _ ".*";
+@syntax "core:use" 1 wrap never = "use" " " _;
 @syntax "core:impl syntax" 1 wrap never = "impl" " " "syntax" " " name " " "=" " " impl;
 @syntax "core:assign" 2 wrap never = assignee " " "=" " " value;
 @syntax "core:const" 2 wrap never = "const" " " pattern " " "=" " " value;

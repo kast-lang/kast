@@ -595,6 +595,23 @@ let include' : core_syntax =
                 { data with evaled_exprs = path_expr :: data.evaled_exprs })));
   }
 
+let const_let (span : span) (pattern : pattern) (value_expr : expr)
+    (module C : Compiler.S) =
+  let value = Interpreter.eval C.state.interpreter value_expr in
+  let let_expr =
+    E_Assign
+      {
+        assignee = A_Let pattern |> init_assignee pattern.data.span C.state;
+        value =
+          E_Constant value
+          |> init_expr ~evaled_exprs:[ value_expr ] value_expr.data.span C.state;
+      }
+    |> init_expr span C.state
+  in
+  C.state |> Compiler.inject_pattern_bindings pattern;
+  ignore @@ Interpreter.eval C.state.interpreter let_expr;
+  let_expr
+
 let const : core_syntax =
   {
     name = "const";
@@ -620,22 +637,7 @@ let const : core_syntax =
             value_expr.data.ty
             |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span
                  pattern.data.ty;
-            let value = Interpreter.eval C.state.interpreter value_expr in
-            let let_expr =
-              E_Assign
-                {
-                  assignee =
-                    A_Let pattern |> init_assignee pattern.data.span C.state;
-                  value =
-                    E_Constant value
-                    |> init_expr ~evaled_exprs:[ value_expr ]
-                         value_expr.data.span C.state;
-                }
-              |> init_expr span C.state
-            in
-            C.state |> Compiler.inject_pattern_bindings pattern;
-            ignore @@ Interpreter.eval C.state.interpreter let_expr;
-            let_expr
+            const_let span pattern value_expr (module C)
         | Assignee ->
             error span "const must be expr, not assignee expr";
             init_error span C.state kind
@@ -939,6 +941,49 @@ let trailing_comma : core_syntax =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
         comma_impl (module C) kind ast);
+  }
+
+let use : core_syntax =
+  {
+    name = "use";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let used =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let span = ast.span in
+        match kind with
+        | Expr ->
+            let used_expr = C.compile Expr used in
+            let pattern : Pattern.Shape.t =
+              match used_expr.shape with
+              | E_Binding binding ->
+                  P_Binding
+                    { binding with name = Symbol.create binding.name.name }
+              | E_Field { obj = _; field; field_span; label } ->
+                  P_Binding
+                    {
+                      name = Symbol.create field;
+                      span = field_span;
+                      ty = used_expr.data.ty;
+                      label;
+                    }
+              | _ ->
+                  error span "Can't use this";
+                  P_Placeholder
+            in
+            let pattern = pattern |> init_pattern used_expr.data.span C.state in
+            const_let span pattern used_expr (module C)
+        | _ ->
+            error span "use .* must be expr";
+            init_error span C.state kind);
   }
 
 let use_dot_star : core_syntax =
@@ -1402,6 +1447,7 @@ let core =
     dot;
     comma;
     trailing_comma;
+    use;
     use_dot_star;
     comptime;
     true';
