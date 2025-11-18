@@ -29,7 +29,12 @@ type definition_mode =
 
 let label_definition (label : Label.t) : definition =
   let data : Label.label_data = label |> Label.get_data in
-  { span = label |> Label.get_span; references = data.references }
+  let span, references =
+    match data.definition with
+    | Some def -> (def, data.references)
+    | None -> (List.head data.references, List.tail data.references)
+  in
+  { span; references }
 
 type hover_info_ty = {
   ty : ty;
