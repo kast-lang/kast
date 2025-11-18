@@ -976,8 +976,14 @@ let use_dot_star : core_syntax =
                 C.state |> Compiler.inject_binding binding);
             let result =
               E_UseDotStar
-                { used = E_Constant used |> init_expr span C.state; bindings }
-              |> init_expr ~evaled_exprs:[ used_expr ] span C.state
+                {
+                  used =
+                    E_Constant used
+                    |> init_expr ~evaled_exprs:[ used_expr ] used_expr.data.span
+                         C.state;
+                  bindings;
+                }
+              |> init_expr span C.state
             in
             ignore @@ Interpreter.eval C.state.interpreter result;
             result
