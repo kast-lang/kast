@@ -1422,6 +1422,108 @@ let target_dependent : core_syntax =
             init_error span C.state kind);
   }
 
+let inject_context : core_syntax =
+  {
+    name = "inject_context";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let context_type, value =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "context_type"; "value" ]
+        in
+        match kind with
+        | Expr -> (
+            let context_ty, context_ty_expr =
+              context_type
+              |> Compiler.eval ~ty:(Ty.inferred T_ContextTy) (module C)
+            in
+            match context_ty.shape with
+            | V_ContextTy context_ty ->
+                let value = C.compile Expr value in
+                E_InjectContext { context_ty; value }
+                |> init_expr ~evaled_exprs:[ context_ty_expr ] span C.state
+            | _ -> init_error span C.state kind)
+        | _ ->
+            error span "inject_context must be expr";
+            init_error span C.state kind);
+  }
+
+let current_context : core_syntax =
+  {
+    name = "current_context";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let context_type =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_single_named "context_type"
+        in
+        match kind with
+        | Expr -> (
+            let context_ty, context_ty_expr =
+              context_type
+              |> Compiler.eval ~ty:(Ty.inferred T_ContextTy) (module C)
+            in
+            match context_ty.shape with
+            | V_ContextTy context_ty ->
+                E_CurrentContext { context_ty }
+                |> init_expr ~evaled_exprs:[ context_ty_expr ] span C.state
+            | _ -> init_error span C.state kind)
+        | _ ->
+            error span "current_context must be expr";
+            init_error span C.state kind);
+  }
+
+let binding : core_syntax =
+  {
+    name = "binding";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let binding =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_single_unnamed
+        in
+        let binding, binding_expr =
+          binding |> Compiler.eval ~ty:(Ty.new_not_inferred ()) (module C)
+        in
+        match binding.shape with
+        | V_Binding binding -> (
+            match kind with
+            | Expr ->
+                E_Binding binding
+                |> init_expr ~evaled_exprs:[ binding_expr ] span C.state
+            | _ ->
+                error span "binding must be expr (TODO)";
+                init_error span C.state kind)
+        | _ -> init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -1458,6 +1560,9 @@ let core =
     unwindable;
     unwind;
     target_dependent;
+    inject_context;
+    current_context;
+    binding;
   ]
 
 let all : core_syntax StringMap.t =

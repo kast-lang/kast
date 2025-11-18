@@ -226,6 +226,13 @@ let natives : natives =
       bin_op "-" Int32.sub;
       bin_op "*" Int32.mul;
       bin_op "/" Int32.div;
+      native_fn ~arg:(Ty.inferred T_Ty) ~result:(Ty.inferred T_ContextTy)
+        "create_context_type" (fun ~caller arg ->
+          match arg.shape with
+          | V_Ty ty -> { shape = V_ContextTy { id = Id.gen (); ty } }
+          | _ ->
+              Error.error caller "create_context_type expected a type";
+              { shape = V_Error });
     ]
     @ types
   in

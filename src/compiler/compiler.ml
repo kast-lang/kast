@@ -107,7 +107,8 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
   result.value
 
 let inject_binding (binding : binding) (state : State.t) : unit =
-  state.scope <- state.scope |> State.Scope.inject_binding binding
+  state.scope <- state.scope |> State.Scope.inject_binding binding;
+  state.interpreter.scope |> Kast_interpreter.Scope.inject_binding binding
 
 let rec inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
   match pattern.shape with

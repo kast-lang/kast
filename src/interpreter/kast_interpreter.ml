@@ -4,10 +4,12 @@ open Kast_types
 module Ast = Kast_ast
 module Error = Error
 module Natives = Natives
+module Scope = Scope
 
 type state = {
   natives : Natives.t;
   scope : Scope.t;
+  mutable contexts : value Id.Map.t;
 }
 
 exception
@@ -24,7 +26,11 @@ let enter_scope state : state =
 
 let init : Scope.locals -> state =
  fun values ->
-  { scope = Scope.with_values ~parent:None values; natives = Natives.natives }
+  {
+    scope = Scope.with_values ~parent:None values;
+    natives = Natives.natives;
+    contexts = Id.Map.empty;
+  }
 
 let default () = init Scope.Locals.empty
 
@@ -256,6 +262,16 @@ let rec eval : state -> expr -> value =
           in
           let value = eval state value in
           raise <| Unwind { token; value })
+  | E_InjectContext { context_ty; value } ->
+      let value = eval state value in
+      state.contexts <- state.contexts |> Id.Map.add context_ty.id value;
+      { shape = V_Unit }
+  | E_CurrentContext { context_ty } -> (
+      match state.contexts |> Id.Map.find_opt context_ty.id with
+      | Some value -> value
+      | None ->
+          Error.error expr.data.span "Context unavailable";
+          { shape = V_Error })
   | E_TargetDependent { branches } ->
       with_return (fun { return } ->
           let chosen_branch =

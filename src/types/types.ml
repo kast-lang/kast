@@ -20,10 +20,17 @@ and value_shape =
   | V_Ast of Ast.t
   | V_UnwindToken of value_unwind_token
   | V_Target of value_target
+  | V_ContextTy of value_context_ty
+  | V_Binding of binding
   | V_Error
 
 and value = { shape : value_shape }
 and value_target = { name : string }
+
+and value_context_ty = {
+  id : Id.t;
+  ty : ty;
+}
 
 and value_unwind_token = {
   id : Id.t;
@@ -75,6 +82,7 @@ and ty_shape =
   | T_Ast
   | T_UnwindToken of ty_unwind_token
   | T_Target
+  | T_ContextTy
   | T_Error
 
 and ty = { var : ty_shape Inference.var }
@@ -161,6 +169,13 @@ and expr_target_dependent_branch = {
   body : expr;
 }
 
+and expr_inject_context = {
+  context_ty : value_context_ty;
+  value : expr;
+}
+
+and expr_current_context = { context_ty : value_context_ty }
+
 and expr_shape =
   | E_Constant of value
   | E_Binding of binding
@@ -181,6 +196,8 @@ and expr_shape =
   | E_Loop of expr_loop
   | E_Unwindable of expr_unwindable
   | E_Unwind of expr_unwind
+  | E_InjectContext of expr_inject_context
+  | E_CurrentContext of expr_current_context
   | E_TargetDependent of expr_target_dependent
   | E_Error
 

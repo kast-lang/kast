@@ -21,7 +21,9 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
   | V_Ast ast -> fprintf fmt "%a" Ast.print ast
   | V_UnwindToken { id; result_ty = _ } -> fprintf fmt "<unwind %a>" Id.print id
+  | V_ContextTy ty -> print_context_type fmt ty
   | V_Error -> fprintf fmt "@{<red><error>@}"
+  | V_Binding binding -> fprintf fmt "<binding %a>" print_binding binding
   | V_Target target -> print_target fmt target
 
 and print_value : formatter -> value -> unit =
@@ -47,6 +49,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Ast -> fprintf fmt "ast"
   | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
   | T_Target -> fprintf fmt "target"
+  | T_ContextTy -> fprintf fmt "context_type"
   | T_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty : formatter -> ty -> unit =
@@ -113,12 +116,23 @@ and print_expr_shape :
       fprintf fmt
         "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
         print_expr token print_expr value
+  | E_InjectContext { context_ty; value } ->
+      fprintf fmt
+        "@{<magenta>inject_context@} (@;<0 2>@[<v>context_type = %a,@]@;<0 2>@[<v>value = %a@]@ )"
+        print_context_type context_ty print_expr value
+  | E_CurrentContext { context_ty } ->
+      fprintf fmt
+        "@{<magenta>current_context@} (@;<0 2>@[<v>context_type = %a,@]@ )"
+        print_context_type context_ty
   | E_TargetDependent { branches } ->
       fprintf fmt "@{<magenta>target dependent@} (";
       branches
       |> List.iter (fun branch ->
           fprintf fmt "@;<0 2>@[<v>%a@]" print_target_dependent_branch branch);
       fprintf fmt " )"
+
+and print_context_type : formatter -> value_context_ty -> unit =
+ fun fmt { id; ty } -> fprintf fmt "<context %a of %a>" Id.print id print_ty ty
 
 and print_target_dependent_branch :
     formatter -> expr_target_dependent_branch -> unit =

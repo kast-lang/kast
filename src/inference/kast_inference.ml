@@ -57,6 +57,8 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
   | T_Fn _, _ -> fail ()
   | T_Target, T_Target -> T_Target
   | T_Target, _ -> fail ()
+  | T_ContextTy, T_ContextTy -> T_ContextTy
+  | T_ContextTy, _ -> fail ()
 
 and unite_ty : ty unite =
  fun ~span { var = a } { var = b } ->

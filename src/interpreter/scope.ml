@@ -85,6 +85,9 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
                : Types.interpreter_local);
     }
 
+let inject_binding (binding : binding) (scope : scope) : unit =
+  scope |> add_local binding.span binding.name { shape = V_Binding binding }
+
 let rec print_all : formatter -> scope -> unit =
  fun fmt scope ->
   scope.locals.by_symbol

@@ -36,3 +36,17 @@ impl syntax (a * b) = `(
 impl syntax (a / b) = `(
     std.op.div ($a, $b)
 );
+impl syntax (@context ty) = `(
+    (native "create_context_type") $ty
+);
+impl syntax (loop ( body )) = `(
+    unwindable block (
+        @comptime with std.loop_block = block;
+        @loop (
+            $body
+        );
+    );
+);
+impl syntax (break) = `(
+    unwind (@binding @current std.loop_block) ();
+);

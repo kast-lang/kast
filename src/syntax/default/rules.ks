@@ -21,8 +21,12 @@
 @syntax "core:fn_type" 8.5 wrap never = arg " " context=("with" " " _ " ")? "->" " " result;
 @syntax "core:import" 9 wrap never = "import" " " path;
 @syntax "core:include" 9 wrap never = "include" " " path;
-@syntax "core:comptime" 9 wrap never = "comptime" " " _;
+@syntax "create_context_type" 9 wrap never = "@context" " " type;
+@syntax "core:comptime" 9 wrap never = "@comptime" " " _;
+@syntax "core:binding" 9 wrap never = "@binding" " " _;
 @syntax "core:native" 9 wrap never = "native" " " _;
+@syntax "core:inject_context" 9.5 wrap never = "with" " " context_type " " "=" " " value;
+@syntax "core:current_context" 9.5 wrap never = "@current" " " context_type;
 @syntax "core:or" 10 wrap never = _ " " "or" " " _;
 @syntax "core:and" 11 wrap never = _ " " "and" " " _;
 @syntax "<" 14 wrap never = _ " " "<" " " _;
@@ -45,7 +49,9 @@
 @syntax "core:type" 1000 wrap never = "type";
 @syntax "core:true" 1000 wrap never = "true";
 @syntax "core:false" 1000 wrap never = "false";
-@syntax "core:loop" 1000 wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
+@syntax "loop" 1000 wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
+@syntax "break" 1000 wrap never = "break";
+@syntax "core:loop" 1000 wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:unit" 1000 wrap never = "(" ")";
 @syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:placeholder" 1000 wrap never = "_";

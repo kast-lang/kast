@@ -66,6 +66,8 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
   | Types.V_Ast _ -> failwith __LOC__
   | Types.V_UnwindToken _ -> failwith __LOC__
   | Types.V_Target _ -> fail "Tried to transpile target value"
+  | Types.V_ContextTy _ -> fail "Tried to transpile target value"
+  | Types.V_Binding _ -> fail "Tried to transpile binding value"
   | Types.V_Error -> fail "Tried to transpile error node"
 
 and transpile_pattern : Pattern.t -> state -> OcamlAst.t =
@@ -212,6 +214,8 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
             fail "no branch for ocaml %a" Span.print expr.data.span)
       in
       state |> transpile_expr branch.body
+  | Types.E_InjectContext _ -> failwith __LOC__
+  | Types.E_CurrentContext _ -> failwith __LOC__
   | Types.E_Error -> fail "Tried to transpile error node"
 
 module Full = struct

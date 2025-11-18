@@ -126,6 +126,8 @@ let init_expr :
                  |> Inference.Ty.expect_inferred_as ~span:body.data.span
                       body.data.ty);
           result
+      | E_InjectContext _ -> Ty.inferred T_Unit
+      | E_CurrentContext { context_ty } -> context_ty.ty
       | E_Unwind { token; value } ->
           token.data.ty
           |> Inference.Ty.expect_inferred_as ~span:token.data.span

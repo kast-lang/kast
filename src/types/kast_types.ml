@@ -55,6 +55,8 @@ module Value = struct
     | V_UnwindToken { result_ty; id = _ } ->
         Ty.inferred (T_UnwindToken { result = result_ty })
     | V_Target _ -> Ty.inferred T_Target
+    | V_ContextTy _ -> Ty.inferred T_ContextTy
+    | V_Binding binding -> binding.ty
     | V_Error -> Ty.inferred T_Error
 
   let expect_unit : value -> unit option =

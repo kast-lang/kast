@@ -29,6 +29,7 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope) :
               | Types.T_Target ->
                   Variable
               | Types.T_Ty -> TypeParameter
+              | Types.T_ContextTy -> TypeParameter
               | Types.T_Fn _ -> Function)
         in
         Lsp.Types.CompletionItem.create ~label ~detail ~kind ())

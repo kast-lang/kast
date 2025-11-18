@@ -96,6 +96,8 @@ let inner_compiled_with_handler =
                ->
                  handler.handle Expr cond;
                  handler.handle Expr body)
+      | E_InjectContext { context_ty = _; value } -> handler.handle Expr value
+      | E_CurrentContext { context_ty = _ } -> ()
       | E_Error -> ())
   | Assignee -> (
       match compiled.shape with
