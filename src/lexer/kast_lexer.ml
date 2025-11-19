@@ -78,7 +78,7 @@ let next : lexer -> Token.t =
   let result = peek lexer in
   lexer.recordings
   |> RecordingTable.iter (fun recording () ->
-         recording.tokens_rev <- result :: recording.tokens_rev);
+      recording.tokens_rev <- result :: recording.tokens_rev);
   lexer.peeked <- None;
   result
 
@@ -155,7 +155,11 @@ module DefaultRules = struct
     | None ->
         error "Expected %C, got @{<italic><eof>@} @{<dim>at %a@}" delimeter
           Position.print reader.position);
-    { raw = Reader.finish_rec raw; contents = Buffer.contents contents }
+    {
+      raw = Reader.finish_rec raw;
+      contents = Buffer.contents contents;
+      delimeter = String.make 1 delimeter;
+    }
 
   let read_string reader =
     with_return (fun { return } ->
@@ -183,11 +187,11 @@ module DefaultRules = struct
     let raw =
       reader
       |> Reader.read_while (function
-           | '.' when not !seen_dot ->
-               seen_dot := true;
-               true
-           | c when Char.is_digit c -> true
-           | _ -> false)
+        | '.' when not !seen_dot ->
+            seen_dot := true;
+            true
+        | c when Char.is_digit c -> true
+        | _ -> false)
     in
     Some (Token.Shape.Number { raw })
 

@@ -12,6 +12,7 @@ and value_shape =
   | V_Unit
   | V_Bool of bool
   | V_Int32 of int32
+  | V_Char of char
   | V_String of string
   | V_Tuple of value_tuple
   | V_Ty of ty
@@ -53,7 +54,7 @@ and value_tuple = { tuple : value_tuple_field tuple }
 and value_native_fn = {
   name : string;
   ty : ty_fn;
-  impl : caller:span -> value -> value;
+  impl : caller:span -> state:interpreter_state -> value -> value;
 }
 
 (* TY *)
@@ -76,6 +77,7 @@ and ty_shape =
   | T_Bool
   | T_Int32
   | T_String
+  | T_Char
   | T_Tuple of ty_tuple
   | T_Ty
   | T_Fn of ty_fn
@@ -266,6 +268,15 @@ and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }
 and interpreter_scope = {
   mutable locals : interpreter_locals;
   parent : interpreter_scope option;
+}
+
+(* interpreter *)
+and natives = { by_name : value StringMap.t }
+
+and interpreter_state = {
+  natives : natives;
+  scope : interpreter_scope;
+  mutable contexts : value Id.Map.t;
 }
 
 (* OTHER *)

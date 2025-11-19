@@ -11,6 +11,7 @@ module Shape = struct
 
   type string_shape = {
     raw : string;
+    delimeter : string;
     contents : string;
   }
 

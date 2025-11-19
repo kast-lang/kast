@@ -11,6 +11,7 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_Bool value -> fprintf fmt "%B" value
   | V_Ty ty -> print_ty fmt ty
   | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
+  | V_Char value -> fprintf fmt "@{<green>%C@}" value
   | V_String value -> fprintf fmt "@{<green>%S@}" value
   | V_Tuple { tuple } ->
       fprintf fmt "%a"
@@ -35,6 +36,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Unit -> fprintf fmt "()"
   | T_Bool -> fprintf fmt "bool"
   | T_Int32 -> fprintf fmt "int32"
+  | T_Char -> fprintf fmt "char"
   | T_String -> fprintf fmt "string"
   | T_Tuple { tuple } ->
       fprintf fmt "%a"

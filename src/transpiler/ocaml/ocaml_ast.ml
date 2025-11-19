@@ -5,6 +5,7 @@ type ocaml_ast =
   | UnitType
   | Bool of bool
   | Int32 of int32
+  | Char of char
   | String of string
   | Tuple of ocaml_ast list
   | Placeholder
@@ -63,13 +64,14 @@ let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
   | UnitType -> fprintf fmt "@{<magenta>unit@}"
   | Bool value -> fprintf fmt "@{<magenta>%B@}" value
   | Int32 value -> fprintf fmt "@{<italic>%ld@}" value
+  | Char value -> fprintf fmt "@{<green>%C@}" value
   | String value -> fprintf fmt "@{<green>%S@}" value
   | Tuple values ->
       fprintf fmt "@{<magenta>(@}@,";
       values
       |> List.iteri (fun i value ->
-             fprintf fmt (if i <> 0 then "@{<magenta>,@} " else "  ");
-             fprintf fmt "@[<v>%a@]@," print value);
+          fprintf fmt (if i <> 0 then "@{<magenta>,@} " else "  ");
+          fprintf fmt "@[<v>%a@]@," print value);
       fprintf fmt "@{<magenta>)@}"
   | Placeholder -> fprintf fmt "_"
   | Var name -> fprintf fmt "%s" name
@@ -78,8 +80,8 @@ let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
       fprintf fmt "@{<magenta>fun@}";
       args
       |> List.iter (fun arg ->
-             fprintf fmt " ";
-             print fmt arg);
+          fprintf fmt " ";
+          print fmt arg);
       fprintf fmt " @{<magenta>->@}@;<0 2>@[<v>%a@]" print body
   (* | Then exprs ->
       let length = exprs |> List.length in
@@ -99,25 +101,25 @@ let rec print (fmt : formatter) (ast : ocaml_ast) : unit =
       let let_then_len = let_thens |> List.length in
       let_thens
       |> List.iteri (fun i let_then ->
-             match let_then with
-             | Let { bindings; recursive } ->
-                 bindings
-                 |> List.iteri (fun i { pattern; value } ->
-                        fprintf fmt "@{<magenta>%s@} %a @{<magenta>=@} %a@,"
-                          (if i = 0 then if recursive then "let rec" else "let"
-                           else "and")
-                          print pattern print value);
-                 fprintf fmt "@{<magenta>in@}@,";
-                 if i + 1 >= let_then_len then fprintf fmt "@{<magenta>()@}"
-             | Then expr ->
-                 print fmt expr;
-                 if i + 1 < let_then_len then fprintf fmt "@{<magenta>;@}@,")
+          match let_then with
+          | Let { bindings; recursive } ->
+              bindings
+              |> List.iteri (fun i { pattern; value } ->
+                  fprintf fmt "@{<magenta>%s@} %a @{<magenta>=@} %a@,"
+                    (if i = 0 then if recursive then "let rec" else "let"
+                     else "and")
+                    print pattern print value);
+              fprintf fmt "@{<magenta>in@}@,";
+              if i + 1 >= let_then_len then fprintf fmt "@{<magenta>()@}"
+          | Then expr ->
+              print fmt expr;
+              if i + 1 < let_then_len then fprintf fmt "@{<magenta>;@}@,")
   | Match { expr; branches } ->
       fprintf fmt "@{<magenta>(match@} %a @{<magenta>with@}" print expr;
       branches
       |> List.iter (fun { pattern; body } ->
-             fprintf fmt "@,@{<magenta>|@} %a @{<magenta>->@} %a" print pattern
-               print body);
+          fprintf fmt "@,@{<magenta>|@} %a @{<magenta>->@} %a" print pattern
+            print body);
       fprintf fmt "@{<magenta>)@}"
 
 let merge_let_then a b =

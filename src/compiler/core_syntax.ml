@@ -1098,13 +1098,13 @@ let if' : core_syntax =
             let else_case = C.compile Expr else_case in
             E_If { cond; then_case; else_case } |> init_expr span C.state
         | TyExpr ->
-            error span "if can't be assignee";
+            error span "if can't be ty expr";
             init_error span C.state kind
         | Assignee ->
             error span "if can't be assignee";
             init_error span C.state kind
         | Pattern ->
-            error span "if can't be assignee";
+            error span "if can't be pattern";
             init_error span C.state kind);
   }
 
@@ -1526,6 +1526,28 @@ let binding : core_syntax =
         | _ -> init_error span C.state kind);
   }
 
+let __file__ : core_syntax =
+  {
+    name = "__FILE__";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (_ : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        match kind with
+        | Expr ->
+            E_Constant { shape = V_String (span.uri |> Uri.path) }
+            |> init_expr span C.state
+        | _ ->
+            error span "__FILE__ must be expr";
+            init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -1565,6 +1587,7 @@ let core =
     inject_context;
     current_context;
     binding;
+    __file__;
   ]
 
 let all : core_syntax StringMap.t =

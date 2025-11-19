@@ -25,8 +25,8 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope) :
               match ty with
               | Types.T_Unit -> Unit
               | Types.T_Ast | Types.T_UnwindToken _ | Types.T_Error
-              | Types.T_Bool | Types.T_Int32 | Types.T_String | Types.T_Tuple _
-              | Types.T_Target ->
+              | Types.T_Bool | Types.T_Int32 | Types.T_Char | Types.T_String
+              | Types.T_Tuple _ | Types.T_Target ->
                   Variable
               | Types.T_Ty -> TypeParameter
               | Types.T_ContextTy -> TypeParameter

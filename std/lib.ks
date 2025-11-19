@@ -6,11 +6,16 @@ const loop_block = @context unwind_unit;
 #
 const bool :: type = native "bool";
 const int32 :: type = native "int32";
+const char :: type = native "char";
 const string :: type = native "string";
 #
 const op :: _ = include "./op.ks";
 const cmp :: _ = include "./cmp.ks";
 const io :: _ = include "./io/_mod.ks";
+const String = include "./string.ks";
+const path = include "./path.ks";
+const fs = include "./fs/_mod.ks";
+const sys = include "./sys/_mod.ks";
 const rng :: _ = include "./rng/_mod.ks";
 const int32_to_string :: int32 -> string = num => (
     cfg_if (

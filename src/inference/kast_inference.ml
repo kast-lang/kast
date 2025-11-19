@@ -20,6 +20,8 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
   | T_Bool, _ -> fail ()
   | T_Int32, T_Int32 -> T_Int32
   | T_Int32, _ -> fail ()
+  | T_Char, T_Char -> T_Char
+  | T_Char, _ -> fail ()
   | T_String, T_String -> T_String
   | T_String, _ -> fail ()
   | T_Tuple { tuple = a }, T_Tuple { tuple = b } -> (

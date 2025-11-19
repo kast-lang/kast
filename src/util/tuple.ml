@@ -22,6 +22,10 @@ module Tuple = struct
     | Index index -> get_unnamed index tuple
     | Name name -> get_named name tuple
 
+  let is_unnamed len tuple =
+    tuple.named_order_rev |> List.length = 0
+    && tuple.unnamed |> Array.length = len
+
   let zip_order_a : 'a 'b. 'a tuple -> 'b tuple -> ('a * 'b) tuple =
    fun a b ->
     let unnamed =
@@ -211,7 +215,7 @@ module Tuple = struct
     | [ a; b; c ] -> (a, b, c)
     | _ -> invalid_arg "Tuple.unwrap3"
 
-  let unwrap_unnamed3 tuple = unwrap3 ~unnamed:2 ~named:[] tuple
+  let unwrap_unnamed3 tuple = unwrap3 ~unnamed:3 ~named:[] tuple
   let unwrap_named3 names tuple = unwrap3 ~unnamed:0 ~named:names tuple
 end
 

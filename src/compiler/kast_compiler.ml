@@ -60,8 +60,21 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      state.scope)
                 |> init_expr span state
             | Token.Shape.String s ->
-                E_Constant { shape = V_String s.contents }
-                |> init_expr span state
+                let value : Value.shape =
+                  match s.delimeter with
+                  | "\"" -> V_String s.contents
+                  | "'" ->
+                      if s.contents |> String.length = 1 then
+                        V_Char (String.get s.contents 0 |> Option.get)
+                      else (
+                        Error.error ast.span
+                          "Char literals must have a single char";
+                        V_Error)
+                  | _ ->
+                      Error.error ast.span "Unexpected delimeter %S" s.delimeter;
+                      V_Error
+                in
+                E_Constant { shape = value } |> init_expr span state
             | Token.Shape.Number { raw; _ } ->
                 let value = Int32.of_string raw in
                 E_Constant { shape = V_Int32 value } |> init_expr span state
