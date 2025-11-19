@@ -201,8 +201,9 @@ let placeholder : core_syntax =
         | Assignee -> A_Placeholder |> init_assignee span Compiler.state
         | Pattern -> P_Placeholder |> init_pattern span Compiler.state
         | Expr ->
-            error span "todo _ expr %s" __LOC__;
-            init_error span Compiler.state kind
+            let ty = Ty.new_not_inferred () in
+            let value : value = { shape = V_Ty ty } in
+            E_Constant value |> init_expr span Compiler.state
         | TyExpr ->
             let ty = Ty.new_not_inferred () in
             let value : value = { shape = V_Ty ty } in
