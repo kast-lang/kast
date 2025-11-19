@@ -1,4 +1,5 @@
 module:
+const std = @current_scope;
 include "./syntax.ks";
 const unwind_unit = (native "unwind_token") type ();
 _ :: unwind_unit => ();

@@ -14,8 +14,7 @@ const iteri = (s :: string, f :: (int32, char) -> ()) => (
         s,
         c => (
             f (i, c);
-            # i = i + 1;
-            i = (native "+") (i, 1);
+            i = i + 1;
         )
     )
 );
@@ -27,11 +26,11 @@ const index_of = (c :: char, s :: string) -> int32 => (
                 if (native "==") (c, c_at_i) then (unwind block i) else ()
             )
         );
-        (native "-") (0, 1)
+        0 - 1
     )
 );
 const last_index_of = (c :: char, s :: string) -> int32 => (
-    let result = (native "-") (0, 1);
+    let result = 0 - 1;
     iteri (
         s,
         (i, c_at_i) => (
@@ -45,7 +44,7 @@ const lines = (s :: string, f :: string -> ()) -> () => (
     let endline = i => (
         let line = substring (s, start, (native "-") (i, start));
         f line;
-        start = (native "+") (i, 1);
+        start = i + 1;
     );
     iteri (
         s,
