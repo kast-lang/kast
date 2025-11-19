@@ -25,7 +25,7 @@
 @syntax "create_context_type" 9 wrap never = "@context" " " type;
 @syntax "core:comptime" 9 wrap never = "@comptime" " " _;
 @syntax "core:binding" 9 wrap never = "@binding" " " _;
-@syntax "core:native" 9 wrap never = "native" " " _;
+@syntax "core:native" 9 wrap never = "@native" " " _;
 @syntax "core:inject_context" 9.5 wrap never = "with" " " context_type " " "=" " " value;
 @syntax "core:current_context" 9.5 wrap never = "@current" " " context_type;
 @syntax "core:or" 10 wrap never = _ " " "or" " " _;

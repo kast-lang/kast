@@ -37,7 +37,7 @@ impl syntax (a / b) = `(
     std.op.div ($a, $b)
 );
 impl syntax (@context ty) = `(
-    (native "create_context_type") $ty
+    (@native "create_context_type") $ty
 );
 impl syntax (loop ( body )) = `(
     unwindable block (
