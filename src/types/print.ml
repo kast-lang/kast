@@ -25,6 +25,7 @@ and print_value_shape : formatter -> value_shape -> unit =
   | V_ContextTy ty -> print_context_type fmt ty
   | V_Error -> fprintf fmt "@{<red><error>@}"
   | V_Binding binding -> fprintf fmt "<binding %a>" print_binding binding
+  | V_CompilerScope _ -> fprintf fmt "@{<italic><compiler scope>@}"
   | V_Target target -> print_target fmt target
 
 and print_value : formatter -> value -> unit =
@@ -52,6 +53,7 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
   | T_Target -> fprintf fmt "target"
   | T_ContextTy -> fprintf fmt "context_type"
+  | T_CompilerScope -> fprintf fmt "<compiler scope>"
   | T_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty : formatter -> ty -> unit =

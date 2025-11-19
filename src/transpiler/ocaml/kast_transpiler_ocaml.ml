@@ -69,6 +69,7 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
   | Types.V_Target _ -> fail "Tried to transpile target value"
   | Types.V_ContextTy _ -> fail "Tried to transpile target value"
   | Types.V_Binding _ -> fail "Tried to transpile binding value"
+  | Types.V_CompilerScope _ -> fail "Tried to transpile compiler scope value"
   | Types.V_Error -> fail "Tried to transpile error node"
 
 and transpile_pattern : Pattern.t -> state -> OcamlAst.t =

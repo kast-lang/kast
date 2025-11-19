@@ -28,6 +28,7 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope) :
               | Types.T_Bool | Types.T_Int32 | Types.T_Char | Types.T_String
               | Types.T_Tuple _ | Types.T_Target ->
                   Variable
+              | Types.T_CompilerScope -> Folder
               | Types.T_Ty -> TypeParameter
               | Types.T_ContextTy -> TypeParameter
               | Types.T_Fn _ -> Function)

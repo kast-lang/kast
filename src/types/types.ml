@@ -23,6 +23,7 @@ and value_shape =
   | V_Target of value_target
   | V_ContextTy of value_context_ty
   | V_Binding of binding
+  | V_CompilerScope of compiler_scope
   | V_Error
 
 and value = { shape : value_shape }
@@ -85,6 +86,7 @@ and ty_shape =
   | T_UnwindToken of ty_unwind_token
   | T_Target
   | T_ContextTy
+  | T_CompilerScope
   | T_Error
 
 and ty = { var : ty_shape Inference.var }

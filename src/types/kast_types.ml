@@ -58,6 +58,7 @@ module Value = struct
     | V_Target _ -> Ty.inferred T_Target
     | V_ContextTy _ -> Ty.inferred T_ContextTy
     | V_Binding binding -> binding.ty
+    | V_CompilerScope _ -> Ty.inferred T_CompilerScope
     | V_Error -> Ty.inferred T_Error
 
   let expect_unit : value -> unit option =

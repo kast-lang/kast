@@ -746,7 +746,7 @@ let dot : core_syntax =
                 init_error span C.state kind
             | TyExpr ->
                 TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
-            | Expr ->
+            | Expr -> (
                 let obj, field_ast =
                   children
                   |> Tuple.map Ast.Child.expect_ast
@@ -761,14 +761,31 @@ let dot : core_syntax =
                       error span "field must be ident";
                       return <| init_error span C.state kind
                 in
-                E_Field
-                  {
-                    obj;
-                    field;
-                    field_span = field_ast.span;
-                    label = Label.create_reference field_ast.span field;
-                  }
-                |> init_expr span C.state));
+                match obj.data.ty.var |> Inference.Var.inferred_opt with
+                | Some T_CompilerScope -> (
+                    let obj_expr = obj in
+                    let obj =
+                      Kast_interpreter.eval C.state.interpreter obj_expr
+                    in
+                    match obj.shape with
+                    | V_CompilerScope scope ->
+                        let binding =
+                          State.Scope.find_binding ~from:span field scope
+                        in
+                        E_Binding binding
+                        |> init_expr span ~evaled_exprs:[ obj_expr ] C.state
+                    | _ ->
+                        error span "expected obj to be compiler scope";
+                        return <| init_error span C.state kind)
+                | _ ->
+                    E_Field
+                      {
+                        obj;
+                        field;
+                        field_span = field_ast.span;
+                        label = Label.create_reference field_ast.span field;
+                      }
+                    |> init_expr span C.state)));
   }
 
 let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
@@ -1548,6 +1565,32 @@ let __file__ : core_syntax =
             init_error span C.state kind);
   }
 
+let current_compiler_scope : core_syntax =
+  {
+    name = "current_compiler_scope";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (_ : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        match kind with
+        | Expr ->
+            let scope = C.state.scope in
+            scope.bindings
+            |> StringMap.iter (fun field _binding ->
+                println "@current_scope.%S" field);
+            E_Constant { shape = V_CompilerScope scope }
+            |> init_expr span C.state
+        | _ ->
+            error span "current_compiler_scope must be expr";
+            init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -1588,6 +1631,7 @@ let core =
     current_context;
     binding;
     __file__;
+    current_compiler_scope;
   ]
 
 let all : core_syntax StringMap.t =

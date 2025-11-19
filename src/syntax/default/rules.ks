@@ -60,3 +60,4 @@
 @syntax "core:unquote" 1000 wrap never = "$" _ ->;
 @syntax "core:target_dependent" 1000 wrap always = "cfg_if" " " "(" ""/"\n\t" branches:any ""/"\\\n" ")";
 @syntax "core:__FILE__" 1000 wrap never = "__FILE__";
+@syntax "core:current_compiler_scope" 1000 wrap never = "@current_scope";

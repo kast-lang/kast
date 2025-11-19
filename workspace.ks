@@ -8,4 +8,5 @@
 "examples/doesnt-parse.ks",
 "examples/custom-syntax.ks",
 "examples/transpile-ocaml-test.ks",
+"examples/current_scope.ks",
 "examples/aoc/2024/day01.ks",
