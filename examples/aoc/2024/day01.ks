@@ -1,10 +1,14 @@
  #!/usr/bin/env kast
 use std.prelude.*;
-let dir = std.path.dirname __FILE__;
-print dir;
-std.sys.chdir (dir);
+std.sys.chdir (std.path.dirname __FILE__);
 let input = std.fs.read_file "day01.input.txt";
-print input;
+std.String.lines (
+    input,
+    line => (
+        print line;
+        print "==="
+    )
+);
 # let mut a :: list[int32] = list[];
 # let mut b :: list[int32] = list[];
 # for (line :: string) in lines(input) {

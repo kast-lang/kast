@@ -1,4 +1,7 @@
 module:
+const length = (s :: string) -> int32 => cfg_if (
+    | (native "==") (target.name, "interpreter") => (native "string.length") s
+);
 const substring = (s :: string, start :: int32, len :: int32) -> string => cfg_if (
     | (native "==") (target.name, "interpreter") => (native "string.substring") (s, start, len)
 );
@@ -36,4 +39,21 @@ const last_index_of = (c :: char, s :: string) -> int32 => (
         )
     );
     result
+);
+const lines = (s :: string, f :: string -> ()) -> () => (
+    let start = 0;
+    let endline = i => (
+        let line = substring (s, start, (native "-") (i, start));
+        f line;
+        start = (native "+") (i, 1);
+    );
+    iteri (
+        s,
+        (i, c) => (
+            if (native "==") (c, '\n') then (
+                endline i
+            ) else ()
+        )
+    );
+    endline (length s);
 );

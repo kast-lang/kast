@@ -58,6 +58,20 @@ let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
   (name, { shape = V_NativeFn { ty = { arg; result }; name; impl } })
 
 let mod_string =
+  let length =
+    native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Int32)
+      "string.length" (fun ~caller ~state:_ arg : value ->
+        with_return (fun { return } ->
+            let error msg () =
+              Error.error caller "string.length: %s" msg;
+              return ({ shape = V_Error } : value)
+            in
+            let s =
+              arg |> Value.expect_string
+              |> Option.unwrap_or_else (error "expected string as arg")
+            in
+            { shape = V_Int32 (Int32.of_int (String.length s)) }))
+  in
   let substring =
     native_fn ~arg:(Ty.new_not_inferred ()) ~result:(Ty.new_not_inferred ())
       "string.substring" (fun ~caller ~state arg : value ->
@@ -120,7 +134,7 @@ let mod_string =
                 ());
             { shape = V_Unit }))
   in
-  [ substring; iter ]
+  [ length; substring; iter ]
 
 let sys =
   let chdir =
