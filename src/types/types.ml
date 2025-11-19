@@ -40,7 +40,8 @@ and value_unwind_token = {
 }
 
 and value_fn = {
-  def : expr_fn;
+  def : maybe_compiled_fn;
+  ty : ty_fn;
   captured : interpreter_scope;
 }
 
@@ -92,10 +93,17 @@ and ty_shape =
 and ty = { var : ty_shape Inference.var }
 
 (* EXPR *)
-and expr_fn = {
+and compiled_fn = {
   arg : pattern;
   body : expr;
   evaled_result : ty_expr option;
+}
+
+and maybe_compiled_fn = { mutable compiled : compiled_fn option }
+
+and expr_fn = {
+  ty : ty_fn;
+  def : maybe_compiled_fn;
 }
 
 and expr_then = {
@@ -293,14 +301,18 @@ and ir_data = {
   span : span;
   ty : ty;
   compiler_scope : compiler_scope;
-  ty_ascription : ty_expr option;
-  evaled_exprs : expr list;
+  mutable ty_ascription : ty_expr option;
+  mutable evaled_exprs : expr list;
   included_file : Uri.t option;
 }
 
 and compiler_scope = {
+  id : id;
   parent : compiler_scope option;
-  bindings : binding StringMap.t;
+  recursive : bool;
+  mutable bindings : binding StringMap.t;
+  mutable closed : bool;
+  mutable on_update : (unit -> unit) list;
 }
 
 let target_symbol : symbol = Symbol.create "target"

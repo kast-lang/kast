@@ -16,8 +16,7 @@ let init_expr :
       | E_Then { a; b } -> b.data.ty
       | E_Stmt { expr } -> Ty.inferred T_Unit
       | E_Scope { expr } -> expr.data.ty
-      | E_Fn { arg; body; evaled_result = _ } ->
-          Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
+      | E_Fn { ty; _ } -> Ty.inferred <| T_Fn ty
       | E_Tuple { tuple } ->
           Ty.inferred
           <| T_Tuple

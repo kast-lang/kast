@@ -51,3 +51,4 @@ let handle_effects : 'a. (unit -> 'a) -> 'a =
       flush stdout;
       let line = read_line () in
       Effect.continue k line
+  | effect Compiler.Scope.AwaitUpdate _, k -> Effect.continue k false

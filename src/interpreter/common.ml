@@ -67,23 +67,36 @@ let rec pattern_match : value -> pattern -> Scope.locals =
           Scope.Locals.empty)
   | P_Error -> Scope.Locals.empty
 
+and await_compiled ~span (f : Types.maybe_compiled_fn) :
+    Types.compiled_fn option =
+  (* TODO *)
+  if f.compiled |> Option.is_none then
+    Error.error span "function is not compiled";
+  f.compiled
+
 and call (span : span) (state : state) (f : value) (arg : value) : value =
-  match f.shape with
-  | V_Fn { def; captured } ->
-      let arg_bindings = pattern_match arg def.arg in
-      let new_state =
-        {
-          state with
-          scope = Scope.with_values ~parent:(Some captured) arg_bindings;
-        }
-      in
-      let result = eval new_state def.body in
-      result
-  | V_NativeFn f -> f.impl ~caller:span ~state arg
-  | V_Error -> { shape = V_Error }
-  | _ ->
-      Error.error span "expected fn";
-      { shape = V_Error }
+  with_return (fun { return } ->
+      match f.shape with
+      | V_Fn { def; captured; ty = _ } ->
+          let def =
+            await_compiled ~span def
+            |> Option.unwrap_or_else (fun () ->
+                return ({ shape = V_Error } : value))
+          in
+          let arg_bindings = pattern_match arg def.arg in
+          let new_state =
+            {
+              state with
+              scope = Scope.with_values ~parent:(Some captured) arg_bindings;
+            }
+          in
+          let result = eval new_state def.body in
+          result
+      | V_NativeFn f -> f.impl ~caller:span ~state arg
+      | V_Error -> { shape = V_Error }
+      | _ ->
+          Error.error span "expected fn";
+          { shape = V_Error })
 
 and assign : state -> Expr.assignee -> value -> unit =
  fun state assignee value ->
@@ -111,7 +124,7 @@ and eval : state -> expr -> value =
               log "all in scope: %a" Scope.print_all state.scope);
           Error.error expr.data.span "%a not found" Symbol.print binding.name;
           { shape = V_Error })
-  | E_Fn def -> { shape = V_Fn { def; captured = state.scope } }
+  | E_Fn { def; ty } -> { shape = V_Fn { def; ty; captured = state.scope } }
   | E_Tuple { tuple } ->
       (*  TODO dont panic - get rid of Option.get *)
       let ty =

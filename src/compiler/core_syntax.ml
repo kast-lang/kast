@@ -117,7 +117,7 @@ let scope : core_syntax =
           |> Tuple.map Ast.Child.expect_ast
           |> Tuple.unwrap_single_unnamed
         in
-        let state = Compiler.state |> State.enter_scope in
+        let state = Compiler.state |> State.enter_scope ~recursive:false in
         match kind with
         | Expr ->
             let expr = Compiler.compile ~state Expr expr in
@@ -249,7 +249,7 @@ let fn_type : core_syntax =
             error span "fn_type can't be a expr";
             init_error span C.state kind
         | TyExpr ->
-            let state = C.state |> State.enter_scope in
+            let state = C.state |> State.enter_scope ~recursive:false in
             let arg = C.compile ~state TyExpr arg in
             let result = C.compile ~state TyExpr result in
             TE_Fn { arg; result } |> init_ty_expr span C.state);
@@ -297,22 +297,34 @@ let fn : core_syntax =
             error span "fn can't be a ty";
             init_error span C.state kind
         | Expr ->
-            let state = C.state |> State.enter_scope in
-            let arg = C.compile ~state Pattern arg in
-            state |> Compiler.inject_pattern_bindings arg;
-            let body = C.compile ~state Expr body in
-            let result_expr =
-              result
-              |> Option.map (fun result ->
-                  let result, result_expr =
-                    Compiler.eval_ty (module C) result
-                  in
-                  body.data.ty
-                  |> Inference.Ty.expect_inferred_as ~span:body.data.span result;
-                  result_expr)
+            let ty : Types.ty_fn =
+              { arg = Ty.new_not_inferred (); result = Ty.new_not_inferred () }
             in
-            E_Fn { arg; body; evaled_result = result_expr }
-            |> init_expr span C.state);
+            let def : Types.maybe_compiled_fn = { compiled = None } in
+            State.Scope.fork (fun () ->
+                let state = C.state |> State.enter_scope ~recursive:false in
+                let arg = C.compile ~state Pattern arg in
+                state |> Compiler.inject_pattern_bindings arg;
+                let body = C.compile ~state Expr body in
+                let result_expr =
+                  result
+                  |> Option.map (fun result ->
+                      let result, result_expr =
+                        Compiler.eval_ty (module C) result
+                      in
+                      body.data.ty
+                      |> Inference.Ty.expect_inferred_as ~span:body.data.span
+                           result;
+                      result_expr)
+                in
+                def.compiled <- Some { arg; body; evaled_result = result_expr };
+                ty.arg
+                |> Inference.Ty.expect_inferred_as ~span:arg.data.span
+                     arg.data.ty;
+                ty.result
+                |> Inference.Ty.expect_inferred_as ~span:body.data.span
+                     body.data.ty);
+            E_Fn { ty; def } |> init_expr span C.state);
   }
 
 let unit : core_syntax =
@@ -475,15 +487,17 @@ let type_ascribe : core_syntax =
         in
         let expr = C.compile kind expr in
         let expr_data = Compiler.get_data kind expr in
-        let expected_ty, expected_ty_expr =
-          Compiler.eval_ty (module C) expected_ty
-        in
-        expr_data.ty
-        |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
-        Compiler.update_data kind expr (fun data ->
-            if data.ty_ascription |> Option.is_some then
+        State.Scope.fork (fun () ->
+            let expected_ty, expected_ty_expr =
+              Compiler.eval_ty (module C) expected_ty
+            in
+            expr_data.ty
+            |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
+
+            if expr_data.ty_ascription |> Option.is_some then
               error span "there is already type ascription";
-            { data with ty_ascription = Some expected_ty_expr }));
+            expr_data.ty_ascription <- Some expected_ty_expr);
+        expr);
   }
 
 let import : core_syntax =
@@ -707,9 +721,9 @@ let module' : core_syntax =
         let def =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
-        (* TODO recursive scope *)
-        let state = C.state |> State.enter_scope in
+        let state = C.state |> State.enter_scope ~recursive:true in
         let def = C.compile ~state Expr def in
+        state.scope |> State.Scope.close;
         match kind with
         | Expr -> E_Module { def } |> init_expr span state
         | Assignee ->
@@ -1160,24 +1174,41 @@ let impl_syntax : core_syntax =
                   inner.root.children |> Tuple.map Ast.Child.expect_ast
                 in
                 let impl_expr =
-                  let state = State.enter_scope C.state in
-                  let arg =
-                    P_Tuple
-                      {
-                        tuple =
-                          fields
-                          |> Tuple.map (fun (field : Ast.t) ->
-                              ( ~field_span:field.span,
-                                ~field_label:(Label.create_definition field.span
-                                                (* TODO wrong span *) "<TODO>"),
-                                C.compile ~state Pattern field ));
-                      }
-                    |> init_pattern name.span C.state
+                  (* TODO maybe reduce copypasta here and compiling fn *)
+                  let ty : Types.ty_fn =
+                    {
+                      arg = Ty.new_not_inferred ();
+                      result = Ty.new_not_inferred ();
+                    }
                   in
-                  state |> Compiler.inject_pattern_bindings arg;
-                  let body = C.compile ~state Expr impl in
-                  E_Fn { arg; body; evaled_result = None }
-                  |> init_expr span C.state
+                  let def : Types.maybe_compiled_fn = { compiled = None } in
+                  State.Scope.fork (fun () ->
+                      let state = State.enter_scope C.state ~recursive:false in
+                      let arg =
+                        P_Tuple
+                          {
+                            tuple =
+                              fields
+                              |> Tuple.map (fun (field : Ast.t) ->
+                                  ( ~field_span:field.span,
+                                    ~field_label:(Label.create_definition
+                                                    field.span
+                                                    (* TODO wrong span *)
+                                                    "<TODO>"),
+                                    C.compile ~state Pattern field ));
+                          }
+                        |> init_pattern name.span C.state
+                      in
+                      state |> Compiler.inject_pattern_bindings arg;
+                      let body = C.compile ~state Expr impl in
+                      def.compiled <- Some { arg; body; evaled_result = None };
+                      ty.arg
+                      |> Inference.Ty.expect_inferred_as ~span:arg.data.span
+                           arg.data.ty;
+                      ty.result
+                      |> Inference.Ty.expect_inferred_as ~span:body.data.span
+                           body.data.ty);
+                  E_Fn { def; ty } |> init_expr span C.state
                 in
                 let impl = Interpreter.eval C.state.interpreter impl_expr in
                 Hashtbl.add C.state.custom_syntax_impls rule.id impl;
@@ -1305,7 +1336,12 @@ let loop : core_syntax =
         match kind with
         | Expr ->
             E_Loop
-              { body = C.compile ~state:(State.enter_scope C.state) Expr body }
+              {
+                body =
+                  C.compile
+                    ~state:(State.enter_scope C.state ~recursive:false)
+                    Expr body;
+              }
             |> init_expr span C.state
         | _ ->
             error span "loop must be expr";
@@ -1333,7 +1369,7 @@ let unwindable : core_syntax =
         match kind with
         | Expr ->
             let token = C.compile Pattern token in
-            let state = State.enter_scope C.state in
+            let state = State.enter_scope C.state ~recursive:false in
             state |> Compiler.inject_pattern_bindings token;
             let body = C.compile ~state Expr body in
             E_Unwindable { token; body } |> init_expr span C.state
@@ -1426,7 +1462,7 @@ let target_dependent : core_syntax =
                        cond = C.compile ~state:state_with_target Expr cond;
                        body =
                          C.compile
-                           ~state:(C.state |> State.enter_scope)
+                           ~state:(C.state |> State.enter_scope ~recursive:false)
                            Expr body;
                      }
                       : Types.expr_target_dependent_branch)

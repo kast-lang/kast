@@ -10,18 +10,64 @@ module Scope = struct
   type scope = Types.compiler_scope
   type t = scope
 
-  let init () : scope = { parent = None; bindings = StringMap.empty }
+  let init ~recursive : scope =
+    {
+      id = Id.gen ();
+      parent = None;
+      bindings = StringMap.empty;
+      recursive;
+      closed = false;
+      on_update = [];
+    }
 
-  let enter ~(parent : scope) : scope =
-    { parent = Some parent; bindings = StringMap.empty }
+  let enter ~recursive ~(parent : scope) : scope =
+    {
+      id = Id.gen ();
+      parent = Some parent;
+      bindings = StringMap.empty;
+      recursive;
+      closed = false;
+      on_update = [];
+    }
+
+  type _ Effect.t += AwaitUpdate : scope -> bool Effect.t
 
   let rec find_binding_opt : from:span -> string -> scope -> binding option =
    fun ~from ident scope ->
+    (* Log.info (fun log -> log "Looking for %S in %a" ident Id.print scope.id); *)
     match StringMap.find_opt ident scope.bindings with
     | Some binding ->
         Label.add_reference from binding.label;
         Some binding
-    | None -> scope.parent |> Option.and_then (find_binding_opt ~from ident)
+    | None ->
+        let find_in_parent () =
+          scope.parent |> Option.and_then (find_binding_opt ~from ident)
+        in
+        if scope.recursive && not scope.closed then
+          if
+            (* Log.info (fun log ->
+              log "Waiting for %S symbol in recursive scope %a" ident Id.print
+                scope.id); *)
+            Effect.perform (AwaitUpdate scope)
+          then
+            (* Log.info (fun log ->
+                log "Waited for %S symbol in recursive scope %a" ident Id.print
+                  scope.id); *)
+            find_binding_opt ~from ident scope
+          else find_in_parent ()
+        else find_in_parent ()
+
+  let fork (f : unit -> unit) : unit =
+    try f ()
+    with effect AwaitUpdate scope, k ->
+      (* println "registering waiter for %a" Id.print scope.id; *)
+      scope.on_update <- (fun () -> Effect.continue k true) :: scope.on_update
+
+  let notify_update (scope : scope) : unit =
+    let fs = scope.on_update in
+    scope.on_update <- [];
+    (* println "# of waiters: %d" (List.length fs); *)
+    fs |> List.iter (fun f -> f ())
 
   let find_binding : from:span -> string -> scope -> binding =
    fun ~from ident scope ->
@@ -36,9 +82,30 @@ module Scope = struct
           label = Label.create_definition from ident;
         })
 
+  let close : scope -> unit =
+   fun scope ->
+    scope.closed <- true;
+    (* println "closed %a" Id.print scope.id; *)
+    notify_update scope
+
   let inject_binding : binding -> scope -> scope =
-   fun binding { parent; bindings } ->
-    { parent; bindings = bindings |> StringMap.add binding.name.name binding }
+   fun binding scope ->
+    if scope.recursive then (
+      scope.bindings <-
+        scope.bindings |> StringMap.add binding.name.name binding;
+      (* println "injected %S" binding.name.name; *)
+      notify_update scope;
+      scope)
+    else (
+      close scope;
+      {
+        id = Id.gen ();
+        parent = scope.parent;
+        bindings = scope.bindings |> StringMap.add binding.name.name binding;
+        recursive = false;
+        closed = false;
+        on_update = [];
+      })
 end
 
 type imported = {
@@ -67,15 +134,16 @@ type state = t
 
 let blank ~import_cache =
   {
-    scope = Scope.init ();
+    scope = Scope.init ~recursive:false;
     currently_compiled_file = None;
     import_cache;
     interpreter = Interpreter.default ();
     custom_syntax_impls = Hashtbl.create 0;
   }
 
-let enter_scope : state -> state =
- fun {
+let enter_scope : recursive:bool -> state -> state =
+ fun ~recursive
+     {
        scope;
        currently_compiled_file;
        interpreter;
@@ -83,7 +151,7 @@ let enter_scope : state -> state =
        custom_syntax_impls;
      } ->
   {
-    scope = Scope.enter ~parent:scope;
+    scope = Scope.enter ~recursive ~parent:scope;
     currently_compiled_file;
     interpreter;
     import_cache;

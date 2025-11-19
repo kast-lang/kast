@@ -50,12 +50,15 @@ let inner_compiled_with_handler =
           handler.handle Expr b
       | E_Stmt { expr } -> handler.handle Expr expr
       | E_Scope { expr } -> handler.handle Expr expr
-      | E_Fn { arg; body; evaled_result } -> (
-          handler.handle Pattern arg;
-          handler.handle Expr body;
-          match evaled_result with
-          | Some expr -> handler.handle TyExpr expr
-          | None -> ())
+      | E_Fn { def; ty = _ } -> (
+          match def.compiled with
+          | None -> ()
+          | Some { arg; body; evaled_result } -> (
+              handler.handle Pattern arg;
+              handler.handle Expr body;
+              match evaled_result with
+              | Some expr -> handler.handle TyExpr expr
+              | None -> ()))
       | E_Tuple { tuple } ->
           tuple |> Tuple.to_seq
           |> Seq.iter

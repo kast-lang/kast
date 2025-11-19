@@ -75,10 +75,13 @@ and print_expr_shape :
   | E_Scope { expr } ->
       fprintf fmt "@{<magenta>scope@} %a" (Tuple.print print_expr)
         (Tuple.make [ expr ] [])
-  | E_Fn { arg; body; evaled_result = _ } ->
-      fprintf fmt
-        "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-        print_pattern_with_spans arg print_expr body
+  | E_Fn { def = { compiled }; _ } -> (
+      match compiled with
+      | Some { arg; body; evaled_result = _ } ->
+          fprintf fmt
+            "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
+            print_pattern_with_spans arg print_expr body
+      | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
   | E_Tuple { tuple } ->
       fprintf fmt "tuple %a"
         (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->

@@ -49,8 +49,7 @@ module Value = struct
                    tuple;
              }
     | V_Ty _ -> Ty.inferred T_Ty
-    | V_Fn { def = { arg; body; evaled_result = _ }; captured = _ } ->
-        Ty.inferred <| T_Fn { arg = arg.data.ty; result = body.data.ty }
+    | V_Fn { ty; _ } -> Ty.inferred <| T_Fn ty
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
     | V_Ast _ -> Ty.inferred T_Ast
     | V_UnwindToken { result_ty; id = _ } ->

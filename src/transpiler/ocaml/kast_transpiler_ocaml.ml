@@ -56,7 +56,13 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
              transpile_value field.value)
            tuple.tuple
   | Types.V_Ty _ -> OcamlAst.unit_value
-  | Types.V_Fn { def; captured = _ } ->
+  | Types.V_Fn { def; captured = _; ty = _ } ->
+      let def =
+        Kast_interpreter.await_compiled
+          ~span:(Span.fake "transpiling value")
+          def
+        |> Option.get
+      in
       OcamlAst.Fun
         {
           args = [ state |> transpile_pattern def.arg ];
@@ -106,7 +112,12 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
           | _ -> ());
           OcamlAst.single_let { pattern = OcamlAst.Placeholder; value = expr })
   | Types.E_Scope { expr } -> OcamlAst.Scope (state |> transpile_expr expr)
-  | Types.E_Fn def ->
+  | Types.E_Fn { def; ty = _ } ->
+      let def =
+        def
+        |> Kast_interpreter.await_compiled ~span:expr.data.span
+        |> Option.get
+      in
       OcamlAst.Fun
         {
           args = [ state |> transpile_pattern def.arg ];

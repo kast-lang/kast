@@ -7,6 +7,7 @@ module Interpreter = Kast_interpreter
 module Ast = Kast_ast
 open Init
 module Error = Error
+module Scope = State.Scope
 
 type state = State.t
 type import_cache = State.import_cache
@@ -16,7 +17,7 @@ let init_import_cache = State.init_import_cache
 (* TODO compile_for - figure out *)
 let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
  fun ~import_cache ~compile_for ->
-  let scope = State.Scope.init () in
+  let scope = State.Scope.init ~recursive:false in
   let scope =
     SymbolMap.fold
       (fun name (local : Types.interpreter_local) scope ->
@@ -213,7 +214,7 @@ let default ?(import_cache : import_cache option) () : state =
               : Types.interpreter_local);
       }
   in
-  let scope = State.Scope.init () in
+  let scope = State.Scope.init ~recursive:false in
   let scope =
     scope
     |> State.Scope.inject_binding
