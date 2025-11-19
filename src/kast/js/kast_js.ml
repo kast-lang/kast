@@ -15,8 +15,6 @@ let from_js_string = fun s -> s *)
 
 type file_state = Kast_lsp.Processing.file_state
 
-let global = Kast_lsp.Processing.init []
-
 let current_input : (string -> string Promise.t) ref =
   ref (fun _s -> failwith "input not set")
 
@@ -27,12 +25,15 @@ let cross_js : 'a. (unit -> 'a) -> 'a =
       Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
+  | effect Compiler.Scope.AwaitUpdate _, k -> Effect.continue k false
 
 let cross_js_async : 'a. (unit -> 'a) -> 'a Promise.t =
  fun f ->
   try Promise.return (cross_js f)
   with effect Kast_interpreter.Natives.Input s, k ->
     !current_input s |> Promise.bind (fun line : 'a -> Effect.continue k line)
+
+let global = cross_js (fun () -> Kast_lsp.Processing.init [])
 
 let yojson_to_js (json : Yojson.Safe.t) : Js.Unsafe.any =
   let json_str = Yojson.Safe.to_string json in
