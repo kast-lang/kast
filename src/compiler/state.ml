@@ -76,6 +76,7 @@ module Scope = struct
     |> Option.unwrap_or_else (fun () : binding ->
         error from "Could not find %S in scope" ident;
         {
+          id = Id.gen ();
           name = Symbol.create ident;
           span = from;
           ty = Ty.new_not_inferred ();

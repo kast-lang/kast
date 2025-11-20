@@ -24,6 +24,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
         scope
         |> State.Scope.inject_binding
              {
+               id = Id.gen ();
                name;
                ty = Value.ty_of local.value;
                span = Span.fake "<interpreter>";
@@ -102,6 +103,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | Token.Shape.Ident ident ->
                 let binding : binding =
                   {
+                    id = Id.gen ();
                     name = Symbol.create ident.name;
                     ty = Ty.new_not_inferred ();
                     span = ast.span;
@@ -219,6 +221,7 @@ let default ?(import_cache : import_cache option) () : state =
     scope
     |> State.Scope.inject_binding
          {
+           id = Id.gen ();
            name = std_symbol;
            ty = Value.ty_of std;
            span = Span.beginning_of std_uri;

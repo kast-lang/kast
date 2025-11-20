@@ -57,7 +57,8 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
           result = unite_ty ~span a.result b.result;
         }
   | T_Fn _, _ -> fail ()
-  | T_Generic a, T_Generic b when a == b -> T_Generic a
+  | T_Generic { def = a }, T_Generic { def = b } when a == b ->
+      T_Generic { def = a }
   | T_Generic _, _ -> fail ()
   | T_Target, T_Target -> T_Target
   | T_Target, _ -> fail ()
@@ -65,7 +66,7 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
   | T_ContextTy, _ -> fail ()
   | T_CompilerScope, T_CompilerScope -> T_CompilerScope
   | T_CompilerScope, _ -> fail ()
-  | T_Binding a, T_Binding b when a == b -> T_Binding a
+  | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
 
 and unite_ty : ty unite =

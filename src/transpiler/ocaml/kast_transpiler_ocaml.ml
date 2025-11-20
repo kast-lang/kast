@@ -56,7 +56,7 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
              transpile_value field.value)
            tuple.tuple
   | Types.V_Ty _ -> OcamlAst.unit_value
-  | Types.V_Fn { fn = { def; captured = _ }; ty = _ } ->
+  | Types.V_Fn { fn = { id = _; def; captured = _ }; ty = _ } ->
       let def =
         Kast_interpreter.await_compiled
           ~span:(Span.fake "transpiling value")

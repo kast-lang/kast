@@ -117,7 +117,7 @@ and assign : state -> Expr.assignee -> value -> unit =
   | A_Unit ->
       (* TODO assert that value is unit *)
       ()
-  | A_Binding { name; ty = _; span = _; label = _ } ->
+  | A_Binding { id = _; name; ty = _; span = _; label = _ } ->
       state.scope
       |> Scope.assign_to_existing ~span:assignee.data.span name value
   | A_Let pattern ->
@@ -138,9 +138,15 @@ and eval : state -> expr -> value =
             Error.error expr.data.span "%a not found" Symbol.print binding.name;
             { shape = V_Error })
     | E_Fn { def; ty } ->
-        { shape = V_Fn { ty; fn = { def; captured = state.scope } } }
+        {
+          shape =
+            V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } };
+        }
     | E_Generic { def } ->
-        { shape = V_Generic { fn = { def; captured = state.scope } } }
+        {
+          shape =
+            V_Generic { fn = { id = Id.gen (); def; captured = state.scope } };
+        }
     | E_Tuple { tuple } ->
         (*  TODO dont panic - get rid of Option.get *)
         let ty =

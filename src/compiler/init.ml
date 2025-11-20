@@ -5,7 +5,7 @@ open Kast_types
 open Error
 module Inference = Kast_inference
 
-let init_expr :
+let rec init_expr :
     ?evaled_exprs:expr list -> span -> State.t -> Expr.Shape.t -> expr =
  fun ?(evaled_exprs = []) span state shape ->
   try
@@ -17,9 +17,60 @@ let init_expr :
       | E_Stmt { expr } -> Ty.inferred T_Unit
       | E_Scope { expr } -> expr.data.ty
       | E_Fn { ty; _ } -> Ty.inferred <| T_Fn ty
-      | E_Generic _ -> Ty.new_not_inferred () (* TODO ?? *)
+      | E_Generic { def } -> T_Generic { def } |> Ty.inferred
       | E_InstantiateGeneric { generic; arg } ->
-          Ty.new_not_inferred () (* TODO ?? *)
+          let ty = Ty.new_not_inferred () in
+          State.Scope.fork (fun () ->
+              let inferred_ty =
+                with_return (fun { return } ->
+                    let ({ def } : Types.ty_generic) =
+                      match
+                        generic.data.ty.var |> Inference.Var.await_inferred
+                      with
+                      | T_Generic ty -> ty
+                      | _ ->
+                          Error.error span "Expected a generic";
+                          return (Ty.inferred T_Error)
+                    in
+                    let arg = Kast_interpreter.eval state.interpreter arg in
+                    let generic_ty_interpreter =
+                      state.interpreter
+                      (*TODO*)
+                    in
+                    let def =
+                      Kast_interpreter.await_compiled ~span def
+                      |> Option.unwrap_or_else (fun () ->
+                          Error.error span "Generic is not compiled yet";
+                          return (Ty.inferred T_Error))
+                    in
+                    let def_ty : Types.compiled_fn =
+                      {
+                        arg = def.arg;
+                        body =
+                          E_Constant { shape = V_Ty def.body.data.ty }
+                          |> init_expr def.body.data.span state;
+                        evaled_result = None;
+                      }
+                    in
+                    let generic_ty : Types.value_untyped_fn =
+                      {
+                        id = Id.gen ();
+                        def = { compiled = Some def_ty };
+                        captured = generic_ty_interpreter.scope;
+                      }
+                    in
+                    let result =
+                      Kast_interpreter.call_untyped_fn span
+                        generic_ty_interpreter generic_ty arg
+                    in
+                    match result |> Value.expect_ty with
+                    | Some ty -> ty
+                    | None ->
+                        Error.error span "generic type is not a type???";
+                        Ty.inferred T_Error)
+              in
+              ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
+          ty
       | E_Tuple { tuple } ->
           Ty.inferred
           <| T_Tuple

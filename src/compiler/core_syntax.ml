@@ -688,6 +688,8 @@ let include' : core_syntax =
 
 let const_let (span : span) (pattern : pattern) (value_expr : expr)
     (module C : Compiler.S) =
+  value_expr.data.ty
+  |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span pattern.data.ty;
   let value = Interpreter.eval C.state.interpreter value_expr in
   let let_expr =
     E_Assign
@@ -725,9 +727,6 @@ let const : core_syntax =
         | Expr ->
             let pattern = C.compile Pattern pattern in
             let value_expr = C.compile Expr value in
-            value_expr.data.ty
-            |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span
-                 pattern.data.ty;
             const_let span pattern value_expr (module C)
         | Assignee ->
             error span "const must be expr, not assignee expr";
@@ -957,6 +956,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
         | None ->
             P_Binding
               {
+                id = Id.gen ();
                 name = Symbol.create label;
                 ty = Ty.new_not_inferred ();
                 span = label_ast.span;
@@ -1076,6 +1076,7 @@ let use : core_syntax =
               | E_Field { obj = _; field; field_span; label } ->
                   P_Binding
                     {
+                      id = Id.gen ();
                       name = Symbol.create field;
                       span = field_span;
                       ty = used_expr.data.ty;
@@ -1120,6 +1121,7 @@ let use_dot_star : core_syntax =
                   |> List.map (fun (name, field) ->
                       let field : Types.ty_tuple_field = field in
                       ({
+                         id = Id.gen ();
                          name = Symbol.create name;
                          span = field.label |> Label.get_span;
                          ty = field.ty;
@@ -1520,6 +1522,7 @@ let target_dependent : core_syntax =
                     C.state.scope
                     |> State.Scope.inject_binding
                          ({
+                            id = Id.gen ();
                             name = Types.target_symbol;
                             span;
                             ty = Ty.inferred T_Target;

@@ -59,7 +59,7 @@ and sub_ty_shape ~(state : interpreter_state) (ty : ty_shape) : ty =
       T_Tuple { tuple = tuple |> Tuple.map (sub_ty_tuple_field ~state) }
       |> Ty.inferred
   | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> Ty.inferred
-  | T_Generic { fn = _ } -> ty |> Ty.inferred
+  | T_Generic { def = _ } -> ty |> Ty.inferred
   | T_UnwindToken { result } ->
       T_UnwindToken { result = sub_ty ~state result } |> Ty.inferred
   | T_Binding binding -> (

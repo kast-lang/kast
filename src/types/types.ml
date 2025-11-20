@@ -46,6 +46,7 @@ and value_fn = {
 }
 
 and value_untyped_fn = {
+  id : id;
   def : maybe_compiled_fn;
   captured : interpreter_scope;
 }
@@ -79,7 +80,7 @@ and ty_fn = {
   result : ty;
 }
 
-and ty_generic = { fn : value_untyped_fn }
+and ty_generic = { def : maybe_compiled_fn (* fn : value_untyped_fn; *) }
 and ty_unwind_token = { result : ty }
 
 and ty_shape =
@@ -310,6 +311,7 @@ and interpreter_state = {
 
 (* OTHER *)
 and binding = {
+  id : id;
   name : symbol;
   span : span;
   ty : ty;
