@@ -46,8 +46,8 @@
 @syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 60 wrap never = "unwind" " " token " " value;
 @syntax "core:." 70 wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";
-@syntax "core:generic" 1000 wrap if_any = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
-@syntax "core:instantiate_generic" 1000 wrap if_any = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
+@syntax "core:generic" 1000 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
+@syntax "core:instantiate_generic" 1000 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
 @syntax "core:type expr" 1000 wrap never = "type" " " _ ->;
 @syntax "core:type" 1000 wrap never = "type";
 @syntax "core:true" 1000 wrap never = "true";
