@@ -13,18 +13,6 @@ print <| (const3[_] "hello");
 # mutual recursion
 (
     module:
-    let f = [
-        T
-    ] (
-        x :: T => (
-            g[_] x;
-        )
-    );
-    let g = [
-        T
-    ] (
-        x :: T => (
-            f[_] x;
-        )
-    );
+    let f = [F] (x :: F => g[F] x);
+    let g = [G] (x :: G => f[G] x);
 );
