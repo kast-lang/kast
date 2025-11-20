@@ -50,7 +50,11 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Ty -> fprintf fmt "type"
   | T_Fn { arg; result } ->
       fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
-  | T_Generic _ -> fprintf fmt "@{<italic><generic>@}"
+  | T_Generic { def = { compiled } } -> (
+      match compiled with
+      | None -> fprintf fmt "@{<italic><generic>@}"
+      | Some { arg; body; evaled_result = _ } ->
+          fprintf fmt "[%a] %a" print_pattern arg print_ty body.data.ty)
   | T_Ast -> fprintf fmt "ast"
   | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
   | T_Target -> fprintf fmt "target"
@@ -229,6 +233,19 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
 and print_pattern_with_spans : formatter -> pattern -> unit =
  fun fmt { shape; data } ->
   fprintf fmt "%a @{<dim>at %a@}" print_pattern_shape shape Span.print data.span
+
+and print_pattern : formatter -> pattern -> unit =
+ fun fmt { shape; data = _ } ->
+  match shape with
+  | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
+  | P_Unit -> fprintf fmt "()"
+  | P_Binding binding -> print_binding fmt binding
+  | P_Tuple { tuple } ->
+      Tuple.print
+        (fun fmt (~field_span:_, ~field_label:_, field_pattern) ->
+          print_pattern fmt field_pattern)
+        fmt tuple
+  | P_Error -> fprintf fmt "@{<red><error>@}"
 
 (* OTHER *)
 and print_binding : formatter -> binding -> unit =
