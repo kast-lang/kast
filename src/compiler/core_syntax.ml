@@ -333,6 +333,9 @@ let fn : core_syntax =
             State.Scope.fork (fun () ->
                 let state = C.state |> State.enter_scope ~recursive:false in
                 let arg = C.compile ~state Pattern arg in
+                ty.arg
+                |> Inference.Ty.expect_inferred_as ~span:arg.data.span
+                     arg.data.ty;
                 state |> Compiler.inject_pattern_bindings arg;
                 let body = C.compile ~state Expr body in
                 let result_expr =
@@ -347,9 +350,6 @@ let fn : core_syntax =
                       result_expr)
                 in
                 def.compiled <- Some { arg; body; evaled_result = result_expr };
-                ty.arg
-                |> Inference.Ty.expect_inferred_as ~span:arg.data.span
-                     arg.data.ty;
                 ty.result
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
                      body.data.ty);

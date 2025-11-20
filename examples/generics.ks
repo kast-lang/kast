@@ -14,7 +14,5 @@ print (const3[_] "hello");
 (
     module:
     let f = [F] x :: F => g[F] x;
-    f[int32];
     let g = [G] x :: G => f[G] x;
-    g[int32];
 );
