@@ -44,6 +44,35 @@ let apply : core_syntax =
             init_error span C.state kind);
   }
 
+let instantiate_generic : core_syntax =
+  {
+    name = "instantiate_generic";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let generic, arg =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap2 ~unnamed:0 ~named:[ "generic"; "arg" ]
+        in
+        match kind with
+        | Expr ->
+            let generic = C.compile Expr generic in
+            let arg = C.compile Expr arg in
+            E_InstantiateGeneric { generic; arg } |> init_expr span C.state
+        | TyExpr -> TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
+            error span "instantiate_generic must be expr";
+            init_error span C.state kind);
+  }
+
 (* a; b *)
 let then' : core_syntax =
   {
@@ -325,6 +354,52 @@ let fn : core_syntax =
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
                      body.data.ty);
             E_Fn { ty; def } |> init_expr span C.state);
+  }
+
+let generic : core_syntax =
+  {
+    name = "generic";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
+        match kind with
+        | Assignee ->
+            error span "fn can't be assignee";
+            init_error span C.state kind
+        | Pattern ->
+            error span "fn can't be a pattern";
+            init_error span C.state kind
+        | TyExpr ->
+            error span "fn can't be a ty";
+            init_error span C.state kind
+        | Expr ->
+            let ty : Types.ty_fn =
+              { arg = Ty.new_not_inferred (); result = Ty.new_not_inferred () }
+            in
+            (* TODO copypasta with fn *)
+            let def : Types.maybe_compiled_fn = { compiled = None } in
+            State.Scope.fork (fun () ->
+                let state = C.state |> State.enter_scope ~recursive:false in
+                let arg = C.compile ~state Pattern arg in
+                state |> Compiler.inject_pattern_bindings arg;
+                let body = C.compile ~state Expr body in
+                def.compiled <- Some { arg; body; evaled_result = None };
+                ty.arg
+                |> Inference.Ty.expect_inferred_as ~span:arg.data.span
+                     arg.data.ty;
+                ty.result
+                |> Inference.Ty.expect_inferred_as ~span:body.data.span
+                     body.data.ty);
+            E_Generic { def } |> init_expr span C.state);
   }
 
 let unit : core_syntax =
@@ -1630,6 +1705,7 @@ let current_compiler_scope : core_syntax =
 let core =
   [
     apply;
+    instantiate_generic;
     then';
     stmt;
     scope;
@@ -1638,6 +1714,7 @@ let core =
     placeholder;
     fn_type;
     fn;
+    generic;
     unit;
     type';
     type_expr;

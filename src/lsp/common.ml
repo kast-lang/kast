@@ -50,7 +50,7 @@ let inner_compiled_with_handler =
           handler.handle Expr b
       | E_Stmt { expr } -> handler.handle Expr expr
       | E_Scope { expr } -> handler.handle Expr expr
-      | E_Fn { def; ty = _ } -> (
+      | E_Fn { def; ty = _ } | E_Generic { def } -> (
           match def.compiled with
           | None -> ()
           | Some { arg; body; evaled_result } -> (
@@ -66,6 +66,9 @@ let inner_compiled_with_handler =
                  handler.handle Expr field_expr)
       | E_Apply { f; arg } ->
           handler.handle Expr f;
+          handler.handle Expr arg
+      | E_InstantiateGeneric { generic; arg } ->
+          handler.handle Expr generic;
           handler.handle Expr arg
       | E_Assign { assignee; value } ->
           handler.handle Assignee assignee;

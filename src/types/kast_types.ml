@@ -50,6 +50,7 @@ module Value = struct
              }
     | V_Ty _ -> Ty.inferred T_Ty
     | V_Fn { ty; _ } -> Ty.inferred <| T_Fn ty
+    | V_Generic { fn } -> Ty.inferred <| T_Generic { fn }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
     | V_Ast _ -> Ty.inferred T_Ast
     | V_UnwindToken { result_ty; id = _ } ->
@@ -87,6 +88,7 @@ module Value = struct
   let expect_ty : value -> ty option =
    fun value ->
     match value.shape with
+    | V_Binding binding -> Some (Ty.inferred (T_Binding binding))
     | V_Ty ty -> Some ty
     | _ -> None
 

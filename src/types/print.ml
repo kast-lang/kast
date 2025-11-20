@@ -18,7 +18,8 @@ and print_value_shape : formatter -> value_shape -> unit =
         (Tuple.print (fun fmt (field : value_tuple_field) ->
              print_value fmt field.value))
         tuple
-  | V_Fn f -> fprintf fmt "@{<italic><fn>@}"
+  | V_Fn _ -> fprintf fmt "@{<italic><fn>@}"
+  | V_Generic _ -> fprintf fmt "@{<italic><generic>@}"
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
   | V_Ast ast -> fprintf fmt "%a" Ast.print ast
   | V_UnwindToken { id; result_ty = _ } -> fprintf fmt "<unwind %a>" Id.print id
@@ -49,11 +50,13 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Ty -> fprintf fmt "type"
   | T_Fn { arg; result } ->
       fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
+  | T_Generic _ -> fprintf fmt "@{<italic><generic>@}"
   | T_Ast -> fprintf fmt "ast"
   | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
   | T_Target -> fprintf fmt "target"
   | T_ContextTy -> fprintf fmt "context_type"
   | T_CompilerScope -> fprintf fmt "<compiler scope>"
+  | T_Binding binding -> fprintf fmt "%a" print_binding binding
   | T_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty : formatter -> ty -> unit =
@@ -82,6 +85,13 @@ and print_expr_shape :
             "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
             print_pattern_with_spans arg print_expr body
       | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
+  | E_Generic { def = { compiled }; _ } -> (
+      match compiled with
+      | Some { arg; body; evaled_result = _ } ->
+          fprintf fmt
+            "@{<magenta>generic@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
+            print_pattern_with_spans arg print_expr body
+      | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
   | E_Tuple { tuple } ->
       fprintf fmt "tuple %a"
         (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
@@ -90,6 +100,9 @@ and print_expr_shape :
   | E_Apply { f; arg } ->
       fprintf fmt "@{<magenta>apply@} %a" (Tuple.print print_expr)
         (Tuple.make [] [ ("f", f); ("arg", arg) ])
+  | E_InstantiateGeneric { generic; arg } ->
+      fprintf fmt "@{<magenta>instantiate_generic@} %a" (Tuple.print print_expr)
+        (Tuple.make [] [ ("generic", generic); ("arg", arg) ])
   | E_Assign { assignee; value } ->
       fprintf fmt
         "@{<magenta>assign@} (@;<0 2>@[<v>assignee = %a,@]@;<0 2>@[<v>value = %a@]@ )"
@@ -114,7 +127,7 @@ and print_expr_shape :
   | E_Loop { body } ->
       fprintf fmt "@{<magenta>loop@} (@;<0 2>@[<v>body = %a,@]@ )" print_expr
         body
-  | E_QuoteAst expr -> fprintf fmt "@{<magenta>quote_ast ...@}"
+  | E_QuoteAst _ -> fprintf fmt "@{<magenta>quote_ast ...@}"
   | E_Unwindable { token; body } ->
       fprintf fmt
         "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"

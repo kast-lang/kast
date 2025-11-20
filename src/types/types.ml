@@ -17,6 +17,7 @@ and value_shape =
   | V_Tuple of value_tuple
   | V_Ty of ty
   | V_Fn of value_fn
+  | V_Generic of value_generic
   | V_NativeFn of value_native_fn
   | V_Ast of Ast.t
   | V_UnwindToken of value_unwind_token
@@ -40,10 +41,16 @@ and value_unwind_token = {
 }
 
 and value_fn = {
-  def : maybe_compiled_fn;
   ty : ty_fn;
+  fn : value_untyped_fn;
+}
+
+and value_untyped_fn = {
+  def : maybe_compiled_fn;
   captured : interpreter_scope;
 }
+
+and value_generic = { fn : value_untyped_fn }
 
 and value_tuple_field = {
   value : value;
@@ -72,6 +79,7 @@ and ty_fn = {
   result : ty;
 }
 
+and ty_generic = { fn : value_untyped_fn }
 and ty_unwind_token = { result : ty }
 
 and ty_shape =
@@ -83,11 +91,13 @@ and ty_shape =
   | T_Tuple of ty_tuple
   | T_Ty
   | T_Fn of ty_fn
+  | T_Generic of ty_generic
   | T_Ast
   | T_UnwindToken of ty_unwind_token
   | T_Target
   | T_ContextTy
   | T_CompilerScope
+  | T_Binding of binding
   | T_Error
 
 and ty = { var : ty_shape Inference.var }
@@ -106,6 +116,8 @@ and expr_fn = {
   def : maybe_compiled_fn;
 }
 
+and expr_generic = { def : maybe_compiled_fn }
+
 and expr_then = {
   a : expr;
   b : expr;
@@ -117,6 +129,11 @@ and expr_tuple = { tuple : expr tuple_field_of tuple }
 
 and expr_apply = {
   f : expr;
+  arg : expr;
+}
+
+and expr_instantiate_generic = {
+  generic : expr;
   arg : expr;
 }
 
@@ -195,8 +212,10 @@ and expr_shape =
   | E_Stmt of expr_stmt
   | E_Scope of expr_scope
   | E_Fn of expr_fn
+  | E_Generic of expr_generic
   | E_Tuple of expr_tuple
   | E_Apply of expr_apply
+  | E_InstantiateGeneric of expr_instantiate_generic
   | E_Assign of expr_assign
   | E_Ty of ty_expr
   | E_Native of expr_native

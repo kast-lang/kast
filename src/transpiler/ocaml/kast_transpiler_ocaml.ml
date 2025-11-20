@@ -56,7 +56,7 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
              transpile_value field.value)
            tuple.tuple
   | Types.V_Ty _ -> OcamlAst.unit_value
-  | Types.V_Fn { def; captured = _; ty = _ } ->
+  | Types.V_Fn { fn = { def; captured = _ }; ty = _ } ->
       let def =
         Kast_interpreter.await_compiled
           ~span:(Span.fake "transpiling value")
@@ -68,6 +68,7 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
           args = [ state |> transpile_pattern def.arg ];
           body = state |> transpile_expr def.body;
         }
+  | Types.V_Generic _ -> failwith __LOC__
   | Types.V_NativeFn { name; _ } ->
       fail "Tried to transpile interpreter native fn %S" name
   | Types.V_Ast _ -> failwith __LOC__
@@ -123,6 +124,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
           args = [ state |> transpile_pattern def.arg ];
           body = state |> transpile_expr def.body;
         }
+  | Types.E_Generic _ -> failwith __LOC__
   | Types.E_Tuple tuple ->
       state
       |> transpile_tuple
@@ -132,6 +134,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_Apply { f; arg } ->
       OcamlAst.Call
         { f = state |> transpile_expr f; arg = state |> transpile_expr arg }
+  | Types.E_InstantiateGeneric _ -> failwith __LOC__
   | Types.E_Assign { assignee; value } ->
       let value_ident = "_value" in
       let rec perform_assign (assignee : Expr.assignee) (value : OcamlAst.t) :

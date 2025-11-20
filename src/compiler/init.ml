@@ -17,6 +17,9 @@ let init_expr :
       | E_Stmt { expr } -> Ty.inferred T_Unit
       | E_Scope { expr } -> expr.data.ty
       | E_Fn { ty; _ } -> Ty.inferred <| T_Fn ty
+      | E_Generic _ -> Ty.new_not_inferred () (* TODO ?? *)
+      | E_InstantiateGeneric { generic; arg } ->
+          Ty.new_not_inferred () (* TODO ?? *)
       | E_Tuple { tuple } ->
           Ty.inferred
           <| T_Tuple
