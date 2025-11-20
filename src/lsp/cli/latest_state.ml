@@ -21,7 +21,7 @@ let rec start_queued_if_needed : 'a. domain_mgr:_ -> 'a state -> unit =
         Some
           (Eio.Fiber.fork_promise ~sw:state.sw (fun () ->
                Eio.Domain_manager.run domain_mgr (fun () ->
-                   Kast.handle_effects (fun () ->
+                   Kast.handle_effects ~stop_on_error:false (fun () ->
                        try
                          Fun.protect
                            ~finally:(fun () ->

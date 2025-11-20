@@ -9,21 +9,26 @@ module Compiler = Kast_compiler
 module Fmt = Kast_fmt
 include Kast_types
 
-let handle_effects : 'a. (unit -> 'a) -> 'a =
- fun f ->
+let handle_effects : 'a. stop_on_error:bool -> (unit -> 'a) -> 'a =
+ fun ~stop_on_error f ->
+  let handle_error k =
+    if stop_on_error then
+      Effect.continue_with k (fun () -> fail "stopping on error")
+    else Effect.continue k ()
+  in
   try f () with
   | effect Kast_interpreter.Error.Error error, k ->
       Log.error (fun log -> log "%a" Kast_interpreter.Error.print error);
-      Effect.continue k ()
+      handle_error k
   | effect Kast_compiler.Error.Error error, k ->
       Log.error (fun log -> log "%a" Kast_compiler.Error.print error);
-      Effect.continue k ()
+      handle_error k
   | effect Kast_inference_base.Error.Error error, k ->
       Log.error (fun log -> log "%a" Kast_inference_base.Error.print error);
-      Effect.continue k ()
+      handle_error k
   | effect Kast_parser.Error.Error error, k ->
       Log.error (fun log -> log "%a" Kast_parser.Error.print error);
-      Effect.continue k ()
+      handle_error k
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileStartedProcessing _, k ->

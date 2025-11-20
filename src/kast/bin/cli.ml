@@ -30,8 +30,14 @@ module Command = struct
     | args -> Run (Kast_interpreter_cli.Args.parse args)
 end
 
-type args = { command : Command.t }
+type args = {
+  stop_on_error : bool;
+  command : Command.t;
+}
 
 let parse () : args =
   let args = Sys.argv |> Array.to_list |> List.tail in
-  { command = Command.parse args }
+  match args with
+  | "--stop-on-error=false" :: args | "--stop-on-error" :: "false" :: args ->
+      { stop_on_error = false; command = Command.parse args }
+  | _ -> { stop_on_error = true; command = Command.parse args }
