@@ -10,3 +10,21 @@ print <| (const2 "hello" |> int32_to_string);
 const @"const_v2" = [A] (a :: A => [B] (_ :: B => a));
 let const3 = @"const_v2"[_] 3;
 print <| (const3[_] "hello");
+# mutual recursion
+(
+    module:
+    let f = [
+        T
+    ] (
+        x :: T => (
+            g[_] x;
+        )
+    );
+    let g = [
+        T
+    ] (
+        x :: T => (
+            f[_] x;
+        )
+    );
+);

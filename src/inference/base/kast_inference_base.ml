@@ -117,13 +117,23 @@ module Var = struct
             |> check;
         }
 
-  let await_inferred : 'a. 'a var -> 'a =
+  type _ Effect.t += AwaitUpdate : 'a. 'a var -> unit Effect.t
+
+  let fork (type a) (f : unit -> unit) : unit =
+    try f ()
+    with effect AwaitUpdate var, k ->
+      once_inferred (fun _ -> Effect.continue k ()) var
+
+  let rec await_inferred : 'a. 'a var -> 'a =
    fun var ->
-    (* TODO actually async *)
     let root_data = find_root var in
     match root_data.inferred with
     | Some inferred -> inferred
-    | None -> fail "todo await inferred"
+    | None ->
+        Effect.perform (AwaitUpdate var);
+        await_inferred var
 end
+
+let fork = Var.fork
 
 type 'a var = 'a Var.t

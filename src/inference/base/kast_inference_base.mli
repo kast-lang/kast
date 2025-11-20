@@ -17,6 +17,8 @@ module Var : sig
   val await_inferred : 'a. 'a var -> 'a
 end
 
+val fork : (unit -> unit) -> unit
+
 type 'a var = 'a Var.t
 
 module Error = Error
