@@ -1,12 +1,12 @@
 module:
 const length = (s :: string) -> int32 => cfg_if (
-    | (@native "==") (target.name, "interpreter") => (@native "string.length") s
+    | target.name == "interpreter" => (@native "string.length") s
 );
 const substring = (s :: string, start :: int32, len :: int32) -> string => cfg_if (
-    | (@native "==") (target.name, "interpreter") => (@native "string.substring") (s, start, len)
+    | target.name == "interpreter" => (@native "string.substring") (s, start, len)
 );
 const iter = (s :: string, f :: char -> ()) -> () => cfg_if (
-    | (@native "==") (target.name, "interpreter") => (@native "string.iter") (s, f)
+    | target.name == "interpreter" => (@native "string.iter") (s, f)
 );
 const iteri = (s :: string, f :: (int32, char) -> ()) => (
     let i = 0;
@@ -23,7 +23,7 @@ const index_of = (c :: char, s :: string) -> int32 => (
         iteri (
             s,
             (i, c_at_i) => (
-                if (@native "==") (c, c_at_i) then (unwind block i) else ()
+                if c == c_at_i then (unwind block i) else ()
             )
         );
         0 - 1
@@ -34,7 +34,7 @@ const last_index_of = (c :: char, s :: string) -> int32 => (
     iteri (
         s,
         (i, c_at_i) => (
-            if (@native "==") (c, c_at_i) then (result = i) else ()
+            if c == c_at_i then (result = i) else ()
         )
     );
     result
@@ -49,7 +49,7 @@ const lines = (s :: string, f :: string -> ()) -> () => (
     iteri (
         s,
         (i, c) => (
-            if (@native "==") (c, '\n') then (
+            if c == '\n' then (
                 endline i
             ) else ()
         )

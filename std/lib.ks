@@ -20,14 +20,14 @@ const sys = include "./sys/_mod.ks";
 const rng :: _ = include "./rng/_mod.ks";
 const int32_to_string :: int32 -> string = num => (
     cfg_if (
-        | (@native "==") (target.name, "interpreter") => (@native "int32_to_string") num
-        | (@native "==") (target.name, "ocaml") => @native "@natives.todo()"
+        | target.name == "interpreter" => (@native "int32_to_string") num
+        | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
 const string_to_int32 :: string -> int32 = s => (
     cfg_if (
-        | (@native "==") (target.name, "interpreter") => (@native "string_to_int32") s
-        | (@native "==") (target.name, "ocaml") => @native "@natives.todo()"
+        | target.name == "interpreter" => (@native "string_to_int32") s
+        | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
 const prelude :: _ = include "./prelude.ks";

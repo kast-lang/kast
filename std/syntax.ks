@@ -7,22 +7,22 @@ impl syntax (f <| arg) = `(
     $f $arg
 );
 impl syntax (a < b) = `(
-    std.cmp.less ($a, $b)
+    std.cmp.less[_] ($a, $b)
 );
 impl syntax (a <= b) = `(
-    std.cmp.less_or_equal ($a, $b)
+    std.cmp.less_or_equal[_] ($a, $b)
 );
 impl syntax (a == b) = `(
-    std.cmp.equal ($a, $b)
+    std.cmp.equal[_] ($a, $b)
 );
 impl syntax (a != b) = `(
-    std.cmp.not_equal ($a, $b)
+    std.cmp.not_equal[_] ($a, $b)
 );
 impl syntax (a >= b) = `(
-    std.cmp.greater_or_equal ($a, $b)
+    std.cmp.greater_or_equal[_] ($a, $b)
 );
 impl syntax (a > b) = `(
-    std.cmp.greater ($a, $b)
+    std.cmp.greater[_] ($a, $b)
 );
 impl syntax (a + b) = `(
     std.op.add ($a, $b)
