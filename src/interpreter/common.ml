@@ -171,6 +171,9 @@ and eval : state -> expr -> value =
                          { value; span = field_span; ty_field });
               };
         }
+    | E_Variant { label; value } ->
+        let value = value |> Option.map (eval state) in
+        { shape = V_Variant { label; data = value; ty = expr.data.ty } }
     | E_Then { a; b } ->
         ignore <| eval state a;
         eval state b

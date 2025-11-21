@@ -43,6 +43,25 @@ and unite_ty_shape : span:span -> Ty.Shape.t -> Ty.Shape.t -> Ty.Shape.t =
           }
       with Invalid_argument _ -> fail ())
   | T_Tuple _, _ -> fail ()
+  | T_Variant { variants = a }, T_Variant { variants = b } ->
+      with_return (fun { return } : Ty.Shape.t ->
+          T_Variant
+            {
+              variants =
+                Row.unite ~span
+                  (fun ~span ({ data = a } : Types.ty_variant_data)
+                       ({ data = b } : Types.ty_variant_data) :
+                       Types.ty_variant_data ->
+                    {
+                      data =
+                        (match (a, b) with
+                        | None, None -> None
+                        | Some _, None | None, Some _ -> return <| fail ()
+                        | Some a, Some b -> Some (unite_ty ~span a b));
+                    })
+                  a b;
+            })
+  | T_Variant _, _ -> fail ()
   | T_Ty, T_Ty -> T_Ty
   | T_Ty, _ -> fail ()
   | T_Ast, T_Ast -> T_Ast

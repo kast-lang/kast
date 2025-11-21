@@ -45,7 +45,9 @@
 @syntax "core:apply" 50 wrap never = <- f " " arg;
 @syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 60 wrap never = "unwind" " " token " " value;
-@syntax "core:instantiate_generic" 65 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
+@syntax "core:variant_without_value" 62 wrap never = ":" label;
+@syntax "core:variant" 62 wrap never = ":" label " " value;
+@syntax "core:instantiate_generic" 70 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
 @syntax "core:." 70 wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:generic" 6.5 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
 @syntax "core:type expr" 1000 wrap never = "type" " " _ ->;

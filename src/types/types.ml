@@ -15,6 +15,7 @@ and value_shape =
   | V_Char of char
   | V_String of string
   | V_Tuple of value_tuple
+  | V_Variant of value_variant
   | V_Ty of ty
   | V_Fn of value_fn
   | V_Generic of value_generic
@@ -61,6 +62,12 @@ and value_tuple_field = {
 
 and value_tuple = { tuple : value_tuple_field tuple }
 
+and value_variant = {
+  label : Label.t;
+  data : value option;
+  ty : ty;
+}
+
 and value_native_fn = {
   name : string;
   ty : ty_fn;
@@ -82,6 +89,8 @@ and ty_fn = {
 
 and ty_generic = { def : maybe_compiled_fn (* fn : value_untyped_fn; *) }
 and ty_unwind_token = { result : ty }
+and ty_variant_data = { data : ty option }
+and ty_variant = { variants : ty_variant_data Row.t }
 
 and ty_shape =
   | T_Unit
@@ -89,6 +98,7 @@ and ty_shape =
   | T_Int32
   | T_String
   | T_Char
+  | T_Variant of ty_variant
   | T_Tuple of ty_tuple
   | T_Ty
   | T_Fn of ty_fn
@@ -127,6 +137,11 @@ and expr_then = {
 and 'a tuple_field_of = field_span:span * field_label:Label.t * 'a
 and expr_stmt = { expr : expr }
 and expr_tuple = { tuple : expr tuple_field_of tuple }
+
+and expr_variant = {
+  label : Label.t;
+  value : expr option;
+}
 
 and expr_apply = {
   f : expr;
@@ -215,6 +230,7 @@ and expr_shape =
   | E_Fn of expr_fn
   | E_Generic of expr_generic
   | E_Tuple of expr_tuple
+  | E_Variant of expr_variant
   | E_Apply of expr_apply
   | E_InstantiateGeneric of expr_instantiate_generic
   | E_Assign of expr_assign

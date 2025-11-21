@@ -30,6 +30,14 @@ and sub_value_shape ~(state : interpreter_state) (value : value_shape) : value =
                    });
         }
       |> shaped
+  | V_Variant { label; data; ty } ->
+      V_Variant
+        {
+          label;
+          data = data |> Option.map (sub_value ~state);
+          ty = sub_ty ~state ty;
+        }
+      |> shaped
   | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
   | V_Fn { ty; fn } -> V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped
   | V_Generic { fn = _ } -> value |> shaped
@@ -58,6 +66,16 @@ and sub_ty_shape ~(state : interpreter_state) (ty : ty_shape) : ty =
   | T_Tuple { tuple } ->
       T_Tuple { tuple = tuple |> Tuple.map (sub_ty_tuple_field ~state) }
       |> Ty.inferred
+  | T_Variant { variants } ->
+      T_Variant
+        {
+          variants =
+            sub_row ~state
+              (fun ~state ({ data } : ty_variant_data) : ty_variant_data ->
+                { data = data |> Option.map (sub_ty ~state) })
+              variants;
+        }
+      |> Ty.inferred
   | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> Ty.inferred
   | T_Generic { def = _ } -> ty |> Ty.inferred
   | T_UnwindToken { result } ->
@@ -80,3 +98,24 @@ and sub_ty_tuple_field ~(state : interpreter_state)
 
 and sub_ty_fn ~state ({ arg; result } : ty_fn) : ty_fn =
   { arg = sub_ty ~state arg; result = sub_ty ~state result }
+
+and sub_row :
+    'a.
+    state:interpreter_state ->
+    (state:interpreter_state -> 'a -> 'a) ->
+    'a Row.t ->
+    'a Row.t =
+ fun ~state sub_value row ->
+  match row.var |> Inference.Var.inferred_opt with
+  | Some shape -> (
+      match shape with
+      | R_Empty -> row
+      | R_Cons { label; value; rest } ->
+          Row.inferred
+            (R_Cons
+               {
+                 label;
+                 value = sub_value ~state value;
+                 rest = sub_row ~state sub_value rest;
+               }))
+  | None -> row

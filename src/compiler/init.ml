@@ -86,6 +86,25 @@ let rec init_expr :
                           let field_expr : expr = field_expr in
                           { ty = field_expr.data.ty; label = field_label });
                }
+      | E_Variant { label; value } ->
+          Ty.inferred
+          <| T_Variant
+               {
+                 variants =
+                   Row.inferred
+                   <| R_Cons
+                        {
+                          label;
+                          value : Types.ty_variant_data =
+                            {
+                              data =
+                                value
+                                |> Option.map (fun (expr : expr) ->
+                                    expr.data.ty);
+                            };
+                          rest = Row.new_not_inferred ();
+                        };
+               }
       | E_Apply { f; arg } ->
           let f_arg = Ty.new_not_inferred () in
           let f_result = Ty.new_not_inferred () in

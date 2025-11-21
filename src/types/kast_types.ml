@@ -4,6 +4,7 @@ open Types
 open Print
 module Types = Types
 module Label = Label
+module Row = Row
 
 module Ty = struct
   type t = ty
@@ -48,6 +49,7 @@ module Value = struct
                    (fun (field : value_tuple_field) -> field.ty_field)
                    tuple;
              }
+    | V_Variant { ty; _ } -> ty
     | V_Ty _ -> Ty.inferred T_Ty
     | V_Fn { ty; _ } -> Ty.inferred <| T_Fn ty
     | V_Generic { fn } -> Ty.inferred <| T_Generic { def = fn.def }

@@ -71,3 +71,8 @@ let unite a b =
 let add_reference span label =
   let reference = create_reference span (get_name label) in
   ignore <| unite reference label
+
+let print fmt label =
+  match label.var |> Inference.Var.inferred_opt with
+  | Some data -> fprintf fmt "%s" data.name
+  | None -> fprintf fmt "_"

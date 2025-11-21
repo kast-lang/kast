@@ -19,6 +19,11 @@ and print_value_shape : formatter -> value_shape -> unit =
              print_value fmt field.value))
         tuple
   | V_Fn _ -> fprintf fmt "@{<italic><fn>@}"
+  | V_Variant { label; data; ty = _ } -> (
+      fprintf fmt ":%a" Label.print label;
+      match data with
+      | Some data -> fprintf fmt " %a" print_value data
+      | None -> ())
   | V_Generic _ -> fprintf fmt "@{<italic><generic>@}"
   | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
   | V_Ast ast -> fprintf fmt "%a" Ast.print ast
@@ -40,6 +45,22 @@ and print_ty_shape : formatter -> ty_shape -> unit =
   | T_Int32 -> fprintf fmt "int32"
   | T_Char -> fprintf fmt "char"
   | T_String -> fprintf fmt "string"
+  | T_Variant { variants } ->
+      fprintf fmt "%a"
+        (Row.print
+           ~options:
+             {
+               open_ = "";
+               before_label = ":";
+               between = "";
+               rest = "...";
+               sep = " | ";
+               close = "";
+             } (fun fmt ({ data } : ty_variant_data) ->
+             match data with
+             | Some data -> fprintf fmt " %a" print_ty data
+             | None -> ()))
+        variants
   | T_Tuple { tuple } ->
       fprintf fmt "%a"
         (Tuple.print
@@ -101,6 +122,10 @@ and print_expr_shape :
         (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
              print_expr fmt field_expr))
         tuple
+  | E_Variant { label; value } ->
+      fprintf fmt
+        "@{<magenta>variant@} (@;<0 2>@[<v>label = %a,@]@;<0 2>@[<v>value = %a@]@ )"
+        Label.print label (Option.print print_expr) value
   | E_Apply { f; arg } ->
       fprintf fmt "@{<magenta>apply@} %a" (Tuple.print print_expr)
         (Tuple.make [] [ ("f", f); ("arg", arg) ])

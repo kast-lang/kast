@@ -11,4 +11,6 @@
 "examples/current_scope.ks",
 "examples/mutual-recursion.ks",
 "examples/generics.ks",
+"examples/inference-bug.ks",
+"examples/variant-types.ks",
 "examples/aoc/2024/day01.ks",

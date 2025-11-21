@@ -55,6 +55,7 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
            (fun (field : Types.value_tuple_field) ->
              transpile_value field.value)
            tuple.tuple
+  | Types.V_Variant _ -> failwith __LOC__
   | Types.V_Ty _ -> OcamlAst.unit_value
   | Types.V_Fn { fn = { id = _; def; captured = _ }; ty = _ } ->
       let def =
@@ -131,6 +132,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
            (fun (~field_span:_, ~field_label:_, field_expr) ->
              transpile_expr field_expr)
            tuple.tuple
+  | Types.E_Variant _ -> failwith __LOC__
   | Types.E_Apply { f; arg } ->
       OcamlAst.Call
         { f = state |> transpile_expr f; arg = state |> transpile_expr arg }

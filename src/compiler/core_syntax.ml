@@ -1705,6 +1705,61 @@ let current_compiler_scope : core_syntax =
             init_error span C.state kind);
   }
 
+let variant_impl =
+ fun (type a) (module C : Compiler.S) (kind : a compiled_kind) (ast : Ast.t)
+     ({ children; _ } : Ast.group) : a ->
+  let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
+  let label =
+    match label_ast.shape with
+    | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
+    | _ ->
+        Error.error label_ast.span "field label must be ident";
+        invalid_arg "tuple field"
+  in
+  let value_ast =
+    children |> Tuple.get_named_opt "value" |> Option.map Ast.Child.expect_ast
+  in
+  let span = ast.span in
+  match kind with
+  | Expr ->
+      E_Variant
+        {
+          label = Label.create_definition label_ast.span label;
+          value = value_ast |> Option.map (fun ast -> C.compile Expr ast);
+        }
+      |> init_expr span C.state
+  | _ ->
+      error span "variant must be expr";
+      init_error span C.state kind
+
+let variant_without_value : core_syntax =
+  {
+    name = "variant_without_value";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (group : Ast.group)
+        :
+        a
+      -> variant_impl (module C) kind ast group);
+  }
+
+let variant : core_syntax =
+  {
+    name = "variant";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (group : Ast.group)
+        :
+        a
+      -> variant_impl (module C) kind ast group);
+  }
+
 let core =
   [
     apply;
@@ -1748,6 +1803,8 @@ let core =
     binding;
     __file__;
     current_compiler_scope;
+    variant;
+    variant_without_value;
   ]
 
 let all : core_syntax StringMap.t =
