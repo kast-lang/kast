@@ -137,6 +137,11 @@ let inner_compiled_with_handler =
           |> Seq.iter
                (fun (_member, (~field_span:_, ~field_label:_, field_expr)) ->
                  handler.handle TyExpr field_expr)
+      | TE_Union { elements } -> elements |> List.iter (handler.handle TyExpr)
+      | TE_Variant { variants } ->
+          variants
+          |> List.iter (fun (_label, variant_data) ->
+              variant_data |> Option.iter (handler.handle TyExpr))
       | TE_Error -> ()));
   let data = Compiler.get_data kind compiled in
   data.evaled_exprs |> List.iter (fun expr -> handler.handle Expr expr);

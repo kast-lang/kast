@@ -313,6 +313,8 @@ let init_ty_expr :
           expr.data.ty
           |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty
       | TE_Tuple { tuple = _ } -> ()
+      | TE_Union { elements = _ } -> ()
+      | TE_Variant { variants = _ } -> ()
       | TE_Error -> ());
       {
         shape;

@@ -46,12 +46,17 @@ let print :
   fprintf fmt "%s" options.open_;
   let first = ref true in
   let rec print_rest ({ var } : 'a row) : unit =
-    if not !first then fprintf fmt "%s" options.sep;
-    first := false;
+    let maybe_sep () =
+      if not !first then fprintf fmt "%s" options.sep;
+      first := false
+    in
     match var |> Inference.Var.inferred_opt with
-    | None -> fprintf fmt "%s" options.rest
+    | None ->
+        maybe_sep ();
+        fprintf fmt "%s" options.rest
     | Some R_Empty -> ()
     | Some (R_Cons { label; value; rest }) ->
+        maybe_sep ();
         fprintf fmt "%s%a%s%a" options.before_label Label.print label
           options.between print_value value;
         print_rest rest
@@ -64,7 +69,9 @@ let rec unite_shape : 'a. 'a Inference.unite -> 'a shape Inference.unite =
   let aa = a in
   match (a, b) with
   | R_Empty, R_Empty -> R_Empty
-  | R_Empty, R_Cons _ | R_Cons _, R_Empty -> fail "row inference failure"
+  | R_Empty, R_Cons _ | R_Cons _, R_Empty ->
+      Inference.Error.error span "row inference failure";
+      R_Empty
   | R_Cons a, R_Cons b ->
       if Label.get_name a.label = Label.get_name b.label then
         R_Cons
@@ -86,3 +93,14 @@ let rec unite_shape : 'a. 'a Inference.unite -> 'a shape Inference.unite =
 and unite : 'a. 'a Inference.unite -> 'a row Inference.unite =
  fun unite_value ~span a b ->
   { var = Inference.Var.unite (unite_shape unite_value) ~span a.var b.var }
+
+let rec await_inferred_to_list { var } =
+  match var |> Inference.Var.await_inferred with
+  | R_Empty -> []
+  | R_Cons { label; value; rest } ->
+      (label, value) :: await_inferred_to_list rest
+
+let rec of_list = function
+  | [] -> inferred R_Empty
+  | (label, value) :: rest ->
+      inferred <| R_Cons { label; value; rest = of_list rest }

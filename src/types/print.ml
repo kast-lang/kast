@@ -234,6 +234,17 @@ and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
         (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
              print_ty_expr fmt field_expr))
         tuple
+  | TE_Union { elements } ->
+      fprintf fmt "@{<magenta>union@} %a"
+        (Tuple.print print_ty_expr)
+        (Tuple.make elements [])
+  | TE_Variant { variants } ->
+      fprintf fmt "@{<magenta>variant@} %a"
+        (Tuple.print (Option.print print_ty_expr))
+        (Tuple.make []
+           (variants
+           |> List.map (fun (label, variant) -> (Label.get_name label, variant))
+           ))
   | TE_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty_expr : formatter -> ty_expr -> unit =

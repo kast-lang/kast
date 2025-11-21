@@ -274,12 +274,16 @@ and ty_expr_fn = {
 }
 
 and ty_expr_tuple = { tuple : ty_expr tuple_field_of tuple }
+and ty_expr_union = { elements : ty_expr list }
+and ty_expr_variant = { variants : (Label.t * ty_expr option) list }
 
 and ty_expr_shape =
   | TE_Unit
   | TE_Fn of ty_expr_fn
   | TE_Expr of expr
   | TE_Tuple of ty_expr_tuple
+  | TE_Variant of ty_expr_variant
+  | TE_Union of ty_expr_union
   | TE_Error
 
 and ty_expr = {

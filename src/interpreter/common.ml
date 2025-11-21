@@ -3,6 +3,7 @@ open Kast_util
 open Kast_types
 module Ast = Kast_ast
 module Error = Error
+module Inference = Kast_inference_base
 
 type state = Types.interpreter_state
 
@@ -388,6 +389,31 @@ and eval_ty : state -> Expr.ty -> ty =
                         let ty = field_expr |> eval_ty state in
                         { ty; label = field_label });
              })
+    | TE_Union { elements } ->
+        let variants =
+          elements
+          |> List.map (fun ty_expr ->
+              let ty = eval_ty state ty_expr in
+              match ty.var |> Inference.Var.await_inferred with
+              | T_Variant { variants } -> Row.await_inferred_to_list variants
+              | _ ->
+                  Error.error ty_expr.data.span "Can only use variants in union";
+                  [])
+          |> List.flatten
+        in
+        Ty.inferred <| T_Variant { variants = Row.of_list variants }
+    | TE_Variant { variants } ->
+        Ty.inferred
+        <| T_Variant
+             {
+               variants =
+                 Row.of_list
+                   (variants
+                   |> List.map (fun (label, variant_data) ->
+                       ( label,
+                         ({ data = variant_data |> Option.map (eval_ty state) }
+                           : Types.ty_variant_data) )));
+             }
     | TE_Error -> Ty.inferred T_Error
   in
   Substitute_bindings.sub_ty ~state result

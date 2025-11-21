@@ -1716,18 +1716,19 @@ let variant_impl =
         Error.error label_ast.span "field label must be ident";
         invalid_arg "tuple field"
   in
+  let label = Label.create_definition label_ast.span label in
   let value_ast =
     children |> Tuple.get_named_opt "value" |> Option.map Ast.Child.expect_ast
   in
   let span = ast.span in
   match kind with
   | Expr ->
-      E_Variant
-        {
-          label = Label.create_definition label_ast.span label;
-          value = value_ast |> Option.map (fun ast -> C.compile Expr ast);
-        }
+      E_Variant { label; value = value_ast |> Option.map (C.compile Expr) }
       |> init_expr span C.state
+  | TyExpr ->
+      TE_Variant
+        { variants = [ (label, value_ast |> Option.map (C.compile TyExpr)) ] }
+      |> init_ty_expr span C.state
   | _ ->
       error span "variant must be expr";
       init_error span C.state kind
@@ -1744,6 +1745,48 @@ let variant_without_value : core_syntax =
         :
         a
       -> variant_impl (module C) kind ast group);
+  }
+
+let union_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
+    (ast : Ast.t) (_ : Ast.group) : a =
+  let span = ast.span in
+  let elements =
+    Ast.collect_list ~binary_rule_name:"core:union"
+      ~trailing_or_leading_rule_name:"core:leading union" ast
+  in
+  let elements = elements |> List.map (C.compile kind) in
+  match kind with
+  | TyExpr -> TE_Union { elements } |> init_ty_expr span C.state
+  | _ ->
+      error span "union must be ty expr";
+      init_error span C.state kind
+
+let leading_union : core_syntax =
+  {
+    name = "leading union";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (group : Ast.group)
+        :
+        a
+      -> union_impl (module C) kind ast group);
+  }
+
+let union : core_syntax =
+  {
+    name = "union";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (group : Ast.group)
+        :
+        a
+      -> union_impl (module C) kind ast group);
   }
 
 let variant : core_syntax =
@@ -1805,6 +1848,8 @@ let core =
     current_compiler_scope;
     variant;
     variant_without_value;
+    leading_union;
+    union;
   ]
 
 let all : core_syntax StringMap.t =
