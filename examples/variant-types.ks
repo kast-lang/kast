@@ -1,9 +1,6 @@
 use std.prelude.*;
 #  let some1and2 = :Option[int32].Some (1, 2);
 # std::variant
-match :Some 123 with (
-    | :Some x | :OtherVariant x => x
-);
 let variant_name = value => match value with (
     | :Some (.a = _, .b = value) => value
     | :None => "None"
