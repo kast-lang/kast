@@ -57,6 +57,15 @@ let types =
 let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
   (name, { shape = V_NativeFn { ty = { arg; result }; name; impl } })
 
+let dbg =
+  [
+    (* TODO dbg should be polymorphic *)
+    native_fn ~arg:(Ty.new_not_inferred ()) ~result:(Ty.inferred T_Unit)
+      "dbg.print" (fun ~caller:_ ~state:_ arg : value ->
+        println "%a" Value.print arg;
+        { shape = V_Unit });
+  ]
+
 let mod_string =
   let length =
     native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Int32)
@@ -342,6 +351,6 @@ let natives : natives =
               Error.error caller "create_context_type expected a type";
               { shape = V_Error });
     ]
-    @ types @ fs @ sys @ mod_string
+    @ types @ fs @ sys @ mod_string @ dbg
   in
   { by_name = list |> StringMap.of_list }

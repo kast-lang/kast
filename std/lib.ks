@@ -10,6 +10,7 @@ const int32 :: type = @native "int32";
 const char :: type = @native "char";
 const string :: type = @native "string";
 #
+const dbg = include "./dbg.ks";
 const op :: _ = include "./op.ks";
 const cmp :: _ = include "./cmp.ks";
 const io :: _ = include "./io/_mod.ks";
