@@ -3,6 +3,12 @@ open Id
 module RecurseCache = struct
   type recurse_cache = { visited : (id, unit) Hashtbl.t }
   type t = recurse_cache
+  type _ Effect.t += Get : unit -> recurse_cache Effect.t
+
+  let get () = Effect.perform (Get ())
+
+  let with_cache (cache : recurse_cache) f =
+    try f () with effect Get (), k -> Effect.Deep.continue k cache
 
   let create () = { visited = Hashtbl.create 0 }
 
