@@ -167,7 +167,7 @@ module Var = struct
     let b = find_root_var b in
     Repr.phys_equal a b
 
-  let id var =
+  let recurse_id var =
     let data = find_root var in
     data.recurse_id
 end

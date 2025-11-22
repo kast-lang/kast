@@ -16,7 +16,7 @@ module Var : sig
   val once_inferred : 'a. ('a -> unit) -> 'a var -> unit
   val await_inferred : 'a. 'a var -> 'a
   val same : 'a. 'a var -> 'a var -> bool
-  val id : 'a. 'a var -> id
+  val recurse_id : 'a. 'a var -> id
 end
 
 val fork : (unit -> unit) -> unit

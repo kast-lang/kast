@@ -58,7 +58,7 @@ and sub_value_shape_impl ~cache ~(state : interpreter_state)
       | Some local -> local.value)
 
 and sub_ty_impl ~cache ~(state : interpreter_state) (ty : ty) : ty =
-  if cache |> RecurseCache.visit (Inference.Var.id ty.var) then
+  if cache |> RecurseCache.visit (Inference.Var.recurse_id ty.var) then
     match ty.var |> Inference.Var.inferred_opt with
     | None -> ty
     | Some shape -> sub_ty_shape_impl ~cache ~state shape

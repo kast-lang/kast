@@ -93,9 +93,10 @@ module Impl = struct
 
   and print_ty : cache:RecurseCache.t -> formatter -> ty -> unit =
    fun ~cache fmt { var } ->
-    if cache |> RecurseCache.visit (Inference.Var.id var) then
-      Inference.Var.print (print_ty_shape ~cache) fmt var
-    else fprintf fmt "<recursive>"
+    if cache |> RecurseCache.visit (Inference.Var.recurse_id var) then (
+      fprintf fmt "<id=%a>" Id.print (Inference.Var.recurse_id var);
+      Inference.Var.print (print_ty_shape ~cache) fmt var)
+    else fprintf fmt "<recursive %a>" Id.print (Inference.Var.recurse_id var)
 
   (* EXPR *)
   and print_expr_shape :
@@ -362,34 +363,21 @@ module Impl = struct
    fun ~cache fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name
 end
 
-let print_ty = Impl.print_ty ~cache:(RecurseCache.create ())
-let print_ty_shape = Impl.print_ty_shape ~cache:(RecurseCache.create ())
-let print_value = Impl.print_value ~cache:(RecurseCache.create ())
-let print_value_shape = Impl.print_value_shape ~cache:(RecurseCache.create ())
-
-let print_expr_with_spans =
-  Impl.print_expr_with_spans ~cache:(RecurseCache.create ())
-
-let print_expr_with_types =
-  Impl.print_expr_with_types ~cache:(RecurseCache.create ())
-
-let print_expr_shape = Impl.print_expr_shape ~cache:(RecurseCache.create ())
-
-let print_assignee_expr_shape =
-  Impl.print_assignee_expr_shape ~cache:(RecurseCache.create ())
+let with_cache f = fun fmt value -> f ~cache:(RecurseCache.create ()) fmt value
+let print_ty = with_cache Impl.print_ty
+let print_ty_shape = with_cache Impl.print_ty_shape
+let print_value = with_cache Impl.print_value
+let print_value_shape = with_cache Impl.print_value_shape
+let print_expr_with_spans = with_cache Impl.print_expr_with_spans
+let print_expr_with_types = with_cache Impl.print_expr_with_types
+let print_expr_shape = with_cache Impl.print_expr_shape
+let print_assignee_expr_shape = with_cache Impl.print_assignee_expr_shape
 
 let print_assignee_expr_with_spans =
-  Impl.print_assignee_expr_with_spans ~cache:(RecurseCache.create ())
+  with_cache Impl.print_assignee_expr_with_spans
 
-let print_ty_expr = Impl.print_ty_expr ~cache:(RecurseCache.create ())
-
-let print_ty_expr_shape =
-  Impl.print_ty_expr_shape ~cache:(RecurseCache.create ())
-
-let print_pattern_with_spans =
-  Impl.print_pattern_with_spans ~cache:(RecurseCache.create ())
-
-let print_pattern_shape =
-  Impl.print_pattern_shape ~cache:(RecurseCache.create ())
-
-let print_binding = Impl.print_binding ~cache:(RecurseCache.create ())
+let print_ty_expr = with_cache Impl.print_ty_expr
+let print_ty_expr_shape = with_cache Impl.print_ty_expr_shape
+let print_pattern_with_spans = with_cache Impl.print_pattern_with_spans
+let print_pattern_shape = with_cache Impl.print_pattern_shape
+let print_binding = with_cache Impl.print_binding
