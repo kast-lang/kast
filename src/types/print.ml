@@ -3,6 +3,8 @@ open Kast_util
 open Types
 
 module Impl = struct
+  type _ Effect.t += IsRecursive : unit -> RecurseCache.t option Effect.t
+
   let rec _unused = ()
 
   (* VALUE *)
@@ -88,11 +90,14 @@ module Impl = struct
 
   and print_ty : formatter -> ty -> unit =
    fun fmt { var } ->
-    if RecurseCache.get () |> RecurseCache.visit (Inference.Var.recurse_id var)
-    then (
-      fprintf fmt "<id=%a>" Id.print (Inference.Var.recurse_id var);
+    let id = var |> Inference.Var.recurse_id in
+    if RecurseCache.get () |> RecurseCache.visit id then (
+      (match Effect.perform (IsRecursive ()) with
+      | Some cache when cache |> RecurseCache.visit_count id > 1 ->
+          fprintf fmt "<id=%a>" Id.print id
+      | _ -> ());
       Inference.Var.print print_ty_shape fmt var)
-    else fprintf fmt "<recursive %a>" Id.print (Inference.Var.recurse_id var)
+    else fprintf fmt "<recursive %a>" Id.print id
 
   (* EXPR *)
   and print_expr_shape :
@@ -330,7 +335,13 @@ end
 
 let with_cache f =
  fun fmt value ->
-  RecurseCache.with_cache (RecurseCache.create ()) (fun () -> f fmt value)
+  let is_recursive = RecurseCache.create () in
+  (try
+     RecurseCache.with_cache is_recursive (fun () ->
+         f Format.noop_formatter value)
+   with effect Impl.IsRecursive (), k -> Effect.continue k None);
+  try RecurseCache.with_cache (RecurseCache.create ()) (fun () -> f fmt value)
+  with effect Impl.IsRecursive (), k -> Effect.continue k (Some is_recursive)
 
 let print_ty = with_cache Impl.print_ty
 let print_ty_shape = with_cache Impl.print_ty_shape
@@ -338,7 +349,7 @@ let print_value = with_cache Impl.print_value
 let print_value_shape = with_cache Impl.print_value_shape
 let print_expr_with_spans = with_cache Impl.print_expr_with_spans
 let print_expr_with_types = with_cache Impl.print_expr_with_types
-let print_expr_shape = with_cache Impl.print_expr_shape
+let print_expr_shape print_expr = with_cache (Impl.print_expr_shape print_expr)
 let print_assignee_expr_shape = with_cache Impl.print_assignee_expr_shape
 
 let print_assignee_expr_with_spans =
