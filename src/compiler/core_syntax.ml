@@ -1555,6 +1555,61 @@ let target_dependent : core_syntax =
             init_error span C.state kind);
   }
 
+let match_ : core_syntax =
+  {
+    name = "match";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let value, branches =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "value"; "branches" ]
+        in
+        let value = C.compile Expr value in
+        (* TODO reduce copypasta of this & target dependent *)
+        let branches =
+          Ast.collect_list ~binary_rule_name:"core:union"
+            ~trailing_or_leading_rule_name:"core:leading union" branches
+        in
+        let branches =
+          branches
+          |> List.filter_map (fun (branch : Ast.t) ->
+              match branch.shape with
+              | Complex { rule = { name = "core:fn"; _ }; root; _ } ->
+                  let pattern =
+                    root.children |> Tuple.get_named "arg"
+                    |> Ast.Child.expect_ast
+                  in
+                  let pattern = C.compile Pattern pattern in
+                  let body =
+                    root.children |> Tuple.get_named "body"
+                    |> Ast.Child.expect_ast
+                  in
+                  let branch_state =
+                    C.state |> State.enter_scope ~recursive:false
+                  in
+                  Compiler.inject_pattern_bindings pattern branch_state;
+                  let body = C.compile ~state:branch_state Expr body in
+                  Some ({ pattern; body } : Types.expr_match_branch)
+              | _ ->
+                  error branch.span "match branch must use fn syntax";
+                  None)
+        in
+        match kind with
+        | Expr -> E_Match { value; branches } |> init_expr span C.state
+        | _ ->
+            error span "match must be expr";
+            init_error span C.state kind);
+  }
+
 let inject_context : core_syntax =
   {
     name = "inject_context";
@@ -1717,17 +1772,18 @@ let variant_impl =
         Error.error label_ast.span "field label must be ident";
         invalid_arg "tuple field"
   in
-  let label = Label.create_definition label_ast.span label in
   let value_ast =
     children |> Tuple.get_named_opt "value" |> Option.map Ast.Child.expect_ast
   in
   let span = ast.span in
   match kind with
   | Expr ->
+      let label = Label.create_reference label_ast.span label in
       E_Variant
         { label; label_span; value = value_ast |> Option.map (C.compile Expr) }
       |> init_expr span C.state
   | TyExpr ->
+      let label = Label.create_definition label_ast.span label in
       TE_Variant
         {
           variants =
@@ -1736,8 +1792,17 @@ let variant_impl =
             ];
         }
       |> init_ty_expr span C.state
-  | _ ->
-      error span "variant must be expr";
+  | Pattern ->
+      let label = Label.create_reference label_ast.span label in
+      P_Variant
+        {
+          label_span;
+          label;
+          value = value_ast |> Option.map (C.compile Pattern);
+        }
+      |> init_pattern span C.state
+  | Assignee ->
+      error span "variant can't be assignee";
       init_error span C.state kind
 
 let variant_without_value : core_syntax =
@@ -1848,6 +1913,7 @@ let core =
     unwindable;
     unwind;
     target_dependent;
+    match_;
     inject_context;
     current_context;
     binding;

@@ -152,6 +152,12 @@ and print_expr_shape :
            [
              ("cond", cond); ("then_case", then_case); ("else_case", else_case);
            ])
+  | E_Match { value; branches } ->
+      fprintf fmt
+        "@{<magenta>match@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>branches = %a@]@ )"
+        print_expr value
+        (List.print print_expr_match_branch)
+        branches
   | E_Error -> fprintf fmt "@{<red><error>@}"
   | E_Loop { body } ->
       fprintf fmt "@{<magenta>loop@} (@;<0 2>@[<v>body = %a,@]@ )" print_expr
@@ -179,6 +185,11 @@ and print_expr_shape :
       |> List.iter (fun branch ->
           fprintf fmt "@;<0 2>@[<v>%a@]" print_target_dependent_branch branch);
       fprintf fmt " )"
+
+and print_expr_match_branch : formatter -> expr_match_branch -> unit =
+ fun fmt { pattern; body } ->
+  fprintf fmt "(@;<0 2>@[<v>pattern = %a,@]@;<0 2>@[<v>body = %a@]@ )"
+    print_pattern pattern print_expr_with_spans body
 
 and print_context_type : formatter -> value_context_ty -> unit =
  fun fmt { id; ty } -> fprintf fmt "<context %a of %a>" Id.print id print_ty ty
@@ -264,6 +275,12 @@ and print_pattern_shape : formatter -> pattern_shape -> unit =
         (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_pattern) ->
              print_pattern_with_spans fmt field_pattern))
         tuple
+  | P_Variant { label; label_span = _; value } ->
+      fprintf fmt
+        "@{<magenta>variant@} (@;<0 2>@[<v>label = %a,@]@;<0 2>@[<v>value = %a,@]@ )"
+        Label.print label
+        (Option.print print_pattern_with_spans)
+        value
   | P_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_pattern_with_spans : formatter -> pattern -> unit =
@@ -281,6 +298,9 @@ and print_pattern : formatter -> pattern -> unit =
         (fun fmt (~field_span:_, ~field_label:_, field_pattern) ->
           print_pattern fmt field_pattern)
         fmt tuple
+  | P_Variant { label; label_span = _; value } ->
+      fprintf fmt ":%a" Label.print label;
+    value |> Option.iter (fun value -> fprintf fmt " %a" print_pattern value)
   | P_Error -> fprintf fmt "@{<red><error>@}"
 
 (* OTHER *)

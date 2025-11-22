@@ -176,6 +176,18 @@ let rec init_expr :
           else_case.data.ty
           |> Inference.Ty.expect_inferred_as ~span:else_case.data.span ty;
           ty
+      | E_Match { value; branches } ->
+          let result_ty = Ty.new_not_inferred () in
+          let value_ty = value.data.ty in
+          branches
+          |> List.iter (fun (branch : Types.expr_match_branch) ->
+              branch.pattern.data.ty
+              |> Inference.Ty.expect_inferred_as ~span:branch.pattern.data.span
+                   value_ty;
+              branch.body.data.ty
+              |> Inference.Ty.expect_inferred_as ~span:branch.body.data.span
+                   result_ty);
+          result_ty
       | E_QuoteAst _ ->
           (* TODO assert all children are ast *)
           Ty.inferred T_Ast
@@ -279,6 +291,25 @@ let init_pattern :
                           let field_pattern : pattern = field_pattern in
                           { ty = field_pattern.data.ty; label = field_label });
                })
+      | P_Variant { label; label_span = _; value } ->
+          Ty.inferred
+          <| T_Variant
+               {
+                 variants =
+                   Row.inferred
+                   <| R_Cons
+                        {
+                          label;
+                          value : Types.ty_variant_data =
+                            {
+                              data =
+                                value
+                                |> Option.map (fun (pattern : pattern) ->
+                                    pattern.data.ty);
+                            };
+                          rest = Row.new_not_inferred ();
+                        };
+               }
       | P_Error -> Ty.new_not_inferred ()
     in
     {

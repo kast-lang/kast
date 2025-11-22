@@ -164,6 +164,14 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                     span = binding.span;
                     definition_mode = DefinedHere (binding_definition binding);
                   }
+            | P_Variant { label; label_span; value = _ } ->
+                if label_span |> Span.contains_span hover_span then
+                  Some
+                    {
+                      span = label_span;
+                      definition_mode = DefinedNotHere (label_definition label);
+                    }
+                else None
             | _ -> None
           in
           {

@@ -120,6 +120,10 @@ let rec inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
       |> Seq.iter
            (fun (_member, (~field_span:_, ~field_label:_, field_pattern)) ->
              state |> inject_pattern_bindings field_pattern)
+  | P_Variant { label = _; label_span = _; value } -> (
+      match value with
+      | None -> ()
+      | Some value -> inject_pattern_bindings value state)
   | P_Error -> ()
 
 let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit

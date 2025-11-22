@@ -132,6 +132,11 @@ module Var = struct
     | None ->
         Effect.perform (AwaitUpdate var);
         await_inferred var
+
+  let same a b =
+    let a = find_root_var a in
+    let b = find_root_var b in
+    Repr.phys_equal a b
 end
 
 let fork = Var.fork

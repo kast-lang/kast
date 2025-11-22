@@ -182,6 +182,16 @@ and expr_if = {
   else_case : expr;
 }
 
+and expr_match_branch = {
+  pattern : pattern;
+  body : expr;
+}
+
+and expr_match = {
+  value : expr;
+  branches : expr_match_branch list;
+}
+
 and expr_quote_ast_child =
   | Group of expr_quote_ast_group
   | Ast of expr
@@ -241,6 +251,7 @@ and expr_shape =
   | E_Field of expr_field
   | E_UseDotStar of expr_use_dot_star
   | E_If of expr_if
+  | E_Match of expr_match
   | E_QuoteAst of expr_quote_ast
   | E_Loop of expr_loop
   | E_Unwindable of expr_unwindable
@@ -299,11 +310,18 @@ and ty_expr = {
 (* PATTERN *)
 and pattern_tuple = { tuple : pattern tuple_field_of tuple }
 
+and pattern_variant = {
+  label : Label.t;
+  label_span : span;
+  value : pattern option;
+}
+
 and pattern_shape =
   | P_Placeholder
   | P_Unit
   | P_Binding of binding
   | P_Tuple of pattern_tuple
+  | P_Variant of pattern_variant
   | P_Error
 
 and pattern = {

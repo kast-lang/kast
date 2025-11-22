@@ -76,3 +76,5 @@ let print fmt label =
   match label.var |> Inference.Var.inferred_opt with
   | Some data -> fprintf fmt "%s" data.name
   | None -> fprintf fmt "_"
+
+let same { var = a } { var = b } = Inference.Var.same a b

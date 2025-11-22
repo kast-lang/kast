@@ -13,60 +13,81 @@ exception
     value : value;
   }
 
-let rec pattern_match : value -> pattern -> Scope.locals =
+let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
  fun value pattern ->
   match pattern.shape with
-  | P_Placeholder -> Scope.Locals.empty
+  | P_Placeholder -> (~matched:true, Scope.Locals.empty)
   | P_Unit ->
       (* TODO assert that value is unit *)
-      Scope.Locals.empty
+      (~matched:true, Scope.Locals.empty)
   | P_Binding binding ->
-      {
-        by_symbol =
-          SymbolMap.singleton binding.name
-            ({
-               value;
-               ty_field = { ty = Value.ty_of value; label = binding.label };
-             }
-              : Types.interpreter_local);
-      }
+      ( ~matched:true,
+        {
+          by_symbol =
+            SymbolMap.singleton binding.name
+              ({
+                 value;
+                 ty_field = { ty = Value.ty_of value; label = binding.label };
+               }
+                : Types.interpreter_local);
+        } )
   | P_Tuple { tuple = tuple_pattern } -> (
       match value.shape with
       | V_Tuple { tuple } ->
-          with_return (fun { return } : Scope.locals ->
-              {
-                by_symbol =
-                  (try Tuple.zip_order_a tuple_pattern tuple
-                   with Invalid_argument _ ->
-                     Error.error pattern.data.span
-                       "Tuple has different set of fields";
-                     return Scope.Locals.empty)
-                  |> Tuple.to_seq
-                  |> Seq.fold_left
-                       (fun acc (_member, (field_pattern, field_value)) ->
-                         let ~field_span:_, ~field_label:_, field_pattern =
-                           field_pattern
-                         in
-                         let field_value : Types.value_tuple_field =
-                           field_value
-                         in
-                         let field_matches =
-                           pattern_match field_value.value field_pattern
-                         in
+          with_return (fun { return } : (matched:bool * Scope.locals) ->
+              let ~matched, matches =
+                (try Tuple.zip_order_a tuple_pattern tuple
+                 with Invalid_argument _ ->
+                   Error.error pattern.data.span
+                     "Tuple has different set of fields";
+                   return (~matched:false, Scope.Locals.empty))
+                |> Tuple.to_seq
+                |> Seq.fold_left
+                     (fun (~matched, acc)
+                          (_member, (field_pattern, field_value)) ->
+                       let ~field_span:_, ~field_label:_, field_pattern =
+                         field_pattern
+                       in
+                       let field_value : Types.value_tuple_field =
+                         field_value
+                       in
+                       let ~matched:field_matched, field_matches =
+                         pattern_match field_value.value field_pattern
+                       in
+                       ( ~matched:(matched && field_matched),
                          SymbolMap.union
                            (fun symbol _a b ->
                              Error.error pattern.data.span
                                "multiple bindings of same symbol %a"
                                Symbol.print symbol;
                              Some b)
-                           acc field_matches.by_symbol)
-                       SymbolMap.empty;
-              })
+                           acc field_matches.by_symbol ))
+                     (~matched:true, SymbolMap.empty)
+              in
+              (~matched, { by_symbol = matches }))
       | _ ->
           Error.error pattern.data.span "Expected tuple, got %a" Value.print
             value;
-          Scope.Locals.empty)
-  | P_Error -> Scope.Locals.empty
+          (~matched:false, Scope.Locals.empty))
+  | P_Variant { label = patern_label; label_span = _; value = value_pattern }
+    -> (
+      match value.shape with
+      | V_Variant { label; data; ty = _ } ->
+          if Label.same label patern_label then
+            match (data, value_pattern) with
+            | None, None -> (~matched:true, Scope.Locals.empty)
+            | None, Some _ ->
+                Error.error pattern.data.span "Expected value, got no value";
+                (~matched:false, Scope.Locals.empty)
+            | Some _, None ->
+                Error.error pattern.data.span "Expected no value, got value";
+                (~matched:false, Scope.Locals.empty)
+            | Some value, Some pattern -> pattern_match value pattern
+          else (~matched:false, Scope.Locals.empty)
+      | _ ->
+          Error.error pattern.data.span "Expected variant";
+          (~matched:false, Scope.Locals.empty))
+  | P_Error -> (~matched:false, Scope.Locals.empty)
 
 and await_compiled ~span (f : Types.maybe_compiled_fn) :
     Types.compiled_fn option =
@@ -83,7 +104,9 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
         |> Option.unwrap_or_else (fun () ->
             return ({ shape = V_Error } : value))
       in
-      let arg_bindings = pattern_match arg def.arg in
+      let ~matched:arg_matched, arg_bindings = pattern_match arg def.arg in
+      if not arg_matched then
+        Error.error span "Failed to pattern match fn's arg";
       let new_state =
         {
           state with
@@ -122,7 +145,9 @@ and assign : state -> Expr.assignee -> value -> unit =
       state.scope
       |> Scope.assign_to_existing ~span:assignee.data.span name value
   | A_Let pattern ->
-      let new_bindings = pattern_match value pattern in
+      let ~matched, new_bindings = pattern_match value pattern in
+      if not matched then
+        Error.error assignee.data.span "Failed to pattern match";
       state.scope |> Scope.add_locals new_bindings
   | A_Error -> ()
 
@@ -262,6 +287,24 @@ and eval : state -> expr -> value =
             Error.error cond_expr.data.span "if cond must be bool, got %a"
               Value.print cond;
             { shape = V_Error })
+    | E_Match { value; branches } -> (
+        let value = eval state value in
+        let result =
+          branches
+          |> List.find_map (fun (branch : Types.expr_match_branch) ->
+              let ~matched, matches = pattern_match value branch.pattern in
+              if matched then
+                Some
+                  (let inner_state = enter_scope state in
+                   inner_state.scope |> Scope.add_locals matches;
+                   eval inner_state branch.body)
+              else None)
+        in
+        match result with
+        | Some result -> result
+        | None ->
+            Error.error expr.data.span "pattern match non exhaustive";
+            { shape = V_Error })
     | E_QuoteAst expr -> { shape = V_Ast (quote_ast state expr) }
     | E_Loop { body } ->
         let state = state |> enter_scope in
@@ -277,7 +320,12 @@ and eval : state -> expr -> value =
         let token : value = { shape = V_UnwindToken token } in
         let inner_state = enter_scope state in
         inner_state.scope
-        |> Scope.add_locals (pattern_match token token_pattern);
+        |> Scope.add_locals
+             ( pattern_match token token_pattern |> fun (~matched, locals) ->
+               if not matched then
+                 Error.error token_pattern.data.span
+                   "Failed to pattern match unwind token";
+               locals );
         try eval inner_state body
         with Unwind { token; value } when token.id = id -> value)
     | E_Unwind { token = token_expr; value } ->

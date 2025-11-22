@@ -85,6 +85,15 @@ let inner_compiled_with_handler =
           handler.handle Expr cond;
           handler.handle Expr then_case;
           handler.handle Expr else_case
+      | E_Match { value; branches } ->
+          handler.handle Expr value;
+          branches
+          |> List.iter
+               (fun
+                 ({ pattern = _; body = _ } as branch : Types.expr_match_branch)
+               ->
+                 handler.handle Pattern branch.pattern;
+                 handler.handle Expr branch.body)
       | E_Loop { body } -> handler.handle Expr body
       | E_QuoteAst _ ->
           (* TODO *)
@@ -124,6 +133,8 @@ let inner_compiled_with_handler =
           |> Seq.iter
                (fun (_member, (~field_span:_, ~field_label:_, field_pattern)) ->
                  handler.handle Pattern field_pattern)
+      | P_Variant { label = _; label_span = _; value } ->
+          value |> Option.iter (handler.handle Pattern)
       | P_Error -> ())
   | TyExpr -> (
       match compiled.shape with

@@ -92,6 +92,7 @@ and transpile_pattern : Pattern.t -> state -> OcamlAst.t =
            (fun (~field_span:_, ~field_label:_, field_pattern) ->
              transpile_pattern field_pattern)
            tuple.tuple
+  | Types.P_Variant _ -> failwith __LOC__
   | Types.P_Error -> fail "Tried to transpile error node"
 
 and transpile_expr : Expr.t -> state -> OcamlAst.t =
@@ -220,6 +221,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
           then_case = state |> transpile_expr then_case;
           else_case = state |> transpile_expr else_case;
         }
+  | Types.E_Match _ -> failwith __LOC__
   | Types.E_QuoteAst _ -> fail "Tried to compile quote ast"
   | Types.E_Loop _ -> failwith __LOC__
   | Types.E_Unwindable _ -> failwith __LOC__
