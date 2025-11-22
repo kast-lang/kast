@@ -122,7 +122,7 @@ and print_expr_shape :
         (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
              print_expr fmt field_expr))
         tuple
-  | E_Variant { label; value } ->
+  | E_Variant { label; label_span = _; value } ->
       fprintf fmt
         "@{<magenta>variant@} (@;<0 2>@[<v>label = %a,@]@;<0 2>@[<v>value = %a@]@ )"
         Label.print label (Option.print print_expr) value
@@ -243,8 +243,8 @@ and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
         (Tuple.print (Option.print print_ty_expr))
         (Tuple.make []
            (variants
-           |> List.map (fun (label, variant) -> (Label.get_name label, variant))
-           ))
+           |> List.map (fun (~label_span:_, ~label, variant) ->
+               (Label.get_name label, variant))))
   | TE_Error -> fprintf fmt "@{<red><error>@}"
 
 and print_ty_expr : formatter -> ty_expr -> unit =

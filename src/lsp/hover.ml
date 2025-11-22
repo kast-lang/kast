@@ -119,10 +119,16 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                     definition_mode =
                       DefinedNotHere (binding_definition binding);
                   }
-            | E_Field { obj; field; field_span; label } ->
+            | E_Field { obj = _; field = _; field_span; label } ->
                 Some
                   {
                     span = field_span;
+                    definition_mode = DefinedNotHere (label_definition label);
+                  }
+            | E_Variant { label; label_span; value = _ } ->
+                Some
+                  {
+                    span = label_span;
                     definition_mode = DefinedNotHere (label_definition label);
                   }
             | _ -> None
@@ -166,9 +172,23 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
             file = included_file;
           }
       | TyExpr ->
+          let rename =
+            match compiled.shape with
+            | TE_Variant { variants } ->
+                variants
+                |> List.find_map (fun (~label_span, ~label, _value) ->
+                    if label_span |> Span.contains_span hover_span then
+                      Some
+                        {
+                          span = label_span;
+                          definition_mode = DefinedHere (label_definition label);
+                        }
+                    else None)
+            | _ -> None
+          in
           {
             ty = { ty = compiled.data.ty; span = compiled.data.span };
-            rename = None;
+            rename;
             file = included_file;
           })
 

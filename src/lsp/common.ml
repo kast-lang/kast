@@ -64,7 +64,7 @@ let inner_compiled_with_handler =
           |> Seq.iter
                (fun (_member, (~field_span:_, ~field_label:_, field_expr)) ->
                  handler.handle Expr field_expr)
-      | E_Variant { label = _; value } ->
+      | E_Variant { label = _; label_span = _; value } ->
           value |> Option.iter (handler.handle Expr)
       | E_Apply { f; arg } ->
           handler.handle Expr f;
@@ -140,7 +140,7 @@ let inner_compiled_with_handler =
       | TE_Union { elements } -> elements |> List.iter (handler.handle TyExpr)
       | TE_Variant { variants } ->
           variants
-          |> List.iter (fun (_label, variant_data) ->
+          |> List.iter (fun (~label_span:_, ~label:_, variant_data) ->
               variant_data |> Option.iter (handler.handle TyExpr))
       | TE_Error -> ()));
   let data = Compiler.get_data kind compiled in

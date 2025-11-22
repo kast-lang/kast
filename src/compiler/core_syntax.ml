@@ -1709,6 +1709,7 @@ let variant_impl =
  fun (type a) (module C : Compiler.S) (kind : a compiled_kind) (ast : Ast.t)
      ({ children; _ } : Ast.group) : a ->
   let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
+  let label_span = label_ast.span in
   let label =
     match label_ast.shape with
     | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
@@ -1723,11 +1724,17 @@ let variant_impl =
   let span = ast.span in
   match kind with
   | Expr ->
-      E_Variant { label; value = value_ast |> Option.map (C.compile Expr) }
+      E_Variant
+        { label; label_span; value = value_ast |> Option.map (C.compile Expr) }
       |> init_expr span C.state
   | TyExpr ->
       TE_Variant
-        { variants = [ (label, value_ast |> Option.map (C.compile TyExpr)) ] }
+        {
+          variants =
+            [
+              (~label_span, ~label, value_ast |> Option.map (C.compile TyExpr));
+            ];
+        }
       |> init_ty_expr span C.state
   | _ ->
       error span "variant must be expr";

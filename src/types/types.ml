@@ -140,6 +140,7 @@ and expr_tuple = { tuple : expr tuple_field_of tuple }
 
 and expr_variant = {
   label : Label.t;
+  label_span : span;
   value : expr option;
 }
 
@@ -275,7 +276,10 @@ and ty_expr_fn = {
 
 and ty_expr_tuple = { tuple : ty_expr tuple_field_of tuple }
 and ty_expr_union = { elements : ty_expr list }
-and ty_expr_variant = { variants : (Label.t * ty_expr option) list }
+
+and ty_expr_variant = {
+  variants : (label_span:span * label:Label.t * ty_expr option) list;
+}
 
 and ty_expr_shape =
   | TE_Unit

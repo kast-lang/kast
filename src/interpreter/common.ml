@@ -172,7 +172,7 @@ and eval : state -> expr -> value =
                          { value; span = field_span; ty_field });
               };
         }
-    | E_Variant { label; value } ->
+    | E_Variant { label; label_span = _; value } ->
         let value = value |> Option.map (eval state) in
         { shape = V_Variant { label; data = value; ty = expr.data.ty } }
     | E_Then { a; b } ->
@@ -409,7 +409,7 @@ and eval_ty : state -> Expr.ty -> ty =
                variants =
                  Row.of_list
                    (variants
-                   |> List.map (fun (label, variant_data) ->
+                   |> List.map (fun (~label_span:_, ~label, variant_data) ->
                        ( label,
                          ({ data = variant_data |> Option.map (eval_ty state) }
                            : Types.ty_variant_data) )));

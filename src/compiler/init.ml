@@ -86,7 +86,7 @@ let rec init_expr :
                           let field_expr : expr = field_expr in
                           { ty = field_expr.data.ty; label = field_label });
                }
-      | E_Variant { label; value } ->
+      | E_Variant { label; label_span = _; value } ->
           Ty.inferred
           <| T_Variant
                {
