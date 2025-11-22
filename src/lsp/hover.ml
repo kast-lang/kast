@@ -69,8 +69,8 @@ let get_tuple (type a) (kind : a compiled_kind) (compiled : a) :
       (* TODO | A_Tuple { tuple } -> Some tuple *)
       | _ -> None)
   | TyExpr -> (
-      match compiled.shape with
-      | TE_Tuple { tuple } -> Some tuple
+      match compiled.compiled_shape with
+      | Some (TE_Tuple { tuple }) -> Some tuple
       | _ -> None)
   | Pattern -> (
       match compiled.shape with
@@ -181,8 +181,8 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
           }
       | TyExpr ->
           let rename =
-            match compiled.shape with
-            | TE_Variant { variants } ->
+            match compiled.compiled_shape with
+            | Some (TE_Variant { variants }) ->
                 variants
                 |> List.find_map (fun (~label_span, ~label, _value) ->
                     if label_span |> Span.contains_span hover_span then

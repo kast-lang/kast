@@ -57,3 +57,6 @@ let handle_effects : 'a. stop_on_error:bool -> (unit -> 'a) -> 'a =
       let line = read_line () in
       Effect.continue k line
   | effect Compiler.Scope.AwaitUpdate _, k -> Effect.continue k false
+  | effect Interpreter.Scope.AwaitUpdate (name, _scope), k ->
+      if name.name = "TTT" then Effect.discontinue k (Failure "HAHAHHA")
+      else Effect.continue k false

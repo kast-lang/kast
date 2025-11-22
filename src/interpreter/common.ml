@@ -3,9 +3,11 @@ open Kast_util
 open Kast_types
 module Ast = Kast_ast
 module Error = Error
-module Inference = Kast_inference_base
+module Inference = Kast_inference
 
 type state = Types.interpreter_state
+type _ Effect.t += AwaitCompiled : Types.maybe_compiled_fn -> unit Effect.t
+type _ Effect.t += AwaitCompiledTyExpr : Expr.ty -> unit Effect.t
 
 exception
   Unwind of {
@@ -91,10 +93,13 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
 
 and await_compiled ~span (f : Types.maybe_compiled_fn) :
     Types.compiled_fn option =
-  (* TODO *)
-  if f.compiled |> Option.is_none then
-    Error.error span "function is not compiled";
+  if f.compiled |> Option.is_none then Effect.perform (AwaitCompiled f);
   f.compiled
+
+and await_compiled_ty_expr ~span (expr : Expr.ty) : Expr.Ty.Shape.t =
+  if expr.compiled_shape |> Option.is_none then
+    Effect.perform (AwaitCompiledTyExpr expr);
+  expr.compiled_shape |> Option.get
 
 and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
     (arg : value) : value =
@@ -110,7 +115,9 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
       let new_state =
         {
           state with
-          scope = Scope.with_values ~parent:(Some fn.captured) arg_bindings;
+          scope =
+            Scope.with_values ~recursive:false ~parent:(Some fn.captured)
+              arg_bindings;
         }
       in
       let result = eval new_state def.body in
@@ -157,12 +164,16 @@ and eval : state -> expr -> value =
     match expr.shape with
     | E_Constant value -> value
     | E_Binding binding ->
-        Scope.find_opt binding.name state.scope
-        |> Option.unwrap_or_else (fun () : value ->
-            Log.trace (fun log ->
-                log "all in scope: %a" Scope.print_all state.scope);
-            Error.error expr.data.span "%a not found" Symbol.print binding.name;
-            { shape = V_Error })
+        let result =
+          Scope.find_opt binding.name state.scope
+          |> Option.unwrap_or_else (fun () : value ->
+              Log.trace (fun log ->
+                  log "all in scope: %a" Scope.print_all state.scope);
+              Error.error expr.data.span "%a not found" Symbol.print
+                binding.name;
+              { shape = V_Error })
+        in
+        result
     | E_Fn { def; ty } ->
         {
           shape =
@@ -207,7 +218,7 @@ and eval : state -> expr -> value =
         ignore <| eval state expr;
         { shape = V_Unit }
     | E_Scope { expr } ->
-        let state = state |> enter_scope in
+        let state = state |> enter_scope ~recursive:false in
         eval state expr
     | E_Assign { assignee; value } ->
         let value = eval state value in
@@ -229,9 +240,12 @@ and eval : state -> expr -> value =
             Error.error expr.data.span "no native %S" native_expr;
             { shape = V_Error })
     | E_Module { def } ->
-        let module_scope = Scope.init ~parent:(Some state.scope) in
+        let module_scope =
+          Scope.init ~recursive:true ~parent:(Some state.scope)
+        in
         let new_state = { state with scope = module_scope } in
         ignore @@ eval new_state def;
+        Scope.close module_scope;
         let fields =
           module_scope.locals.by_symbol |> SymbolMap.to_list
           |> List.map
@@ -295,7 +309,7 @@ and eval : state -> expr -> value =
               let ~matched, matches = pattern_match value branch.pattern in
               if matched then
                 Some
-                  (let inner_state = enter_scope state in
+                  (let inner_state = enter_scope ~recursive:false state in
                    inner_state.scope |> Scope.add_locals matches;
                    eval inner_state branch.body)
               else None)
@@ -307,7 +321,7 @@ and eval : state -> expr -> value =
             { shape = V_Error })
     | E_QuoteAst expr -> { shape = V_Ast (quote_ast state expr) }
     | E_Loop { body } ->
-        let state = state |> enter_scope in
+        let state = state |> enter_scope ~recursive:false in
         while true do
           ignore @@ eval state body
         done
@@ -318,7 +332,7 @@ and eval : state -> expr -> value =
           { id; result_ty = body.data.ty }
         in
         let token : value = { shape = V_UnwindToken token } in
-        let inner_state = enter_scope state in
+        let inner_state = enter_scope ~recursive:false state in
         inner_state.scope
         |> Scope.add_locals
              ( pattern_match token token_pattern |> fun (~matched, locals) ->
@@ -361,7 +375,8 @@ and eval : state -> expr -> value =
             in
             eval state chosen_branch.body)
   in
-  Substitute_bindings.sub_value ~state result
+  let result = Substitute_bindings.sub_value ~state result in
+  result
 
 and find_target_dependent_branch :
     state ->
@@ -371,7 +386,9 @@ and find_target_dependent_branch :
  fun state branches target ->
   branches
   |> List.find_map (fun (branch : Types.expr_target_dependent_branch) ->
-      let scope_with_target = Scope.init ~parent:(Some state.scope) in
+      let scope_with_target =
+        Scope.init ~recursive:false ~parent:(Some state.scope)
+      in
       scope_with_target
       |> Scope.add_local (Span.of_ocaml __POS__) Types.target_symbol
            ({ shape = V_Target target } : value);
@@ -408,66 +425,98 @@ and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
-  let result =
-    match expr.shape with
-    | TE_Unit -> Ty.inferred T_Unit
-    | TE_Fn { arg; result } ->
-        let arg = eval_ty state arg in
-        let result = eval_ty state result in
-        Ty.inferred (T_Fn { arg; result })
-    | TE_Expr expr ->
-        let value = eval state expr in
-        value |> Value.expect_ty
-        |> Option.unwrap_or_else (fun () ->
-            Error.error expr.data.span "Expected a type, got %a" Ty.print
-              (Value.ty_of value);
-            Ty.inferred T_Error)
-    | TE_Tuple { tuple } ->
-        Ty.inferred
-          (T_Tuple
-             {
-               tuple =
-                 tuple
-                 |> Tuple.map
-                      (fun
-                        (~field_span:_, ~field_label, field_expr)
-                        :
-                        Types.ty_tuple_field
-                      ->
-                        let ty = field_expr |> eval_ty state in
-                        { ty; label = field_label });
-             })
-    | TE_Union { elements } ->
-        let variants =
-          elements
-          |> List.map (fun ty_expr ->
-              let ty = eval_ty state ty_expr in
-              match ty.var |> Inference.Var.await_inferred with
-              | T_Variant { variants } -> Row.await_inferred_to_list variants
-              | _ ->
-                  Error.error ty_expr.data.span "Can only use variants in union";
-                  [])
-          |> List.flatten
-        in
-        Ty.inferred <| T_Variant { variants = Row.of_list variants }
-    | TE_Variant { variants } ->
-        Ty.inferred
-        <| T_Variant
-             {
-               variants =
-                 Row.of_list
-                   (variants
-                   |> List.map (fun (~label_span:_, ~label, variant_data) ->
-                       ( label,
-                         ({ data = variant_data |> Option.map (eval_ty state) }
-                           : Types.ty_variant_data) )));
-             }
-    | TE_Error -> Ty.inferred T_Error
-  in
-  Substitute_bindings.sub_ty ~state result
+  let result = Ty.new_not_inferred () in
+  fork (fun () ->
+      try
+        result
+        |> Inference.Ty.expect_inferred_as ~span:expr.data.span
+             (match await_compiled_ty_expr ~span:expr.data.span expr with
+             | TE_Unit -> Ty.inferred T_Unit
+             | TE_Fn { arg; result } ->
+                 let arg = eval_ty state arg in
+                 let result = eval_ty state result in
+                 Ty.inferred (T_Fn { arg; result })
+             | TE_Expr expr ->
+                 let value = eval state expr in
+                 value |> Value.expect_ty
+                 |> Option.unwrap_or_else (fun () ->
+                     Error.error expr.data.span "Expected a type, got %a"
+                       Ty.print (Value.ty_of value);
+                     Ty.inferred T_Error)
+             | TE_Tuple { tuple } ->
+                 Ty.inferred
+                   (T_Tuple
+                      {
+                        tuple =
+                          tuple
+                          |> Tuple.map
+                               (fun
+                                 (~field_span:_, ~field_label, field_expr)
+                                 :
+                                 Types.ty_tuple_field
+                               ->
+                                 let ty = field_expr |> eval_ty state in
+                                 { ty; label = field_label });
+                      })
+             | TE_Union { elements } ->
+                 let variants =
+                   elements
+                   |> List.map (fun ty_expr ->
+                       let ty = eval_ty state ty_expr in
+                       match ty.var |> Inference.Var.await_inferred with
+                       | T_Variant { variants } ->
+                           Row.await_inferred_to_list variants
+                       | _ ->
+                           Error.error ty_expr.data.span
+                             "Can only use variants in union";
+                           [])
+                   |> List.flatten
+                 in
+                 Ty.inferred <| T_Variant { variants = Row.of_list variants }
+             | TE_Variant { variants } ->
+                 Ty.inferred
+                 <| T_Variant
+                      {
+                        variants =
+                          Row.of_list
+                            (variants
+                            |> List.map
+                                 (fun (~label_span:_, ~label, variant_data) ->
+                                   ( label,
+                                     ({
+                                        data =
+                                          variant_data
+                                          |> Option.map (eval_ty state);
+                                      }
+                                       : Types.ty_variant_data) )));
+                      }
+             | TE_Error -> Ty.inferred T_Error)
+      with effect Scope.AwaitUpdate (symbol, scope), k ->
+        Effect.continue k (Effect.perform <| Scope.AwaitUpdate (symbol, scope))
+      (* if symbol.name = "TTT" then println "TTT handled properly2";
+        scope.on_update <- (fun () -> Effect.continue k true) :: scope.on_update *));
 
-and enter_scope (state : state) : state =
+  let result = Substitute_bindings.sub_ty ~state result in
+  result
+
+and enter_scope ~(recursive : bool) (state : state) : state =
   {
     state with
-    scope = { parent = Some state.scope; locals = Scope.Locals.empty };
+    scope =
+      {
+        parent = Some state.scope;
+        locals = Scope.Locals.empty;
+        recursive;
+        closed = false;
+        on_update = [];
+      };
   }
+
+and fork (f : unit -> unit) : unit =
+  try f () with
+  | effect AwaitCompiled f, k ->
+      f.on_compiled <- (fun () -> Effect.continue k ()) :: f.on_compiled
+  | effect AwaitCompiledTyExpr expr, k ->
+      expr.on_compiled <- (fun () -> Effect.continue k ()) :: expr.on_compiled
+  | effect Scope.AwaitUpdate (name, scope), k ->
+      scope.on_update <- (fun () -> Effect.continue k true) :: scope.on_update

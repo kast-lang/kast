@@ -38,7 +38,9 @@ let apply : core_syntax =
             let f = C.compile Expr f in
             let arg = C.compile Expr arg in
             E_Apply { f; arg } |> init_expr span C.state
-        | TyExpr -> TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
+        | TyExpr ->
+            (fun () -> TE_Expr (C.compile Expr ast))
+            |> init_ty_expr span C.state
         | Pattern | Assignee ->
             error span "apply must be expr";
             init_error span C.state kind);
@@ -67,7 +69,9 @@ let instantiate_generic : core_syntax =
             let generic = C.compile Expr generic in
             let arg = C.compile Expr arg in
             E_InstantiateGeneric { generic; arg } |> init_expr span C.state
-        | TyExpr -> TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
+        | TyExpr ->
+            (fun () -> TE_Expr (C.compile Expr ast))
+            |> init_ty_expr span C.state
         | Pattern | Assignee ->
             error span "instantiate_generic must be expr";
             init_error span C.state kind);
@@ -234,12 +238,14 @@ let placeholder : core_syntax =
             let value : value = { shape = V_Ty ty } in
             E_Constant value |> init_expr span Compiler.state
         | TyExpr ->
-            let ty = Ty.new_not_inferred () in
-            let value : value = { shape = V_Ty ty } in
-            let const : expr =
-              E_Constant value |> init_expr span Compiler.state
-            in
-            TE_Expr const |> init_ty_expr span Compiler.state);
+            (fun () ->
+              let ty = Ty.new_not_inferred () in
+              let value : value = { shape = V_Ty ty } in
+              let const : expr =
+                E_Constant value |> init_expr span Compiler.state
+              in
+              TE_Expr const)
+            |> init_ty_expr span Compiler.state);
   }
 
 let fn_type : core_syntax =
@@ -278,10 +284,12 @@ let fn_type : core_syntax =
             error span "fn_type can't be a expr";
             init_error span C.state kind
         | TyExpr ->
-            let state = C.state |> State.enter_scope ~recursive:false in
-            let arg = C.compile ~state TyExpr arg in
-            let result = C.compile ~state TyExpr result in
-            TE_Fn { arg; result } |> init_ty_expr span C.state);
+            (fun () ->
+              let state = C.state |> State.enter_scope ~recursive:false in
+              let arg = C.compile ~state TyExpr arg in
+              let result = C.compile ~state TyExpr result in
+              TE_Fn { arg; result })
+            |> init_ty_expr span C.state);
   }
 
 let fn : core_syntax =
@@ -329,7 +337,9 @@ let fn : core_syntax =
             let ty : Types.ty_fn =
               { arg = Ty.new_not_inferred (); result = Ty.new_not_inferred () }
             in
-            let def : Types.maybe_compiled_fn = { compiled = None } in
+            let def : Types.maybe_compiled_fn =
+              { compiled = None; on_compiled = [] }
+            in
             State.Scope.fork (fun () ->
                 let state = C.state |> State.enter_scope ~recursive:false in
                 let arg = C.compile ~state Pattern arg in
@@ -386,7 +396,9 @@ let generic : core_syntax =
               { arg = Ty.new_not_inferred (); result = Ty.new_not_inferred () }
             in
             (* TODO copypasta with fn *)
-            let def : Types.maybe_compiled_fn = { compiled = None } in
+            let def : Types.maybe_compiled_fn =
+              { compiled = None; on_compiled = [] }
+            in
             State.Scope.fork (fun () ->
                 let state = C.state |> State.enter_scope ~recursive:false in
                 let arg = C.compile ~state Pattern arg in
@@ -420,7 +432,7 @@ let unit : core_syntax =
         | Assignee -> A_Unit |> init_assignee span Compiler.state
         | Pattern -> P_Unit |> init_pattern span Compiler.state
         | Expr -> E_Constant { shape = V_Unit } |> init_expr span Compiler.state
-        | TyExpr -> TE_Unit |> init_ty_expr span Compiler.state);
+        | TyExpr -> (fun () -> TE_Unit) |> init_ty_expr span Compiler.state);
   }
 
 let type' : core_syntax =
@@ -449,7 +461,8 @@ let type' : core_syntax =
             error span "type can't be a pattern";
             init_error span Compiler.state kind
         | Expr -> const
-        | TyExpr -> TE_Expr const |> init_ty_expr span Compiler.state);
+        | TyExpr ->
+            (fun () -> TE_Expr const) |> init_ty_expr span Compiler.state);
   }
 
 let false' : core_syntax =
@@ -798,6 +811,7 @@ let module' : core_syntax =
         let state = C.state |> State.enter_scope ~recursive:true in
         let def = C.compile ~state Expr def in
         state.scope |> State.Scope.close;
+        state.interpreter.scope |> Interpreter.Scope.close;
         match kind with
         | Expr -> E_Module { def } |> init_expr span state
         | Assignee ->
@@ -833,7 +847,8 @@ let dot : core_syntax =
                 error span "dot must be expr, not pattern";
                 init_error span C.state kind
             | TyExpr ->
-                TE_Expr (C.compile Expr ast) |> init_ty_expr span C.state
+                (fun () -> TE_Expr (C.compile Expr ast))
+                |> init_ty_expr span C.state
             | Expr -> (
                 let obj, field_ast =
                   children
@@ -940,7 +955,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
                    C.state.scope)
               |> init_expr span C.state
             in
-            TE_Expr expr |> init_ty_expr span C.state
+            (fun () -> TE_Expr expr) |> init_ty_expr span C.state
       in
       ( label,
         ~field_span:label_ast.span,
@@ -1014,7 +1029,8 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
       error span "todo comma assignee";
       init_error span C.state kind
   | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span C.state
-  | TyExpr -> TE_Tuple { tuple = !tuple } |> init_ty_expr span C.state
+  | TyExpr ->
+      (fun () -> TE_Tuple { tuple = !tuple }) |> init_ty_expr span C.state
   | Expr -> E_Tuple { tuple = !tuple } |> init_expr span C.state
 
 let comma : core_syntax =
@@ -1258,7 +1274,9 @@ let impl_syntax : core_syntax =
                       result = Ty.new_not_inferred ();
                     }
                   in
-                  let def : Types.maybe_compiled_fn = { compiled = None } in
+                  let def : Types.maybe_compiled_fn =
+                    { compiled = None; on_compiled = [] }
+                  in
                   State.Scope.fork (fun () ->
                       let state = State.enter_scope C.state ~recursive:false in
                       let arg =
@@ -1783,14 +1801,15 @@ let variant_impl =
         { label; label_span; value = value_ast |> Option.map (C.compile Expr) }
       |> init_expr span C.state
   | TyExpr ->
-      let label = Label.create_definition label_ast.span label in
-      TE_Variant
-        {
-          variants =
-            [
-              (~label_span, ~label, value_ast |> Option.map (C.compile TyExpr));
-            ];
-        }
+      (fun () ->
+        let label = Label.create_definition label_ast.span label in
+        TE_Variant
+          {
+            variants =
+              [
+                (~label_span, ~label, value_ast |> Option.map (C.compile TyExpr));
+              ];
+          })
       |> init_ty_expr span C.state
   | Pattern ->
       let label = Label.create_reference label_ast.span label in
@@ -1826,9 +1845,13 @@ let union_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
     Ast.collect_list ~binary_rule_name:"core:union"
       ~trailing_or_leading_rule_name:"core:leading union" ast
   in
-  let elements = elements |> List.map (C.compile kind) in
+  let elements = fun () -> elements |> List.map (C.compile kind) in
   match kind with
-  | TyExpr -> TE_Union { elements } |> init_ty_expr span C.state
+  | TyExpr ->
+      (fun () ->
+        let elements = elements () in
+        TE_Union { elements })
+      |> init_ty_expr span C.state
   | _ ->
       error span "union must be ty expr";
       init_error span C.state kind

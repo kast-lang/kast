@@ -26,6 +26,7 @@ let cross_js : 'a. (unit -> 'a) -> 'a =
   | effect Kast_compiler.Effect.FileIncluded _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
   | effect Compiler.Scope.AwaitUpdate _, k -> Effect.continue k false
+  | effect Interpreter.Scope.AwaitUpdate _, k -> Effect.continue k false
 
 let cross_js_async : 'a. (unit -> 'a) -> 'a Promise.t =
  fun f ->

@@ -10,6 +10,7 @@
 "examples/transpile-ocaml-test.ks",
 "examples/current_scope.ks",
 "examples/mutual-recursion.ks",
+"examples/recursive-types.ks",
 "examples/generics.ks",
 "examples/inference-bug.ks",
 "examples/variant-types.ks",

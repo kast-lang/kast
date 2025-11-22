@@ -120,7 +120,10 @@ and compiled_fn = {
   evaled_result : ty_expr option;
 }
 
-and maybe_compiled_fn = { mutable compiled : compiled_fn option }
+and maybe_compiled_fn = {
+  mutable compiled : compiled_fn option;
+  mutable on_compiled : (unit -> unit) list;
+}
 
 and expr_fn = {
   ty : ty_fn;
@@ -302,7 +305,8 @@ and ty_expr_shape =
   | TE_Error
 
 and ty_expr = {
-  shape : ty_expr_shape;
+  mutable compiled_shape : ty_expr_shape option;
+  mutable on_compiled : (unit -> unit) list;
   (* TODO technically only need span for this? *)
   data : ir_data;
 }
@@ -340,6 +344,18 @@ and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }
 and interpreter_scope = {
   mutable locals : interpreter_locals;
   parent : interpreter_scope option;
+  recursive : bool;
+  mutable closed : bool;
+  mutable on_update : (unit -> unit) list;
+}
+
+and compiler_scope = {
+  id : id;
+  parent : compiler_scope option;
+  recursive : bool;
+  mutable bindings : binding StringMap.t;
+  mutable closed : bool;
+  mutable on_update : (unit -> unit) list;
 }
 
 (* interpreter *)
@@ -367,15 +383,6 @@ and ir_data = {
   mutable ty_ascription : ty_expr option;
   mutable evaled_exprs : expr list;
   included_file : Uri.t option;
-}
-
-and compiler_scope = {
-  id : id;
-  parent : compiler_scope option;
-  recursive : bool;
-  mutable bindings : binding StringMap.t;
-  mutable closed : bool;
-  mutable on_update : (unit -> unit) list;
 }
 
 let target_symbol : symbol = Symbol.create "target"

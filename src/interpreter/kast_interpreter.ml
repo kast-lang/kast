@@ -8,7 +8,7 @@ include Common
 let init : Scope.locals -> state =
  fun values ->
   {
-    scope = Scope.with_values ~parent:None values;
+    scope = Scope.with_values ~recursive:false ~parent:None values;
     natives = Natives.natives;
     contexts = Id.Map.empty;
   }

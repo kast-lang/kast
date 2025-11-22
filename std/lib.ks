@@ -18,6 +18,7 @@ const path = include "./path.ks";
 const fs = include "./fs/_mod.ks";
 const sys = include "./sys/_mod.ks";
 const rng :: _ = include "./rng/_mod.ks";
+const collections = include "./collections/_mod.ks";
 const int32_to_string :: int32 -> string = num => (
     cfg_if (
         | target.name == "interpreter" => (@native "int32_to_string") num

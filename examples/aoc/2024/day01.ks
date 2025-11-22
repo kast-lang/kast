@@ -7,7 +7,7 @@ std.String.lines (
     line => (
         print line;
         print "==="
-    )
+    ),
 );
 # let mut a :: list[int32] = list[];
 # let mut b :: list[int32] = list[];

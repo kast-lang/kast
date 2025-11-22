@@ -13,8 +13,10 @@ end
 
 type locals = Locals.t
 
-let with_values ~parent values : scope = { locals = values; parent }
-let init ~parent = with_values ~parent Locals.empty
+let with_values ~recursive ~parent values : scope =
+  { locals = values; parent; recursive; on_update = []; closed = false }
+
+let init ~recursive ~parent = with_values ~recursive ~parent Locals.empty
 
 let rec assign_to_existing ~(span : span) (name : symbol) (value : value)
     (scope : scope) : unit =
@@ -45,14 +47,21 @@ let rec assign_to_existing ~(span : span) (name : symbol) (value : value)
                        : Types.interpreter_local);
             })
 
+type _ Effect.t += AwaitUpdate : (symbol * scope) -> bool Effect.t
+
 let rec find_local_opt (name : symbol) (scope : scope) :
     Types.interpreter_local option =
   match SymbolMap.find_opt name scope.locals.by_symbol with
   | Some value -> Some value
-  | None -> (
-      match scope.parent with
-      | Some parent -> find_local_opt name parent
-      | None -> None)
+  | None ->
+      let find_in_parent () =
+        scope.parent |> Option.and_then (find_local_opt name)
+      in
+      if scope.recursive && not scope.closed then
+        if Effect.perform (AwaitUpdate (name, scope)) then
+          find_local_opt name scope
+        else find_in_parent ()
+      else find_in_parent ()
 
 let find_opt (name : symbol) (scope : scope) : value option =
   find_local_opt name scope
@@ -90,6 +99,7 @@ let inject_binding (binding : binding) (scope : scope) : unit =
 
 let rec print_all : formatter -> scope -> unit =
  fun fmt scope ->
+  fprintf fmt "(rec=%b,closed=%b)" scope.recursive scope.closed;
   scope.locals.by_symbol
   |> SymbolMap.iter (fun symbol _value -> fprintf fmt "%a," Symbol.print symbol);
   match scope.parent with
@@ -97,3 +107,14 @@ let rec print_all : formatter -> scope -> unit =
   | Some parent ->
       fprintf fmt "^";
       print_all fmt parent
+
+let notify_update (scope : scope) : unit =
+  let fs = scope.on_update in
+  scope.on_update <- [];
+  fs |> List.iter (fun f -> f ())
+
+let close : scope -> unit =
+ fun scope ->
+  scope.closed <- true;
+  (* println "closed %a" print_all scope; *)
+  notify_update scope

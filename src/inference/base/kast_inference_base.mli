@@ -15,7 +15,8 @@ module Var : sig
   val infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit
   val once_inferred : 'a. ('a -> unit) -> 'a var -> unit
   val await_inferred : 'a. 'a var -> 'a
-  val same : 'a var -> 'a var -> bool
+  val same : 'a. 'a var -> 'a var -> bool
+  val id : 'a. 'a var -> id
 end
 
 val fork : (unit -> unit) -> unit

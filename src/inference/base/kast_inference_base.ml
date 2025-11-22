@@ -12,16 +12,36 @@ module Var = struct
     | NotRoot of { closer_to_root : 'a var }
 
   and 'a var_data = {
+    recurse_id : id;
     inferred : 'a option;
     once_inferred : ('a -> unit) list;
   }
 
   let new_not_inferred : 'a. unit -> 'a var =
-   fun () -> { state = Root { data = { inferred = None; once_inferred = [] } } }
+   fun () ->
+    {
+      state =
+        Root
+          {
+            data =
+              { recurse_id = Id.gen (); inferred = None; once_inferred = [] };
+          };
+    }
 
   let new_inferred : 'a. 'a -> 'a var =
    fun inferred ->
-    { state = Root { data = { inferred = Some inferred; once_inferred = [] } } }
+    {
+      state =
+        Root
+          {
+            data =
+              {
+                recurse_id = Id.gen ();
+                inferred = Some inferred;
+                once_inferred = [];
+              };
+          };
+    }
 
   let rec find_root_var : 'a. 'a var -> 'a var =
    fun var ->
@@ -45,31 +65,36 @@ module Var = struct
   type 'a t = 'a var
 
   let check : 'a. 'a var_data -> 'a var_data =
-   fun { inferred; once_inferred } ->
+   fun { recurse_id; inferred; once_inferred } ->
     match inferred with
-    | None -> { inferred; once_inferred }
+    | None -> { recurse_id; inferred; once_inferred }
     | Some value ->
         once_inferred |> List.iter (fun f -> f value);
-        { inferred; once_inferred = [] }
+        { recurse_id; inferred; once_inferred = [] }
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
-    let { inferred; once_inferred = _ } = find_root var in
+    let { recurse_id; inferred; once_inferred = _ } = find_root var in
     match inferred with
     | None -> fprintf fmt "_"
     | Some inferred -> print_inferred fmt inferred
 
   let unite_data =
    fun ~span unite_inferred
-       { inferred = inferred_a; once_inferred = once_inferred_a }
-       { inferred = inferred_b; once_inferred = once_inferred_b } ->
+       { recurse_id; inferred = inferred_a; once_inferred = once_inferred_a }
+       {
+         recurse_id = _;
+         inferred = inferred_b;
+         once_inferred = once_inferred_b;
+       } ->
     let inferred =
       match (inferred_a, inferred_b) with
       | None, None -> None
       | Some inferred, None | None, Some inferred -> Some inferred
       | Some a, Some b -> Some (unite_inferred ~span a b)
     in
-    { inferred; once_inferred = once_inferred_a @ once_inferred_b } |> check
+    { recurse_id; inferred; once_inferred = once_inferred_a @ once_inferred_b }
+    |> check
 
   let unite : 'a. 'a unite -> 'a var unite =
    fun unite_inferred ~span a b ->
@@ -101,7 +126,11 @@ module Var = struct
           {
             data =
               unite_data ~span unite_inferred root_data
-                { inferred = Some infer_as; once_inferred = [] };
+                {
+                  recurse_id = Id.gen ();
+                  inferred = Some infer_as;
+                  once_inferred = [];
+                };
           }
     with effect (Error.Error _ as eff), _k -> Effect.perform eff
 
@@ -137,6 +166,10 @@ module Var = struct
     let a = find_root_var a in
     let b = find_root_var b in
     Repr.phys_equal a b
+
+  let id var =
+    let data = find_root var in
+    data.recurse_id
 end
 
 let fork = Var.fork

@@ -82,7 +82,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 E_Constant { shape = V_Int32 value } |> init_expr span state
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!")
-        | TyExpr -> TE_Expr (compile state Expr ast) |> init_ty_expr span state
+        | TyExpr ->
+            (fun () -> TE_Expr (compile state Expr ast))
+            |> init_ty_expr span state
         | Assignee -> (
             match token.shape with
             | Token.Shape.Ident ident ->

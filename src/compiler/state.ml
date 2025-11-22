@@ -58,12 +58,13 @@ module Scope = struct
         else find_in_parent ()
 
   let fork (f : unit -> unit) : unit =
-    Kast_inference_base.fork (fun () ->
-        try f ()
-        with effect AwaitUpdate scope, k ->
-          (* println "registering waiter for %a" Id.print scope.id; *)
-          scope.on_update <-
-            (fun () -> Effect.continue k true) :: scope.on_update)
+    Kast_interpreter.fork (fun () ->
+        Kast_inference_base.fork (fun () ->
+            try f ()
+            with effect AwaitUpdate scope, k ->
+              (* println "registering waiter for %a" Id.print scope.id; *)
+              scope.on_update <-
+                (fun () -> Effect.continue k true) :: scope.on_update))
 
   let notify_update (scope : scope) : unit =
     let fs = scope.on_update in
@@ -155,8 +156,8 @@ let enter_scope : recursive:bool -> state -> state =
      } ->
   {
     scope = Scope.enter ~recursive ~parent:scope;
+    interpreter = Interpreter.enter_scope ~recursive interpreter;
     currently_compiled_file;
-    interpreter;
     import_cache;
     custom_syntax_impls;
   }

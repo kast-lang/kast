@@ -137,23 +137,28 @@ let inner_compiled_with_handler =
           value |> Option.iter (handler.handle Pattern)
       | P_Error -> ())
   | TyExpr -> (
-      match compiled.shape with
-      | TE_Unit -> ()
-      | TE_Fn { arg; result } ->
-          handler.handle TyExpr arg;
-          handler.handle TyExpr result
-      | TE_Expr expr -> handler.handle Expr expr
-      | TE_Tuple { tuple } ->
-          tuple |> Tuple.to_seq
-          |> Seq.iter
-               (fun (_member, (~field_span:_, ~field_label:_, field_expr)) ->
-                 handler.handle TyExpr field_expr)
-      | TE_Union { elements } -> elements |> List.iter (handler.handle TyExpr)
-      | TE_Variant { variants } ->
-          variants
-          |> List.iter (fun (~label_span:_, ~label:_, variant_data) ->
-              variant_data |> Option.iter (handler.handle TyExpr))
-      | TE_Error -> ()));
+      match compiled.compiled_shape with
+      | None -> ()
+      | Some shape -> (
+          match shape with
+          | TE_Unit -> ()
+          | TE_Fn { arg; result } ->
+              handler.handle TyExpr arg;
+              handler.handle TyExpr result
+          | TE_Expr expr -> handler.handle Expr expr
+          | TE_Tuple { tuple } ->
+              tuple |> Tuple.to_seq
+              |> Seq.iter
+                   (fun
+                     (_member, (~field_span:_, ~field_label:_, field_expr)) ->
+                     handler.handle TyExpr field_expr)
+          | TE_Union { elements } ->
+              elements |> List.iter (handler.handle TyExpr)
+          | TE_Variant { variants } ->
+              variants
+              |> List.iter (fun (~label_span:_, ~label:_, variant_data) ->
+                  variant_data |> Option.iter (handler.handle TyExpr))
+          | TE_Error -> ())));
   let data = Compiler.get_data kind compiled in
   data.evaled_exprs |> List.iter (fun expr -> handler.handle Expr expr);
   match data.ty_ascription with

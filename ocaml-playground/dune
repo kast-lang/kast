@@ -1,0 +1,3 @@
+(executable
+ (public_name ocaml_playground)
+ (name ocaml_playground))

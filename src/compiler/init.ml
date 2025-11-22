@@ -55,7 +55,7 @@ let rec init_expr :
                     let generic_ty : Types.value_untyped_fn =
                       {
                         id = Id.gen ();
-                        def = { compiled = Some def_ty };
+                        def = { compiled = Some def_ty; on_compiled = [] };
                         captured = generic_ty_interpreter.scope;
                       }
                     in
@@ -330,35 +330,49 @@ let init_pattern :
     raise exc
 
 let init_ty_expr :
-    ?evaled_exprs:expr list -> span -> State.t -> Expr.Ty.Shape.t -> Expr.ty =
+    ?evaled_exprs:expr list ->
+    span ->
+    State.t ->
+    (unit -> Expr.Ty.Shape.t) ->
+    Expr.ty =
   let type_ty = Ty.inferred T_Ty in
   fun ?(evaled_exprs = []) span state shape ->
     try
-      (match shape with
-      | TE_Unit -> ()
-      | TE_Fn { arg; result } ->
-          let _ : Expr.ty = arg in
-          let _ : Expr.ty = result in
-          ()
-      | TE_Expr expr ->
-          expr.data.ty
-          |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty
-      | TE_Tuple { tuple = _ } -> ()
-      | TE_Union { elements = _ } -> ()
-      | TE_Variant { variants = _ } -> ()
-      | TE_Error -> ());
-      {
-        shape;
-        data =
-          {
-            span;
-            ty = type_ty;
-            ty_ascription = None;
-            compiler_scope = state.scope;
-            evaled_exprs;
-            included_file = None;
-          };
-      }
+      let result : Expr.ty =
+        {
+          compiled_shape = None;
+          on_compiled = [];
+          data =
+            {
+              span;
+              ty = type_ty;
+              ty_ascription = None;
+              compiler_scope = state.scope;
+              evaled_exprs;
+              included_file = None;
+            };
+        }
+      in
+      State.Scope.fork (fun () ->
+          let shape = shape () in
+          result.compiled_shape <- Some shape;
+          let fs = result.on_compiled in
+          result.on_compiled <- [];
+          fs |> List.iter (fun f -> f ());
+          match shape with
+          | TE_Unit -> ()
+          | TE_Fn { arg; result } ->
+              let _ : Expr.ty = arg in
+              let _ : Expr.ty = result in
+              ()
+          | TE_Expr expr ->
+              expr.data.ty
+              |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty
+          | TE_Tuple { tuple = _ } -> ()
+          | TE_Union { elements = _ } -> ()
+          | TE_Variant { variants = _ } -> ()
+          | TE_Error -> ());
+      result
     with exc ->
       Log.error (fun log ->
           log "while initializing type expr at %a" Span.print span);
@@ -370,4 +384,4 @@ let init_error : 'a. span -> State.t -> 'a compiled_kind -> 'a =
   | Expr -> E_Error |> init_expr span state
   | Pattern -> P_Error |> init_pattern span state
   | Assignee -> A_Error |> init_assignee span state
-  | TyExpr -> TE_Error |> init_ty_expr span state
+  | TyExpr -> (fun () -> TE_Error) |> init_ty_expr span state
