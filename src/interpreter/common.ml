@@ -127,7 +127,36 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
 and instantiate (span : span) (state : state) (generic : value) (arg : value) :
     value =
   match generic.shape with
-  | V_Generic { id; fn } -> call_untyped_fn span state fn arg
+  | V_Generic { id; fn } -> (
+      let save new_state =
+        let generic_instantiations =
+          match state.instantiated_generics.map |> Id.Map.find_opt id with
+          | None -> Types.ValueMap.empty
+          | Some instantiations -> instantiations
+        in
+        let generic_instantiations =
+          generic_instantiations |> Types.ValueMap.add arg new_state
+        in
+        state.instantiated_generics.map <-
+          state.instantiated_generics.map
+          |> Id.Map.add id generic_instantiations
+      in
+      let current_state =
+        state.instantiated_generics.map |> Id.Map.find_opt id
+        |> Option.and_then (fun instantiations ->
+            instantiations |> Types.ValueMap.find_opt arg)
+      in
+      match current_state with
+      | None ->
+          save InProgress;
+          let result = call_untyped_fn span state fn arg in
+          save <| Instantiated result;
+          result
+      | Some (Instantiated result) -> result
+      | Some InProgress ->
+          Error.error span
+            "trying to instantiate generic thats already in progress of instantiation";
+          { shape = V_Error })
   | V_Error -> { shape = V_Error }
   | _ ->
       Error.error span "expected generic";

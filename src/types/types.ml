@@ -372,7 +372,14 @@ module rec TypesImpl : sig
 
   (* interpreter *)
   and natives = { by_name : value StringMap.t }
-  and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
+
+  and generic_instantiation =
+    | InProgress
+    | Instantiated of value
+
+  and instantiated_generics = {
+    mutable map : generic_instantiation ValueMap.t Id.Map.t;
+  }
 
   and interpreter_state = {
     natives : natives;
@@ -770,7 +777,14 @@ end = struct
 
   (* interpreter *)
   and natives = { by_name : value StringMap.t }
-  and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
+
+  and generic_instantiation =
+    | InProgress
+    | Instantiated of value
+
+  and instantiated_generics = {
+    mutable map : generic_instantiation ValueMap.t Id.Map.t;
+  }
 
   and interpreter_state = {
     natives : natives;
@@ -799,13 +813,13 @@ end = struct
   [@@deriving eq, ord]
 end
 
-and ValueImpl : Map.OrderedType = struct
+and ValueImpl : (Map.OrderedType with type t = TypesImpl.value) = struct
   type t = TypesImpl.value
 
-  let compare a b = 0
+  let compare _ _ = 0
 end
 
-and ValueMap : Map.S = Map.Make (ValueImpl)
+and ValueMap : (Map.S with type key = TypesImpl.value) = Map.Make (ValueImpl)
 
 let target_symbol : symbol = Symbol.create "target"
 
