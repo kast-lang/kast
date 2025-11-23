@@ -19,6 +19,11 @@ let main () =
   Random.self_init ();
   (* Log.set_max_level Trace; *)
   let args = Cli.parse () in
-  Kast.handle_effects ~stop_on_error:args.stop_on_error (fun () -> run args)
+  let stop_on_error =
+    match args.command with
+    | Cli.Command.Repl _ -> false
+    | _ -> args.stop_on_error
+  in
+  Kast.handle_effects ~stop_on_error (fun () -> run args)
 
 let () = main ()
