@@ -67,6 +67,11 @@ let find_opt (name : symbol) (scope : scope) : value option =
   find_local_opt name scope
   |> Option.map (fun (local : Types.interpreter_local) -> local.value)
 
+let notify_update (scope : scope) : unit =
+  let fs = scope.on_update in
+  scope.on_update <- [];
+  fs |> List.iter (fun f -> f ())
+
 let add_locals (new_locals : locals) (scope : scope) : unit =
   scope.locals <-
     {
@@ -74,7 +79,8 @@ let add_locals (new_locals : locals) (scope : scope) : unit =
         SymbolMap.union
           (fun _name _old_value new_value -> Some new_value)
           scope.locals.by_symbol new_locals.by_symbol;
-    }
+    };
+  notify_update scope
 
 let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
     unit =
@@ -92,7 +98,8 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
                   };
               }
                : Types.interpreter_local);
-    }
+    };
+  notify_update scope
 
 let inject_binding (binding : binding) (scope : scope) : unit =
   scope |> add_local binding.span binding.name { shape = V_Binding binding }
@@ -107,11 +114,6 @@ let rec print_all : formatter -> scope -> unit =
   | Some parent ->
       fprintf fmt "^";
       print_all fmt parent
-
-let notify_update (scope : scope) : unit =
-  let fs = scope.on_update in
-  scope.on_update <- [];
-  fs |> List.iter (fun f -> f ())
 
 let close : scope -> unit =
  fun scope ->

@@ -1,6 +1,7 @@
 use std.prelude.*;
-let a = list.create ();
-list.add (a, 1);
-list.add (a, 2);
-list.add (a, 3);
+let a = list.create[_] ();
+a=list.add[_] (a, 1);
+a=list.add[_] (a, 2);
+a=list.add[_] (a, 3);
 dbg.print[_] a;
+list.print[_] (dbg.print[_], a)
