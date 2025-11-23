@@ -4,29 +4,33 @@ open Kast_util
 module Shape = struct
   type punct = { raw : string }
 
-  type ident = {
+  and ident = {
     raw : string;
     name : string;
   }
 
-  type string_shape = {
+  and string_shape = {
     raw : string;
     delimeter : string;
     contents : string;
   }
 
-  type number = { raw : string }
-  type comment = { raw : string }
+  and number = { raw : string }
+  and comment = { raw : string }
 
-  type shape =
+  and shape =
     | Punct of punct
     | Ident of ident
     | String of string_shape
     | Number of number
     | Comment of comment
     | Eof
+  [@@deriving eq, ord]
 
   type t = shape
+
+  let equal = equal_shape
+  let compare = compare_shape
 
   let print : formatter -> shape -> unit =
    fun fmt shape ->
@@ -67,12 +71,13 @@ module Shape = struct
   type string = string_shape
 end
 
-type token = {
+type t = {
   shape : Shape.t;
-  span : span;
+  span : Span.t;
 }
+[@@deriving eq, ord]
 
-type t = token
+type token = t
 
 let raw token = Shape.raw token.shape
 let is_raw s token = Shape.is_raw s token.shape
@@ -82,5 +87,6 @@ let print fmt { shape; span } =
 
 type comment = {
   shape : Shape.comment;
-  span : span;
+  span : Span.t;
 }
+[@@deriving eq, ord]

@@ -47,7 +47,8 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
                 |> Seq.fold_left
                      (fun (~matched, acc)
                           (_member, (field_pattern, field_value)) ->
-                       let ~field_span:_, ~field_label:_, field_pattern =
+                       let { label_span = _; label = _; field = field_pattern }
+                           : pattern Types.tuple_field_of =
                          field_pattern
                        in
                        let field_value : Types.value_tuple_field =
@@ -203,13 +204,14 @@ and eval : state -> expr -> value =
                   |> Tuple.mapi
                        (fun
                          member
-                         (~field_span, ~field_label:_, field_expr)
+                         ({ label_span; label = _; field = field_expr } :
+                           expr Types.tuple_field_of)
                          :
                          Types.value_tuple_field
                        ->
                          let value = field_expr |> eval state in
                          let ty_field = ty.tuple |> Tuple.get member in
-                         { value; span = field_span; ty_field });
+                         { value; span = label_span; ty_field });
               };
         }
     | E_Variant { label; label_span = _; value } ->
@@ -458,12 +460,13 @@ and eval_ty : state -> Expr.ty -> ty =
                           tuple
                           |> Tuple.map
                                (fun
-                                 (~field_span:_, ~field_label, field_expr)
+                                 ({ label_span = _; label; field = field_expr } :
+                                   Expr.ty Types.tuple_field_of)
                                  :
                                  Types.ty_tuple_field
                                ->
                                  let ty = field_expr |> eval_ty state in
-                                 { ty; label = field_label });
+                                 { ty; label });
                       }
              | TE_Union { elements } ->
                  let variants =
@@ -489,12 +492,14 @@ and eval_ty : state -> Expr.ty -> ty =
                           Row.of_list ~span
                             (variants
                             |> List.map
-                                 (fun (~label_span:_, ~label, variant_data) ->
+                                 (fun
+                                   ({ label_span = _; label; value } :
+                                     Types.ty_expr_variant_variant)
+                                 ->
                                    ( label,
                                      ({
                                         data =
-                                          variant_data
-                                          |> Option.map (eval_ty state);
+                                          value |> Option.map (eval_ty state);
                                       }
                                        : Types.ty_variant_data) )));
                       }

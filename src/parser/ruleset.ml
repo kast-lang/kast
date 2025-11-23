@@ -96,7 +96,7 @@ let add : Syntax.rule -> ruleset -> ruleset =
               next_keywords = node.next_keywords;
             })
     | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
-    | Group { name = _; parts = group_parts; quantifier } :: rest -> (
+    | Group { id = _; name = _; parts = group_parts; quantifier } :: rest -> (
         match quantifier with
         | None -> insert ~prev_prev ~prev (group_parts @ rest) node
         | Some Optional ->
@@ -153,20 +153,20 @@ let parse_list : string list -> ruleset =
  fun rules ->
   rules
   |> List.map (fun line ->
-         let lexer =
-           Lexer.init Lexer.default_rules
-             { contents = line; uri = Uri.of_string "ocaml:parse_list/rule" }
-         in
-         let rule = Rule.parse lexer in
-         Lexer.expect_eof lexer;
-         rule)
+      let lexer =
+        Lexer.init Lexer.default_rules
+          { contents = line; uri = Uri.of_string "ocaml:parse_list/rule" }
+      in
+      let rule = Rule.parse lexer in
+      Lexer.expect_eof lexer;
+      rule)
   |> of_list
 
 let parse_lines : string -> ruleset =
  fun s ->
   s |> String.split_on_char '\n'
   |> List.filter (fun s ->
-         not (String.is_whitespace s || String.starts_with ~prefix:"#" s))
+      not (String.is_whitespace s || String.starts_with ~prefix:"#" s))
   |> List.map (fun s -> String.strip_prefix ~prefix:"@syntax " s |> Option.get)
   |> List.map (fun s -> String.strip_suffix ~suffix:";" s |> Option.get)
   |> List.filter (fun line -> String.trim line <> "from_scratch")

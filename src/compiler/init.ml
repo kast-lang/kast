@@ -79,12 +79,13 @@ let rec init_expr :
                    tuple
                    |> Tuple.map
                         (fun
-                          (~field_span:_, ~field_label, field_expr)
+                          ({ label_span = _; label; field = field_expr } :
+                            expr Types.tuple_field_of)
                           :
                           Types.ty_tuple_field
                         ->
                           let field_expr : expr = field_expr in
-                          { ty = field_expr.data.ty; label = field_label });
+                          { ty = field_expr.data.ty; label });
                }
       | E_Variant { label; label_span = _; value } ->
           Ty.inferred ~span
@@ -287,12 +288,13 @@ let init_pattern :
                    tuple
                    |> Tuple.map
                         (fun
-                          (~field_span:_, ~field_label, field_pattern)
+                          ({ label_span = _; label; field = field_pattern } :
+                            pattern Types.tuple_field_of)
                           :
                           Types.ty_tuple_field
                         ->
                           let field_pattern : pattern = field_pattern in
-                          { ty = field_pattern.data.ty; label = field_label });
+                          { ty = field_pattern.data.ty; label });
                })
       | P_Variant { label; label_span = _; value } ->
           Ty.inferred ~span

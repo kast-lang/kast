@@ -11,6 +11,9 @@ type label_data = {
 type label = { var : label_data Inference.var }
 type t = label
 
+let equal a b = Inference.Var.equal a.var b.var
+let compare a b = Inference.Var.compare a.var b.var
+
 let create_definition span name =
   {
     var =
@@ -77,4 +80,4 @@ let print fmt label =
   | Some data -> fprintf fmt "%s" data.name
   | None -> fprintf fmt "_"
 
-let same { var = a } { var = b } = Inference.Var.same a b
+let same { var = a } { var = b } = Inference.Var.equal a b

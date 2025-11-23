@@ -11,7 +11,7 @@ type 'a shape =
     }
 
 and 'a t = { var : 'a shape Inference.var }
-and 'a row = 'a t
+and 'a row = 'a t [@@deriving eq, ord]
 
 let new_not_inferred ~span = { var = Inference.Var.new_not_inferred ~span }
 let inferred ~span shape = { var = Inference.Var.new_inferred ~span shape }

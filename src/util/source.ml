@@ -17,6 +17,8 @@ module Position = struct
     let line = Int.compare a.line b.line in
     if line <> 0 then line else Int.compare a.column b.column
 
+  let equal : position -> position -> bool = fun a b -> compare a b = 0
+
   let advance : char -> position -> position =
    fun c p ->
     match c with
@@ -97,10 +99,11 @@ type source = Source.t
 
 module Span = struct
   type t = {
-    start : position;
-    finish : position;
+    start : Position.t;
+    finish : Position.t;
     uri : Uri.t;
   }
+  [@@deriving eq, ord]
 
   type span = t
 

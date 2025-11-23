@@ -89,7 +89,8 @@ and transpile_pattern : Pattern.t -> state -> OcamlAst.t =
   | Types.P_Tuple tuple ->
       state
       |> transpile_tuple
-           (fun (~field_span:_, ~field_label:_, field_pattern) ->
+           (fun ({ label_span = _; label = _; field = field_pattern } :
+                  pattern Types.tuple_field_of) ->
              transpile_pattern field_pattern)
            tuple.tuple
   | Types.P_Variant _ -> failwith __LOC__
@@ -130,8 +131,8 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_Tuple tuple ->
       state
       |> transpile_tuple
-           (fun (~field_span:_, ~field_label:_, field_expr) ->
-             transpile_expr field_expr)
+           (fun ({ label_span = _; label = _; field = field_expr } :
+                  expr Types.tuple_field_of) -> transpile_expr field_expr)
            tuple.tuple
   | Types.E_Variant _ -> failwith __LOC__
   | Types.E_Apply { f; arg } ->

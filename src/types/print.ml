@@ -131,8 +131,8 @@ module Impl = struct
         | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
     | E_Tuple { tuple } ->
         fprintf fmt "tuple %a"
-          (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
-               print_expr fmt field_expr))
+          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
+               print_expr fmt field))
           tuple
     | E_Variant { label; label_span = _; value } ->
         fprintf fmt
@@ -256,8 +256,8 @@ module Impl = struct
         fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
     | TE_Tuple { tuple } ->
         fprintf fmt "@{<magenta>tuple@} %a"
-          (Tuple.print (fun fmt (~field_span:_, ~field_label:_, field_expr) ->
-               print_ty_expr fmt field_expr))
+          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
+               print_ty_expr fmt field))
           tuple
     | TE_Union { elements } ->
         fprintf fmt "@{<magenta>union@} %a"
@@ -268,8 +268,10 @@ module Impl = struct
           (Tuple.print (Option.print print_ty_expr))
           (Tuple.make []
              (variants
-             |> List.map (fun (~label_span:_, ~label, variant) ->
-                 (Label.get_name label, variant))))
+             |> List.map
+                  (fun
+                    ({ label_span = _; label; value } : ty_expr_variant_variant)
+                  -> (Label.get_name label, value))))
     | TE_Error -> fprintf fmt "@{<red><error>@}"
 
   and print_ty_expr : formatter -> ty_expr -> unit =
@@ -291,9 +293,8 @@ module Impl = struct
         fprintf fmt "@{<magenta>binding@} %a" print_binding binding
     | P_Tuple { tuple } ->
         fprintf fmt "@{<magenta>tuple@} %a"
-          (Tuple.print
-             (fun fmt (~field_span:_, ~field_label:_, field_pattern) ->
-               print_pattern_with_spans fmt field_pattern))
+          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
+               print_pattern_with_spans fmt field))
           tuple
     | P_Variant { label; label_span = _; value } ->
         fprintf fmt
@@ -316,8 +317,8 @@ module Impl = struct
     | P_Binding binding -> print_binding fmt binding
     | P_Tuple { tuple } ->
         Tuple.print
-          (fun fmt (~field_span:_, ~field_label:_, field_pattern) ->
-            print_pattern fmt field_pattern)
+          (fun fmt { label_span = _; label = _; field } ->
+            print_pattern fmt field)
           fmt tuple
     | P_Variant { label; label_span = _; value } ->
         fprintf fmt ":%a" Label.print label;

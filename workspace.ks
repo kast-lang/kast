@@ -13,5 +13,6 @@
 "examples/recursive-types.ks",
 "examples/generics.ks",
 "examples/inference-bug.ks",
+"examples/lists.ks",
 "examples/variant-types.ks",
 "examples/aoc/2024/day01.ks",

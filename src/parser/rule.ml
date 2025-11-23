@@ -77,7 +77,7 @@ let parse : Lexer.t -> Syntax.rule =
                   Some Syntax.Rule.Optional
               | _ -> None
             in
-            Some (Group { name; parts; quantifier }))
+            Some (Group { id = Id.gen (); name; parts; quantifier }))
           else (* Not group *)
             let priority =
               if left_assoc then Syntax.Rule.Priority.GreaterOrEqual

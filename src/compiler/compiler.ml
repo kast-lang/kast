@@ -118,8 +118,11 @@ let rec inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
   | P_Tuple { tuple } ->
       tuple |> Tuple.to_seq
       |> Seq.iter
-           (fun (_member, (~field_span:_, ~field_label:_, field_pattern)) ->
-             state |> inject_pattern_bindings field_pattern)
+           (fun
+             ( _member,
+               ({ label_span = _; label = _; field = field_pattern } :
+                 pattern Types.tuple_field_of) )
+           -> state |> inject_pattern_bindings field_pattern)
   | P_Variant { label = _; label_span = _; value } -> (
       match value with
       | None -> ()

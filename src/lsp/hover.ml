@@ -58,7 +58,7 @@ let binding_definition : binding -> definition =
  fun binding -> label_definition binding.label
 
 let get_tuple (type a) (kind : a compiled_kind) (compiled : a) :
-    (field_span:span * field_label:Label.t * a) tuple option =
+    a Types.tuple_field_of tuple option =
   match kind with
   | Expr -> (
       match compiled.shape with
@@ -82,24 +82,26 @@ let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
      hover_info option ->
   let* tuple = get_tuple kind compiled in
   tuple |> Tuple.to_seq
-  |> Seq.find_map (fun (_member, (~field_span, ~field_label, field)) ->
-      if field_span |> Span.contains_span hover_span then
-        let data = Compiler.get_data kind field in
-        Some
-          {
-            ty = { span = field_span; ty = data.ty };
-            rename =
-              Some
-                {
-                  span = field_span;
-                  definition_mode =
-                    (match kind with
-                    | TyExpr -> DefinedHere (label_definition field_label)
-                    | _ -> DefinedNotHere (label_definition field_label));
-                };
-            file = None;
-          }
-      else None)
+  |> Seq.find_map
+       (fun
+         (_member, ({ label_span; label; field } : a Types.tuple_field_of)) ->
+         if label_span |> Span.contains_span hover_span then
+           let data = Compiler.get_data kind field in
+           Some
+             {
+               ty = { span = label_span; ty = data.ty };
+               rename =
+                 Some
+                   {
+                     span = label_span;
+                     definition_mode =
+                       (match kind with
+                       | TyExpr -> DefinedHere (label_definition label)
+                       | _ -> DefinedNotHere (label_definition label));
+                   };
+               file = None;
+             }
+         else None)
 
 let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
  fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
@@ -184,14 +186,19 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
             match compiled.compiled_shape with
             | Some (TE_Variant { variants }) ->
                 variants
-                |> List.find_map (fun (~label_span, ~label, _value) ->
-                    if label_span |> Span.contains_span hover_span then
-                      Some
-                        {
-                          span = label_span;
-                          definition_mode = DefinedHere (label_definition label);
-                        }
-                    else None)
+                |> List.find_map
+                     (fun
+                       ({ label_span; label; value = _ } :
+                         Types.ty_expr_variant_variant)
+                     ->
+                       if label_span |> Span.contains_span hover_span then
+                         Some
+                           {
+                             span = label_span;
+                             definition_mode =
+                               DefinedHere (label_definition label);
+                           }
+                       else None)
             | _ -> None
           in
           {

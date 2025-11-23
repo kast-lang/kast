@@ -62,8 +62,11 @@ let inner_compiled_with_handler =
       | E_Tuple { tuple } ->
           tuple |> Tuple.to_seq
           |> Seq.iter
-               (fun (_member, (~field_span:_, ~field_label:_, field_expr)) ->
-                 handler.handle Expr field_expr)
+               (fun
+                 ( _member,
+                   ({ label_span = _; label = _; field = field_expr } :
+                     expr Types.tuple_field_of) )
+               -> handler.handle Expr field_expr)
       | E_Variant { label = _; label_span = _; value } ->
           value |> Option.iter (handler.handle Expr)
       | E_Apply { f; arg } ->
@@ -131,8 +134,11 @@ let inner_compiled_with_handler =
       | P_Tuple { tuple } ->
           tuple |> Tuple.to_seq
           |> Seq.iter
-               (fun (_member, (~field_span:_, ~field_label:_, field_pattern)) ->
-                 handler.handle Pattern field_pattern)
+               (fun
+                 ( _member,
+                   ({ label_span = _; label = _; field = field_pattern } :
+                     pattern Types.tuple_field_of) )
+               -> handler.handle Pattern field_pattern)
       | P_Variant { label = _; label_span = _; value } ->
           value |> Option.iter (handler.handle Pattern)
       | P_Error -> ())
@@ -150,14 +156,19 @@ let inner_compiled_with_handler =
               tuple |> Tuple.to_seq
               |> Seq.iter
                    (fun
-                     (_member, (~field_span:_, ~field_label:_, field_expr)) ->
-                     handler.handle TyExpr field_expr)
+                     ( _member,
+                       ({ label_span = _; label = _; field = field_expr } :
+                         Expr.ty Types.tuple_field_of) )
+                   -> handler.handle TyExpr field_expr)
           | TE_Union { elements } ->
               elements |> List.iter (handler.handle TyExpr)
           | TE_Variant { variants } ->
               variants
-              |> List.iter (fun (~label_span:_, ~label:_, variant_data) ->
-                  variant_data |> Option.iter (handler.handle TyExpr))
+              |> List.iter
+                   (fun
+                     ({ label_span = _; label = _; value = variant_data } :
+                       Types.ty_expr_variant_variant)
+                   -> variant_data |> Option.iter (handler.handle TyExpr))
           | TE_Error -> ())));
   let data = Compiler.get_data kind compiled in
   data.evaled_exprs |> List.iter (fun expr -> handler.handle Expr expr);

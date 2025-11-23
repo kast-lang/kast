@@ -74,9 +74,9 @@ module Impl = struct
     | V_Fn { ty; fn } ->
         sub_ty_fn ~state ty |> Option.map (fun ty -> V_Fn { ty; fn } |> shaped)
     | V_Generic { id = _; fn = _ } -> None
-    | V_NativeFn { name; ty; impl } ->
+    | V_NativeFn { id; name; ty; impl } ->
         sub_ty_fn ~state ty
-        |> Option.map (fun ty -> V_NativeFn { name; ty; impl } |> shaped)
+        |> Option.map (fun ty -> V_NativeFn { id; name; ty; impl } |> shaped)
     | V_UnwindToken { id; result_ty } ->
         result_ty |> sub_ty ~state
         |> Option.map (fun result_ty ->

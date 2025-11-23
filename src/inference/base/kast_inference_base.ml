@@ -183,10 +183,15 @@ module Var = struct
         Effect.perform (AwaitUpdate var);
         await_inferred var
 
-  let same a b =
+  let equal a b =
     let a = find_root_var a in
     let b = find_root_var b in
     Repr.phys_equal a b
+
+  let compare a b =
+    let a = find_root a in
+    let b = find_root b in
+    Id.compare a.recurse_id b.recurse_id
 
   let recurse_id var =
     let data = find_root var in
@@ -200,3 +205,6 @@ end
 let fork = Var.fork
 
 type 'a var = 'a Var.t
+
+let equal_var _ a b = Var.equal a b
+let compare_var _ a b = Var.compare a b

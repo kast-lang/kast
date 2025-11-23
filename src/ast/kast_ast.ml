@@ -7,11 +7,13 @@ type simple = {
   comments_before : Token.comment list;
   token : Token.t;
 }
+[@@deriving eq, ord]
 
 module SyntaxMode = struct
   type t =
-    | Define of Syntax.rule
+    | Define of Syntax.Rule.t
     | FromScratch
+  [@@deriving eq, ord]
 
   let print fmt mode =
     fprintf fmt "@{<yellow>";
@@ -28,7 +30,7 @@ type part =
   | Group of group
 
 and complex = {
-  rule : Syntax.rule;
+  rule : Syntax.Rule.t;
   root : group;
 }
 
@@ -36,7 +38,7 @@ and group = {
   (* TODO rule is only None for root *)
   rule : Syntax.Rule.group option;
   parts : part list;
-  children : child tuple;
+  children : child Tuple.t;
 }
 
 and child =
@@ -58,12 +60,12 @@ and shape =
   | Syntax of syntax
   | Error of error
 
-and ast = {
+and t = {
   shape : shape;
-  span : span;
+  span : Span.t;
 }
 
-type t = ast
+and ast = t [@@deriving eq, ord]
 
 let rec print : formatter -> ast -> unit =
  fun fmt { shape; span } ->

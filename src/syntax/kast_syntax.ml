@@ -65,10 +65,14 @@ module Rule = struct
     | Group of group
 
   and group = {
+    id : Id.t;
     name : string option;
     parts : part list;
     quantifier : quantifier option;
   }
+
+  let equal_group a b = a.id = b.id
+  let compare_group a b = Id.compare a.id b.id
 
   module WrapMode = struct
     type t =
@@ -79,7 +83,7 @@ module Rule = struct
 
   type wrap_mode = WrapMode.t
 
-  type rule = {
+  type t = {
     id : Id.t;
     span : span;
     name : string;
@@ -88,7 +92,10 @@ module Rule = struct
     wrap_mode : wrap_mode;
   }
 
-  type t = rule
+  let equal a b = a.id = b.id
+  let compare a b = Id.compare a.id b.id
+
+  type rule = t
 
   let print : formatter -> rule -> unit =
    fun fmt rule -> fprintf fmt "%S" rule.name
@@ -97,8 +104,8 @@ module Rule = struct
    fun rule ->
     List.to_seq rule.parts
     |> Seq.filter_map (function
-         | Keyword keyword -> Some keyword
-         | _ -> None)
+      | Keyword keyword -> Some keyword
+      | _ -> None)
 
   module Part = struct
     type t = part

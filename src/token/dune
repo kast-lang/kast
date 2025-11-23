@@ -1,3 +1,5 @@
 (library
  (name kast_token)
- (libraries std kast_util))
+ (libraries std kast_util)
+ (preprocess
+  (pps ppx_deriving.eq ppx_deriving.ord)))

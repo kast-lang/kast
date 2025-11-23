@@ -15,13 +15,17 @@ module Var : sig
   val infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit
   val once_inferred : 'a. ('a -> unit) -> 'a var -> unit
   val await_inferred : 'a. 'a var -> 'a
-  val same : 'a. 'a var -> 'a var -> bool
   val recurse_id : 'a. 'a var -> id
   val spans : 'a. 'a var -> Set.Make(Span).t
+  val equal : 'a. 'a var -> 'a var -> bool
+  val compare : 'a. 'a var -> 'a var -> int
 end
 
 val fork : (unit -> unit) -> unit
 
 type 'a var = 'a Var.t
+
+val equal_var : 'a. ('a -> 'a -> bool) -> 'a var -> 'a var -> bool
+val compare_var : 'a. ('a -> 'a -> int) -> 'a var -> 'a var -> int
 
 module Error = Error

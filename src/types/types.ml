@@ -6,10 +6,8 @@ module Inference = Kast_inference_base
 module Label = Label
 
 module rec TypesImpl : sig
-  type _unused
-
   (* VALUE *)
-  and value_shape =
+  type value_shape =
     | V_Unit
     | V_Bool of bool
     | V_Int32 of int32
@@ -73,6 +71,7 @@ module rec TypesImpl : sig
   }
 
   and value_native_fn = {
+    id : Id.t;
     name : string;
     ty : ty_fn;
     impl : caller:span -> state:interpreter_state -> value -> value;
@@ -141,7 +140,12 @@ module rec TypesImpl : sig
     b : expr;
   }
 
-  and 'a tuple_field_of = field_span:span * field_label:Label.t * 'a
+  and 'a tuple_field_of = {
+    label_span : span;
+    label : Label.t;
+    field : 'a;
+  }
+
   and expr_stmt = { expr : expr }
   and expr_tuple = { tuple : expr tuple_field_of tuple }
 
@@ -295,9 +299,13 @@ module rec TypesImpl : sig
   and ty_expr_tuple = { tuple : ty_expr tuple_field_of tuple }
   and ty_expr_union = { elements : ty_expr list }
 
-  and ty_expr_variant = {
-    variants : (label_span:span * label:Label.t * ty_expr option) list;
+  and ty_expr_variant_variant = {
+    label_span : span;
+    label : Label.t;
+    value : ty_expr option;
   }
+
+  and ty_expr_variant = { variants : ty_expr_variant_variant list }
 
   and ty_expr_shape =
     | TE_Unit
@@ -391,10 +399,8 @@ module rec TypesImpl : sig
     included_file : Uri.t option;
   }
 end = struct
-  type _unused
-
   (* VALUE *)
-  and value_shape =
+  type value_shape =
     | V_Unit
     | V_Bool of bool
     | V_Int32 of int32
@@ -433,23 +439,23 @@ end = struct
   }
 
   and value_untyped_fn = {
-    id : id;
+    id : Id.t;
     def : maybe_compiled_fn;
     captured : interpreter_scope;
   }
 
   and value_generic = {
-    id : id;
+    id : Id.t;
     fn : value_untyped_fn;
   }
 
   and value_tuple_field = {
     value : value;
-    span : span;
+    span : Span.t;
     ty_field : ty_tuple_field;
   }
 
-  and value_tuple = { tuple : value_tuple_field tuple }
+  and value_tuple = { tuple : value_tuple_field Tuple.t }
 
   and value_variant = {
     label : Label.t;
@@ -458,9 +464,11 @@ end = struct
   }
 
   and value_native_fn = {
+    id : Id.t;
     name : string;
     ty : ty_fn;
     impl : caller:span -> state:interpreter_state -> value -> value;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
   (* TY *)
@@ -469,7 +477,7 @@ end = struct
     label : Label.t;
   }
 
-  and ty_tuple = { tuple : ty_tuple_field tuple }
+  and ty_tuple = { tuple : ty_tuple_field Tuple.t }
 
   and ty_fn = {
     arg : ty;
@@ -512,6 +520,7 @@ end = struct
   and maybe_compiled_fn = {
     mutable compiled : compiled_fn option;
     mutable on_compiled : (unit -> unit) list;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
   and expr_fn = {
@@ -526,13 +535,18 @@ end = struct
     b : expr;
   }
 
-  and 'a tuple_field_of = field_span:span * field_label:Label.t * 'a
+  and 'a tuple_field_of = {
+    label_span : Span.t;
+    label : Label.t;
+    field : 'a;
+  }
+
   and expr_stmt = { expr : expr }
-  and expr_tuple = { tuple : expr tuple_field_of tuple }
+  and expr_tuple = { tuple : expr tuple_field_of Tuple.t }
 
   and expr_variant = {
     label : Label.t;
-    label_span : span;
+    label_span : Span.t;
     value : expr option;
   }
 
@@ -559,7 +573,7 @@ end = struct
   and expr_field = {
     obj : expr;
     field : string;
-    field_span : span;
+    field_span : Span.t;
     label : Label.t;
   }
 
@@ -590,11 +604,11 @@ end = struct
 
   and expr_quote_ast_group = {
     rule : Syntax.Rule.group option;
-    children : expr_quote_ast_child tuple;
+    children : expr_quote_ast_child Tuple.t;
   }
 
   and expr_quote_ast = {
-    rule : Syntax.rule;
+    rule : Syntax.Rule.t;
     root : expr_quote_ast_group;
   }
 
@@ -677,12 +691,16 @@ end = struct
     result : ty_expr;
   }
 
-  and ty_expr_tuple = { tuple : ty_expr tuple_field_of tuple }
+  and ty_expr_tuple = { tuple : ty_expr tuple_field_of Tuple.t }
   and ty_expr_union = { elements : ty_expr list }
 
-  and ty_expr_variant = {
-    variants : (label_span:span * label:Label.t * ty_expr option) list;
+  and ty_expr_variant_variant = {
+    label_span : Span.t;
+    label : Label.t;
+    value : ty_expr option;
   }
+
+  and ty_expr_variant = { variants : ty_expr_variant_variant list }
 
   and ty_expr_shape =
     | TE_Unit
@@ -696,16 +714,17 @@ end = struct
   and ty_expr = {
     mutable compiled_shape : ty_expr_shape option;
     mutable on_compiled : (unit -> unit) list;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     (* TODO technically only need span for this? *)
     data : ir_data;
   }
 
   (* PATTERN *)
-  and pattern_tuple = { tuple : pattern tuple_field_of tuple }
+  and pattern_tuple = { tuple : pattern tuple_field_of Tuple.t }
 
   and pattern_variant = {
     label : Label.t;
-    label_span : span;
+    label_span : Span.t;
     value : pattern option;
   }
 
@@ -736,15 +755,17 @@ end = struct
     recursive : bool;
     mutable closed : bool;
     mutable on_update : (unit -> unit) list;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
   and compiler_scope = {
-    id : id;
+    id : Id.t;
     parent : compiler_scope option;
     recursive : bool;
     mutable bindings : binding StringMap.t;
     mutable closed : bool;
     mutable on_update : (unit -> unit) list;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
   (* interpreter *)
@@ -760,21 +781,22 @@ end = struct
 
   (* OTHER *)
   and binding = {
-    id : id;
-    name : symbol;
-    span : span;
+    id : Id.t;
+    name : Symbol.t;
+    span : Span.t;
     ty : ty;
     label : Label.t;
   }
 
   and ir_data = {
-    span : span;
+    span : Span.t;
     ty : ty;
     compiler_scope : compiler_scope;
     mutable ty_ascription : ty_expr option;
     mutable evaled_exprs : expr list;
     included_file : Uri.t option;
   }
+  [@@deriving eq, ord]
 end
 
 and ValueImpl : Map.OrderedType = struct

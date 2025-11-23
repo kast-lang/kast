@@ -1,13 +1,15 @@
 open Std
 
 module Tuple = struct
-  type 'a tuple = {
+  type 'a t = {
     unnamed : 'a array;
     named : 'a StringMap.t;
     named_order_rev : string list;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
+  [@@deriving eq, ord]
 
-  type 'a t = 'a tuple
+  type 'a tuple = 'a t
 
   type member =
     | Index of int

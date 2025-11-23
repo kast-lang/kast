@@ -58,6 +58,7 @@ let types =
             shape =
               V_NativeFn
                 {
+                  id = Id.gen ();
                   name;
                   ty =
                     {
@@ -69,7 +70,9 @@ let types =
           } )))
 
 let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
-  (name, { shape = V_NativeFn { ty = { arg; result }; name; impl } })
+  ( name,
+    { shape = V_NativeFn { id = Id.gen (); ty = { arg; result }; name; impl } }
+  )
 
 let dbg =
   [

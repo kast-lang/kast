@@ -1029,7 +1029,14 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
             tuple_field (module C) kind child root
           in
           tuple :=
-            !tuple |> Tuple.add (Some name) (~field_span, ~field_label, value)
+            !tuple
+            |> Tuple.add (Some name)
+                 ({
+                    label_span = field_span;
+                    label = field_label;
+                    field = value;
+                  }
+                   : a Types.tuple_field_of)
       | _ ->
           let field_label =
             match kind with
@@ -1041,9 +1048,12 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
           tuple :=
             !tuple
             |> Tuple.add None
-                 ( ~field_span:child.span,
-                   ~field_label:(field_label child.span label),
-                   C.compile kind child ));
+                 ({
+                    label_span = child.span;
+                    label = field_label child.span label;
+                    field = C.compile kind child;
+                  }
+                   : a Types.tuple_field_of));
   match kind with
   | Assignee ->
       error span "todo comma assignee";
@@ -1310,13 +1320,20 @@ let impl_syntax : core_syntax =
                           {
                             tuple =
                               fields
-                              |> Tuple.map (fun (field : Ast.t) ->
-                                  ( ~field_span:field.span,
-                                    ~field_label:(Label.create_definition
-                                                    field.span
-                                                    (* TODO wrong span *)
-                                                    "<TODO>"),
-                                    C.compile ~state Pattern field ));
+                              |> Tuple.map
+                                   (fun
+                                     (field : Ast.t)
+                                     :
+                                     pattern Types.tuple_field_of
+                                   ->
+                                     {
+                                       label_span = field.span;
+                                       label =
+                                         Label.create_definition field.span
+                                           (* TODO wrong span *)
+                                           "<TODO>";
+                                       field = C.compile ~state Pattern field;
+                                     });
                           }
                         |> init_pattern name.span C.state
                       in
@@ -1841,7 +1858,11 @@ let variant_impl =
           {
             variants =
               [
-                (~label_span, ~label, value_ast |> Option.map (C.compile TyExpr));
+                {
+                  label_span;
+                  label;
+                  value = value_ast |> Option.map (C.compile TyExpr);
+                };
               ];
           })
       |> init_ty_expr span C.state
