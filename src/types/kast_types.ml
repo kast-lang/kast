@@ -56,7 +56,7 @@ module Value = struct
     | V_Variant { ty; _ } -> ty
     | V_Ty _ -> Ty.inferred ~span T_Ty
     | V_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty
-    | V_Generic { fn } -> Ty.inferred ~span <| T_Generic { def = fn.def }
+    | V_Generic { id; fn } -> Ty.inferred ~span <| T_Generic { def = fn.def }
     | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred ~span <| T_Fn ty
     | V_Ast _ -> Ty.inferred ~span T_Ast
     | V_UnwindToken { result_ty; id = _ } ->

@@ -73,7 +73,7 @@ module Impl = struct
         sub_ty ~state ty |> Option.map (fun new_ty -> V_Ty new_ty |> shaped)
     | V_Fn { ty; fn } ->
         sub_ty_fn ~state ty |> Option.map (fun ty -> V_Fn { ty; fn } |> shaped)
-    | V_Generic { fn = _ } -> None
+    | V_Generic { id = _; fn = _ } -> None
     | V_NativeFn { name; ty; impl } ->
         sub_ty_fn ~state ty
         |> Option.map (fun ty -> V_NativeFn { name; ty; impl } |> shaped)

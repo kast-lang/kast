@@ -126,7 +126,7 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
 and instantiate (span : span) (state : state) (generic : value) (arg : value) :
     value =
   match generic.shape with
-  | V_Generic { fn } -> call_untyped_fn span state fn arg
+  | V_Generic { id; fn } -> call_untyped_fn span state fn arg
   | V_Error -> { shape = V_Error }
   | _ ->
       Error.error span "expected generic";
@@ -182,7 +182,11 @@ and eval : state -> expr -> value =
     | E_Generic { def } ->
         {
           shape =
-            V_Generic { fn = { id = Id.gen (); def; captured = state.scope } };
+            V_Generic
+              {
+                id = Id.gen ();
+                fn = { id = Id.gen (); def; captured = state.scope };
+              };
         }
     | E_Tuple { tuple } ->
         (*  TODO dont panic - get rid of Option.get *)

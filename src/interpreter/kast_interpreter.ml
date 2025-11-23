@@ -11,6 +11,7 @@ let init : Scope.locals -> state =
     scope = Scope.with_values ~recursive:false ~parent:None values;
     natives = Natives.natives;
     contexts = Id.Map.empty;
+    instantiated_generics = { map = Id.Map.empty };
   }
 
 let default () = init Scope.Locals.empty
