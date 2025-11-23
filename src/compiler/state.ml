@@ -82,7 +82,7 @@ module Scope = struct
           id = Id.gen ();
           name = Symbol.create ident;
           span = from;
-          ty = Ty.new_not_inferred ();
+          ty = Ty.new_not_inferred ~span:from;
           label = Label.create_definition from ident;
         })
 

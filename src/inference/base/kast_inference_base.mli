@@ -7,8 +7,8 @@ module Var : sig
   type 'a t
   type 'a var = 'a t
 
-  val new_not_inferred : 'a. unit -> 'a var
-  val new_inferred : 'a. 'a -> 'a var
+  val new_not_inferred : 'a. span:span -> 'a var
+  val new_inferred : 'a. span:span -> 'a -> 'a var
   val inferred_opt : 'a. 'a var -> 'a option
   val print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit
   val unite : 'a. 'a unite -> 'a var unite
@@ -17,6 +17,7 @@ module Var : sig
   val await_inferred : 'a. 'a var -> 'a
   val same : 'a. 'a var -> 'a var -> bool
   val recurse_id : 'a. 'a var -> id
+  val spans : 'a. 'a var -> Set.Make(Span).t
 end
 
 val fork : (unit -> unit) -> unit

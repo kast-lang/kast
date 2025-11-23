@@ -234,12 +234,12 @@ let placeholder : core_syntax =
         | Assignee -> A_Placeholder |> init_assignee span Compiler.state
         | Pattern -> P_Placeholder |> init_pattern span Compiler.state
         | Expr ->
-            let ty = Ty.new_not_inferred () in
+            let ty = Ty.new_not_inferred ~span in
             let value : value = { shape = V_Ty ty } in
             E_Constant value |> init_expr span Compiler.state
         | TyExpr ->
             (fun () ->
-              let ty = Ty.new_not_inferred () in
+              let ty = Ty.new_not_inferred ~span in
               let value : value = { shape = V_Ty ty } in
               let const : expr =
                 E_Constant value |> init_expr span Compiler.state
@@ -335,7 +335,15 @@ let fn : core_syntax =
             init_error span C.state kind
         | Expr ->
             let ty : Types.ty_fn =
-              { arg = Ty.new_not_inferred (); result = Ty.new_not_inferred () }
+              {
+                arg = Ty.new_not_inferred ~span:arg.span;
+                result =
+                  Ty.new_not_inferred
+                    ~span:
+                      (result
+                      |> Option.map_or body.span (fun (result : Ast.t) ->
+                          result.span));
+              }
             in
             let def : Types.maybe_compiled_fn =
               { compiled = None; on_compiled = [] }
@@ -393,7 +401,10 @@ let generic : core_syntax =
             init_error span C.state kind
         | Expr ->
             let ty : Types.ty_fn =
-              { arg = Ty.new_not_inferred (); result = Ty.new_not_inferred () }
+              {
+                arg = Ty.new_not_inferred ~span:arg.span;
+                result = Ty.new_not_inferred ~span:body.span;
+              }
             in
             (* TODO copypasta with fn *)
             let def : Types.maybe_compiled_fn =
@@ -449,7 +460,7 @@ let type' : core_syntax =
       ->
         let span = ast.span in
         Tuple.assert_empty children;
-        let ty_ty = Ty.inferred T_Ty in
+        let ty_ty = Ty.inferred ~span T_Ty in
         let const =
           E_Constant { shape = V_Ty ty_ty } |> init_expr span Compiler.state
         in
@@ -610,7 +621,10 @@ let import : core_syntax =
             match kind with
             | Expr ->
                 let path, path_expr =
-                  Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
+                  Compiler.eval
+                    ~ty:(Ty.inferred ~span:path.span T_String)
+                    (module C)
+                    path
                 in
                 let path =
                   path |> Value.expect_string
@@ -660,7 +674,10 @@ let include' : core_syntax =
               |> Ast.Child.expect_ast
             in
             let path, path_expr =
-              Compiler.eval ~ty:(Ty.inferred T_String) (module C) path
+              Compiler.eval
+                ~ty:(Ty.inferred ~span:path.span T_String)
+                (module C)
+                path
             in
             let path =
               path |> Value.expect_string
@@ -770,7 +787,10 @@ let native : core_syntax =
               children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
             in
             let expr_value, expr =
-              Compiler.eval ~ty:(Ty.inferred T_String) (module C) expr
+              Compiler.eval
+                ~ty:(Ty.inferred ~span:expr.span T_String)
+                (module C)
+                expr
             in
             let expr_value : string =
               expr_value |> Value.expect_string
@@ -973,7 +993,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
               {
                 id = Id.gen ();
                 name = Symbol.create label;
-                ty = Ty.new_not_inferred ();
+                ty = Ty.new_not_inferred ~span:label_ast.span;
                 span = label_ast.span;
                 label = Label.create_reference label_ast.span label;
               }
@@ -1128,7 +1148,10 @@ let use_dot_star : core_syntax =
         match kind with
         | Expr ->
             let used, used_expr =
-              Compiler.eval ~ty:(Ty.new_not_inferred ()) (module C) used
+              Compiler.eval
+                ~ty:(Ty.new_not_inferred ~span:used.span)
+                (module C)
+                used
             in
             let bindings =
               match (Value.ty_of used).var |> Inference.Var.await_inferred with
@@ -1188,7 +1211,10 @@ let comptime : core_syntax =
         match kind with
         | Expr ->
             let value, value_expr =
-              Compiler.eval ~ty:(Ty.new_not_inferred ()) (module C) expr
+              Compiler.eval
+                ~ty:(Ty.new_not_inferred ~span:expr.span)
+                (module C)
+                expr
             in
             E_Constant value
             |> init_expr ~evaled_exprs:[ value_expr ] span C.state
@@ -1270,8 +1296,8 @@ let impl_syntax : core_syntax =
                   (* TODO maybe reduce copypasta here and compiling fn *)
                   let ty : Types.ty_fn =
                     {
-                      arg = Ty.new_not_inferred ();
-                      result = Ty.new_not_inferred ();
+                      arg = Ty.new_not_inferred ~span:(Span.of_ocaml __POS__);
+                      result = Ty.new_not_inferred ~span:(Span.of_ocaml __POS__);
                     }
                   in
                   let def : Types.maybe_compiled_fn =
@@ -1311,14 +1337,17 @@ let impl_syntax : core_syntax =
                 |> init_expr ~evaled_exprs:[ impl_expr ] span C.state
             | _ ->
                 let name, name_expr =
-                  Compiler.eval ~ty:(Ty.inferred T_String) (module C) name
+                  Compiler.eval
+                    ~ty:(Ty.inferred ~span:name.span T_String)
+                    (module C)
+                    name
                 in
                 let name = name |> Value.expect_string in
                 let impl, impl_expr =
                   Compiler.eval
                     ~ty:
                       ((* TODO *)
-                       Ty.new_not_inferred ())
+                       Ty.new_not_inferred ~span:impl.span)
                     (module C)
                     impl
                 in
@@ -1543,7 +1572,8 @@ let target_dependent : core_syntax =
                             id = Id.gen ();
                             name = Types.target_symbol;
                             span;
-                            ty = Ty.inferred T_Target;
+                            ty =
+                              Ty.inferred ~span:(Span.of_ocaml __POS__) T_Target;
                             label =
                               Label.create_definition span
                                 Types.target_symbol.name;
@@ -1650,7 +1680,9 @@ let inject_context : core_syntax =
         | Expr -> (
             let context_ty, context_ty_expr =
               context_type
-              |> Compiler.eval ~ty:(Ty.inferred T_ContextTy) (module C)
+              |> Compiler.eval
+                   ~ty:(Ty.inferred ~span:context_type.span T_ContextTy)
+                   (module C)
             in
             match context_ty.shape with
             | V_ContextTy context_ty ->
@@ -1685,7 +1717,9 @@ let current_context : core_syntax =
         | Expr -> (
             let context_ty, context_ty_expr =
               context_type
-              |> Compiler.eval ~ty:(Ty.inferred T_ContextTy) (module C)
+              |> Compiler.eval
+                   ~ty:(Ty.inferred ~span:context_type.span T_ContextTy)
+                   (module C)
             in
             match context_ty.shape with
             | V_ContextTy context_ty ->
@@ -1716,7 +1750,7 @@ let binding : core_syntax =
           |> Tuple.unwrap_single_unnamed
         in
         let binding, binding_expr =
-          binding |> Compiler.eval ~ty:(Ty.new_not_inferred ()) (module C)
+          binding |> Compiler.eval ~ty:(Ty.new_not_inferred ~span) (module C)
         in
         match binding.shape with
         | V_Binding binding -> (

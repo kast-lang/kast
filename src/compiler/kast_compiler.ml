@@ -107,7 +107,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                   {
                     id = Id.gen ();
                     name = Symbol.create ident.name;
-                    ty = Ty.new_not_inferred ();
+                    ty = Ty.new_not_inferred ~span:token.span;
                     span = ast.span;
                     label = Label.create_definition ast.span ident.name;
                   }
@@ -137,7 +137,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                         value = { shape = V_Ast ast };
                         ty_field =
                           {
-                            ty = Ty.inferred T_Ast;
+                            ty = Ty.inferred ~span:ast.span T_Ast;
                             label = Label.create_definition ast.span "<TODO>";
                           };
                         span =

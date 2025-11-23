@@ -14,22 +14,28 @@ module Var = struct
   and 'a var_data = {
     recurse_id : id;
     inferred : 'a option;
+    spans : SpanSet.t;
     once_inferred : ('a -> unit) list;
   }
 
-  let new_not_inferred : 'a. unit -> 'a var =
-   fun () ->
+  let new_not_inferred : 'a. span:span -> 'a var =
+   fun ~span ->
     {
       state =
         Root
           {
             data =
-              { recurse_id = Id.gen (); inferred = None; once_inferred = [] };
+              {
+                recurse_id = Id.gen ();
+                inferred = None;
+                once_inferred = [];
+                spans = SpanSet.singleton span;
+              };
           };
     }
 
-  let new_inferred : 'a. 'a -> 'a var =
-   fun inferred ->
+  let new_inferred : 'a. span:span -> 'a -> 'a var =
+   fun ~span inferred ->
     {
       state =
         Root
@@ -39,6 +45,7 @@ module Var = struct
                 recurse_id = Id.gen ();
                 inferred = Some inferred;
                 once_inferred = [];
+                spans = SpanSet.singleton span;
               };
           };
     }
@@ -65,27 +72,35 @@ module Var = struct
   type 'a t = 'a var
 
   let check : 'a. 'a var_data -> 'a var_data =
-   fun { recurse_id; inferred; once_inferred } ->
+   fun { recurse_id; inferred; once_inferred; spans } ->
     match inferred with
-    | None -> { recurse_id; inferred; once_inferred }
+    | None -> { recurse_id; inferred; once_inferred; spans }
     | Some value ->
         once_inferred |> List.iter (fun f -> f value);
-        { recurse_id; inferred; once_inferred = [] }
+        { recurse_id; inferred; once_inferred = []; spans }
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
-    let { recurse_id; inferred; once_inferred = _ } = find_root var in
+    let { recurse_id = _; inferred; once_inferred = _; spans = _ } =
+      find_root var
+    in
     match inferred with
     | None -> fprintf fmt "_"
     | Some inferred -> print_inferred fmt inferred
 
   let unite_data =
    fun ~span unite_inferred
-       { recurse_id; inferred = inferred_a; once_inferred = once_inferred_a }
+       {
+         recurse_id;
+         inferred = inferred_a;
+         once_inferred = once_inferred_a;
+         spans = spans_a;
+       }
        {
          recurse_id = _;
          inferred = inferred_b;
          once_inferred = once_inferred_b;
+         spans = spans_b;
        } ->
     let inferred =
       match (inferred_a, inferred_b) with
@@ -93,7 +108,12 @@ module Var = struct
       | Some inferred, None | None, Some inferred -> Some inferred
       | Some a, Some b -> Some (unite_inferred ~span a b)
     in
-    { recurse_id; inferred; once_inferred = once_inferred_a @ once_inferred_b }
+    {
+      recurse_id;
+      inferred;
+      once_inferred = once_inferred_a @ once_inferred_b;
+      spans = SpanSet.union spans_a spans_b;
+    }
     |> check
 
   let unite : 'a. 'a unite -> 'a var unite =
@@ -130,6 +150,7 @@ module Var = struct
                   recurse_id = Id.gen ();
                   inferred = Some infer_as;
                   once_inferred = [];
+                  spans = SpanSet.singleton span;
                 };
           }
     with effect (Error.Error _ as eff), _k -> Effect.perform eff
@@ -170,6 +191,10 @@ module Var = struct
   let recurse_id var =
     let data = find_root var in
     data.recurse_id
+
+  let spans var =
+    let data = find_root var in
+    data.spans
 end
 
 let fork = Var.fork

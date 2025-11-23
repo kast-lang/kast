@@ -1,5 +1,3 @@
 module:
-# const T = type (T, T);
-const U = _;
-std.dbg.print[_] U;
-const f = u :: U => f (u, u);
+const T = type (T,);
+std.dbg.print[_] T;

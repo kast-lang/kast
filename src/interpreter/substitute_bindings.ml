@@ -66,13 +66,14 @@ module Impl = struct
     else ty
 
   and sub_ty_shape ~(state : interpreter_state) (ty : ty_shape) : ty =
+    let span = Span.fake "sub_ty_shape" in
     match ty with
     | T_Unit | T_Bool | T_Int32 | T_String | T_Char | T_Target | T_ContextTy
     | T_CompilerScope | T_Error | T_Ast | T_Ty ->
-        ty |> Ty.inferred
+        ty |> Ty.inferred ~span
     | T_Tuple { tuple } ->
         T_Tuple { tuple = tuple |> Tuple.map (sub_ty_tuple_field ~state) }
-        |> Ty.inferred
+        |> Ty.inferred ~span
     | T_Variant { variants } ->
         T_Variant
           {
@@ -82,14 +83,14 @@ module Impl = struct
                   { data = data |> Option.map (sub_ty ~state) })
                 variants;
           }
-        |> Ty.inferred
-    | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> Ty.inferred
-    | T_Generic { def = _ } -> ty |> Ty.inferred
+        |> Ty.inferred ~span
+    | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> Ty.inferred ~span
+    | T_Generic { def = _ } -> ty |> Ty.inferred ~span
     | T_UnwindToken { result } ->
-        T_UnwindToken { result = sub_ty ~state result } |> Ty.inferred
+        T_UnwindToken { result = sub_ty ~state result } |> Ty.inferred ~span
     | T_Binding binding -> (
         match Scope.find_local_opt binding.name state.scope with
-        | None -> ty |> Ty.inferred
+        | None -> ty |> Ty.inferred ~span
         | Some local -> (
             match local.value |> Value.expect_ty with
             | Some ty -> ty
@@ -97,7 +98,7 @@ module Impl = struct
                 Error.error
                   (Span.fake "<sub_ty_shape>")
                   "substituted type binding with non-type";
-                T_Error |> Ty.inferred))
+                T_Error |> Ty.inferred ~span))
 
   and sub_ty_tuple_field ~(state : interpreter_state)
       ({ label; ty } : ty_tuple_field) : ty_tuple_field =
@@ -113,18 +114,19 @@ module Impl = struct
       'a Row.t ->
       'a Row.t =
    fun ~state sub_value_impl row ->
+    let span = row.var |> Inference.Var.spans |> SpanSet.min_elt in
     match row.var |> Inference.Var.inferred_opt with
     | Some shape -> (
         match shape with
         | R_Empty -> row
         | R_Cons { label; value; rest } ->
-            Row.inferred
-              (R_Cons
+            Row.inferred ~span
+            <| R_Cons
                  {
                    label;
                    value = sub_value_impl ~state value;
                    rest = sub_row ~state sub_value_impl rest;
-                 }))
+                 })
     | None -> row
 end
 

@@ -104,6 +104,13 @@ module Span = struct
 
   type span = t
 
+  let compare a b =
+    let c = Position.compare a.start b.start in
+    if c <> 0 then c
+    else
+      let c = Position.compare a.finish b.finish in
+      if c <> 0 then c else Uri.compare a.uri b.uri
+
   let beginning_of uri =
     { start = Position.beginning; finish = Position.beginning; uri }
 
@@ -138,5 +145,7 @@ module Span = struct
     fprintf fmt "%a:%d.%d-%d.%d" Uri.print uri start.line start.column
       finish.line finish.column
 end
+
+module SpanSet = Set.Make (Span)
 
 type span = Span.t

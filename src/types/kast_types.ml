@@ -10,11 +10,14 @@ module Ty = struct
   type t = ty
 
   let print = print_ty
-  let new_not_inferred () : ty = { var = Inference.Var.new_not_inferred () }
+
+  let new_not_inferred ~span : ty =
+    { var = Inference.Var.new_not_inferred ~span }
+
   let never = new_not_inferred
 
-  let inferred (shape : ty_shape) : ty =
-    { var = Inference.Var.new_inferred shape }
+  let inferred ~span (shape : ty_shape) : ty =
+    { var = Inference.Var.new_inferred ~span shape }
 
   module Shape = struct
     type t = ty_shape
@@ -32,16 +35,17 @@ type ty = Ty.t
 module Value = struct
   type t = value
 
-  let rec ty_of : value -> ty =
+  let ty_of : value -> ty =
    fun { shape } ->
+    let span = Span.fake "<ty_of>" in
     match shape with
-    | V_Unit -> Ty.inferred T_Unit
-    | V_Bool _ -> Ty.inferred T_Bool
-    | V_Int32 _ -> Ty.inferred T_Int32
-    | V_Char _ -> Ty.inferred T_Char
-    | V_String _ -> Ty.inferred T_String
+    | V_Unit -> Ty.inferred ~span T_Unit
+    | V_Bool _ -> Ty.inferred ~span T_Bool
+    | V_Int32 _ -> Ty.inferred ~span T_Int32
+    | V_Char _ -> Ty.inferred ~span T_Char
+    | V_String _ -> Ty.inferred ~span T_String
     | V_Tuple { tuple } ->
-        Ty.inferred
+        Ty.inferred ~span
         <| T_Tuple
              {
                tuple =
@@ -50,18 +54,18 @@ module Value = struct
                    tuple;
              }
     | V_Variant { ty; _ } -> ty
-    | V_Ty _ -> Ty.inferred T_Ty
-    | V_Fn { ty; _ } -> Ty.inferred <| T_Fn ty
-    | V_Generic { fn } -> Ty.inferred <| T_Generic { def = fn.def }
-    | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred <| T_Fn ty
-    | V_Ast _ -> Ty.inferred T_Ast
+    | V_Ty _ -> Ty.inferred ~span T_Ty
+    | V_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty
+    | V_Generic { fn } -> Ty.inferred ~span <| T_Generic { def = fn.def }
+    | V_NativeFn { ty; name = _; impl = _ } -> Ty.inferred ~span <| T_Fn ty
+    | V_Ast _ -> Ty.inferred ~span T_Ast
     | V_UnwindToken { result_ty; id = _ } ->
-        Ty.inferred (T_UnwindToken { result = result_ty })
-    | V_Target _ -> Ty.inferred T_Target
-    | V_ContextTy _ -> Ty.inferred T_ContextTy
+        Ty.inferred ~span <| T_UnwindToken { result = result_ty }
+    | V_Target _ -> Ty.inferred ~span T_Target
+    | V_ContextTy _ -> Ty.inferred ~span T_ContextTy
     | V_Binding binding -> binding.ty
-    | V_CompilerScope _ -> Ty.inferred T_CompilerScope
-    | V_Error -> Ty.inferred T_Error
+    | V_CompilerScope _ -> Ty.inferred ~span T_CompilerScope
+    | V_Error -> Ty.inferred ~span T_Error
 
   let expect_unit : value -> unit option =
    fun value ->
@@ -90,7 +94,8 @@ module Value = struct
   let expect_ty : value -> ty option =
    fun value ->
     match value.shape with
-    | V_Binding binding -> Some (Ty.inferred (T_Binding binding))
+    | V_Binding binding ->
+        Some (Ty.inferred ~span:binding.span (T_Binding binding))
     | V_Ty ty -> Some ty
     | _ -> None
 

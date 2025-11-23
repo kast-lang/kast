@@ -14,14 +14,14 @@ type t = label
 let create_definition span name =
   {
     var =
-      Inference.Var.new_inferred
+      Inference.Var.new_inferred ~span
         { name; definition = Some span; references = [] };
   }
 
 let create_reference span name =
   {
     var =
-      Inference.Var.new_inferred
+      Inference.Var.new_inferred ~span
         { name; definition = None; references = [ span ] };
   }
 

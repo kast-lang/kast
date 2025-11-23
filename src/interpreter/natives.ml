@@ -19,20 +19,28 @@ let plain_types : (string * Ty.Shape.t) list =
 
 let generic_types : (string * (Ty.Shape.t -> Ty.Shape.t)) list =
   [
-    ("unwind_token", fun result -> T_UnwindToken { result = Ty.inferred result });
+    ( "unwind_token",
+      fun result ->
+        T_UnwindToken
+          { result = Ty.inferred ~span:(Span.of_ocaml __POS__) result } );
   ]
 
 let types =
   (plain_types
   |> List.map (fun (name, ty) : (string * value) ->
-      (name, { shape = V_Ty (Ty.inferred ty) })))
+      (name, { shape = V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) ty) })))
   @ (generic_types
     |> List.map (fun (name, f) : (string * value) ->
         let impl =
          fun ~caller ~state:_ arg ->
           with_return (fun { return } : value ->
               let error () =
-                return ({ shape = V_Ty (Ty.inferred T_Error) } : value)
+                return
+                  ({
+                     shape =
+                       V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) T_Error);
+                   }
+                    : value)
               in
               let arg =
                 arg |> Value.expect_ty
@@ -41,7 +49,9 @@ let types =
                     error ())
                 |> fun ty -> Inference.Var.await_inferred ty.var
               in
-              { shape = V_Ty (Ty.inferred (f arg)) })
+              {
+                shape = V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) (f arg));
+              })
         in
         ( name,
           {
@@ -49,7 +59,11 @@ let types =
               V_NativeFn
                 {
                   name;
-                  ty = { arg = Ty.inferred T_Ty; result = Ty.inferred T_Ty };
+                  ty =
+                    {
+                      arg = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty;
+                      result = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty;
+                    };
                   impl;
                 };
           } )))
@@ -60,16 +74,22 @@ let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
 let dbg =
   [
     (* TODO dbg should be polymorphic *)
-    native_fn ~arg:(Ty.new_not_inferred ()) ~result:(Ty.inferred T_Unit)
-      "dbg.print" (fun ~caller:_ ~state:_ arg : value ->
+    native_fn
+      ~arg:(Ty.new_not_inferred ~span:(Span.of_ocaml __POS__))
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Unit)
+      "dbg.print"
+      (fun ~caller:_ ~state:_ arg : value ->
         println "%a" Value.print arg;
         { shape = V_Unit });
   ]
 
 let mod_string =
   let length =
-    native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Int32)
-      "string.length" (fun ~caller ~state:_ arg : value ->
+    native_fn
+      ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+      "string.length"
+      (fun ~caller ~state:_ arg : value ->
         with_return (fun { return } ->
             let error msg () =
               Error.error caller "string.length: %s" msg;
@@ -82,8 +102,11 @@ let mod_string =
             { shape = V_Int32 (Int32.of_int (String.length s)) }))
   in
   let substring =
-    native_fn ~arg:(Ty.new_not_inferred ()) ~result:(Ty.new_not_inferred ())
-      "string.substring" (fun ~caller ~state arg : value ->
+    native_fn
+      ~arg:(Ty.new_not_inferred ~span:(Span.of_ocaml __POS__))
+      ~result:(Ty.new_not_inferred ~span:(Span.of_ocaml __POS__))
+      "string.substring"
+      (fun ~caller ~state arg : value ->
         with_return (fun { return } ->
             let error msg () =
               Error.error caller "string.substring: %s" msg;
@@ -114,8 +137,11 @@ let mod_string =
             }))
   in
   let iter =
-    native_fn ~arg:(Ty.new_not_inferred ()) ~result:(Ty.new_not_inferred ())
-      "string.iter" (fun ~caller ~state arg : value ->
+    native_fn
+      ~arg:(Ty.new_not_inferred ~span:(Span.of_ocaml __POS__))
+      ~result:(Ty.new_not_inferred ~span:(Span.of_ocaml __POS__))
+      "string.iter"
+      (fun ~caller ~state arg : value ->
         with_return (fun { return } ->
             let error msg () =
               Error.error caller "string.iter: %s" msg;
@@ -147,8 +173,11 @@ let mod_string =
 
 let sys =
   let chdir =
-    native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Unit)
-      "sys.chdir" (fun ~caller ~state:_ arg : value ->
+    native_fn
+      ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Unit)
+      "sys.chdir"
+      (fun ~caller ~state:_ arg : value ->
         match arg.shape with
         | V_String path ->
             Sys.chdir path;
@@ -161,8 +190,11 @@ let sys =
 
 let fs =
   let read_file =
-    native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_String)
-      "fs.read_file" (fun ~caller ~state:_ arg : value ->
+    native_fn
+      ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+      "fs.read_file"
+      (fun ~caller ~state:_ arg : value ->
         match arg.shape with
         | V_String path ->
             let contents = read_from_filesystem path in
@@ -177,20 +209,20 @@ let natives : natives =
   let cmp_fn name op =
     native_fn
       ~arg:
-        (Ty.inferred
+        (Ty.inferred ~span:(Span.of_ocaml __POS__)
            (T_Tuple
               {
                 tuple =
                   Tuple.make
                     [
                       ({
-                         ty = Ty.inferred T_Int32;
+                         ty = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32;
                          label =
                            Label.create_definition (Span.of_ocaml __POS__) "0";
                        }
                         : Types.ty_tuple_field);
                       ({
-                         ty = Ty.inferred T_Int32;
+                         ty = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32;
                          label =
                            Label.create_definition (Span.of_ocaml __POS__) "1";
                        }
@@ -198,7 +230,8 @@ let natives : natives =
                     ]
                     [];
               }))
-      ~result:(Ty.inferred T_Bool) name
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Bool)
+      name
       (fun ~caller ~state:_ value ->
         match value.shape with
         | V_Tuple { tuple } ->
@@ -212,20 +245,20 @@ let natives : natives =
   let bin_op name (op : int32 -> int32 -> int32) =
     native_fn
       ~arg:
-        (Ty.inferred
+        (Ty.inferred ~span:(Span.of_ocaml __POS__)
            (T_Tuple
               {
                 tuple =
                   Tuple.make
                     [
                       ({
-                         ty = Ty.inferred T_Int32;
+                         ty = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32;
                          label =
                            Label.create_definition (Span.of_ocaml __POS__) "0";
                        }
                         : Types.ty_tuple_field);
                       ({
-                         ty = Ty.inferred T_Int32;
+                         ty = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32;
                          label =
                            Label.create_definition (Span.of_ocaml __POS__) "1";
                        }
@@ -233,7 +266,8 @@ let natives : natives =
                     ]
                     [];
               }))
-      ~result:(Ty.inferred T_Int32) name
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+      name
       (fun ~caller ~state:_ value ->
         match value.shape with
         | V_Tuple { tuple } ->
@@ -257,14 +291,20 @@ let natives : natives =
   in
   let list : (string * value) list =
     [
-      native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Unit) "print"
+      native_fn
+        ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Unit)
+        "print"
         (fun ~caller ~state:_ value ->
           (match value.shape with
           | V_String s -> println "%s" s
           | _ -> Error.error caller "print expected a string");
           { shape = V_Unit });
-      native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_String)
-        "input" (fun ~caller ~state:_ value ->
+      native_fn
+        ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+        "input"
+        (fun ~caller ~state:_ value ->
           match value.shape with
           | V_String s ->
               let line = Effect.perform (Input s) in
@@ -274,7 +314,7 @@ let natives : natives =
               { shape = V_Error });
       native_fn
         ~arg:
-          (Ty.inferred
+          (Ty.inferred ~span:(Span.of_ocaml __POS__)
              (T_Tuple
                 {
                   tuple =
@@ -282,7 +322,8 @@ let natives : natives =
                       [
                         ( "min",
                           ({
-                             ty = Ty.inferred T_Int32;
+                             ty =
+                               Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32;
                              label =
                                Label.create_definition (Span.of_ocaml __POS__)
                                  "min";
@@ -290,7 +331,8 @@ let natives : natives =
                             : Types.ty_tuple_field) );
                         ( "max",
                           ({
-                             ty = Ty.inferred T_Int32;
+                             ty =
+                               Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32;
                              label =
                                Label.create_definition (Span.of_ocaml __POS__)
                                  "max";
@@ -298,7 +340,8 @@ let natives : natives =
                             : Types.ty_tuple_field) );
                       ];
                 }))
-        ~result:(Ty.inferred T_Int32) "rng"
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+        "rng"
         (fun ~caller ~state:_ arg ->
           try
             let { tuple } : Kast_types.Types.value_tuple =
@@ -311,15 +354,21 @@ let natives : natives =
           with exc ->
             Error.error caller "rng: %s" (Printexc.to_string exc);
             { shape = V_Error });
-      native_fn ~arg:(Ty.inferred T_Int32) ~result:(Ty.inferred T_String)
-        "int32_to_string" (fun ~caller ~state:_ arg ->
+      native_fn
+        ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+        "int32_to_string"
+        (fun ~caller ~state:_ arg ->
           match arg.shape with
           | V_Int32 value -> { shape = V_String (Int32.to_string value) }
           | _ ->
               Error.error caller "int32_to_string expected an int32";
               { shape = V_Error });
-      native_fn ~arg:(Ty.inferred T_String) ~result:(Ty.inferred T_Int32)
-        "string_to_int32" (fun ~caller ~state:_ arg ->
+      native_fn
+        ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+        "string_to_int32"
+        (fun ~caller ~state:_ arg ->
           match arg.shape with
           | V_String s ->
               let shape : Value.shape =
@@ -343,8 +392,11 @@ let natives : natives =
       bin_op "-" Int32.sub;
       bin_op "*" Int32.mul;
       bin_op "/" Int32.div;
-      native_fn ~arg:(Ty.inferred T_Ty) ~result:(Ty.inferred T_ContextTy)
-        "create_context_type" (fun ~caller ~state:_ arg ->
+      native_fn
+        ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty)
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_ContextTy)
+        "create_context_type"
+        (fun ~caller ~state:_ arg ->
           match arg.shape with
           | V_Ty ty -> { shape = V_ContextTy { id = Id.gen (); ty } }
           | _ ->

@@ -13,8 +13,8 @@ type 'a shape =
 and 'a t = { var : 'a shape Inference.var }
 and 'a row = 'a t
 
-let new_not_inferred () = { var = Inference.Var.new_not_inferred () }
-let inferred shape = { var = Inference.Var.new_inferred shape }
+let new_not_inferred ~span = { var = Inference.Var.new_not_inferred ~span }
+let inferred ~span shape = { var = Inference.Var.new_inferred ~span shape }
 
 type print_options = {
   open_ : string;
@@ -81,7 +81,7 @@ let rec unite_shape : 'a. 'a Inference.unite -> 'a shape Inference.unite =
             rest = unite unite_value ~span a.rest b.rest;
           }
       else
-        let rest = new_not_inferred () in
+        let rest = new_not_inferred ~span in
         a.rest.var
         |> Inference.Var.infer_as ~span (unite_shape unite_value)
              (R_Cons { label = b.label; value = b.value; rest });
@@ -100,7 +100,8 @@ let rec await_inferred_to_list { var } =
   | R_Cons { label; value; rest } ->
       (label, value) :: await_inferred_to_list rest
 
-let rec of_list = function
-  | [] -> inferred R_Empty
+let rec of_list ~span list =
+  match list with
+  | [] -> inferred ~span R_Empty
   | (label, value) :: rest ->
-      inferred <| R_Cons { label; value; rest = of_list rest }
+      inferred ~span <| R_Cons { label; value; rest = of_list ~span rest }

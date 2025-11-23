@@ -425,27 +425,28 @@ and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
-  let result = Ty.new_not_inferred () in
+  let span = expr.data.span in
+  let result = Ty.new_not_inferred ~span in
   fork (fun () ->
       try
         result
         |> Inference.Ty.expect_inferred_as ~span:expr.data.span
              (match await_compiled_ty_expr ~span:expr.data.span expr with
-             | TE_Unit -> Ty.inferred T_Unit
+             | TE_Unit -> Ty.inferred ~span T_Unit
              | TE_Fn { arg; result } ->
                  let arg = eval_ty state arg in
                  let result = eval_ty state result in
-                 Ty.inferred (T_Fn { arg; result })
+                 Ty.inferred ~span <| T_Fn { arg; result }
              | TE_Expr expr ->
                  let value = eval state expr in
                  value |> Value.expect_ty
                  |> Option.unwrap_or_else (fun () ->
                      Error.error expr.data.span "Expected a type, got %a"
                        Ty.print (Value.ty_of value);
-                     Ty.inferred T_Error)
+                     Ty.inferred ~span T_Error)
              | TE_Tuple { tuple } ->
-                 Ty.inferred
-                   (T_Tuple
+                 Ty.inferred ~span
+                 <| T_Tuple
                       {
                         tuple =
                           tuple
@@ -457,7 +458,7 @@ and eval_ty : state -> Expr.ty -> ty =
                                ->
                                  let ty = field_expr |> eval_ty state in
                                  { ty; label = field_label });
-                      })
+                      }
              | TE_Union { elements } ->
                  let variants =
                    elements
@@ -472,13 +473,14 @@ and eval_ty : state -> Expr.ty -> ty =
                            [])
                    |> List.flatten
                  in
-                 Ty.inferred <| T_Variant { variants = Row.of_list variants }
+                 Ty.inferred ~span
+                 <| T_Variant { variants = Row.of_list ~span variants }
              | TE_Variant { variants } ->
-                 Ty.inferred
+                 Ty.inferred ~span
                  <| T_Variant
                       {
                         variants =
-                          Row.of_list
+                          Row.of_list ~span
                             (variants
                             |> List.map
                                  (fun (~label_span:_, ~label, variant_data) ->
@@ -490,7 +492,7 @@ and eval_ty : state -> Expr.ty -> ty =
                                       }
                                        : Types.ty_variant_data) )));
                       }
-             | TE_Error -> Ty.inferred T_Error)
+             | TE_Error -> Ty.inferred ~span T_Error)
       with effect Scope.AwaitUpdate (symbol, scope), k ->
         Effect.continue k (Effect.perform <| Scope.AwaitUpdate (symbol, scope))
       (* if symbol.name = "TTT" then println "TTT handled properly2";
