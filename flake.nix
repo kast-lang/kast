@@ -64,7 +64,7 @@
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
             (pkgs.writeShellScriptBin "kast" ''
-              dune exec kast -- "$@"
+              rlwrap dune exec kast -- "$@"
             '')
             # You can add packages from nixpkgs here
             just # look at .justfile
@@ -73,6 +73,7 @@
             caddy # serve html
             nixfmt-classic # nix formatter
             nil # nix lsp
+            rlwrap
           ]);
           shellHook = ''
             echo 'Hello from Kast devshell'
