@@ -405,6 +405,7 @@ module rec TypesImpl : sig
     mutable evaled_exprs : expr list;
     included_file : Uri.t option;
   }
+  [@@deriving eq, ord]
 end = struct
   (* VALUE *)
   type value_shape =
@@ -816,7 +817,7 @@ end
 and ValueImpl : (Map.OrderedType with type t = TypesImpl.value) = struct
   type t = TypesImpl.value
 
-  let compare _ _ = 0
+  let compare = TypesImpl.compare_value
 end
 
 and ValueMap : (Map.S with type key = TypesImpl.value) = Map.Make (ValueImpl)

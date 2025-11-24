@@ -148,11 +148,20 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
       in
       match current_state with
       | None ->
+          Log.trace (fun log ->
+              log "Instantiating generic with arg=%a" Value.print arg);
           save InProgress;
           let result = call_untyped_fn span state fn arg in
           save <| Instantiated result;
+          Log.trace (fun log ->
+              log "Instantiated generic with arg=%a, result=%a" Value.print arg
+                Value.print result);
           result
-      | Some (Instantiated result) -> result
+      | Some (Instantiated result) ->
+          Log.trace (fun log ->
+              log "Using memoized generic instantiation with arg=%a" Value.print
+                arg);
+          result
       | Some InProgress ->
           Error.error span
             "trying to instantiate generic thats already in progress of instantiation";
@@ -410,9 +419,7 @@ and eval : state -> expr -> value =
             in
             eval state chosen_branch.body)
   in
-  let result =
-    Substitute_bindings.sub_value ~state result |> Option.value ~default:result
-  in
+  let result = Substitute_bindings.sub_value ~state result in
   result
 
 and find_target_dependent_branch :
@@ -538,9 +545,7 @@ and eval_ty : state -> Expr.ty -> ty =
       (* if symbol.name = "TTT" then println "TTT handled properly2";
         scope.on_update <- (fun () -> Effect.continue k true) :: scope.on_update *));
 
-  let result =
-    Substitute_bindings.sub_ty ~state result |> Option.value ~default:result
-  in
+  let result = Substitute_bindings.sub_ty ~state result in
   result
 
 and enter_scope ~(recursive : bool) (state : state) : state =

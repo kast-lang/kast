@@ -4,218 +4,195 @@ open Kast_types
 open Types
 
 module Impl = struct
-  let rec sub_value ~(state : interpreter_state) (value : value) : value option
-      =
-    sub_value_shape ~state value.shape
+  let subbed_vars : (id, Obj.t) Hashtbl.t = Hashtbl.create 0
+  let subs_count = ref 0
 
-  and sub_value_shape ~(state : interpreter_state) (value : value_shape) :
-      value option =
+  let rec sub_value ~(state : interpreter_state) (value : value) : value =
+    sub_value_shape ~state value value.shape
+
+  and sub_value_shape ~(state : interpreter_state) (original_value : value)
+      (shape : value_shape) : value =
     let shaped shape : value = { shape } in
-    match value with
+    match shape with
     | V_Unit | V_Bool _ | V_Int32 _ | V_Char _ | V_String _ | V_Ast _
     | V_CompilerScope _ | V_Error ->
-        None
+        original_value
     | V_Tuple { tuple } ->
-        let sub_happened = ref false in
-        let result =
-          V_Tuple
-            {
-              tuple =
-                tuple
-                |> Tuple.map
-                     (fun
-                       ({ value; span; ty_field } : value_tuple_field)
-                       :
-                       value_tuple_field
-                     ->
-                       let value =
-                         match sub_value ~state value with
-                         | Some new_value ->
-                             sub_happened := true;
-                             new_value
-                         | None -> value
-                       in
-                       let ty_field =
-                         match sub_ty_tuple_field ~state ty_field with
-                         | Some new_field ->
-                             sub_happened := true;
-                             new_field
-                         | None -> ty_field
-                       in
-                       { value; span; ty_field });
-            }
-        in
-        if !sub_happened then Some (result |> shaped) else None
+        V_Tuple
+          {
+            tuple =
+              tuple
+              |> Tuple.map
+                   (fun
+                     ({ value; span; ty_field } : value_tuple_field)
+                     :
+                     value_tuple_field
+                   ->
+                     {
+                       value = sub_value ~state value;
+                       span;
+                       ty_field = sub_ty_tuple_field ~state ty_field;
+                     });
+          }
+        |> shaped
     | V_Variant { label; data; ty } ->
-        let sub_happened = ref false in
-        let result =
-          V_Variant
-            {
-              label;
-              data =
-                data
-                |> Option.map (fun value ->
-                    match sub_value ~state value with
-                    | Some new_value ->
-                        sub_happened := true;
-                        new_value
-                    | None -> value);
-              ty =
-                (match sub_ty ~state ty with
-                | Some new_ty ->
-                    sub_happened := true;
-                    new_ty
-                | None -> ty);
-            }
-        in
-        if !sub_happened then Some (result |> shaped) else None
-    | V_Ty ty ->
-        sub_ty ~state ty |> Option.map (fun new_ty -> V_Ty new_ty |> shaped)
-    | V_Fn { ty; fn } ->
-        sub_ty_fn ~state ty |> Option.map (fun ty -> V_Fn { ty; fn } |> shaped)
-    | V_Generic { id = _; fn = _ } -> None
+        V_Variant
+          {
+            label;
+            data = data |> Option.map (fun value -> sub_value ~state value);
+            ty = sub_ty ~state ty;
+          }
+        |> shaped
+    | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
+    | V_Fn { ty; fn } -> V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped
+    | V_Generic { id = _; fn = _ } -> original_value
     | V_NativeFn { id; name; ty; impl } ->
-        sub_ty_fn ~state ty
-        |> Option.map (fun ty -> V_NativeFn { id; name; ty; impl } |> shaped)
+        V_NativeFn { id; name; ty = sub_ty_fn ~state ty; impl } |> shaped
     | V_UnwindToken { id; result_ty } ->
-        result_ty |> sub_ty ~state
-        |> Option.map (fun result_ty ->
-            V_UnwindToken { id; result_ty } |> shaped)
-    | V_Target _ -> None
+        V_UnwindToken { id; result_ty = sub_ty ~state result_ty } |> shaped
+    | V_Target _ -> original_value
     | V_ContextTy { id; ty } ->
-        ty |> sub_ty ~state
-        |> Option.map (fun ty -> V_ContextTy { id; ty } |> shaped)
+        V_ContextTy { id; ty = sub_ty ~state ty } |> shaped
     | V_Binding binding -> (
         match Scope.find_local_opt binding.name state.scope with
-        | None -> None
-        | Some local -> Some local.value)
+        | None -> original_value
+        | Some local ->
+            subs_count := !subs_count + 1;
+            local.value)
 
-  and sub_ty ~(state : interpreter_state) (ty : ty) : ty option =
-    if
-      RecurseCache.get ()
-      |> RecurseCache.visit (Inference.Var.recurse_id ty.var)
-    then
-      match ty.var |> Inference.Var.inferred_opt with
-      | None -> None
-      | Some shape -> sub_ty_shape ~state shape
-    else None (* TODO use previous substitution *)
+  and sub_ty ~state ty =
+    sub_var ~sub_shape:sub_ty_shape ~new_not_inferred:Ty.new_not_inferred
+      ~get_var:(fun (ty : ty) -> ty.var)
+      ~state ty
 
-  and sub_ty_shape ~(state : interpreter_state) (shape : ty_shape) : ty option =
-    let span = Span.fake "sub_ty_shape" in
+  and sub_ty_shape ~(state : interpreter_state) (original_ty : ty)
+      (shape : ty_shape) : ty =
+    let span = Span.fake "<sub_ty_shape>" in
+    let shaped shape = Ty.inferred ~span shape in
     match shape with
     | T_Unit | T_Bool | T_Int32 | T_String | T_Char | T_Target | T_ContextTy
     | T_CompilerScope | T_Error | T_Ast | T_Ty ->
-        None
+        original_ty
     | T_Tuple { tuple } ->
-        let sub_happened = ref false in
-        let result =
-          T_Tuple
-            {
-              tuple =
-                tuple
-                |> Tuple.map (fun field ->
-                    match sub_ty_tuple_field ~state field with
-                    | Some sub_field ->
-                        sub_happened := true;
-                        sub_field
-                    | None -> field);
-            }
-        in
-        if !sub_happened then Some (result |> Ty.inferred ~span) else None
+        T_Tuple
+          {
+            tuple =
+              tuple |> Tuple.map (fun field -> sub_ty_tuple_field ~state field);
+          }
+        |> shaped
     | T_Variant { variants } ->
-        variants
-        |> sub_row ~state
-             (fun
-               ~state ({ data } : ty_variant_data) : ty_variant_data option ->
-               data
-               |> Option.and_then (sub_ty ~state)
-               |> Option.map (fun data -> { data = Some data }))
-        |> Option.map (fun new_variants ->
-            T_Variant { variants = new_variants } |> Ty.inferred ~span)
-    | T_Fn ty ->
-        sub_ty_fn ~state ty
-        |> Option.map (fun ty -> T_Fn ty |> Ty.inferred ~span)
-    | T_Generic { def = _ } -> None
+        T_Variant
+          {
+            variants =
+              variants
+              |> sub_row ~state
+                   ~sub_value:(fun
+                       ~state ({ data } : ty_variant_data) : ty_variant_data ->
+                     { data = data |> Option.map (sub_ty ~state) });
+          }
+        |> shaped
+    | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped
+    | T_Generic { def = _ } -> original_ty
     | T_UnwindToken { result } ->
-        sub_ty ~state result
-        |> Option.map (fun result ->
-            T_UnwindToken { result } |> Ty.inferred ~span)
+        T_UnwindToken { result = result |> sub_ty ~state } |> shaped
     | T_Binding binding -> (
         match Scope.find_local_opt binding.name state.scope with
-        | None -> None
+        | None -> original_ty
         | Some local -> (
+            subs_count := !subs_count + 1;
             match local.value |> Value.expect_ty with
-            | Some ty -> Some ty
+            | Some ty -> ty
             | None ->
-                Error.error
-                  (Span.fake "<sub_ty_shape>")
-                  "substituted type binding with non-type";
-                Some (T_Error |> Ty.inferred ~span)))
+                Error.error span "substituted type binding with non-type";
+                T_Error |> shaped))
 
   and sub_ty_tuple_field ~(state : interpreter_state)
-      ({ label; ty } : ty_tuple_field) : ty_tuple_field option =
-    sub_ty ~state ty |> Option.map (fun ty -> { label; ty })
+      ({ label; ty } : ty_tuple_field) : ty_tuple_field =
+    { label; ty = sub_ty ~state ty }
 
-  and sub_ty_fn ~state ({ arg; result } : ty_fn) : ty_fn option =
-    let sub_happened = ref false in
-    let result : ty_fn =
-      {
-        arg =
-          (match sub_ty ~state arg with
-          | Some new_arg ->
-              sub_happened := true;
-              new_arg
-          | None -> arg);
-        result =
-          (match sub_ty ~state result with
-          | Some new_result ->
-              sub_happened := true;
-              new_result
-          | None -> result);
-      }
-    in
-    if !sub_happened then Some result else None
+  and sub_ty_fn ~state ({ arg; result } : ty_fn) : ty_fn =
+    { arg = arg |> sub_ty ~state; result = result |> sub_ty ~state }
 
   and sub_row :
       'a.
+      sub_value:(state:interpreter_state -> 'a -> 'a) ->
       state:interpreter_state ->
-      (state:interpreter_state -> 'a -> 'a option) ->
       'a Row.t ->
-      'a Row.t option =
-   fun ~state sub_value_impl row ->
-    let span = row.var |> Inference.Var.spans |> SpanSet.min_elt in
-    match row.var |> Inference.Var.inferred_opt with
-    | Some shape -> (
-        match shape with
-        | R_Empty -> None
-        | R_Cons { label; value; rest } ->
-            let sub_happened = ref false in
-            let result =
-              Row.inferred ~span
-              <| R_Cons
-                   {
-                     label;
-                     value =
-                       (match sub_value_impl ~state value with
-                       | Some new_value ->
-                           sub_happened := true;
-                           new_value
-                       | None -> value);
-                     rest =
-                       (match sub_row ~state sub_value_impl rest with
-                       | Some new_rest ->
-                           sub_happened := true;
-                           new_rest
-                       | None -> rest);
-                   }
-            in
-            if !sub_happened then Some result else None)
-    | None -> None
+      'a Row.t =
+   fun ~sub_value ~state row ->
+    sub_var ~sub_shape:(sub_row_shape ~sub_value)
+      ~get_var:(fun (row : 'a Row.t) -> row.var)
+      ~new_not_inferred:Row.new_not_inferred ~state row
+
+  and sub_row_shape :
+      'a.
+      sub_value:(state:interpreter_state -> 'a -> 'a) ->
+      state:interpreter_state ->
+      'a Row.t ->
+      'a Row.shape ->
+      'a Row.t =
+   fun ~sub_value ~state original_row shape ->
+    let span = original_row.var |> Inference.Var.spans |> SpanSet.min_elt in
+    match shape with
+    | R_Empty -> original_row
+    | R_Cons { label; value; rest } ->
+        Row.inferred ~span
+        <| R_Cons
+             {
+               label;
+               value = sub_value ~state value;
+               rest = sub_row ~sub_value ~state rest;
+             }
+
+  and sub_var :
+      'value 'shape.
+      sub_shape:(state:interpreter_state -> 'value -> 'shape -> 'value) ->
+      new_not_inferred:(span:span -> 'value) ->
+      get_var:('value -> 'shape Inference.Var.t) ->
+      state:interpreter_state ->
+      'value ->
+      'value =
+   fun ~sub_shape ~new_not_inferred ~get_var ~state original_value ->
+    let span = Span.fake "<sub_var>" in
+    let var = get_var original_value in
+    let id = Inference.Var.recurse_id var in
+    if RecurseCache.get () |> RecurseCache.visit id then (
+      let subbed_temp = new_not_inferred ~span in
+      Hashtbl.add subbed_vars id (Obj.repr subbed_temp);
+      let result =
+        match var |> Inference.Var.inferred_opt with
+        | None -> original_value
+        | Some shape ->
+            let subs_before = !subs_count in
+            let subbed = sub_shape ~state original_value shape in
+            if subs_before = !subs_count then original_value else subbed
+      in
+      Inference.Var.unite ~span
+        (fun ~span:_ _ _ ->
+          fail
+            "This is not supposed to fail since subbed_temp is inferred for the first time")
+        (get_var subbed_temp) (get_var result)
+      |> ignore;
+      result)
+    else Hashtbl.find subbed_vars id |> Obj.obj
 end
 
 let with_cache f =
  fun ~state value ->
-  RecurseCache.with_cache (RecurseCache.create ()) (fun () -> f ~state value)
+  let result =
+    RecurseCache.with_cache (RecurseCache.create ()) (fun () -> f ~state value)
+  in
+  Impl.subs_count := 0;
+  Hashtbl.clear Impl.subbed_vars;
+  result
 
-let sub_value = with_cache Impl.sub_value
-let sub_ty = with_cache Impl.sub_ty
+let sub_value ~state value =
+  let result = with_cache Impl.sub_value ~state value in
+  Log.trace (fun log ->
+      log "sub_value from=%a to=%a" Value.print value Value.print result);
+  result
+
+let sub_ty ~state ty =
+  let result = with_cache Impl.sub_ty ~state ty in
+  Log.trace (fun log -> log "sub_ty from=%a to=%a" Ty.print ty Ty.print result);
+  result

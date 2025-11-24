@@ -123,14 +123,19 @@ module Var = struct
       let root_b = find_root_var b in
       if root_a == root_b then a
       else
-        let data =
-          unite_data ~span unite_inferred (find_root a) (find_root b)
+        let data_a = find_root a in
+        let data_b = find_root b in
+        let root_a, root_b, data_a, data_b =
+          if Random.bool () then (root_a, root_b, data_a, data_b)
+          else (root_b, root_a, data_b, data_a)
         in
-        let root_a, root_b =
-          if Random.bool () then (root_a, root_b) else (root_b, root_a)
-        in
-        root_a.state <- Root { data };
+        root_a.state <- Root { data = data_a };
         root_b.state <- NotRoot { closer_to_root = root_a };
+        (* TODO find better way - unit_inferred can call this recursively *)
+        let united_data = unite_data ~span unite_inferred data_a data_b in
+        (match root_a.state with
+        | Root _ -> root_a.state <- Root { data = united_data }
+        | NotRoot _ -> fail "hmmm");
         root_a
     with effect (Error.Error _ as eff), _k ->
       Effect.perform eff;
