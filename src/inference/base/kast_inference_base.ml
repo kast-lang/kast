@@ -116,7 +116,7 @@ module Var = struct
     }
     |> check
 
-  let unite : 'a. 'a unite -> 'a var unite =
+  let rec unite : 'a. 'a unite -> 'a var unite =
    fun unite_inferred ~span a b ->
     try
       let root_a = find_root_var a in
@@ -125,18 +125,20 @@ module Var = struct
       else
         let data_a = find_root a in
         let data_b = find_root b in
-        let root_a, root_b, data_a, data_b =
-          if Random.bool () then (root_a, root_b, data_a, data_b)
-          else (root_b, root_a, data_b, data_a)
+        let root_a, root_b =
+          if Random.bool () then (root_a, root_b) else (root_b, root_a)
         in
-        root_a.state <- Root { data = data_a };
+        let temp_data : 'a var_data = data_a in
+        root_a.state <- Root { data = temp_data };
         root_b.state <- NotRoot { closer_to_root = root_a };
-        (* TODO find better way - unit_inferred can call this recursively *)
         let united_data = unite_data ~span unite_inferred data_a data_b in
-        (match root_a.state with
-        | Root _ -> root_a.state <- Root { data = united_data }
-        | NotRoot _ -> fail "hmmm");
-        root_a
+        let root = find_root_var a in
+        let root_data = find_root a in
+        let united_data_final =
+          unite_data ~span unite_inferred united_data root_data
+        in
+        root.state <- Root { data = united_data_final };
+        root
     with effect (Error.Error _ as eff), _k ->
       Effect.perform eff;
       a
