@@ -9,6 +9,23 @@ module Parser = Kast_parser
 module Processing = Kast_lsp.Processing
 open Kast_types
 
+module Linol_eio = struct
+  include Linol_eio
+
+  module IO_eio = struct
+    include IO_eio
+
+    let out_mutex = Eio.Mutex.create ()
+
+    let write_string out_ch str =
+      Eio.Mutex.lock out_mutex;
+      Eio.Flow.copy_string str out_ch;
+      Eio.Mutex.unlock out_mutex
+  end
+
+  module Jsonrpc2 = Linol.Jsonrpc2.Make (IO_eio)
+end
+
 module Args = struct
   type args = { dummy : unit }
   type t = args
@@ -250,7 +267,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         | TextDocumentRename params -> self#on_req_rename ~notify_back params
         | TextDocumentPrepareRename params ->
             self#on_req_prepare_rename ~notify_back params
-        | _ -> Linol_eio.failwith "TODO handle this request"
+        | _ -> failwith "TODO handle this request"
   end
 
 let run ({ dummy = () } : Args.t) =
