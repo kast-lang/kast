@@ -1819,9 +1819,9 @@ let current_compiler_scope : core_syntax =
         match kind with
         | Expr ->
             let scope = C.state.scope in
-            scope.bindings
+            (* scope.bindings
             |> StringMap.iter (fun field _binding ->
-                println "@current_scope.%S" field);
+                println "@current_scope.%S" field); *)
             E_Constant { shape = V_CompilerScope scope }
             |> init_expr span C.state
         | _ ->
