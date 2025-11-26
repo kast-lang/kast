@@ -3,7 +3,7 @@ open Kast_util
 open Types
 
 module Impl = struct
-  type _ Effect.t += IsRecursive : unit -> RecurseCache.t option Effect.t
+  let is_recursive = RecurseCache.create ()
 
   let rec _unused = ()
 
@@ -89,15 +89,23 @@ module Impl = struct
     | T_Error -> fprintf fmt "@{<red><error>@}"
 
   and print_ty : formatter -> ty -> unit =
-   fun fmt { var } ->
+   fun fmt { var } -> print_var print_ty_shape fmt var
+
+  (* VAR *)
+  and print_var :
+      'a. (formatter -> 'a -> unit) -> formatter -> 'a Inference.Var.t -> unit =
+   fun print_shape fmt var ->
     let id = var |> Inference.Var.recurse_id in
-    if RecurseCache.get () |> RecurseCache.visit id then (
-      (match Effect.perform (IsRecursive ()) with
-      | Some cache when cache |> RecurseCache.visit_count id > 1 ->
-          fprintf fmt "<id=%a>" Id.print id
-      | _ -> ());
-      Inference.Var.print print_ty_shape fmt var)
-    else fprintf fmt "<recursive %a>" Id.print id
+    let cache = RecurseCache.get () in
+    if cache |> RecurseCache.depth id > 0 then (
+      is_recursive |> RecurseCache.enter id;
+      fprintf fmt "<recursive %a>" Id.print id)
+    else (
+      cache |> RecurseCache.enter id;
+      if is_recursive |> RecurseCache.is_visited id then
+        fprintf fmt "<id=%a>" Id.print id;
+      Inference.Var.print print_shape fmt var;
+      cache |> RecurseCache.exit id)
 
   (* EXPR *)
   and print_expr_shape :
@@ -336,13 +344,10 @@ end
 
 let with_cache f =
  fun fmt value ->
-  let is_recursive = RecurseCache.create () in
-  (try
-     RecurseCache.with_cache is_recursive (fun () ->
-         f Format.noop_formatter value)
-   with effect Impl.IsRecursive (), k -> Effect.continue k None);
-  try RecurseCache.with_cache (RecurseCache.create ()) (fun () -> f fmt value)
-  with effect Impl.IsRecursive (), k -> Effect.continue k (Some is_recursive)
+  RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
+      f Format.noop_formatter value);
+  RecurseCache.with_cache (RecurseCache.create ()) (fun () -> f fmt value);
+  Impl.is_recursive |> RecurseCache.clear
 
 let print_ty = with_cache Impl.print_ty
 let print_ty_shape = with_cache Impl.print_ty_shape

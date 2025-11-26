@@ -156,7 +156,9 @@ module Impl = struct
     let span = Span.fake "<sub_var>" in
     let var = get_var original_value in
     let id = Inference.Var.recurse_id var in
-    if RecurseCache.get () |> RecurseCache.visit id then (
+    let cache = RecurseCache.get () in
+    if cache |> RecurseCache.visit_count id = 0 then (
+      cache |> RecurseCache.enter id;
       let subbed_temp = new_not_inferred ~span in
       Hashtbl.add subbed_vars id (Obj.repr subbed_temp);
       let result =
@@ -173,6 +175,7 @@ module Impl = struct
             "This is not supposed to fail since subbed_temp is inferred for the first time")
         (get_var subbed_temp) (get_var result)
       |> ignore;
+      cache |> RecurseCache.exit id;
       result)
     else Hashtbl.find subbed_vars id |> Obj.obj
 end
