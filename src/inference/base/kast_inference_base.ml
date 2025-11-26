@@ -92,24 +92,26 @@ module Var = struct
 
   let unite_data =
    fun ~span unite_inferred
-       {
-         recurse_id;
-         inferred = inferred_a;
-         once_inferred = once_inferred_a;
-         spans = spans_a;
-       }
-       {
-         recurse_id = _;
-         inferred = inferred_b;
-         once_inferred = once_inferred_b;
-         spans = spans_b;
-       } ->
+       ({
+          recurse_id;
+          inferred = inferred_a;
+          once_inferred = once_inferred_a;
+          spans = spans_a;
+        } as data_a)
+       ({
+          recurse_id = _;
+          inferred = inferred_b;
+          once_inferred = once_inferred_b;
+          spans = spans_b;
+        } as data_b) ->
     let inferred =
       match (inferred_a, inferred_b) with
       | None, None -> None
       | Some inferred, None | None, Some inferred -> Some inferred
       | Some a, Some b -> Some (unite_inferred ~span a b)
     in
+    data_a.once_inferred <- [];
+    data_b.once_inferred <- [];
     {
       recurse_id;
       inferred;
@@ -167,14 +169,7 @@ module Var = struct
   let once_inferred : 'a. ('a -> unit) -> 'a var -> unit =
    fun f var ->
     let root_data = find_root var in
-    let root = find_root_var var in
-    root.state <-
-      Root
-        {
-          data =
-            { root_data with once_inferred = f :: root_data.once_inferred }
-            |> check;
-        }
+    root_data.once_inferred <- f :: root_data.once_inferred
 
   type _ Effect.t += AwaitUpdate : 'a. 'a var -> bool Effect.t
 
