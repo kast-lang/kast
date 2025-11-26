@@ -9,6 +9,7 @@ module Parser = Kast_parser
 module Processing = Kast_lsp.Processing
 open Kast_types
 
+(* TODO remove once linol 0.11 is released *)
 module Linol_eio = struct
   include Linol_eio
 
