@@ -76,10 +76,12 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                       Error.error ast.span "Unexpected delimeter %S" s.delimeter;
                       V_Error
                 in
-                E_Constant { shape = value } |> init_expr span state
+                E_Constant (value |> Value.inferred ~span)
+                |> init_expr span state
             | Token.Shape.Number { raw; _ } ->
                 let value = Int32.of_string raw in
-                E_Constant { shape = V_Int32 value } |> init_expr span state
+                E_Constant (V_Int32 value |> Value.inferred ~span)
+                |> init_expr span state
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!")
         | TyExpr ->
@@ -132,9 +134,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 let args =
                   root.children
                   |> Tuple.map Ast.Child.expect_ast
-                  |> Tuple.map (fun ast : Types.value_tuple_field ->
+                  |> Tuple.map (fun (ast : Ast.t) : Types.value_tuple_field ->
                       {
-                        value = { shape = V_Ast ast };
+                        value = V_Ast ast |> Value.inferred ~span:ast.span;
                         ty_field =
                           {
                             ty = Ty.inferred ~span:ast.span T_Ast;
@@ -145,7 +147,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                           (* TODO not sure if this is correct span, but there is no span? *);
                       })
                 in
-                let arg : value = { shape = V_Tuple { tuple = args } } in
+                let arg : value =
+                  V_Tuple { tuple = args } |> Value.inferred ~span
+                in
                 let expr =
                   E_Apply
                     {
@@ -155,8 +159,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                   |> init_expr span state
                 in
                 let result = Interpreter.eval state.interpreter expr in
-                match result.shape with
-                | V_Ast result -> compile state kind result
+                match result.var |> Inference.Var.inferred_opt with
+                | Some (V_Ast result) -> compile state kind result
                 | _ ->
                     Error.error span "macro expanded not to ast???";
                     init_error span state kind)
@@ -168,7 +172,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
         | Some value -> compile state kind value
         | None -> (
             match kind with
-            | Expr -> E_Constant { shape = V_Unit } |> init_expr span state
+            | Expr ->
+                E_Constant (V_Unit |> Value.inferred ~span)
+                |> init_expr span state
             | _ ->
                 Error.error span "expected a value after syntax";
                 init_error span state kind))

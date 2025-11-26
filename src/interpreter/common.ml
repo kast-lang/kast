@@ -34,7 +34,7 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
                 : Types.interpreter_local);
         } )
   | P_Tuple { tuple = tuple_pattern } -> (
-      match value.shape with
+      match value |> Value.await_inferred with
       | V_Tuple { tuple } ->
           with_return (fun { return } : (matched:bool * Scope.locals) ->
               let ~matched, matches =
@@ -74,7 +74,7 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
           (~matched:false, Scope.Locals.empty))
   | P_Variant { label = patern_label; label_span = _; value = value_pattern }
     -> (
-      match value.shape with
+      match value |> Value.await_inferred with
       | V_Variant { label; data; ty = _ } ->
           if Label.same label patern_label then
             match (data, value_pattern) with
@@ -108,7 +108,7 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
       let def =
         await_compiled ~span fn.def
         |> Option.unwrap_or_else (fun () ->
-            return ({ shape = V_Error } : value))
+            return (V_Error |> Value.inferred ~span))
       in
       let ~matched:arg_matched, arg_bindings = pattern_match arg def.arg in
       if not arg_matched then
@@ -126,7 +126,7 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
 
 and instantiate (span : span) (state : state) (generic : value) (arg : value) :
     value =
-  match generic.shape with
+  match generic |> Value.await_inferred with
   | V_Generic { id; fn } -> (
       let save new_state =
         let generic_instantiations =
@@ -165,20 +165,20 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
       | Some InProgress ->
           Error.error span
             "trying to instantiate generic thats already in progress of instantiation";
-          { shape = V_Error })
-  | V_Error -> { shape = V_Error }
+          V_Error |> Value.inferred ~span)
+  | V_Error -> V_Error |> Value.inferred ~span
   | _ ->
       Error.error span "expected generic";
-      { shape = V_Error }
+      V_Error |> Value.inferred ~span
 
 and call (span : span) (state : state) (f : value) (arg : value) : value =
-  match f.shape with
+  match f |> Value.await_inferred with
   | V_Fn { fn; ty = _ } -> call_untyped_fn span state fn arg
   | V_NativeFn f -> f.impl ~caller:span ~state arg
-  | V_Error -> { shape = V_Error }
+  | V_Error -> V_Error |> Value.inferred ~span
   | _ ->
       Error.error span "expected fn";
-      { shape = V_Error }
+      V_Error |> Value.inferred ~span
 
 and assign : state -> Expr.assignee -> value -> unit =
  fun state assignee value ->
@@ -199,228 +199,233 @@ and assign : state -> Expr.assignee -> value -> unit =
 
 and eval : state -> expr -> value =
  fun state expr ->
-  let result =
-    match expr.shape with
-    | E_Constant value -> value
-    | E_Binding binding ->
-        let result =
-          Scope.find_opt binding.name state.scope
-          |> Option.unwrap_or_else (fun () : value ->
-              Log.trace (fun log ->
-                  log "all in scope: %a" Scope.print_all state.scope);
-              Error.error expr.data.span "%a not found" Symbol.print
-                binding.name;
-              { shape = V_Error })
-        in
-        result
-    | E_Fn { def; ty } ->
-        {
-          shape =
-            V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } };
-        }
-    | E_Generic { def } ->
-        {
-          shape =
-            V_Generic
-              {
-                id = Id.gen ();
-                fn = { id = Id.gen (); def; captured = state.scope };
-              };
-        }
-    | E_Tuple { tuple } ->
-        (*  TODO dont panic - get rid of Option.get *)
-        let ty =
-          expr.data.ty.var |> Kast_inference_base.Var.inferred_opt |> Option.get
-          |> Ty.Shape.expect_tuple |> Option.get
-        in
-        {
-          shape =
-            V_Tuple
-              {
-                tuple =
-                  tuple
-                  |> Tuple.mapi
-                       (fun
-                         member
-                         ({ label_span; label = _; field = field_expr } :
-                           expr Types.tuple_field_of)
-                         :
-                         Types.value_tuple_field
-                       ->
-                         let value = field_expr |> eval state in
-                         let ty_field = ty.tuple |> Tuple.get member in
-                         { value; span = label_span; ty_field });
-              };
-        }
-    | E_Variant { label; label_span = _; value } ->
-        let value = value |> Option.map (eval state) in
-        { shape = V_Variant { label; data = value; ty = expr.data.ty } }
-    | E_Then { a; b } ->
-        ignore <| eval state a;
-        eval state b
-    | E_Stmt { expr } ->
-        ignore <| eval state expr;
-        { shape = V_Unit }
-    | E_Scope { expr } ->
-        let state = state |> enter_scope ~recursive:false in
-        eval state expr
-    | E_Assign { assignee; value } ->
-        let value = eval state value in
-        assign state assignee value;
-        { shape = V_Unit }
-    | E_Apply { f; arg } ->
-        let f = eval state f in
-        let arg = eval state arg in
-        call expr.data.span state f arg
-    | E_InstantiateGeneric { generic; arg } ->
-        let generic = eval state generic in
-        let arg = eval state arg in
-        instantiate expr.data.span state generic arg
-    | E_Ty expr -> { shape = V_Ty (eval_ty state expr) }
-    | E_Native { expr = native_expr } -> (
-        match StringMap.find_opt native_expr state.natives.by_name with
-        | Some value -> value
-        | None ->
-            Error.error expr.data.span "no native %S" native_expr;
-            { shape = V_Error })
-    | E_Module { def } ->
-        let module_scope =
-          Scope.init ~recursive:true ~parent:(Some state.scope)
-        in
-        let new_state = { state with scope = module_scope } in
-        ignore @@ eval new_state def;
-        Scope.close module_scope;
-        let fields =
-          module_scope.locals.by_symbol |> SymbolMap.to_list
-          |> List.map
-               (fun ((symbol : symbol), (local : Types.interpreter_local)) ->
-                 ( Some symbol.name,
-                   ({
-                      value = local.value;
-                      span = local.ty_field.label |> Label.get_span;
-                      ty_field = local.ty_field;
-                    }
-                     : Types.value_tuple_field) ))
-        in
-        { shape = V_Tuple { tuple = fields |> Tuple.of_list } }
-    | E_Field { obj; field; field_span = _; label = _ } -> (
-        let obj = eval state obj in
-        match obj.shape with
-        | V_Tuple { tuple } -> (
-            match Tuple.get_named_opt field tuple with
-            | Some field -> field.value
-            | None ->
-                Error.error expr.data.span "field %S doesnt exist" field;
-                { shape = V_Error })
-        | V_Target { name } -> (
-            match field with
-            | "name" -> { shape = V_String name }
-            | _ ->
-                Error.error expr.data.span "field %S doesnt exist in target"
-                  field;
-                { shape = V_Error })
-        | V_Error -> { shape = V_Error }
-        | _ ->
-            Error.error expr.data.span "%a doesnt have fields" Value.print obj;
-            { shape = V_Error })
-    | E_UseDotStar { used; bindings } -> (
-        let used = eval state used in
-        match used.shape with
-        | V_Tuple { tuple } ->
-            bindings
-            |> List.iter (fun (binding : binding) ->
-                let field = tuple |> Tuple.get_named binding.name.name in
-                state.scope
-                |> Scope.add_local field.span binding.name field.value);
-            { shape = V_Unit }
-        | _ ->
-            Error.error expr.data.span "can't use .* %a" Value.print used;
-            { shape = V_Error })
-    | E_If { cond = cond_expr; then_case; else_case } -> (
-        let cond = eval state cond_expr in
-        match cond.shape with
-        | V_Bool true -> eval state then_case
-        | V_Bool false -> eval state else_case
-        | _ ->
-            Error.error cond_expr.data.span "if cond must be bool, got %a"
-              Value.print cond;
-            { shape = V_Error })
-    | E_Match { value; branches } -> (
-        let value = eval state value in
-        let result =
-          branches
-          |> List.find_map (fun (branch : Types.expr_match_branch) ->
-              let ~matched, matches = pattern_match value branch.pattern in
-              if matched then
-                Some
-                  (let inner_state = enter_scope ~recursive:false state in
-                   inner_state.scope |> Scope.add_locals matches;
-                   eval inner_state branch.body)
-              else None)
-        in
-        match result with
-        | Some result -> result
-        | None ->
-            Error.error expr.data.span "pattern match non exhaustive";
-            { shape = V_Error })
-    | E_QuoteAst expr -> { shape = V_Ast (quote_ast state expr) }
-    | E_Loop { body } ->
-        let state = state |> enter_scope ~recursive:false in
-        while true do
-          ignore @@ eval state body
-        done
-    | E_Error -> { shape = V_Error }
-    | E_Unwindable { token = token_pattern; body } -> (
-        let id = Id.gen () in
-        let token : Types.value_unwind_token =
-          { id; result_ty = body.data.ty }
-        in
-        let token : value = { shape = V_UnwindToken token } in
-        let inner_state = enter_scope ~recursive:false state in
-        inner_state.scope
-        |> Scope.add_locals
-             ( pattern_match token token_pattern |> fun (~matched, locals) ->
-               if not matched then
-                 Error.error token_pattern.data.span
-                   "Failed to pattern match unwind token";
-               locals );
-        try eval inner_state body
-        with Unwind { token; value } when token.id = id -> value)
-    | E_Unwind { token = token_expr; value } ->
-        with_return (fun { return } ->
-            let token =
-              eval state token_expr |> Value.expect_unwind_token
-              |> Option.unwrap_or_else (fun () ->
-                  Error.error token_expr.data.span
-                    "Unwind token was incorrect type";
-                  return ({ shape = V_Error } : value))
-            in
-            let value = eval state value in
-            raise <| Unwind { token; value })
-    | E_InjectContext { context_ty; value } ->
-        let value = eval state value in
-        state.contexts <- state.contexts |> Id.Map.add context_ty.id value;
-        { shape = V_Unit }
-    | E_CurrentContext { context_ty } -> (
-        match state.contexts |> Id.Map.find_opt context_ty.id with
-        | Some value -> value
-        | None ->
-            Error.error expr.data.span "Context unavailable";
-            { shape = V_Error })
-    | E_TargetDependent { branches } ->
-        with_return (fun { return } ->
-            let chosen_branch =
-              find_target_dependent_branch state branches
-                { name = "interpreter" }
-              |> Option.unwrap_or_else (fun () ->
-                  Error.error expr.data.span
-                    "No target dependent branch matched";
-                  return ({ shape = V_Error } : value))
-            in
-            eval state chosen_branch.body)
-  in
-  let result = Substitute_bindings.sub_value ~state result in
-  result
+  try
+    let span = expr.data.span in
+    let result =
+      match expr.shape with
+      | E_Constant value -> value
+      | E_Binding binding ->
+          let result =
+            Scope.find_opt binding.name state.scope
+            |> Option.unwrap_or_else (fun () : value ->
+                Log.trace (fun log ->
+                    log "all in scope: %a" Scope.print_all state.scope);
+                Error.error expr.data.span "%a not found" Symbol.print
+                  binding.name;
+                V_Error |> Value.inferred ~span)
+          in
+          result
+      | E_Fn { def; ty } ->
+          V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } }
+          |> Value.inferred ~span
+      | E_Generic { def } ->
+          V_Generic
+            {
+              id = Id.gen ();
+              fn = { id = Id.gen (); def; captured = state.scope };
+            }
+          |> Value.inferred ~span
+      | E_Tuple { tuple } ->
+          (*  TODO dont panic - get rid of Option.get *)
+          let ty =
+            expr.data.ty.var |> Kast_inference_base.Var.inferred_opt
+            |> Option.get |> Ty.Shape.expect_tuple |> Option.get
+          in
+          V_Tuple
+            {
+              tuple =
+                tuple
+                |> Tuple.mapi
+                     (fun
+                       member
+                       ({ label_span; label = _; field = field_expr } :
+                         expr Types.tuple_field_of)
+                       :
+                       Types.value_tuple_field
+                     ->
+                       let value = field_expr |> eval state in
+                       let ty_field = ty.tuple |> Tuple.get member in
+                       { value; span = label_span; ty_field });
+            }
+          |> Value.inferred ~span
+      | E_Variant { label; label_span = _; value } ->
+          let value = value |> Option.map (eval state) in
+          V_Variant { label; data = value; ty = expr.data.ty }
+          |> Value.inferred ~span
+      | E_Then { a; b } ->
+          ignore <| eval state a;
+          eval state b
+      | E_Stmt { expr } ->
+          ignore <| eval state expr;
+          V_Unit |> Value.inferred ~span
+      | E_Scope { expr } ->
+          let state = state |> enter_scope ~recursive:false in
+          eval state expr
+      | E_Assign { assignee; value } ->
+          let value = eval state value in
+          assign state assignee value;
+          V_Unit |> Value.inferred ~span
+      | E_Apply { f; arg } ->
+          let f = eval state f in
+          let arg = eval state arg in
+          call expr.data.span state f arg
+      | E_InstantiateGeneric { generic; arg } ->
+          let generic = eval state generic in
+          let arg = eval state arg in
+          instantiate expr.data.span state generic arg
+      | E_Ty expr -> V_Ty (eval_ty state expr) |> Value.inferred ~span
+      | E_Native { expr = native_expr } -> (
+          match StringMap.find_opt native_expr state.natives.by_name with
+          | Some value -> value
+          | None ->
+              Error.error expr.data.span "no native %S" native_expr;
+              V_Error |> Value.inferred ~span)
+      | E_Module { def } ->
+          let module_scope =
+            Scope.init ~recursive:true ~parent:(Some state.scope)
+          in
+          let new_state = { state with scope = module_scope } in
+          ignore @@ eval new_state def;
+          Scope.close module_scope;
+          let fields =
+            module_scope.locals.by_symbol |> SymbolMap.to_list
+            |> List.map
+                 (fun ((symbol : symbol), (local : Types.interpreter_local)) ->
+                   ( Some symbol.name,
+                     ({
+                        value = local.value;
+                        span = local.ty_field.label |> Label.get_span;
+                        ty_field = local.ty_field;
+                      }
+                       : Types.value_tuple_field) ))
+          in
+          V_Tuple { tuple = fields |> Tuple.of_list } |> Value.inferred ~span
+      | E_Field { obj; field; field_span = _; label = _ } -> (
+          let obj = eval state obj in
+          match obj |> Value.await_inferred with
+          | V_Tuple { tuple } -> (
+              match Tuple.get_named_opt field tuple with
+              | Some field -> field.value
+              | None ->
+                  Error.error expr.data.span "field %S doesnt exist" field;
+                  V_Error |> Value.inferred ~span)
+          | V_Target { name } -> (
+              match field with
+              | "name" -> V_String name |> Value.inferred ~span
+              | _ ->
+                  Error.error expr.data.span "field %S doesnt exist in target"
+                    field;
+                  V_Error |> Value.inferred ~span)
+          | V_Error -> V_Error |> Value.inferred ~span
+          | _ ->
+              Error.error expr.data.span "%a doesnt have fields" Value.print obj;
+              V_Error |> Value.inferred ~span)
+      | E_UseDotStar { used; bindings } -> (
+          let used = eval state used in
+          match used |> Value.await_inferred with
+          | V_Tuple { tuple } ->
+              bindings
+              |> List.iter (fun (binding : binding) ->
+                  let field = tuple |> Tuple.get_named binding.name.name in
+                  state.scope
+                  |> Scope.add_local field.span binding.name field.value);
+              V_Unit |> Value.inferred ~span
+          | _ ->
+              Error.error expr.data.span "can't use .* %a" Value.print used;
+              V_Error |> Value.inferred ~span)
+      | E_If { cond = cond_expr; then_case; else_case } -> (
+          let cond = eval state cond_expr in
+          match cond |> Value.await_inferred with
+          | V_Bool true -> eval state then_case
+          | V_Bool false -> eval state else_case
+          | _ ->
+              Error.error cond_expr.data.span "if cond must be bool, got %a"
+                Value.print cond;
+              V_Error |> Value.inferred ~span)
+      | E_Match { value; branches } -> (
+          let value = eval state value in
+          let result =
+            branches
+            |> List.find_map (fun (branch : Types.expr_match_branch) ->
+                let ~matched, matches = pattern_match value branch.pattern in
+                if matched then
+                  Some
+                    (let inner_state = enter_scope ~recursive:false state in
+                     inner_state.scope |> Scope.add_locals matches;
+                     eval inner_state branch.body)
+                else None)
+          in
+          match result with
+          | Some result -> result
+          | None ->
+              Error.error expr.data.span "pattern match non exhaustive";
+              V_Error |> Value.inferred ~span)
+      | E_QuoteAst expr ->
+          V_Ast (quote_ast ~span state expr) |> Value.inferred ~span
+      | E_Loop { body } ->
+          let state = state |> enter_scope ~recursive:false in
+          while true do
+            ignore @@ eval state body
+          done
+      | E_Error -> V_Error |> Value.inferred ~span
+      | E_Unwindable { token = token_pattern; body } -> (
+          let id = Id.gen () in
+          let token : Types.value_unwind_token =
+            { id; result_ty = body.data.ty }
+          in
+          let token : value =
+            V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
+          in
+          let inner_state = enter_scope ~recursive:false state in
+          inner_state.scope
+          |> Scope.add_locals
+               ( pattern_match token token_pattern |> fun (~matched, locals) ->
+                 if not matched then
+                   Error.error token_pattern.data.span
+                     "Failed to pattern match unwind token";
+                 locals );
+          try eval inner_state body
+          with Unwind { token; value } when token.id = id -> value)
+      | E_Unwind { token = token_expr; value } ->
+          with_return (fun { return } ->
+              let token =
+                eval state token_expr |> Value.expect_unwind_token
+                |> Option.unwrap_or_else (fun () ->
+                    Error.error token_expr.data.span
+                      "Unwind token was incorrect type";
+                    return (V_Error |> Value.inferred ~span : value))
+              in
+              let value = eval state value in
+              raise <| Unwind { token; value })
+      | E_InjectContext { context_ty; value } ->
+          let value = eval state value in
+          state.contexts <- state.contexts |> Id.Map.add context_ty.id value;
+          V_Unit |> Value.inferred ~span
+      | E_CurrentContext { context_ty } -> (
+          match state.contexts |> Id.Map.find_opt context_ty.id with
+          | Some value -> value
+          | None ->
+              Error.error expr.data.span "Context unavailable";
+              V_Error |> Value.inferred ~span)
+      | E_TargetDependent { branches } ->
+          with_return (fun { return } ->
+              let chosen_branch =
+                find_target_dependent_branch state branches
+                  { name = "interpreter" }
+                |> Option.unwrap_or_else (fun () ->
+                    Error.error expr.data.span
+                      "No target dependent branch matched";
+                    return (V_Error |> Value.inferred ~span : value))
+              in
+              eval state chosen_branch.body)
+    in
+    let result = Substitute_bindings.sub_value ~state result in
+    result
+  with exc ->
+    Log.error (fun log ->
+        log "While evaluating %a expr at %a" Expr.print_short expr Span.print
+          expr.data.span);
+    raise exc
 
 and find_target_dependent_branch :
     state ->
@@ -435,7 +440,7 @@ and find_target_dependent_branch :
       in
       scope_with_target
       |> Scope.add_local (Span.of_ocaml __POS__) Types.target_symbol
-           ({ shape = V_Target target } : value);
+           (V_Target target |> Value.inferred ~span:(Span.of_ocaml __POS__));
       let state_with_target = { state with scope = scope_with_target } in
       match eval state_with_target branch.cond |> Value.expect_bool with
       | None ->
@@ -443,8 +448,8 @@ and find_target_dependent_branch :
           None
       | Some cond -> if cond then Some branch else None)
 
-and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
- fun state expr ->
+and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
+ fun ~span state expr ->
   let rec quote_group (group : Expr.Shape.quote_ast_group) : Ast.group =
     {
       rule = group.rule;
@@ -457,15 +462,12 @@ and quote_ast : state -> Expr.Shape.quote_ast -> Ast.t =
             | Ast child ->
                 Ast
                   (let child = eval state child in
-                   match child.shape with
+                   match child |> Value.await_inferred with
                    | V_Ast ast -> ast
                    | _ -> fail "child must be ast"));
     }
   in
-  {
-    shape = Complex { rule = expr.rule; root = quote_group expr.root };
-    span = Span.fake "todo";
-  }
+  { shape = Complex { rule = expr.rule; root = quote_group expr.root }; span }
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
@@ -509,7 +511,7 @@ and eval_ty : state -> Expr.ty -> ty =
                    elements
                    |> List.map (fun ty_expr ->
                        let ty = eval_ty state ty_expr in
-                       match ty.var |> Inference.Var.await_inferred with
+                       match ty |> Ty.await_inferred with
                        | T_Variant { variants } ->
                            Row.await_inferred_to_list variants
                        | _ ->

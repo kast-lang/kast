@@ -102,7 +102,9 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
   notify_update scope
 
 let inject_binding (binding : binding) (scope : scope) : unit =
-  scope |> add_local binding.span binding.name { shape = V_Binding binding }
+  scope
+  |> add_local binding.span binding.name
+       (V_Binding binding |> Value.inferred ~span:binding.span)
 
 let rec print_all : formatter -> scope -> unit =
  fun fmt scope ->

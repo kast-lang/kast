@@ -28,7 +28,9 @@ let generic_types : (string * (Ty.Shape.t -> Ty.Shape.t)) list =
 let types =
   (plain_types
   |> List.map (fun (name, ty) : (string * value) ->
-      (name, { shape = V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) ty) })))
+      ( name,
+        V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) ty)
+        |> Value.inferred ~span:(Span.of_ocaml __POS__) )))
   @ (generic_types
     |> List.map (fun (name, f) : (string * value) ->
         let impl =
@@ -36,43 +38,39 @@ let types =
           with_return (fun { return } : value ->
               let error () =
                 return
-                  ({
-                     shape =
-                       V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) T_Error);
-                   }
-                    : value)
+                  (V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) T_Error)
+                  |> Value.inferred ~span:(Span.of_ocaml __POS__))
               in
               let arg =
                 arg |> Value.expect_ty
                 |> Option.unwrap_or_else (fun () ->
                     Error.error caller "%S expected a type arg" name;
                     error ())
-                |> fun ty -> Inference.Var.await_inferred ty.var
+                |> fun ty -> Ty.await_inferred ty
               in
-              {
-                shape = V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) (f arg));
-              })
+
+              V_Ty (Ty.inferred ~span:(Span.of_ocaml __POS__) (f arg))
+              |> Value.inferred ~span:(Span.of_ocaml __POS__))
         in
+
         ( name,
-          {
-            shape =
-              V_NativeFn
+          V_NativeFn
+            {
+              id = Id.gen ();
+              name;
+              ty =
                 {
-                  id = Id.gen ();
-                  name;
-                  ty =
-                    {
-                      arg = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty;
-                      result = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty;
-                    };
-                  impl;
+                  arg = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty;
+                  result = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty;
                 };
-          } )))
+              impl;
+            }
+          |> Value.inferred ~span:(Span.of_ocaml __POS__) )))
 
 let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
   ( name,
-    { shape = V_NativeFn { id = Id.gen (); ty = { arg; result }; name; impl } }
-  )
+    V_NativeFn { id = Id.gen (); ty = { arg; result }; name; impl }
+    |> Value.inferred ~span:(Span.of_ocaml __POS__) )
 
 let dbg =
   [
@@ -83,7 +81,7 @@ let dbg =
       "dbg.print"
       (fun ~caller:_ ~state:_ arg : value ->
         println "%a" Value.print arg;
-        { shape = V_Unit });
+        V_Unit |> Value.inferred ~span:(Span.of_ocaml __POS__));
   ]
 
 let mod_string =
@@ -96,13 +94,14 @@ let mod_string =
         with_return (fun { return } ->
             let error msg () =
               Error.error caller "string.length: %s" msg;
-              return ({ shape = V_Error } : value)
+              return (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
             in
             let s =
               arg |> Value.expect_string
               |> Option.unwrap_or_else (error "expected string as arg")
             in
-            { shape = V_Int32 (Int32.of_int (String.length s)) }))
+            V_Int32 (Int32.of_int (String.length s))
+            |> Value.inferred ~span:(Span.of_ocaml __POS__)))
   in
   let substring =
     native_fn
@@ -113,7 +112,7 @@ let mod_string =
         with_return (fun { return } ->
             let error msg () =
               Error.error caller "string.substring: %s" msg;
-              return ({ shape = V_Error } : value)
+              return (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
             in
             let arg =
               arg |> Value.expect_tuple
@@ -134,10 +133,8 @@ let mod_string =
               len.value |> Value.expect_int32
               |> Option.unwrap_or_else (error "expected len be int32")
             in
-            {
-              shape =
-                V_String (String.sub s (Int32.to_int start) (Int32.to_int len));
-            }))
+            V_String (String.sub s (Int32.to_int start) (Int32.to_int len))
+            |> Value.inferred ~span:(Span.of_ocaml __POS__)))
   in
   let iter =
     native_fn
@@ -148,7 +145,7 @@ let mod_string =
         with_return (fun { return } ->
             let error msg () =
               Error.error caller "string.iter: %s" msg;
-              return ({ shape = V_Error } : value)
+              return (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
             in
             let arg =
               arg |> Value.expect_tuple
@@ -167,10 +164,12 @@ let mod_string =
             in
             s
             |> String.iter (fun c ->
-                let c : value = { shape = V_Char c } in
+                let c : value =
+                  V_Char c |> Value.inferred ~span:(Span.of_ocaml __POS__)
+                in
                 ignore <| Common.call caller state f.value c;
                 ());
-            { shape = V_Unit }))
+            V_Unit |> Value.inferred ~span:(Span.of_ocaml __POS__)))
   in
   [ length; substring; iter ]
 
@@ -181,13 +180,13 @@ let sys =
       ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Unit)
       "sys.chdir"
       (fun ~caller ~state:_ arg : value ->
-        match arg.shape with
+        match arg |> Value.await_inferred with
         | V_String path ->
             Sys.chdir path;
-            { shape = V_Unit }
+            V_Unit |> Value.inferred ~span:(Span.of_ocaml __POS__)
         | _ ->
             Error.error caller "sys.chdir expected string arg";
-            { shape = V_Error })
+            V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
   in
   [ chdir ]
 
@@ -198,13 +197,13 @@ let fs =
       ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
       "fs.read_file"
       (fun ~caller ~state:_ arg : value ->
-        match arg.shape with
+        match arg |> Value.await_inferred with
         | V_String path ->
             let contents = read_from_filesystem path in
-            { shape = V_String contents }
+            V_String contents |> Value.inferred ~span:(Span.of_ocaml __POS__)
         | _ ->
             Error.error caller "fs.read_file expected string arg";
-            { shape = V_Error })
+            V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
   in
   [ read_file ]
 
@@ -236,14 +235,16 @@ let natives : natives =
       ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Bool)
       name
       (fun ~caller ~state:_ value ->
-        match value.shape with
+        match value |> Value.await_inferred with
         | V_Tuple { tuple } ->
             let a, b = tuple |> Tuple.unwrap_unnamed2 in
-            let result : bool = op a.value b.value in
-            { shape = V_Bool result }
+            let a = a.value |> Value.await_inferred in
+            let b = b.value |> Value.await_inferred in
+            let result : bool = op a b in
+            V_Bool result |> Value.inferred ~span:(Span.of_ocaml __POS__)
         | _ ->
             Error.error caller "cmp op %S expected a tuple as arg" name;
-            { shape = V_Error })
+            V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
   in
   let bin_op name (op : int32 -> int32 -> int32) =
     native_fn
@@ -272,25 +273,27 @@ let natives : natives =
       ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
       name
       (fun ~caller ~state:_ value ->
-        match value.shape with
+        match value |> Value.await_inferred with
         | V_Tuple { tuple } ->
             with_return (fun { return } : value ->
                 let a, b = tuple |> Tuple.unwrap_unnamed2 in
                 let a =
                   a.value |> Value.expect_int32
                   |> Option.unwrap_or_else (fun () ->
-                      return ({ shape = V_Error } : value))
+                      return
+                        (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__)))
                 in
                 let b =
                   b.value |> Value.expect_int32
                   |> Option.unwrap_or_else (fun () ->
-                      return ({ shape = V_Error } : value))
+                      return
+                        (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__)))
                 in
                 let result : int32 = op a b in
-                { shape = V_Int32 result })
+                V_Int32 result |> Value.inferred ~span:(Span.of_ocaml __POS__))
         | _ ->
             Error.error caller "bin op %S expected a tuple as arg" name;
-            { shape = V_Error })
+            V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
   in
   let list : (string * value) list =
     [
@@ -299,22 +302,22 @@ let natives : natives =
         ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Unit)
         "print"
         (fun ~caller ~state:_ value ->
-          (match value.shape with
+          (match value |> Value.await_inferred with
           | V_String s -> println "%s" s
           | _ -> Error.error caller "print expected a string");
-          { shape = V_Unit });
+          V_Unit |> Value.inferred ~span:(Span.of_ocaml __POS__));
       native_fn
         ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
         ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
         "input"
         (fun ~caller ~state:_ value ->
-          match value.shape with
+          match value |> Value.await_inferred with
           | V_String s ->
               let line = Effect.perform (Input s) in
-              { shape = V_String line }
+              V_String line |> Value.inferred ~span:(Span.of_ocaml __POS__)
           | _ ->
               Error.error caller "input expected a string";
-              { shape = V_Error });
+              V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
       native_fn
         ~arg:
           (Ty.inferred ~span:(Span.of_ocaml __POS__)
@@ -353,26 +356,29 @@ let natives : natives =
             let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
             let min = min.value |> Value.expect_int32 |> Option.get in
             let max = max.value |> Value.expect_int32 |> Option.get in
-            { shape = V_Int32 (Random.int32_in_range ~min ~max) }
+            V_Int32 (Random.int32_in_range ~min ~max)
+            |> Value.inferred ~span:(Span.of_ocaml __POS__)
           with exc ->
             Error.error caller "rng: %s" (Printexc.to_string exc);
-            { shape = V_Error });
+            V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
       native_fn
         ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
         ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
         "int32_to_string"
         (fun ~caller ~state:_ arg ->
-          match arg.shape with
-          | V_Int32 value -> { shape = V_String (Int32.to_string value) }
+          match arg |> Value.await_inferred with
+          | V_Int32 value ->
+              V_String (Int32.to_string value)
+              |> Value.inferred ~span:(Span.of_ocaml __POS__)
           | _ ->
               Error.error caller "int32_to_string expected an int32";
-              { shape = V_Error });
+              V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
       native_fn
         ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
         ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
         "string_to_int32"
         (fun ~caller ~state:_ arg ->
-          match arg.shape with
+          match arg |> Value.await_inferred with
           | V_String s ->
               let shape : Value.shape =
                 match Int32.of_string_opt s with
@@ -381,10 +387,10 @@ let natives : natives =
                     Error.error caller "could not parse int32 %S" s;
                     V_Error
               in
-              { shape }
+              shape |> Value.inferred ~span:(Span.of_ocaml __POS__)
           | _ ->
               Error.error caller "string_to_int32 expected a string";
-              { shape = V_Error });
+              V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
       cmp_fn "<" ( < );
       cmp_fn "<=" ( <= );
       cmp_fn "==" ( = );
@@ -400,11 +406,13 @@ let natives : natives =
         ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_ContextTy)
         "create_context_type"
         (fun ~caller ~state:_ arg ->
-          match arg.shape with
-          | V_Ty ty -> { shape = V_ContextTy { id = Id.gen (); ty } }
+          match arg |> Value.await_inferred with
+          | V_Ty ty ->
+              V_ContextTy { id = Id.gen (); ty }
+              |> Value.inferred ~span:(Span.of_ocaml __POS__)
           | _ ->
               Error.error caller "create_context_type expected a type";
-              { shape = V_Error });
+              V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
     ]
     @ types @ fs @ sys @ mod_string @ dbg
   in

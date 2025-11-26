@@ -84,7 +84,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
           match parsed.ast with
           | Some ast -> C.compile ~state Expr ast
           | None ->
-              E_Constant { shape = V_Unit }
+              E_Constant (V_Unit |> Value.inferred ~span)
               |> Init.init_expr (Span.beginning_of source.uri) state
         in
         let value : value = Kast_interpreter.eval state.interpreter expr in
@@ -100,7 +100,10 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
     | Some (Imported value) -> value
     | Some InProgress ->
         error span "No recursive imports!";
-        { value = { shape = V_Error }; custom_syntax_impls = Hashtbl.create 0 }
+        {
+          value = V_Error |> Value.inferred ~span;
+          custom_syntax_impls = Hashtbl.create 0;
+        }
   in
   Hashtbl.add_seq C.state.custom_syntax_impls
     (Hashtbl.to_seq result.custom_syntax_impls);

@@ -27,7 +27,11 @@ module rec TypesImpl : sig
     | V_CompilerScope of compiler_scope
     | V_Error
 
-  and value = { shape : value_shape }
+  and value = {
+    var : value_shape Inference.Var.t;
+    ty : ty;
+  }
+
   and value_target = { name : string }
 
   and value_context_ty = {
@@ -428,7 +432,11 @@ end = struct
     | V_CompilerScope of compiler_scope
     | V_Error
 
-  and value = { shape : value_shape }
+  and value = {
+    var : value_shape Inference.var;
+    ty : ty;
+  }
+
   and value_target = { name : string }
 
   and value_context_ty = {

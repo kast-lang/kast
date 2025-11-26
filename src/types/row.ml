@@ -9,6 +9,7 @@ type 'a shape =
       value : 'a;
       rest : 'a row;
     }
+  | R_Error
 
 and 'a t = { var : 'a shape Inference.var }
 and 'a row = 'a t [@@deriving eq, ord]
@@ -54,6 +55,9 @@ let print :
     | None ->
         maybe_sep ();
         fprintf fmt "%s" options.rest
+    | Some R_Error ->
+        maybe_sep ();
+        fprintf fmt "<error>"
     | Some R_Empty -> ()
     | Some (R_Cons { label; value; rest }) ->
         maybe_sep ();
@@ -68,6 +72,7 @@ let rec unite_shape : 'a. 'a Inference.unite -> 'a shape Inference.unite =
  fun unite_value ~span a b ->
   let aa = a in
   match (a, b) with
+  | R_Error, smth | smth, R_Error -> smth
   | R_Empty, R_Empty -> R_Empty
   | R_Empty, R_Cons _ | R_Cons _, R_Empty ->
       Inference.Error.error span "row inference failure";
@@ -95,7 +100,8 @@ and unite : 'a. 'a Inference.unite -> 'a row Inference.unite =
   { var = Inference.Var.unite (unite_shape unite_value) ~span a.var b.var }
 
 let rec await_inferred_to_list { var } =
-  match var |> Inference.Var.await_inferred with
+  match var |> Inference.Var.await_inferred ~error_shape:R_Error with
+  | R_Error -> []
   | R_Empty -> []
   | R_Cons { label; value; rest } ->
       (label, value) :: await_inferred_to_list rest

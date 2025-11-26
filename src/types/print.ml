@@ -39,7 +39,7 @@ module Impl = struct
     | V_Target target -> print_target fmt target
 
   and print_value : formatter -> value -> unit =
-   fun fmt { shape } -> print_value_shape fmt shape
+   fun fmt { var; ty = _ } -> print_var print_value_shape fmt var
 
   (* TY *)
   and print_ty_shape : formatter -> ty_shape -> unit =
@@ -108,6 +108,40 @@ module Impl = struct
       cache |> RecurseCache.exit id)
 
   (* EXPR *)
+  and print_expr_short : formatter -> expr -> unit =
+   fun fmt expr ->
+    let name =
+      match expr.shape with
+      | E_Constant _ -> "Constant"
+      | E_Binding _ -> "Binding"
+      | E_Then _ -> "Then"
+      | E_Stmt _ -> "Stmt"
+      | E_Scope _ -> "Scope"
+      | E_Fn _ -> "Fn"
+      | E_Generic _ -> "Generic"
+      | E_Tuple _ -> "Tuple"
+      | E_Variant _ -> "Variant"
+      | E_Apply _ -> "Apply"
+      | E_InstantiateGeneric _ -> "InstantiateGeneric"
+      | E_Assign _ -> "Assign"
+      | E_Ty _ -> "Ty"
+      | E_Native _ -> "Native"
+      | E_Module _ -> "Module"
+      | E_Field _ -> "Field"
+      | E_UseDotStar _ -> "UseDotStar"
+      | E_If _ -> "If"
+      | E_Match _ -> "Match"
+      | E_Error -> "Error"
+      | E_Loop _ -> "Loop"
+      | E_QuoteAst _ -> "QuoteAst"
+      | E_Unwindable _ -> "Unwindable"
+      | E_Unwind _ -> "Unwind"
+      | E_InjectContext _ -> "InjectContext"
+      | E_CurrentContext _ -> "CurrentContext"
+      | E_TargetDependent _ -> "TargetDependent"
+    in
+    fprintf fmt "%s" name
+
   and print_expr_shape :
       (formatter -> expr -> unit) -> formatter -> expr_shape -> unit =
    fun print_expr fmt -> function
@@ -253,6 +287,7 @@ module Impl = struct
       data.span
 
   (* TYPE EXPR *)
+
   and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
    fun fmt -> function
     | TE_Unit -> fprintf fmt "()"
@@ -355,6 +390,7 @@ let print_value = with_cache Impl.print_value
 let print_value_shape = with_cache Impl.print_value_shape
 let print_expr_with_spans = with_cache Impl.print_expr_with_spans
 let print_expr_with_types = with_cache Impl.print_expr_with_types
+let print_expr_short = with_cache Impl.print_expr_short
 let print_expr_shape print_expr = with_cache (Impl.print_expr_shape print_expr)
 let print_assignee_expr_shape = with_cache Impl.print_assignee_expr_shape
 

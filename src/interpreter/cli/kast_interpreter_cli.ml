@@ -68,8 +68,8 @@ let repl (args : Args.t) =
     | Some ast -> (
         let expr : expr = Compiler.compile compiler Expr ast in
         let value : value = Interpreter.eval interpreter expr in
-        match value.shape with
-        | V_Unit -> ()
+        match value.var |> Kast_inference.Var.inferred_opt with
+        | Some V_Unit -> ()
         | _ -> println "%a" Value.print value));
     loop ()
   in

@@ -43,42 +43,46 @@ and transpile_tuple :
 
 and transpile_value : Value.t -> state -> OcamlAst.t =
  fun value state ->
-  match value.shape with
-  | Types.V_Unit -> OcamlAst.unit_value
-  | Types.V_Bool value -> OcamlAst.Bool value
-  | Types.V_Int32 value -> OcamlAst.Int32 value
-  | Types.V_Char value -> OcamlAst.Char value
-  | Types.V_String value -> OcamlAst.String value
-  | Types.V_Tuple tuple ->
-      state
-      |> transpile_tuple
-           (fun (field : Types.value_tuple_field) ->
-             transpile_value field.value)
-           tuple.tuple
-  | Types.V_Variant _ -> failwith __LOC__
-  | Types.V_Ty _ -> OcamlAst.unit_value
-  | Types.V_Fn { fn = { id = _; def; captured = _ }; ty = _ } ->
-      let def =
-        Kast_interpreter.await_compiled
-          ~span:(Span.fake "transpiling value")
-          def
-        |> Option.get
-      in
-      OcamlAst.Fun
-        {
-          args = [ state |> transpile_pattern def.arg ];
-          body = state |> transpile_expr def.body;
-        }
-  | Types.V_Generic _ -> failwith __LOC__
-  | Types.V_NativeFn { name; _ } ->
-      fail "Tried to transpile interpreter native fn %S" name
-  | Types.V_Ast _ -> failwith __LOC__
-  | Types.V_UnwindToken _ -> failwith __LOC__
-  | Types.V_Target _ -> fail "Tried to transpile target value"
-  | Types.V_ContextTy _ -> fail "Tried to transpile target value"
-  | Types.V_Binding _ -> fail "Tried to transpile binding value"
-  | Types.V_CompilerScope _ -> fail "Tried to transpile compiler scope value"
-  | Types.V_Error -> fail "Tried to transpile error node"
+  match value.var |> Inference.Var.inferred_opt with
+  | None -> failwith __LOC__
+  | Some shape -> (
+      match shape with
+      | Types.V_Unit -> OcamlAst.unit_value
+      | Types.V_Bool value -> OcamlAst.Bool value
+      | Types.V_Int32 value -> OcamlAst.Int32 value
+      | Types.V_Char value -> OcamlAst.Char value
+      | Types.V_String value -> OcamlAst.String value
+      | Types.V_Tuple tuple ->
+          state
+          |> transpile_tuple
+               (fun (field : Types.value_tuple_field) ->
+                 transpile_value field.value)
+               tuple.tuple
+      | Types.V_Variant _ -> failwith __LOC__
+      | Types.V_Ty _ -> OcamlAst.unit_value
+      | Types.V_Fn { fn = { id = _; def; captured = _ }; ty = _ } ->
+          let def =
+            Kast_interpreter.await_compiled
+              ~span:(Span.fake "transpiling value")
+              def
+            |> Option.get
+          in
+          OcamlAst.Fun
+            {
+              args = [ state |> transpile_pattern def.arg ];
+              body = state |> transpile_expr def.body;
+            }
+      | Types.V_Generic _ -> failwith __LOC__
+      | Types.V_NativeFn { name; _ } ->
+          fail "Tried to transpile interpreter native fn %S" name
+      | Types.V_Ast _ -> failwith __LOC__
+      | Types.V_UnwindToken _ -> failwith __LOC__
+      | Types.V_Target _ -> fail "Tried to transpile target value"
+      | Types.V_ContextTy _ -> fail "Tried to transpile target value"
+      | Types.V_Binding _ -> fail "Tried to transpile binding value"
+      | Types.V_CompilerScope _ ->
+          fail "Tried to transpile compiler scope value"
+      | Types.V_Error -> fail "Tried to transpile error node")
 
 and transpile_pattern : Pattern.t -> state -> OcamlAst.t =
  fun pattern state ->
@@ -141,7 +145,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_InstantiateGeneric _ -> failwith __LOC__
   | Types.E_Assign { assignee; value } ->
       let value_ident = "_value" in
-      let rec perform_assign (assignee : Expr.assignee) (value : OcamlAst.t) :
+      let perform_assign (assignee : Expr.assignee) (value : OcamlAst.t) :
           OcamlAst.t =
         match assignee.shape with
         | Types.A_Placeholder | Types.A_Unit -> OcamlAst.unit_value
@@ -167,7 +171,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_Module { def } ->
       OcamlAst.Scope
         (let def = state |> transpile_expr def in
-         let module_ty = expr.data.ty.var |> Inference.Var.await_inferred in
+         let module_ty = expr.data.ty |> Ty.await_inferred in
          let module_result =
            match module_ty with
            | Types.T_Tuple { tuple } ->
@@ -179,7 +183,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
          in
          OcamlAst.merge_let_then def module_result)
   | Types.E_Field { obj; field; field_span = _; label = _ } -> (
-      let obj_ty = obj.data.ty.var |> Inference.Var.await_inferred in
+      let obj_ty = obj.data.ty |> Ty.await_inferred in
       match obj_ty with
       | Types.T_Tuple { tuple = _ } ->
           OcamlAst.Field

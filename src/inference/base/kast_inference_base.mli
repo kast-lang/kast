@@ -6,6 +6,7 @@ type 'a unite = span:span -> 'a -> 'a -> 'a
 module Var : sig
   type 'a t
   type 'a var = 'a t
+  type _ Effect.t += AwaitUpdate : 'a. 'a var -> bool Effect.t
 
   val new_not_inferred : 'a. span:span -> 'a var
   val new_inferred : 'a. span:span -> 'a -> 'a var
@@ -14,7 +15,7 @@ module Var : sig
   val unite : 'a. 'a unite -> 'a var unite
   val infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit
   val once_inferred : 'a. ('a -> unit) -> 'a var -> unit
-  val await_inferred : 'a. 'a var -> 'a
+  val await_inferred : 'a. error_shape:'a -> 'a var -> 'a
   val recurse_id : 'a. 'a var -> id
   val spans : 'a. 'a var -> Set.Make(Span).t
   val equal : 'a. 'a var -> 'a var -> bool

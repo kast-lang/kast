@@ -6,6 +6,7 @@ module Parser = Kast_parser
 module Highlight = Kast_highlight
 module Interpreter = Kast_interpreter
 module Compiler = Kast_compiler
+module Inference = Kast_inference
 module Fmt = Kast_fmt
 include Kast_types
 
@@ -60,3 +61,8 @@ let handle_effects : 'a. stop_on_error:bool -> (unit -> 'a) -> 'a =
   | effect Interpreter.Scope.AwaitUpdate (name, _scope), k ->
       if name.name = "TTT" then Effect.discontinue k (Failure "HAHAHHA")
       else Effect.continue k false
+  | effect Inference.Var.AwaitUpdate var, k ->
+      Effect.continue_with k (fun () ->
+          fail "var at %a is not inferred and can't be awaited"
+            (List.print Span.print)
+            (Inference.Var.spans var |> SpanSet.to_list))

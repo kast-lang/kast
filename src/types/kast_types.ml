@@ -5,19 +5,18 @@ open Print
 module Types = Types
 module Label = Label
 module Row = Row
+module Inference_impl = Inference_impl
 
 module Ty = struct
   type t = ty
 
   let print = print_ty
-
-  let new_not_inferred ~span : ty =
-    { var = Inference.Var.new_not_inferred ~span }
-
+  let new_not_inferred = Inference_impl.new_not_inferred_ty
   let never = new_not_inferred
+  let inferred = Inference_impl.inferred_ty
 
-  let inferred ~span (shape : ty_shape) : ty =
-    { var = Inference.Var.new_inferred ~span shape }
+  let await_inferred : ty -> ty_shape =
+   fun ty -> ty.var |> Inference.Var.await_inferred ~error_shape:T_Error
 
   module Shape = struct
     type t = ty_shape
@@ -35,66 +34,47 @@ type ty = Ty.t
 module Value = struct
   type t = value
 
-  let ty_of : value -> ty =
-   fun { shape } ->
-    let span = Span.fake "<ty_of>" in
-    match shape with
-    | V_Unit -> Ty.inferred ~span T_Unit
-    | V_Bool _ -> Ty.inferred ~span T_Bool
-    | V_Int32 _ -> Ty.inferred ~span T_Int32
-    | V_Char _ -> Ty.inferred ~span T_Char
-    | V_String _ -> Ty.inferred ~span T_String
-    | V_Tuple { tuple } ->
-        Ty.inferred ~span
-        <| T_Tuple
-             {
-               tuple =
-                 Tuple.map
-                   (fun (field : value_tuple_field) -> field.ty_field)
-                   tuple;
-             }
-    | V_Variant { ty; _ } -> ty
-    | V_Ty _ -> Ty.inferred ~span T_Ty
-    | V_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty
-    | V_Generic { id; fn } -> Ty.inferred ~span <| T_Generic { def = fn.def }
-    | V_NativeFn { id = _; ty; name = _; impl = _ } ->
-        Ty.inferred ~span <| T_Fn ty
-    | V_Ast _ -> Ty.inferred ~span T_Ast
-    | V_UnwindToken { result_ty; id = _ } ->
-        Ty.inferred ~span <| T_UnwindToken { result = result_ty }
-    | V_Target _ -> Ty.inferred ~span T_Target
-    | V_ContextTy _ -> Ty.inferred ~span T_ContextTy
-    | V_Binding binding -> binding.ty
-    | V_CompilerScope _ -> Ty.inferred ~span T_CompilerScope
-    | V_Error -> Ty.inferred ~span T_Error
+  module Shape = struct
+    type t = value_shape
+
+    let print = print_value_shape
+    let ty_of = Inference_impl.ty_of_value_shape
+  end
+
+  let new_not_inferred = Inference_impl.new_not_inferred_value
+  let inferred = Inference_impl.inferred_value
+  let ty_of : value -> ty = fun { var = _; ty } -> ty
+
+  let await_inferred : value -> value_shape =
+   fun value -> value.var |> Inference.Var.await_inferred ~error_shape:V_Error
 
   let expect_unit : value -> unit option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_Unit -> Some ()
     | _ -> None
 
   let expect_unwind_token : value -> Types.value_unwind_token option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_UnwindToken token -> Some token
     | _ -> None
 
   let expect_bool : value -> bool option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_Bool value -> Some value
     | _ -> None
 
   let expect_int32 : value -> int32 option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_Int32 value -> Some value
     | _ -> None
 
   let expect_ty : value -> ty option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_Binding binding ->
         Some (Ty.inferred ~span:binding.span (T_Binding binding))
     | V_Ty ty -> Some ty
@@ -102,29 +82,23 @@ module Value = struct
 
   let expect_string : value -> string option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_String s -> Some s
     | _ -> None
 
   let expect_fn : value -> value_fn option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_Fn f -> Some f
     | _ -> None
 
   let expect_tuple : value -> value_tuple option =
    fun value ->
-    match value.shape with
+    match value |> await_inferred with
     | V_Tuple value -> Some value
     | _ -> None
 
   let print = print_value
-
-  module Shape = struct
-    type t = value_shape
-
-    let print = print_value_shape
-  end
 
   type shape = Shape.t
 end
@@ -136,6 +110,7 @@ module Expr = struct
 
   let print_with_spans = print_expr_with_spans
   let print_with_types = print_expr_with_types
+  let print_short = print_expr_short
 
   module Shape = struct
     type t = expr_shape

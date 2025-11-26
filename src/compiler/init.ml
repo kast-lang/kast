@@ -24,18 +24,11 @@ let rec init_expr :
               let inferred_ty =
                 with_return (fun { return } ->
                     let ({ def } : Types.ty_generic) =
-                      match
-                        generic.data.ty.var |> Inference.Var.await_inferred
-                      with
+                      match generic.data.ty |> Ty.await_inferred with
                       | T_Generic ty -> ty
                       | _ ->
                           Error.error span "Expected a generic";
                           return (Ty.inferred ~span T_Error)
-                    in
-                    let arg = Kast_interpreter.eval state.interpreter arg in
-                    let generic_ty_interpreter =
-                      state.interpreter
-                      (*TODO*)
                     in
                     let def =
                       Kast_interpreter.await_compiled ~span def
@@ -47,10 +40,19 @@ let rec init_expr :
                       {
                         arg = def.arg;
                         body =
-                          E_Constant { shape = V_Ty def.body.data.ty }
+                          E_Constant
+                            (V_Ty def.body.data.ty |> Value.inferred ~span)
                           |> init_expr def.body.data.span state;
                         evaled_result = None;
                       }
+                    in
+                    arg.data.ty
+                    |> Inference.Ty.expect_inferred_as ~span:arg.data.span
+                         def.arg.data.ty;
+                    let arg = Kast_interpreter.eval state.interpreter arg in
+                    let generic_ty_interpreter =
+                      state.interpreter
+                      (*TODO*)
                     in
                     let generic_ty : Types.value_untyped_fn =
                       {

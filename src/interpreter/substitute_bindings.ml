@@ -8,11 +8,14 @@ module Impl = struct
   let subs_count = ref 0
 
   let rec sub_value ~(state : interpreter_state) (value : value) : value =
-    sub_value_shape ~state value value.shape
+    sub_var ~sub_shape:sub_value_shape ~new_not_inferred:Value.new_not_inferred
+      ~get_var:(fun (value : value) -> value.var)
+      ~state value
 
   and sub_value_shape ~(state : interpreter_state) (original_value : value)
       (shape : value_shape) : value =
-    let shaped shape : value = { shape } in
+    let span = Span.fake "<sub_value_shape>" in
+    let shaped shape = Value.inferred ~span shape in
     match shape with
     | V_Unit | V_Bool _ | V_Int32 _ | V_Char _ | V_String _ | V_Ast _
     | V_CompilerScope _ | V_Error ->
@@ -134,6 +137,7 @@ module Impl = struct
    fun ~sub_value ~state original_row shape ->
     let span = original_row.var |> Inference.Var.spans |> SpanSet.min_elt in
     match shape with
+    | R_Error -> Row.inferred ~span R_Error
     | R_Empty -> original_row
     | R_Cons { label; value; rest } ->
         Row.inferred ~span
