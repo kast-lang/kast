@@ -5,10 +5,26 @@ open Kast_types
 open Error
 module Inference = Kast_inference
 
-let rec init_expr :
+let rec _unused () = ()
+
+and expr_placeholder : span -> State.t -> expr =
+ fun span state ->
+  (* TODO maybe have E_Placeholder *)
+  E_Constant (Value.new_not_inferred ~span) |> init_expr span state
+
+and auto_instantiate_generics : span -> State.t -> expr -> expr =
+ fun span state expr ->
+  match expr.data.ty.var |> Inference.Var.inferred_opt with
+  | Some (T_Generic _) ->
+      E_InstantiateGeneric { generic = expr; arg = expr_placeholder span state }
+      |> init_expr span state
+  | _ -> expr
+
+and init_expr :
     ?evaled_exprs:expr list -> span -> State.t -> Expr.Shape.t -> expr =
  fun ?(evaled_exprs = []) span state shape ->
   try
+    let overwrite_shape : Expr.Shape.t option ref = ref None in
     let ty =
       match shape with
       | E_Constant value -> Value.ty_of value
@@ -109,6 +125,8 @@ let rec init_expr :
                         };
                }
       | E_Apply { f; arg } ->
+          let f = f |> auto_instantiate_generics f.data.span state in
+          overwrite_shape := Some (E_Apply { f; arg });
           let f_arg = Ty.new_not_inferred ~span in
           let f_result = Ty.new_not_inferred ~span in
           f.data.ty
@@ -225,7 +243,7 @@ let rec init_expr :
           Ty.never ~span
     in
     {
-      shape;
+      shape = !overwrite_shape |> Option.value ~default:shape;
       data =
         {
           span;

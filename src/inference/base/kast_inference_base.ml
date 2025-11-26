@@ -15,7 +15,7 @@ module Var = struct
     recurse_id : id;
     inferred : 'a option;
     spans : SpanSet.t;
-    once_inferred : ('a -> unit) list;
+    mutable once_inferred : ('a -> unit) list;
   }
 
   let new_not_inferred : 'a. span:span -> 'a var =
@@ -72,12 +72,14 @@ module Var = struct
   type 'a t = 'a var
 
   let check : 'a. 'a var_data -> 'a var_data =
-   fun { recurse_id; inferred; once_inferred; spans } ->
-    match inferred with
-    | None -> { recurse_id; inferred; once_inferred; spans }
+   fun data ->
+    match data.inferred with
+    | None -> data
     | Some value ->
-        once_inferred |> List.iter (fun f -> f value);
-        { recurse_id; inferred; once_inferred = []; spans }
+        let fs = data.once_inferred in
+        data.once_inferred <- [];
+        fs |> List.iter (fun f -> f value);
+        data
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->

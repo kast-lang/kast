@@ -234,8 +234,7 @@ let placeholder : core_syntax =
         | Assignee -> A_Placeholder |> init_assignee span C.state
         | Pattern -> P_Placeholder |> init_pattern span C.state
         | Expr ->
-            (* TODO maybe have E_Placeholder *)
-            E_Constant (Value.new_not_inferred ~span) |> init_expr span C.state
+            expr_placeholder span C.state
         | TyExpr ->
             (fun () -> TE_Expr (C.compile Expr ast))
             |> init_ty_expr span C.state);
