@@ -23,7 +23,7 @@ module Impl = struct
           (Tuple.print (fun fmt (field : value_tuple_field) ->
                print_value fmt field.value))
           tuple
-    | V_Fn _ -> fprintf fmt "@{<italic><fn>@}"
+    | V_Fn { ty; fn = _ } -> fprintf fmt "@{<italic><fn %a>@}" print_ty_fn ty
     | V_Variant { label; data; ty = _ } -> (
         fprintf fmt ":%a" Label.print label;
         match data with
@@ -92,6 +92,10 @@ module Impl = struct
 
   and print_ty : formatter -> ty -> unit =
    fun fmt { var } -> print_var print_ty_shape fmt var
+
+  and print_ty_fn : formatter -> ty_fn -> unit =
+   fun fmt { arg; result } ->
+    fprintf fmt "%a -> %a" print_ty arg print_ty result
 
   (* VAR *)
   and print_var :
