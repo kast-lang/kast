@@ -71,15 +71,14 @@ module Var = struct
 
   type 'a t = 'a var
 
-  let check : 'a. 'a var_data -> 'a var_data =
+  let run_once_inferred_if_needed : 'a. 'a var_data -> unit =
    fun data ->
     match data.inferred with
-    | None -> data
+    | None -> ()
     | Some value ->
         let fs = data.once_inferred in
         data.once_inferred <- [];
-        fs |> List.iter (fun f -> f value);
-        data
+        fs |> List.iter (fun f -> f value)
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
@@ -112,15 +111,18 @@ module Var = struct
     in
     data_a.once_inferred <- [];
     data_b.once_inferred <- [];
-    {
-      recurse_id;
-      inferred;
-      once_inferred = once_inferred_a @ once_inferred_b;
-      spans = SpanSet.union spans_a spans_b;
-    }
-    |> check
+    let data =
+      {
+        recurse_id;
+        inferred;
+        once_inferred = once_inferred_a @ once_inferred_b;
+        spans = SpanSet.union spans_a spans_b;
+      }
+    in
+    data |> run_once_inferred_if_needed;
+    data
 
-  let rec unite : 'a. 'a unite -> 'a var unite =
+  let unite : 'a. 'a unite -> 'a var unite =
    fun unite_inferred ~span a b ->
     try
       let root_a = find_root_var a in
@@ -169,11 +171,12 @@ module Var = struct
   let once_inferred : 'a. ('a -> unit) -> 'a var -> unit =
    fun f var ->
     let root_data = find_root var in
-    root_data.once_inferred <- f :: root_data.once_inferred
+    root_data.once_inferred <- f :: root_data.once_inferred;
+    root_data |> run_once_inferred_if_needed
 
   type _ Effect.t += AwaitUpdate : 'a. 'a var -> bool Effect.t
 
-  let fork (type a) (f : unit -> unit) : unit =
+  let fork (f : unit -> unit) : unit =
     try f ()
     with effect AwaitUpdate var, k ->
       once_inferred (fun _ -> Effect.continue k true) var
