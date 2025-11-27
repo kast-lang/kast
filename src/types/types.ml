@@ -377,14 +377,7 @@ module rec TypesImpl : sig
 
   (* interpreter *)
   and natives = { by_name : value StringMap.t }
-
-  and generic_instantiation =
-    | InProgress
-    | Instantiated of value
-
-  and instantiated_generics = {
-    mutable map : generic_instantiation ValueMap.t Id.Map.t;
-  }
+  and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
 
   and interpreter_state = {
     natives : natives;
@@ -788,14 +781,7 @@ end = struct
 
   (* interpreter *)
   and natives = { by_name : value StringMap.t }
-
-  and generic_instantiation =
-    | InProgress
-    | Instantiated of value
-
-  and instantiated_generics = {
-    mutable map : generic_instantiation ValueMap.t Id.Map.t;
-  }
+  and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
 
   and interpreter_state = {
     natives : natives;

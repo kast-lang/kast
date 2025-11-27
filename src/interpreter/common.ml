@@ -94,7 +94,10 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
 
 and await_compiled ~span (f : Types.maybe_compiled_fn) :
     Types.compiled_fn option =
-  if f.compiled |> Option.is_none then Effect.perform (AwaitCompiled f);
+  if f.compiled |> Option.is_none then (
+    Log.trace (fun log -> log "waiting for fn to compile at %a" Span.print span);
+    Effect.perform (AwaitCompiled f);
+    Log.trace (fun log -> log "waited for fn to compile at %a" Span.print span));
   f.compiled
 
 and await_compiled_ty_expr ~span (expr : Expr.ty) : Expr.Ty.Shape.t =
@@ -150,22 +153,40 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
       | None ->
           Log.trace (fun log ->
               log "Instantiating generic with arg=%a" Value.print arg);
-          save InProgress;
-          let result = call_untyped_fn span state fn arg in
-          save <| Instantiated result;
-          Log.trace (fun log ->
-              log "Instantiated generic with arg=%a, result=%a" Value.print arg
-                Value.print result);
+          let result = Value.new_not_inferred ~span in
+          save result;
+          fork (fun () ->
+              let evaluated_result = call_untyped_fn span state fn arg in
+              Log.trace (fun log ->
+                  log
+                    "Instantiated generic with arg=%a, result=%a, uniting with=%a"
+                    Value.print arg Value.print evaluated_result Value.print
+                    result);
+              result
+              |> Inference.Value.expect_inferred_as ~span evaluated_result;
+              Log.trace (fun log ->
+                  log "After uniting result=%a" Value.print result));
           result
-      | Some (Instantiated result) ->
+      | Some result ->
           Log.trace (fun log ->
-              log "Using memoized generic instantiation with arg=%a" Value.print
-                arg);
-          result
-      | Some InProgress ->
-          Error.error span
-            "trying to instantiate generic thats already in progress of instantiation";
-          V_Error |> Value.inferred ~span)
+              log "Using memoized generic instantiation with arg=%a at %a = %a"
+                Value.print arg Span.print span Value.print result);
+
+          result.var
+          |> Inference.Var.once_inferred (fun shape ->
+              Log.trace (fun log ->
+                  log
+                    "Memoized generic instantiation with arg=%a is inferred=%a"
+                    Value.print arg Value.Shape.print shape);
+              match shape with
+              | V_Ty ty ->
+                  ty.var
+                  |> Inference.Var.once_inferred (fun (ty_shape : Ty.Shape.t) ->
+                      Log.trace (fun log ->
+                          log "Memoized generic instantiation inferred as ty=%a"
+                            Ty.Shape.print ty_shape))
+              | _ -> ());
+          result)
   | V_Error -> V_Error |> Value.inferred ~span
   | _ ->
       Error.error span "expected generic";
@@ -478,73 +499,81 @@ and eval_ty : state -> Expr.ty -> ty =
   let result = Ty.new_not_inferred ~span in
   fork (fun () ->
       try
+        Log.trace (fun log -> log "started eval ty expr at %a" Span.print span);
+        let evaled_result =
+          match await_compiled_ty_expr ~span:expr.data.span expr with
+          | TE_Unit -> Ty.inferred ~span T_Unit
+          | TE_Fn { arg; result } ->
+              let arg = eval_ty state arg in
+              let result = eval_ty state result in
+              Ty.inferred ~span <| T_Fn { arg; result }
+          | TE_Expr expr ->
+              let value = eval state expr in
+              Log.trace (fun log ->
+                  log "evaled ty expr (expr) at %a = %a" Span.print span
+                    Value.print value);
+              value |> Value.expect_ty
+              |> Option.unwrap_or_else (fun () ->
+                  Error.error expr.data.span "Expected a type, got %a" Ty.print
+                    (Value.ty_of value);
+                  Ty.inferred ~span T_Error)
+          | TE_Tuple { tuple } ->
+              Ty.inferred ~span
+              <| T_Tuple
+                   {
+                     tuple =
+                       tuple
+                       |> Tuple.map
+                            (fun
+                              ({ label_span = _; label; field = field_expr } :
+                                Expr.ty Types.tuple_field_of)
+                              :
+                              Types.ty_tuple_field
+                            ->
+                              let ty = field_expr |> eval_ty state in
+                              { ty; label });
+                   }
+          | TE_Union { elements } ->
+              let variants =
+                elements
+                |> List.map (fun ty_expr ->
+                    let ty = eval_ty state ty_expr in
+                    match ty |> Ty.await_inferred with
+                    | T_Variant { variants } ->
+                        Row.await_inferred_to_list variants
+                    | _ ->
+                        Error.error ty_expr.data.span
+                          "Can only use variants in union";
+                        [])
+                |> List.flatten
+              in
+              Ty.inferred ~span
+              <| T_Variant { variants = Row.of_list ~span variants }
+          | TE_Variant { variants } ->
+              Ty.inferred ~span
+              <| T_Variant
+                   {
+                     variants =
+                       Row.of_list ~span
+                         (variants
+                         |> List.map
+                              (fun
+                                ({ label_span = _; label; value } :
+                                  Types.ty_expr_variant_variant)
+                              ->
+                                ( label,
+                                  ({
+                                     data = value |> Option.map (eval_ty state);
+                                   }
+                                    : Types.ty_variant_data) )));
+                   }
+          | TE_Error -> Ty.inferred ~span T_Error
+        in
         result
-        |> Inference.Ty.expect_inferred_as ~span:expr.data.span
-             (match await_compiled_ty_expr ~span:expr.data.span expr with
-             | TE_Unit -> Ty.inferred ~span T_Unit
-             | TE_Fn { arg; result } ->
-                 let arg = eval_ty state arg in
-                 let result = eval_ty state result in
-                 Ty.inferred ~span <| T_Fn { arg; result }
-             | TE_Expr expr ->
-                 let value = eval state expr in
-                 value |> Value.expect_ty
-                 |> Option.unwrap_or_else (fun () ->
-                     Error.error expr.data.span "Expected a type, got %a"
-                       Ty.print (Value.ty_of value);
-                     Ty.inferred ~span T_Error)
-             | TE_Tuple { tuple } ->
-                 Ty.inferred ~span
-                 <| T_Tuple
-                      {
-                        tuple =
-                          tuple
-                          |> Tuple.map
-                               (fun
-                                 ({ label_span = _; label; field = field_expr } :
-                                   Expr.ty Types.tuple_field_of)
-                                 :
-                                 Types.ty_tuple_field
-                               ->
-                                 let ty = field_expr |> eval_ty state in
-                                 { ty; label });
-                      }
-             | TE_Union { elements } ->
-                 let variants =
-                   elements
-                   |> List.map (fun ty_expr ->
-                       let ty = eval_ty state ty_expr in
-                       match ty |> Ty.await_inferred with
-                       | T_Variant { variants } ->
-                           Row.await_inferred_to_list variants
-                       | _ ->
-                           Error.error ty_expr.data.span
-                             "Can only use variants in union";
-                           [])
-                   |> List.flatten
-                 in
-                 Ty.inferred ~span
-                 <| T_Variant { variants = Row.of_list ~span variants }
-             | TE_Variant { variants } ->
-                 Ty.inferred ~span
-                 <| T_Variant
-                      {
-                        variants =
-                          Row.of_list ~span
-                            (variants
-                            |> List.map
-                                 (fun
-                                   ({ label_span = _; label; value } :
-                                     Types.ty_expr_variant_variant)
-                                 ->
-                                   ( label,
-                                     ({
-                                        data =
-                                          value |> Option.map (eval_ty state);
-                                      }
-                                       : Types.ty_variant_data) )));
-                      }
-             | TE_Error -> Ty.inferred ~span T_Error)
+        |> Inference.Ty.expect_inferred_as ~span:expr.data.span evaled_result;
+        Log.trace (fun log ->
+            log "finished eval ty expr at %a = %a" Span.print span Ty.print
+              evaled_result)
       with effect Scope.AwaitUpdate (symbol, scope), k ->
         Effect.continue k (Effect.perform <| Scope.AwaitUpdate (symbol, scope))
       (* if symbol.name = "TTT" then println "TTT handled properly2";
@@ -568,10 +597,13 @@ and enter_scope ~(recursive : bool) (state : state) : state =
   }
 
 and fork (f : unit -> unit) : unit =
-  try f () with
-  | effect AwaitCompiled f, k ->
-      f.on_compiled <- (fun () -> Effect.continue k ()) :: f.on_compiled
-  | effect AwaitCompiledTyExpr expr, k ->
-      expr.on_compiled <- (fun () -> Effect.continue k ()) :: expr.on_compiled
-  | effect Scope.AwaitUpdate (name, scope), k ->
-      scope.on_update <- (fun () -> Effect.continue k true) :: scope.on_update
+  Kast_inference_base.fork (fun () ->
+      try f () with
+      | effect AwaitCompiled f, k ->
+          f.on_compiled <- (fun () -> Effect.continue k ()) :: f.on_compiled
+      | effect AwaitCompiledTyExpr expr, k ->
+          expr.on_compiled <-
+            (fun () -> Effect.continue k ()) :: expr.on_compiled
+      | effect Scope.AwaitUpdate (name, scope), k ->
+          scope.on_update <-
+            (fun () -> Effect.continue k true) :: scope.on_update)

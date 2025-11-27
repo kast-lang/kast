@@ -64,10 +64,13 @@ let rec find_local_opt (name : symbol) (scope : scope) :
       let find_in_parent () =
         scope.parent |> Option.and_then (find_local_opt name)
       in
-      if scope.recursive && not scope.closed then
-        if Effect.perform (AwaitUpdate (name, scope)) then
-          find_local_opt name scope
-        else find_in_parent ()
+      if scope.recursive && not scope.closed then (
+        Log.trace (fun log ->
+            log "awaiting scope update for %a" Symbol.print name);
+        let await_result = Effect.perform (AwaitUpdate (name, scope)) in
+        Log.trace (fun log ->
+            log "awaited scope update for %a" Symbol.print name);
+        if await_result then find_local_opt name scope else find_in_parent ())
       else find_in_parent ()
 
 let find_opt (name : symbol) (scope : scope) : value option =

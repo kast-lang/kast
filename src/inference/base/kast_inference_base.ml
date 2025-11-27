@@ -82,11 +82,11 @@ module Var = struct
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
-    let { recurse_id = _; inferred; once_inferred = _; spans = _ } =
-      find_root var
-    in
+    let { recurse_id; inferred; once_inferred = _; spans } = find_root var in
     match inferred with
-    | None -> fprintf fmt "_"
+    | None ->
+        fprintf fmt "_%a%a" Id.print recurse_id (List.print Span.print)
+          (spans |> SpanSet.to_list)
     | Some inferred -> print_inferred fmt inferred
 
   let unite_data =
@@ -94,13 +94,13 @@ module Var = struct
        ({
           recurse_id;
           inferred = inferred_a;
-          once_inferred = once_inferred_a;
+          once_inferred = _;
           spans = spans_a;
         } as data_a)
        ({
           recurse_id = _;
           inferred = inferred_b;
-          once_inferred = once_inferred_b;
+          once_inferred = _;
           spans = spans_b;
         } as data_b) ->
     let inferred =
@@ -109,13 +109,14 @@ module Var = struct
       | Some inferred, None | None, Some inferred -> Some inferred
       | Some a, Some b -> Some (unite_inferred ~span a b)
     in
+    let once_inferred = data_a.once_inferred @ data_b.once_inferred in
     data_a.once_inferred <- [];
     data_b.once_inferred <- [];
     let data =
       {
         recurse_id;
         inferred;
-        once_inferred = once_inferred_a @ once_inferred_b;
+        once_inferred;
         spans = SpanSet.union spans_a spans_b;
       }
     in
@@ -151,22 +152,7 @@ module Var = struct
 
   let infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit =
    fun unite_inferred ~span infer_as var ->
-    try
-      let root_data = find_root var in
-      let root = find_root_var var in
-      root.state <-
-        Root
-          {
-            data =
-              unite_data ~span unite_inferred root_data
-                {
-                  recurse_id = Id.gen ();
-                  inferred = Some infer_as;
-                  once_inferred = [];
-                  spans = SpanSet.singleton span;
-                };
-          }
-    with effect (Error.Error _ as eff), _k -> Effect.perform eff
+    unite unite_inferred ~span (new_inferred ~span infer_as) var |> ignore
 
   let once_inferred : 'a. ('a -> unit) -> 'a var -> unit =
    fun f var ->

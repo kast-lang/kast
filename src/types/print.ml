@@ -12,7 +12,9 @@ module Impl = struct
    fun fmt -> function
     | V_Unit -> fprintf fmt "()"
     | V_Bool value -> fprintf fmt "%B" value
-    | V_Ty ty -> print_ty fmt ty
+    | V_Ty ty ->
+        fprintf fmt "type ";
+        print_ty fmt ty
     | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
     | V_Char value -> fprintf fmt "@{<green>%C@}" value
     | V_String value -> fprintf fmt "@{<green>%S@}" value

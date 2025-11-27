@@ -59,12 +59,11 @@ module Scope = struct
 
   let fork (f : unit -> unit) : unit =
     Kast_interpreter.fork (fun () ->
-        Kast_inference_base.fork (fun () ->
-            try f ()
-            with effect AwaitUpdate scope, k ->
-              (* println "registering waiter for %a" Id.print scope.id; *)
-              scope.on_update <-
-                (fun () -> Effect.continue k true) :: scope.on_update))
+        try f ()
+        with effect AwaitUpdate scope, k ->
+          (* println "registering waiter for %a" Id.print scope.id; *)
+          scope.on_update <-
+            (fun () -> Effect.continue k true) :: scope.on_update)
 
   let notify_update (scope : scope) : unit =
     let fs = scope.on_update in

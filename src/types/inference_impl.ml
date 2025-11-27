@@ -71,12 +71,7 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_UnwindToken { result = a }, T_UnwindToken { result = b } ->
       T_UnwindToken { result = unite_ty ~span a b }
   | T_UnwindToken _, _ -> fail ()
-  | T_Fn a, T_Fn b ->
-      T_Fn
-        {
-          arg = unite_ty ~span a.arg b.arg;
-          result = unite_ty ~span a.result b.result;
-        }
+  | T_Fn a, T_Fn b -> T_Fn (unite_ty_fn ~span a b)
   | T_Fn _, _ -> fail ()
   | T_Generic { def = a }, T_Generic { def = b } when a == b ->
       T_Generic { def = a }
@@ -89,6 +84,13 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_CompilerScope, _ -> fail ()
   | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
+
+and unite_ty_fn : ty_fn Inference.unite =
+ fun ~span a b ->
+  {
+    arg = unite_ty ~span a.arg b.arg;
+    result = unite_ty ~span a.result b.result;
+  }
 
 and unite_ty : ty Inference.unite =
  fun ~span { var = a } { var = b } ->
@@ -117,7 +119,10 @@ and unite_value_shape : value_shape Inference.unite =
   | V_Variant _, _ -> fail () (* TODO *)
   | V_Ty a, V_Ty b -> V_Ty (unite_ty ~span a b)
   | V_Ty _, _ -> fail ()
+  | V_Fn a, V_Fn b when a.fn.id = b.fn.id ->
+      V_Fn { ty = unite_ty_fn ~span a.ty b.ty; fn = a.fn }
   | V_Fn _, _ -> fail ()
+  | V_Generic a, V_Generic b when a.id = b.id -> V_Generic a
   | V_Generic _, _ -> fail ()
   | V_NativeFn _, _ -> fail () (* TODO *)
   | V_Ast _, _ -> fail ()
@@ -131,6 +136,13 @@ and unite_value_shape : value_shape Inference.unite =
   | V_Binding a, V_Binding b when a.id = b.id -> V_Binding a
   | V_Binding _, _ -> fail ()
   | V_CompilerScope _, _ -> fail ()
+
+and unite_value : value Inference.unite =
+ fun ~span { var = a; ty = ty_a } { var = b; ty = ty_b } ->
+  {
+    var = Inference.Var.unite ~span unite_value_shape a b;
+    ty = unite_ty ~span ty_a ty_b;
+  }
 
 and inferred_ty ~span shape : ty =
   { var = Inference.Var.new_inferred ~span shape }

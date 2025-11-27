@@ -74,7 +74,8 @@ module Value = struct
 
   let expect_ty : value -> ty option =
    fun value ->
-    match value |> await_inferred with
+    let inferred = value |> await_inferred in
+    match inferred with
     | V_Binding binding ->
         Some (Ty.inferred ~span:binding.span (T_Binding binding))
     | V_Ty ty -> Some ty
