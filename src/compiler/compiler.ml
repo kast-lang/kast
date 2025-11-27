@@ -143,3 +143,10 @@ let inject_assignee_bindings ~(only_compiler : bool) (assignee : Expr.assignee)
   | A_Binding _ -> ()
   | A_Let pattern -> state |> inject_pattern_bindings ~only_compiler pattern
   | A_Error -> ()
+
+let finish_compiling (def : Types.maybe_compiled_fn)
+    (compiled : Types.compiled_fn) =
+  def.compiled <- Some compiled;
+  let fs = def.on_compiled in
+  def.on_compiled <- [];
+  fs |> List.iter (fun f -> f ())

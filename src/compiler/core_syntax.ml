@@ -360,7 +360,8 @@ let fn : core_syntax =
                            result;
                       result_expr)
                 in
-                def.compiled <- Some { arg; body; evaled_result = result_expr };
+                Compiler.finish_compiling def
+                  { arg; body; evaled_result = result_expr };
                 ty.result
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
                      body.data.ty);
@@ -409,7 +410,8 @@ let generic : core_syntax =
                 state
                 |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                 let body = C.compile ~state Expr body in
-                def.compiled <- Some { arg; body; evaled_result = None };
+                Compiler.finish_compiling def
+                  { arg; body; evaled_result = None };
                 ty.arg
                 |> Inference.Ty.expect_inferred_as ~span:arg.data.span
                      arg.data.ty;
@@ -1309,7 +1311,8 @@ let impl_syntax : core_syntax =
                       |> Compiler.inject_pattern_bindings ~only_compiler:false
                            arg;
                       let body = C.compile ~state Expr impl in
-                      def.compiled <- Some { arg; body; evaled_result = None };
+                      Compiler.finish_compiling def
+                        { arg; body; evaled_result = None };
                       ty.arg
                       |> Inference.Ty.expect_inferred_as ~span:arg.data.span
                            arg.data.ty;
