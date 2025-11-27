@@ -109,15 +109,18 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
     (Hashtbl.to_seq result.custom_syntax_impls);
   result.value
 
-let inject_binding (binding : binding) (state : State.t) : unit =
+let inject_binding ~(only_compiler : bool) (binding : binding) (state : State.t)
+    : unit =
   state.scope <- state.scope |> State.Scope.inject_binding binding;
-  state.interpreter.scope |> Kast_interpreter.Scope.inject_binding binding
+  if not only_compiler then
+    state.interpreter.scope |> Kast_interpreter.Scope.inject_binding binding
 
-let rec inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
+let rec inject_pattern_bindings ~(only_compiler : bool) (pattern : pattern)
+    (state : State.t) : unit =
   match pattern.shape with
   | P_Placeholder -> ()
   | P_Unit -> ()
-  | P_Binding binding -> state |> inject_binding binding
+  | P_Binding binding -> state |> inject_binding ~only_compiler binding
   | P_Tuple { tuple } ->
       tuple |> Tuple.to_seq
       |> Seq.iter
@@ -125,18 +128,18 @@ let rec inject_pattern_bindings (pattern : pattern) (state : State.t) : unit =
              ( _member,
                ({ label_span = _; label = _; field = field_pattern } :
                  pattern Types.tuple_field_of) )
-           -> state |> inject_pattern_bindings field_pattern)
+           -> state |> inject_pattern_bindings ~only_compiler field_pattern)
   | P_Variant { label = _; label_span = _; value } -> (
       match value with
       | None -> ()
-      | Some value -> inject_pattern_bindings value state)
+      | Some value -> inject_pattern_bindings ~only_compiler value state)
   | P_Error -> ()
 
-let inject_assignee_bindings (assignee : Expr.assignee) (state : State.t) : unit
-    =
+let inject_assignee_bindings ~(only_compiler : bool) (assignee : Expr.assignee)
+    (state : State.t) : unit =
   match assignee.shape with
   | A_Placeholder -> ()
   | A_Unit -> ()
   | A_Binding _ -> ()
-  | A_Let pattern -> state |> inject_pattern_bindings pattern
+  | A_Let pattern -> state |> inject_pattern_bindings ~only_compiler pattern
   | A_Error -> ()

@@ -14,7 +14,14 @@ end
 type locals = Locals.t
 
 let with_values ~recursive ~parent values : scope =
-  { locals = values; parent; recursive; on_update = []; closed = false }
+  {
+    id = Id.gen ();
+    locals = values;
+    parent;
+    recursive;
+    on_update = [];
+    closed = false;
+  }
 
 let init ~recursive ~parent = with_values ~recursive ~parent Locals.empty
 
@@ -73,6 +80,11 @@ let notify_update (scope : scope) : unit =
   fs |> List.iter (fun f -> f ())
 
 let add_locals (new_locals : locals) (scope : scope) : unit =
+  Log.trace (fun log ->
+      new_locals.by_symbol
+      |> SymbolMap.iter (fun symbol (local : Types.interpreter_local) ->
+          log "Added %a=%a in scope %a" Symbol.print symbol Value.print
+            local.value Id.print scope.id));
   scope.locals <-
     {
       by_symbol =
@@ -84,6 +96,9 @@ let add_locals (new_locals : locals) (scope : scope) : unit =
 
 let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
     unit =
+  Log.trace (fun log ->
+      log "Added %a=%a in scope %a" Symbol.print symbol Value.print value
+        Id.print scope.id);
   scope.locals <-
     {
       by_symbol =

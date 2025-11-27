@@ -182,7 +182,8 @@ let assign : core_syntax =
         | Expr ->
             let assignee = C.compile Assignee assignee in
             let value = C.compile Expr value in
-            C.state |> Compiler.inject_assignee_bindings assignee;
+            C.state
+            |> Compiler.inject_assignee_bindings ~only_compiler:false assignee;
             E_Assign { assignee; value } |> init_expr span C.state
         | _ ->
             error span "assign must be expr";
@@ -233,8 +234,7 @@ let placeholder : core_syntax =
         match kind with
         | Assignee -> A_Placeholder |> init_assignee span C.state
         | Pattern -> P_Placeholder |> init_pattern span C.state
-        | Expr ->
-            expr_placeholder span C.state
+        | Expr -> expr_placeholder span C.state
         | TyExpr ->
             (fun () -> TE_Expr (C.compile Expr ast))
             |> init_ty_expr span C.state);
@@ -346,7 +346,8 @@ let fn : core_syntax =
                 ty.arg
                 |> Inference.Ty.expect_inferred_as ~span:arg.data.span
                      arg.data.ty;
-                state |> Compiler.inject_pattern_bindings arg;
+                state
+                |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                 let body = C.compile ~state Expr body in
                 let result_expr =
                   result
@@ -405,7 +406,8 @@ let generic : core_syntax =
             State.Scope.fork (fun () ->
                 let state = C.state |> State.enter_scope ~recursive:false in
                 let arg = C.compile ~state Pattern arg in
-                state |> Compiler.inject_pattern_bindings arg;
+                state
+                |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                 let body = C.compile ~state Expr body in
                 def.compiled <- Some { arg; body; evaled_result = None };
                 ty.arg
@@ -697,7 +699,7 @@ let const_let (span : span) (pattern : pattern) (value_expr : expr)
       }
     |> init_expr span C.state
   in
-  C.state |> Compiler.inject_pattern_bindings pattern;
+  C.state |> Compiler.inject_pattern_bindings ~only_compiler:true pattern;
   ignore @@ Interpreter.eval C.state.interpreter let_expr;
   let_expr
 
@@ -1149,7 +1151,7 @@ let use_dot_star : core_syntax =
             in
             bindings
             |> List.iter (fun binding ->
-                C.state |> Compiler.inject_binding binding);
+                C.state |> Compiler.inject_binding ~only_compiler:false binding);
             let result =
               E_UseDotStar
                 {
@@ -1303,7 +1305,9 @@ let impl_syntax : core_syntax =
                           }
                         |> init_pattern name.span C.state
                       in
-                      state |> Compiler.inject_pattern_bindings arg;
+                      state
+                      |> Compiler.inject_pattern_bindings ~only_compiler:false
+                           arg;
                       let body = C.compile ~state Expr impl in
                       def.compiled <- Some { arg; body; evaled_result = None };
                       ty.arg
@@ -1478,7 +1482,7 @@ let unwindable : core_syntax =
         | Expr ->
             let token = C.compile Pattern token in
             let state = State.enter_scope C.state ~recursive:false in
-            state |> Compiler.inject_pattern_bindings token;
+            state |> Compiler.inject_pattern_bindings ~only_compiler:false token;
             let body = C.compile ~state Expr body in
             E_Unwindable { token; body } |> init_expr span C.state
         | _ ->
@@ -1628,7 +1632,8 @@ let match_ : core_syntax =
                   let branch_state =
                     C.state |> State.enter_scope ~recursive:false
                   in
-                  Compiler.inject_pattern_bindings pattern branch_state;
+                  Compiler.inject_pattern_bindings ~only_compiler:false pattern
+                    branch_state;
                   let body = C.compile ~state:branch_state Expr body in
                   Some ({ pattern; body } : Types.expr_match_branch)
               | _ ->

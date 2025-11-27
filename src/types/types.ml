@@ -358,6 +358,7 @@ module rec TypesImpl : sig
   and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }
 
   and interpreter_scope = {
+    id : Id.t;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
     recursive : bool;
@@ -766,6 +767,7 @@ end = struct
   and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }
 
   and interpreter_scope = {
+    id : Id.t;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
     recursive : bool;

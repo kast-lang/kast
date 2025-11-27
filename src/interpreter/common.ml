@@ -185,7 +185,7 @@ and assign : state -> Expr.assignee -> value -> unit =
   match assignee.shape with
   | A_Placeholder -> ()
   | A_Unit ->
-      (* TODO assert that value is unit *)
+      (* TODO assert that value is unit 🦄 *)
       ()
   | A_Binding { id = _; name; ty = _; span = _; label = _ } ->
       state.scope
@@ -214,6 +214,9 @@ and eval : state -> expr -> value =
                   binding.name;
                 V_Error |> Value.inferred ~span)
           in
+          Log.trace (fun log ->
+              log "evaled binding %a = %a" Binding.print binding Value.print
+                result);
           result
       | E_Fn { def; ty } ->
           V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } }
@@ -555,6 +558,7 @@ and enter_scope ~(recursive : bool) (state : state) : state =
     state with
     scope =
       {
+        id = Id.gen ();
         parent = Some state.scope;
         locals = Scope.Locals.empty;
         recursive;
