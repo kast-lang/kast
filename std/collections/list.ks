@@ -21,15 +21,12 @@ const add = [T] (a :: list[T], value :: T) -> list[T] => (
     )
 );
 const iter = [T] (a :: list[T], f :: (T -> ())) -> () => (
-    let @"impl" = (
-        module:
-        let print_inner = a => match a with (
-            | :Empty => ()
-            | :Cons (.head, .tail) => (
-                f head;
-                print_inner tail;
-            )
-        );
+    let rec @"impl" = a => match a with (
+        | :Empty => ()
+        | :Cons (.head, .tail) => (
+            f head;
+            @"impl" tail;
+        )
     );
-    @"impl".print_inner a
+    @"impl" a
 );

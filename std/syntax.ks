@@ -50,3 +50,10 @@ impl syntax (loop ( body )) = `(
 impl syntax (break) = `(
     unwind (@binding @current std.loop_block) ();
 );
+impl syntax (let rec pattern = value) = `(
+    let _mod = (
+        module:
+        let $pattern = $value
+    );
+    let $pattern = _mod.$pattern;
+);

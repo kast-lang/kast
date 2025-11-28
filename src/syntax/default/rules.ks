@@ -8,6 +8,7 @@
 @syntax "core:assign" 2 wrap never = assignee " " "=" " " value;
 @syntax "core:const" 2 wrap never = "const" " " pattern " " "=" " " value;
 @syntax "core:let" 3 wrap never = "let" " " pattern;
+@syntax "let rec" 3 wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 @syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
 @syntax "core:trailing comma" 5 wrap never = <- _ ",";
 
