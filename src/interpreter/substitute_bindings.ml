@@ -4,11 +4,17 @@ open Kast_types
 open Types
 
 module Impl = struct
-  let subbed_vars : (id, Obj.t) Hashtbl.t = Hashtbl.create 0
+  type subbed_vars = (id, Obj.t) Hashtbl.t
+  type _ Effect.t += GetVars : subbed_vars Effect.t
+
+  let with_subbed (type a) (vars : subbed_vars) (f : unit -> a) : a =
+    try f () with effect GetVars, k -> Effect.continue k vars
+
   let subs_count = ref 0
 
   let rec sub_value ~(state : interpreter_state) (value : value) : value =
-    sub_var ~sub_shape:sub_value_shape ~new_not_inferred:Value.new_not_inferred
+    sub_var ~unite_shape:Inference_impl.unite_value_shape
+      ~sub_shape:sub_value_shape ~new_not_inferred:Value.new_not_inferred
       ~get_var:(fun (value : value) -> value.var)
       ~state value
 
@@ -64,7 +70,8 @@ module Impl = struct
             local.value)
 
   and sub_ty ~state ty =
-    sub_var ~sub_shape:sub_ty_shape ~new_not_inferred:Ty.new_not_inferred
+    sub_var ~unite_shape:Inference_impl.unite_ty_shape ~sub_shape:sub_ty_shape
+      ~new_not_inferred:Ty.new_not_inferred
       ~get_var:(fun (ty : ty) -> ty.var)
       ~state ty
 
@@ -88,7 +95,8 @@ module Impl = struct
           {
             variants =
               variants
-              |> sub_row ~state
+              |> sub_row ~unite_value:Inference_impl.unite_ty_variant_data
+                   ~state
                    ~sub_value:(fun
                        ~state ({ data } : ty_variant_data) : ty_variant_data ->
                      { data = data |> Option.map (sub_ty ~state) });
@@ -118,23 +126,27 @@ module Impl = struct
 
   and sub_row :
       'a.
+      unite_value:'a Inference.unite ->
       sub_value:(state:interpreter_state -> 'a -> 'a) ->
       state:interpreter_state ->
       'a Row.t ->
       'a Row.t =
-   fun ~sub_value ~state row ->
-    sub_var ~sub_shape:(sub_row_shape ~sub_value)
+   fun ~unite_value ~sub_value ~state row ->
+    sub_var
+      ~unite_shape:(Row.unite_shape unite_value)
+      ~sub_shape:(sub_row_shape ~unite_value ~sub_value)
       ~get_var:(fun (row : 'a Row.t) -> row.var)
       ~new_not_inferred:Row.new_not_inferred ~state row
 
   and sub_row_shape :
       'a.
+      unite_value:'a Inference.unite ->
       sub_value:(state:interpreter_state -> 'a -> 'a) ->
       state:interpreter_state ->
       'a Row.t ->
       'a Row.shape ->
       'a Row.t =
-   fun ~sub_value ~state original_row shape ->
+   fun ~unite_value ~sub_value ~state original_row shape ->
     let span = original_row.var |> Inference.Var.spans |> SpanSet.min_elt in
     match shape with
     | R_Error -> Row.inferred ~span R_Error
@@ -145,53 +157,61 @@ module Impl = struct
              {
                label;
                value = sub_value ~state value;
-               rest = sub_row ~sub_value ~state rest;
+               rest = sub_row ~unite_value ~sub_value ~state rest;
              }
 
   and sub_var :
       'value 'shape.
+      unite_shape:'shape Inference.unite ->
       sub_shape:(state:interpreter_state -> 'value -> 'shape -> 'value) ->
       new_not_inferred:(span:span -> 'value) ->
       get_var:('value -> 'shape Inference.Var.t) ->
       state:interpreter_state ->
       'value ->
       'value =
-   fun ~sub_shape ~new_not_inferred ~get_var ~state original_value ->
+   fun ~unite_shape ~sub_shape ~new_not_inferred ~get_var ~state
+       original_value ->
     let span = Span.fake "<sub_var>" in
     let var = get_var original_value in
     let id = Inference.Var.recurse_id var in
     let cache = RecurseCache.get () in
+    let subbed_vars = Effect.perform GetVars in
     if cache |> RecurseCache.visit_count id = 0 then (
+      Log.trace (fun log -> log "subbing var %a" Id.print id);
       cache |> RecurseCache.enter id;
       let subbed_temp = new_not_inferred ~span in
+      Log.trace (fun log ->
+          log "created new var %a" Id.print
+            (Inference.Var.recurse_id (get_var subbed_temp)));
       Hashtbl.add subbed_vars id (Obj.repr subbed_temp);
-      let result =
-        match var |> Inference.Var.inferred_opt with
-        | None -> original_value
-        | Some shape ->
-            let subs_before = !subs_count in
-            let subbed = sub_shape ~state original_value shape in
-            if subs_before = !subs_count then original_value else subbed
-      in
-      Inference.Var.unite ~span
-        (fun ~span:_ _ _ ->
-          fail
-            "This is not supposed to fail since subbed_temp is inferred for the first time")
-        (get_var subbed_temp) (get_var result)
-      |> ignore;
+      let subbed_id = Inference.Var.recurse_id (get_var subbed_temp) in
+      cache |> RecurseCache.enter subbed_id;
+      Hashtbl.add subbed_vars subbed_id (Obj.repr subbed_temp);
+      var
+      |> Inference.Var.once_inferred (fun shape ->
+          with_subbed subbed_vars (fun () ->
+              RecurseCache.with_cache cache (fun () ->
+                  let subbed = sub_shape ~state original_value shape in
+                  Inference.Var.unite ~span unite_shape (get_var subbed_temp)
+                    (get_var subbed)
+                  |> ignore)));
       cache |> RecurseCache.exit id;
-      result)
-    else Hashtbl.find subbed_vars id |> Obj.obj
+      subbed_temp)
+    else
+      match Hashtbl.find_opt subbed_vars id with
+      | Some sub -> sub |> Obj.obj
+      | None -> fail "Failed to find subbed var"
 end
 
 let with_cache f =
  fun ~state value ->
-  let result =
-    RecurseCache.with_cache (RecurseCache.create ()) (fun () -> f ~state value)
-  in
-  Impl.subs_count := 0;
-  Hashtbl.clear Impl.subbed_vars;
-  result
+  Impl.with_subbed (Hashtbl.create 0) (fun () ->
+      let result =
+        RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
+            f ~state value)
+      in
+      Impl.subs_count := 0;
+      result)
 
 let sub_value ~state value =
   let result = with_cache Impl.sub_value ~state value in

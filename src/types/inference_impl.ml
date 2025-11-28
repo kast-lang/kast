@@ -46,23 +46,7 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
       with Invalid_argument _ -> fail ())
   | T_Tuple _, _ -> fail ()
   | T_Variant { variants = a }, T_Variant { variants = b } ->
-      with_return (fun { return } : ty_shape ->
-          T_Variant
-            {
-              variants =
-                Row.unite ~span
-                  (fun ~span ({ data = a } : Types.ty_variant_data)
-                       ({ data = b } : Types.ty_variant_data) :
-                       Types.ty_variant_data ->
-                    {
-                      data =
-                        (match (a, b) with
-                        | None, None -> None
-                        | Some _, None | None, Some _ -> return <| fail ()
-                        | Some a, Some b -> Some (unite_ty ~span a b));
-                    })
-                  a b;
-            })
+      T_Variant { variants = Row.unite ~span unite_ty_variant_data a b }
   | T_Variant _, _ -> fail ()
   | T_Ty, T_Ty -> T_Ty
   | T_Ty, _ -> fail ()
@@ -84,6 +68,19 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_CompilerScope, _ -> fail ()
   | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
+
+and unite_ty_variant_data =
+ fun ~span ({ data = a } : Types.ty_variant_data)
+     ({ data = b } : Types.ty_variant_data) : Types.ty_variant_data ->
+  {
+    data =
+      (match (a, b) with
+      | None, None -> None
+      | Some ty, None | None, Some ty ->
+          Inference.Error.error span "data & not data mismatch in variant";
+          Some ty
+      | Some a, Some b -> Some (unite_ty ~span a b));
+  }
 
 and unite_ty_fn : ty_fn Inference.unite =
  fun ~span a b ->

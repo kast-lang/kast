@@ -7,8 +7,8 @@ const list = [T] type (
     )
 );
 const t = list;
-const create = [createT] () -> list[createT] => :Empty;
-const add = [addT] (a :: list[addT], value :: addT) -> list[addT] => (
+const create = [T] () -> list[T] => :Empty;
+const add = [T] (a :: list[T], value :: T) -> list[T] => (
     match a with (
         | :Empty => :Cons (
             .head = value,
@@ -16,17 +16,17 @@ const add = [addT] (a :: list[addT], value :: addT) -> list[addT] => (
         )
         | :Cons (.head, .tail) => :Cons (
             .head,
-            .tail = add[addT] (tail, value),
+            .tail = add[T] (tail, value),
         )
     )
 );
-const print = [printT] (print_value :: (printT -> ()), a :: list[printT]) -> () => (
+const iter = [T] (a :: list[T], f :: (T -> ())) -> () => (
     let @"impl" = (
         module:
         let print_inner = a => match a with (
             | :Empty => ()
             | :Cons (.head, .tail) => (
-                print_value head;
+                f head;
                 print_inner tail;
             )
         );
