@@ -108,11 +108,14 @@ and await_compiled_ty_expr ~span (expr : Expr.ty) : Expr.Ty.Shape.t =
 and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
     (arg : value) : value =
   with_return (fun { return } ->
+      Log.trace (fun log -> log "Started call at %a" Span.print span);
       let def =
         await_compiled ~span fn.def
         |> Option.unwrap_or_else (fun () ->
+            Error.error span "Can't call fn, its not compile yet";
             return (V_Error |> Value.inferred ~span))
       in
+      Log.trace (fun log -> log "Fn for call at %a is compiled" Span.print span);
       let ~matched:arg_matched, arg_bindings = pattern_match arg def.arg in
       if not arg_matched then
         Error.error span "Failed to pattern match fn's arg";
@@ -125,6 +128,13 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
         }
       in
       let result = eval new_state def.body in
+      Log.trace (fun log ->
+          log "evaled call (before sub) at %a = %a" Span.print span Value.print
+            result);
+      let result = Substitute_bindings.sub_value ~state:new_state result in
+      Log.trace (fun log ->
+          log "evaled call (after sub) at %a = %a" Span.print span Value.print
+            result);
       result)
 
 and instantiate (span : span) (state : state) (generic : value) (arg : value) :
@@ -152,20 +162,25 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
       match current_state with
       | None ->
           Log.trace (fun log ->
-              log "Instantiating generic with arg=%a" Value.print arg);
+              log "Instantiating generic with arg=%a at %a" Value.print arg
+                Span.print span);
           let result = Value.new_not_inferred ~span in
           save result;
           fork (fun () ->
-              let evaluated_result = call_untyped_fn span state fn arg in
-              Log.trace (fun log ->
-                  log
-                    "Instantiated generic with arg=%a, result=%a, uniting with=%a"
-                    Value.print arg Value.print evaluated_result Value.print
-                    result);
-              result
-              |> Inference.Value.expect_inferred_as ~span evaluated_result;
-              Log.trace (fun log ->
-                  log "After uniting result=%a" Value.print result));
+              try
+                let evaluated_result = call_untyped_fn span state fn arg in
+                Log.trace (fun log ->
+                    log
+                      "Instantiated generic with arg=%a, result=%a, uniting with=%a"
+                      Value.print arg Value.print evaluated_result Value.print
+                      result);
+                result
+                |> Inference.Value.expect_inferred_as ~span evaluated_result;
+                Log.trace (fun log ->
+                    log "After uniting result=%a" Value.print result)
+              with effect Inference.Var.AwaitUpdate var, k ->
+                Effect.continue k
+                  (Effect.perform <| Inference.Var.AwaitUpdate var));
           result
       | Some result ->
           Log.trace (fun log ->
@@ -222,6 +237,7 @@ and eval : state -> expr -> value =
  fun state expr ->
   try
     let span = expr.data.span in
+    Log.trace (fun log -> log "evaluating at %a" Span.print span);
     let result =
       match expr.shape with
       | E_Constant value -> value
@@ -443,7 +459,9 @@ and eval : state -> expr -> value =
               in
               eval state chosen_branch.body)
     in
-    let result = Substitute_bindings.sub_value ~state result in
+    (* let result = Substitute_bindings.sub_value ~state result in *)
+    Log.trace (fun log ->
+        log "evaled at %a = %a" Span.print span Value.print result);
     result
   with exc ->
     Log.error (fun log ->
@@ -574,12 +592,15 @@ and eval_ty : state -> Expr.ty -> ty =
         Log.trace (fun log ->
             log "finished eval ty expr at %a = %a" Span.print span Ty.print
               evaled_result)
-      with effect Scope.AwaitUpdate (symbol, scope), k ->
-        Effect.continue k (Effect.perform <| Scope.AwaitUpdate (symbol, scope))
+      with
+      | effect Scope.AwaitUpdate (symbol, scope), k ->
+          Effect.continue k (Effect.perform <| Scope.AwaitUpdate (symbol, scope))
+      | effect Inference.Var.AwaitUpdate var, k ->
+          Effect.continue k (Effect.perform <| Inference.Var.AwaitUpdate var)
       (* if symbol.name = "TTT" then println "TTT handled properly2";
         scope.on_update <- (fun () -> Effect.continue k true) :: scope.on_update *));
 
-  let result = Substitute_bindings.sub_ty ~state result in
+  (* let result = Substitute_bindings.sub_ty ~state result in *)
   result
 
 and enter_scope ~(recursive : bool) (state : state) : state =
@@ -606,4 +627,6 @@ and fork (f : unit -> unit) : unit =
             (fun () -> Effect.continue k ()) :: expr.on_compiled
       | effect Scope.AwaitUpdate (name, scope), k ->
           scope.on_update <-
-            (fun () -> Effect.continue k true) :: scope.on_update)
+            (fun () -> Effect.continue k true) :: scope.on_update
+      | effect Inference.Var.AwaitUpdate var, k ->
+          Inference.Var.once_inferred (fun _ -> Effect.continue k true) var)
