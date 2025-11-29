@@ -131,7 +131,9 @@ and call_untyped_fn (span : span) (state : state) (fn : Types.value_untyped_fn)
       Log.trace (fun log ->
           log "evaled call (before sub) at %a = %a" Span.print span Value.print
             result);
-      let result = Substitute_bindings.sub_value ~state:new_state result in
+      let result =
+        Substitute_bindings.sub_value ~span ~state:new_state result
+      in
       Log.trace (fun log ->
           log "evaled call (after sub) at %a = %a" Span.print span Value.print
             result);
@@ -164,8 +166,8 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
           Log.trace (fun log ->
               log "Instantiating generic with arg=%a at %a" Value.print arg
                 Span.print span);
-          let result = Value.new_not_inferred ~span in
-          save result;
+          let placeholder = Value.new_not_inferred ~span in
+          save placeholder;
           fork (fun () ->
               try
                 let evaluated_result = call_untyped_fn span state fn arg in
@@ -173,15 +175,15 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
                     log
                       "Instantiated generic with arg=%a, result=%a, uniting with=%a"
                       Value.print arg Value.print evaluated_result Value.print
-                      result);
-                result
+                      placeholder);
+                placeholder
                 |> Inference.Value.expect_inferred_as ~span evaluated_result;
                 Log.trace (fun log ->
-                    log "After uniting result=%a" Value.print result)
+                    log "After uniting result=%a" Value.print placeholder)
               with effect Inference.Var.AwaitUpdate var, k ->
                 Effect.continue k
                   (Effect.perform <| Inference.Var.AwaitUpdate var));
-          result
+          placeholder
       | Some result ->
           Log.trace (fun log ->
               log "Using memoized generic instantiation with arg=%a at %a = %a"

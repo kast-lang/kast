@@ -16,6 +16,7 @@ module Var = struct
     inferred : 'a option;
     spans : SpanSet.t;
     mutable once_inferred : ('a -> unit) list;
+    mutable on_unite : ('a var_data -> unit) list;
   }
 
   let new_not_inferred : 'a. span:span -> 'a var =
@@ -29,6 +30,7 @@ module Var = struct
                 recurse_id = Id.gen ();
                 inferred = None;
                 once_inferred = [];
+                on_unite = [];
                 spans = SpanSet.singleton span;
               };
           };
@@ -45,6 +47,7 @@ module Var = struct
                 recurse_id = Id.gen ();
                 inferred = Some inferred;
                 once_inferred = [];
+                on_unite = [];
                 spans = SpanSet.singleton span;
               };
           };
@@ -82,7 +85,9 @@ module Var = struct
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
-    let { recurse_id; inferred; once_inferred = _; spans } = find_root var in
+    let { recurse_id; inferred; once_inferred = _; on_unite = _; spans } =
+      find_root var
+    in
     match inferred with
     | None ->
         fprintf fmt "_%a%a" Id.print recurse_id (List.print Span.print)
@@ -92,15 +97,17 @@ module Var = struct
   let unite_data =
    fun ~span unite_inferred
        ({
-          recurse_id;
+          recurse_id = recurse_id_a;
           inferred = inferred_a;
           once_inferred = _;
+          on_unite = _;
           spans = spans_a;
         } as data_a)
        ({
-          recurse_id = _;
+          recurse_id = recurse_id_b;
           inferred = inferred_b;
           once_inferred = _;
+          on_unite = _;
           spans = spans_b;
         } as data_b) ->
     let inferred =
@@ -112,14 +119,21 @@ module Var = struct
     let once_inferred = data_a.once_inferred @ data_b.once_inferred in
     data_a.once_inferred <- [];
     data_b.once_inferred <- [];
+    let on_unite = data_a.on_unite @ data_b.on_unite in
+    data_a.on_unite <- [];
+    data_b.on_unite <- [];
+    Log.trace (fun log ->
+        log "uniting vars %a and %a" Id.print recurse_id_a Id.print recurse_id_b);
     let data =
       {
-        recurse_id;
+        recurse_id = recurse_id_a;
         inferred;
         once_inferred;
+        on_unite = [];
         spans = SpanSet.union spans_a spans_b;
       }
     in
+    on_unite |> List.iter (fun f -> f data);
     data |> run_once_inferred_if_needed;
     data
 
@@ -193,6 +207,35 @@ module Var = struct
   let spans var =
     let data = find_root var in
     data.spans
+
+  module Map = struct
+    type 'a t = {
+      id : Id.t;
+      mutable by_recurse_id : 'a Id.Map.t;
+    }
+
+    let create () = { id = Id.gen (); by_recurse_id = Id.Map.empty }
+
+    let add var value map =
+      let current_id = recurse_id var in
+      map.by_recurse_id <- map.by_recurse_id |> Id.Map.add current_id value;
+      Log.trace (fun log ->
+          log "varmap.add %a to map %a" Id.print current_id Id.print map.id);
+      let rec check_unite data =
+        let new_id = data.recurse_id in
+        map.by_recurse_id <- map.by_recurse_id |> Id.Map.add new_id value;
+        Log.trace (fun log ->
+            log "varmap.add %a to map %a" Id.print new_id Id.print map.id);
+        data.on_unite <- check_unite :: data.on_unite
+      in
+      check_unite (find_root var)
+
+    let find_opt var map =
+      Log.trace (fun log ->
+          log "varmap.find_opt %a in map %a" Id.print (recurse_id var) Id.print
+            map.id);
+      map.by_recurse_id |> Id.Map.find_opt (recurse_id var)
+  end
 end
 
 let fork = Var.fork

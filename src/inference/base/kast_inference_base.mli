@@ -20,6 +20,14 @@ module Var : sig
   val spans : 'a. 'a var -> Set.Make(Span).t
   val equal : 'a. 'a var -> 'a var -> bool
   val compare : 'a. 'a var -> 'a var -> int
+
+  module Map : sig
+    type 'a t
+
+    val create : 'a. unit -> 'a t
+    val add : 'a 'v. 'v var -> 'a -> 'a t -> unit
+    val find_opt : 'a 'v. 'v var -> 'a t -> 'a option
+  end
 end
 
 val fork : (unit -> unit) -> unit

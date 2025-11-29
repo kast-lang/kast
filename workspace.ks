@@ -16,3 +16,5 @@
 "examples/lists.ks",
 "examples/variant-types.ks",
 "examples/aoc/2024/day01.ks",
+"examples/mutually-recursive-generic-types.ks",
+"examples/treap.ks",
