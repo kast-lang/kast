@@ -32,16 +32,7 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
           {
             tuple =
               Tuple.zip_order_a a b
-              |> Tuple.map
-                   (fun
-                     ((a, b) : Types.ty_tuple_field * Types.ty_tuple_field)
-                     :
-                     Types.ty_tuple_field
-                   ->
-                     {
-                       ty = unite_ty ~span a.ty b.ty;
-                       label = Label.unite a.label b.label;
-                     });
+              |> Tuple.map (fun (a, b) -> unite_ty_tuple_field ~span a b);
           }
       with Invalid_argument _ -> fail ())
   | T_Tuple _, _ -> fail ()
@@ -68,6 +59,11 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_CompilerScope, _ -> fail ()
   | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
+
+and unite_ty_tuple_field =
+ fun ~span (a : Types.ty_tuple_field) (b : Types.ty_tuple_field) :
+     Types.ty_tuple_field ->
+  { ty = unite_ty ~span a.ty b.ty; label = Label.unite a.label b.label }
 
 and unite_ty_variant_data =
  fun ~span ({ data = a } : Types.ty_variant_data)
@@ -112,7 +108,24 @@ and unite_value_shape : value_shape Inference.unite =
   | V_Char _, _ -> fail ()
   | V_String a, V_String b when a = b -> V_String a
   | V_String _, _ -> fail ()
-  | V_Tuple _, _ -> fail () (* TODO *)
+  | V_Tuple { tuple = a }, V_Tuple { tuple = b } ->
+      V_Tuple
+        {
+          tuple =
+            Tuple.zip_order_a a b
+            |> Tuple.map
+                 (fun
+                   ((a, b) : Types.value_tuple_field * Types.value_tuple_field)
+                   :
+                   Types.value_tuple_field
+                 ->
+                   {
+                     value = unite_value ~span a.value b.value;
+                     span = a.span;
+                     ty_field = unite_ty_tuple_field ~span a.ty_field b.ty_field;
+                   });
+        }
+  | V_Tuple _, _ -> fail ()
   | V_Variant _, _ -> fail () (* TODO *)
   | V_Ty a, V_Ty b -> V_Ty (unite_ty ~span a b)
   | V_Ty _, _ -> fail ()
