@@ -3,7 +3,7 @@ use std.collections.treap;
 let v = treap.create ();
 let i = 0;
 loop (
-    if i > 10 then break else ();
+    if i > 10 then break;
     v = treap.merge (v, treap.singleton (i + 10));
     i = i + 1;
 );

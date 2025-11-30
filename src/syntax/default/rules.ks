@@ -18,7 +18,7 @@
 @syntax "core:field init" 6 wrap never = "." label type=(" " "::" " " _)? value=(" " "=" " " _)?;
 @syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->" " " _ " ")? "=>" " " body;
 
-@syntax "core:if" 7.5 wrap never = "if" " " cond " " "then" " " then_case;
+@syntax "if_without_else" 7.5 wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 @syntax "core:match" 7.5 wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
 

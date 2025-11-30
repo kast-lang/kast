@@ -57,3 +57,6 @@ impl syntax (let rec pattern = value) = `(
     );
     let $pattern = _mod.$pattern;
 );
+impl syntax (if cond then stmt) = `(
+    if $cond then $stmt else ()
+);
