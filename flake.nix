@@ -83,7 +83,7 @@
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
             (pkgs.writeShellScriptBin "kast" ''
-              systemd-run --user --scope -p MemoryMax=1G \\
+              systemd-run --user --scope -p MemoryMax=1G \
                 rlwrap dune exec kast -- "$@"
             '')
             # You can add packages from nixpkgs here
