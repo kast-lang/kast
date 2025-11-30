@@ -1,32 +1,10 @@
 module:
-const list = [T] type (
-    | :Empty
-    | :Cons (
-        .head :: T,
-        .tail :: list[T],
-    )
-);
+const list = [T] treap.t[T];
 const t = list;
-const create = [T] () -> list[T] => :Empty;
-const add = [T] (a :: list[T], value :: T) -> list[T] => (
-    match a with (
-        | :Empty => :Cons (
-            .head = value,
-            .tail = :Empty,
-        )
-        | :Cons (.head, .tail) => :Cons (
-            .head,
-            .tail = add[T] (tail, value),
-        )
-    )
+const create = [T] () -> list[T] => treap.create ();
+const push_back = [T] (a :: list[T], value :: T) -> list[T] => (
+    treap.merge (a, treap.singleton value)
 );
 const iter = [T] (a :: list[T], f :: (T -> ())) -> () => (
-    let rec @"impl" = a => match a with (
-        | :Empty => ()
-        | :Cons (.head, .tail) => (
-            f head;
-            @"impl" tail;
-        )
-    );
-    @"impl" a
+    treap.iter (a, f);
 );
