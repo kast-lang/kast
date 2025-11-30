@@ -65,7 +65,7 @@ module Impl = struct
               ty = sub_ty ~state ty;
             }
           |> shaped
-      | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
+      | V_Ty ty -> original_value (* TODO V_Ty (sub_ty ~state ty) |> shaped *)
       | V_Fn { ty; fn } -> V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped
       | V_Generic { id = _; fn = _ } -> original_value
       | V_NativeFn { id; name; ty; impl } ->
@@ -214,7 +214,7 @@ module Impl = struct
     let span = Span.fake "<sub_var>" in
     let var = get_var original_value in
     let ctx = Effect.perform GetCtx in
-    if ctx.depth > 32 then new_not_inferred ~span
+    if ctx.depth > 32 then fail "Went too deep" ~span
     else
       match ctx.subs |> Inference.Var.Map.find_opt var with
       | None ->
@@ -255,4 +255,8 @@ let sub_value ~span ~state value =
   Log.trace (fun log ->
       log "sub_value end at %a from %a to %a" Span.print span Value.print value
         Value.print result);
+  result
+
+let sub_ty ~span ~state ty =
+  let result = with_cache ~span Impl.sub_ty ~state ty in
   result

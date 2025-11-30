@@ -78,7 +78,7 @@ and init_expr :
                       }
                     in
                     let result =
-                      Kast_interpreter.call_untyped_fn span
+                      Kast_interpreter.call_untyped_fn ~sub_ty:true span
                         generic_ty_interpreter generic_ty arg
                     in
                     match result |> Value.expect_ty with
