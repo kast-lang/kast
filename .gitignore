@@ -1,3 +1,4 @@
 /.direnv/
 /_build/
 /kast.opam
+/*.log
