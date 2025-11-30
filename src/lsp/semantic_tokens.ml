@@ -99,7 +99,7 @@ let options : Lsp.Types.SemanticTokensRegistrationOptions.t =
 
 let run ({ parsed; _ } : Processing.file_state) :
     Lsp.Types.SemanticTokens.t option =
-  Log.info (fun log -> log "got semantic tokens request");
+  Log.trace (fun log -> log "got semantic tokens request");
   match parsed with
   | None -> None
   | Some { ast; trailing_comments; eof = _ } ->
@@ -178,5 +178,5 @@ let run ({ parsed; _ } : Processing.file_state) :
         |> Array.of_seq
       in
       let tokens = Lsp.Types.SemanticTokens.create ~data ?resultId:None () in
-      Log.info (fun log -> log "replied with semantic tokens");
+      Log.trace (fun log -> log "replied with semantic tokens");
       Some tokens

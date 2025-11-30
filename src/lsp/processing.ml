@@ -5,6 +5,8 @@ module Parser = Kast_parser
 module Compiler = Kast_compiler
 open Kast_types
 
+let log_error = Log.trace
+
 type global_state = {
   workspaces : workspace_state list;
   mutable vfs : string UriMap.t;
@@ -44,7 +46,7 @@ let process_file (global : global_state) (source : source) : file_state =
       Some result
     with
     | effect Parser.Error.Error error, k ->
-        Log.error (fun log -> log "%a" Parser.Error.print error);
+        log_error (fun log -> log "%a" Parser.Error.print error);
         add_diagnostic error.span.uri
           {
             range = error.span |> Common.span_to_range;
@@ -71,7 +73,7 @@ let process_file (global : global_state) (source : source) : file_state =
           Some (Compiler.compile compiler Expr ast)
         with
         | effect Kast_interpreter.Error.Error error, k ->
-            Log.error (fun log -> log "%a" Kast_interpreter.Error.print error);
+            log_error (fun log -> log "%a" Kast_interpreter.Error.print error);
             add_diagnostic error.span.uri
               {
                 range = error.span |> Common.span_to_range;
@@ -86,7 +88,7 @@ let process_file (global : global_state) (source : source) : file_state =
               };
             Effect.continue k ()
         | effect Compiler.Error.Error error, k ->
-            Log.error (fun log -> log "%a" Compiler.Error.print error);
+            log_error (fun log -> log "%a" Compiler.Error.print error);
             add_diagnostic error.span.uri
               {
                 range = error.span |> Common.span_to_range;
@@ -101,7 +103,7 @@ let process_file (global : global_state) (source : source) : file_state =
               };
             Effect.continue k ()
         | effect Kast_inference.Error.Error error, k ->
-            Log.error (fun log -> log "%a" Kast_inference.Error.print error);
+            log_error (fun log -> log "%a" Kast_inference.Error.print error);
             add_diagnostic error.span.uri
               {
                 range = error.span |> Common.span_to_range;

@@ -105,11 +105,11 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
           updates |> Latest_state.get_latest_result |> ignore;
           let state = self#get_state () in
           let diags = Kast_lsp.Diagnostics.get state in
-          Log.info (fun log ->
+          Log.trace (fun log ->
               log "send diags actually (size=%d)" (List.length diags));
           diags
           |> List.iter (fun (uri, diags) ->
-              Log.info (fun log ->
+              Log.trace (fun log ->
                   let print_diag fmt diag =
                     fprintf fmt "%s"
                       (diag |> Lsp.Types.Diagnostic.yojson_of_t
@@ -164,7 +164,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         | `List of Lsp.Types.CompletionItem.t list
         ]
         option =
-      Log.info (fun log -> log "Got completion request");
+      Log.trace (fun log -> log "Got completion request");
       let* file_state = self#file_state uri in
       Some (`List (file_state |> Kast_lsp.Completion.completions pos))
 
@@ -238,7 +238,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
               }
         in
         let json = Lsp.Types.WorkspaceEdit.yojson_of_t edit in
-        Log.info (fun log ->
+        Log.trace (fun log ->
             log "Rename reply: %a" (Yojson.Safe.pretty_print ~std:true) json);
         edit
 

@@ -340,11 +340,11 @@ let rename (position : Lsp.Types.Position.t) (newName : string)
 let hover (pos : Lsp.Types.Position.t)
     ({ uri; compiled; _ } : Processing.file_state) : Lsp.Types.Hover.t option =
   let pos = Common.lsp_to_kast_pos pos in
-  Log.info (fun log -> log "Hovering %a" Position.print pos);
+  Log.trace (fun log -> log "Hovering %a" Position.print pos);
   let* expr = compiled in
   let* hover_info = hover Expr expr (Span.single_char pos uri) in
   let hover_text = hover_text hover_info in
-  Log.info (fun log -> log "Hover result: %S" hover_text);
+  Log.trace (fun log -> log "Hover result: %S" hover_text);
   Some
     ({
        contents = `MarkedString { language = None; value = hover_text };
