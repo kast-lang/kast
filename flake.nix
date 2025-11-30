@@ -38,17 +38,16 @@
           # ocamlfind = "1.9.2";
         };
         overlays = [
-          (final: prev:
-            {
-              ppxlib =
-                let
-                  src = builtins.fetchGit {
-                    url = "https://github.com/NathanReb/ppxlib";
-                    rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
-                  };
-                in
-                opam-nix.buildOpamProject { } "ppxlib" src { ocaml-base-compiler = "*"; };
-            })
+          (final: prev: {
+            ppxlib = let
+              src = builtins.fetchGit {
+                url = "https://github.com/NathanReb/ppxlib";
+                rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+              };
+            in opam-nix.buildOpamProject { } "ppxlib" src {
+              ocaml-base-compiler = "*";
+            };
+          })
         ];
         scope = opam-nix.buildDuneProject { } package ./. query;
         overlay = final: prev: {
@@ -57,14 +56,14 @@
             # Prevent the ocaml dependencies from leaking into dependent environments
             doNixSupport = false;
           });
-          ppxlib =
-            let
-              src = builtins.fetchGit {
-                url = "https://github.com/NathanReb/ppxlib";
-                rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
-              };
-            in
-            (opam-nix.buildOpamProject { } "ppxlib" src { ocaml-base-compiler = "*"; }).ppxlib;
+          ppxlib = let
+            src = builtins.fetchGit {
+              url = "https://github.com/NathanReb/ppxlib";
+              rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+            };
+          in (opam-nix.buildOpamProject { } "ppxlib" src {
+            ocaml-base-compiler = "*";
+          }).ppxlib;
         };
         scope' = scope.overrideScope overlay;
         # The main package containing the executable
@@ -72,8 +71,7 @@
         # Packages from devPackagesQuery
         devPackages = builtins.attrValues
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
-      in
-      {
+      in {
         legacyPackages = scope';
         packages.default = main.overrideAttrs {
           buildInputs = [ pkgs.makeWrapper ];
@@ -85,7 +83,8 @@
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
             (pkgs.writeShellScriptBin "kast" ''
-              rlwrap dune exec kast -- "$@"
+              systemd-run --user --scope -p MemoryMax=1G \\
+                rlwrap dune exec kast -- "$@"
             '')
             # You can add packages from nixpkgs here
             just # look at .justfile
