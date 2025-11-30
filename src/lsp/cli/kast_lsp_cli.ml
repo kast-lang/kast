@@ -98,7 +98,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
             };
       }
 
-    method spawn_query_handler f = Linol_eio.spawn f
+    method spawn_query_handler f = Eio.Fiber.fork ~sw f
 
     method private send_diagnostics ~notify_back () =
       Eio.Fiber.fork ~sw (fun () ->
