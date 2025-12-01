@@ -69,12 +69,13 @@ module Uri = struct
               if String.starts_with ~prefix:"/" path then None else Some path)
         in
         match relative with
-        | Some relative ->
+        | Some _relative ->
             let file_path = Uri.path file in
             let parent =
               String.sub file_path 0 (String.rindex file_path '/' + 1)
             in
-            Uri.with_path file (parent ^ relative)
+            let parent_uri = Uri.with_path file parent in
+            Uri.resolve "" parent_uri maybe_relative
         | None -> maybe_relative)
     | _ -> maybe_relative
 end
