@@ -47,28 +47,28 @@ let rec get_entries ~loc path =
     let entries =
       entries |> Array.to_list
       |> List.map (fun entry ->
-             let entry_path = Filename.concat path entry in
-             let entry_expr : expression =
-               match Sys.is_directory entry_path with
-               | true ->
-                   Ast_builder.Default.pexp_construct ~loc
-                     { txt = Ldot (Lident "Included_dir", "Dir"); loc }
-                     (Some (include_dir ~loc entry_path))
-               | false ->
-                   let contents =
-                     Ast_builder.Default.estring ~loc (get_blob ~loc entry_path)
-                   in
-                   let file =
-                     Ast_builder.Default.pexp_record ~loc
-                       [ ({ txt = Lident "contents"; loc }, contents) ]
-                       None
-                   in
-                   Ast_builder.Default.pexp_construct ~loc
-                     { txt = Ldot (Lident "Included_dir", "File"); loc }
-                     (Some file)
-             in
-             Ast_builder.Default.pexp_tuple ~loc
-               [ Ast_builder.Default.estring ~loc entry; entry_expr ])
+          let entry_path = Filename.concat path entry in
+          let entry_expr : expression =
+            match Sys.is_directory entry_path with
+            | true ->
+                Ast_builder.Default.pexp_construct ~loc
+                  { txt = Ldot (Lident "Included_dir", "Dir"); loc }
+                  (Some (include_dir ~loc entry_path))
+            | false ->
+                let contents =
+                  Ast_builder.Default.estring ~loc (get_blob ~loc entry_path)
+                in
+                let file =
+                  Ast_builder.Default.pexp_record ~loc
+                    [ ({ txt = Lident "contents"; loc }, contents) ]
+                    None
+                in
+                Ast_builder.Default.pexp_construct ~loc
+                  { txt = Ldot (Lident "Included_dir", "File"); loc }
+                  (Some file)
+          in
+          Ast_builder.Default.pexp_tuple ~loc
+            [ Ast_builder.Default.estring ~loc entry; entry_expr ])
     in
     Ast_builder.Default.elist ~loc entries
   with _ ->

@@ -24,12 +24,12 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
       in
       rule_name = expected_name
       &&
-      try
-        Tuple.zip_order_a children expected_children
-        |> Tuple.to_seq
-        |> Seq.for_all (fun (_member, (child, expected_child)) ->
-               matches child expected_child)
-      with Invalid_argument _ -> false)
+        try
+          Tuple.zip_order_a children expected_children
+          |> Tuple.to_seq
+          |> Seq.for_all (fun (_member, (child, expected_child)) ->
+              matches child expected_child)
+        with Invalid_argument _ -> false)
   | Complex _, _ -> false
   | Syntax _, _ -> false
 

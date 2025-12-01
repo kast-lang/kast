@@ -171,10 +171,10 @@ module Common (Output : Output) = struct
     let rec print_parts (parts : Ast.part list) =
       parts
       |> List.iter (function
-           | Ast.Value ast -> print_ast printer ast
-           | Ast.Keyword token -> print_token printer Output.print_keyword token
-           | Ast.Comment comment -> Output.print_comment printer comment
-           | Ast.Group group -> print_parts group.parts)
+        | Ast.Value ast -> print_ast printer ast
+        | Ast.Keyword token -> print_token printer Output.print_keyword token
+        | Ast.Comment comment -> Output.print_comment printer comment
+        | Ast.Group group -> print_parts group.parts)
     in
     match ast.shape with
     | Error { parts } -> print_parts parts
