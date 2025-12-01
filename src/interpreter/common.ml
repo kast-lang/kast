@@ -483,11 +483,13 @@ and eval : state -> expr -> value =
     Log.trace (fun log ->
         log "evaled at %a = %a" Span.print span Value.print result);
     result
-  with exc ->
-    Log.error (fun log ->
-        log "While evaluating %a expr at %a" Expr.print_short expr Span.print
-          expr.data.span);
-    raise exc
+  with
+  | Unwind _ as exc -> raise exc
+  | exc ->
+      Log.error (fun log ->
+          log "While evaluating %a expr at %a" Expr.print_short expr Span.print
+            expr.data.span);
+      raise exc
 
 and find_target_dependent_branch :
     state ->
