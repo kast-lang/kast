@@ -85,6 +85,37 @@ let dbg =
   ]
 
 let mod_string =
+  let get_at =
+    native_fn
+      ~arg:(Ty.new_not_inferred ~span:(Span.of_ocaml __POS__))
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+      "string.get_at"
+      (fun ~caller ~state:_ arg : value ->
+        with_return (fun { return } ->
+            let error msg () =
+              Error.error caller "string.get_at: %s" msg;
+              return (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
+            in
+            let arg =
+              arg |> Value.expect_tuple
+              |> Option.unwrap_or_else (error "arg must be tuple")
+            in
+            if not (arg.tuple |> Tuple.is_unnamed 2) then
+              error "expected 2 unnamed fields" ();
+            let s, idx = arg.tuple |> Tuple.unwrap_unnamed2 in
+            let s =
+              s.value |> Value.expect_string
+              |> Option.unwrap_or_else (error "expected string as first arg")
+            in
+            let idx =
+              idx.value |> Value.expect_int32
+              |> Option.unwrap_or_else (error "expected idx be int32")
+            in
+            V_Char
+              (String.get s (Int32.to_int idx)
+              |> Option.unwrap_or_else (error "oob"))
+            |> Value.inferred ~span:(Span.of_ocaml __POS__)))
+  in
   let length =
     native_fn
       ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
@@ -171,7 +202,7 @@ let mod_string =
                 ());
             V_Unit |> Value.inferred ~span:(Span.of_ocaml __POS__)))
   in
-  [ length; substring; iter ]
+  [ get_at; length; substring; iter ]
 
 let sys =
   let chdir =

@@ -2,6 +2,9 @@ module:
 const length = (s :: string) -> int32 => cfg_if (
     | target.name == "interpreter" => (@native "string.length") s
 );
+const get_at = (s :: string, idx :: int32) -> char => cfg_if (
+    | target.name == "interpreter" => (@native "string.get_at") (s, idx)
+);
 const substring = (s :: string, start :: int32, len :: int32) -> string => cfg_if (
     | target.name == "interpreter" => (@native "string.substring") (s, start, len)
 );
