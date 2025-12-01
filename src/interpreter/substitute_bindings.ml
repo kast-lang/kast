@@ -65,7 +65,7 @@ module Impl = struct
               ty = sub_ty ~state ty;
             }
           |> shaped
-      | V_Ty ty -> original_value (* TODO V_Ty (sub_ty ~state ty) |> shaped *)
+      | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
       | V_Fn { ty; fn } -> V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped
       | V_Generic { id = _; fn = _ } -> original_value
       | V_NativeFn { id; name; ty; impl } ->
@@ -260,3 +260,9 @@ let sub_value ~span ~state value =
 let sub_ty ~span ~state ty =
   let result = with_cache ~span Impl.sub_ty ~state ty in
   result
+
+type mode =
+  | None
+  | TyOnly
+  | FnOnly
+  | Full

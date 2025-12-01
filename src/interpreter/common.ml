@@ -105,8 +105,8 @@ and await_compiled_ty_expr ~span (expr : Expr.ty) : Expr.Ty.Shape.t =
     Effect.perform (AwaitCompiledTyExpr expr);
   expr.compiled_shape |> Option.get
 
-and call_untyped_fn ~(sub_ty : bool) (span : span) (state : state)
-    (fn : Types.value_untyped_fn) (arg : value) : value =
+and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
+    (state : state) (fn : Types.value_untyped_fn) (arg : value) : value =
   with_return (fun { return } ->
       Log.trace (fun log -> log "Started call at %a" Span.print span);
       let def =
@@ -132,15 +132,23 @@ and call_untyped_fn ~(sub_ty : bool) (span : span) (state : state)
           log "evaled call (before sub) at %a = %a" Span.print span Value.print
             result);
       let result =
-        if sub_ty then
-          Value.inferred ~span
-            (V_Ty
-               (match result |> Value.expect_ty with
-               | Some ty -> Substitute_bindings.sub_ty ~span ~state:new_state ty
-               | None ->
-                   Error.error span "Expected ty, got smth else";
-                   Ty.inferred ~span T_Error))
-        else Substitute_bindings.sub_value ~span ~state:new_state result
+        match sub_mode with
+        | None -> result
+        | Full -> Substitute_bindings.sub_value ~span ~state:new_state result
+        | FnOnly -> (
+            match result |> Value.expect_fn with
+            | Some f ->
+                Substitute_bindings.sub_value ~span ~state:new_state result
+            | None -> result)
+        | TyOnly ->
+            Value.inferred ~span
+              (V_Ty
+                 (match result |> Value.expect_ty with
+                 | Some ty ->
+                     Substitute_bindings.sub_ty ~span ~state:new_state ty
+                 | None ->
+                     Error.error span "Expected ty, got smth else";
+                     Ty.inferred ~span T_Error))
       in
       Log.trace (fun log ->
           log "evaled call (after sub) at %a = %a" Span.print span Value.print
@@ -179,7 +187,7 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
           fork (fun () ->
               try
                 let evaluated_result =
-                  call_untyped_fn ~sub_ty:false span state fn arg
+                  call_untyped_fn ~sub_mode:FnOnly span state fn arg
                 in
                 Log.trace (fun log ->
                     log
@@ -221,7 +229,7 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
 
 and call (span : span) (state : state) (f : value) (arg : value) : value =
   match f |> Value.await_inferred with
-  | V_Fn { fn; ty = _ } -> call_untyped_fn ~sub_ty:false span state fn arg
+  | V_Fn { fn; ty = _ } -> call_untyped_fn ~sub_mode:None span state fn arg
   | V_NativeFn f -> f.impl ~caller:span ~state arg
   | V_Error -> V_Error |> Value.inferred ~span
   | _ ->
