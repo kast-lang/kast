@@ -7,6 +7,8 @@ type natives = Types.natives
 type t = natives
 type _ Effect.t += Input : string -> string Effect.t
 
+let argv : string array ref = ref [||]
+
 let plain_types : (string * Ty.Shape.t) list =
   [
     ("unit", T_Unit);
@@ -219,7 +221,34 @@ let sys =
             Error.error caller "sys.chdir expected string arg";
             V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
   in
-  [ chdir ]
+  let argc =
+    native_fn
+      ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Unit)
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+      "sys.argc"
+      (fun ~caller:_ ~state:_ _arg : value ->
+        V_Int32 (!argv |> Array.length |> Int32.of_int)
+        |> Value.inferred ~span:(Span.of_ocaml __POS__))
+  in
+  let argv_at =
+    native_fn
+      ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int32)
+      ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+      "sys.argv_at"
+      (fun ~caller ~state:_ arg : value ->
+        match arg |> Value.await_inferred with
+        | V_Int32 idx -> (
+            match Array.get_opt !argv (Int32.to_int idx) with
+            | None ->
+                Error.error caller "sys.argv_at out of bounds";
+                V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__)
+            | Some arg ->
+                V_String arg |> Value.inferred ~span:(Span.of_ocaml __POS__))
+        | _ ->
+            Error.error caller "sys.argv_at expected int32 arg";
+            V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
+  in
+  [ chdir; argc; argv_at ]
 
 let fs =
   let read_file =

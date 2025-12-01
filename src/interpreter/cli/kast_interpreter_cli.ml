@@ -11,8 +11,9 @@ module Args = struct
 
   let parse : string list -> args = function
     | [] -> { path = None }
-    | [ path ] -> { path = Some (Uri.file path) }
-    | first :: _rest -> fail "Unexpected arg %S" first
+    | path :: _rest as argv ->
+        Kast_interpreter.Natives.argv := argv |> Array.of_list;
+        { path = Some (Uri.file path) }
 end
 
 type evaled = {
