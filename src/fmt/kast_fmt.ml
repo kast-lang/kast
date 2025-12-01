@@ -43,7 +43,10 @@ let format : formatter -> Parser.result -> unit =
 
   let print ?(is_comment = false) (span : span) f value =
     if is_comment || !prev_was_comment then
-      if !prev_span.finish.line = span.start.line then printf " "
+      if
+        !prev_span.finish.line = span.start.line
+        && !prev_span.finish <> Position.beginning
+      then printf " "
       else print_newline_if_not_yet ();
     f fmt value;
     printed_newline := false;
@@ -56,12 +59,12 @@ let format : formatter -> Parser.result -> unit =
     let print_whitespace (s : string) =
       s
       |> String.iter (function
-           | '\n' -> print_newline ()
-           | '\t' ->
-               print_indent 1;
-               current_indent := !current_indent + 1
-           | '\\' -> current_indent := !current_indent - 1
-           | c -> printf "%c" c)
+        | '\n' -> print_newline ()
+        | '\t' ->
+            print_indent 1;
+            current_indent := !current_indent + 1
+        | '\\' -> current_indent := !current_indent - 1
+        | c -> printf "%c" c)
     in
     let rec print_ast ~parent (ast : Ast.t) =
       match ast.shape with
@@ -69,8 +72,7 @@ let format : formatter -> Parser.result -> unit =
       | Simple { comments_before; token } ->
           comments_before
           |> List.iter (fun (comment : Token.comment) ->
-                 print ~is_comment:true comment.span String.print
-                   comment.shape.raw);
+              print ~is_comment:true comment.span String.print comment.shape.raw);
           print token.span String.print (Token.raw token |> Option.get)
       | Complex { rule; root; _ } ->
           let wrapped =
@@ -87,9 +89,9 @@ let format : formatter -> Parser.result -> unit =
           let pos = ref (List.head tokens).span.start in
           tokens
           |> List.iter (fun (token : Token.t) ->
-                 if token.span.start > !pos then printf " ";
-                 print token.span String.print (Token.raw token |> Option.get);
-                 pos := token.span.finish);
+              if token.span.start > !pos then printf " ";
+              print token.span String.print (Token.raw token |> Option.get);
+              pos := token.span.finish);
           match value_after with
           | None -> ()
           | Some value ->
@@ -145,5 +147,5 @@ let format : formatter -> Parser.result -> unit =
   | None -> ());
   trailing_comments
   |> List.iter (fun (comment : Token.comment) ->
-         print ~is_comment:true comment.span String.print comment.shape.raw);
+      print ~is_comment:true comment.span String.print comment.shape.raw);
   print_newline ()
