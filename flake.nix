@@ -82,12 +82,16 @@
         devShells.default = pkgs.mkShell {
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
+            # (pkgs.writeShellScriptBin "kast" ''
+            #   [ -f kast.log ] && rm kast.log
+            #   tee >(sed -u 's/^/IN /' >> kast.log) \
+            #     | systemd-run --user --scope -p MemoryMax=1G \
+            #         rlwrap dune exec kast -- "$@" \
+            #     | tee >(sed -u 's/^/OUT /' >> kast.log)
+            # '')
             (pkgs.writeShellScriptBin "kast" ''
-              [ -f kast.log ] && rm kast.log
-              tee >(sed -u 's/^/IN /' >> kast.log) \
-                | systemd-run --user --scope -p MemoryMax=1G \
-                    rlwrap dune exec kast -- "$@" \
-                | tee >(sed -u 's/^/OUT /' >> kast.log)
+              systemd-run --user --scope -p MemoryMax=1G \
+                rlwrap dune exec kast -- "$@"
             '')
             # You can add packages from nixpkgs here
             just # look at .justfile
