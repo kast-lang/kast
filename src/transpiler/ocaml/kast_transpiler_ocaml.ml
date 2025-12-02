@@ -50,6 +50,7 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
       | Types.V_Unit -> OcamlAst.unit_value
       | Types.V_Bool value -> OcamlAst.Bool value
       | Types.V_Int32 value -> OcamlAst.Int32 value
+      | Types.V_Int64 _ -> failwith __LOC__
       | Types.V_Char value -> OcamlAst.Char value
       | Types.V_String value -> OcamlAst.String value
       | Types.V_Tuple tuple ->

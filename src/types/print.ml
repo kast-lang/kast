@@ -16,6 +16,7 @@ module Impl = struct
         fprintf fmt "type ";
         print_ty fmt ty
     | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
+    | V_Int64 value -> fprintf fmt "@{<italic>%s@}" (Int64.to_string value)
     | V_Char value -> fprintf fmt "@{<green>%C@}" value
     | V_String value -> fprintf fmt "@{<green>%S@}" value
     | V_Tuple { tuple } ->
@@ -49,6 +50,7 @@ module Impl = struct
     | T_Unit -> fprintf fmt "()"
     | T_Bool -> fprintf fmt "bool"
     | T_Int32 -> fprintf fmt "int32"
+    | T_Int64 -> fprintf fmt "int64"
     | T_Char -> fprintf fmt "char"
     | T_String -> fprintf fmt "string"
     | T_Variant { variants } ->

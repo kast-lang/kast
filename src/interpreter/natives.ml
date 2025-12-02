@@ -13,6 +13,7 @@ let plain_types : (string * Ty.Shape.t) list =
   [
     ("unit", T_Unit);
     ("int32", T_Int32);
+    ("int64", T_Int64);
     ("string", T_String);
     ("char", T_Char);
     ("type", T_Ty);
@@ -306,7 +307,8 @@ let natives : natives =
             Error.error caller "cmp op %S expected a tuple as arg" name;
             V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
   in
-  let bin_op name (op : int32 -> int32 -> int32) =
+  let bin_op name (op_int32 : int32 -> int32 -> int32)
+      (op_int64 : int64 -> int64 -> int64) =
     native_fn
       ~arg:
         (Ty.inferred ~span:(Span.of_ocaml __POS__)
@@ -337,20 +339,20 @@ let natives : natives =
         | V_Tuple { tuple } ->
             with_return (fun { return } : value ->
                 let a, b = tuple |> Tuple.unwrap_unnamed2 in
-                let a =
-                  a.value |> Value.expect_int32
-                  |> Option.unwrap_or_else (fun () ->
+                let result : Value.shape =
+                  match
+                    ( a.value |> Value.await_inferred,
+                      b.value |> Value.await_inferred )
+                  with
+                  | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
+                  | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
+                  | V_String a, V_String b ->
+                      V_String (a ^ b) (* TODO only for + *)
+                  | _ ->
                       return
-                        (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__)))
+                        (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
                 in
-                let b =
-                  b.value |> Value.expect_int32
-                  |> Option.unwrap_or_else (fun () ->
-                      return
-                        (V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__)))
-                in
-                let result : int32 = op a b in
-                V_Int32 result |> Value.inferred ~span:(Span.of_ocaml __POS__))
+                result |> Value.inferred ~span:(Span.of_ocaml __POS__))
         | _ ->
             Error.error caller "bin op %S expected a tuple as arg" name;
             V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__))
@@ -451,16 +453,46 @@ let natives : natives =
           | _ ->
               Error.error caller "string_to_int32 expected a string";
               V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
+      native_fn
+        ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int64)
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+        "int64_to_string"
+        (fun ~caller ~state:_ arg ->
+          match arg |> Value.await_inferred with
+          | V_Int64 value ->
+              V_String (Int64.to_string value)
+              |> Value.inferred ~span:(Span.of_ocaml __POS__)
+          | _ ->
+              Error.error caller "int64_to_string expected an int64";
+              V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
+      native_fn
+        ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_String)
+        ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Int64)
+        "string_to_int64"
+        (fun ~caller ~state:_ arg ->
+          match arg |> Value.await_inferred with
+          | V_String s ->
+              let shape : Value.shape =
+                match Int64.of_string_opt s with
+                | Some value -> V_Int64 value
+                | None ->
+                    Error.error caller "could not parse int64 %S" s;
+                    V_Error
+              in
+              shape |> Value.inferred ~span:(Span.of_ocaml __POS__)
+          | _ ->
+              Error.error caller "string_to_int64 expected a string";
+              V_Error |> Value.inferred ~span:(Span.of_ocaml __POS__));
       cmp_fn "<" ( < );
       cmp_fn "<=" ( <= );
       cmp_fn "==" ( = );
       cmp_fn "!=" ( <> );
       cmp_fn ">=" ( >= );
       cmp_fn ">" ( > );
-      bin_op "+" Int32.add;
-      bin_op "-" Int32.sub;
-      bin_op "*" Int32.mul;
-      bin_op "/" Int32.div;
+      bin_op "+" Int32.add Int64.add;
+      bin_op "-" Int32.sub Int64.sub;
+      bin_op "*" Int32.mul Int64.mul;
+      bin_op "/" Int32.div Int64.div;
       native_fn
         ~arg:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_Ty)
         ~result:(Ty.inferred ~span:(Span.of_ocaml __POS__) T_ContextTy)

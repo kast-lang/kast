@@ -36,8 +36,8 @@ module Impl = struct
     let shaped shape = Value.inferred ~span shape in
     let result =
       match shape with
-      | V_Unit | V_Bool _ | V_Int32 _ | V_Char _ | V_String _ | V_Ast _
-      | V_CompilerScope _ | V_Error ->
+      | V_Unit | V_Bool _ | V_Int32 _ | V_Int64 _ | V_Char _ | V_String _
+      | V_Ast _ | V_CompilerScope _ | V_Error ->
           original_value
       | V_Tuple { tuple } ->
           V_Tuple
@@ -106,8 +106,8 @@ module Impl = struct
     in
     let result =
       match shape with
-      | T_Unit | T_Bool | T_Int32 | T_String | T_Char | T_Target | T_ContextTy
-      | T_CompilerScope | T_Error | T_Ast | T_Ty ->
+      | T_Unit | T_Bool | T_Int32 | T_Int64 | T_String | T_Char | T_Target
+      | T_ContextTy | T_CompilerScope | T_Error | T_Ast | T_Ty ->
           original_ty
       | T_Tuple { tuple } ->
           T_Tuple

@@ -22,6 +22,8 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_Bool, _ -> fail ()
   | T_Int32, T_Int32 -> T_Int32
   | T_Int32, _ -> fail ()
+  | T_Int64, T_Int64 -> T_Int64
+  | T_Int64, _ -> fail ()
   | T_Char, T_Char -> T_Char
   | T_Char, _ -> fail ()
   | T_String, T_String -> T_String
@@ -104,6 +106,8 @@ and unite_value_shape : value_shape Inference.unite =
   | V_Bool _, _ -> fail ()
   | V_Int32 a, V_Int32 b when a = b -> V_Int32 a
   | V_Int32 _, _ -> fail ()
+  | V_Int64 a, V_Int64 b when a = b -> V_Int64 a
+  | V_Int64 _, _ -> fail ()
   | V_Char a, V_Char b when a = b -> V_Char a
   | V_Char _, _ -> fail ()
   | V_String a, V_String b when a = b -> V_String a
@@ -166,6 +170,7 @@ and infer_value_shape : span:span -> ty_shape -> value_shape option =
   | T_Unit -> Some V_Unit
   | T_Bool -> None
   | T_Int32 -> None
+  | T_Int64 -> None
   | T_Char -> None
   | T_String -> None
   | T_Variant _ -> None
@@ -221,6 +226,7 @@ and ty_of_value_shape : value_shape -> ty =
   | V_Unit -> inferred_ty ~span T_Unit
   | V_Bool _ -> inferred_ty ~span T_Bool
   | V_Int32 _ -> inferred_ty ~span T_Int32
+  | V_Int64 _ -> inferred_ty ~span T_Int64
   | V_Char _ -> inferred_ty ~span T_Char
   | V_String _ -> inferred_ty ~span T_String
   | V_Tuple { tuple } ->
