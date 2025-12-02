@@ -68,8 +68,9 @@ let unite_data ~span:_ a b =
     |> List.sort_uniq (fun a b -> if a < b then -1 else if a > b then 1 else 0);
   result
 
-let unite a b =
-  { var = Inference.Var.unite unite_data ~span:(Span.fake "_") a.var b.var }
+let unite =
+  let span = Span.fake "_" in
+  fun a b -> { var = Inference.Var.unite unite_data ~span a.var b.var }
 
 let add_reference span label =
   let reference = create_reference span (get_name label) in

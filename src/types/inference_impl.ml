@@ -208,9 +208,7 @@ and new_not_inferred_value ~span : value =
   |> Inference.Var.once_inferred (fun ty_shape ->
       match infer_value_shape ~span ty_shape with
       | Some shape ->
-          var
-          |> Inference.Var.infer_as unite_value_shape shape
-               ~span:(Span.fake "<infer_value_based_on_ty>")
+          var |> Inference.Var.infer_as unite_value_shape shape ~span
       | None -> ());
   { var; ty }
 
@@ -220,35 +218,35 @@ and new_not_inferred_value_of_ty ~span ty : value =
   value
 
 and ty_of_value_shape : value_shape -> ty =
- fun shape ->
   let span = Span.fake "<ty_of_shape>" in
-  match shape with
-  | V_Unit -> inferred_ty ~span T_Unit
-  | V_Bool _ -> inferred_ty ~span T_Bool
-  | V_Int32 _ -> inferred_ty ~span T_Int32
-  | V_Int64 _ -> inferred_ty ~span T_Int64
-  | V_Char _ -> inferred_ty ~span T_Char
-  | V_String _ -> inferred_ty ~span T_String
-  | V_Tuple { tuple } ->
-      inferred_ty ~span
-      <| T_Tuple
-           {
-             tuple =
-               Tuple.map
-                 (fun (field : value_tuple_field) -> field.ty_field)
-                 tuple;
-           }
-  | V_Variant { ty; _ } -> ty
-  | V_Ty _ -> inferred_ty ~span T_Ty
-  | V_Fn { ty; _ } -> inferred_ty ~span <| T_Fn ty
-  | V_Generic { id; fn } -> inferred_ty ~span <| T_Generic { def = fn.def }
-  | V_NativeFn { id = _; ty; name = _; impl = _ } ->
-      inferred_ty ~span <| T_Fn ty
-  | V_Ast _ -> inferred_ty ~span T_Ast
-  | V_UnwindToken { result_ty; id = _ } ->
-      inferred_ty ~span <| T_UnwindToken { result = result_ty }
-  | V_Target _ -> inferred_ty ~span T_Target
-  | V_ContextTy _ -> inferred_ty ~span T_ContextTy
-  | V_Binding binding -> binding.ty
-  | V_CompilerScope _ -> inferred_ty ~span T_CompilerScope
-  | V_Error -> inferred_ty ~span T_Error
+  fun shape ->
+    match shape with
+    | V_Unit -> inferred_ty ~span T_Unit
+    | V_Bool _ -> inferred_ty ~span T_Bool
+    | V_Int32 _ -> inferred_ty ~span T_Int32
+    | V_Int64 _ -> inferred_ty ~span T_Int64
+    | V_Char _ -> inferred_ty ~span T_Char
+    | V_String _ -> inferred_ty ~span T_String
+    | V_Tuple { tuple } ->
+        inferred_ty ~span
+        <| T_Tuple
+             {
+               tuple =
+                 Tuple.map
+                   (fun (field : value_tuple_field) -> field.ty_field)
+                   tuple;
+             }
+    | V_Variant { ty; _ } -> ty
+    | V_Ty _ -> inferred_ty ~span T_Ty
+    | V_Fn { ty; _ } -> inferred_ty ~span <| T_Fn ty
+    | V_Generic { id; fn } -> inferred_ty ~span <| T_Generic { def = fn.def }
+    | V_NativeFn { id = _; ty; name = _; impl = _ } ->
+        inferred_ty ~span <| T_Fn ty
+    | V_Ast _ -> inferred_ty ~span T_Ast
+    | V_UnwindToken { result_ty; id = _ } ->
+        inferred_ty ~span <| T_UnwindToken { result = result_ty }
+    | V_Target _ -> inferred_ty ~span T_Target
+    | V_ContextTy _ -> inferred_ty ~span T_ContextTy
+    | V_Binding binding -> binding.ty
+    | V_CompilerScope _ -> inferred_ty ~span T_CompilerScope
+    | V_Error -> inferred_ty ~span T_Error
