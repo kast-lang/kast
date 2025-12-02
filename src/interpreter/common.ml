@@ -520,21 +520,22 @@ and find_target_dependent_branch :
     Types.expr_target_dependent_branch list ->
     Types.value_target ->
     Types.expr_target_dependent_branch option =
- fun state branches target ->
-  branches
-  |> List.find_map (fun (branch : Types.expr_target_dependent_branch) ->
-      let scope_with_target =
-        Scope.init ~recursive:false ~parent:(Some state.scope)
-      in
-      scope_with_target
-      |> Scope.add_local (Span.of_ocaml __POS__) Types.target_symbol
-           (V_Target target |> Value.inferred ~span:(Span.of_ocaml __POS__));
-      let state_with_target = { state with scope = scope_with_target } in
-      match eval state_with_target branch.cond |> Value.expect_bool with
-      | None ->
-          Error.error branch.cond.data.span "Cond didn't evaluate to a bool";
-          None
-      | Some cond -> if cond then Some branch else None)
+  let span = Span.of_ocaml __POS__ in
+  fun state branches target ->
+    branches
+    |> List.find_map (fun (branch : Types.expr_target_dependent_branch) ->
+        let scope_with_target =
+          Scope.init ~recursive:false ~parent:(Some state.scope)
+        in
+        scope_with_target
+        |> Scope.add_local span Types.target_symbol
+             (V_Target target |> Value.inferred ~span);
+        let state_with_target = { state with scope = scope_with_target } in
+        match eval state_with_target branch.cond |> Value.expect_bool with
+        | None ->
+            Error.error branch.cond.data.span "Cond didn't evaluate to a bool";
+            None
+        | Some cond -> if cond then Some branch else None)
 
 and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
  fun ~span state expr ->
