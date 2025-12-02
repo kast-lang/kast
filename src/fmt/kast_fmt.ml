@@ -42,6 +42,7 @@ let format : formatter -> Parser.result -> unit =
   let prev_was_comment : bool ref = ref false in
 
   let print ?(is_comment = false) (span : span) f value =
+    if span.start.line > !prev_span.finish.line + 1 then print_newline ();
     if is_comment || !prev_was_comment then
       if
         !prev_span.finish.line = span.start.line
