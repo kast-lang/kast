@@ -7,6 +7,10 @@
 @syntax "core:impl syntax" 1 wrap never = "impl" " " "syntax" " " name " " "=" " " impl;
 @syntax "core:assign" 2 wrap never = assignee " " "=" " " value;
 @syntax "core:const" 2 wrap never = "const" " " pattern " " "=" " " value;
+@syntax "add_assign" 2 wrap never = _ " " "+=" " " _;
+@syntax "sub_assign" 2 wrap never = _ " " "-=" " " _;
+@syntax "add_assign" 2 wrap never = _ " " "*=" " " _;
+@syntax "add_assign" 2 wrap never = _ " " "/=" " " _;
 @syntax "core:let" 3 wrap never = "let" " " pattern;
 @syntax "let rec" 3 wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 @syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
@@ -21,6 +25,7 @@
 @syntax "if_without_else" 7.5 wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 @syntax "core:match" 7.5 wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
+@syntax "while" 7.5 wrap never = "while" " " cond " " "do" " " body;
 
 @syntax "core:type ascribe" 8 wrap never = expr " " "::" " " type;
 @syntax "core:fn_type" 8.5 wrap never = arg " " context=("with" " " _ " ")? "->" " " result;
@@ -38,6 +43,7 @@
 @syntax "<=" 14 wrap never = _ " " "<=" " " _;
 @syntax "==" 14 wrap never = _ " " "==" " " _;
 @syntax "!=" 14 wrap never = _ " " "!=" " " _;
+
 @syntax ">=" 14 wrap never = _ " " ">=" " " _;
 @syntax ">" 14 wrap never = _ " " ">" " " _;
 @syntax "+" 15 wrap if_any = <- _ " "/"\n" "+" " " _;

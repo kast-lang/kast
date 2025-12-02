@@ -60,3 +60,20 @@ impl syntax (let rec pattern = value) = `(
 impl syntax (if cond then stmt) = `(
     if $cond then $stmt else ()
 );
+impl syntax (a += b) = `(
+    $a = $a + $b
+);
+impl syntax (a -= b) = `(
+    $a = $a - $b
+);
+impl syntax (a *= b) = `(
+    $a = $a * $b
+);
+impl syntax (a /= b) = `(
+    $a = $a / $b
+);
+impl syntax (while cond do body) = `(
+    loop (
+        if $cond then $body else break
+    )
+);
