@@ -10,7 +10,7 @@ let log_error = Log.trace
 type global_state = {
   workspaces : workspace_state list;
   mutable vfs : string UriMap.t;
-  import_cache : Compiler.import_cache;
+  mutable import_cache : Compiler.import_cache;
   mutable diagnostics : Lsp.Types.Diagnostic.t list UriMap.t;
   root_of_included : (Uri.t, Uri.t) Hashtbl.t;
 }
@@ -126,6 +126,8 @@ let workspace_file (root : Uri.t) (path : string) =
 
 let process_workspace (global : global_state) (workspace : workspace_state) =
   (* workspace.files <- UriMap.empty; *)
+  (* TODO make imports immutable *)
+  global.import_cache <- Compiler.init_import_cache ();
   try
     let handle_processed uri file_state =
       Log.trace (fun log -> log "File processed %a" Uri.print uri);
