@@ -2,3 +2,6 @@
 /_build/
 /kast.opam
 /*.log
+/perf.data
+/perf.data.old
+/data.perf
