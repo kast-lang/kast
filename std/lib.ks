@@ -15,6 +15,7 @@ const dbg = include "./dbg.ks";
 const op :: _ = include "./op.ks";
 const cmp :: _ = include "./cmp.ks";
 const io :: _ = include "./io/_mod.ks";
+const Char = include "./char.ks";
 const String = include "./string.ks";
 const path = include "./path.ks";
 const fs = include "./fs/_mod.ks";

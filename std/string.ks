@@ -59,3 +59,50 @@ const lines = (s :: string, f :: string -> ()) -> () => (
     );
     endline (length s);
 );
+const split = (s :: string, sep :: char, f :: string -> ()) => (
+    let start = 0;
+    let perform_split = i => (
+        let part = substring (s, start, i - start);
+        f part;
+        start = i + 1;
+    );
+    iteri (
+        s,
+        (i, c) => (
+            if c == sep then (
+                perform_split i
+            ) else ()
+        ),
+    );
+    perform_split (length s);
+);
+const split_once = (s :: string, sep :: char) -> (string, string) => (
+    unwindable block (
+        iteri (
+            s,
+            (i, c) => (
+                if c == sep then (
+                    unwind block (
+                        substring (s, 0, i),
+                        substring (s, i + 1, length s - i - 1)
+                    )
+                );
+            ),
+        );
+        # TODO panic
+        _
+    )
+);
+const trim_matches = (s :: string, f :: char -> bool) -> string => (
+    let len = length s;
+    let start = 0;
+    while start < len and get_at (s, start) |> f do (
+        start += 1;
+    );
+    let end = len;
+    while end > start and get_at (s, end - 1) |> f do (
+        end -= 1;
+    );
+    substring (s, start, end - start)
+);
+const trim = s => trim_matches (s, Char.is_whitespace);
