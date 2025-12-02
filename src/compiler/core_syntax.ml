@@ -1588,7 +1588,9 @@ let target_dependent : core_syntax =
                   None)
         in
         match kind with
-        | Expr -> E_TargetDependent { branches } |> init_expr span C.state
+        | Expr ->
+            E_TargetDependent { branches; interpreter_branch = None }
+            |> init_expr span C.state
         | _ ->
             error span "target dependent must be expr";
             init_error span C.state kind);

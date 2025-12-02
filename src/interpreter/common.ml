@@ -491,15 +491,23 @@ and eval : state -> expr -> value =
           | None ->
               Error.error expr.data.span "Context unavailable";
               V_Error |> Value.inferred ~span)
-      | E_TargetDependent { branches } ->
+      | E_TargetDependent ({ branches; interpreter_branch } as target_dep_expr)
+        ->
           with_return (fun { return } ->
               let chosen_branch =
-                find_target_dependent_branch state branches
-                  { name = "interpreter" }
-                |> Option.unwrap_or_else (fun () ->
-                    Error.error expr.data.span
-                      "No target dependent branch matched";
-                    return (V_Error |> Value.inferred ~span : value))
+                match interpreter_branch with
+                | Some computed -> computed
+                | None ->
+                    let computed =
+                      find_target_dependent_branch state branches
+                        { name = "interpreter" }
+                      |> Option.unwrap_or_else (fun () ->
+                          Error.error expr.data.span
+                            "No target dependent branch matched";
+                          return (V_Error |> Value.inferred ~span : value))
+                    in
+                    target_dep_expr.interpreter_branch <- Some computed;
+                    computed
               in
               eval state chosen_branch.body)
     in

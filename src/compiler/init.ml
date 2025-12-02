@@ -229,7 +229,7 @@ and init_expr :
                (Ty.inferred ~span:token.data.span
                <| T_UnwindToken { result = body.data.ty });
           body.data.ty
-      | E_TargetDependent { branches } ->
+      | E_TargetDependent { branches; interpreter_branch = _ } ->
           let result = Ty.new_not_inferred ~span in
           branches
           |> List.iter

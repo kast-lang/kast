@@ -110,7 +110,7 @@ let inner_compiled_with_handler =
       | E_Unwind { token; value } ->
           handler.handle Expr token;
           handler.handle Expr value
-      | E_TargetDependent { branches } ->
+      | E_TargetDependent { branches; interpreter_branch = _ } ->
           branches
           |> List.iter
                (fun

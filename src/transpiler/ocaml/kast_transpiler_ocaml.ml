@@ -233,7 +233,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_Loop _ -> failwith __LOC__
   | Types.E_Unwindable _ -> failwith __LOC__
   | Types.E_Unwind _ -> failwith __LOC__
-  | Types.E_TargetDependent { branches } ->
+  | Types.E_TargetDependent { branches; interpreter_branch = _ } ->
       let branch =
         Kast_interpreter.find_target_dependent_branch (interpreter ()) branches
           { name = "ocaml" }

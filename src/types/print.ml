@@ -252,7 +252,7 @@ module Impl = struct
         fprintf fmt
           "@{<magenta>current_context@} (@;<0 2>@[<v>context_type = %a,@]@ )"
           print_context_type context_ty
-    | E_TargetDependent { branches } ->
+    | E_TargetDependent { branches; interpreter_branch = _ } ->
         fprintf fmt "@{<magenta>target dependent@} (";
         branches
         |> List.iter (fun branch ->

@@ -235,7 +235,10 @@ module rec TypesImpl : sig
     value : expr;
   }
 
-  and expr_target_dependent = { branches : expr_target_dependent_branch list }
+  and expr_target_dependent = {
+    branches : expr_target_dependent_branch list;
+    mutable interpreter_branch : expr_target_dependent_branch option;
+  }
 
   and expr_target_dependent_branch = {
     cond : expr;
@@ -650,7 +653,10 @@ end = struct
     value : expr;
   }
 
-  and expr_target_dependent = { branches : expr_target_dependent_branch list }
+  and expr_target_dependent = {
+    branches : expr_target_dependent_branch list;
+    mutable interpreter_branch : expr_target_dependent_branch option;
+  }
 
   and expr_target_dependent_branch = {
     cond : expr;
