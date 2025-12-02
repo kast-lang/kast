@@ -226,6 +226,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
           then_case = state |> transpile_expr then_case;
           else_case = state |> transpile_expr else_case;
         }
+  | Types.E_And _ | Types.E_Or _ -> failwith __LOC__
   | Types.E_Match _ -> failwith __LOC__
   | Types.E_QuoteAst _ -> fail "Tried to compile quote ast"
   | Types.E_Loop _ -> failwith __LOC__

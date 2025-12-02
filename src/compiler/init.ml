@@ -198,6 +198,14 @@ and init_expr :
           else_case.data.ty
           |> Inference.Ty.expect_inferred_as ~span:else_case.data.span ty;
           ty
+      | E_And { lhs; rhs } | E_Or { lhs; rhs } ->
+          lhs.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:lhs.data.span
+               (Ty.inferred ~span:lhs.data.span T_Bool);
+          rhs.data.ty
+          |> Inference.Ty.expect_inferred_as ~span:lhs.data.span
+               (Ty.inferred ~span:rhs.data.span T_Bool);
+          T_Bool |> Ty.inferred ~span
       | E_Match { value; branches } ->
           let result_ty = Ty.new_not_inferred ~span in
           let value_ty = value.data.ty in

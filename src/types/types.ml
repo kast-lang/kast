@@ -247,6 +247,16 @@ module rec TypesImpl : sig
 
   and expr_current_context = { context_ty : value_context_ty }
 
+  and expr_and = {
+    lhs : expr;
+    rhs : expr;
+  }
+
+  and expr_or = {
+    lhs : expr;
+    rhs : expr;
+  }
+
   and expr_shape =
     | E_Constant of value
     | E_Binding of binding
@@ -266,6 +276,8 @@ module rec TypesImpl : sig
     | E_Field of expr_field
     | E_UseDotStar of expr_use_dot_star
     | E_If of expr_if
+    | E_And of expr_and
+    | E_Or of expr_or
     | E_Match of expr_match
     | E_QuoteAst of expr_quote_ast
     | E_Loop of expr_loop
@@ -648,6 +660,16 @@ end = struct
 
   and expr_current_context = { context_ty : value_context_ty }
 
+  and expr_and = {
+    lhs : expr;
+    rhs : expr;
+  }
+
+  and expr_or = {
+    lhs : expr;
+    rhs : expr;
+  }
+
   and expr_shape =
     | E_Constant of value
     | E_Binding of binding
@@ -667,6 +689,8 @@ end = struct
     | E_Field of expr_field
     | E_UseDotStar of expr_use_dot_star
     | E_If of expr_if
+    | E_And of expr_and
+    | E_Or of expr_or
     | E_Match of expr_match
     | E_QuoteAst of expr_quote_ast
     | E_Loop of expr_loop

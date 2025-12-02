@@ -1928,6 +1928,56 @@ let variant : core_syntax =
       -> variant_impl (module C) kind ast group);
   }
 
+let and_ : core_syntax =
+  {
+    name = "and";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let lhs, rhs =
+          children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
+        in
+        match kind with
+        | Expr ->
+            E_And { lhs = C.compile Expr lhs; rhs = C.compile Expr rhs }
+            |> init_expr span C.state
+        | _ ->
+            error span "and must be expr";
+            init_error span C.state kind);
+  }
+
+let or_ : core_syntax =
+  {
+    name = "or";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let lhs, rhs =
+          children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
+        in
+        match kind with
+        | Expr ->
+            E_Or { lhs = C.compile Expr lhs; rhs = C.compile Expr rhs }
+            |> init_expr span C.state
+        | _ ->
+            error span "and must be expr";
+            init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -1976,6 +2026,8 @@ let core =
     variant_without_value;
     leading_union;
     union;
+    and_;
+    or_;
   ]
 
 let all : core_syntax StringMap.t =

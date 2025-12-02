@@ -136,6 +136,8 @@ module Impl = struct
       | E_Field _ -> "Field"
       | E_UseDotStar _ -> "UseDotStar"
       | E_If _ -> "If"
+      | E_And _ -> "And"
+      | E_Or _ -> "Or"
       | E_Match _ -> "Match"
       | E_Error -> "Error"
       | E_Loop _ -> "Loop"
@@ -213,6 +215,14 @@ module Impl = struct
              [
                ("cond", cond); ("then_case", then_case); ("else_case", else_case);
              ])
+    | E_And { lhs; rhs } ->
+        fprintf fmt
+          "@{<magenta>and@} (@;<0 2>@[<v>lhs = %a,@]@;<0 2>@[<v>rhs = %a@]@ )"
+          print_expr lhs print_expr rhs
+    | E_Or { lhs; rhs } ->
+        fprintf fmt
+          "@{<magenta>or@} (@;<0 2>@[<v>lhs = %a,@]@;<0 2>@[<v>rhs = %a@]@ )"
+          print_expr lhs print_expr rhs
     | E_Match { value; branches } ->
         fprintf fmt
           "@{<magenta>match@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>branches = %a@]@ )"

@@ -88,6 +88,9 @@ let inner_compiled_with_handler =
           handler.handle Expr cond;
           handler.handle Expr then_case;
           handler.handle Expr else_case
+      | E_And { lhs; rhs } | E_Or { lhs; rhs } ->
+          handler.handle Expr lhs;
+          handler.handle Expr rhs
       | E_Match { value; branches } ->
           handler.handle Expr value;
           branches

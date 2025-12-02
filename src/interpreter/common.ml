@@ -402,6 +402,30 @@ and eval : state -> expr -> value =
               Error.error cond_expr.data.span "if cond must be bool, got %a"
                 Value.print cond;
               V_Error |> Value.inferred ~span)
+      | E_And { lhs; rhs } -> (
+          match eval state lhs |> Value.expect_bool with
+          | None ->
+              Error.error lhs.data.span "lhs of and evaled not to a bool";
+              V_Error |> Value.inferred ~span
+          | Some true -> (
+              match eval state rhs |> Value.expect_bool with
+              | None ->
+                  Error.error lhs.data.span "rhs of and evaled not to a bool";
+                  V_Error |> Value.inferred ~span
+              | Some rhs -> V_Bool rhs |> Value.inferred ~span)
+          | Some false -> V_Bool false |> Value.inferred ~span)
+      | E_Or { lhs; rhs } -> (
+          match eval state lhs |> Value.expect_bool with
+          | None ->
+              Error.error lhs.data.span "lhs of or evaled not to a bool";
+              V_Error |> Value.inferred ~span
+          | Some false -> (
+              match eval state rhs |> Value.expect_bool with
+              | None ->
+                  Error.error lhs.data.span "rhs of or evaled not to a bool";
+                  V_Error |> Value.inferred ~span
+              | Some rhs -> V_Bool rhs |> Value.inferred ~span)
+          | Some true -> V_Bool true |> Value.inferred ~span)
       | E_Match { value; branches } -> (
           let value = eval state value in
           let result =
