@@ -77,7 +77,7 @@ const split_at = [T] (v :: treap[T], idx :: int32) -> (treap[T], treap[T]) => (
             let right = :Node (
                 .left = :Empty,
                 .value = v.value,
-                .count = v.count,
+                .count = count v.right + 1,
                 .priority = v.priority,
                 .right = v.right,
             );
@@ -87,7 +87,7 @@ const split_at = [T] (v :: treap[T], idx :: int32) -> (treap[T], treap[T]) => (
             let left = :Node (
                 .left = v.left,
                 .value = v.value,
-                .count = v.count,
+                .count = count v.left + 1,
                 .priority = v.priority,
                 .right = :Empty,
             );
