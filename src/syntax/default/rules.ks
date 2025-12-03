@@ -44,15 +44,17 @@
 @syntax "<=" 14 wrap never = _ " " "<=" " " _;
 @syntax "==" 14 wrap never = _ " " "==" " " _;
 @syntax "!=" 14 wrap never = _ " " "!=" " " _;
-
 @syntax ">=" 14 wrap never = _ " " ">=" " " _;
 @syntax ">" 14 wrap never = _ " " ">" " " _;
+
 @syntax "+" 15 wrap if_any = <- _ " "/"\n" "+" " " _;
 @syntax "-" 15 wrap if_any = <- _ " "/"\n" "-" " " _;
 @syntax "*" 17 wrap if_any = <- _ " "/"\n" "*" " " _;
 @syntax "/" 17 wrap if_any = <- _ " "/"\n" "/" " " _;
+
 @syntax "|>" 20 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
 @syntax "<|" 20 wrap if_any = <- arg " "/"\n\t" "<|" " " f ""/"\\";
+
 @syntax "core:apply" 50 wrap never = <- f " " arg;
 @syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 60 wrap never = "unwind" " " token " " value;
