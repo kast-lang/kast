@@ -1,5 +1,6 @@
 module:
 use bool;
+use uint32;
 use int32;
 use int64;
 use char;
@@ -9,6 +10,7 @@ use String;
 use io.print;
 use io.input;
 use int32_to_string;
+use panic;
 use string_to_int32;
 use int64_to_string;
 use string_to_int64;

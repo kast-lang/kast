@@ -10,7 +10,7 @@ module Inference = Kast_inference
 module Fmt = Kast_fmt
 include Kast_types
 
-let handle_effects : 'a. stop_on_error:bool -> (unit -> 'a) -> 'a =
+let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
  fun ~stop_on_error f ->
   let handle_error k =
     if stop_on_error then
@@ -18,6 +18,7 @@ let handle_effects : 'a. stop_on_error:bool -> (unit -> 'a) -> 'a =
     else Effect.continue k ()
   in
   try f () with
+  | Kast_interpreter.Natives.Panic s -> Log.error (fun log -> log "panic: %s" s)
   | effect Kast_interpreter.Error.Error error, k ->
       Log.error (fun log -> log "%a" Kast_interpreter.Error.print error);
       handle_error k

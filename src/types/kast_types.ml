@@ -66,6 +66,12 @@ module Value = struct
     | V_Bool value -> Some value
     | _ -> None
 
+  let expect_char : value -> char option =
+   fun value ->
+    match value |> await_inferred with
+    | V_Char value -> Some value
+    | _ -> None
+
   let expect_int32 : value -> int32 option =
    fun value ->
     match value |> await_inferred with

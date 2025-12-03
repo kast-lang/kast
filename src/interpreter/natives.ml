@@ -79,6 +79,41 @@ let dbg =
         V_Unit |> Value.inferred ~span);
   ]
 
+let mod_char =
+  let code =
+    native_fn ~arg:(Ty.inferred ~span T_Char)
+      ~result:(Ty.inferred ~span T_Int32) "char.code"
+      (fun ~caller ~state:_ arg : value ->
+        with_return (fun { return } ->
+            let error msg () =
+              Error.error caller "char.code: %s" msg;
+              return (V_Error |> Value.inferred ~span)
+            in
+            let c =
+              arg |> Value.expect_char
+              |> Option.unwrap_or_else (error "arg must be char")
+            in
+            V_Int32 (Char.code c |> Int32.of_int) |> Value.inferred ~span))
+  in
+  let from_code =
+    native_fn ~arg:(Ty.inferred ~span T_Int32)
+      ~result:(Ty.inferred ~span T_Char) "char.from_code"
+      (fun ~caller ~state:_ arg : value ->
+        with_return (fun { return } ->
+            let error msg () =
+              Error.error caller "char.from_code: %s" msg;
+              return (V_Error |> Value.inferred ~span)
+            in
+            let code =
+              arg |> Value.expect_int32
+              |> Option.unwrap_or_else
+                   (error
+                      (make_string "arg must be uint32, got %a" Value.print arg))
+            in
+            V_Char (Char.chr (Int32.to_int code)) |> Value.inferred ~span))
+  in
+  [ code; from_code ]
+
 let mod_string =
   let get_at =
     native_fn ~arg:(Ty.new_not_inferred ~span)
@@ -223,6 +258,8 @@ let sys =
             V_Error |> Value.inferred ~span)
   in
   [ chdir; argc; argv_at ]
+
+exception Panic of string
 
 let fs =
   let read_file =
@@ -445,7 +482,13 @@ let natives : natives =
           | _ ->
               Error.error caller "create_context_type expected a type";
               V_Error |> Value.inferred ~span);
+      native_fn ~arg:(Ty.inferred ~span T_String)
+        ~result:(Ty.new_not_inferred ~span) "panic"
+        (fun ~caller:_ ~state:_ arg ->
+          match arg |> Value.expect_string with
+          | Some s -> raise (Panic s)
+          | None -> V_Error |> Value.inferred ~span);
     ]
-    @ types @ fs @ sys @ mod_string @ dbg
+    @ types @ fs @ sys @ mod_char @ mod_string @ dbg
   in
   { by_name = list |> StringMap.of_list }

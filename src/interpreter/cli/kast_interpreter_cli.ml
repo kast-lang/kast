@@ -68,10 +68,12 @@ let repl (args : Args.t) =
     | None -> ()
     | Some ast -> (
         let expr : expr = Compiler.compile compiler Expr ast in
-        let value : value = Interpreter.eval interpreter expr in
-        match value.var |> Kast_inference.Var.inferred_opt with
-        | Some V_Unit -> ()
-        | _ -> println "%a" Value.print value));
+        try
+          let value : value = Interpreter.eval interpreter expr in
+          match value.var |> Kast_inference.Var.inferred_opt with
+          | Some V_Unit -> ()
+          | _ -> println "%a" Value.print value
+        with Interpreter.Natives.Panic s -> eprintln "@{<red>panic: %s@}" s));
     loop ()
   in
   loop ()
