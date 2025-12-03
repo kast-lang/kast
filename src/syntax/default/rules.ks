@@ -26,6 +26,7 @@
 @syntax "core:if" 7.5 wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 @syntax "core:match" 7.5 wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
 @syntax "while" 7.5 wrap never = "while" " " cond " " "do" " " body;
+@syntax "for_range" 7.5 wrap never = "for" " " pattern " " "in" " " start  ".." end " " "do" " " body;
 
 @syntax "core:type ascribe" 8 wrap never = expr " " "::" " " type;
 @syntax "core:fn_type" 8.5 wrap never = arg " " context=("with" " " _ " ")? "->" " " result;
