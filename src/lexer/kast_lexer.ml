@@ -187,9 +187,11 @@ module DefaultRules = struct
     let raw =
       reader
       |> Reader.read_while (function
-        | '.' when not !seen_dot ->
+        | '.' when not !seen_dot -> (
             seen_dot := true;
-            true
+            match Reader.peek2 reader with
+            | Some c when Char.is_digit c -> true
+            | _ -> false)
         | c when Char.is_digit c -> true
         | _ -> false)
     in
