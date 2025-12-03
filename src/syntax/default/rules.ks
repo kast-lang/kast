@@ -58,6 +58,9 @@
 @syntax "core:apply" 50 wrap never = <- f " " arg;
 @syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 60 wrap never = "unwind" " " token " " value;
+@syntax "with_return" 60 wrap never = "with_return" " " body;
+@syntax "return_without_value" 60 wrap never = "return";
+@syntax "return_with_value" 60 wrap never = "return" " " value;
 @syntax "core:variant_without_value" 62 wrap never = ":" label;
 @syntax "core:variant" 62 wrap never = ":" label " " value;
 @syntax "core:instantiate_generic" 70 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";

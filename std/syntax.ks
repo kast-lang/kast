@@ -77,11 +77,22 @@ impl syntax (while cond do body) = `(
         if $cond then $body else break
     )
 );
-impl syntax (for pattern in start .. end do body) = `(
+impl syntax (for pattern in start..end do body) = `(
     let _loop_var = $start;
     while _loop_var < $end do (
         let $pattern = _loop_var;
         $body;
         _loop_var += 1;
     )
+);
+impl syntax (with_return body) = `(
+    unwindable _returnable (
+        $body
+    )
+);
+impl syntax (return) = `(
+    unwind _returnable ()
+);
+impl syntax (return value) = `(
+    unwind _returnable $value
 );
