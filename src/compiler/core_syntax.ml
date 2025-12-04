@@ -85,7 +85,7 @@ let then' : core_syntax =
     name = "then";
     handle =
       (fun (type a)
-        (module Compiler : Compiler.S)
+        (module C : Compiler.S)
         (kind : a compiled_kind)
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
@@ -98,12 +98,13 @@ let then' : core_syntax =
         in
         match kind with
         | Expr ->
-            let a = Compiler.compile Expr a in
-            let b = Compiler.compile Expr b in
-            E_Then { a; b } |> init_expr span Compiler.state
+            let a = C.compile Expr a in
+            let b = C.compile Expr b in
+            E_Then { a; b } |> init_expr span C.state
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | _ ->
             error span "then must be expr";
-            init_error span Compiler.state kind);
+            init_error span C.state kind);
   }
 
 (* expr; *)
