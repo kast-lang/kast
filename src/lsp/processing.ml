@@ -143,9 +143,11 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
       let evaled =
         Kast_interpreter.eval (Kast_interpreter.default ()) compiled
       in
-      let workspace_roots = evaled |> Value.expect_tuple |> Option.get in
+      let workspace_def = evaled |> Value.expect_tuple |> Option.get in
       let workspace_roots =
-        workspace_roots.tuple.unnamed |> Array.to_list
+        let roots = (workspace_def.tuple |> Tuple.get_named "roots").value in
+        let roots = roots |> Value.expect_tuple |> Option.get in
+        roots.tuple.unnamed |> Array.to_list
         |> List.map (fun (field : Types.value_tuple_field) ->
             field.value |> Value.expect_string |> Option.get)
       in
