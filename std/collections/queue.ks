@@ -5,11 +5,12 @@ const t = queue;
 const create = [T] () -> queue[T] => (
     treap.create ()
 );
-const push = [T] (q :: queue[T], value :: T) -> queue[T] => (
-    treap.merge (q, treap.singleton value)
+const push = [T] (q :: &queue[T], value :: T) => (
+    q^ = treap.merge (q^, treap.singleton value);
 );
 const pop = [T] (q :: &queue[T]) -> T => (
     let first, rest = treap.split_at (q^, 1);
+    q^ = rest;
     (treap.at (&first, 0))^
 );
 const front = [T] (q :: &queue[T]) -> &T => (
