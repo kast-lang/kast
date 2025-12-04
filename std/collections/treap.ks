@@ -18,7 +18,7 @@ const singleton = [T] (value :: T) -> treap[T] => (
         .right = :Empty,
         .value,
         .count = 1,
-        .priority = std.rng.gen_int32 (.min = 0, .max = 100),
+        .priority = std.rng.gen_int32 (.min = 0, .max = 1000000000),
     )
 );
 const length = [T] (v :: treap[T]) -> int32 => (
