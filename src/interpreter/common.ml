@@ -638,6 +638,9 @@ and eval_ty : state -> Expr.ty -> ty =
         let evaled_result =
           match await_compiled_ty_expr ~span:expr.data.span expr with
           | TE_Unit -> Ty.inferred ~span T_Unit
+          | TE_Ref inner ->
+              let inner = eval_ty state inner in
+              Ty.inferred ~span <| T_Ref inner
           | TE_Fn { arg; result } ->
               let arg = eval_ty state arg in
               let result = eval_ty state result in

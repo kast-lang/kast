@@ -432,6 +432,7 @@ let init_ty_expr :
         fs |> List.iter (fun f -> f ());
         match shape with
         | TE_Unit -> ()
+        | TE_Ref _ -> ()
         | TE_Fn { arg; result } ->
             let _ : Expr.ty = arg in
             let _ : Expr.ty = result in

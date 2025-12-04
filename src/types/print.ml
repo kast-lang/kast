@@ -370,6 +370,10 @@ module Impl = struct
       options:options -> formatter -> ty_expr_shape -> unit =
    fun ~options fmt -> function
     | TE_Unit -> fprintf fmt "()"
+    | TE_Ref inner ->
+        fprintf fmt "@{<magenta>ref@} %a"
+          (Tuple.print (print_ty_expr ~options))
+          (Tuple.make [ inner ] [])
     | TE_Fn { arg; result } ->
         fprintf fmt "@{<magenta>fn@} %a"
           (Tuple.print (print_ty_expr ~options))

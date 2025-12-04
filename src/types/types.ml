@@ -359,6 +359,7 @@ module rec TypesImpl : sig
 
   and ty_expr_shape =
     | TE_Unit
+    | TE_Ref of ty_expr
     | TE_Fn of ty_expr_fn
     | TE_Expr of expr
     | TE_Tuple of ty_expr_tuple
@@ -807,6 +808,7 @@ end = struct
 
   and ty_expr_shape =
     | TE_Unit
+    | TE_Ref of ty_expr
     | TE_Fn of ty_expr_fn
     | TE_Expr of expr
     | TE_Tuple of ty_expr_tuple

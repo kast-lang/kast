@@ -2045,6 +2045,9 @@ let ref_ : core_syntax =
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr -> E_Ref (C.compile PlaceExpr place) |> init_expr span C.state
+        | TyExpr ->
+            (fun () -> TE_Ref (C.compile TyExpr place))
+            |> init_ty_expr span C.state
         | _ ->
             error span "ref must be expr";
             init_error span C.state kind);

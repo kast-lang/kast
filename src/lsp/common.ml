@@ -158,6 +158,7 @@ let inner_compiled_with_handler =
       | Some shape -> (
           match shape with
           | TE_Unit -> ()
+          | TE_Ref inner -> handler.handle TyExpr inner
           | TE_Fn { arg; result } ->
               handler.handle TyExpr arg;
               handler.handle TyExpr result
