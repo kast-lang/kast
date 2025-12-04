@@ -90,8 +90,9 @@ module Var = struct
     in
     match inferred with
     | None ->
-        fprintf fmt "_%a%a" Id.print recurse_id (List.print Span.print)
-          (spans |> SpanSet.to_list)
+        fprintf fmt "_"
+        (* fprintf fmt "_%a%a" Id.print recurse_id (List.print Span.print)
+          (spans |> SpanSet.to_list) *)
     | Some inferred -> print_inferred fmt inferred
 
   let unite_data =
