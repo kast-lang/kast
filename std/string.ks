@@ -2,8 +2,8 @@ module:
 const length = (s :: string) -> int32 => cfg_if (
     | target.name == "interpreter" => (@native "string.length") s
 );
-const get_at = (s :: string, idx :: int32) -> char => cfg_if (
-    | target.name == "interpreter" => (@native "string.get_at") (s, idx)
+const at = (s :: string, idx :: int32) -> char => cfg_if (
+    | target.name == "interpreter" => (@native "string.at") (s, idx)
 );
 const substring = (s :: string, start :: int32, len :: int32) -> string => cfg_if (
     | target.name == "interpreter" => (@native "string.substring") (s, start, len)
@@ -96,11 +96,11 @@ const split_once = (s :: string, sep :: char) -> (string, string) => (
 const trim_matches = (s :: string, f :: char -> bool) -> string => (
     let len = length s;
     let start = 0;
-    while start < len and get_at (s, start) |> f do (
+    while start < len and at (s, start) |> f do (
         start += 1;
     );
     let end = len;
-    while end > start and get_at (s, end - 1) |> f do (
+    while end > start and at (s, end - 1) |> f do (
         end -= 1;
     );
     substring (s, start, end - start)

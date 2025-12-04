@@ -115,13 +115,13 @@ let mod_char =
   [ code; from_code ]
 
 let mod_string =
-  let get_at =
+  let at =
     native_fn ~arg:(Ty.new_not_inferred ~span)
-      ~result:(Ty.inferred ~span T_Int32) "string.get_at"
+      ~result:(Ty.inferred ~span T_Int32) "string.at"
       (fun ~caller ~state:_ arg : value ->
         with_return (fun { return } ->
             let error msg () =
-              Error.error caller "string.get_at: %s" msg;
+              Error.error caller "string.at: %s" msg;
               return (V_Error |> Value.inferred ~span)
             in
             let arg =
@@ -221,7 +221,7 @@ let mod_string =
                 ());
             V_Unit |> Value.inferred ~span))
   in
-  [ get_at; length; substring; iter ]
+  [ at; length; substring; iter ]
 
 let sys =
   let chdir =

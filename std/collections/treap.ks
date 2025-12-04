@@ -21,7 +21,7 @@ const singleton = [T] (value :: T) -> treap[T] => (
         .priority = std.rng.gen_int32 (.min = 0, .max = 100),
     )
 );
-const count = [T] (v :: treap[T]) -> int32 => (
+const length = [T] (v :: treap[T]) -> int32 => (
     match v with (
         | :Empty => 0
         | :Node v => v.count
@@ -34,7 +34,7 @@ const merge = [T] (left :: treap[T], right :: treap[T]) -> treap[T] => (
             .priority = root.priority,
             .left,
             .right,
-            .count = 1 + count (left) + count (right),
+            .count = 1 + length (left) + length (right),
         )
     );
     match (left, right) with (
@@ -65,29 +65,29 @@ const merge = [T] (left :: treap[T], right :: treap[T]) -> treap[T] => (
 const split_at = [T] (v :: treap[T], idx :: int32) -> (treap[T], treap[T]) => (
     if idx == 0 then (
         :Empty, v
-    ) else if idx == count v then (
+    ) else if idx == length v then (
         v, :Empty
     ) else (
         let v = match v with (
             | :Node v => v
             | :Empty => _ # TODO panic
         );
-        if idx <= count v.left then (
+        if idx <= length v.left then (
             let left_left, left_right = split_at (v.left, idx);
             let right = :Node (
                 .left = :Empty,
                 .value = v.value,
-                .count = count v.right + 1,
+                .count = length v.right + 1,
                 .priority = v.priority,
                 .right = v.right,
             );
             left_left, merge (left_right, right)
         ) else (
-            let right_left, right_right = split_at (v.right, idx - count v.left - 1);
+            let right_left, right_right = split_at (v.right, idx - length v.left - 1);
             let left = :Node (
                 .left = v.left,
                 .value = v.value,
-                .count = count v.left + 1,
+                .count = length v.left + 1,
                 .priority = v.priority,
                 .right = :Empty,
             );
@@ -95,7 +95,7 @@ const split_at = [T] (v :: treap[T], idx :: int32) -> (treap[T], treap[T]) => (
         )
     )
 );
-const get_at = [T] (v :: treap[T], idx :: int32) -> T => (
+const at = [T] (v :: treap[T], idx :: int32) -> T => (
     let _, v = split_at (v, idx);
     let v, _ = split_at (v, 1);
     match v with (
@@ -107,6 +107,9 @@ const set_at = [T] (v :: treap[T], idx :: int32, value :: T) -> treap[T] => (
     let left, v = split_at (v, idx);
     let _, right = split_at (v, 1);
     merge (left, merge (singleton value, right))
+);
+const update = [T] (a :: treap[T], idx :: int32, f :: T -> T) -> treap[T] => (
+    set_at (a, idx, f (at (a, idx)))
 );
 const iter = [T] (v :: treap[T], f :: T -> ()) => (
     match v with (
