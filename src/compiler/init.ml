@@ -345,6 +345,7 @@ let init_pattern :
       match shape with
       | P_Placeholder -> Ty.new_not_inferred ~span
       | P_Unit -> Ty.inferred ~span T_Unit
+      | P_Ref inner -> Ty.inferred ~span <| T_Ref inner.data.ty
       | P_Binding binding -> binding.ty
       | P_Tuple { tuple } ->
           Ty.inferred ~span

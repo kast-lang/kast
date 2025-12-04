@@ -2039,17 +2039,19 @@ let ref_ : core_syntax =
         a
       ->
         let span = ast.span in
-        let place =
+        let inner =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
-        | Expr -> E_Ref (C.compile PlaceExpr place) |> init_expr span C.state
+        | Expr -> E_Ref (C.compile PlaceExpr inner) |> init_expr span C.state
         | TyExpr ->
-            (fun () -> TE_Ref (C.compile TyExpr place))
+            (fun () -> TE_Ref (C.compile TyExpr inner))
             |> init_ty_expr span C.state
-        | _ ->
-            error span "ref must be expr";
+        | Pattern ->
+            P_Ref (C.compile Pattern inner) |> init_pattern span C.state
+        | Assignee ->
+            error span "ref can not be assignee";
             init_error span C.state kind);
   }
 

@@ -39,6 +39,12 @@ let rec pattern_match :
   | P_Unit ->
       (* TODO assert that value is unit *)
       (~matched:true, Scope.Locals.empty)
+  | P_Ref inner -> (
+      match place |> claim ~span |> Value.expect_ref with
+      | None ->
+          Error.error span "Expected a ref";
+          (~matched:false, Scope.Locals.empty)
+      | Some place -> pattern_match ~span place inner)
   | P_Binding binding ->
       ( ~matched:true,
         {

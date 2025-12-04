@@ -127,6 +127,7 @@ let rec inject_pattern_bindings ~(only_compiler : bool) (pattern : pattern)
   match pattern.shape with
   | P_Placeholder -> ()
   | P_Unit -> ()
+  | P_Ref inner -> state |> inject_pattern_bindings ~only_compiler inner
   | P_Binding binding -> state |> inject_binding ~only_compiler binding
   | P_Tuple { tuple } ->
       tuple |> Tuple.to_seq

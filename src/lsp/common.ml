@@ -140,6 +140,7 @@ let inner_compiled_with_handler =
       match compiled.shape with
       | P_Placeholder -> ()
       | P_Unit -> ()
+      | P_Ref inner -> handler.handle Pattern inner
       | P_Binding _ -> ()
       | P_Tuple { tuple } ->
           tuple |> Tuple.to_seq

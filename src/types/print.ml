@@ -414,6 +414,10 @@ module Impl = struct
    fun ~options fmt -> function
     | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
     | P_Unit -> fprintf fmt "()"
+    | P_Ref inner ->
+        fprintf fmt "@{<magenta>ref@} %a"
+          (Tuple.print (print_pattern ~options))
+          (Tuple.make [ inner ] [])
     | P_Binding binding ->
         fprintf fmt "@{<magenta>binding@} %a" print_binding binding
     | P_Tuple { tuple } ->

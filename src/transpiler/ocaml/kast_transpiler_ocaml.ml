@@ -93,6 +93,7 @@ and transpile_pattern : Pattern.t -> state -> OcamlAst.t =
   match pattern.shape with
   | Types.P_Placeholder -> OcamlAst.Placeholder
   | Types.P_Unit -> OcamlAst.unit_value
+  | Types.P_Ref _ -> failwith __LOC__
   | Types.P_Binding binding -> OcamlAst.Var (binding_name binding)
   | Types.P_Tuple tuple ->
       state
