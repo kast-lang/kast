@@ -145,11 +145,16 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
       in
       let workspace_def = evaled |> Value.expect_tuple |> Option.get in
       let workspace_roots =
-        let roots = (workspace_def.tuple |> Tuple.get_named "roots").value in
+        let roots =
+          (workspace_def.tuple |> Tuple.get_named "roots").place
+          |> Kast_interpreter.claim ~span:(Span.fake "lsp")
+        in
         let roots = roots |> Value.expect_tuple |> Option.get in
         roots.tuple.unnamed |> Array.to_list
         |> List.map (fun (field : Types.value_tuple_field) ->
-            field.value |> Value.expect_string |> Option.get)
+            field.place
+            |> Kast_interpreter.claim ~span:(Span.fake "lsp")
+            |> Value.expect_string |> Option.get)
       in
       Log.trace (fun log ->
           log "WORKSPACE ROOTS = %a"

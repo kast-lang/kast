@@ -22,7 +22,12 @@ module Impl = struct
 
   let subs_count = ref 0
 
-  let rec sub_value ~(state : interpreter_state) (value : value) : value =
+  let rec sub_place ~state (place : place) : place =
+    match place.state with
+    | Occupied value -> Place.init <| sub_value ~state value
+    | Uninitialized | MovedOut -> Place.init_state place.state place.ty
+
+  and sub_value ~(state : interpreter_state) (value : value) : value =
     sub_var ~unite_shape:Inference_impl.unite_value_shape
       ~sub_shape:sub_value_shape ~new_not_inferred:Value.new_not_inferred
       ~get_var:(fun (value : value) -> value.var)
@@ -39,6 +44,7 @@ module Impl = struct
       | V_Unit | V_Bool _ | V_Int32 _ | V_Int64 _ | V_Char _ | V_String _
       | V_Ast _ | V_CompilerScope _ | V_Error ->
           original_value
+      | V_Ref _ -> original_value (* TODO ??? *)
       | V_Tuple { tuple } ->
           V_Tuple
             {
@@ -46,12 +52,12 @@ module Impl = struct
                 tuple
                 |> Tuple.map
                      (fun
-                       ({ value; span; ty_field } : value_tuple_field)
+                       ({ place; span; ty_field } : value_tuple_field)
                        :
                        value_tuple_field
                      ->
                        {
-                         value = sub_value ~state value;
+                         place = sub_place ~state place;
                          span;
                          ty_field = sub_ty_tuple_field ~state ty_field;
                        });
@@ -61,7 +67,7 @@ module Impl = struct
           V_Variant
             {
               label;
-              data = data |> Option.map (fun value -> sub_value ~state value);
+              data = data |> Option.map (sub_place ~state);
               ty = sub_ty ~state ty;
             }
           |> shaped
@@ -78,9 +84,14 @@ module Impl = struct
       | V_Binding binding -> (
           match Scope.find_local_opt binding.name state.scope with
           | None -> original_value
-          | Some local ->
+          | Some local -> (
               subs_count := !subs_count + 1;
-              local.value)
+              match local.place.state with
+              | Occupied value -> value
+              | Uninitialized | MovedOut ->
+                  Error.error span "Tried to sub with %a" Place.print_ref
+                    local.place;
+                  original_value))
     in
     Log.trace (fun log ->
         log "subbed value shape = %a into %a" Value.Shape.print shape
@@ -109,6 +120,7 @@ module Impl = struct
       | T_Unit | T_Bool | T_Int32 | T_Int64 | T_String | T_Char | T_Target
       | T_ContextTy | T_CompilerScope | T_Error | T_Ast | T_Ty ->
           original_ty
+      | T_Ref inner -> T_Ref (sub_ty ~state inner) |> shaped
       | T_Tuple { tuple } ->
           T_Tuple
             {
@@ -141,11 +153,19 @@ module Impl = struct
           | None -> original_ty
           | Some local -> (
               subs_count := !subs_count + 1;
-              match local.value |> Value.expect_ty with
-              | Some ty -> ty
-              | None ->
-                  Error.error ctx.span "substituted type binding with non-type";
-                  T_Error |> shaped))
+
+              match local.place.state with
+              | Occupied value -> (
+                  match value |> Value.expect_ty with
+                  | Some ty -> ty
+                  | None ->
+                      Error.error ctx.span
+                        "substituted type binding with non-type";
+                      T_Error |> shaped)
+              | Uninitialized | MovedOut ->
+                  Error.error ctx.span "Tried to use sub with %a"
+                    Place.print_ref local.place;
+                  original_ty))
     in
     Log.trace (fun log ->
         log "subbed ty shape = %a into %a" Ty.Shape.print shape Ty.print result);

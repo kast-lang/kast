@@ -47,6 +47,7 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
   | None -> failwith __LOC__
   | Some shape -> (
       match shape with
+      | Types.V_Ref _ -> failwith __LOC__
       | Types.V_Unit -> OcamlAst.unit_value
       | Types.V_Bool value -> OcamlAst.Bool value
       | Types.V_Int32 value -> OcamlAst.Int32 value
@@ -57,7 +58,9 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
           state
           |> transpile_tuple
                (fun (field : Types.value_tuple_field) ->
-                 transpile_value field.value)
+                 transpile_value
+                   ((* field.value *)
+                    failwith __LOC__))
                tuple.tuple
       | Types.V_Variant _ -> failwith __LOC__
       | Types.V_Ty _ -> OcamlAst.unit_value
@@ -105,7 +108,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
  fun expr state ->
   match expr.shape with
   | Types.E_Constant value -> state |> transpile_value value
-  | Types.E_Binding binding -> OcamlAst.Var (binding_name binding)
+  (* | Types.E_Binding binding -> OcamlAst.Var (binding_name binding) *)
   | Types.E_Then { a; b } ->
       let a = state |> transpile_expr a in
       let b = state |> transpile_expr b in
@@ -150,7 +153,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
           OcamlAst.t =
         match assignee.shape with
         | Types.A_Placeholder | Types.A_Unit -> OcamlAst.unit_value
-        | Types.A_Binding _ -> fail "todo support mutation"
+        | Types.A_Place _ -> fail "todo support mutation"
         | Types.A_Let pattern ->
             OcamlAst.single_let
               { pattern = state |> transpile_pattern pattern; value }
@@ -160,7 +163,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
         (OcamlAst.single_let
            {
              pattern = OcamlAst.Var value_ident;
-             value = state |> transpile_expr value;
+             value = state |> transpile_expr (failwith __LOC__);
            })
         (perform_assign assignee (OcamlAst.Var value_ident))
   | Types.E_Ty _ -> fail "Tried to transpile type expr"
@@ -183,14 +186,14 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
            | _ -> fail "module ty is not tuple???"
          in
          OcamlAst.merge_let_then def module_result)
-  | Types.E_Field { obj; field; field_span = _; label = _ } -> (
+  (* | Types.E_Field { obj; field; field_span = _; label = _ } -> (
       let obj_ty = obj.data.ty |> Ty.await_inferred in
       match obj_ty with
       | Types.T_Tuple { tuple = _ } ->
           OcamlAst.Field
             { obj = state |> transpile_expr obj; field = field_name field }
       | _ -> fail "trying to get field of not a tuple: %a" Ty.Shape.print obj_ty
-      )
+      ) *)
   | Types.E_UseDotStar { used; bindings } ->
       OcamlAst.LetThen
         [
@@ -244,6 +247,8 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   | Types.E_InjectContext _ -> failwith __LOC__
   | Types.E_CurrentContext _ -> failwith __LOC__
   | Types.E_Error -> fail "Tried to transpile error node"
+  | Types.E_Ref _ -> failwith __LOC__
+  | Types.E_Claim _ -> failwith __LOC__
 
 module Full = struct
   let transpile_expr expr : OcamlAst.t =

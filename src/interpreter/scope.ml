@@ -25,35 +25,6 @@ let with_values ~recursive ~parent values : scope =
 
 let init ~recursive ~parent = with_values ~recursive ~parent Locals.empty
 
-let rec assign_to_existing ~(span : span) (name : symbol) (value : value)
-    (scope : scope) : unit =
-  match SymbolMap.find_opt name scope.locals.by_symbol with
-  | Some existing -> existing.value <- value
-  | None -> (
-      match scope.parent with
-      | Some parent -> parent |> assign_to_existing ~span name value
-      | None ->
-          Error.error span "Trying to assign to non-existing %a" Symbol.print
-            name;
-          scope.locals <-
-            {
-              by_symbol =
-                scope.locals.by_symbol
-                |> SymbolMap.add name
-                     ({
-                        value;
-                        ty_field =
-                          {
-                            ty = Value.ty_of value;
-                            label =
-                              Label.create_definition
-                                span (* TODO maybe should add name's span *)
-                                name.name;
-                          };
-                      }
-                       : Types.interpreter_local);
-            })
-
 type _ Effect.t += AwaitUpdate : (symbol * scope) -> bool Effect.t
 
 let rec find_local_opt (name : symbol) (scope : scope) :
@@ -73,21 +44,22 @@ let rec find_local_opt (name : symbol) (scope : scope) :
         if await_result then find_local_opt name scope else find_in_parent ())
       else find_in_parent ()
 
-let find_opt (name : symbol) (scope : scope) : value option =
+let find_opt (name : symbol) (scope : scope) : place option =
   find_local_opt name scope
-  |> Option.map (fun (local : Types.interpreter_local) -> local.value)
+  |> Option.map (fun (local : Types.interpreter_local) -> local.place)
 
 let notify_update (scope : scope) : unit =
   let fs = scope.on_update in
   scope.on_update <- [];
   fs |> List.iter (fun f -> f ())
 
+(* TODO should be removed? *)
 let add_locals (new_locals : locals) (scope : scope) : unit =
   Log.trace (fun log ->
       new_locals.by_symbol
       |> SymbolMap.iter (fun symbol (local : Types.interpreter_local) ->
-          log "Added %a=%a in scope %a" Symbol.print symbol Value.print
-            local.value Id.print scope.id));
+          log "Added %a=%a in scope %a" Symbol.print symbol Place.print_value
+            local.place Id.print scope.id));
   scope.locals <-
     {
       by_symbol =
@@ -96,6 +68,24 @@ let add_locals (new_locals : locals) (scope : scope) : unit =
           scope.locals.by_symbol new_locals.by_symbol;
     };
   notify_update scope
+
+let add_local_existing_place (span : span) (symbol : symbol) (place : place)
+    (scope : scope) : unit =
+  scope
+  |> add_locals
+       {
+         by_symbol =
+           SymbolMap.singleton symbol
+             ({
+                place;
+                ty_field =
+                  {
+                    ty = place.ty;
+                    label = Label.create_reference span symbol.name;
+                  };
+              }
+               : Types.interpreter_local);
+       }
 
 let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
     unit =
@@ -108,7 +98,7 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
         scope.locals.by_symbol
         |> SymbolMap.add symbol
              ({
-                value;
+                place = Place.init value;
                 ty_field =
                   {
                     ty = Value.ty_of value;

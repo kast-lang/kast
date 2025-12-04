@@ -26,7 +26,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
              {
                id = Id.gen ();
                name;
-               ty = Value.ty_of local.value;
+               ty = local.place.ty;
                span = Span.fake "<interpreter>";
                label = local.ty_field.label;
              })
@@ -54,13 +54,19 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
         init_error span state kind
     | Ast.Simple { token; _ } -> (
         match kind with
-        | Expr -> (
+        | PlaceExpr -> (
             match token.shape with
             | Token.Shape.Ident ident ->
-                E_Binding
+                PE_Binding
                   (State.Scope.find_binding ~from:ast.span ident.name
                      state.scope)
-                |> init_expr span state
+                |> init_place_expr span state
+            | _ ->
+                PE_Temp (compile state Expr ast) |> init_place_expr span state)
+        | Expr -> (
+            match token.shape with
+            | Token.Shape.Ident _ ->
+                E_Claim (compile state PlaceExpr ast) |> init_expr span state
             | Token.Shape.String s ->
                 let value : Value.shape =
                   match s.delimeter with
@@ -89,10 +95,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             |> init_ty_expr span state
         | Assignee -> (
             match token.shape with
-            | Token.Shape.Ident ident ->
-                A_Binding
-                  (State.Scope.find_binding ~from:ast.span ident.name
-                     state.scope)
+            | Token.Shape.Ident _ ->
+                A_Place (compile state PlaceExpr ast)
                 |> init_assignee span state
             | Token.Shape.String _ ->
                 Error.error span "string can't be assignee";
@@ -136,7 +140,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                   |> Tuple.map Ast.Child.expect_ast
                   |> Tuple.map (fun (ast : Ast.t) : Types.value_tuple_field ->
                       {
-                        value = V_Ast ast |> Value.inferred ~span:ast.span;
+                        place =
+                          Place.init (V_Ast ast |> Value.inferred ~span:ast.span);
                         ty_field =
                           {
                             ty = Ty.inferred ~span:ast.span T_Ast;
@@ -218,7 +223,7 @@ let default ?(import_cache : import_cache option) () : state =
         by_symbol =
           SymbolMap.singleton std_symbol
             ({
-               value = std;
+               place = Place.init std;
                ty_field = { ty = Value.ty_of std; label = std_label };
              }
               : Types.interpreter_local);

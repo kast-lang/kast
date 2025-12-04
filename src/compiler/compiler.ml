@@ -16,6 +16,7 @@ module CompiledKind = struct
     | Expr -> fprintf fmt "expr"
     | TyExpr -> fprintf fmt "type expr"
     | Pattern -> fprintf fmt "pattern"
+    | PlaceExpr -> fprintf fmt "place expr"
 end
 
 module type S = sig
@@ -32,6 +33,7 @@ let get_data : 'a. 'a compiled_kind -> 'a -> ir_data =
   | Assignee -> compiled.data
   | TyExpr -> compiled.data
   | Pattern -> compiled.data
+  | PlaceExpr -> compiled.data
 
 let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
  fun (type a) (kind : a compiled_kind) (compiled : a) (f : ir_data -> ir_data) :
@@ -41,6 +43,7 @@ let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
   | Assignee -> { compiled with data = f compiled.data }
   | TyExpr -> { compiled with data = f compiled.data }
   | Pattern -> { compiled with data = f compiled.data }
+  | PlaceExpr -> { compiled with data = f compiled.data }
 
 let eval_ty (module C : S) (ast : Ast.t) : ty * Expr.ty =
   let ty_expr = C.compile TyExpr ast in
@@ -59,6 +62,10 @@ let eval ~(ty : ty) (module C : S) (ast : Ast.t) : value * expr =
     Kast_interpreter.eval C.state.interpreter expr
   in
   (value, expr)
+
+let temp_expr (module C : S) (ast : Ast.t) : Expr.Place.t =
+  let expr = C.compile Expr ast in
+  PE_Temp expr |> Init.init_place_expr ast.span C.state
 
 let import ~(span : span) (module C : S) (uri : Uri.t) : value =
   let import_cache = C.state.import_cache in
@@ -140,7 +147,7 @@ let inject_assignee_bindings ~(only_compiler : bool) (assignee : Expr.assignee)
   match assignee.shape with
   | A_Placeholder -> ()
   | A_Unit -> ()
-  | A_Binding _ -> ()
+  | A_Place _ -> ()
   | A_Let pattern -> state |> inject_pattern_bindings ~only_compiler pattern
   | A_Error -> ()
 

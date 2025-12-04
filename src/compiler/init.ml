@@ -20,6 +20,72 @@ and auto_instantiate_generics : span -> State.t -> expr -> expr =
       |> init_expr span state
   | _ -> expr
 
+and init_place_expr :
+    ?evaled_exprs:expr list ->
+    span ->
+    State.t ->
+    Expr.Place.Shape.t ->
+    Expr.Place.t =
+ fun ?(evaled_exprs = []) span state shape ->
+  try
+    let ty =
+      match shape with
+      | PE_Error -> Ty.new_not_inferred ~span
+      | PE_Binding binding -> binding.ty
+      | PE_Temp expr -> expr.data.ty
+      | PE_Deref ref ->
+          let value_ty = Ty.new_not_inferred ~span in
+          ref.data.ty
+          |> Inference.Ty.expect_inferred_as ~span
+               (Ty.inferred ~span (T_Ref value_ty));
+          value_ty
+      | PE_Field { obj; field; field_span; label } ->
+          let ty = Ty.new_not_inferred ~span in
+          obj.data.ty.var
+          |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
+              let field_ty =
+                match obj_shape with
+                | T_Tuple { tuple } -> (
+                    match Tuple.get_named_opt field tuple with
+                    | Some ty_field ->
+                        ignore <| Label.unite label ty_field.label;
+                        ty_field.ty
+                    | None ->
+                        error span "field %a is not there"
+                          String.print_maybe_escaped field;
+                        Ty.new_not_inferred ~span:field_span)
+                | T_Target -> (
+                    match field with
+                    | "name" -> Ty.inferred ~span:field_span T_String
+                    | _ ->
+                        error span "field %a is not in target"
+                          String.print_maybe_escaped field;
+                        Ty.new_not_inferred ~span:field_span)
+                | other ->
+                    error obj.data.span "%a doesnt have fields" Ty.Shape.print
+                      other;
+                    Ty.new_not_inferred ~span:field_span
+              in
+              ty |> Inference.Ty.expect_inferred_as ~span field_ty);
+          ty
+    in
+    {
+      shape;
+      data =
+        {
+          span;
+          ty;
+          ty_ascription = None;
+          evaled_exprs;
+          compiler_scope = state.scope;
+          included_file = None;
+        };
+    }
+  with exc ->
+    Log.error (fun log ->
+        log "while initializing place expr at %a" Span.print span);
+    raise exc
+
 and init_expr :
     ?evaled_exprs:expr list -> span -> State.t -> Expr.Shape.t -> expr =
  fun ?(evaled_exprs = []) span state shape ->
@@ -28,7 +94,8 @@ and init_expr :
     let ty =
       match shape with
       | E_Constant value -> Value.ty_of value
-      | E_Binding binding -> binding.ty
+      | E_Ref place -> Ty.inferred ~span <| T_Ref place.data.ty
+      | E_Claim place -> place.data.ty
       | E_Then { a; b } -> b.data.ty
       | E_Stmt { expr } -> Ty.inferred ~span T_Unit
       | E_Scope { expr } -> expr.data.ty
@@ -158,35 +225,6 @@ and init_expr :
                            ({ ty = binding.ty; label = binding.label }
                              : Types.ty_tuple_field) )));
                })
-      | E_Field { obj; field; field_span; label } ->
-          let ty = Ty.new_not_inferred ~span in
-          obj.data.ty.var
-          |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
-              let field_ty =
-                match obj_shape with
-                | T_Tuple { tuple } -> (
-                    match Tuple.get_named_opt field tuple with
-                    | Some ty_field ->
-                        ignore <| Label.unite label ty_field.label;
-                        ty_field.ty
-                    | None ->
-                        error span "field %a is not there"
-                          String.print_maybe_escaped field;
-                        Ty.new_not_inferred ~span:field_span)
-                | T_Target -> (
-                    match field with
-                    | "name" -> Ty.inferred ~span:field_span T_String
-                    | _ ->
-                        error span "field %a is not in target"
-                          String.print_maybe_escaped field;
-                        Ty.new_not_inferred ~span:field_span)
-                | other ->
-                    error obj.data.span "%a doesnt have fields" Ty.Shape.print
-                      other;
-                    Ty.new_not_inferred ~span:field_span
-              in
-              ty |> Inference.Ty.expect_inferred_as ~span field_ty);
-          ty
       | E_UseDotStar { used = _; bindings = _ } -> Ty.inferred ~span T_Unit
       | E_If { cond; then_case; else_case } ->
           cond.data.ty
@@ -278,8 +316,8 @@ let init_assignee :
       match shape with
       | A_Placeholder -> Ty.new_not_inferred ~span
       | A_Unit -> Ty.inferred ~span T_Unit
-      | A_Binding binding -> binding.ty
       | A_Let pattern -> pattern.data.ty
+      | A_Place place -> place.data.ty
       | A_Error -> Ty.new_not_inferred ~span
     in
     {
@@ -418,3 +456,4 @@ let init_error : 'a. span -> State.t -> 'a compiled_kind -> 'a =
   | Pattern -> P_Error |> init_pattern span state
   | Assignee -> A_Error |> init_assignee span state
   | TyExpr -> (fun () -> TE_Error) |> init_ty_expr span state
+  | PlaceExpr -> PE_Error |> init_place_expr span state

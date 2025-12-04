@@ -54,6 +54,12 @@ module Value = struct
     | V_Unit -> Some ()
     | _ -> None
 
+  let expect_ref : value -> place option =
+   fun value ->
+    match value |> await_inferred with
+    | V_Ref place -> Some place
+    | _ -> None
+
   let expect_unwind_token : value -> Types.value_unwind_token option =
    fun value ->
     match value |> await_inferred with
@@ -128,10 +134,22 @@ module Expr = struct
     let print = print_expr_shape
   end
 
+  module Place = struct
+    type t = place_expr
+
+    let print = print_place_expr
+
+    module Shape = struct
+      type t = place_expr_shape
+
+      let print = print_place_expr_shape
+    end
+  end
+
   module Assignee = struct
     type t = assignee_expr
 
-    let print_with_spans = print_assignee_expr_with_spans
+    let print = print_assignee_expr
 
     module Shape = struct
       type t = assignee_expr_shape
@@ -162,7 +180,7 @@ type expr = Expr.t
 module Pattern = struct
   type t = pattern
 
-  let print_with_spans = print_pattern_with_spans
+  let print = print_pattern
 
   module Shape = struct
     type t = pattern_shape
@@ -196,3 +214,14 @@ module Ir_data = struct
 end
 
 type ir_data = Ir_data.t
+
+module Place = struct
+  type t = place
+
+  let init = Inference_impl.init_place
+  let init_state state ty : place = { id = Id.gen (); state; ty }
+  let print_value = print_place_value
+  let print_ref = print_place_ref
+end
+
+type place = Place.t

@@ -41,10 +41,19 @@ let inner_compiled_with_handler =
  fun (type a) (kind : a compiled_kind) (compiled : a)
      (handler : inner_compiled_handler) : unit ->
   (match kind with
+  | PlaceExpr -> (
+      match compiled.shape with
+      | PE_Error -> ()
+      | PE_Binding _ -> ()
+      | PE_Deref ref -> handler.handle Expr ref
+      | PE_Temp expr -> handler.handle Expr expr
+      | PE_Field { obj; field = _; field_span = _; label = _ } ->
+          handler.handle PlaceExpr obj)
   | Expr -> (
       match compiled.shape with
+      | E_Ref place -> handler.handle PlaceExpr place
+      | E_Claim place -> handler.handle PlaceExpr place
       | E_Constant _ -> ()
-      | E_Binding _ -> ()
       | E_Then { a; b } ->
           handler.handle Expr a;
           handler.handle Expr b
@@ -77,12 +86,10 @@ let inner_compiled_with_handler =
           handler.handle Expr arg
       | E_Assign { assignee; value } ->
           handler.handle Assignee assignee;
-          handler.handle Expr value
+          handler.handle PlaceExpr value
       | E_Ty expr -> handler.handle TyExpr expr
       | E_Native _ -> ()
       | E_Module { def } -> handler.handle Expr def
-      | E_Field { obj; field = _; field_span = _; label = _ } ->
-          handler.handle Expr obj
       | E_UseDotStar { used; bindings = _ } -> handler.handle Expr used
       | E_If { cond; then_case; else_case } ->
           handler.handle Expr cond;
@@ -92,7 +99,7 @@ let inner_compiled_with_handler =
           handler.handle Expr lhs;
           handler.handle Expr rhs
       | E_Match { value; branches } ->
-          handler.handle Expr value;
+          handler.handle PlaceExpr value;
           branches
           |> List.iter
                (fun
@@ -126,7 +133,7 @@ let inner_compiled_with_handler =
       match compiled.shape with
       | A_Placeholder -> ()
       | A_Unit -> ()
-      | A_Binding _ -> ()
+      | A_Place place -> handler.handle PlaceExpr place
       | A_Let pattern -> handler.handle Pattern pattern
       | A_Error -> ())
   | Pattern -> (

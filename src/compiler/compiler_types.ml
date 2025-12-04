@@ -5,6 +5,7 @@ open Kast_types
 type _ compiled_kind =
   | Assignee : Expr.assignee compiled_kind
   | Expr : expr compiled_kind
+  | PlaceExpr : Expr.Place.t compiled_kind
   | TyExpr : Expr.ty compiled_kind
   | Pattern : pattern compiled_kind
 

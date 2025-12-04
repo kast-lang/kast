@@ -19,6 +19,7 @@ let rec inlay_hints :
  fun (type a) ~(uri : Uri.t) (kind : a Compiler.compiled_kind) (compiled : a) ->
   let type_hint : ty option =
     match kind with
+    | PlaceExpr -> None
     | Expr -> None
     | Pattern -> (
         match compiled.shape with

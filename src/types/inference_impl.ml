@@ -28,6 +28,8 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_Char, _ -> fail ()
   | T_String, T_String -> T_String
   | T_String, _ -> fail ()
+  | T_Ref a, T_Ref b -> T_Ref (unite_ty ~span a b)
+  | T_Ref _, _ -> fail ()
   | T_Tuple { tuple = a }, T_Tuple { tuple = b } -> (
       try
         T_Tuple
@@ -91,6 +93,22 @@ and unite_ty : ty Inference.unite =
  fun ~span { var = a } { var = b } ->
   { var = Inference.Var.unite ~span unite_ty_shape a b }
 
+and unite_place : place Inference.unite =
+ fun ~span a b ->
+  let get_value (place : place) : value =
+    match place.state with
+    | Uninitialized ->
+        Inference.Error.error span "uninitialized place";
+        V_Error |> inferred_value ~span
+    | Occupied value -> value
+    | MovedOut ->
+        Inference.Error.error span "moved out place";
+        V_Error |> inferred_value ~span
+  in
+  let a = get_value a in
+  let b = get_value b in
+  init_place (unite_value ~span a b)
+
 and unite_value_shape : value_shape Inference.unite =
  fun ~span a b ->
   let fail () : value_shape =
@@ -112,6 +130,8 @@ and unite_value_shape : value_shape Inference.unite =
   | V_Char _, _ -> fail ()
   | V_String a, V_String b when a = b -> V_String a
   | V_String _, _ -> fail ()
+  | V_Ref a, V_Ref b when Repr.equal a b -> V_Ref a
+  | V_Ref _, _ -> fail ()
   | V_Tuple { tuple = a }, V_Tuple { tuple = b } ->
       V_Tuple
         {
@@ -124,7 +144,7 @@ and unite_value_shape : value_shape Inference.unite =
                    Types.value_tuple_field
                  ->
                    {
-                     value = unite_value ~span a.value b.value;
+                     place = unite_place ~span a.place b.place;
                      span = a.span;
                      ty_field = unite_ty_tuple_field ~span a.ty_field b.ty_field;
                    });
@@ -174,6 +194,7 @@ and infer_value_shape : span:span -> ty_shape -> value_shape option =
   | T_Char -> None
   | T_String -> None
   | T_Variant _ -> None
+  | T_Ref _ -> None
   | T_Tuple { tuple } ->
       Some
         (V_Tuple
@@ -182,7 +203,8 @@ and infer_value_shape : span:span -> ty_shape -> value_shape option =
                tuple
                |> Tuple.map (fun (field : ty_tuple_field) : value_tuple_field ->
                    {
-                     value = new_not_inferred_value_of_ty ~span field.ty;
+                     place =
+                       init_place <| new_not_inferred_value_of_ty ~span field.ty;
                      span;
                      ty_field = field;
                    });
@@ -227,6 +249,7 @@ and ty_of_value_shape : value_shape -> ty =
     | V_Int64 _ -> inferred_ty ~span T_Int64
     | V_Char _ -> inferred_ty ~span T_Char
     | V_String _ -> inferred_ty ~span T_String
+    | V_Ref place -> inferred_ty ~span (T_Ref place.ty)
     | V_Tuple { tuple } ->
         inferred_ty ~span
         <| T_Tuple
@@ -239,7 +262,8 @@ and ty_of_value_shape : value_shape -> ty =
     | V_Variant { ty; _ } -> ty
     | V_Ty _ -> inferred_ty ~span T_Ty
     | V_Fn { ty; _ } -> inferred_ty ~span <| T_Fn ty
-    | V_Generic { id; fn } -> inferred_ty ~span <| T_Generic { def = fn.def }
+    | V_Generic { id = _; fn } ->
+        inferred_ty ~span <| T_Generic { def = fn.def }
     | V_NativeFn { id = _; ty; name = _; impl = _ } ->
         inferred_ty ~span <| T_Fn ty
     | V_Ast _ -> inferred_ty ~span T_Ast
@@ -250,3 +274,6 @@ and ty_of_value_shape : value_shape -> ty =
     | V_Binding binding -> binding.ty
     | V_CompilerScope _ -> inferred_ty ~span T_CompilerScope
     | V_Error -> inferred_ty ~span T_Error
+
+and init_place value : place =
+  { id = Id.gen (); state = Occupied value; ty = value.ty }

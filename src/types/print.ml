@@ -2,10 +2,35 @@ open Std
 open Kast_util
 open Types
 
+type options = {
+  types : bool;
+  spans : bool;
+}
+
 module Impl = struct
   let is_recursive = RecurseCache.create ()
 
   let rec _unused = ()
+
+  and print_data ~options fmt (data : ir_data) =
+    if options.spans then fprintf fmt " @{<dim>at %a@}" Span.print data.span;
+    if options.types then fprintf fmt " @{<dim>:: %a@}" print_ty data.ty
+
+  (* PLACE *)
+  and print_place_ref : formatter -> place -> unit =
+   fun fmt place ->
+    (match place.state with
+    | Uninitialized -> fprintf fmt "<uninitialized"
+    | Occupied _ -> fprintf fmt "<occupied"
+    | MovedOut -> fprintf fmt "<moved out");
+    fprintf fmt " %a>" Id.print place.id
+
+  and print_place_value : formatter -> place -> unit =
+   fun fmt place ->
+    match place.state with
+    | Uninitialized -> fprintf fmt "<uninitialized>"
+    | Occupied value -> print_value fmt value
+    | MovedOut -> fprintf fmt "<moved out>"
 
   (* VALUE *)
   and print_value_shape : formatter -> value_shape -> unit =
@@ -19,16 +44,17 @@ module Impl = struct
     | V_Int64 value -> fprintf fmt "@{<italic>%s@}" (Int64.to_string value)
     | V_Char value -> fprintf fmt "@{<green>%C@}" value
     | V_String value -> fprintf fmt "@{<green>%S@}" value
+    | V_Ref place -> fprintf fmt "&%a" print_place_ref place
     | V_Tuple { tuple } ->
         fprintf fmt "%a"
           (Tuple.print (fun fmt (field : value_tuple_field) ->
-               print_value fmt field.value))
+               print_place_value fmt field.place))
           tuple
     | V_Fn { ty; fn = _ } -> fprintf fmt "@{<italic><fn %a>@}" print_ty_fn ty
     | V_Variant { label; data; ty = _ } -> (
         fprintf fmt ":%a" Label.print label;
         match data with
-        | Some data -> fprintf fmt " %a" print_value data
+        | Some data -> fprintf fmt " %a" print_place_value data
         | None -> ())
     | V_Generic _ -> fprintf fmt "@{<italic><generic>@}"
     | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
@@ -53,6 +79,7 @@ module Impl = struct
     | T_Int64 -> fprintf fmt "int64"
     | T_Char -> fprintf fmt "char"
     | T_String -> fprintf fmt "string"
+    | T_Ref inner -> fprintf fmt "&%a" print_ty inner
     | T_Variant { variants } ->
         fprintf fmt "%a"
           (Row.print
@@ -83,7 +110,9 @@ module Impl = struct
         match compiled with
         | None -> fprintf fmt "@{<italic><generic>@}"
         | Some { arg; body; evaled_result = _ } ->
-            fprintf fmt "[%a] %a" print_pattern arg print_ty body.data.ty)
+            fprintf fmt "[%a] %a"
+              (print_pattern ~options:{ spans = false; types = false })
+              arg print_ty body.data.ty)
     | T_Ast -> fprintf fmt "ast"
     | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
     | T_Target -> fprintf fmt "target"
@@ -121,8 +150,9 @@ module Impl = struct
     let name =
       match expr.shape with
       | E_Constant _ -> "Constant"
-      | E_Binding _ -> "Binding"
       | E_Then _ -> "Then"
+      | E_Ref _ -> "Ref"
+      | E_Claim _ -> "ReadPlace"
       | E_Stmt _ -> "Stmt"
       | E_Scope _ -> "Scope"
       | E_Fn _ -> "Fn"
@@ -135,7 +165,6 @@ module Impl = struct
       | E_Ty _ -> "Ty"
       | E_Native _ -> "Native"
       | E_Module _ -> "Module"
-      | E_Field _ -> "Field"
       | E_UseDotStar _ -> "UseDotStar"
       | E_If _ -> "If"
       | E_And _ -> "And"
@@ -152,12 +181,19 @@ module Impl = struct
     in
     fprintf fmt "%s" name
 
-  and print_expr_shape :
-      (formatter -> expr -> unit) -> formatter -> expr_shape -> unit =
-   fun print_expr fmt -> function
+  and print_expr_shape : options:options -> formatter -> expr_shape -> unit =
+   fun ~options fmt ->
+    let print_expr = print_expr ~options in
+    function
+    | E_Ref place ->
+        fprintf fmt "@{<magenta>ref@} (@;<0 2>@[<v>place = %a,@]@ )"
+          (print_place_expr ~options)
+          place
+    | E_Claim place ->
+        fprintf fmt "@{<magenta>read_place@} (@;<0 2>@[<v>place = %a,@]@ )"
+          (print_place_expr ~options)
+          place
     | E_Constant value -> fprintf fmt "@{<magenta>const@} %a" print_value value
-    | E_Binding binding ->
-        fprintf fmt "@{<magenta>binding@} %a" print_binding binding
     | E_Then { a; b } ->
         fprintf fmt "@{<magenta>then@} %a" (Tuple.print print_expr)
           (Tuple.make [ a; b ] [])
@@ -172,14 +208,14 @@ module Impl = struct
         | Some { arg; body; evaled_result = _ } ->
             fprintf fmt
               "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-              print_pattern_with_spans arg print_expr body
+              (print_pattern ~options) arg print_expr body
         | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
     | E_Generic { def = { compiled; on_compiled = _ }; _ } -> (
         match compiled with
         | Some { arg; body; evaled_result = _ } ->
             fprintf fmt
               "@{<magenta>generic@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-              print_pattern_with_spans arg print_expr body
+              (print_pattern ~options) arg print_expr body
         | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
     | E_Tuple { tuple } ->
         fprintf fmt "tuple %a"
@@ -200,14 +236,14 @@ module Impl = struct
     | E_Assign { assignee; value } ->
         fprintf fmt
           "@{<magenta>assign@} (@;<0 2>@[<v>assignee = %a,@]@;<0 2>@[<v>value = %a@]@ )"
-          print_assignee_expr_with_spans assignee print_expr value
-    | E_Ty expr -> fprintf fmt "@{<magenta>type@} %a" print_ty_expr expr
+          (print_assignee_expr ~options)
+          assignee
+          (print_place_expr ~options)
+          value
+    | E_Ty expr ->
+        fprintf fmt "@{<magenta>type@} %a" (print_ty_expr ~options) expr
     | E_Native { expr } -> fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
     | E_Module { def } -> fprintf fmt "@{<magenta>module@} %a" print_expr def
-    | E_Field { obj; field; field_span = _; label = _ } ->
-        fprintf fmt
-          "@{<magenta>field@} (@;<0 2>@[<v>obj = %a,@]@;<0 2>@[<v>field = %a@]@ )"
-          print_expr obj String.print_maybe_escaped field
     | E_UseDotStar { used; bindings = _ } ->
         fprintf fmt "@{<magenta>use .*@} (@;<0 2>@[<v>used = %a,@]@ )"
           print_expr used
@@ -228,8 +264,9 @@ module Impl = struct
     | E_Match { value; branches } ->
         fprintf fmt
           "@{<magenta>match@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>branches = %a@]@ )"
-          print_expr value
-          (List.print print_expr_match_branch)
+          (print_place_expr ~options)
+          value
+          (List.print (print_expr_match_branch ~options))
           branches
     | E_Error -> fprintf fmt "@{<red><error>@}"
     | E_Loop { body } ->
@@ -239,7 +276,7 @@ module Impl = struct
     | E_Unwindable { token; body } ->
         fprintf fmt
           "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-          print_pattern_with_spans token print_expr body
+          (print_pattern ~options) token print_expr body
     | E_Unwind { token; value } ->
         fprintf fmt
           "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
@@ -256,77 +293,101 @@ module Impl = struct
         fprintf fmt "@{<magenta>target dependent@} (";
         branches
         |> List.iter (fun branch ->
-            fprintf fmt "@;<0 2>@[<v>%a@]" print_target_dependent_branch branch);
+            fprintf fmt "@;<0 2>@[<v>%a@]"
+              (print_target_dependent_branch ~options)
+              branch);
         fprintf fmt " )"
 
-  and print_expr_match_branch : formatter -> expr_match_branch -> unit =
-   fun fmt { pattern; body } ->
+  and print_expr_match_branch :
+      options:options -> formatter -> expr_match_branch -> unit =
+   fun ~options fmt { pattern; body } ->
     fprintf fmt "(@;<0 2>@[<v>pattern = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-      print_pattern pattern print_expr_with_spans body
+      (print_pattern ~options) pattern (print_expr ~options) body
 
   and print_context_type : formatter -> value_context_ty -> unit =
    fun fmt { id; ty } ->
     fprintf fmt "<context %a of %a>" Id.print id print_ty ty
 
   and print_target_dependent_branch :
-      formatter -> expr_target_dependent_branch -> unit =
-   fun fmt { cond; body } ->
-    let print_expr = print_expr_with_spans in
-    fprintf fmt "%a => %a" print_expr cond print_expr body
+      options:options -> formatter -> expr_target_dependent_branch -> unit =
+   fun ~options fmt { cond; body } ->
+    fprintf fmt "%a => %a" (print_expr ~options) cond (print_expr ~options) body
 
-  and print_expr_with_spans : formatter -> expr -> unit =
-   fun fmt { shape; data } ->
-    fprintf fmt "%a @{<dim>at %a@}"
-      (print_expr_shape print_expr_with_spans)
-      shape Span.print data.span
+  and print_expr : options:options -> formatter -> expr -> unit =
+   fun ~options fmt { shape; data } ->
+    print_expr_shape ~options fmt shape;
+    print_data ~options fmt data
 
-  and print_expr_with_types : formatter -> expr -> unit =
-   fun fmt { shape; data } ->
-    fprintf fmt "%a @{<dim>:: %a@}"
-      (print_expr_shape print_expr_with_types)
-      shape print_ty data.ty
+  (* PLACE EXPR *)
+  and print_place_expr_shape :
+      options:options -> formatter -> place_expr_shape -> unit =
+   fun ~options fmt -> function
+    | PE_Deref ref ->
+        fprintf fmt "@{<magenta>deref@} (@;<0 2>@[<v>ref = %a,@ )"
+          (print_expr ~options) ref
+    | PE_Temp expr ->
+        fprintf fmt "@{<magenta>temp@} (@;<0 2>@[<v>expr = %a,@ )"
+          (print_expr ~options) expr
+    | PE_Binding binding ->
+        fprintf fmt "@{<magenta>binding@} %a" print_binding binding
+    | PE_Field { obj; field; field_span = _; label = _ } ->
+        fprintf fmt
+          "@{<magenta>field@} (@;<0 2>@[<v>obj = %a,@]@;<0 2>@[<v>field = %a@]@ )"
+          (print_place_expr ~options)
+          obj String.print_maybe_escaped field
+    | PE_Error -> fprintf fmt "@{<red><error>@}"
+
+  and print_place_expr : options:options -> formatter -> place_expr -> unit =
+   fun ~options fmt { shape; data } ->
+    print_place_expr_shape ~options fmt shape;
+    print_data ~options fmt data
 
   (* ASSIGNEE EXPR *)
 
-  and print_assignee_expr_shape : formatter -> assignee_expr_shape -> unit =
-   fun fmt -> function
+  and print_assignee_expr_shape :
+      options:options -> formatter -> assignee_expr_shape -> unit =
+   fun ~options fmt -> function
     | A_Placeholder -> fprintf fmt "@{<magenta>_@}"
     | A_Unit -> fprintf fmt "()"
-    | A_Binding binding ->
-        fprintf fmt "@{<magenta>binding@} %a" print_binding binding
+    | A_Place place ->
+        fprintf fmt "@{<magenta>place@} (@;<0 2>place = %a@ )"
+          (print_place_expr ~options)
+          place
     | A_Let pattern ->
         fprintf fmt "@{<magenta>let@} (@;<0 2>pattern = %a@ )"
-          print_pattern_with_spans pattern
+          (print_pattern ~options) pattern
     | A_Error -> fprintf fmt "@{<red><error>@}"
 
-  and print_assignee_expr_with_spans : formatter -> assignee_expr -> unit =
-   fun fmt { shape; data } ->
-    fprintf fmt "%a @{<dim>at %a@}" print_assignee_expr_shape shape Span.print
-      data.span
+  and print_assignee_expr :
+      options:options -> formatter -> assignee_expr -> unit =
+   fun ~options fmt { shape; data } ->
+    print_assignee_expr_shape ~options fmt shape;
+    print_data ~options fmt data
 
   (* TYPE EXPR *)
 
-  and print_ty_expr_shape : formatter -> ty_expr_shape -> unit =
-   fun fmt -> function
+  and print_ty_expr_shape :
+      options:options -> formatter -> ty_expr_shape -> unit =
+   fun ~options fmt -> function
     | TE_Unit -> fprintf fmt "()"
     | TE_Fn { arg; result } ->
         fprintf fmt "@{<magenta>fn@} %a"
-          (Tuple.print print_ty_expr)
+          (Tuple.print (print_ty_expr ~options))
           (Tuple.make [] [ ("arg", arg); ("result", result) ])
     | TE_Expr expr ->
-        fprintf fmt "@{<magenta>expr@} %a" print_expr_with_spans expr
+        fprintf fmt "@{<magenta>expr@} %a" (print_expr ~options) expr
     | TE_Tuple { tuple } ->
         fprintf fmt "@{<magenta>tuple@} %a"
           (Tuple.print (fun fmt { label_span = _; label = _; field } ->
-               print_ty_expr fmt field))
+               (print_ty_expr ~options) fmt field))
           tuple
     | TE_Union { elements } ->
         fprintf fmt "@{<magenta>union@} %a"
-          (Tuple.print print_ty_expr)
+          (Tuple.print (print_ty_expr ~options))
           (Tuple.make elements [])
     | TE_Variant { variants } ->
         fprintf fmt "@{<magenta>variant@} %a"
-          (Tuple.print (Option.print print_ty_expr))
+          (Tuple.print (Option.print (print_ty_expr ~options)))
           (Tuple.make []
              (variants
              |> List.map
@@ -335,19 +396,18 @@ module Impl = struct
                   -> (Label.get_name label, value))))
     | TE_Error -> fprintf fmt "@{<red><error>@}"
 
-  and print_ty_expr : formatter -> ty_expr -> unit =
-   fun fmt { compiled_shape; on_compiled = _; data } ->
-    match compiled_shape with
-    | Some shape ->
-        fprintf fmt "%a @{<dim>at %a@}" print_ty_expr_shape shape Span.print
-          data.span
-    | None ->
-        fprintf fmt "<not compiled yet> @{<dim>at %a@}" Span.print data.span
+  and print_ty_expr : options:options -> formatter -> ty_expr -> unit =
+   fun ~options fmt { compiled_shape; on_compiled = _; data } ->
+    (match compiled_shape with
+    | Some shape -> print_ty_expr_shape ~options fmt shape
+    | None -> fprintf fmt "<not compiled yet>");
+    print_data ~options fmt data
 
   (* PATTERN *)
 
-  and print_pattern_shape : formatter -> pattern_shape -> unit =
-   fun fmt -> function
+  and print_pattern_shape :
+      options:options -> formatter -> pattern_shape -> unit =
+   fun ~options fmt -> function
     | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
     | P_Unit -> fprintf fmt "()"
     | P_Binding binding ->
@@ -355,37 +415,20 @@ module Impl = struct
     | P_Tuple { tuple } ->
         fprintf fmt "@{<magenta>tuple@} %a"
           (Tuple.print (fun fmt { label_span = _; label = _; field } ->
-               print_pattern_with_spans fmt field))
+               print_pattern ~options fmt field))
           tuple
     | P_Variant { label; label_span = _; value } ->
         fprintf fmt
           "@{<magenta>variant@} (@;<0 2>@[<v>label = %a,@]@;<0 2>@[<v>value = %a,@]@ )"
           Label.print label
-          (Option.print print_pattern_with_spans)
+          (Option.print (print_pattern ~options))
           value
     | P_Error -> fprintf fmt "@{<red><error>@}"
 
-  and print_pattern_with_spans : formatter -> pattern -> unit =
-   fun fmt { shape; data } ->
-    fprintf fmt "%a @{<dim>at %a@}" print_pattern_shape shape Span.print
-      data.span
-
-  and print_pattern : formatter -> pattern -> unit =
-   fun fmt { shape; data = _ } ->
-    match shape with
-    | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
-    | P_Unit -> fprintf fmt "()"
-    | P_Binding binding -> print_binding fmt binding
-    | P_Tuple { tuple } ->
-        Tuple.print
-          (fun fmt { label_span = _; label = _; field } ->
-            print_pattern fmt field)
-          fmt tuple
-    | P_Variant { label; label_span = _; value } ->
-        fprintf fmt ":%a" Label.print label;
-        value
-        |> Option.iter (fun value -> fprintf fmt " %a" print_pattern value)
-    | P_Error -> fprintf fmt "@{<red><error>@}"
+  and print_pattern : options:options -> formatter -> pattern -> unit =
+   fun ~options fmt { shape; data } ->
+    print_pattern_shape ~options fmt shape;
+    print_data ~options fmt data
 
   (* OTHER *)
   and print_binding : formatter -> binding -> unit =
@@ -406,17 +449,46 @@ let print_ty = with_cache Impl.print_ty
 let print_ty_shape = with_cache Impl.print_ty_shape
 let print_value = with_cache Impl.print_value
 let print_value_shape = with_cache Impl.print_value_shape
-let print_expr_with_spans = with_cache Impl.print_expr_with_spans
-let print_expr_with_types = with_cache Impl.print_expr_with_types
+
+let print_expr_with_spans =
+  with_cache (Impl.print_expr ~options:{ spans = true; types = false })
+
+let print_expr_with_types =
+  with_cache (Impl.print_expr ~options:{ spans = false; types = true })
+
 let print_expr_short = with_cache Impl.print_expr_short
-let print_expr_shape print_expr = with_cache (Impl.print_expr_shape print_expr)
-let print_assignee_expr_shape = with_cache Impl.print_assignee_expr_shape
 
-let print_assignee_expr_with_spans =
-  with_cache Impl.print_assignee_expr_with_spans
+let print_assignee_expr =
+  with_cache (Impl.print_assignee_expr ~options:{ spans = true; types = false })
 
-let print_ty_expr = with_cache Impl.print_ty_expr
-let print_ty_expr_shape = with_cache Impl.print_ty_expr_shape
-let print_pattern_with_spans = with_cache Impl.print_pattern_with_spans
-let print_pattern_shape = with_cache Impl.print_pattern_shape
+let print_ty_expr =
+  with_cache (Impl.print_ty_expr ~options:{ spans = true; types = false })
+
+let print_place_expr =
+  with_cache (Impl.print_place_expr ~options:{ spans = true; types = false })
+
+let print_place_expr_shape =
+  with_cache
+    (Impl.print_place_expr_shape ~options:{ spans = true; types = false })
+
+let print_expr_shape ~options = with_cache (Impl.print_expr_shape ~options)
+
+let print_assignee_expr ~options =
+  with_cache (Impl.print_assignee_expr ~options)
+
+let print_assignee_expr_shape ~options =
+  with_cache (Impl.print_assignee_expr_shape ~options)
+
+let print_ty_expr ~options = with_cache (Impl.print_ty_expr ~options)
+
+let print_ty_expr_shape ~options =
+  with_cache (Impl.print_ty_expr_shape ~options)
+
+let print_pattern ~options = with_cache (Impl.print_pattern ~options)
+
+let print_pattern_shape ~options =
+  with_cache (Impl.print_pattern_shape ~options)
+
 let print_binding = with_cache Impl.print_binding
+let print_place_ref = with_cache Impl.print_place_ref
+let print_place_value = with_cache Impl.print_place_value

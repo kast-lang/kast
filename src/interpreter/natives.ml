@@ -132,11 +132,11 @@ let mod_string =
               error "expected 2 unnamed fields" ();
             let s, idx = arg.tuple |> Tuple.unwrap_unnamed2 in
             let s =
-              s.value |> Value.expect_string
+              s.place |> Common.claim ~span:caller |> Value.expect_string
               |> Option.unwrap_or_else (error "expected string as first arg")
             in
             let idx =
-              idx.value |> Value.expect_int32
+              idx.place |> Common.claim ~span:caller |> Value.expect_int32
               |> Option.unwrap_or_else (error "expected idx be int32")
             in
             V_Char
@@ -176,15 +176,15 @@ let mod_string =
               error "expected 2 unnamed fields" ();
             let s, start, len = arg.tuple |> Tuple.unwrap_unnamed3 in
             let s =
-              s.value |> Value.expect_string
+              s.place |> Common.claim ~span:caller |> Value.expect_string
               |> Option.unwrap_or_else (error "expected string as first arg")
             in
             let start =
-              start.value |> Value.expect_int32
+              start.place |> Common.claim ~span:caller |> Value.expect_int32
               |> Option.unwrap_or_else (error "expected start be int32")
             in
             let len =
-              len.value |> Value.expect_int32
+              len.place |> Common.claim ~span:caller |> Value.expect_int32
               |> Option.unwrap_or_else (error "expected len be int32")
             in
             V_String (String.sub s (Int32.to_int start) (Int32.to_int len))
@@ -207,17 +207,18 @@ let mod_string =
               error "expected 2 unnamed fields" ();
             let s, f = arg.tuple |> Tuple.unwrap_unnamed2 in
             let s =
-              s.value |> Value.expect_string
+              s.place |> Common.claim ~span:caller |> Value.expect_string
               |> Option.unwrap_or_else (error "expected string as first arg")
             in
+            let f = f.place |> Common.claim ~span:caller in
             let _ =
-              f.value |> Value.expect_fn
+              f |> Value.expect_fn
               |> Option.unwrap_or_else (error "expected fn as second arg")
             in
             s
             |> String.iter (fun c ->
                 let c : value = V_Char c |> Value.inferred ~span in
-                ignore <| Common.call caller state f.value c;
+                ignore <| Common.call caller state f c;
                 ());
             V_Unit |> Value.inferred ~span))
   in
@@ -304,8 +305,12 @@ let natives : natives =
         match value |> Value.await_inferred with
         | V_Tuple { tuple } ->
             let a, b = tuple |> Tuple.unwrap_unnamed2 in
-            let a = a.value |> Value.await_inferred in
-            let b = b.value |> Value.await_inferred in
+            let a =
+              a.place |> Common.claim ~span:caller |> Value.await_inferred
+            in
+            let b =
+              b.place |> Common.claim ~span:caller |> Value.await_inferred
+            in
             let result : bool = op a b in
             V_Bool result |> Value.inferred ~span
         | _ ->
@@ -344,8 +349,10 @@ let natives : natives =
                 let a, b = tuple |> Tuple.unwrap_unnamed2 in
                 let result : Value.shape =
                   match
-                    ( a.value |> Value.await_inferred,
-                      b.value |> Value.await_inferred )
+                    ( a.place |> Common.claim ~span:caller
+                      |> Value.await_inferred,
+                      b.place |> Common.claim ~span:caller
+                      |> Value.await_inferred )
                   with
                   | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
                   | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
@@ -407,8 +414,14 @@ let natives : natives =
               arg |> Value.expect_tuple |> Option.get
             in
             let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
-            let min = min.value |> Value.expect_int32 |> Option.get in
-            let max = max.value |> Value.expect_int32 |> Option.get in
+            let min =
+              min.place |> Common.claim ~span:caller |> Value.expect_int32
+              |> Option.get
+            in
+            let max =
+              max.place |> Common.claim ~span:caller |> Value.expect_int32
+              |> Option.get
+            in
             V_Int32 (Random.int32_in_range ~min ~max) |> Value.inferred ~span
           with exc ->
             Error.error caller "rng: %s" (Printexc.to_string exc);

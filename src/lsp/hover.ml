@@ -60,6 +60,7 @@ let binding_definition : binding -> definition =
 let get_tuple (type a) (kind : a compiled_kind) (compiled : a) :
     a Types.tuple_field_of tuple option =
   match kind with
+  | PlaceExpr -> None
   | Expr -> (
       match compiled.shape with
       | E_Tuple { tuple } -> Some tuple
@@ -111,22 +112,32 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
   | Some result -> result
   | None -> (
       match kind with
-      | Expr ->
+      | PlaceExpr ->
           let rename : hover_info_rename option =
             match compiled.shape with
-            | E_Binding binding ->
+            | PE_Binding binding ->
                 Some
                   {
                     span = binding.span;
                     definition_mode =
                       DefinedNotHere (binding_definition binding);
                   }
-            | E_Field { obj = _; field = _; field_span; label } ->
+            | PE_Field { obj = _; field = _; field_span; label } ->
                 Some
                   {
                     span = field_span;
                     definition_mode = DefinedNotHere (label_definition label);
                   }
+            | _ -> None
+          in
+          {
+            ty = { ty = compiled.data.ty; span = compiled.data.span };
+            rename;
+            file = included_file;
+          }
+      | Expr ->
+          let rename : hover_info_rename option =
+            match compiled.shape with
             | E_Variant { label; label_span; value = _ } ->
                 Some
                   {
@@ -141,20 +152,9 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
             file = included_file;
           }
       | Assignee ->
-          let rename =
-            match compiled.shape with
-            | A_Binding binding ->
-                Some
-                  {
-                    span = binding.span;
-                    definition_mode =
-                      DefinedNotHere (binding_definition binding);
-                  }
-            | _ -> None
-          in
           {
             ty = { ty = compiled.data.ty; span = compiled.data.span };
-            rename;
+            rename = None;
             file = included_file;
           }
       | Pattern ->

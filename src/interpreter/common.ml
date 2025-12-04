@@ -15,8 +15,25 @@ exception
     value : value;
   }
 
-let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
- fun value pattern ->
+let is_copy_ty (_ty : ty) : bool = true
+
+let claim ~span (place : place) : value =
+  match place.state with
+  | Occupied value ->
+      if is_copy_ty place.ty then value
+      else (
+        place.state <- MovedOut;
+        value)
+  | Uninitialized ->
+      Error.error span "place is not initialized";
+      V_Error |> Value.inferred ~span
+  | MovedOut ->
+      Error.error span "place has been moved out of";
+      V_Error |> Value.inferred ~span
+
+let rec pattern_match :
+    span:span -> place -> pattern -> (matched:bool * Scope.locals) =
+ fun ~span place pattern ->
   match pattern.shape with
   | P_Placeholder -> (~matched:true, Scope.Locals.empty)
   | P_Unit ->
@@ -28,13 +45,13 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
           by_symbol =
             SymbolMap.singleton binding.name
               ({
-                 value;
-                 ty_field = { ty = Value.ty_of value; label = binding.label };
+                 place = Place.init <| claim ~span place;
+                 ty_field = { ty = place.ty; label = binding.label };
                }
                 : Types.interpreter_local);
         } )
   | P_Tuple { tuple = tuple_pattern } -> (
-      match value |> Value.await_inferred with
+      match place |> claim ~span |> Value.await_inferred with
       | V_Tuple { tuple } ->
           with_return (fun { return } : (matched:bool * Scope.locals) ->
               let ~matched, matches =
@@ -55,7 +72,7 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
                          field_value
                        in
                        let ~matched:field_matched, field_matches =
-                         pattern_match field_value.value field_pattern
+                         pattern_match ~span field_value.place field_pattern
                        in
                        ( ~matched:(matched && field_matched),
                          SymbolMap.union
@@ -68,13 +85,13 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
                      (~matched:true, SymbolMap.empty)
               in
               (~matched, { by_symbol = matches }))
-      | _ ->
-          Error.error pattern.data.span "Expected tuple, got %a" Value.print
-            value;
+      | value ->
+          Error.error pattern.data.span "Expected tuple, got %a"
+            Value.Shape.print value;
           (~matched:false, Scope.Locals.empty))
   | P_Variant { label = patern_label; label_span = _; value = value_pattern }
     -> (
-      match value |> Value.await_inferred with
+      match place |> claim ~span |> Value.await_inferred with
       | V_Variant { label; data; ty = _ } ->
           if Label.same label patern_label then
             match (data, value_pattern) with
@@ -85,7 +102,7 @@ let rec pattern_match : value -> pattern -> (matched:bool * Scope.locals) =
             | Some _, None ->
                 Error.error pattern.data.span "Expected no value, got value";
                 (~matched:false, Scope.Locals.empty)
-            | Some value, Some pattern -> pattern_match value pattern
+            | Some value, Some pattern -> pattern_match ~span value pattern
           else (~matched:false, Scope.Locals.empty)
       | _ ->
           Error.error pattern.data.span "Expected variant";
@@ -116,7 +133,9 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
             return (V_Error |> Value.inferred ~span))
       in
       Log.trace (fun log -> log "Fn for call at %a is compiled" Span.print span);
-      let ~matched:arg_matched, arg_bindings = pattern_match arg def.arg in
+      let ~matched:arg_matched, arg_bindings =
+        pattern_match ~span (Place.init arg) def.arg
+      in
       if not arg_matched then
         Error.error span "Failed to pattern match fn's arg";
       let new_state =
@@ -236,22 +255,87 @@ and call (span : span) (state : state) (f : value) (arg : value) : value =
       Error.error span "expected fn";
       V_Error |> Value.inferred ~span
 
-and assign : state -> Expr.assignee -> value -> unit =
- fun state assignee value ->
+and assign : span:span -> state -> Expr.assignee -> place -> unit =
+ fun ~span state assignee place ->
   match assignee.shape with
   | A_Placeholder -> ()
   | A_Unit ->
       (* TODO assert that value is unit 🦄 *)
       ()
-  | A_Binding { id = _; name; ty = _; span = _; label = _ } ->
-      state.scope
-      |> Scope.assign_to_existing ~span:assignee.data.span name value
+  | A_Place assignee_place_expr ->
+      let assignee_place : place = eval_place state assignee_place_expr in
+      let value = claim ~span place in
+      assignee_place.state <- Occupied value
   | A_Let pattern ->
-      let ~matched, new_bindings = pattern_match value pattern in
+      let ~matched, new_bindings = pattern_match ~span place pattern in
       if not matched then
         Error.error assignee.data.span "Failed to pattern match";
       state.scope |> Scope.add_locals new_bindings
   | A_Error -> ()
+
+and error_place : ty -> place = fun ty -> Place.init_state Uninitialized ty
+
+and eval_place : state -> Types.place_expr -> place =
+ fun state expr ->
+  try
+    let span = expr.data.span in
+    Log.trace (fun log -> log "evaluating place at %a" Span.print span);
+    let result =
+      match expr.shape with
+      | PE_Error -> error_place expr.data.ty
+      | PE_Binding binding ->
+          let result =
+            Scope.find_opt binding.name state.scope
+            |> Option.unwrap_or_else (fun () : place ->
+                Log.trace (fun log ->
+                    log "all in scope: %a" Scope.print_all state.scope);
+                Error.error expr.data.span "%a not found" Symbol.print
+                  binding.name;
+                error_place expr.data.ty)
+          in
+          Log.trace (fun log ->
+              log "evaled binding %a = %a" Binding.print binding Id.print
+                result.id);
+          result
+      | PE_Temp expr ->
+          let value = eval state expr in
+          Place.init value
+      | PE_Deref ref_expr -> (
+          match eval state ref_expr |> Value.expect_ref with
+          | None ->
+              Error.error ref_expr.data.span "Expected a reference";
+              error_place expr.data.ty
+          | Some place -> place)
+      | PE_Field { obj; field; field_span = _; label = _ } -> (
+          let obj = eval_place state obj in
+          match obj |> claim ~span |> Value.await_inferred with
+          | V_Tuple { tuple } -> (
+              match Tuple.get_named_opt field tuple with
+              | Some field -> field.place
+              | None ->
+                  Error.error expr.data.span "field %S doesnt exist" field;
+                  error_place expr.data.ty)
+          | V_Target { name } -> (
+              match field with
+              | "name" -> Place.init (V_String name |> Value.inferred ~span)
+              | _ ->
+                  Error.error expr.data.span "field %S doesnt exist in target"
+                    field;
+                  error_place expr.data.ty)
+          | V_Error -> error_place expr.data.ty
+          | value ->
+              Error.error expr.data.span "%a doesnt have fields"
+                Value.Shape.print value;
+              error_place expr.data.ty)
+    in
+    Log.trace (fun log -> log "evaled place at %a" Span.print span);
+    result
+  with
+  | Unwind _ as exc -> raise exc
+  | exc ->
+      Log.error (fun log ->
+          log "While evaluating place expr at %a" Span.print expr.data.span);
+      raise exc
 
 and eval : state -> expr -> value =
  fun state expr ->
@@ -260,21 +344,13 @@ and eval : state -> expr -> value =
     Log.trace (fun log -> log "evaluating at %a" Span.print span);
     let result =
       match expr.shape with
+      | E_Ref place ->
+          let place = eval_place state place in
+          V_Ref place |> Value.inferred ~span
+      | E_Claim place ->
+          let place = eval_place state place in
+          place |> claim ~span
       | E_Constant value -> value
-      | E_Binding binding ->
-          let result =
-            Scope.find_opt binding.name state.scope
-            |> Option.unwrap_or_else (fun () : value ->
-                Log.trace (fun log ->
-                    log "all in scope: %a" Scope.print_all state.scope);
-                Error.error expr.data.span "%a not found" Symbol.print
-                  binding.name;
-                V_Error |> Value.inferred ~span)
-          in
-          Log.trace (fun log ->
-              log "evaled binding %a = %a" Binding.print binding Value.print
-                result);
-          result
       | E_Fn { def; ty } ->
           V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } }
           |> Value.inferred ~span
@@ -305,12 +381,13 @@ and eval : state -> expr -> value =
                      ->
                        let value = field_expr |> eval state in
                        let ty_field = ty.tuple |> Tuple.get member in
-                       { value; span = label_span; ty_field });
+                       { place = Place.init value; span = label_span; ty_field });
             }
           |> Value.inferred ~span
       | E_Variant { label; label_span = _; value } ->
           let value = value |> Option.map (eval state) in
-          V_Variant { label; data = value; ty = expr.data.ty }
+          V_Variant
+            { label; data = value |> Option.map Place.init; ty = expr.data.ty }
           |> Value.inferred ~span
       | E_Then { a; b } ->
           ignore <| eval state a;
@@ -321,9 +398,9 @@ and eval : state -> expr -> value =
       | E_Scope { expr } ->
           let state = state |> enter_scope ~recursive:false in
           eval state expr
-      | E_Assign { assignee; value } ->
-          let value = eval state value in
-          assign state assignee value;
+      | E_Assign { assignee; value = value_expr } ->
+          let value = eval_place state value_expr in
+          assign ~span:value_expr.data.span state assignee value;
           V_Unit |> Value.inferred ~span
       | E_Apply { f; arg } ->
           let f = eval state f in
@@ -353,33 +430,13 @@ and eval : state -> expr -> value =
                  (fun ((symbol : symbol), (local : Types.interpreter_local)) ->
                    ( Some symbol.name,
                      ({
-                        value = local.value;
+                        place = local.place;
                         span = local.ty_field.label |> Label.get_span;
                         ty_field = local.ty_field;
                       }
                        : Types.value_tuple_field) ))
           in
           V_Tuple { tuple = fields |> Tuple.of_list } |> Value.inferred ~span
-      | E_Field { obj; field; field_span = _; label = _ } -> (
-          let obj = eval state obj in
-          match obj |> Value.await_inferred with
-          | V_Tuple { tuple } -> (
-              match Tuple.get_named_opt field tuple with
-              | Some field -> field.value
-              | None ->
-                  Error.error expr.data.span "field %S doesnt exist" field;
-                  V_Error |> Value.inferred ~span)
-          | V_Target { name } -> (
-              match field with
-              | "name" -> V_String name |> Value.inferred ~span
-              | _ ->
-                  Error.error expr.data.span "field %S doesnt exist in target"
-                    field;
-                  V_Error |> Value.inferred ~span)
-          | V_Error -> V_Error |> Value.inferred ~span
-          | _ ->
-              Error.error expr.data.span "%a doesnt have fields" Value.print obj;
-              V_Error |> Value.inferred ~span)
       | E_UseDotStar { used; bindings } -> (
           let used = eval state used in
           match used |> Value.await_inferred with
@@ -388,7 +445,8 @@ and eval : state -> expr -> value =
               |> List.iter (fun (binding : binding) ->
                   let field = tuple |> Tuple.get_named binding.name.name in
                   state.scope
-                  |> Scope.add_local field.span binding.name field.value);
+                  |> Scope.add_local_existing_place field.span binding.name
+                       field.place);
               V_Unit |> Value.inferred ~span
           | _ ->
               Error.error expr.data.span "can't use .* %a" Value.print used;
@@ -426,12 +484,14 @@ and eval : state -> expr -> value =
                   V_Error |> Value.inferred ~span
               | Some rhs -> V_Bool rhs |> Value.inferred ~span)
           | Some true -> V_Bool true |> Value.inferred ~span)
-      | E_Match { value; branches } -> (
-          let value = eval state value in
+      | E_Match { value = place_expr; branches } -> (
+          let place = eval_place state place_expr in
           let result =
             branches
             |> List.find_map (fun (branch : Types.expr_match_branch) ->
-                let ~matched, matches = pattern_match value branch.pattern in
+                let ~matched, matches =
+                  pattern_match ~span:place_expr.data.span place branch.pattern
+                in
                 if matched then
                   Some
                     (let inner_state = enter_scope ~recursive:false state in
@@ -463,7 +523,9 @@ and eval : state -> expr -> value =
           let inner_state = enter_scope ~recursive:false state in
           inner_state.scope
           |> Scope.add_locals
-               ( pattern_match token token_pattern |> fun (~matched, locals) ->
+               ( pattern_match ~span:token_pattern.data.span (Place.init token)
+                   token_pattern
+               |> fun (~matched, locals) ->
                  if not matched then
                    Error.error token_pattern.data.span
                      "Failed to pattern match unwind token";
