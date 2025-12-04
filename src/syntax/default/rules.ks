@@ -38,8 +38,8 @@
 @syntax "core:native" 9 wrap never = "@native" " " _;
 @syntax "core:inject_context" 9.5 wrap never = "with" " " context_type " " "=" " " value;
 @syntax "core:current_context" 9.5 wrap never = "@current" " " context_type;
-@syntax "core:or" 10 wrap never = <- _ " " "or" " " _;
-@syntax "core:and" 11 wrap never = <- _ " " "and" " " _;
+@syntax "core:or" 10 wrap if_any = <- _ " "/"\n" "or" " " _;
+@syntax "core:and" 11 wrap if_any = <- _ " "/"\n" "and" " " _;
 @syntax "<" 14 wrap never = _ " " "<" " " _;
 @syntax "<=" 14 wrap never = _ " " "<=" " " _;
 @syntax "==" 14 wrap never = _ " " "==" " " _;
