@@ -72,6 +72,7 @@
 @syntax "core:false" 1000 wrap never = "false";
 @syntax "loop" 1000 wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "break" 1000 wrap never = "break";
+@syntax "continue" 1000 wrap never = "continue";
 @syntax "core:loop" 1000 wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:unit" 1000 wrap never = "(" ")";
 @syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";

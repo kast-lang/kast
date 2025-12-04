@@ -2,8 +2,8 @@ module:
 const std = @current_scope;
 include "./syntax.ks";
 const unwind_unit = (@native "unwind_token") type ();
-_ :: unwind_unit => ();
 const loop_block = @context unwind_unit;
+const loop_body = @context unwind_unit;
 #
 const bool :: type = @native "bool";
 const int32 :: type = @native "int32";

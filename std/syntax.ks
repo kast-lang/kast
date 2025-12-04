@@ -40,15 +40,21 @@ impl syntax (@context ty) = `(
     (@native "create_context_type") $ty
 );
 impl syntax (loop ( body )) = `(
-    unwindable block (
-        @comptime with std.loop_block = block;
+    unwindable loop_block (
+        @comptime with std.loop_block = loop_block;
         @loop (
-            $body
+            unwindable loop_body (
+                @comptime with std.loop_body = loop_body;
+                $body
+            );
         );
     );
 );
 impl syntax (break) = `(
     unwind (@binding @current std.loop_block) ();
+);
+impl syntax (continue) = `(
+    unwind (@binding @current std.loop_body) ();
 );
 impl syntax (let rec pattern = value) = `(
     let _mod = (
@@ -80,8 +86,11 @@ impl syntax (while cond do body) = `(
 impl syntax (for pattern in start..end do body) = `(
     let _loop_var = $start;
     while _loop_var < $end do (
-        let $pattern = _loop_var;
-        $body;
+        unwindable loop_body (
+            @comptime with std.loop_body = loop_body;
+            let $pattern = _loop_var;
+            $body;
+        );
         _loop_var += 1;
     )
 );
