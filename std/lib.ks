@@ -13,6 +13,7 @@ const char :: type = @native "char";
 const string :: type = @native "string";
 #
 const dbg = include "./dbg.ks";
+const convert = include "./convert.ks";
 const op = include "./op.ks";
 const cmp = include "./cmp.ks";
 const io = include "./io/_mod.ks";

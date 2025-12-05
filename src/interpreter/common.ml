@@ -574,7 +574,7 @@ and eval : state -> expr -> value =
           state.cast_impls.map <-
             state.cast_impls.map
             |> Types.ValueMap.add target updated_target_impls;
-          Log.info (fun log ->
+          Log.trace (fun log ->
               log "Added cast impl: %a as %a" Value.print value Value.print
                 target);
           V_Unit |> Value.inferred ~span
@@ -601,7 +601,7 @@ and eval : state -> expr -> value =
                       then
                         Log.error (fun log ->
                             log "Not found but actually there????");
-                      Log.info (fun log ->
+                      Log.trace (fun log ->
                           log "Exists impl: %a as %a" Value.print existing_value
                             Value.print existing_target)));
               V_Error |> Value.inferred ~span)
