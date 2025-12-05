@@ -63,10 +63,10 @@
 @syntax "return_with_value" 60 wrap never = "return" " " value;
 @syntax "core:variant_without_value" 62 wrap never = ":" label;
 @syntax "core:ref" 61 wrap never = "&" _ ->;
-@syntax "core:deref" 61 wrap never = <- _ "^";
 @syntax "core:variant" 62 wrap never = ":" label " " value;
 @syntax "core:instantiate_generic" 70 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
 @syntax "core:." 70 wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";
+@syntax "core:deref" 70 wrap never = <- _ "^";
 @syntax "core:generic" 6.5 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
 @syntax "core:type expr" 1000 wrap never = "type" " " _ ->;
 @syntax "core:type" 1000 wrap never = "type";

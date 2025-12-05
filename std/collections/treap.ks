@@ -1,4 +1,5 @@
 module:
+
 const data = [T] type (
     .left :: treap[T],
     .value :: T,
@@ -27,74 +28,84 @@ const length = [T] (v :: &treap[T]) -> int32 => (
         | :Node v => v.count
     )
 );
+const update_data = [T] (root :: data[T], .left :: treap[T], .right :: treap[T]) => (
+    :Node (
+        .value = root.value,
+        .priority = root.priority,
+        .left,
+        .right,
+        .count = 1 + length &left + length &right,
+    )
+);
 const merge = [T] (left :: treap[T], right :: treap[T]) -> treap[T] => (
-    let update = (root :: data[T], (.left :: treap[T], .right :: treap[T])) => (
-        :Node (
-            .value = root.value,
-            .priority = root.priority,
-            .left,
-            .right,
-            .count = 1 + length &left + length &right,
-        )
-    );
     match (left, right) with (
         | (:Empty, :Empty) => :Empty
         | (:Empty, other) => other
         | (other, :Empty) => other
         | (:Node (left_data :: data[T]), :Node (right_data :: data[T])) => (
             if left_data.priority > right_data.priority then (
-                update (
+                update_data (
                     left_data,
-                    (
-                        .left = left_data.left,
-                        .right = merge[T] (left_data.right, right)
-                    )
+                    .left = left_data.left,
+                    .right = merge[T] (left_data.right, right),
                 )
             ) else (
-                update (
+                update_data (
                     right_data,
-                    (
-                        .left = merge[T] (left, right_data.left),
-                        .right = right_data.right,
-                    )
+                    .left = merge[T] (left, right_data.left),
+                    .right = right_data.right,
                 )
             )
         )
     )
 );
+const node_split_behavior = [T] type (
+    | :LeftSubtree
+    | :RightSubtree
+    | :Node (T, T)
+);
+const node_splitter = [T] type (
+    &data[T] -> node_split_behavior[T]
+);
+const split = [T] (v :: treap[T], f :: node_splitter[T]) -> (treap[T], treap[T]) => (
+    match v with (
+        | :Empty => (:Empty, :Empty)
+        | :Node node => match f &node with (
+            | :LeftSubtree => (
+                let left_left, left_right = split (node.left, f);
+                let node = update_data (
+                    node,
+                    .left = left_right,
+                    .right = node.right,
+                );
+                left_left, node
+            )
+            | :RightSubtree => (
+                let right_left, right_right = split (node.right, f);
+                let node = update_data (
+                    node,
+                    .left = node.left,
+                    .right = right_left,
+                );
+                node, right_right
+            )
+            | :Node (left, right) => (
+                let left = singleton left;
+                let right = singleton right;
+                merge (node.left, left), merge (right, node.right)
+            )
+        )
+    )
+);
 const split_at = [T] (v :: treap[T], idx :: int32) -> (treap[T], treap[T]) => (
-    if idx == 0 then (
-        :Empty, v
-    ) else if idx == length &v then (
-        v, :Empty
-    ) else (
-        let v = match v with (
-            | :Node v => v
-            | :Empty => panic "oob"
-        );
-        if idx <= length &v.left then (
-            let left_left, left_right = split_at (v.left, idx);
-            let right = :Node (
-                .left = :Empty,
-                .value = v.value,
-                .count = length &v.right + 1,
-                .priority = v.priority,
-                .right = v.right,
-            );
-            left_left, merge (left_right, right)
-        ) else (
-            let right_left, right_right = split_at (
-                v.right,
-                idx - length &v.left - 1,
-            );
-            let left = :Node (
-                .left = v.left,
-                .value = v.value,
-                .count = length &v.left + 1,
-                .priority = v.priority,
-                .right = :Empty,
-            );
-            merge (left, right_left), right_right
+    split (
+        v,
+        node => (
+            if idx <= length &node^.left then (
+                :LeftSubtree
+            ) else (
+                :RightSubtree
+            )
         )
     )
 );
@@ -117,7 +128,7 @@ const set_at = [T] (v :: treap[T], idx :: int32, value :: T) -> treap[T] => (
     let _, right = split_at (v, 1);
     merge (left, merge (singleton value, right))
 );
-const update = [T] (a :: treap[T], idx :: int32, f :: &T -> T) -> treap[T] => (
+const update_at = [T] (a :: treap[T], idx :: int32, f :: &T -> T) -> treap[T] => (
     set_at (a, idx, f (at (&a, idx)))
 );
 const iter = [T] (v :: &treap[T], f :: &T -> ()) => (
