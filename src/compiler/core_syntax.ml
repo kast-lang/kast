@@ -1523,6 +1523,7 @@ let unwindable : core_syntax =
           |> Tuple.unwrap_named2 [ "token"; "body" ]
         in
         match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
             let token = C.compile Pattern token in
             let state = State.enter_scope C.state ~recursive:false in
