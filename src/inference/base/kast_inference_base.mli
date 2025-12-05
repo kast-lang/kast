@@ -18,8 +18,6 @@ module Var : sig
   val await_inferred : 'a. error_shape:'a -> 'a var -> 'a
   val recurse_id : 'a. 'a var -> id
   val spans : 'a. 'a var -> Set.Make(Span).t
-  val equal : 'a. 'a var -> 'a var -> bool
-  val compare : 'a. 'a var -> 'a var -> int
 
   module Map : sig
     type 'a t

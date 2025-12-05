@@ -3,29 +3,33 @@ open Kast_util
 module Inference = Kast_inference_base
 
 type label_data = {
+  id : Id.t;
   name : string;
   definition : span option;
   mutable references : span list;
 }
 
+let equal_label_data a b = Id.equal a.id b.id
+let compare_label_data a b = Id.compare a.id b.id
+
 type label = { var : label_data Inference.var }
 type t = label
 
-let equal a b = Inference.Var.equal a.var b.var
-let compare a b = Inference.Var.compare a.var b.var
+let equal a b = Inference.equal_var equal_label_data a.var b.var
+let compare a b = Inference.compare_var compare_label_data a.var b.var
 
 let create_definition span name =
   {
     var =
       Inference.Var.new_inferred ~span
-        { name; definition = Some span; references = [] };
+        { id = Id.gen (); name; definition = Some span; references = [] };
   }
 
 let create_reference span name =
   {
     var =
       Inference.Var.new_inferred ~span
-        { name; definition = None; references = [ span ] };
+        { id = Id.gen (); name; definition = None; references = [ span ] };
   }
 
 let get_name { var } =
@@ -54,6 +58,7 @@ let unite_data ~span:_ a b =
   in
   let result =
     {
+      id = a.id;
       name;
       definition = a.definition |> Option.or_ b.definition;
       references = a.references @ b.references;
@@ -80,5 +85,3 @@ let print fmt label =
   match label.var |> Inference.Var.inferred_opt with
   | Some data -> fprintf fmt "%s" data.name
   | None -> fprintf fmt "_"
-
-let same { var = a } { var = b } = Inference.Var.equal a b

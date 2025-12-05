@@ -86,6 +86,23 @@ and init_place_expr :
         log "while initializing place expr at %a" Span.print span);
     raise exc
 
+and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
+ fun ~span state value target ->
+  let ty = Ty.new_not_inferred ~span in
+  State.Scope.fork (fun () ->
+      let value = Kast_interpreter.eval state.interpreter value in
+      match target |> Value.await_inferred with
+      | V_Generic _ -> (
+          let result =
+            Kast_interpreter.instantiate span state.interpreter target value
+          in
+          match result |> Value.expect_ty with
+          | Some result_ty ->
+              ty |> Inference.Ty.expect_inferred_as ~span result_ty
+          | None -> Error.error span "must be a generic type")
+      | other -> Error.error span "can't cast into %a" Value.Shape.print other);
+  ty
+
 and init_expr :
     ?evaled_exprs:expr list -> span -> State.t -> Expr.Shape.t -> expr =
  fun ?(evaled_exprs = []) span state shape ->
@@ -281,6 +298,12 @@ and init_expr :
           result
       | E_InjectContext _ -> Ty.inferred ~span T_Unit
       | E_CurrentContext { context_ty } -> context_ty.ty
+      | E_ImplCast { value; target; impl } ->
+          impl.data.ty
+          |> Inference.Ty.expect_inferred_as ~span
+               (cast_result_ty ~span state value target);
+          Ty.inferred ~span T_Unit
+      | E_Cast { value; target } -> cast_result_ty ~span state value target
       | E_Unwind { token; value } ->
           token.data.ty
           |> Inference.Ty.expect_inferred_as ~span:token.data.span

@@ -191,15 +191,17 @@ module Var = struct
         if Effect.perform (AwaitUpdate var) then await_inferred ~error_shape var
         else error_shape
 
-  let equal a b =
-    let a = find_root_var a in
-    let b = find_root_var b in
-    Repr.phys_equal a b
-
-  let compare a b =
+  let compare compare_inferred a b =
     let a = find_root a in
     let b = find_root b in
-    Id.compare a.recurse_id b.recurse_id
+    if a.recurse_id = b.recurse_id then 0
+    else Option.compare compare_inferred a.inferred b.inferred
+
+  let equal equal_inferred a b =
+    let a = find_root a in
+    let b = find_root b in
+    if a.recurse_id = b.recurse_id then true
+    else Option.equal equal_inferred a.inferred b.inferred
 
   let recurse_id var =
     let data = find_root var in
@@ -243,5 +245,5 @@ let fork = Var.fork
 
 type 'a var = 'a Var.t
 
-let equal_var _ a b = Var.equal a b
-let compare_var _ a b = Var.compare a b
+let equal_var = Var.equal
+let compare_var = Var.compare

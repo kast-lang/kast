@@ -5,6 +5,7 @@
 @syntax "core:use .*" 1 wrap never = "use" " " _ ".*";
 @syntax "core:use" 1 wrap never = "use" " " _;
 @syntax "core:impl syntax" 1 wrap never = "impl" " " "syntax" " " name " " "=" " " impl;
+@syntax "core:impl_cast" 1 wrap never = "impl" " " value " " "as" " " target " " "=" " " impl;
 @syntax "core:assign" 2 wrap never = assignee " " "=" " " value;
 @syntax "core:const" 2 wrap never = "const" " " pattern " " "=" " " value;
 @syntax "add_assign" 2 wrap never = _ " " "+=" " " _;
@@ -61,8 +62,9 @@
 @syntax "with_return" 60 wrap never = "with_return" " " body;
 @syntax "return_without_value" 60 wrap never = "return";
 @syntax "return_with_value" 60 wrap never = "return" " " value;
-@syntax "core:variant_without_value" 62 wrap never = ":" label;
+@syntax "core:cast" 60.5 wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 wrap never = "&" _ ->;
+@syntax "core:variant_without_value" 62 wrap never = ":" label;
 @syntax "core:variant" 62 wrap never = ":" label " " value;
 @syntax "core:instantiate_generic" 70 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
 @syntax "core:." 70 wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";

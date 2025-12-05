@@ -271,6 +271,17 @@ module rec TypesImpl : sig
     rhs : expr;
   }
 
+  and expr_impl_cast = {
+    value : expr;
+    target : value;
+    impl : expr;
+  }
+
+  and expr_cast = {
+    value : expr;
+    target : value;
+  }
+
   and expr_shape =
     | E_Constant of value
     | E_Ref of place_expr
@@ -299,6 +310,8 @@ module rec TypesImpl : sig
     | E_Unwind of expr_unwind
     | E_InjectContext of expr_inject_context
     | E_CurrentContext of expr_current_context
+    | E_ImplCast of expr_impl_cast
+    | E_Cast of expr_cast
     | E_TargetDependent of expr_target_dependent
     | E_Error
 
@@ -429,12 +442,14 @@ module rec TypesImpl : sig
   (* interpreter *)
   and natives = { by_name : value StringMap.t }
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
+  and cast_impls = { mutable map : value ValueMap.t ValueMap.t }
 
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
+    cast_impls : cast_impls;
   }
 
   (* OTHER *)
@@ -721,6 +736,17 @@ end = struct
     rhs : expr;
   }
 
+  and expr_impl_cast = {
+    value : expr;
+    target : value;
+    impl : expr;
+  }
+
+  and expr_cast = {
+    value : expr;
+    target : value;
+  }
+
   and expr_shape =
     | E_Constant of value
     | E_Ref of place_expr
@@ -749,6 +775,8 @@ end = struct
     | E_Unwind of expr_unwind
     | E_InjectContext of expr_inject_context
     | E_CurrentContext of expr_current_context
+    | E_ImplCast of expr_impl_cast
+    | E_Cast of expr_cast
     | E_TargetDependent of expr_target_dependent
     | E_Error
 
@@ -879,12 +907,14 @@ end = struct
   (* interpreter *)
   and natives = { by_name : value StringMap.t }
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
+  and cast_impls = { mutable map : value ValueMap.t ValueMap.t }
 
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
+    cast_impls : cast_impls;
   }
 
   (* OTHER *)

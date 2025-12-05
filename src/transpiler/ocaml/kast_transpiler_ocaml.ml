@@ -247,6 +247,8 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
       state |> transpile_expr branch.body
   | Types.E_InjectContext _ -> failwith __LOC__
   | Types.E_CurrentContext _ -> failwith __LOC__
+  | Types.E_ImplCast _ -> failwith __LOC__
+  | Types.E_Cast _ -> failwith __LOC__
   | Types.E_Error -> fail "Tried to transpile error node"
   | Types.E_Ref _ -> failwith __LOC__
   | Types.E_Claim _ -> failwith __LOC__

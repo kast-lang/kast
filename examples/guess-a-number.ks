@@ -9,7 +9,7 @@ let main = () with io => (
     loop (
         let prompt = if first then "Guess: " else "Guess again: ";
         first = false;
-        let guess = input prompt |> string_to_int32;
+        let guess = input prompt |> parse;
         if picked < guess then (
             print "Less!"
         ) else if picked > guess then (

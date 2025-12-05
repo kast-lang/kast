@@ -23,30 +23,6 @@ const fs = include "./fs/_mod.ks";
 const sys = include "./sys/_mod.ks";
 const rng = include "./rng/_mod.ks";
 const collections = include "./collections/_mod.ks";
-const int32_to_string :: int32 -> string = num => (
-    cfg_if (
-        | target.name == "interpreter" => (@native "int32_to_string") num
-        | target.name == "ocaml" => @native "@natives.todo()"
-    )
-);
-const string_to_int32 :: string -> int32 = s => (
-    cfg_if (
-        | target.name == "interpreter" => (@native "string_to_int32") s
-        | target.name == "ocaml" => @native "@natives.todo()"
-    )
-);
-const int64_to_string :: int64 -> string = num => (
-    cfg_if (
-        | target.name == "interpreter" => (@native "int64_to_string") num
-        | target.name == "ocaml" => @native "@natives.todo()"
-    )
-);
-const string_to_int64 :: string -> int64 = s => (
-    cfg_if (
-        | target.name == "interpreter" => (@native "string_to_int64") s
-        | target.name == "ocaml" => @native "@natives.todo()"
-    )
-);
 const panic = [T] (s :: string) -> T => cfg_if (
     | target.name == "interpreter" => (@native "panic") s
 );

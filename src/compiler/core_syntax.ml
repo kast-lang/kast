@@ -2084,6 +2084,78 @@ let deref : core_syntax =
             init_error span C.state kind);
   }
 
+let impl_cast : core_syntax =
+  {
+    name = "impl_cast";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let value, target, impl =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named3 [ "value"; "target"; "impl" ]
+        in
+        match kind with
+        | Expr ->
+            let target, target_expr =
+              Compiler.eval
+                ~ty:(Ty.new_not_inferred ~span:target.span)
+                (module C)
+                target
+            in
+            E_ImplCast
+              {
+                value = C.compile Expr value;
+                target;
+                impl = C.compile Expr impl;
+              }
+            |> init_expr ~evaled_exprs:[ target_expr ] span C.state
+        | _ ->
+            error span "impl cast must be expr";
+            init_error span C.state kind);
+  }
+
+let cast : core_syntax =
+  {
+    name = "cast";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let value, target =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "value"; "target" ]
+        in
+        match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | Expr ->
+            let target, target_expr =
+              Compiler.eval
+                ~ty:(Ty.new_not_inferred ~span:target.span)
+                (module C)
+                target
+            in
+            E_Cast { value = C.compile Expr value; target }
+            |> init_expr ~evaled_exprs:[ target_expr ] span C.state
+        | _ ->
+            error span "cast must be expr";
+            init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -2136,6 +2208,8 @@ let core =
     or_;
     ref_;
     deref;
+    impl_cast;
+    cast;
   ]
 
 let all : core_syntax StringMap.t =

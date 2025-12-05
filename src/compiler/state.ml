@@ -113,6 +113,7 @@ end
 
 type imported = {
   custom_syntax_impls : (Id.t, value) Hashtbl.t;
+  cast_impls : Types.cast_impls;
   value : value;
 }
 

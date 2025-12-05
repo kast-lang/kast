@@ -99,7 +99,7 @@ let rec pattern_match :
     -> (
       match place |> claim ~span |> Value.await_inferred with
       | V_Variant { label; data; ty = _ } ->
-          if Label.same label patern_label then
+          if Label.equal label patern_label then
             match (data, value_pattern) with
             | None, None -> (~matched:true, Scope.Locals.empty)
             | None, Some _ ->
@@ -558,6 +558,52 @@ and eval : state -> expr -> value =
           | Some value -> value
           | None ->
               Error.error expr.data.span "Context unavailable";
+              V_Error |> Value.inferred ~span)
+      | E_ImplCast { value; target; impl } ->
+          let value = eval state value in
+          (* let target = eval state target in *)
+          let impl = eval state impl in
+          let current_target_impls =
+            state.cast_impls.map
+            |> Types.ValueMap.find_opt target
+            |> Option.unwrap_or_else (fun () -> Types.ValueMap.empty)
+          in
+          let updated_target_impls =
+            current_target_impls |> Types.ValueMap.add value impl
+          in
+          state.cast_impls.map <-
+            state.cast_impls.map
+            |> Types.ValueMap.add target updated_target_impls;
+          Log.info (fun log ->
+              log "Added cast impl: %a as %a" Value.print value Value.print
+                target);
+          V_Unit |> Value.inferred ~span
+      | E_Cast { value; target } -> (
+          let value = eval state value in
+          let impl =
+            state.cast_impls.map
+            |> Types.ValueMap.find_opt target
+            |> Option.and_then (fun target_impls ->
+                target_impls |> Types.ValueMap.find_opt value)
+          in
+          match impl with
+          | Some impl -> impl
+          | None ->
+              Error.error span "no impl of %a as %a" Value.print value
+                Value.print target;
+              state.cast_impls.map
+              |> Types.ValueMap.iter (fun existing_target impls ->
+                  impls
+                  |> Types.ValueMap.iter (fun existing_value _impl ->
+                      if
+                        Types.ValueImpl.compare target existing_target = 0
+                        && Types.ValueImpl.compare value existing_value = 0
+                      then
+                        Log.error (fun log ->
+                            log "Not found but actually there????");
+                      Log.info (fun log ->
+                          log "Exists impl: %a as %a" Value.print existing_value
+                            Value.print existing_target)));
               V_Error |> Value.inferred ~span)
       | E_TargetDependent ({ branches; interpreter_branch } as target_dep_expr)
         ->

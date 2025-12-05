@@ -79,10 +79,18 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
         let state : State.t =
           {
             currently_compiled_file = Some uri;
+            (* TODO should have impls from std? *)
             custom_syntax_impls = Hashtbl.create 0;
+            (* TODO why is this not a new scope? *)
             scope = C.state.scope;
             import_cache;
-            interpreter = C.state.interpreter;
+            interpreter =
+              {
+                (* TODO should be brand new interpreter? and compiler? *)
+                C.state.interpreter
+                with
+                cast_impls = { map = Types.ValueMap.empty };
+              };
           }
         in
         let source = Source.read uri in
@@ -98,7 +106,11 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
         Effect.perform
           (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
         let imported : State.imported =
-          { value; custom_syntax_impls = state.custom_syntax_impls }
+          {
+            value;
+            custom_syntax_impls = state.custom_syntax_impls;
+            cast_impls = state.interpreter.cast_impls;
+          }
         in
         import_cache.by_uri <-
           UriMap.add uri (Imported imported : State.import) import_cache.by_uri;
@@ -110,10 +122,23 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
         {
           value = V_Error |> Value.inferred ~span;
           custom_syntax_impls = Hashtbl.create 0;
+          cast_impls = { map = Types.ValueMap.empty };
         }
   in
   Hashtbl.add_seq C.state.custom_syntax_impls
     (Hashtbl.to_seq result.custom_syntax_impls);
+  (* TODO what if its going to be evaluated in a different interpreter? *)
+  C.state.interpreter.cast_impls.map <-
+    Types.ValueMap.union
+      (fun target impls_a impls_b ->
+        Some
+          (Types.ValueMap.union
+             (fun value a _b ->
+               error span "conflicting impls of cast %a as %a" Value.print value
+                 Value.print target;
+               Some a)
+             impls_a impls_b))
+      C.state.interpreter.cast_impls.map result.cast_impls.map;
   result.value
 
 let inject_binding ~(only_compiler : bool) (binding : binding) (state : State.t)

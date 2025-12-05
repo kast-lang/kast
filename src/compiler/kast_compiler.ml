@@ -229,6 +229,8 @@ let default ?(import_cache : import_cache option) () : state =
               : Types.interpreter_local);
       }
   in
+  (* TODO hack??? *)
+  interpreter_with_std.cast_impls.map <- interpreter_without_std.cast_impls.map;
   let scope = State.Scope.init ~recursive:false in
   let scope =
     scope

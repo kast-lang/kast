@@ -56,7 +56,7 @@ module Impl = struct
         match data with
         | Some data -> fprintf fmt " %a" print_place_value data
         | None -> ())
-    | V_Generic _ -> fprintf fmt "@{<italic><generic>@}"
+    | V_Generic g -> fprintf fmt "@{<italic><generic %a>@}" Id.print g.id
     | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
     | V_Ast ast -> fprintf fmt "%a" Ast.print ast
     | V_UnwindToken { id; result_ty = _ } ->
@@ -177,6 +177,8 @@ module Impl = struct
       | E_Unwind _ -> "Unwind"
       | E_InjectContext _ -> "InjectContext"
       | E_CurrentContext _ -> "CurrentContext"
+      | E_ImplCast _ -> "ImplCast"
+      | E_Cast _ -> "Cast"
       | E_TargetDependent _ -> "TargetDependent"
     in
     fprintf fmt "%s" name
@@ -289,6 +291,14 @@ module Impl = struct
         fprintf fmt
           "@{<magenta>current_context@} (@;<0 2>@[<v>context_type = %a,@]@ )"
           print_context_type context_ty
+    | E_ImplCast { value; target; impl } ->
+        fprintf fmt
+          "@{<magenta>cast@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>target = %a@]@;<0 2>@[<v>impl = %a@]@ )"
+          print_expr value print_value target print_expr impl
+    | E_Cast { value; target } ->
+        fprintf fmt
+          "@{<magenta>cast@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>target = %a@]@ )"
+          print_expr value print_value target
     | E_TargetDependent { branches; interpreter_branch = _ } ->
         fprintf fmt "@{<magenta>target dependent@} (";
         branches
@@ -409,7 +419,7 @@ module Impl = struct
 
   (* PATTERN *)
 
-  and print_pattern_shape :
+  and print_pattern_shape2 :
       options:options -> formatter -> pattern_shape -> unit =
    fun ~options fmt -> function
     | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
@@ -429,6 +439,27 @@ module Impl = struct
         fprintf fmt
           "@{<magenta>variant@} (@;<0 2>@[<v>label = %a,@]@;<0 2>@[<v>value = %a,@]@ )"
           Label.print label
+          (Option.print (print_pattern ~options))
+          value
+    | P_Error -> fprintf fmt "@{<red><error>@}"
+
+  and print_pattern_shape :
+      options:options -> formatter -> pattern_shape -> unit =
+   fun ~options fmt -> function
+    | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
+    | P_Unit -> fprintf fmt "()"
+    | P_Ref inner ->
+        fprintf fmt "@{<magenta>&@}%a"
+          (Tuple.print (print_pattern ~options))
+          (Tuple.make [ inner ] [])
+    | P_Binding binding -> print_binding fmt binding
+    | P_Tuple { tuple } ->
+        fprintf fmt "%a"
+          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
+               print_pattern ~options fmt field))
+          tuple
+    | P_Variant { label; label_span = _; value } ->
+        fprintf fmt ":%a %a" Label.print label
           (Option.print (print_pattern ~options))
           value
     | P_Error -> fprintf fmt "@{<red><error>@}"

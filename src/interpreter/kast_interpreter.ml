@@ -12,6 +12,7 @@ let init : Scope.locals -> state =
     natives = Natives.natives;
     contexts = Id.Map.empty;
     instantiated_generics = { map = Id.Map.empty };
+    cast_impls = { map = Types.ValueMap.empty };
   }
 
 let default () = init Scope.Locals.empty

@@ -106,3 +106,45 @@ const trim_matches = (s :: string, f :: char -> bool) -> string => (
     substring (s, start, end - start)
 );
 const trim = s => trim_matches (s, Char.is_whitespace);
+
+const FromString = [Self] type (
+    .from_string :: string -> Self
+);
+
+impl int32 as FromString = (
+    .from_string = s => cfg_if (
+        | target.name == "interpreter" => (@native "string_to_int32") s
+        | target.name == "ocaml" => @native "@natives.todo()"
+    )
+);
+
+impl int64 as FromString = (
+    .from_string = s => cfg_if (
+        | target.name == "interpreter" => (@native "string_to_int64") s
+        | target.name == "ocaml" => @native "@natives.todo()"
+    )
+);
+
+const ToString = [Self] type (
+    .to_string :: Self -> string
+);
+
+impl int32 as ToString = (
+    .to_string = num => cfg_if (
+        | target.name == "interpreter" => (@native "int32_to_string") num
+        | target.name == "ocaml" => @native "@natives.todo()"
+    )
+);
+impl int64 as ToString = (
+    .to_string = num => cfg_if (
+        | target.name == "interpreter" => (@native "int64_to_string") num
+        | target.name == "ocaml" => @native "@natives.todo()"
+    )
+);
+
+const parse = [T] (s :: string) -> T => (
+    (T as FromString).from_string s
+);
+const to_string = [T] (value :: T) -> string => (
+    (T as ToString).to_string value
+);
