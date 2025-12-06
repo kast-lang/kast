@@ -9,7 +9,7 @@ let init : Scope.locals -> state =
  fun values ->
   {
     scope = Scope.with_values ~recursive:false ~parent:None values;
-    natives = Natives.natives;
+    natives = Natives.init_natives ();
     contexts = Id.Map.empty;
     instantiated_generics = { map = Id.Map.empty };
     cast_impls = { map = Types.ValueMap.empty };

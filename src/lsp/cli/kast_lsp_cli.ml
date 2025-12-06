@@ -323,12 +323,14 @@ let run ({ dummy = () } : Args.t) =
           let s = new lsp_server ~sw ~domain_mgr:(Eio.Stdenv.domain_mgr env) in
           let server = Linol_eio.Jsonrpc2.create_stdio ~env s in
           let task () =
-            let shutdown () = s#get_status = `ReceivedExit in
-            Linol_eio.Jsonrpc2.run ~shutdown server
+            try
+              let shutdown () = s#get_status = `ReceivedExit in
+              Linol_eio.Jsonrpc2.run ~shutdown server
+            with Cancel -> ()
           in
           match task () with
           | () -> Log.info (fun log -> log "Exiting Kast LSP")
           | exception e ->
               let e = Printexc.to_string e in
-              Printf.eprintf "error: %s\n%!" e;
+              eprintln "Unhandled exception: %s\n%!" e;
               exit 1))

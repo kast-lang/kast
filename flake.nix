@@ -44,26 +44,22 @@
             # Prevent the ocaml dependencies from leaking into dependent environments
             doNixSupport = false;
           });
-          memtrace =
-            let
-              src = builtins.fetchGit {
-                url = "https://github.com/janestreet/memtrace";
-                rev = "c86e4fe3e8308e86f066d6c00e4dbc69003ec381";
-              };
-            in
-            (opam-nix.buildOpamProject { } "memtrace" src {
-              ocaml-base-compiler = "*";
-            }).memtrace;
-          ppxlib =
-            let
-              src = builtins.fetchGit {
-                url = "https://github.com/NathanReb/ppxlib";
-                rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
-              };
-            in
-            (opam-nix.buildOpamProject { } "ppxlib" src {
-              ocaml-base-compiler = "*";
-            }).ppxlib;
+          memtrace = let
+            src = builtins.fetchGit {
+              url = "https://github.com/janestreet/memtrace";
+              rev = "c86e4fe3e8308e86f066d6c00e4dbc69003ec381";
+            };
+          in (opam-nix.buildOpamProject { } "memtrace" src {
+            ocaml-base-compiler = "*";
+          }).memtrace;
+          ppxlib = let
+            src = builtins.fetchGit {
+              url = "https://github.com/NathanReb/ppxlib";
+              rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+            };
+          in (opam-nix.buildOpamProject { } "ppxlib" src {
+            ocaml-base-compiler = "*";
+          }).ppxlib;
         };
         scope' = scope.overrideScope overlay;
         # The main package containing the executable
@@ -71,18 +67,15 @@
         # Packages from devPackagesQuery
         devPackages = builtins.attrValues
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
-        memtrace_viewer =
-          let
-            src = builtins.fetchGit {
-              url = "https://github.com/kuviman/memtrace_viewer";
-              rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
-            };
-          in
-          (opam-nix.buildOpamProject { } "memtrace_viewer" src {
-            ocaml-base-compiler = "*";
-          }).memtrace_viewer;
-      in
-      {
+        memtrace_viewer = let
+          src = builtins.fetchGit {
+            url = "https://github.com/kuviman/memtrace_viewer";
+            rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
+          };
+        in (opam-nix.buildOpamProject { } "memtrace_viewer" src {
+          ocaml-base-compiler = "*";
+        }).memtrace_viewer;
+      in {
         legacyPackages = scope';
         packages.default = main.overrideAttrs {
           buildInputs = [ pkgs.makeWrapper ];
@@ -124,7 +117,7 @@
             echo 'Hello from Kast devshell'
             echo '  dont forget to run `just lsp-support` :)'
             export OCAML_BACKTRACE=1
-            export OCAMLRUNPARAM="b,d=2"
+            export OCAMLRUNPARAM="b,d=10"
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
           '';
         };

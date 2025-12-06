@@ -212,10 +212,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
 
 let init_workspace (global : global_state) (root : Uri.t) : workspace_state =
   let workspace : workspace_state = { root; files = UriMap.empty } in
-  (try
-     process_workspace global workspace;
-     Gc.full_major ()
-   with Cancel -> ());
+  (try process_workspace global workspace with Cancel -> ());
   workspace
 
 let init (workspaces : Lsp.Uri0.t list) : global_state =
@@ -253,10 +250,7 @@ let update_file (global : global_state) (uri : Lsp.Uri0.t) (source : string) :
 
 let recalculate (global : global_state) : unit =
   timed "recalculating lsp stuff" (fun () ->
-      try
-        global.workspaces |> List.iter (process_workspace global);
-        Gc.full_major ()
-      with
+      try global.workspaces |> List.iter (process_workspace global) with
       | effect (Source.Read uri as eff), k -> (
           match UriMap.find_opt uri global.vfs with
           | Some contents -> Effect.continue k contents
