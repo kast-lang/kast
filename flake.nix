@@ -27,6 +27,7 @@
           odoc = "*";
           odig = "*";
           utop = "*";
+          memtrace = "*";
         };
         query = devPackagesQuery // {
           ## You can force versions of certain packages here, e.g:
@@ -39,14 +40,16 @@
         };
         overlays = [
           (final: prev: {
-            ppxlib = let
-              src = builtins.fetchGit {
-                url = "https://github.com/NathanReb/ppxlib";
-                rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+            ppxlib =
+              let
+                src = builtins.fetchGit {
+                  url = "https://github.com/NathanReb/ppxlib";
+                  rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+                };
+              in
+              opam-nix.buildOpamProject { } "ppxlib" src {
+                ocaml-base-compiler = "*";
               };
-            in opam-nix.buildOpamProject { } "ppxlib" src {
-              ocaml-base-compiler = "*";
-            };
           })
         ];
         scope = opam-nix.buildDuneProject { } package ./. query;
@@ -56,14 +59,16 @@
             # Prevent the ocaml dependencies from leaking into dependent environments
             doNixSupport = false;
           });
-          ppxlib = let
-            src = builtins.fetchGit {
-              url = "https://github.com/NathanReb/ppxlib";
-              rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
-            };
-          in (opam-nix.buildOpamProject { } "ppxlib" src {
-            ocaml-base-compiler = "*";
-          }).ppxlib;
+          ppxlib =
+            let
+              src = builtins.fetchGit {
+                url = "https://github.com/NathanReb/ppxlib";
+                rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+              };
+            in
+            (opam-nix.buildOpamProject { } "ppxlib" src {
+              ocaml-base-compiler = "*";
+            }).ppxlib;
         };
         scope' = scope.overrideScope overlay;
         # The main package containing the executable
@@ -71,7 +76,18 @@
         # Packages from devPackagesQuery
         devPackages = builtins.attrValues
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
-      in {
+        memtrace_viewer =
+          let
+            src = builtins.fetchGit {
+              url = "https://github.com/kuviman/memtrace_viewer";
+              rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
+            };
+          in
+          (opam-nix.buildOpamProject { } "memtrace_viewer" src {
+            ocaml-base-compiler = "*";
+          }).memtrace_viewer;
+      in
+      {
         legacyPackages = scope';
         packages.default = main.overrideAttrs {
           buildInputs = [ pkgs.makeWrapper ];
@@ -101,6 +117,7 @@
             nixfmt-classic # nix formatter
             nil # nix lsp
             rlwrap
+            memtrace_viewer
           ]);
           shellHook = ''
             echo 'Hello from Kast devshell'
