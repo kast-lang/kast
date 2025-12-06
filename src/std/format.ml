@@ -39,15 +39,19 @@ module Format = struct
   let trailing_comma : formatter -> unit -> unit =
    fun fmt () -> pp_print_custom_break fmt ~fits:("", 0, "") ~breaks:(",", 0, "")
 
+  let fprintln_lock = Mutex.create ()
+
   let fprintln : 'a. formatter -> ('a, formatter, unit) format -> 'a =
-   fun fmt ->
+   fun fmt format ->
+    Mutex.lock fprintln_lock;
     pp_open_vbox fmt 0;
     kfprintf
       (fun fmt ->
         pp_close_box fmt ();
         fprintf fmt "\n";
-        pp_print_flush fmt ())
-      fmt
+        pp_print_flush fmt ();
+        Mutex.unlock fprintln_lock)
+      fmt format
 
   let sprintln format = fprintln str_formatter format
   let eprintln format = fprintln err_formatter format
@@ -55,12 +59,15 @@ module Format = struct
 
   let make_string : 'a. ('a, formatter, unit, string) format4 -> 'a =
    fun format ->
+    Mutex.lock fprintln_lock;
     let buffer = Buffer.create 32 in
     let fmt = formatter_of_buffer buffer in
     kfprintf
       (fun _ ->
         pp_print_flush fmt ();
-        buffer |> Buffer.contents)
+        let result = buffer |> Buffer.contents in
+        Mutex.unlock fprintln_lock;
+        result)
       fmt format
 
   let ansi_escape : string -> string * string = function
