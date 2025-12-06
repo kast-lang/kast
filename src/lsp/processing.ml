@@ -124,47 +124,46 @@ let process_file (global : global_state) (source : source) : file_state =
 let workspace_file (root : Uri.t) (path : string) =
   Uri.with_path root (Uri.path root ^ "/" ^ path)
 
+let handle_processed workspace uri file_state =
+  Log.trace (fun log -> log "File processed %a" Uri.print uri);
+  workspace.files <- UriMap.add uri file_state workspace.files
+
+let workspace_roots (global : global_state) (workspace : workspace_state) :
+    Uri.t list =
+  let workspace_ks =
+    Source.read (workspace_file workspace.root "workspace.ks")
+  in
+  let processed_workspace_ks = process_file global workspace_ks in
+  handle_processed workspace workspace_ks.uri processed_workspace_ks;
+  let compiled = processed_workspace_ks.compiled |> Option.get in
+  let evaled = Kast_interpreter.eval (Kast_interpreter.default ()) compiled in
+  let workspace_def = evaled |> Value.expect_tuple |> Option.get in
+  let workspace_roots =
+    let roots =
+      (workspace_def.tuple |> Tuple.get_named "roots").place
+      |> Kast_interpreter.claim ~span:(Span.fake "lsp")
+    in
+    let roots = roots |> Value.expect_tuple |> Option.get in
+    roots.tuple.unnamed |> Array.to_list
+    |> List.map (fun (field : Types.value_tuple_field) ->
+        field.place
+        |> Kast_interpreter.claim ~span:(Span.fake "lsp")
+        |> Value.expect_string |> Option.get)
+  in
+  Log.trace (fun log ->
+      log "WORKSPACE ROOTS = %a" (List.print String.print_dbg) workspace_roots);
+  workspace_roots |> List.map (fun path -> workspace_file workspace.root path)
+
 let process_workspace (global : global_state) (workspace : workspace_state) =
   (* workspace.files <- UriMap.empty; *)
   (* TODO make imports immutable *)
   global.import_cache <- Compiler.init_import_cache ();
   try
-    let handle_processed uri file_state =
-      Log.trace (fun log -> log "File processed %a" Uri.print uri);
-      workspace.files <- UriMap.add uri file_state workspace.files
-    in
     try
-      let workspace_ks =
-        Source.read (workspace_file workspace.root "workspace.ks")
-      in
-      let processed_workspace_ks = process_file global workspace_ks in
-      handle_processed workspace_ks.uri processed_workspace_ks;
-      let compiled = processed_workspace_ks.compiled |> Option.get in
-      let evaled =
-        Kast_interpreter.eval (Kast_interpreter.default ()) compiled
-      in
-      let workspace_def = evaled |> Value.expect_tuple |> Option.get in
-      let workspace_roots =
-        let roots =
-          (workspace_def.tuple |> Tuple.get_named "roots").place
-          |> Kast_interpreter.claim ~span:(Span.fake "lsp")
-        in
-        let roots = roots |> Value.expect_tuple |> Option.get in
-        roots.tuple.unnamed |> Array.to_list
-        |> List.map (fun (field : Types.value_tuple_field) ->
-            field.place
-            |> Kast_interpreter.claim ~span:(Span.fake "lsp")
-            |> Value.expect_string |> Option.get)
-      in
-      Log.trace (fun log ->
-          log "WORKSPACE ROOTS = %a"
-            (List.print String.print_dbg)
-            workspace_roots);
-      workspace_roots
-      |> List.iter (fun path ->
-          let uri = workspace_file workspace.root path in
+      workspace_roots global workspace
+      |> List.iter (fun uri ->
           let processed = process_file global (Source.read uri) in
-          handle_processed uri processed)
+          handle_processed workspace uri processed)
     with
     | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
         Log.trace (fun log -> log "removed diags for %a" Uri.print uri);
@@ -178,7 +177,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
             let file_state : file_state =
               { uri; parsed = Some parsed; compiled = Some compiled }
             in
-            handle_processed uri file_state
+            handle_processed workspace uri file_state
         | _ -> ());
         Effect.Deep.continue k ()
     | effect
@@ -187,7 +186,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
         let file_state : file_state =
           { uri; parsed = Some parsed; compiled = Some compiled }
         in
-        handle_processed uri file_state;
+        handle_processed workspace uri file_state;
         Effect.Deep.continue k ()
     | effect (Source.Read uri as eff), k ->
         if Uri.scheme uri = Some "workspace" then
