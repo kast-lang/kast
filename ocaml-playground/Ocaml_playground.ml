@@ -1,54 +1,27 @@
-type id = int
+let big_list = List.init 10_000_000 (fun n -> n)
 
-let new_id () : id = 0
+let _domain =
+  Domain.spawn (fun () ->
+      while true do
+        let _ = Marshal.to_string big_list [] in
+        ()
+      done)
 
-type ty =
-  | Int32
-  | Fn of {
-      arg : ty;
-      result : ty;
-    }
-  | Binding of binding
-  | Var of var
+let report_memory_usage =
+  let last_print = ref 0. in
+  let print_interval = 10. in
+  fun () ->
+    let current_time = Unix.time () in
+    let pid = Unix.getpid () in
+    if !last_print +. print_interval < current_time then
+      Printf.ksprintf
+        (fun cmd -> ignore (Sys.command cmd))
+        "grep -i rss /proc/%d/status" pid
 
-and binding = { name : string }
-and var = { id : id }
+let rec loop chain =
+  let _ = Marshal.to_string big_list [] in
+  report_memory_usage ();
+  loop chain
 
-let once_inferred : var -> (ty -> unit) -> unit =
- fun _var _f -> failwith "some impl"
-
-let unite : ty -> ty -> unit = fun _a _b -> failwith "some impl"
-
-(* let id = [T] x :: T => x *)
-(* id[int32] :: int32 -> int32 *)
-(* we need to substitute
-      T -> T with T = int32
-      int32 -> int32
- *)
-
-module StringMap = Map.Make (String)
-
-let rec sub : ty StringMap.t -> ty -> ty =
- fun bindings ty ->
-  match ty with
-  | Int32 -> Int32
-  | Fn { arg; result } ->
-      Fn { arg = sub bindings arg; result = sub bindings result }
-  | Binding { name } -> (
-      match StringMap.find_opt name bindings with
-      | Some substitution -> substitution
-      | None -> Binding { name })
-  | Var var ->
-      let result = Var { id = new_id () } in
-      once_inferred var (fun var_ty ->
-          let subbed_var = sub bindings var_ty in
-          unite result subbed_var);
-      result
-
-let () =
-  let subbed_id =
-    sub
-      (StringMap.singleton "T" Int32)
-      (Fn { arg = Binding { name = "T" }; result = Binding { name = "T" } })
-  in
-  assert (subbed_id = Fn { arg = Int32; result = Int32 })
+let () = print_endline "starting"
+let () = loop ()
