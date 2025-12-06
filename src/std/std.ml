@@ -32,9 +32,10 @@ let dont_leak_please : ('a, 'b) continuation -> ('a, 'b) unleakable_continuation
   in
   Gc.finalise
     (fun _ ->
-      if not !resumed then (
-        Log.error (fun log -> log "leaked continuation");
-        try Effect.Deep.discontinue k Cancel with _ -> ()))
+      if not !resumed then
+        (* CANT Log.error here, leads to segfaults :) *)
+        (* Log.error (fun log -> log "leaked continuation");  *)
+        try Effect.Deep.discontinue k Cancel with _ -> ())
     uk;
   uk
 
