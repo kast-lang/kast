@@ -16,6 +16,7 @@ let run (args : Cli.args) =
       println "Hello, I am Kast :)\nhelp is not implemented yet"
 
 let main () =
+  Memtrace.trace_if_requested ();
   Random.self_init ();
   (* Log.set_max_level Trace; *)
   let args = Cli.parse () in

@@ -39,6 +39,7 @@ end
 class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
   object (self)
     inherit Linol_eio.Jsonrpc2.server as super
+    val workspace_folders_saved = ref []
     val updates : unit Latest_state.t = Latest_state.init ~sw
     val state : Processing.global_state option ref = ref None
 
@@ -55,15 +56,15 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         Lsp.Types.InitializeResult.t =
       let workspace_folders =
         i.workspaceFolders |> Option.to_seq |> Seq.flat_map Option.to_seq
-        |> Seq.flat_map List.to_seq
+        |> Seq.flat_map List.to_seq |> List.of_seq
       in
+      workspace_folders_saved := workspace_folders;
       state :=
         Some
           (Processing.init
              (workspace_folders
-             |> Seq.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
-                 workspace.uri)
-             |> List.of_seq));
+             |> List.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
+                 workspace.uri)));
       self#send_diagnostics ~notify_back ();
       super#on_req_initialize ~notify_back i
 
@@ -139,6 +140,12 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         Processing.update_file (self#get_state ()) uri contents;
         updates
         |> Latest_state.spawn ~domain_mgr (fun () ->
+            (* state :=
+              Some
+                (Processing.init
+                   (!workspace_folders_saved
+                   |> List.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
+                       workspace.uri))) *)
             !state |> Option.get |> Processing.recalculate));
 
       self#send_diagnostics ~notify_back ()
@@ -269,6 +276,41 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         | TextDocumentPrepareRename params ->
             self#on_req_prepare_rename ~notify_back params
         | _ -> failwith "TODO handle this request"
+
+    method! on_request ~notify_back ~server_request ~id request =
+      let jsonrpc_request = Lsp.Client_request.to_jsonrpc_request request ~id in
+      let json = Linol_jsonrpc.Jsonrpc.Request.yojson_of_t jsonrpc_request in
+      let s = Yojson.Safe.to_string json in
+      Log.info (fun log ->
+          log "Got request %s: %s"
+            (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
+            "");
+      let response =
+        super#on_request ~notify_back ~server_request ~id request
+      in
+      (match response with
+      | Ok response ->
+          let json = Lsp.Client_request.yojson_of_result request response in
+          let s = Yojson.Safe.to_string json in
+          Log.info (fun log ->
+              log "Respond %s: %s"
+                (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t
+               |> Yojson.Safe.to_string)
+                "")
+      | Error s ->
+          Log.info (fun log ->
+              log "Request %s errored: %s"
+                (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t
+               |> Yojson.Safe.to_string)
+                s));
+      response
+
+    method! on_notification ~notify_back ~server_request n =
+      let jsonrpc_n = Lsp.Client_notification.to_jsonrpc n in
+      let json = Linol_jsonrpc.Jsonrpc.Notification.yojson_of_t jsonrpc_n in
+      let s = Yojson.Safe.to_string json in
+      Log.info (fun log -> log "Got notification: %s" s);
+      super#on_notification ~notify_back ~server_request n
   end
 
 let run ({ dummy = () } : Args.t) =

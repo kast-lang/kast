@@ -27,7 +27,6 @@
           odoc = "*";
           odig = "*";
           utop = "*";
-          memtrace = "*";
         };
         query = devPackagesQuery // {
           ## You can force versions of certain packages here, e.g:
@@ -38,20 +37,6 @@
           ## - or force ocamlfind to be a certain version:
           # ocamlfind = "1.9.2";
         };
-        overlays = [
-          (final: prev: {
-            ppxlib =
-              let
-                src = builtins.fetchGit {
-                  url = "https://github.com/NathanReb/ppxlib";
-                  rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
-                };
-              in
-              opam-nix.buildOpamProject { } "ppxlib" src {
-                ocaml-base-compiler = "*";
-              };
-          })
-        ];
         scope = opam-nix.buildDuneProject { } package ./. query;
         overlay = final: prev: {
           # You can add overrides here
@@ -59,16 +44,22 @@
             # Prevent the ocaml dependencies from leaking into dependent environments
             doNixSupport = false;
           });
-          ppxlib =
-            let
-              src = builtins.fetchGit {
-                url = "https://github.com/NathanReb/ppxlib";
-                rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
-              };
-            in
-            (opam-nix.buildOpamProject { } "ppxlib" src {
-              ocaml-base-compiler = "*";
-            }).ppxlib;
+          memtrace = let
+            src = builtins.fetchGit {
+              url = "https://github.com/janestreet/memtrace";
+              rev = "c86e4fe3e8308e86f066d6c00e4dbc69003ec381";
+            };
+          in (opam-nix.buildOpamProject { } "memtrace" src {
+            ocaml-base-compiler = "*";
+          }).memtrace;
+          ppxlib = let
+            src = builtins.fetchGit {
+              url = "https://github.com/NathanReb/ppxlib";
+              rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+            };
+          in (opam-nix.buildOpamProject { } "ppxlib" src {
+            ocaml-base-compiler = "*";
+          }).ppxlib;
         };
         scope' = scope.overrideScope overlay;
         # The main package containing the executable
@@ -76,18 +67,15 @@
         # Packages from devPackagesQuery
         devPackages = builtins.attrValues
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
-        memtrace_viewer =
-          let
-            src = builtins.fetchGit {
-              url = "https://github.com/kuviman/memtrace_viewer";
-              rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
-            };
-          in
-          (opam-nix.buildOpamProject { } "memtrace_viewer" src {
-            ocaml-base-compiler = "*";
-          }).memtrace_viewer;
-      in
-      {
+        memtrace_viewer = let
+          src = builtins.fetchGit {
+            url = "https://github.com/kuviman/memtrace_viewer";
+            rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
+          };
+        in (opam-nix.buildOpamProject { } "memtrace_viewer" src {
+          ocaml-base-compiler = "*";
+        }).memtrace_viewer;
+      in {
         legacyPackages = scope';
         packages.default = main.overrideAttrs {
           buildInputs = [ pkgs.makeWrapper ];
@@ -105,9 +93,12 @@
             #         rlwrap dune exec kast -- "$@" \
             #     | tee >(sed -u 's/^/OUT /' >> kast.log)
             # '')
+            # (pkgs.writeShellScriptBin "kast" ''
+            #   systemd-run --user --scope -p MemoryMax=1G \
+            #     rlwrap dune exec kast -- "$@"
+            # '')
             (pkgs.writeShellScriptBin "kast" ''
-              systemd-run --user --scope -p MemoryMax=1G \
-                rlwrap dune exec kast -- "$@"
+              MEMTRACE=lsp-trace.ctf dune exec kast -- "$@"
             '')
             # You can add packages from nixpkgs here
             just # look at .justfile
@@ -123,7 +114,7 @@
             echo 'Hello from Kast devshell'
             echo '  dont forget to run `just lsp-support` :)'
             export OCAML_BACKTRACE=1
-            export OCAMLRUNPARAM=b
+            export OCAMLRUNPARAM="b,d=2"
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
           '';
         };

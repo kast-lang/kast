@@ -17,6 +17,7 @@
   js_of_ocaml-compiler
   js_of_ocaml-ppx
   promise_jsoo
+  memtrace
   uri))
 
 (generate_opam_files)
