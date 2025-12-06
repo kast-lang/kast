@@ -180,7 +180,9 @@ module Var = struct
   let fork (f : unit -> unit) : unit =
     try f ()
     with effect AwaitUpdate var, k ->
-      once_inferred (fun _ -> Effect.continue k true) var
+      let k = dont_leak_please k in
+      let f = fun _ -> k.continue true in
+      once_inferred f var
 
   let rec await_inferred : 'a. error_shape:'a -> 'a var -> 'a =
    fun ~error_shape var ->

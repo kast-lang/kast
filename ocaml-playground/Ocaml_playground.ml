@@ -1,42 +1,23 @@
-let report_memory_usage =
-  let last_print = ref 0. in
-  let print_interval = 10. in
-  fun () ->
-    let current_time = Unix.time () in
-    let pid = Unix.getpid () in
-    if !last_print +. print_interval < current_time then
-      Printf.ksprintf
-        (fun cmd -> ignore (Sys.command cmd))
-        "grep -i rss /proc/%d/status" pid
+type _ Effect.t += Foo : unit Effect.t
 
-let make_counter () =
-  let count = ref 0 in
-  let inc = fun () -> count := !count + 1 in
-  let dec = fun () -> count := !count - 1 in
-  let get = fun () -> !count in
-  (get, inc, dec)
+exception Cancel
 
-let _ =
-  Eio_main.run (fun env ->
-      Eio.Switch.run (fun sw ->
-          let mutex = Eio.Mutex.create () in
-          let i = ref 0 in
-          let stdin =
-            Eio.Buf_read.of_flow ~max_size:1_000_000 (Eio.Stdenv.stdin env)
-          in
-          let stdout = Eio.Stdenv.stdout env in
-          let get, inc, dec = make_counter () in
-          while true do
-            let _ : string = Eio.Buf_read.line stdin in
-            Eio.Fiber.fork ~sw (fun () ->
-                inc ();
-                Eio.Mutex.use_rw ~protect:false mutex (fun () ->
-                    Eio.Flow.copy_string "hello, world!" stdout;
-                    dec ());
-                ());
-            if !i mod 1 = 0 then (
-              Format.eprintf "spawned so far: %d\ncount=%d\n" !i (get ());
-              report_memory_usage ();
-              flush Stdlib.stderr);
-            i := !i + 1
-          done))
+let dont_leak_please k =
+  Gc.finalise
+    (fun k ->
+      print_endline "hmmm";
+      Effect.Deep.discontinue k Cancel)
+    k
+
+let () =
+  while true do
+    try
+      let s = String.init 1000 (fun i -> if i mod 2 = 0 then 'a' else 'b') in
+      Effect.perform Foo;
+      print_endline s
+    with
+    | effect Foo, k ->
+        let k = dont_leak_please k in
+        ()
+    | Cancel -> ()
+  done

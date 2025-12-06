@@ -14,6 +14,30 @@ include Int
 include Effect
 include Seq
 
+exception Cancel
+
+type ('a, 'b) unleakable_continuation = { continue : 'a -> 'b }
+
+let dont_leak_please : ('a, 'b) continuation -> ('a, 'b) unleakable_continuation
+    =
+ fun k ->
+  let resumed = ref false in
+  let uk =
+    {
+      continue =
+        (fun x ->
+          resumed := true;
+          Effect.Deep.continue k x);
+    }
+  in
+  Gc.finalise
+    (fun _ ->
+      if not !resumed then (
+        Log.error (fun log -> log "leaked continuation");
+        try Effect.Deep.discontinue k Cancel with _ -> ()))
+    uk;
+  uk
+
 let unreachable format =
   Format.fprintf Format.str_formatter "unreachable reached: ";
   Format.kfprintf

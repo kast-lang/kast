@@ -27,4 +27,4 @@ let main () =
   in
   Kast.handle_effects ~stop_on_error (fun () -> run args)
 
-let () = main ()
+let () = try main () with Cancel -> ()

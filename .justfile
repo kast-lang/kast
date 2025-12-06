@@ -18,4 +18,4 @@ profile *args:
     echo "now load data.perf into https://profiler.firefox.com/"
 
 lsp-stress-test:
-    python lsp-stress-test/main.py 2>/dev/null | kast lsp
+    python lsp-stress-test/main.py 2>/dev/null | kast lsp >/dev/null

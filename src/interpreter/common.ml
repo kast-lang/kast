@@ -793,12 +793,14 @@ and fork (f : unit -> unit) : unit =
   Kast_inference_base.fork (fun () ->
       try f () with
       | effect AwaitCompiled f, k ->
-          f.on_compiled <- (fun () -> Effect.continue k ()) :: f.on_compiled
+          let k = dont_leak_please k in
+          f.on_compiled <- k.continue :: f.on_compiled
       | effect AwaitCompiledTyExpr expr, k ->
-          expr.on_compiled <-
-            (fun () -> Effect.continue k ()) :: expr.on_compiled
+          let k = dont_leak_please k in
+          expr.on_compiled <- k.continue :: expr.on_compiled
       | effect Scope.AwaitUpdate (name, scope), k ->
-          scope.on_update <-
-            (fun () -> Effect.continue k true) :: scope.on_update
+          let k = dont_leak_please k in
+          scope.on_update <- (fun () -> k.continue true) :: scope.on_update
       | effect Inference.Var.AwaitUpdate var, k ->
-          Inference.Var.once_inferred (fun _ -> Effect.continue k true) var)
+          let k = dont_leak_please k in
+          Inference.Var.once_inferred (fun _ -> k.continue true) var)

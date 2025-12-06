@@ -27,7 +27,7 @@ and file_state = {
 }
 
 let process_file (global : global_state) (source : source) : file_state =
-  Log.trace (fun log -> log "PROJECT: processing %a" Uri.print source.uri);
+  Log.debug (fun log -> log "Processing %a" Uri.print source.uri);
   Hashtbl.remove global.root_of_included source.uri;
   global.diagnostics <- global.diagnostics |> UriMap.add source.uri [];
 
@@ -61,6 +61,7 @@ let process_file (global : global_state) (source : source) : file_state =
           };
         Effect.continue k ()
     (* TODO msg about crash? *)
+    | Cancel -> raise Cancel
     | _ -> None
   in
   let ast = Option.bind parsed (fun ({ ast; _ } : Parser.result) -> ast) in
@@ -117,8 +118,10 @@ let process_file (global : global_state) (source : source) : file_state =
                 data = None;
               };
             Effect.continue k ()
+        | Cancel -> raise Cancel
         | _ -> None)
   in
+  Log.debug (fun log -> log "Processing done %a" Uri.print source.uri);
   { uri = source.uri; parsed; compiled }
 
 let workspace_file (root : Uri.t) (path : string) =
@@ -155,6 +158,8 @@ let workspace_roots (global : global_state) (workspace : workspace_state) :
   workspace_roots |> List.map (fun path -> workspace_file workspace.root path)
 
 let process_workspace (global : global_state) (workspace : workspace_state) =
+  Log.debug (fun log ->
+      log "Processing workspace at %a" Uri.print workspace.root);
   (* workspace.files <- UriMap.empty; *)
   (* TODO make imports immutable *)
   global.import_cache <- Compiler.init_import_cache ();
@@ -163,7 +168,9 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
       workspace_roots global workspace
       |> List.iter (fun uri ->
           let processed = process_file global (Source.read uri) in
-          handle_processed workspace uri processed)
+          handle_processed workspace uri processed);
+      Log.debug (fun log ->
+          log "Workspace processed at %a" Uri.print workspace.root)
     with
     | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
         Log.trace (fun log -> log "removed diags for %a" Uri.print uri);
@@ -195,15 +202,20 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
           let contents = Effect.perform (Source.Read uri) in
           Effect.Deep.continue k contents
         else Effect.Deep.continue k (Effect.perform eff)
-  with exc ->
-    Log.error (fun log ->
-        log "Failed to process workspace: %s" (Printexc.to_string exc));
-    ()
+  with
+  | Cancel -> ()
+  | exc ->
+      Log.error (fun log ->
+          log "Failed to process workspace: %s" (Printexc.to_string exc));
+      Printexc.print_backtrace stderr;
+      ()
 
 let init_workspace (global : global_state) (root : Uri.t) : workspace_state =
-  Log.trace (fun log -> log "Initializing workspace at %a" Uri.print root);
   let workspace : workspace_state = { root; files = UriMap.empty } in
-  process_workspace global workspace;
+  (try
+     process_workspace global workspace;
+     Gc.full_major ()
+   with Cancel -> ());
   workspace
 
 let init (workspaces : Lsp.Uri0.t list) : global_state =
@@ -241,8 +253,12 @@ let update_file (global : global_state) (uri : Lsp.Uri0.t) (source : string) :
 
 let recalculate (global : global_state) : unit =
   timed "recalculating lsp stuff" (fun () ->
-      try global.workspaces |> List.iter (process_workspace global)
-      with effect (Source.Read uri as eff), k -> (
-        match UriMap.find_opt uri global.vfs with
-        | Some contents -> Effect.continue k contents
-        | None -> Effect.continue k (Effect.perform eff)))
+      try
+        global.workspaces |> List.iter (process_workspace global);
+        Gc.full_major ()
+      with
+      | effect (Source.Read uri as eff), k -> (
+          match UriMap.find_opt uri global.vfs with
+          | Some contents -> Effect.continue k contents
+          | None -> Effect.continue k (Effect.perform eff))
+      | Cancel -> ())
