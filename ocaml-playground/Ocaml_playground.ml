@@ -1,11 +1,12 @@
-let big_list = List.init 10_000_000 (fun n -> n)
+let _ = print_endline "starting"
+let big_list = List.init 1_000_000 (fun n -> n)
 
-let _domain =
+(* let _domain =
   Domain.spawn (fun () ->
       while true do
         let _ = Marshal.to_string big_list [] in
         ()
-      done)
+      done) *)
 
 let report_memory_usage =
   let last_print = ref 0. in
@@ -18,10 +19,25 @@ let report_memory_usage =
         (fun cmd -> ignore (Sys.command cmd))
         "grep -i rss /proc/%d/status" pid
 
-let rec loop chain =
+(* let rec loop chain =
   let _ = Marshal.to_string big_list [] in
   report_memory_usage ();
-  loop chain
+  loop chain *)
 
-let () = print_endline "starting"
-let () = loop ()
+let _ =
+  Eio_main.run (fun _env ->
+      Eio.Switch.run (fun sw ->
+          print_endline "+";
+          let i = ref 0 in
+          while true do
+            Eio.Fiber.fork ~sw (fun () ->
+                (* print_endline "fork begin"; *)
+                let s = Marshal.to_string big_list [] in
+                (* print_endline "fork end"; *)
+                ());
+            if !i mod 2 = 0 then (
+              Format.printf "spawned so far: %d\n" !i;
+              report_memory_usage ();
+              flush stdout);
+            i := !i + 1
+          done))
