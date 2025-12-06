@@ -1,13 +1,3 @@
-let _ = print_endline "starting"
-let big_list = List.init 1_000_000 (fun n -> n)
-
-(* let _domain =
-  Domain.spawn (fun () ->
-      while true do
-        let _ = Marshal.to_string big_list [] in
-        ()
-      done) *)
-
 let report_memory_usage =
   let last_print = ref 0. in
   let print_interval = 10. in
@@ -19,25 +9,34 @@ let report_memory_usage =
         (fun cmd -> ignore (Sys.command cmd))
         "grep -i rss /proc/%d/status" pid
 
-(* let rec loop chain =
-  let _ = Marshal.to_string big_list [] in
-  report_memory_usage ();
-  loop chain *)
+let make_counter () =
+  let count = ref 0 in
+  let inc = fun () -> count := !count + 1 in
+  let dec = fun () -> count := !count - 1 in
+  let get = fun () -> !count in
+  (get, inc, dec)
 
 let _ =
-  Eio_main.run (fun _env ->
+  Eio_main.run (fun env ->
       Eio.Switch.run (fun sw ->
-          print_endline "+";
+          let mutex = Eio.Mutex.create () in
           let i = ref 0 in
+          let stdin =
+            Eio.Buf_read.of_flow ~max_size:1_000_000 (Eio.Stdenv.stdin env)
+          in
+          let stdout = Eio.Stdenv.stdout env in
+          let get, inc, dec = make_counter () in
           while true do
+            let _ : string = Eio.Buf_read.line stdin in
             Eio.Fiber.fork ~sw (fun () ->
-                (* print_endline "fork begin"; *)
-                let s = Marshal.to_string big_list [] in
-                (* print_endline "fork end"; *)
+                inc ();
+                Eio.Mutex.use_rw ~protect:false mutex (fun () ->
+                    Eio.Flow.copy_string "hello, world!" stdout;
+                    dec ());
                 ());
-            if !i mod 2 = 0 then (
-              Format.printf "spawned so far: %d\n" !i;
+            if !i mod 1 = 0 then (
+              Format.eprintf "spawned so far: %d\ncount=%d\n" !i (get ());
               report_memory_usage ();
-              flush stdout);
+              flush Stdlib.stderr);
             i := !i + 1
           done))

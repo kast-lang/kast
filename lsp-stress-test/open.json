@@ -1,0 +1,12 @@
+{
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+        "textDocument": {
+            "uri": "file:///home/kuviman/projects/kast-lang/kast/examples/hello.ks",
+            "languageId": "kast",
+            "version": 1,
+            "text": "use std.prelude.*;\nprint \"Hello, world!\""
+        }
+    }
+}

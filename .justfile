@@ -16,3 +16,6 @@ profile *args:
     perf record --call-graph dwarf _build/install/default/bin/kast {{args}}
     perf script -F +pid > data.perf
     echo "now load data.perf into https://profiler.firefox.com/"
+
+lsp-stress-test:
+    python lsp-stress-test/main.py 2>/dev/null | kast lsp

@@ -281,10 +281,11 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
       let jsonrpc_request = Lsp.Client_request.to_jsonrpc_request request ~id in
       let json = Linol_jsonrpc.Jsonrpc.Request.yojson_of_t jsonrpc_request in
       let s = Yojson.Safe.to_string json in
+      let s = "<hidden>" in
       Log.info (fun log ->
           log "Got request %s: %s"
             (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
-            "");
+            s);
       let response =
         super#on_request ~notify_back ~server_request ~id request
       in
@@ -292,11 +293,12 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
       | Ok response ->
           let json = Lsp.Client_request.yojson_of_result request response in
           let s = Yojson.Safe.to_string json in
+          let s = "<hidden>" in
           Log.info (fun log ->
               log "Respond %s: %s"
                 (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t
                |> Yojson.Safe.to_string)
-                "")
+                s)
       | Error s ->
           Log.info (fun log ->
               log "Request %s errored: %s"
@@ -309,6 +311,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
       let jsonrpc_n = Lsp.Client_notification.to_jsonrpc n in
       let json = Linol_jsonrpc.Jsonrpc.Notification.yojson_of_t jsonrpc_n in
       let s = Yojson.Safe.to_string json in
+      let s = "<hidden>" in
       Log.info (fun log -> log "Got notification: %s" s);
       super#on_notification ~notify_back ~server_request n
   end
