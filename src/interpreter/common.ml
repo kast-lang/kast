@@ -351,6 +351,372 @@ and eval_place : state -> Types.place_expr -> place =
           log "While evaluating place expr at %a" Span.print expr.data.span);
       raise exc
 
+and eval_expr_ref : state -> expr -> Types.place_expr -> value =
+ fun state expr place ->
+  let span = expr.data.span in
+  let place = eval_place state place in
+  V_Ref place |> Value.inferred ~span
+
+and eval_expr_claim : state -> expr -> Types.place_expr -> value =
+ fun state expr place ->
+  let span = expr.data.span in
+  let place = eval_place state place in
+  place |> claim ~span
+
+and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
+ fun state expr { def; ty } ->
+  let span = expr.data.span in
+  V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } }
+  |> Value.inferred ~span
+
+and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
+ fun state expr { def } ->
+  let span = expr.data.span in
+  V_Generic
+    {
+      id = Id.gen ();
+      name = current_name state;
+      fn = { id = Id.gen (); def; captured = state.scope };
+    }
+  |> Value.inferred ~span
+
+and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
+ fun state expr { tuple } ->
+  let span = expr.data.span in
+  (*  TODO dont panic - get rid of Option.get *)
+  let ty =
+    expr.data.ty.var |> Kast_inference_base.Var.inferred_opt |> Option.get
+    |> Ty.Shape.expect_tuple |> Option.get
+  in
+  V_Tuple
+    {
+      ty;
+      tuple =
+        tuple
+        |> Tuple.mapi
+             (fun
+               member
+               ({ label_span; label = _; field = field_expr } :
+                 expr Types.tuple_field_of)
+               :
+               Types.value_tuple_field
+             ->
+               let value = field_expr |> eval state in
+               let ty_field = ty.tuple |> Tuple.get member in
+               { place = Place.init value; span = label_span; ty_field });
+    }
+  |> Value.inferred ~span
+
+and eval_expr_variant : state -> expr -> Types.expr_variant -> value =
+ fun state expr { label; label_span = _; value } ->
+  let span = expr.data.span in
+  (*  TODO dont panic - get rid of Option.get *)
+  let ty =
+    expr.data.ty.var |> Kast_inference_base.Var.inferred_opt |> Option.get
+    |> Ty.Shape.expect_variant |> Option.get
+  in
+  let value = value |> Option.map (eval state) in
+  V_Variant { label; data = value |> Option.map Place.init; ty }
+  |> Value.inferred ~span
+
+and eval_expr_then : state -> expr -> Types.expr_then -> value =
+ fun state expr { list } ->
+  let span = expr.data.span in
+
+  let result = ref (V_Unit |> Value.inferred ~span) in
+  list |> List.iter (fun e -> result := eval state e);
+  !result
+
+and eval_expr_stmt : state -> expr -> Types.expr_stmt -> value =
+ fun state expr { expr } ->
+  let span = expr.data.span in
+
+  ignore <| eval state expr;
+  V_Unit |> Value.inferred ~span
+
+and eval_expr_scope : state -> expr -> Types.expr_scope -> value =
+ fun state expr { expr } ->
+  let span = expr.data.span in
+  let state = state |> enter_scope ~recursive:false in
+  eval state expr
+
+and eval_expr_assign : state -> expr -> Types.expr_assign -> value =
+ fun state expr { assignee; value = value_expr } ->
+  let span = expr.data.span in
+  let value = eval_place state value_expr in
+  assign ~span:value_expr.data.span state assignee value;
+  V_Unit |> Value.inferred ~span
+
+and eval_expr_apply : state -> expr -> Types.expr_apply -> value =
+ fun state expr { f; arg } ->
+  let span = expr.data.span in
+  let f = eval state f in
+  let arg = eval state arg in
+  call expr.data.span state f arg
+
+and eval_expr_instantiategeneric :
+    state -> expr -> Types.expr_instantiate_generic -> value =
+ fun state expr { generic; arg } ->
+  let span = expr.data.span in
+  let generic = eval state generic in
+  let arg = eval state arg in
+  instantiate expr.data.span state generic arg
+
+and eval_expr_native : state -> expr -> Types.expr_native -> value =
+ fun state expr { expr = native_expr } ->
+  let span = expr.data.span in
+  match StringMap.find_opt native_expr state.natives.by_name with
+  | Some value -> value
+  | None ->
+      Error.error expr.data.span "no native %S" native_expr;
+      V_Error |> Value.inferred ~span
+
+and eval_expr_module : state -> expr -> Types.expr_module -> value =
+ fun state expr { def } ->
+  let span = expr.data.span in
+  let module_scope = Scope.init ~recursive:true ~parent:(Some state.scope) in
+  let new_state = { state with scope = module_scope } in
+  ignore @@ eval new_state def;
+  Scope.close module_scope;
+  let fields =
+    module_scope.locals.by_symbol |> SymbolMap.to_list
+    |> List.map (fun ((symbol : symbol), (local : Types.interpreter_local)) ->
+        ( Some symbol.name,
+          ({
+             place = local.place;
+             span = local.ty_field.label |> Label.get_span;
+             ty_field = local.ty_field;
+           }
+            : Types.value_tuple_field) ))
+  in
+  (*  TODO dont panic - get rid of Option.get *)
+  let ty =
+    expr.data.ty.var |> Kast_inference_base.Var.inferred_opt |> Option.get
+    |> Ty.Shape.expect_tuple |> Option.get
+  in
+  V_Tuple { tuple = fields |> Tuple.of_list; ty } |> Value.inferred ~span
+
+and eval_expr_usedotstar : state -> expr -> Types.expr_use_dot_star -> value =
+ fun state expr { used; bindings } ->
+  let span = expr.data.span in
+  let used = eval state used in
+  match used |> Value.await_inferred with
+  | V_Tuple { ty = _; tuple } ->
+      bindings
+      |> List.iter (fun (binding : binding) ->
+          let field = tuple |> Tuple.get_named binding.name.name in
+          state.scope
+          |> Scope.add_local_existing_place field.span binding.name field.place);
+      V_Unit |> Value.inferred ~span
+  | _ ->
+      Error.error expr.data.span "can't use .* %a" Value.print used;
+      V_Error |> Value.inferred ~span
+
+and eval_expr_if : state -> expr -> Types.expr_if -> value =
+ fun state expr { cond = cond_expr; then_case; else_case } ->
+  let span = expr.data.span in
+  let cond = eval state cond_expr in
+  match cond |> Value.await_inferred with
+  | V_Bool true -> eval state then_case
+  | V_Bool false -> eval state else_case
+  | _ ->
+      Error.error cond_expr.data.span "if cond must be bool, got %a" Value.print
+        cond;
+      V_Error |> Value.inferred ~span
+
+and eval_expr_and : state -> expr -> Types.expr_and -> value =
+ fun state expr { lhs; rhs } ->
+  let span = expr.data.span in
+  match eval state lhs |> Value.expect_bool with
+  | None ->
+      Error.error lhs.data.span "lhs of and evaled not to a bool";
+      V_Error |> Value.inferred ~span
+  | Some true -> (
+      match eval state rhs |> Value.expect_bool with
+      | None ->
+          Error.error lhs.data.span "rhs of and evaled not to a bool";
+          V_Error |> Value.inferred ~span
+      | Some rhs -> V_Bool rhs |> Value.inferred ~span)
+  | Some false -> V_Bool false |> Value.inferred ~span
+
+and eval_expr_or : state -> expr -> Types.expr_or -> value =
+ fun state expr { lhs; rhs } ->
+  let span = expr.data.span in
+  match eval state lhs |> Value.expect_bool with
+  | None ->
+      Error.error lhs.data.span "lhs of or evaled not to a bool";
+      V_Error |> Value.inferred ~span
+  | Some false -> (
+      match eval state rhs |> Value.expect_bool with
+      | None ->
+          Error.error lhs.data.span "rhs of or evaled not to a bool";
+          V_Error |> Value.inferred ~span
+      | Some rhs -> V_Bool rhs |> Value.inferred ~span)
+  | Some true -> V_Bool true |> Value.inferred ~span
+
+and eval_expr_match : state -> expr -> Types.expr_match -> value =
+ fun state expr { value = place_expr; branches } ->
+  let span = expr.data.span in
+  let place = eval_place state place_expr in
+  let result =
+    branches
+    |> List.find_map (fun (branch : Types.expr_match_branch) ->
+        let ~matched, matches =
+          pattern_match ~span:place_expr.data.span place branch.pattern
+        in
+        if matched then
+          Some
+            (let inner_state = enter_scope ~recursive:false state in
+             inner_state.scope |> Scope.add_locals matches;
+             eval inner_state branch.body)
+        else None)
+  in
+  match result with
+  | Some result -> result
+  | None ->
+      Error.error expr.data.span "pattern match non exhaustive";
+      V_Error |> Value.inferred ~span
+
+and eval_expr_loop : state -> expr -> Types.expr_loop -> value =
+ fun state expr { body } ->
+  let span = expr.data.span in
+  let state = state |> enter_scope ~recursive:false in
+  while true do
+    ignore @@ eval state body
+  done
+
+and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
+ fun state expr { token = token_pattern; body } ->
+  let span = expr.data.span in
+  let id = Id.gen () in
+  let token : Types.value_unwind_token = { id; result_ty = body.data.ty } in
+  let token : value =
+    V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
+  in
+  let inner_state = enter_scope ~recursive:false state in
+  inner_state.scope
+  |> Scope.add_locals
+       ( pattern_match ~span:token_pattern.data.span (Place.init token)
+           token_pattern
+       |> fun (~matched, locals) ->
+         if not matched then
+           Error.error token_pattern.data.span
+             "Failed to pattern match unwind token";
+         locals );
+  try eval inner_state body
+  with Unwind { token; value } when token.id = id -> value
+
+and eval_expr_unwind : state -> expr -> Types.expr_unwind -> value =
+ fun state expr { token = token_expr; value } ->
+  let span = expr.data.span in
+  with_return (fun { return } ->
+      let token =
+        eval state token_expr |> Value.expect_unwind_token
+        |> Option.unwrap_or_else (fun () ->
+            Error.error token_expr.data.span "Unwind token was incorrect type";
+            return (V_Error |> Value.inferred ~span : value))
+      in
+      let value = eval state value in
+      raise <| Unwind { token; value })
+
+and eval_expr_injectcontext :
+    state -> expr -> Types.expr_inject_context -> value =
+ fun state expr { context_ty; value } ->
+  let span = expr.data.span in
+  let value = eval state value in
+  state.contexts <- state.contexts |> Id.Map.add context_ty.id value;
+  V_Unit |> Value.inferred ~span
+
+and eval_expr_currentcontext :
+    state -> expr -> Types.expr_current_context -> value =
+ fun state expr { context_ty } ->
+  let span = expr.data.span in
+  match state.contexts |> Id.Map.find_opt context_ty.id with
+  | Some value -> value
+  | None ->
+      Error.error expr.data.span "Context unavailable";
+      V_Error |> Value.inferred ~span
+
+and eval_expr_implcast : state -> expr -> Types.expr_impl_cast -> value =
+ fun state expr { value; target; impl } ->
+  let span = expr.data.span in
+  let value = eval state value in
+  (* let target = eval state target in *)
+  let impl = eval state impl in
+  let current_target_impls =
+    state.cast_impls.map
+    |> Types.ValueMap.find_opt target
+    |> Option.unwrap_or_else (fun () -> Types.ValueMap.empty)
+  in
+  let updated_target_impls =
+    current_target_impls |> Types.ValueMap.add value impl
+  in
+  state.cast_impls.map <-
+    state.cast_impls.map |> Types.ValueMap.add target updated_target_impls;
+  Log.trace (fun log ->
+      log "Added cast impl: %a as %a" Value.print value Value.print target);
+  V_Unit |> Value.inferred ~span
+
+and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
+ fun state expr { value; target } ->
+  let span = expr.data.span in
+  let value = eval state value in
+  let impl =
+    state.cast_impls.map
+    |> Types.ValueMap.find_opt target
+    |> Option.and_then (fun target_impls ->
+        target_impls |> Types.ValueMap.find_opt value)
+  in
+  match impl with
+  | Some impl -> impl
+  | None ->
+      Error.error span "no impl of %a as %a" Value.print value Value.print
+        target;
+      state.cast_impls.map
+      |> Types.ValueMap.iter (fun existing_target impls ->
+          impls
+          |> Types.ValueMap.iter (fun existing_value _impl ->
+              if
+                Types.ValueImpl.compare target existing_target = 0
+                && Types.ValueImpl.compare value existing_value = 0
+              then Log.error (fun log -> log "Not found but actually there????");
+              Log.trace (fun log ->
+                  log "Exists impl: %a as %a" Value.print existing_value
+                    Value.print existing_target)));
+      V_Error |> Value.inferred ~span
+
+and eval_expr_targetdependent :
+    state -> expr -> Types.expr_target_dependent -> value =
+ fun state expr ({ branches; interpreter_branch } as target_dep_expr) ->
+  let span = expr.data.span in
+  with_return (fun { return } ->
+      let chosen_branch =
+        match interpreter_branch with
+        | Some computed -> computed
+        | None ->
+            let computed =
+              find_target_dependent_branch state branches
+                { name = "interpreter" }
+              |> Option.unwrap_or_else (fun () ->
+                  Error.error expr.data.span
+                    "No target dependent branch matched";
+                  return (V_Error |> Value.inferred ~span : value))
+            in
+            target_dep_expr.interpreter_branch <- Some computed;
+            computed
+      in
+      eval state chosen_branch.body)
+
+and eval_expr_ty : state -> expr -> Types.ty_expr -> value =
+ fun state expr e ->
+  let span = expr.data.span in
+  V_Ty (eval_ty state e) |> Value.inferred ~span
+
+and eval_expr_quote_ast : state -> expr -> Types.expr_quote_ast -> value =
+ fun state expr e ->
+  let span = expr.data.span in
+  V_Ast (quote_ast ~span state e) |> Value.inferred ~span
+
 and eval : state -> expr -> value =
  fun state expr ->
   try
@@ -358,293 +724,37 @@ and eval : state -> expr -> value =
     Log.trace (fun log -> log "evaluating at %a" Span.print span);
     let result =
       match expr.shape with
-      | E_Ref place ->
-          let place = eval_place state place in
-          V_Ref place |> Value.inferred ~span
-      | E_Claim place ->
-          let place = eval_place state place in
-          place |> claim ~span
+      | E_Ref place -> eval_expr_ref state expr place
+      | E_Claim place -> eval_expr_claim state expr place
       | E_Constant value -> value
-      | E_Fn { def; ty } ->
-          V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } }
-          |> Value.inferred ~span
-      | E_Generic { def } ->
-          V_Generic
-            {
-              id = Id.gen ();
-              name = current_name state;
-              fn = { id = Id.gen (); def; captured = state.scope };
-            }
-          |> Value.inferred ~span
-      | E_Tuple { tuple } ->
-          (*  TODO dont panic - get rid of Option.get *)
-          let ty =
-            expr.data.ty.var |> Kast_inference_base.Var.inferred_opt
-            |> Option.get |> Ty.Shape.expect_tuple |> Option.get
-          in
-          V_Tuple
-            {
-              ty;
-              tuple =
-                tuple
-                |> Tuple.mapi
-                     (fun
-                       member
-                       ({ label_span; label = _; field = field_expr } :
-                         expr Types.tuple_field_of)
-                       :
-                       Types.value_tuple_field
-                     ->
-                       let value = field_expr |> eval state in
-                       let ty_field = ty.tuple |> Tuple.get member in
-                       { place = Place.init value; span = label_span; ty_field });
-            }
-          |> Value.inferred ~span
-      | E_Variant { label; label_span = _; value } ->
-          (*  TODO dont panic - get rid of Option.get *)
-          let ty =
-            expr.data.ty.var |> Kast_inference_base.Var.inferred_opt
-            |> Option.get |> Ty.Shape.expect_variant |> Option.get
-          in
-          let value = value |> Option.map (eval state) in
-          V_Variant { label; data = value |> Option.map Place.init; ty }
-          |> Value.inferred ~span
-      | E_Then { list } ->
-          let result = ref (V_Unit |> Value.inferred ~span) in
-          list |> List.iter (fun e -> result := eval state e);
-          !result
-      | E_Stmt { expr } ->
-          ignore <| eval state expr;
-          V_Unit |> Value.inferred ~span
-      | E_Scope { expr } ->
-          let state = state |> enter_scope ~recursive:false in
-          eval state expr
-      | E_Assign { assignee; value = value_expr } ->
-          let value = eval_place state value_expr in
-          assign ~span:value_expr.data.span state assignee value;
-          V_Unit |> Value.inferred ~span
-      | E_Apply { f; arg } ->
-          let f = eval state f in
-          let arg = eval state arg in
-          call expr.data.span state f arg
-      | E_InstantiateGeneric { generic; arg } ->
-          let generic = eval state generic in
-          let arg = eval state arg in
-          instantiate expr.data.span state generic arg
-      | E_Ty expr -> V_Ty (eval_ty state expr) |> Value.inferred ~span
-      | E_Native { expr = native_expr } -> (
-          match StringMap.find_opt native_expr state.natives.by_name with
-          | Some value -> value
-          | None ->
-              Error.error expr.data.span "no native %S" native_expr;
-              V_Error |> Value.inferred ~span)
-      | E_Module { def } ->
-          let module_scope =
-            Scope.init ~recursive:true ~parent:(Some state.scope)
-          in
-          let new_state = { state with scope = module_scope } in
-          ignore @@ eval new_state def;
-          Scope.close module_scope;
-          let fields =
-            module_scope.locals.by_symbol |> SymbolMap.to_list
-            |> List.map
-                 (fun ((symbol : symbol), (local : Types.interpreter_local)) ->
-                   ( Some symbol.name,
-                     ({
-                        place = local.place;
-                        span = local.ty_field.label |> Label.get_span;
-                        ty_field = local.ty_field;
-                      }
-                       : Types.value_tuple_field) ))
-          in
-          (*  TODO dont panic - get rid of Option.get *)
-          let ty =
-            expr.data.ty.var |> Kast_inference_base.Var.inferred_opt
-            |> Option.get |> Ty.Shape.expect_tuple |> Option.get
-          in
-          V_Tuple { tuple = fields |> Tuple.of_list; ty }
-          |> Value.inferred ~span
-      | E_UseDotStar { used; bindings } -> (
-          let used = eval state used in
-          match used |> Value.await_inferred with
-          | V_Tuple { ty = _; tuple } ->
-              bindings
-              |> List.iter (fun (binding : binding) ->
-                  let field = tuple |> Tuple.get_named binding.name.name in
-                  state.scope
-                  |> Scope.add_local_existing_place field.span binding.name
-                       field.place);
-              V_Unit |> Value.inferred ~span
-          | _ ->
-              Error.error expr.data.span "can't use .* %a" Value.print used;
-              V_Error |> Value.inferred ~span)
-      | E_If { cond = cond_expr; then_case; else_case } -> (
-          let cond = eval state cond_expr in
-          match cond |> Value.await_inferred with
-          | V_Bool true -> eval state then_case
-          | V_Bool false -> eval state else_case
-          | _ ->
-              Error.error cond_expr.data.span "if cond must be bool, got %a"
-                Value.print cond;
-              V_Error |> Value.inferred ~span)
-      | E_And { lhs; rhs } -> (
-          match eval state lhs |> Value.expect_bool with
-          | None ->
-              Error.error lhs.data.span "lhs of and evaled not to a bool";
-              V_Error |> Value.inferred ~span
-          | Some true -> (
-              match eval state rhs |> Value.expect_bool with
-              | None ->
-                  Error.error lhs.data.span "rhs of and evaled not to a bool";
-                  V_Error |> Value.inferred ~span
-              | Some rhs -> V_Bool rhs |> Value.inferred ~span)
-          | Some false -> V_Bool false |> Value.inferred ~span)
-      | E_Or { lhs; rhs } -> (
-          match eval state lhs |> Value.expect_bool with
-          | None ->
-              Error.error lhs.data.span "lhs of or evaled not to a bool";
-              V_Error |> Value.inferred ~span
-          | Some false -> (
-              match eval state rhs |> Value.expect_bool with
-              | None ->
-                  Error.error lhs.data.span "rhs of or evaled not to a bool";
-                  V_Error |> Value.inferred ~span
-              | Some rhs -> V_Bool rhs |> Value.inferred ~span)
-          | Some true -> V_Bool true |> Value.inferred ~span)
-      | E_Match { value = place_expr; branches } -> (
-          let place = eval_place state place_expr in
-          let result =
-            branches
-            |> List.find_map (fun (branch : Types.expr_match_branch) ->
-                let ~matched, matches =
-                  pattern_match ~span:place_expr.data.span place branch.pattern
-                in
-                if matched then
-                  Some
-                    (let inner_state = enter_scope ~recursive:false state in
-                     inner_state.scope |> Scope.add_locals matches;
-                     eval inner_state branch.body)
-                else None)
-          in
-          match result with
-          | Some result -> result
-          | None ->
-              Error.error expr.data.span "pattern match non exhaustive";
-              V_Error |> Value.inferred ~span)
-      | E_QuoteAst expr ->
-          V_Ast (quote_ast ~span state expr) |> Value.inferred ~span
-      | E_Loop { body } ->
-          let state = state |> enter_scope ~recursive:false in
-          while true do
-            ignore @@ eval state body
-          done
+      | E_Fn f -> eval_expr_fn state expr f
+      | E_Generic f -> eval_expr_generic state expr f
+      | E_Tuple tuple -> eval_expr_tuple state expr tuple
+      | E_Variant e -> eval_expr_variant state expr e
+      | E_Then e -> eval_expr_then state expr e
+      | E_Stmt e -> eval_expr_stmt state expr e
+      | E_Scope e -> eval_expr_scope state expr e
+      | E_Assign e -> eval_expr_assign state expr e
+      | E_Apply e -> eval_expr_apply state expr e
+      | E_InstantiateGeneric e -> eval_expr_instantiategeneric state expr e
+      | E_Ty e -> eval_expr_ty state expr e
+      | E_Native e -> eval_expr_native state expr e
+      | E_Module e -> eval_expr_module state expr e
+      | E_UseDotStar e -> eval_expr_usedotstar state expr e
+      | E_If e -> eval_expr_if state expr e
+      | E_And e -> eval_expr_and state expr e
+      | E_Or e -> eval_expr_or state expr e
+      | E_Match e -> eval_expr_match state expr e
+      | E_QuoteAst e -> eval_expr_quote_ast state expr e
+      | E_Loop e -> eval_expr_loop state expr e
       | E_Error -> V_Error |> Value.inferred ~span
-      | E_Unwindable { token = token_pattern; body } -> (
-          let id = Id.gen () in
-          let token : Types.value_unwind_token =
-            { id; result_ty = body.data.ty }
-          in
-          let token : value =
-            V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
-          in
-          let inner_state = enter_scope ~recursive:false state in
-          inner_state.scope
-          |> Scope.add_locals
-               ( pattern_match ~span:token_pattern.data.span (Place.init token)
-                   token_pattern
-               |> fun (~matched, locals) ->
-                 if not matched then
-                   Error.error token_pattern.data.span
-                     "Failed to pattern match unwind token";
-                 locals );
-          try eval inner_state body
-          with Unwind { token; value } when token.id = id -> value)
-      | E_Unwind { token = token_expr; value } ->
-          with_return (fun { return } ->
-              let token =
-                eval state token_expr |> Value.expect_unwind_token
-                |> Option.unwrap_or_else (fun () ->
-                    Error.error token_expr.data.span
-                      "Unwind token was incorrect type";
-                    return (V_Error |> Value.inferred ~span : value))
-              in
-              let value = eval state value in
-              raise <| Unwind { token; value })
-      | E_InjectContext { context_ty; value } ->
-          let value = eval state value in
-          state.contexts <- state.contexts |> Id.Map.add context_ty.id value;
-          V_Unit |> Value.inferred ~span
-      | E_CurrentContext { context_ty } -> (
-          match state.contexts |> Id.Map.find_opt context_ty.id with
-          | Some value -> value
-          | None ->
-              Error.error expr.data.span "Context unavailable";
-              V_Error |> Value.inferred ~span)
-      | E_ImplCast { value; target; impl } ->
-          let value = eval state value in
-          (* let target = eval state target in *)
-          let impl = eval state impl in
-          let current_target_impls =
-            state.cast_impls.map
-            |> Types.ValueMap.find_opt target
-            |> Option.unwrap_or_else (fun () -> Types.ValueMap.empty)
-          in
-          let updated_target_impls =
-            current_target_impls |> Types.ValueMap.add value impl
-          in
-          state.cast_impls.map <-
-            state.cast_impls.map
-            |> Types.ValueMap.add target updated_target_impls;
-          Log.trace (fun log ->
-              log "Added cast impl: %a as %a" Value.print value Value.print
-                target);
-          V_Unit |> Value.inferred ~span
-      | E_Cast { value; target } -> (
-          let value = eval state value in
-          let impl =
-            state.cast_impls.map
-            |> Types.ValueMap.find_opt target
-            |> Option.and_then (fun target_impls ->
-                target_impls |> Types.ValueMap.find_opt value)
-          in
-          match impl with
-          | Some impl -> impl
-          | None ->
-              Error.error span "no impl of %a as %a" Value.print value
-                Value.print target;
-              state.cast_impls.map
-              |> Types.ValueMap.iter (fun existing_target impls ->
-                  impls
-                  |> Types.ValueMap.iter (fun existing_value _impl ->
-                      if
-                        Types.ValueImpl.compare target existing_target = 0
-                        && Types.ValueImpl.compare value existing_value = 0
-                      then
-                        Log.error (fun log ->
-                            log "Not found but actually there????");
-                      Log.trace (fun log ->
-                          log "Exists impl: %a as %a" Value.print existing_value
-                            Value.print existing_target)));
-              V_Error |> Value.inferred ~span)
-      | E_TargetDependent ({ branches; interpreter_branch } as target_dep_expr)
-        ->
-          with_return (fun { return } ->
-              let chosen_branch =
-                match interpreter_branch with
-                | Some computed -> computed
-                | None ->
-                    let computed =
-                      find_target_dependent_branch state branches
-                        { name = "interpreter" }
-                      |> Option.unwrap_or_else (fun () ->
-                          Error.error expr.data.span
-                            "No target dependent branch matched";
-                          return (V_Error |> Value.inferred ~span : value))
-                    in
-                    target_dep_expr.interpreter_branch <- Some computed;
-                    computed
-              in
-              eval state chosen_branch.body)
+      | E_Unwindable e -> eval_expr_unwindable state expr e
+      | E_Unwind e -> eval_expr_unwind state expr e
+      | E_InjectContext e -> eval_expr_injectcontext state expr e
+      | E_CurrentContext e -> eval_expr_currentcontext state expr e
+      | E_ImplCast e -> eval_expr_implcast state expr e
+      | E_Cast e -> eval_expr_cast state expr e
+      | E_TargetDependent e -> eval_expr_targetdependent state expr e
     in
     (* let result = Substitute_bindings.sub_value ~state result in *)
     Log.trace (fun log ->
