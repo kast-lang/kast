@@ -8,7 +8,7 @@ let print_twice = (s :: std.string) => (
     let xyz = f ();
     print s;
     print s;
-    print (std.int32_to_string x);
+    print (std.String.to_string x);
 );
 # print (std.int32_to_string xyz);
 print_twice "Kast is best!";
