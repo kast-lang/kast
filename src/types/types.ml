@@ -167,11 +167,7 @@ module rec TypesImpl : sig
   }
 
   and expr_generic = { def : maybe_compiled_fn }
-
-  and expr_then = {
-    a : expr;
-    b : expr;
-  }
+  and expr_then = { list : expr list }
 
   and 'a tuple_field_of = {
     label_span : Span.t;
@@ -654,11 +650,7 @@ end = struct
   }
 
   and expr_generic = { def : maybe_compiled_fn }
-
-  and expr_then = {
-    a : expr;
-    b : expr;
-  }
+  and expr_then = { list : expr list }
 
   and 'a tuple_field_of = {
     label_span : Span.t;

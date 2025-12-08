@@ -113,7 +113,10 @@ and init_expr :
       | E_Constant value -> Value.ty_of value
       | E_Ref place -> Ty.inferred ~span <| T_Ref place.data.ty
       | E_Claim place -> place.data.ty
-      | E_Then { a; b } -> b.data.ty
+      | E_Then { list } -> (
+          match List.last_opt list with
+          | None -> Ty.inferred ~span T_Unit
+          | Some last -> last.data.ty)
       | E_Stmt { expr } -> Ty.inferred ~span T_Unit
       | E_Scope { expr } -> expr.data.ty
       | E_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty

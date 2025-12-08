@@ -204,9 +204,9 @@ module Impl = struct
           (print_place_expr ~options)
           place
     | E_Constant value -> fprintf fmt "@{<magenta>const@} %a" print_value value
-    | E_Then { a; b } ->
+    | E_Then { list } ->
         fprintf fmt "@{<magenta>then@} %a" (Tuple.print print_expr)
-          (Tuple.make [ a; b ] [])
+          (Tuple.make list [])
     | E_Stmt { expr } ->
         fprintf fmt "@{<magenta>stmt@} %a" (Tuple.print print_expr)
           (Tuple.make [ expr ] [])

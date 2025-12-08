@@ -112,10 +112,11 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
   match expr.shape with
   | Types.E_Constant value -> state |> transpile_value value
   (* | Types.E_Binding binding -> OcamlAst.Var (binding_name binding) *)
-  | Types.E_Then { a; b } ->
-      let a = state |> transpile_expr a in
-      let b = state |> transpile_expr b in
-      OcamlAst.merge_let_then a b
+  | Types.E_Then { list } ->
+      failwith __LOC__
+      (* let a = state |> transpile_expr a in *)
+      (* let b = state |> transpile_expr b in *)
+      (* OcamlAst.merge_let_then a b *)
   | Types.E_Stmt { expr } ->
       with_return (fun { return } ->
           let expr = state |> transpile_expr expr in

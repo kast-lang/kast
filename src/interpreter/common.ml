@@ -409,9 +409,10 @@ and eval : state -> expr -> value =
           let value = value |> Option.map (eval state) in
           V_Variant { label; data = value |> Option.map Place.init; ty }
           |> Value.inferred ~span
-      | E_Then { a; b } ->
-          ignore <| eval state a;
-          eval state b
+      | E_Then { list } ->
+          let result = ref (V_Unit |> Value.inferred ~span) in
+          list |> List.iter (fun e -> result := eval state e);
+          !result
       | E_Stmt { expr } ->
           ignore <| eval state expr;
           V_Unit |> Value.inferred ~span

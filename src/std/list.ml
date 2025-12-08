@@ -25,6 +25,10 @@ module List = struct
     | head :: _ -> Some head
     | [] -> None
 
+  let last_opt = function
+    | [] -> None
+    | a -> Some (last a)
+
   let sort_by_key compare_key get_key =
     sort (fun a b -> compare_key (get_key a) (get_key b))
 end

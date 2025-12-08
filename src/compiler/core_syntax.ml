@@ -88,19 +88,18 @@ let then' : core_syntax =
         (module C : Compiler.S)
         (kind : a compiled_kind)
         (ast : Ast.t)
-        ({ children; _ } : Ast.group)
+        (_ : Ast.group)
         :
         a
       ->
         let span = ast.span in
-        let a, b =
-          children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
-        in
         match kind with
         | Expr ->
-            let a = C.compile Expr a in
-            let b = C.compile Expr b in
-            E_Then { a; b } |> init_expr span C.state
+            let list =
+              Ast.collect_list ~binary_rule_name:"core:then" ast
+              |> List.map (C.compile Expr)
+            in
+            E_Then { list } |> init_expr span C.state
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | _ ->
             error span "then must be expr";

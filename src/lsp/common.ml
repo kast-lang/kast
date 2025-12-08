@@ -54,9 +54,7 @@ let inner_compiled_with_handler =
       | E_Ref place -> handler.handle PlaceExpr place
       | E_Claim place -> handler.handle PlaceExpr place
       | E_Constant _ -> ()
-      | E_Then { a; b } ->
-          handler.handle Expr a;
-          handler.handle Expr b
+      | E_Then { list } -> list |> List.iter (handler.handle Expr)
       | E_Stmt { expr } -> handler.handle Expr expr
       | E_Scope { expr } -> handler.handle Expr expr
       | E_Fn { def; ty = _ } | E_Generic { def } -> (
