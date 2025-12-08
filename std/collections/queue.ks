@@ -8,7 +8,7 @@ const create = [T] () -> queue[T] => (
     .inner = treap.create ()
 );
 const push = [T] (q :: &queue[T], value :: T) => (
-    q^.inner = treap.merge (q^.inner, treap.singleton value);
+    q^.inner = treap.join (q^.inner, treap.singleton value);
 );
 const pop = [T] (q :: &queue[T]) -> T => (
     let first, rest = treap.split_at (q^.inner, 1);

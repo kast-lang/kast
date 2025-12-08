@@ -37,7 +37,7 @@ const update_data = [T] (root :: data[T], .left :: treap[T], .right :: treap[T])
         .count = 1 + length &left + length &right,
     )
 );
-const merge = [T] (left :: treap[T], right :: treap[T]) -> treap[T] => (
+const join = [T] (left :: treap[T], right :: treap[T]) -> treap[T] => (
     match (left, right) with (
         | (:Empty, :Empty) => :Empty
         | (:Empty, other) => other
@@ -47,12 +47,12 @@ const merge = [T] (left :: treap[T], right :: treap[T]) -> treap[T] => (
                 update_data (
                     left_data,
                     .left = left_data.left,
-                    .right = merge[T] (left_data.right, right),
+                    .right = join[T] (left_data.right, right),
                 )
             ) else (
                 update_data (
                     right_data,
-                    .left = merge[T] (left, right_data.left),
+                    .left = join[T] (left, right_data.left),
                     .right = right_data.right,
                 )
             )
@@ -92,7 +92,7 @@ const split = [T] (v :: treap[T], f :: node_splitter[T]) -> (treap[T], treap[T])
             | :Node (left, right) => (
                 let left = singleton left;
                 let right = singleton right;
-                merge (node.left, left), merge (right, node.right)
+                join (node.left, left), join (right, node.right)
             )
         )
     )
@@ -134,7 +134,7 @@ const at = [T] (v :: &treap[T], idx :: int32) -> &T => (
 const set_at = [T] (v :: treap[T], idx :: int32, value :: T) -> treap[T] => (
     let left, v = split_at (v, idx);
     let _, right = split_at (v, 1);
-    merge (left, merge (singleton value, right))
+    join (left, join (singleton value, right))
 );
 const update_at = [T] (a :: treap[T], idx :: int32, f :: &T -> T) -> treap[T] => (
     set_at (a, idx, f (at (&a, idx)))

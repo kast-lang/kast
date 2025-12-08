@@ -2,7 +2,7 @@ use std.prelude.*;
 use std.collections.treap;
 let v = treap.create ();
 for i in 0..10 do (
-    v = treap.merge (v, treap.singleton (i + 10));
+    v = treap.join (v, treap.singleton (i + 10));
 );
 # std.dbg.print v;
 let treap_to_string = v => treap.to_string (v, &x => to_string x);

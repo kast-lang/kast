@@ -8,7 +8,7 @@ const create = [T] () -> list[T] => (
     .inner = treap.create ()
 );
 const push_back = [T] (a :: &list[T], value :: T) => (
-    a^.inner = treap.merge (a^.inner, treap.singleton value);
+    a^.inner = treap.join (a^.inner, treap.singleton value);
 );
 const iter = [T] (a :: &list[T], f :: &T -> ()) -> () => (
     treap.iter (&a^.inner, f);
