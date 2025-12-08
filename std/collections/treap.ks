@@ -7,11 +7,11 @@ const data = [T] type (
     .priority :: int32,
     .right :: treap[T],
 );
-const treap = [T] type (
+const t = [T] type (
     | :Empty
     | :Node data[T]
 );
-const t = treap;
+const treap = t;
 const create = [T] () -> treap[T] => :Empty;
 const singleton = [T] (value :: T) -> treap[T] => (
     :Node (
@@ -104,6 +104,7 @@ const split_at = [T] (v :: treap[T], idx :: int32) -> (treap[T], treap[T]) => (
             if idx <= length &node^.left then (
                 :LeftSubtree
             ) else (
+                idx -= length &node^.left;
                 :RightSubtree
             )
         )
@@ -130,6 +131,22 @@ const set_at = [T] (v :: treap[T], idx :: int32, value :: T) -> treap[T] => (
 );
 const update_at = [T] (a :: treap[T], idx :: int32, f :: &T -> T) -> treap[T] => (
     set_at (a, idx, f (at (&a, idx)))
+);
+const to_string = [T] (v :: &treap[T], t_to_string :: &T -> string) -> string => (
+    let result = "[";
+    let i = 0;
+    iter (
+        v,
+        x => (
+            if i != 0 then (
+                result += ", ";
+            );
+            result += t_to_string x;
+            i += 1;
+        ),
+    );
+    result += "]";
+    result
 );
 const iter = [T] (v :: &treap[T], f :: &T -> ()) => (
     match v^ with (
