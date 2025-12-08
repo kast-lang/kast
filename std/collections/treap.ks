@@ -101,10 +101,17 @@ const split_at = [T] (v :: treap[T], idx :: int32) -> (treap[T], treap[T]) => (
     split (
         v,
         node => (
+            (#
+            io.print (
+                "At length="
+                + (node^.count |> String.to_string[_])
+                + ": idx="
+                + (idx |> String.to_string[_])
+            );#)
             if idx <= length &node^.left then (
                 :LeftSubtree
             ) else (
-                idx -= length &node^.left;
+                idx -= length &node^.left + 1;
                 :RightSubtree
             )
         )
