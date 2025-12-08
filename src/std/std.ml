@@ -26,17 +26,20 @@ let dont_leak_please : ('a, 'b) continuation -> ('a, 'b) unleakable_continuation
     {
       continue =
         (fun x ->
+          if !resumed then failwith "CONTINUATION RESUMED TWICE BRO";
           resumed := true;
           Effect.Deep.continue k x);
     }
   in
+  (* if false then *)
   Gc.finalise
     (fun _ ->
-      if not !resumed then
+      if not !resumed then (
+        resumed := true;
         (* CANT Log.error here, leads to segfaults :) *)
         (* Log.error (fun log -> log "leaked continuation");  *)
-        try Effect.Deep.discontinue k Cancel with _ -> ())
-    uk;
+        try Effect.Deep.discontinue k Cancel with _ -> ()))
+    uk.continue;
   uk
 
 let unreachable format =
