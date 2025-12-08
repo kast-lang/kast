@@ -31,13 +31,28 @@ module Command = struct
 end
 
 type args = {
+  profile : string option;
   stop_on_error : bool;
   command : Command.t;
 }
 
 let parse () : args =
   let args = Sys.argv |> Array.to_list |> List.tail in
-  match args with
-  | "--stop-on-error=false" :: args | "--stop-on-error" :: "false" :: args ->
-      { stop_on_error = false; command = Command.parse args }
-  | _ -> { stop_on_error = true; command = Command.parse args }
+  let stop_on_error = ref true in
+  let profile = ref None in
+  let rec parse_flags = function
+    | "--stop-on-error=false" :: args | "--stop-on-error" :: "false" :: args ->
+        stop_on_error := false;
+        parse_flags args
+    | "--profile" :: path :: args ->
+        profile := Some path;
+        parse_flags args
+    | [] -> []
+    | first :: rest -> first :: parse_flags rest
+  in
+  let args = parse_flags args in
+  {
+    stop_on_error = !stop_on_error;
+    profile = !profile;
+    command = Command.parse args;
+  }

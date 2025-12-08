@@ -62,8 +62,8 @@ module Scope = struct
         try f ()
         with effect AwaitUpdate scope, k ->
           (* println "registering waiter for %a" Id.print scope.id; *)
-          scope.on_update <-
-            (fun () -> Effect.continue k true) :: scope.on_update)
+          let k = dont_leak_please k in
+          scope.on_update <- (fun () -> k.continue true) :: scope.on_update)
 
   let notify_update (scope : scope) : unit =
     let fs = scope.on_update in
