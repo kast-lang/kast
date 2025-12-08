@@ -153,7 +153,20 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                       })
                 in
                 let arg : value =
-                  V_Tuple { tuple = args } |> Value.inferred ~span
+                  V_Tuple
+                    {
+                      ty =
+                        {
+                          name = OptionalName.new_not_inferred ~span;
+                          tuple =
+                            args
+                            |> Tuple.map
+                                 (fun (field : Types.value_tuple_field) ->
+                                   field.ty_field);
+                        };
+                      tuple = args;
+                    }
+                  |> Value.inferred ~span
                 in
                 let expr =
                   E_Apply
@@ -200,11 +213,11 @@ and make_compiler (original_state : state) : (module Compiler.S) =
       compile (state |> Option.value ~default:original_state) kind ast
   end : Compiler.S)
 
-let default ?(import_cache : import_cache option) () : state =
+let default name_part ?(import_cache : import_cache option) () : state =
   let import_cache =
     import_cache |> Option.unwrap_or_else (fun () -> State.init_import_cache ())
   in
-  let interpreter_without_std = Interpreter.default () in
+  let interpreter_without_std = Interpreter.default (Str "std") in
   let bootstrap = init ~import_cache ~compile_for:interpreter_without_std in
   let std_uri =
     Uri.append_if_relative
@@ -221,7 +234,7 @@ let default ?(import_cache : import_cache option) () : state =
     Label.create_definition (Span.beginning_of std_uri) std_symbol.name
   in
   let interpreter_with_std =
-    Interpreter.init
+    Interpreter.init name_part
       {
         by_symbol =
           SymbolMap.singleton std_symbol

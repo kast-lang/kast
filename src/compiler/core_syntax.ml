@@ -702,7 +702,17 @@ let const_let (span : span) (pattern : pattern) (value_expr : expr)
     (module C : Compiler.S) =
   value_expr.data.ty
   |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span pattern.data.ty;
-  let value = Interpreter.eval C.state.interpreter value_expr in
+  let interpreter_state =
+    match pattern.shape with
+    | P_Binding binding ->
+        {
+          C.state.interpreter with
+          current_name_parts_rev =
+            Symbol binding.name :: C.state.interpreter.current_name_parts_rev;
+        }
+    | _ -> C.state.interpreter
+  in
+  let value = Interpreter.eval interpreter_state value_expr in
   let let_expr =
     E_Assign
       {
@@ -1174,7 +1184,7 @@ let use_dot_star : core_syntax =
             in
             let bindings =
               match Value.ty_of used |> Ty.await_inferred with
-              | T_Tuple { tuple } ->
+              | T_Tuple { name = _; tuple } ->
                   tuple.named |> StringMap.to_list
                   |> List.map (fun (name, field) ->
                       let field : Types.ty_tuple_field = field in

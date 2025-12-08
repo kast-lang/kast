@@ -69,7 +69,8 @@ let process_file (global : global_state) (source : source) : file_state =
     Option.bind ast (fun ast ->
         try
           let compiler =
-            Compiler.default ~import_cache:global.import_cache ()
+            Compiler.default (Uri source.uri) ~import_cache:global.import_cache
+              ()
           in
           Some (Compiler.compile compiler Expr ast)
         with
@@ -139,7 +140,11 @@ let workspace_roots (global : global_state) (workspace : workspace_state) :
   let processed_workspace_ks = process_file global workspace_ks in
   handle_processed workspace workspace_ks.uri processed_workspace_ks;
   let compiled = processed_workspace_ks.compiled |> Option.get in
-  let evaled = Kast_interpreter.eval (Kast_interpreter.default ()) compiled in
+  let evaled =
+    Kast_interpreter.eval
+      (Kast_interpreter.default (Uri workspace_ks.uri))
+      compiled
+  in
   let workspace_def = evaled |> Value.expect_tuple |> Option.get in
   let workspace_roots =
     let roots =

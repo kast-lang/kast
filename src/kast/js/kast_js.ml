@@ -145,7 +145,7 @@ let () =
             match parsed.ast with
             | None -> ()
             | Some ast ->
-                let compiler = Compiler.default () in
+                let compiler = Compiler.default (Str "<js>") () in
                 (* TODO *)
                 let interpreter = compiler.interpreter in
                 let expr : expr = Compiler.compile compiler Expr ast in

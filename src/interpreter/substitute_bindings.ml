@@ -45,9 +45,10 @@ module Impl = struct
       | V_Ast _ | V_CompilerScope _ | V_Error ->
           original_value
       | V_Ref _ -> original_value (* TODO ??? *)
-      | V_Tuple { tuple } ->
+      | V_Tuple { ty; tuple } ->
           V_Tuple
             {
+              ty = sub_ty_tuple ~state ty;
               tuple =
                 tuple
                 |> Tuple.map
@@ -68,12 +69,12 @@ module Impl = struct
             {
               label;
               data = data |> Option.map (sub_place ~state);
-              ty = sub_ty ~state ty;
+              ty = sub_ty_variant ~state ty;
             }
           |> shaped
       | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
       | V_Fn { ty; fn } -> V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped
-      | V_Generic { id = _; fn = _ } -> original_value
+      | V_Generic { id = _; name = _; fn = _ } -> original_value
       | V_NativeFn { id; name; ty; impl } ->
           V_NativeFn { id; name; ty = sub_ty_fn ~state ty; impl } |> shaped
       | V_UnwindToken { id; result_ty } ->
@@ -98,11 +99,66 @@ module Impl = struct
           Value.print result);
     result
 
+  and sub_optional_name ~state (name : optional_name) : optional_name =
+    sub_var
+      ~unite_shape:(Inference_impl.unite_option Inference_impl.unite_name_shape)
+      ~sub_shape:
+        (sub_option ~new_inferred:OptionalName.new_inferred
+           ~sub_value:sub_name_shape)
+      ~new_not_inferred:OptionalName.new_not_inferred
+      ~get_var:(fun (name : optional_name) -> name.var)
+      ~state name
+
+  and sub_name_shape ~(state : interpreter_state) ({ parts } : name_shape) :
+      name_shape =
+    { parts = parts |> List.map (sub_name_part ~state) }
+
+  and sub_name_part ~(state : interpreter_state) (part : name_part) : name_part
+      =
+    match part with
+    | Uri uri -> Uri uri
+    | Str s -> Str s
+    | Symbol symbol -> Symbol symbol
+    | Instantiation value -> Instantiation (sub_value ~state value)
+
+  and sub_option :
+      'v 'shape.
+      new_inferred:(span:span -> 'shape option -> 'v) ->
+      sub_value:(state:interpreter_state -> 'shape -> 'shape) ->
+      state:interpreter_state ->
+      'v ->
+      'shape option ->
+      'v =
+   fun (type a) ~new_inferred ~sub_value ~state original opt ->
+    let ctx = Effect.perform GetCtx in
+    match opt with
+    | None -> original
+    | Some value -> Some (sub_value ~state value) |> new_inferred ~span:ctx.span
+
   and sub_ty ~state ty =
     sub_var ~unite_shape:Inference_impl.unite_ty_shape ~sub_shape:sub_ty_shape
       ~new_not_inferred:Ty.new_not_inferred
       ~get_var:(fun (ty : ty) -> ty.var)
       ~state ty
+
+  and sub_ty_tuple ~(state : interpreter_state) ({ name; tuple } : ty_tuple) :
+      ty_tuple =
+    {
+      name = sub_optional_name ~state name;
+      tuple = tuple |> Tuple.map (fun field -> sub_ty_tuple_field ~state field);
+    }
+
+  and sub_ty_variant ~(state : interpreter_state)
+      ({ name; variants } : ty_variant) : ty_variant =
+    {
+      name = sub_optional_name ~state name;
+      variants =
+        variants
+        |> sub_row ~unite_value:Inference_impl.unite_ty_variant_data ~state
+             ~sub_value:(fun
+                 ~state ({ data } : ty_variant_data) : ty_variant_data ->
+               { data = data |> Option.map (sub_ty ~state) });
+    }
 
   and sub_ty_shape ~(state : interpreter_state) (original_ty : ty)
       (shape : ty_shape) : ty =
@@ -121,29 +177,8 @@ module Impl = struct
       | T_ContextTy | T_CompilerScope | T_Error | T_Ast | T_Ty ->
           original_ty
       | T_Ref inner -> T_Ref (sub_ty ~state inner) |> shaped
-      | T_Tuple { tuple } ->
-          T_Tuple
-            {
-              tuple =
-                tuple
-                |> Tuple.map (fun field -> sub_ty_tuple_field ~state field);
-            }
-          |> shaped
-      | T_Variant { variants } ->
-          T_Variant
-            {
-              variants =
-                variants
-                |> sub_row ~unite_value:Inference_impl.unite_ty_variant_data
-                     ~state
-                     ~sub_value:(fun
-                         ~state
-                         ({ data } : ty_variant_data)
-                         :
-                         ty_variant_data
-                       -> { data = data |> Option.map (sub_ty ~state) });
-            }
-          |> shaped
+      | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
+      | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped
       | T_Generic { def = _ } -> original_ty
       | T_UnwindToken { result } ->

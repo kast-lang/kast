@@ -20,7 +20,9 @@ let interpreter () =
   match !interpreter_cached with
   | Some x -> x
   | None ->
-      let x = (Kast_compiler.default ()).interpreter in
+      let x =
+        (Kast_compiler.default (Str "<ocaml_transpiler>") ()).interpreter
+      in
       interpreter_cached := Some x;
       x
 
@@ -179,7 +181,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
          let module_ty = expr.data.ty |> Ty.await_inferred in
          let module_result =
            match module_ty with
-           | Types.T_Tuple { tuple } ->
+           | Types.T_Tuple { name = _; tuple } ->
                assert (tuple.unnamed |> Array.length = 0);
                OcamlAst.Tuple
                  (tuple.named |> StringMap.to_list

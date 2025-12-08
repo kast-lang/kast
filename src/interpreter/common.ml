@@ -58,7 +58,7 @@ let rec pattern_match :
         } )
   | P_Tuple { tuple = tuple_pattern } -> (
       match place |> claim ~span |> Value.await_inferred with
-      | V_Tuple { tuple } ->
+      | V_Tuple { ty = _; tuple } ->
           with_return (fun { return } : (matched:bool * Scope.locals) ->
               let ~matched, matches =
                 (try Tuple.zip_order_a tuple_pattern tuple
@@ -183,7 +183,7 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
 and instantiate (span : span) (state : state) (generic : value) (arg : value) :
     value =
   match generic |> Value.await_inferred with
-  | V_Generic { id; fn } -> (
+  | V_Generic { id; name; fn } -> (
       let save new_state =
         let generic_instantiations =
           match state.instantiated_generics.map |> Id.Map.find_opt id with
@@ -211,6 +211,14 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
           save placeholder;
           fork (fun () ->
               try
+                let state =
+                  {
+                    state with
+                    current_name_parts_rev =
+                      (Instantiation arg : Types.name_part)
+                      :: (name.parts |> List.rev);
+                  }
+                in
                 let evaluated_result =
                   call_untyped_fn ~sub_mode:FnOnly span state fn arg
                 in
@@ -315,7 +323,7 @@ and eval_place : state -> Types.place_expr -> place =
       | PE_Field { obj; field; field_span = _; label = _ } -> (
           let obj = eval_place state obj in
           match obj |> claim ~span |> Value.await_inferred with
-          | V_Tuple { tuple } -> (
+          | V_Tuple { ty = _; tuple } -> (
               match Tuple.get_named_opt field tuple with
               | Some field -> field.place
               | None ->
@@ -364,6 +372,7 @@ and eval : state -> expr -> value =
           V_Generic
             {
               id = Id.gen ();
+              name = current_name state;
               fn = { id = Id.gen (); def; captured = state.scope };
             }
           |> Value.inferred ~span
@@ -375,6 +384,7 @@ and eval : state -> expr -> value =
           in
           V_Tuple
             {
+              ty;
               tuple =
                 tuple
                 |> Tuple.mapi
@@ -391,9 +401,13 @@ and eval : state -> expr -> value =
             }
           |> Value.inferred ~span
       | E_Variant { label; label_span = _; value } ->
+          (*  TODO dont panic - get rid of Option.get *)
+          let ty =
+            expr.data.ty.var |> Kast_inference_base.Var.inferred_opt
+            |> Option.get |> Ty.Shape.expect_variant |> Option.get
+          in
           let value = value |> Option.map (eval state) in
-          V_Variant
-            { label; data = value |> Option.map Place.init; ty = expr.data.ty }
+          V_Variant { label; data = value |> Option.map Place.init; ty }
           |> Value.inferred ~span
       | E_Then { a; b } ->
           ignore <| eval state a;
@@ -442,11 +456,17 @@ and eval : state -> expr -> value =
                       }
                        : Types.value_tuple_field) ))
           in
-          V_Tuple { tuple = fields |> Tuple.of_list } |> Value.inferred ~span
+          (*  TODO dont panic - get rid of Option.get *)
+          let ty =
+            expr.data.ty.var |> Kast_inference_base.Var.inferred_opt
+            |> Option.get |> Ty.Shape.expect_tuple |> Option.get
+          in
+          V_Tuple { tuple = fields |> Tuple.of_list; ty }
+          |> Value.inferred ~span
       | E_UseDotStar { used; bindings } -> (
           let used = eval state used in
           match used |> Value.await_inferred with
-          | V_Tuple { tuple } ->
+          | V_Tuple { ty = _; tuple } ->
               bindings
               |> List.iter (fun (binding : binding) ->
                   let field = tuple |> Tuple.get_named binding.name.name in
@@ -680,6 +700,17 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
   in
   { shape = Complex { rule = expr.rule; root = quote_group expr.root }; span }
 
+and current_name : state -> Types.name_shape =
+ fun state ->
+  let parts = state.current_name_parts_rev |> List.rev in
+  { parts }
+
+and current_optional_name : state -> Types.optional_name =
+  let span = Span.fake "<current_name>" in
+  fun state ->
+    let name = current_name state in
+    OptionalName.new_inferred ~span (Some name)
+
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
   let span = expr.data.span in
@@ -711,6 +742,7 @@ and eval_ty : state -> Expr.ty -> ty =
               Ty.inferred ~span
               <| T_Tuple
                    {
+                     name = current_optional_name state;
                      tuple =
                        tuple
                        |> Tuple.map
@@ -729,7 +761,7 @@ and eval_ty : state -> Expr.ty -> ty =
                 |> List.map (fun ty_expr ->
                     let ty = eval_ty state ty_expr in
                     match ty |> Ty.await_inferred with
-                    | T_Variant { variants } ->
+                    | T_Variant { name = _; variants } ->
                         Row.await_inferred_to_list variants
                     | _ ->
                         Error.error ty_expr.data.span
@@ -738,11 +770,16 @@ and eval_ty : state -> Expr.ty -> ty =
                 |> List.flatten
               in
               Ty.inferred ~span
-              <| T_Variant { variants = Row.of_list ~span variants }
+              <| T_Variant
+                   {
+                     name = current_optional_name state;
+                     variants = Row.of_list ~span variants;
+                   }
           | TE_Variant { variants } ->
               Ty.inferred ~span
               <| T_Variant
                    {
+                     name = current_optional_name state;
                      variants =
                        Row.of_list ~span
                          (variants

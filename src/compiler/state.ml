@@ -136,12 +136,12 @@ type t = {
 
 type state = t
 
-let blank ~import_cache =
+let blank name_part ~import_cache =
   {
     scope = Scope.init ~recursive:false;
     currently_compiled_file = None;
     import_cache;
-    interpreter = Interpreter.default ();
+    interpreter = Interpreter.default name_part;
     custom_syntax_impls = Hashtbl.create 0;
   }
 

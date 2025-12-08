@@ -71,6 +71,7 @@ module rec TypesImpl : sig
 
   and value_generic = {
     id : Id.t;
+    name : name_shape;
     fn : value_untyped_fn;
   }
 
@@ -80,12 +81,15 @@ module rec TypesImpl : sig
     ty_field : ty_tuple_field;
   }
 
-  and value_tuple = { tuple : value_tuple_field Tuple.t }
+  and value_tuple = {
+    ty : ty_tuple;
+    tuple : value_tuple_field Tuple.t;
+  }
 
   and value_variant = {
     label : Label.t;
     data : place option;
-    ty : ty;
+    ty : ty_variant;
   }
 
   and value_native_fn = {
@@ -102,7 +106,10 @@ module rec TypesImpl : sig
     label : Label.t;
   }
 
-  and ty_tuple = { tuple : ty_tuple_field Tuple.t }
+  and ty_tuple = {
+    name : optional_name;
+    tuple : ty_tuple_field Tuple.t;
+  }
 
   and ty_fn = {
     arg : ty;
@@ -112,7 +119,11 @@ module rec TypesImpl : sig
   and ty_generic = { def : maybe_compiled_fn (* fn : value_untyped_fn; *) }
   and ty_unwind_token = { result : ty }
   and ty_variant_data = { data : ty option }
-  and ty_variant = { variants : ty_variant_data Row.t }
+
+  and ty_variant = {
+    name : optional_name;
+    variants : ty_variant_data Row.t;
+  }
 
   and ty_shape =
     | T_Unit
@@ -450,6 +461,7 @@ module rec TypesImpl : sig
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
     cast_impls : cast_impls;
+    current_name_parts_rev : name_part list;
   }
 
   (* OTHER *)
@@ -469,6 +481,16 @@ module rec TypesImpl : sig
     mutable evaled_exprs : expr list;
     included_file : Uri.t option;
   }
+
+  and name = { var : name_shape Inference.var }
+  and optional_name = { var : name_shape option Inference.var }
+  and name_shape = { parts : name_part list }
+
+  and name_part =
+    | Uri of Uri.t
+    | Str of string
+    | Symbol of Symbol.t
+    | Instantiation of value
   [@@deriving eq, ord]
 end = struct
   (* PLACE *)
@@ -536,6 +558,7 @@ end = struct
 
   and value_generic = {
     id : Id.t;
+    name : name_shape;
     fn : value_untyped_fn;
   }
 
@@ -545,12 +568,15 @@ end = struct
     ty_field : ty_tuple_field;
   }
 
-  and value_tuple = { tuple : value_tuple_field Tuple.t }
+  and value_tuple = {
+    ty : ty_tuple;
+    tuple : value_tuple_field Tuple.t;
+  }
 
   and value_variant = {
     label : Label.t;
     data : place option;
-    ty : ty;
+    ty : ty_variant;
   }
 
   and value_native_fn = {
@@ -567,7 +593,10 @@ end = struct
     label : Label.t;
   }
 
-  and ty_tuple = { tuple : ty_tuple_field Tuple.t }
+  and ty_tuple = {
+    name : optional_name;
+    tuple : ty_tuple_field Tuple.t;
+  }
 
   and ty_fn = {
     arg : ty;
@@ -577,7 +606,11 @@ end = struct
   and ty_generic = { def : maybe_compiled_fn (* fn : value_untyped_fn; *) }
   and ty_unwind_token = { result : ty }
   and ty_variant_data = { data : ty option }
-  and ty_variant = { variants : ty_variant_data Row.t }
+
+  and ty_variant = {
+    name : optional_name;
+    variants : ty_variant_data Row.t;
+  }
 
   and ty_shape =
     | T_Unit
@@ -915,6 +948,7 @@ end = struct
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
     cast_impls : cast_impls;
+    current_name_parts_rev : name_part list;
   }
 
   (* OTHER *)
@@ -934,6 +968,16 @@ end = struct
     mutable evaled_exprs : expr list;
     included_file : Uri.t option;
   }
+
+  and name = { var : name_shape Inference.var }
+  and optional_name = { var : name_shape option Inference.var }
+  and name_shape = { parts : name_part list }
+
+  and name_part =
+    | Uri of Uri.t
+    | Str of string
+    | Symbol of Symbol.t
+    | Instantiation of value
   [@@deriving eq, ord]
 end
 

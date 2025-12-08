@@ -45,7 +45,7 @@ and init_place_expr :
           |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
               let field_ty =
                 match obj_shape with
-                | T_Tuple { tuple } -> (
+                | T_Tuple { name = _; tuple } -> (
                     match Tuple.get_named_opt field tuple with
                     | Some ty_field ->
                         ignore <| Label.unite label ty_field.label;
@@ -177,6 +177,7 @@ and init_expr :
           Ty.inferred ~span
           <| T_Tuple
                {
+                 name = OptionalName.new_not_inferred ~span;
                  tuple =
                    tuple
                    |> Tuple.map
@@ -193,6 +194,7 @@ and init_expr :
           Ty.inferred ~span
           <| T_Variant
                {
+                 name = OptionalName.new_not_inferred ~span;
                  variants =
                    Row.inferred ~span
                    <| R_Cons
@@ -234,6 +236,7 @@ and init_expr :
           Ty.inferred ~span
             (T_Tuple
                {
+                 name = Kast_interpreter.current_optional_name state.interpreter;
                  tuple =
                    Tuple.make []
                      (state.scope.bindings |> StringMap.to_list
@@ -374,6 +377,7 @@ let init_pattern :
           Ty.inferred ~span
             (T_Tuple
                {
+                 name = OptionalName.new_not_inferred ~span;
                  tuple =
                    tuple
                    |> Tuple.map
@@ -390,6 +394,7 @@ let init_pattern :
           Ty.inferred ~span
           <| T_Variant
                {
+                 name = OptionalName.new_not_inferred ~span;
                  variants =
                    Row.inferred ~span
                    <| R_Cons

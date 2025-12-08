@@ -1,23 +1,8 @@
-type _ Effect.t += Foo : unit Effect.t
+type ('a, 'b) pair = {
+  first : 'a;
+  second : 'b;
+}
 
-exception Cancel
+type ('a, 'b, 'c) triple = ('a, ('b, 'c) pair) pair
 
-let dont_leak_please k =
-  Gc.finalise
-    (fun k ->
-      print_endline "hmmm";
-      Effect.Deep.discontinue k Cancel)
-    k
-
-let () =
-  while true do
-    try
-      let s = String.init 1000 (fun i -> if i mod 2 = 0 then 'a' else 'b') in
-      Effect.perform Foo;
-      print_endline s
-    with
-    | effect Foo, k ->
-        let k = dont_leak_please k in
-        ()
-    | Cancel -> ()
-  done
+let f : (int, int, int) triple -> _ = fun x -> x

@@ -45,7 +45,7 @@ module Impl = struct
     | V_Char value -> fprintf fmt "@{<green>%C@}" value
     | V_String value -> fprintf fmt "@{<green>%S@}" value
     | V_Ref place -> fprintf fmt "&%a" print_place_ref place
-    | V_Tuple { tuple } ->
+    | V_Tuple { ty = _; tuple } ->
         fprintf fmt "%a"
           (Tuple.print (fun fmt (field : value_tuple_field) ->
                print_place_value fmt field.place))
@@ -71,16 +71,19 @@ module Impl = struct
    fun fmt { var; ty = _ } -> print_var print_value_shape fmt var
 
   (* TY *)
-  and print_ty_shape : formatter -> ty_shape -> unit =
-   fun fmt -> function
-    | T_Unit -> fprintf fmt "()"
-    | T_Bool -> fprintf fmt "bool"
-    | T_Int32 -> fprintf fmt "int32"
-    | T_Int64 -> fprintf fmt "int64"
-    | T_Char -> fprintf fmt "char"
-    | T_String -> fprintf fmt "string"
-    | T_Ref inner -> fprintf fmt "&%a" print_ty inner
-    | T_Variant { variants } ->
+  and print_ty_tuple : formatter -> ty_tuple -> unit =
+   fun fmt { name; tuple } ->
+    print_optionally_named fmt name (fun () ->
+        fprintf fmt "%a"
+          (Tuple.print
+             ~options:
+               { Tuple.default_print_options with named_field_middle = " :: " }
+             (fun fmt (field : ty_tuple_field) -> print_ty fmt field.ty))
+          tuple)
+
+  and print_ty_variant : formatter -> ty_variant -> unit =
+   fun fmt { name; variants } ->
+    print_optionally_named fmt name (fun () ->
         fprintf fmt "%a"
           (Row.print
              ~options:
@@ -95,14 +98,19 @@ module Impl = struct
                match data with
                | Some data -> fprintf fmt " %a" print_ty data
                | None -> ()))
-          variants
-    | T_Tuple { tuple } ->
-        fprintf fmt "%a"
-          (Tuple.print
-             ~options:
-               { Tuple.default_print_options with named_field_middle = " :: " }
-             (fun fmt (field : ty_tuple_field) -> print_ty fmt field.ty))
-          tuple
+          variants)
+
+  and print_ty_shape : formatter -> ty_shape -> unit =
+   fun fmt -> function
+    | T_Unit -> fprintf fmt "()"
+    | T_Bool -> fprintf fmt "bool"
+    | T_Int32 -> fprintf fmt "int32"
+    | T_Int64 -> fprintf fmt "int64"
+    | T_Char -> fprintf fmt "char"
+    | T_String -> fprintf fmt "string"
+    | T_Ref inner -> fprintf fmt "&%a" print_ty inner
+    | T_Variant v -> print_ty_variant fmt v
+    | T_Tuple t -> print_ty_tuple fmt t
     | T_Ty -> fprintf fmt "type"
     | T_Fn { arg; result } ->
         fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
@@ -475,6 +483,39 @@ module Impl = struct
 
   and print_target : formatter -> value_target -> unit =
    fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name
+
+  and print_optionally_named :
+      formatter -> optional_name -> (unit -> unit) -> unit =
+   fun fmt name f ->
+    match name.var |> Inference.Var.inferred_opt with
+    | Some (Some name) -> print_name_shape fmt name
+    | Some None | None -> f ()
+
+  and print_name : formatter -> name -> unit =
+   fun fmt { var } -> print_var print_name_shape fmt var
+
+  and print_name_part : formatter -> name_part -> unit =
+   fun fmt -> print_name_shape_part fmt ~first:true
+
+  and print_name_shape_part : formatter -> first:bool -> name_part -> unit =
+   fun fmt ~first -> function
+    | Uri uri ->
+        let name =
+          Uri.path uri |> Filename.basename |> Filename.remove_extension
+        in
+        fprintf fmt "%s" name
+    | Str s ->
+        if not first then fprintf fmt ".";
+        fprintf fmt "%s" s
+    | Symbol symbol ->
+        if not first then fprintf fmt ".";
+        Symbol.print fmt symbol
+    | Instantiation value -> fprintf fmt "[%a]" print_value value
+
+  and print_name_shape : formatter -> name_shape -> unit =
+   fun fmt { parts } ->
+    parts
+    |> List.iteri (fun i part -> print_name_shape_part fmt ~first:(i = 0) part)
 end
 
 let with_cache f =
@@ -531,3 +572,8 @@ let print_pattern_shape ~options =
 let print_binding = with_cache Impl.print_binding
 let print_place_ref = with_cache Impl.print_place_ref
 let print_place_value = with_cache Impl.print_place_value
+let print_name = with_cache Impl.print_name
+let print_name_shape = with_cache Impl.print_name_shape
+let print_name_part = with_cache Impl.print_name_part
+let print_ty_tuple = with_cache Impl.print_ty_tuple
+let print_ty_variant = with_cache Impl.print_ty_variant

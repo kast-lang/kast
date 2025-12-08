@@ -39,7 +39,7 @@ let run : Args.t -> unit =
   match parsed.ast with
   | None -> println "<none>"
   | Some ast -> (
-      let compiler = Compiler.default () in
+      let compiler = Compiler.default (Uri source.uri) () in
       let expr : expr = Compiler.compile compiler Expr ast in
       match output_type with
       | Ir -> println "%a" Expr.print_with_types expr

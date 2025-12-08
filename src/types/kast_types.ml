@@ -24,7 +24,11 @@ module Ty = struct
     let print = print_ty_shape
 
     let expect_tuple : t -> ty_tuple option = function
-      | T_Tuple tuple -> Some tuple
+      | T_Tuple t -> Some t
+      | _ -> None
+
+    let expect_variant : t -> ty_variant option = function
+      | T_Variant t -> Some t
       | _ -> None
   end
 end
@@ -225,3 +229,15 @@ module Place = struct
 end
 
 type place = Place.t
+
+module OptionalName = struct
+  type t = optional_name
+
+  let new_inferred ~span value : optional_name =
+    { var = Inference.Var.new_inferred ~span value }
+
+  let new_not_inferred ~span : optional_name =
+    { var = Inference.Var.new_not_inferred ~span }
+end
+
+type optional_name = OptionalName.t

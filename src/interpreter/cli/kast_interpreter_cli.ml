@@ -22,20 +22,25 @@ type evaled = {
   interpreter : Interpreter.state;
 }
 
-let init_compiler_interpreter () =
-  let compiler = Compiler.default () in
+let init_compiler_interpreter name_part =
+  let compiler = Compiler.default name_part () in
   (* TODO *)
   let interpreter = compiler.interpreter in
   (compiler, interpreter)
 
 let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
  fun f { path } ->
+  let name_part : Types.name_part =
+    match path with
+    | Some path -> Uri path
+    | None -> Str "<stdin>"
+  in
   let source = Source.read (path |> Option.value ~default:Uri.stdin) in
   let parsed = Parser.parse source Kast_default_syntax.ruleset in
   match parsed.ast with
   | None -> f None
   | Some ast ->
-      let compiler, interpreter = init_compiler_interpreter () in
+      let compiler, interpreter = init_compiler_interpreter name_part in
       let expr : expr = Compiler.compile compiler Expr ast in
       let value : value = Interpreter.eval interpreter expr in
       f (Some { compiler; interpreter; value })
@@ -56,7 +61,7 @@ let repl (args : Args.t) =
   let compiler, interpreter =
     match evaled with
     | Some { compiler; interpreter; value = _ } -> (compiler, interpreter)
-    | None -> init_compiler_interpreter ()
+    | None -> init_compiler_interpreter (Str "<repl>")
   in
   let rec loop () =
     print_string "> ";

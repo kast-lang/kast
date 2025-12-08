@@ -298,6 +298,7 @@ let init_natives () =
           (Ty.inferred ~span
              (T_Tuple
                 {
+                  name = OptionalName.new_inferred ~span None;
                   tuple =
                     Tuple.make
                       [
@@ -317,7 +318,7 @@ let init_natives () =
         ~result:(Ty.inferred ~span T_Bool) name
         (fun ~caller ~state:_ value ->
           match value |> Value.await_inferred with
-          | V_Tuple { tuple } ->
+          | V_Tuple { ty = _; tuple } ->
               let a, b = tuple |> Tuple.unwrap_unnamed2 in
               let a =
                 a.place |> Common.claim ~span:caller |> Value.await_inferred
@@ -338,6 +339,7 @@ let init_natives () =
           (Ty.inferred ~span
              (T_Tuple
                 {
+                  name = OptionalName.new_inferred ~span None;
                   tuple =
                     Tuple.make
                       [
@@ -358,7 +360,7 @@ let init_natives () =
         name
         (fun ~caller ~state:_ value ->
           match value |> Value.await_inferred with
-          | V_Tuple { tuple } ->
+          | V_Tuple { ty = _; tuple } ->
               with_return (fun { return } : value ->
                   let a, b = tuple |> Tuple.unwrap_unnamed2 in
                   let result : Value.shape =
@@ -403,6 +405,7 @@ let init_natives () =
             (Ty.inferred ~span
                (T_Tuple
                   {
+                    name = OptionalName.new_inferred ~span None;
                     tuple =
                       Tuple.make []
                         [
@@ -424,7 +427,7 @@ let init_natives () =
           "rng"
           (fun ~caller ~state:_ arg ->
             try
-              let { tuple } : Kast_types.Types.value_tuple =
+              let { ty = _; tuple } : Kast_types.Types.value_tuple =
                 arg |> Value.expect_tuple |> Option.get
               in
               let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in

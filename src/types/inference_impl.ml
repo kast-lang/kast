@@ -11,7 +11,7 @@ let rec _unused () = ()
 and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
  fun ~span a b ->
   let fail () : ty_shape =
-    error span "type check failed: %a != %a" print_ty_shape a print_ty_shape b;
+    error span "ty_shape %a != %a" print_ty_shape a print_ty_shape b;
     T_Error
   in
   match (a, b) with
@@ -30,18 +30,15 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_String, _ -> fail ()
   | T_Ref a, T_Ref b -> T_Ref (unite_ty ~span a b)
   | T_Ref _, _ -> fail ()
-  | T_Tuple { tuple = a }, T_Tuple { tuple = b } -> (
-      try
-        T_Tuple
-          {
-            tuple =
-              Tuple.zip_order_a a b
-              |> Tuple.map (fun (a, b) -> unite_ty_tuple_field ~span a b);
-          }
-      with Invalid_argument _ -> fail ())
+  | T_Tuple a, T_Tuple b -> T_Tuple (unite_ty_tuple ~span a b)
   | T_Tuple _, _ -> fail ()
-  | T_Variant { variants = a }, T_Variant { variants = b } ->
-      T_Variant { variants = Row.unite ~span unite_ty_variant_data a b }
+  | ( T_Variant { name = name_a; variants = a },
+      T_Variant { name = name_b; variants = b } ) ->
+      T_Variant
+        {
+          name = unite_optional_name ~span name_a name_b;
+          variants = Row.unite ~span unite_ty_variant_data a b;
+        }
   | T_Variant _, _ -> fail ()
   | T_Ty, T_Ty -> T_Ty
   | T_Ty, _ -> fail ()
@@ -63,6 +60,21 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_CompilerScope, _ -> fail ()
   | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
+
+and unite_ty_tuple : ty_tuple Inference.unite =
+ fun ~span ({ name = name_a; tuple = a } as tuple_a)
+     ({ name = name_b; tuple = b } as tuple_b) ->
+  try
+    {
+      name = unite_optional_name ~span name_a name_b;
+      tuple =
+        Tuple.zip_order_a a b
+        |> Tuple.map (fun (a, b) -> unite_ty_tuple_field ~span a b);
+    }
+  with Invalid_argument _ ->
+    Inference.Error.error span "ty_tuple %a != %a" print_ty_tuple tuple_a
+      print_ty_tuple tuple_b;
+    tuple_a
 
 and unite_ty_tuple_field =
  fun ~span (a : Types.ty_tuple_field) (b : Types.ty_tuple_field) :
@@ -112,12 +124,14 @@ and unite_place : place Inference.unite =
 and unite_value_shape : value_shape Inference.unite =
  fun ~span a b ->
   let fail () : value_shape =
-    Inference.Error.error span "%a != %a" print_value_shape a print_value_shape
-      b;
+    Inference.Error.error span "value_shape %a != %a" print_value_shape a
+      print_value_shape b;
     V_Error
   in
   match (a, b) with
   | V_Error, smth | smth, V_Error -> smth
+  | V_Ty ty, V_Binding b | V_Binding b, V_Ty ty ->
+      V_Ty (unite_ty ~span ty (T_Binding b |> inferred_ty ~span))
   | V_Unit, V_Unit -> V_Unit
   | V_Unit, _ -> fail ()
   | V_Bool a, V_Bool b when a = b -> V_Bool a
@@ -132,9 +146,10 @@ and unite_value_shape : value_shape Inference.unite =
   | V_String _, _ -> fail ()
   | V_Ref a, V_Ref b when Repr.equal a b -> V_Ref a
   | V_Ref _, _ -> fail ()
-  | V_Tuple { tuple = a }, V_Tuple { tuple = b } ->
+  | V_Tuple { ty = ty_a; tuple = a }, V_Tuple { ty = ty_b; tuple = b } ->
       V_Tuple
         {
+          ty = unite_ty_tuple ~span ty_a ty_b;
           tuple =
             Tuple.zip_order_a a b
             |> Tuple.map
@@ -178,6 +193,47 @@ and unite_value : value Inference.unite =
     ty = unite_ty ~span ty_a ty_b;
   }
 
+and unite_optional_name : optional_name Inference.unite =
+ fun ~span { var = a } { var = b } ->
+  { var = Inference.Var.unite ~span (unite_option unite_name_shape) a b }
+
+and unite_option : 'a. 'a Inference.unite -> 'a option Inference.unite =
+ fun unite_value ~span a b ->
+  match (a, b) with
+  | Some a, Some b -> Some (unite_value ~span a b)
+  | Some value, None | None, Some value ->
+      Inference.Error.error span "Can't unite Some and None";
+      Some value
+  | None, None -> None
+
+and unite_name_shape : name_shape Inference.unite =
+ fun ~span ({ parts = a } as name_a) ({ parts = b } as name_b) ->
+  if List.length a <> List.length b then (
+    Inference.Error.error span "name_shape %a != %a" print_name_shape name_a
+      print_name_shape name_b;
+    { parts = a })
+  else
+    {
+      parts = List.zip a b |> List.map (fun (a, b) -> unite_name_part ~span a b);
+    }
+
+and unite_name_part : name_part Inference.unite =
+ fun ~span a b ->
+  let fail () =
+    Inference.Error.error span "name_part %a != %a" print_name_part a
+      print_name_part b;
+    a
+  in
+  match (a, b) with
+  | Uri a, Uri b when Uri.equal a b -> Uri a
+  | Uri _, _ -> fail ()
+  | Str a, Str b when a = b -> Str a
+  | Str _, _ -> fail ()
+  | Symbol a, Symbol b when Symbol.equal a b -> Symbol a
+  | Symbol _, _ -> fail ()
+  | Instantiation a, Instantiation b -> Instantiation (unite_value ~span a b)
+  | Instantiation _, _ -> fail ()
+
 and inferred_ty ~span shape : ty =
   { var = Inference.Var.new_inferred ~span shape }
 
@@ -195,10 +251,11 @@ and infer_value_shape : span:span -> ty_shape -> value_shape option =
   | T_String -> None
   | T_Variant _ -> None
   | T_Ref _ -> None
-  | T_Tuple { tuple } ->
+  | T_Tuple ({ name = _; tuple } as ty) ->
       Some
         (V_Tuple
            {
+             ty;
              tuple =
                tuple
                |> Tuple.map (fun (field : ty_tuple_field) : value_tuple_field ->
@@ -250,19 +307,11 @@ and ty_of_value_shape : value_shape -> ty =
     | V_Char _ -> inferred_ty ~span T_Char
     | V_String _ -> inferred_ty ~span T_String
     | V_Ref place -> inferred_ty ~span (T_Ref place.ty)
-    | V_Tuple { tuple } ->
-        inferred_ty ~span
-        <| T_Tuple
-             {
-               tuple =
-                 Tuple.map
-                   (fun (field : value_tuple_field) -> field.ty_field)
-                   tuple;
-             }
-    | V_Variant { ty; _ } -> ty
+    | V_Tuple { ty; tuple = _ } -> inferred_ty ~span <| T_Tuple ty
+    | V_Variant { ty; _ } -> inferred_ty ~span <| T_Variant ty
     | V_Ty _ -> inferred_ty ~span T_Ty
     | V_Fn { ty; _ } -> inferred_ty ~span <| T_Fn ty
-    | V_Generic { id = _; fn } ->
+    | V_Generic { id = _; name = _; fn } ->
         inferred_ty ~span <| T_Generic { def = fn.def }
     | V_NativeFn { id = _; ty; name = _; impl = _ } ->
         inferred_ty ~span <| T_Fn ty
