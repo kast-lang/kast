@@ -1444,6 +1444,7 @@ let quote : core_syntax =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
         match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
             let rec construct (ast : Ast.t) : expr =
               match ast.shape with

@@ -22,7 +22,7 @@ impl syntax (
 fn f(x, .a, .b) (
     print x;
     print a;
-    print (std.int32_to_string b);
+    print (to_string b);
 );
 f ("hi", .a = "a", .b = 5);
 let ast = `(2 + 2);
