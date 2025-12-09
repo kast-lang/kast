@@ -503,6 +503,7 @@ let init_natives () =
         bin_op "-" Int32.sub Int64.sub;
         bin_op "*" Int32.mul Int64.mul;
         bin_op "/" Int32.div Int64.div;
+        bin_op "%" Int32.rem Int64.rem;
         native_fn ~arg:(Ty.inferred ~span T_Ty)
           ~result:(Ty.inferred ~span T_ContextTy) "unary -"
           (fun ~caller ~state:_ arg ->

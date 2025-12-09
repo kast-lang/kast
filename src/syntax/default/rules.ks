@@ -12,6 +12,7 @@
 @syntax "sub_assign" 2 wrap never = _ " " "-=" " " _;
 @syntax "add_assign" 2 wrap never = _ " " "*=" " " _;
 @syntax "add_assign" 2 wrap never = _ " " "/=" " " _;
+@syntax "rem_assign" 2 wrap never = _ " " "%=" " " _;
 @syntax "core:let" 3 wrap never = "let" " " pattern;
 @syntax "let rec" 3 wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 @syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
@@ -53,6 +54,7 @@
 @syntax "-" 15 wrap if_any = <- _ " "/"\n" "-" " " _;
 @syntax "*" 17 wrap if_any = <- _ " "/"\n" "*" " " _;
 @syntax "/" 17 wrap if_any = <- _ " "/"\n" "/" " " _;
+@syntax "%" 17 wrap if_any = <- _ " "/"\n" "%" " " _;
 
 @syntax "|>" 20 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
 @syntax "<|" 20 wrap if_any = <- arg " "/"\n\t" "<|" " " f ""/"\\";

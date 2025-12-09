@@ -29,3 +29,6 @@ const div = [T] (a :: T, b :: T) -> T => (
         | target.name == "ocaml" => @native "({a} / {b})"
     )
 );
+const rem = [T] (a :: T, b :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "%") (a, b)
+);

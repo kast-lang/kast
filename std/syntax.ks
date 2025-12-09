@@ -39,6 +39,9 @@ impl syntax (a * b) = `(
 impl syntax (a / b) = `(
     std.op.div ($a, $b)
 );
+impl syntax (a % b) = `(
+    std.op.rem ($a, $b)
+);
 impl syntax (-x) = `(
     std.op.neg $x
 );
@@ -60,6 +63,10 @@ impl syntax (a *= b) = `(
 impl syntax (a /= b) = `(
     let _ref = &$a;
     _ref^ = _ref^ / $b
+);
+impl syntax (a %= b) = `(
+    let _ref = &$a;
+    _ref^ = _ref^ % $b
 );
 impl syntax (@context ty) = `(
     (@native "create_context_type") $ty
