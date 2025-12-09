@@ -1,7 +1,7 @@
 impl syntax (arg |> f) = `(
-    let arg = $arg;
-    let f = $f;
-    f arg
+    let _arg = $arg;
+    let _f = $f;
+    _f _arg
 );
 impl syntax (f <| arg) = `(
     $f $arg
@@ -67,16 +67,20 @@ impl syntax (if cond then stmt) = `(
     if $cond then $stmt else ()
 );
 impl syntax (a += b) = `(
-    $a = $a + $b
+    let _ref = &$a;
+    _ref^ = _ref^ + $b
 );
 impl syntax (a -= b) = `(
-    $a = $a - $b
+    let _ref = &$a;
+    _ref^ = _ref^ - $b
 );
 impl syntax (a *= b) = `(
-    $a = $a * $b
+    let _ref = &$a;
+    _ref^ = _ref^ * $b
 );
 impl syntax (a /= b) = `(
-    $a = $a / $b
+    let _ref = &$a;
+    _ref^ = _ref^ / $b
 );
 impl syntax (while cond do body) = `(
     loop (
