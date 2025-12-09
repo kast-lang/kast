@@ -24,6 +24,9 @@ impl syntax (a >= b) = `(
 impl syntax (a > b) = `(
     std.cmp.greater[_] ($a, $b)
 );
+impl syntax (not x) = `(
+    if $x then false else true
+);
 impl syntax (a + b) = `(
     std.op.add ($a, $b)
 );

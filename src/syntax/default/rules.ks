@@ -41,6 +41,7 @@
 @syntax "core:current_context" 9.5 wrap never = "@current" " " context_type;
 @syntax "core:or" 10 wrap if_any = <- _ " "/"\n" "or" " " _;
 @syntax "core:and" 11 wrap if_any = <- _ " "/"\n" "and" " " _;
+@syntax "not" 12 wrap never = "not" " " _;
 @syntax "<" 14 wrap never = _ " " "<" " " _;
 @syntax "<=" 14 wrap never = _ " " "<=" " " _;
 @syntax "==" 14 wrap never = _ " " "==" " " _;
