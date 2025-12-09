@@ -3,6 +3,7 @@ use bool;
 use uint32;
 use int32;
 use int64;
+use float64;
 use char;
 use Char;
 use string;

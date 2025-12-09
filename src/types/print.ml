@@ -40,8 +40,9 @@ module Impl = struct
     | V_Ty ty ->
         fprintf fmt "type ";
         print_ty fmt ty
-    | V_Int32 value -> fprintf fmt "@{<italic>%s@}" (Int32.to_string value)
-    | V_Int64 value -> fprintf fmt "@{<italic>%s@}" (Int64.to_string value)
+    | V_Int32 value -> fprintf fmt "@{<italic>%ld@}" value
+    | V_Int64 value -> fprintf fmt "@{<italic>%Ld@}" value
+    | V_Float64 value -> fprintf fmt "@{<italic>%f@}" value
     | V_Char value -> fprintf fmt "@{<green>%C@}" value
     | V_String value -> fprintf fmt "@{<green>%S@}" value
     | V_Ref place -> fprintf fmt "&%a" print_place_ref place
@@ -106,6 +107,7 @@ module Impl = struct
     | T_Bool -> fprintf fmt "bool"
     | T_Int32 -> fprintf fmt "int32"
     | T_Int64 -> fprintf fmt "int64"
+    | T_Float64 -> fprintf fmt "float64"
     | T_Char -> fprintf fmt "char"
     | T_String -> fprintf fmt "string"
     | T_Ref inner -> fprintf fmt "&%a" print_ty inner

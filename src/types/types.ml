@@ -24,6 +24,7 @@ module rec TypesImpl : sig
     | V_Bool of bool
     | V_Int32 of int32
     | V_Int64 of int64
+    | V_Float64 of float
     | V_Char of char
     | V_Ref of place
     | V_String of string
@@ -130,6 +131,7 @@ module rec TypesImpl : sig
     | T_Bool
     | T_Int32
     | T_Int64
+    | T_Float64
     | T_String
     | T_Char
     | T_Ref of ty
@@ -507,6 +509,7 @@ end = struct
     | V_Bool of bool
     | V_Int32 of int32
     | V_Int64 of int64
+    | V_Float64 of float
     | V_Char of char
     | V_Ref of place
     | V_String of string
@@ -613,6 +616,7 @@ end = struct
     | T_Bool
     | T_Int32
     | T_Int64
+    | T_Float64
     | T_String
     | T_Char
     | T_Ref of ty

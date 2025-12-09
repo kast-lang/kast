@@ -19,6 +19,7 @@ let init_natives () =
       ("unit", T_Unit);
       ("int32", T_Int32);
       ("int64", T_Int64);
+      ("float64", T_Float64);
       ("string", T_String);
       ("char", T_Char);
       ("type", T_Ty);
@@ -333,7 +334,8 @@ let init_natives () =
               V_Error |> Value.inferred ~span)
     in
     let bin_op name (op_int32 : int32 -> int32 -> int32)
-        (op_int64 : int64 -> int64 -> int64) =
+        (op_int64 : int64 -> int64 -> int64)
+        (op_float : (float -> float -> float) option) =
       native_fn
         ~arg:
           (Ty.inferred ~span
@@ -361,22 +363,24 @@ let init_natives () =
         (fun ~caller ~state:_ value ->
           match value |> Value.await_inferred with
           | V_Tuple { ty = _; tuple } ->
-              with_return (fun { return } : value ->
-                  let a, b = tuple |> Tuple.unwrap_unnamed2 in
-                  let result : Value.shape =
-                    match
-                      ( a.place |> Common.claim ~span:caller
-                        |> Value.await_inferred,
-                        b.place |> Common.claim ~span:caller
-                        |> Value.await_inferred )
-                    with
-                    | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
-                    | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
-                    | V_String a, V_String b ->
-                        V_String (a ^ b) (* TODO only for + *)
-                    | _ -> return (V_Error |> Value.inferred ~span)
-                  in
-                  result |> Value.inferred ~span)
+              let a, b = tuple |> Tuple.unwrap_unnamed2 in
+              let result : Value.shape =
+                match
+                  ( a.place |> Common.claim ~span:caller |> Value.await_inferred,
+                    b.place |> Common.claim ~span:caller |> Value.await_inferred
+                  )
+                with
+                | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
+                | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
+                | V_Float64 a, V_Float64 b -> (
+                    match op_float with
+                    | Some op_float -> V_Float64 (op_float a b)
+                    | None -> V_Error)
+                | V_String a, V_String b ->
+                    V_String (a ^ b) (* TODO only for + *)
+                | _ -> V_Error
+              in
+              result |> Value.inferred ~span
           | _ ->
               Error.error caller "bin op %S expected a tuple as arg" name;
               V_Error |> Value.inferred ~span)
@@ -443,15 +447,24 @@ let init_natives () =
             with exc ->
               Error.error caller "rng: %s" (Printexc.to_string exc);
               V_Error |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_Int32)
-          ~result:(Ty.inferred ~span T_String) "int32_to_string"
+        native_fn ~arg:(Ty.new_not_inferred ~span)
+          ~result:(Ty.inferred ~span T_String) "to_string"
           (fun ~caller ~state:_ arg ->
-            match arg |> Value.await_inferred with
-            | V_Int32 value ->
-                V_String (Int32.to_string value) |> Value.inferred ~span
-            | _ ->
-                Error.error caller "int32_to_string expected an int32";
-                V_Error |> Value.inferred ~span);
+            with_return (fun { return } : Value.Shape.t ->
+                let s =
+                  match arg |> Value.await_inferred with
+                  | V_Bool value -> Bool.to_string value
+                  | V_Char value -> String.make 1 value
+                  | V_Int32 value -> Int32.to_string value
+                  | V_Int64 value -> Int64.to_string value
+                  | V_Float64 value -> Float.to_string value
+                  | shape ->
+                      Error.error caller "to_string doesn't work for %a"
+                        Value.Shape.print shape;
+                      return (V_Error : Value.Shape.t)
+                in
+                V_String s)
+            |> Value.inferred ~span);
         native_fn ~arg:(Ty.inferred ~span T_String)
           ~result:(Ty.inferred ~span T_Int32) "string_to_int32"
           (fun ~caller ~state:_ arg ->
@@ -468,14 +481,21 @@ let init_natives () =
             | _ ->
                 Error.error caller "string_to_int32 expected a string";
                 V_Error |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_Int64)
-          ~result:(Ty.inferred ~span T_String) "int64_to_string"
+        native_fn ~arg:(Ty.inferred ~span T_String)
+          ~result:(Ty.inferred ~span T_Float64) "string_to_float64"
           (fun ~caller ~state:_ arg ->
             match arg |> Value.await_inferred with
-            | V_Int64 value ->
-                V_String (Int64.to_string value) |> Value.inferred ~span
+            | V_String s ->
+                let shape : Value.shape =
+                  match Float.of_string_opt s with
+                  | Some value -> V_Float64 value
+                  | None ->
+                      Error.error caller "could not parse float64 %S" s;
+                      V_Error
+                in
+                shape |> Value.inferred ~span
             | _ ->
-                Error.error caller "int64_to_string expected an int64";
+                Error.error caller "string_to_float64 expected a string";
                 V_Error |> Value.inferred ~span);
         native_fn ~arg:(Ty.inferred ~span T_String)
           ~result:(Ty.inferred ~span T_Int64) "string_to_int64"
@@ -499,20 +519,22 @@ let init_natives () =
         cmp_fn "!=" ( <> );
         cmp_fn ">=" ( >= );
         cmp_fn ">" ( > );
-        bin_op "+" Int32.add Int64.add;
-        bin_op "-" Int32.sub Int64.sub;
-        bin_op "*" Int32.mul Int64.mul;
-        bin_op "/" Int32.div Int64.div;
-        bin_op "%" Int32.rem Int64.rem;
-        bin_op "bit_and" Int32.logand Int64.logand;
-        bin_op "bit_or" Int32.logor Int64.logor;
-        bin_op "bit_xor" Int32.logxor Int64.logxor;
+        bin_op "+" Int32.add Int64.add (Some Float.add);
+        bin_op "-" Int32.sub Int64.sub (Some Float.sub);
+        bin_op "*" Int32.mul Int64.mul (Some Float.mul);
+        bin_op "/" Int32.div Int64.div (Some Float.div);
+        bin_op "%" Int32.rem Int64.rem (Some Float.rem);
+        bin_op "bit_and" Int32.logand Int64.logand None;
+        bin_op "bit_or" Int32.logor Int64.logor None;
+        bin_op "bit_xor" Int32.logxor Int64.logxor None;
         bin_op "bit_shift_left"
           (fun a b -> Int32.shift_left a (Int32.to_int b))
-          (fun a b -> Int64.shift_left a (Int64.to_int b));
+          (fun a b -> Int64.shift_left a (Int64.to_int b))
+          None;
         bin_op "bit_shift_right"
           (fun a b -> Int32.shift_right a (Int32.to_int b))
-          (fun a b -> Int64.shift_right a (Int64.to_int b));
+          (fun a b -> Int64.shift_right a (Int64.to_int b))
+          None;
         native_fn ~arg:(Ty.inferred ~span T_Ty)
           ~result:(Ty.inferred ~span T_ContextTy) "bit_not"
           (fun ~caller ~state:_ arg ->
@@ -530,6 +552,7 @@ let init_natives () =
             (match arg |> Value.await_inferred with
               | V_Int32 x -> V_Int32 (Int32.neg x)
               | V_Int64 x -> V_Int64 (Int64.neg x)
+              | V_Float64 x -> V_Float64 (Float.neg x)
               | value ->
                   Error.error caller "unary - doesnt work with %a"
                     Value.Shape.print value;

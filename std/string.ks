@@ -117,10 +117,15 @@ impl int32 as FromString = (
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
-
 impl int64 as FromString = (
     .from_string = s => cfg_if (
         | target.name == "interpreter" => (@native "string_to_int64") s
+        | target.name == "ocaml" => @native "@natives.todo()"
+    )
+);
+impl float64 as FromString = (
+    .from_string = s => cfg_if (
+        | target.name == "interpreter" => (@native "string_to_float64") s
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
@@ -131,13 +136,19 @@ const ToString = [Self] type (
 
 impl int32 as ToString = (
     .to_string = num => cfg_if (
-        | target.name == "interpreter" => (@native "int32_to_string") num
+        | target.name == "interpreter" => (@native "to_string") num
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
 impl int64 as ToString = (
     .to_string = num => cfg_if (
-        | target.name == "interpreter" => (@native "int64_to_string") num
+        | target.name == "interpreter" => (@native "to_string") num
+        | target.name == "ocaml" => @native "@natives.todo()"
+    )
+);
+impl float64 as ToString = (
+    .to_string = num => cfg_if (
+        | target.name == "interpreter" => (@native "to_string") num
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
