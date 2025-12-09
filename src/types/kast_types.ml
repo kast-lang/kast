@@ -88,6 +88,18 @@ module Value = struct
     | V_Int32 value -> Some value
     | _ -> None
 
+  let expect_int64 : value -> int64 option =
+   fun value ->
+    match value |> await_inferred with
+    | V_Int64 value -> Some value
+    | _ -> None
+
+  let expect_float64 : value -> float option =
+   fun value ->
+    match value |> await_inferred with
+    | V_Float64 value -> Some value
+    | _ -> None
+
   let expect_ty : value -> ty option =
    fun value ->
     let inferred = value |> await_inferred in

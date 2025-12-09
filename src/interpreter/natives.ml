@@ -234,6 +234,41 @@ let init_natives () =
     [ at; length; substring; iter ]
   in
 
+  let rng =
+    [
+      native_fn "rng.gen_range" (fun (ty : Types.ty_fn) ~caller ~state:_ arg ->
+          (try
+             let { ty = _; tuple } : Kast_types.Types.value_tuple =
+               arg |> Value.expect_tuple |> Option.get
+             in
+             let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
+             let min = min.place |> Common.claim ~span:caller in
+             let max = max.place |> Common.claim ~span:caller in
+             match ty.result |> Ty.await_inferred with
+             | T_Int32 ->
+                 let min = min |> Value.expect_int32 |> Option.get in
+                 let max = max |> Value.expect_int32 |> Option.get in
+                 V_Int32 (Random.int32_in_range ~min ~max)
+             | T_Int64 ->
+                 let min = min |> Value.expect_int64 |> Option.get in
+                 let max = max |> Value.expect_int64 |> Option.get in
+                 V_Int64 (Random.int64_in_range ~min ~max)
+             | T_Float64 ->
+                 let min = min |> Value.expect_float64 |> Option.get in
+                 let max = max |> Value.expect_float64 |> Option.get in
+                 V_Float64 (min +. Random.float (max -. min))
+             | _ ->
+                 Error.error caller "idk how to generate %a" Ty.print ty.result;
+                 V_Error
+           with
+            | Cancel -> raise Cancel
+            | exc ->
+                Error.error caller "rng.gen_range: %s" (Printexc.to_string exc);
+                V_Error)
+          |> Value.inferred ~span);
+    ]
+  in
+
   let sys =
     let chdir =
       native_fn "sys.chdir" (fun _ty ~caller ~state:_ arg : value ->
@@ -341,24 +376,6 @@ let init_natives () =
             | _ ->
                 Error.error caller "input expected a string";
                 V_Error |> Value.inferred ~span);
-        native_fn "rng" (fun _ty ~caller ~state:_ arg ->
-            try
-              let { ty = _; tuple } : Kast_types.Types.value_tuple =
-                arg |> Value.expect_tuple |> Option.get
-              in
-              let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
-              let min =
-                min.place |> Common.claim ~span:caller |> Value.expect_int32
-                |> Option.get
-              in
-              let max =
-                max.place |> Common.claim ~span:caller |> Value.expect_int32
-                |> Option.get
-              in
-              V_Int32 (Random.int32_in_range ~min ~max) |> Value.inferred ~span
-            with exc ->
-              Error.error caller "rng: %s" (Printexc.to_string exc);
-              V_Error |> Value.inferred ~span);
         native_fn "to_string" (fun _ty ~caller ~state:_ arg ->
             with_return (fun { return } : Value.Shape.t ->
                 let s =
@@ -460,7 +477,7 @@ let init_natives () =
             | Some s -> raise (Panic s)
             | None -> V_Error |> Value.inferred ~span);
       ]
-      @ types @ fs @ sys @ mod_char @ mod_string @ dbg
+      @ types @ fs @ sys @ rng @ mod_char @ mod_string @ dbg
     in
     { by_name = list |> StringMap.of_list }
   in

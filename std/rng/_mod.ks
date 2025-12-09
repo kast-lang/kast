@@ -1,7 +1,5 @@
 module:
-const gen_int32 = (.min :: int32, .max :: int32) with rng -> int32 => (
-    cfg_if (
-        | target.name == "interpreter" => (@native "rng") (.min, .max)
-        | target.name == "ocaml" => (@native "Natives.rng") (.min, .max)
-    )
-)
+
+const gen_range = [T] (.min :: T, .max :: T) with rng -> T => cfg_if (
+    | target.name == "interpreter" => (@native "rng.gen_range") (.min, .max)
+);
