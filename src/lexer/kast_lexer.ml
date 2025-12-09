@@ -133,7 +133,11 @@ module DefaultRules = struct
               match c with
               | '\\' -> '\\'
               | 'n' -> '\n'
+              | 'r' -> '\r'
+              | 'b' -> '\b'
               | 't' -> '\t'
+              | '\'' -> '\''
+              | '"' -> '"'
               | _ ->
                   error
                     "Incorrect escape charater %C @{<italic><eof>@} @{<dim>at %a@}"
