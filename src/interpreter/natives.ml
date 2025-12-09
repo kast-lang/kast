@@ -504,6 +504,17 @@ let init_natives () =
         bin_op "*" Int32.mul Int64.mul;
         bin_op "/" Int32.div Int64.div;
         native_fn ~arg:(Ty.inferred ~span T_Ty)
+          ~result:(Ty.inferred ~span T_ContextTy) "unary -"
+          (fun ~caller ~state:_ arg ->
+            (match arg |> Value.await_inferred with
+              | V_Int32 x -> V_Int32 (Int32.neg x)
+              | V_Int64 x -> V_Int64 (Int64.neg x)
+              | value ->
+                  Error.error caller "unary - doesnt work with %a"
+                    Value.Shape.print value;
+                  V_Error)
+            |> Value.inferred ~span);
+        native_fn ~arg:(Ty.inferred ~span T_Ty)
           ~result:(Ty.inferred ~span T_ContextTy) "create_context_type"
           (fun ~caller ~state:_ arg ->
             match arg |> Value.await_inferred with

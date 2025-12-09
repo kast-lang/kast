@@ -36,6 +36,28 @@ impl syntax (a * b) = `(
 impl syntax (a / b) = `(
     std.op.div ($a, $b)
 );
+impl syntax (-x) = `(
+    std.op.neg $x
+);
+impl syntax (+x) = `(
+    std.op.pos $x
+);
+impl syntax (a += b) = `(
+    let _ref = &$a;
+    _ref^ = _ref^ + $b
+);
+impl syntax (a -= b) = `(
+    let _ref = &$a;
+    _ref^ = _ref^ - $b
+);
+impl syntax (a *= b) = `(
+    let _ref = &$a;
+    _ref^ = _ref^ * $b
+);
+impl syntax (a /= b) = `(
+    let _ref = &$a;
+    _ref^ = _ref^ / $b
+);
 impl syntax (@context ty) = `(
     (@native "create_context_type") $ty
 );
@@ -65,22 +87,6 @@ impl syntax (let rec pattern = value) = `(
 );
 impl syntax (if cond then stmt) = `(
     if $cond then $stmt else ()
-);
-impl syntax (a += b) = `(
-    let _ref = &$a;
-    _ref^ = _ref^ + $b
-);
-impl syntax (a -= b) = `(
-    let _ref = &$a;
-    _ref^ = _ref^ - $b
-);
-impl syntax (a *= b) = `(
-    let _ref = &$a;
-    _ref^ = _ref^ * $b
-);
-impl syntax (a /= b) = `(
-    let _ref = &$a;
-    _ref^ = _ref^ / $b
 );
 impl syntax (while cond do body) = `(
     loop (

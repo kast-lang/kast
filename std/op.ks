@@ -1,4 +1,10 @@
 module:
+const neg = [T] (x :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "unary -") x
+);
+const pos = [T] (x :: T) -> T => (
+    x
+);
 const add = [T] (a :: T, b :: T) -> T => (
     cfg_if (
         | target.name == "interpreter" => (@native "+") (a, b)

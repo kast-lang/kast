@@ -56,12 +56,14 @@
 @syntax "|>" 20 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
 @syntax "<|" 20 wrap if_any = <- arg " "/"\n\t" "<|" " " f ""/"\\";
 
+@syntax "return_without_value" 40 wrap never = "return";
+@syntax "return_with_value" 40 wrap never = "return" " " value;
+@syntax "unary -" 45 wrap never = "-" _;
+@syntax "unary +" 45 wrap never = "+" _;
 @syntax "core:apply" 50 wrap never = <- f " " arg;
-@syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 60 wrap never = "unwind" " " token " " value;
 @syntax "with_return" 60 wrap never = "with_return" " " body;
-@syntax "return_without_value" 60 wrap never = "return";
-@syntax "return_with_value" 60 wrap never = "return" " " value;
+@syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:cast" 60.5 wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 wrap never = "&" _ ->;
 @syntax "core:variant_without_value" 62 wrap never = ":" label;
