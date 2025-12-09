@@ -141,6 +141,14 @@ let inner_compiled_with_handler =
       | A_Placeholder -> ()
       | A_Unit -> ()
       | A_Place place -> handler.handle PlaceExpr place
+      | A_Tuple { tuple } ->
+          tuple |> Tuple.to_seq
+          |> Seq.iter
+               (fun
+                 ( _member,
+                   ({ label_span = _; label = _; field = field_assignee } :
+                     Expr.assignee Types.tuple_field_of) )
+               -> handler.handle Assignee field_assignee)
       | A_Let pattern -> handler.handle Pattern pattern
       | A_Error -> ())
   | Pattern -> (

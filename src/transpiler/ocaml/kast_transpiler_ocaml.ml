@@ -159,6 +159,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
         match assignee.shape with
         | Types.A_Placeholder | Types.A_Unit -> OcamlAst.unit_value
         | Types.A_Place _ -> fail "todo support mutation"
+        | Types.A_Tuple _ -> failwith __LOC__
         | Types.A_Let pattern ->
             OcamlAst.single_let
               { pattern = state |> transpile_pattern pattern; value }

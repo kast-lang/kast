@@ -168,12 +168,18 @@ let rec inject_pattern_bindings ~(only_compiler : bool) (pattern : pattern)
       | Some value -> inject_pattern_bindings ~only_compiler value state)
   | P_Error -> ()
 
-let inject_assignee_bindings ~(only_compiler : bool) (assignee : Expr.assignee)
-    (state : State.t) : unit =
+let rec inject_assignee_bindings ~(only_compiler : bool)
+    (assignee : Expr.assignee) (state : State.t) : unit =
   match assignee.shape with
   | A_Placeholder -> ()
   | A_Unit -> ()
   | A_Place _ -> ()
+  | A_Tuple { tuple } ->
+      tuple |> Tuple.to_seq
+      |> Seq.iter
+           (fun
+             (_member, ({ field; _ } : Types.assignee_expr Types.tuple_field_of))
+           -> state |> inject_assignee_bindings ~only_compiler field)
   | A_Let pattern -> state |> inject_pattern_bindings ~only_compiler pattern
   | A_Error -> ()
 

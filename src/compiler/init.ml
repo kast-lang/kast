@@ -345,6 +345,23 @@ let init_assignee :
       match shape with
       | A_Placeholder -> Ty.new_not_inferred ~span
       | A_Unit -> Ty.inferred ~span T_Unit
+      | A_Tuple { tuple } ->
+          Ty.inferred ~span
+          <| T_Tuple
+               {
+                 name = OptionalName.new_not_inferred ~span;
+                 tuple =
+                   tuple
+                   |> Tuple.map
+                        (fun
+                          ({ label_span = _; label; field = field_expr } :
+                            Expr.assignee Types.tuple_field_of)
+                          :
+                          Types.ty_tuple_field
+                        ->
+                          let field_expr : Expr.assignee = field_expr in
+                          { ty = field_expr.data.ty; label });
+               }
       | A_Let pattern -> pattern.data.ty
       | A_Place place -> place.data.ty
       | A_Error -> Ty.new_not_inferred ~span

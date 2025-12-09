@@ -373,6 +373,11 @@ module Impl = struct
         fprintf fmt "@{<magenta>place@} (@;<0 2>place = %a@ )"
           (print_place_expr ~options)
           place
+    | A_Tuple { tuple } ->
+        fprintf fmt "@{<magenta>tuple@} %a"
+          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
+               (print_assignee_expr ~options) fmt field))
+          tuple
     | A_Let pattern ->
         fprintf fmt "@{<magenta>let@} (@;<0 2>pattern = %a@ )"
           (print_pattern ~options) pattern

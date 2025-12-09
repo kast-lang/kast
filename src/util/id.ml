@@ -2,6 +2,7 @@ open Format
 
 module Id = struct
   module T = struct
+    type foo = { value : int }
     type t = { value : int }
 
     let next_id = ref 0

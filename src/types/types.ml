@@ -353,9 +353,12 @@ module rec TypesImpl : sig
   and assignee_expr_shape =
     | A_Placeholder
     | A_Unit
+    | A_Tuple of assignee_expr_tuple
     | A_Place of place_expr
     | A_Let of pattern
     | A_Error
+
+  and assignee_expr_tuple = { tuple : assignee_expr tuple_field_of Tuple.t }
 
   and assignee_expr = {
     shape : assignee_expr_shape;
@@ -842,9 +845,12 @@ end = struct
   and assignee_expr_shape =
     | A_Placeholder
     | A_Unit
+    | A_Tuple of assignee_expr_tuple
     | A_Place of place_expr
     | A_Let of pattern
     | A_Error
+
+  and assignee_expr_tuple = { tuple : assignee_expr tuple_field_of Tuple.t }
 
   and assignee_expr = {
     shape : assignee_expr_shape;

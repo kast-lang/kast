@@ -285,6 +285,20 @@ and assign : span:span -> state -> Expr.assignee -> place -> unit =
       let assignee_place : place = eval_place state assignee_place_expr in
       let value = claim ~span place in
       assignee_place.state <- Occupied value
+  | A_Tuple { tuple = assignee_tuple } -> (
+      match place |> claim ~span |> Value.await_inferred with
+      | V_Tuple { ty = _; tuple } ->
+          Tuple.zip_order_a assignee_tuple tuple
+          |> Tuple.to_seq
+          |> Seq.iter
+               (fun
+                 ( _member,
+                   ( (assignee : Types.assignee_expr Types.tuple_field_of),
+                     (field : Types.value_tuple_field) ) )
+               ->
+                 let assignee = assignee.field in
+                 assign ~span state assignee field.place)
+      | _ -> Error.error span "Expected tuple")
   | A_Let pattern ->
       let ~matched, new_bindings = pattern_match ~span place pattern in
       if not matched then

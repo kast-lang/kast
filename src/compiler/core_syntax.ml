@@ -1070,9 +1070,7 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
                        : a Types.tuple_field_of));
       match kind with
       | PlaceExpr -> unreachable "comma: checked earier"
-      | Assignee ->
-          error span "todo comma assignee";
-          init_error span C.state kind
+      | Assignee -> A_Tuple { tuple = !tuple } |> init_assignee span C.state
       | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span C.state
       | TyExpr ->
           (fun () -> TE_Tuple { tuple = !tuple }) |> init_ty_expr span C.state
