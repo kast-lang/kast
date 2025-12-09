@@ -449,7 +449,11 @@ module rec TypesImpl : sig
   }
 
   (* interpreter *)
-  and natives = { by_name : value StringMap.t }
+  and natives = {
+    by_name : (ty -> value) StringMap.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+  }
+
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
   and cast_impls = { mutable map : value ValueMap.t ValueMap.t }
 
@@ -934,7 +938,11 @@ end = struct
   }
 
   (* interpreter *)
-  and natives = { by_name : value StringMap.t }
+  and natives = {
+    by_name : (ty -> value) StringMap.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+  }
+
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
   and cast_impls = { mutable map : value ValueMap.t ValueMap.t }
 

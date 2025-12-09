@@ -471,7 +471,7 @@ and eval_expr_native : state -> expr -> Types.expr_native -> value =
  fun state expr { expr = native_expr } ->
   let span = expr.data.span in
   match StringMap.find_opt native_expr state.natives.by_name with
-  | Some value -> value
+  | Some f -> f expr.data.ty
   | None ->
       Error.error expr.data.span "no native %S" native_expr;
       V_Error |> Value.inferred ~span

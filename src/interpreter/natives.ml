@@ -36,10 +36,10 @@ let init_natives () =
 
   let types =
     (plain_types
-    |> List.map (fun (name, ty) : (string * value) ->
-        (name, V_Ty (Ty.inferred ~span ty) |> Value.inferred ~span)))
+    |> List.map (fun (name, ty) : (string * (ty -> value)) ->
+        (name, fun _ -> V_Ty (Ty.inferred ~span ty) |> Value.inferred ~span)))
     @ (generic_types
-      |> List.map (fun (name, f) : (string * value) ->
+      |> List.map (fun (name, f) : (string * (ty -> value)) ->
           let impl =
            fun ~caller ~state:_ arg ->
             with_return (fun { return } : value ->
@@ -59,32 +59,40 @@ let init_natives () =
           in
 
           ( name,
-            V_NativeFn
-              {
-                id = Id.gen ();
-                name;
-                ty =
-                  {
-                    arg = Ty.inferred ~span T_Ty;
-                    result = Ty.inferred ~span T_Ty;
-                  };
-                impl;
-              }
-            |> Value.inferred ~span )))
+            fun ty ->
+              let fn_ty : Types.ty_fn =
+                {
+                  arg = Ty.inferred ~span T_Ty;
+                  result = Ty.inferred ~span T_Ty;
+                }
+              in
+              ty
+              |> Inference.Ty.expect_inferred_as ~span
+                   (T_Fn fn_ty |> Ty.inferred ~span);
+              V_NativeFn { id = Id.gen (); name; ty = fn_ty; impl }
+              |> Value.inferred ~span )))
   in
 
-  let native_fn ~(arg : ty) ~(result : ty) name impl : string * value =
+  let native_fn name impl : string * (ty -> value) =
     ( name,
-      V_NativeFn { id = Id.gen (); ty = { arg; result }; name; impl }
-      |> Value.inferred ~span )
+      fun ty ->
+        let fn_ty : Types.ty_fn =
+          {
+            arg = Ty.new_not_inferred ~span;
+            result = Ty.new_not_inferred ~span;
+          }
+        in
+        ty
+        |> Inference.Ty.expect_inferred_as ~span
+             (T_Fn fn_ty |> Ty.inferred ~span);
+        V_NativeFn { id = Id.gen (); ty = fn_ty; name; impl = impl fn_ty }
+        |> Value.inferred ~span )
   in
 
   let dbg =
     [
       (* TODO dbg should be polymorphic *)
-      native_fn ~arg:(Ty.new_not_inferred ~span)
-        ~result:(Ty.inferred ~span T_Unit) "dbg.print"
-        (fun ~caller:_ ~state:_ arg : value ->
+      native_fn "dbg.print" (fun _ty ~caller:_ ~state:_ arg : value ->
           println "%a" Value.print arg;
           V_Unit |> Value.inferred ~span);
     ]
@@ -92,9 +100,7 @@ let init_natives () =
 
   let mod_char =
     let code =
-      native_fn ~arg:(Ty.inferred ~span T_Char)
-        ~result:(Ty.inferred ~span T_Int32) "char.code"
-        (fun ~caller ~state:_ arg : value ->
+      native_fn "char.code" (fun _ty ~caller ~state:_ arg : value ->
           with_return (fun { return } ->
               let error msg () =
                 Error.error caller "char.code: %s" msg;
@@ -107,9 +113,7 @@ let init_natives () =
               V_Int32 (Char.code c |> Int32.of_int) |> Value.inferred ~span))
     in
     let from_code =
-      native_fn ~arg:(Ty.inferred ~span T_Int32)
-        ~result:(Ty.inferred ~span T_Char) "char.from_code"
-        (fun ~caller ~state:_ arg : value ->
+      native_fn "char.from_code" (fun _ty ~caller ~state:_ arg : value ->
           with_return (fun { return } ->
               let error msg () =
                 Error.error caller "char.from_code: %s" msg;
@@ -129,9 +133,7 @@ let init_natives () =
 
   let mod_string =
     let at =
-      native_fn ~arg:(Ty.new_not_inferred ~span)
-        ~result:(Ty.inferred ~span T_Int32) "string.at"
-        (fun ~caller ~state:_ arg : value ->
+      native_fn "string.at" (fun _ty ~caller ~state:_ arg : value ->
           with_return (fun { return } ->
               let error msg () =
                 Error.error caller "string.at: %s" msg;
@@ -158,9 +160,7 @@ let init_natives () =
               |> Value.inferred ~span))
     in
     let length =
-      native_fn ~arg:(Ty.inferred ~span T_String)
-        ~result:(Ty.inferred ~span T_Int32) "string.length"
-        (fun ~caller ~state:_ arg : value ->
+      native_fn "string.length" (fun _ty ~caller ~state:_ arg : value ->
           with_return (fun { return } ->
               let error msg () =
                 Error.error caller "string.length: %s" msg;
@@ -173,9 +173,7 @@ let init_natives () =
               V_Int32 (Int32.of_int (String.length s)) |> Value.inferred ~span))
     in
     let substring =
-      native_fn ~arg:(Ty.new_not_inferred ~span)
-        ~result:(Ty.new_not_inferred ~span) "string.substring"
-        (fun ~caller ~state arg : value ->
+      native_fn "string.substring" (fun _ty ~caller ~state:_ arg : value ->
           with_return (fun { return } ->
               let error msg () =
                 Error.error caller "string.substring: %s" msg;
@@ -204,9 +202,7 @@ let init_natives () =
               |> Value.inferred ~span))
     in
     let iter =
-      native_fn ~arg:(Ty.new_not_inferred ~span)
-        ~result:(Ty.new_not_inferred ~span) "string.iter"
-        (fun ~caller ~state arg : value ->
+      native_fn "string.iter" (fun _ty ~caller ~state arg : value ->
           with_return (fun { return } ->
               let error msg () =
                 Error.error caller "string.iter: %s" msg;
@@ -240,9 +236,7 @@ let init_natives () =
 
   let sys =
     let chdir =
-      native_fn ~arg:(Ty.inferred ~span T_String)
-        ~result:(Ty.inferred ~span T_Unit) "sys.chdir"
-        (fun ~caller ~state:_ arg : value ->
+      native_fn "sys.chdir" (fun _ty ~caller ~state:_ arg : value ->
           match arg |> Value.await_inferred with
           | V_String path ->
               Sys.chdir path;
@@ -252,16 +246,12 @@ let init_natives () =
               V_Error |> Value.inferred ~span)
     in
     let argc =
-      native_fn ~arg:(Ty.inferred ~span T_Unit)
-        ~result:(Ty.inferred ~span T_Int32) "sys.argc"
-        (fun ~caller:_ ~state:_ _arg : value ->
+      native_fn "sys.argc" (fun _ty ~caller:_ ~state:_ _arg : value ->
           V_Int32 (!argv |> Array.length |> Int32.of_int)
           |> Value.inferred ~span)
     in
     let argv_at =
-      native_fn ~arg:(Ty.inferred ~span T_Int32)
-        ~result:(Ty.inferred ~span T_String) "sys.argv_at"
-        (fun ~caller ~state:_ arg : value ->
+      native_fn "sys.argv_at" (fun _ty ~caller ~state:_ arg : value ->
           match arg |> Value.await_inferred with
           | V_Int32 idx -> (
               match Array.get_opt !argv (Int32.to_int idx) with
@@ -278,9 +268,7 @@ let init_natives () =
 
   let fs =
     let read_file =
-      native_fn ~arg:(Ty.inferred ~span T_String)
-        ~result:(Ty.inferred ~span T_String) "fs.read_file"
-        (fun ~caller ~state:_ arg : value ->
+      native_fn "fs.read_file" (fun _ty ~caller ~state:_ arg : value ->
           match arg |> Value.await_inferred with
           | V_String path ->
               let contents = read_from_filesystem path in
@@ -294,30 +282,7 @@ let init_natives () =
 
   let natives : natives =
     let cmp_fn name op =
-      native_fn
-        ~arg:
-          (Ty.inferred ~span
-             (T_Tuple
-                {
-                  name = OptionalName.new_inferred ~span None;
-                  tuple =
-                    Tuple.make
-                      [
-                        ({
-                           ty = Ty.inferred ~span T_Int32;
-                           label = Label.create_definition span "0";
-                         }
-                          : Types.ty_tuple_field);
-                        ({
-                           ty = Ty.inferred ~span T_Int32;
-                           label = Label.create_definition span "1";
-                         }
-                          : Types.ty_tuple_field);
-                      ]
-                      [];
-                }))
-        ~result:(Ty.inferred ~span T_Bool) name
-        (fun ~caller ~state:_ value ->
+      native_fn name (fun _ty ~caller ~state:_ value ->
           match value |> Value.await_inferred with
           | V_Tuple { ty = _; tuple } ->
               let a, b = tuple |> Tuple.unwrap_unnamed2 in
@@ -336,31 +301,7 @@ let init_natives () =
     let bin_op name (op_int32 : int32 -> int32 -> int32)
         (op_int64 : int64 -> int64 -> int64)
         (op_float : (float -> float -> float) option) =
-      native_fn
-        ~arg:
-          (Ty.inferred ~span
-             (T_Tuple
-                {
-                  name = OptionalName.new_inferred ~span None;
-                  tuple =
-                    Tuple.make
-                      [
-                        ({
-                           ty = Ty.inferred ~span T_Int32;
-                           label = Label.create_definition span "0";
-                         }
-                          : Types.ty_tuple_field);
-                        ({
-                           ty = Ty.inferred ~span T_Int32;
-                           label = Label.create_definition span "1";
-                         }
-                          : Types.ty_tuple_field);
-                      ]
-                      [];
-                }))
-        ~result:(Ty.inferred ~span T_Int32)
-        name
-        (fun ~caller ~state:_ value ->
+      native_fn name (fun _ty ~caller ~state:_ value ->
           match value |> Value.await_inferred with
           | V_Tuple { ty = _; tuple } ->
               let a, b = tuple |> Tuple.unwrap_unnamed2 in
@@ -385,18 +326,14 @@ let init_natives () =
               Error.error caller "bin op %S expected a tuple as arg" name;
               V_Error |> Value.inferred ~span)
     in
-    let list : (string * value) list =
+    let list : (string * (ty -> value)) list =
       [
-        native_fn ~arg:(Ty.inferred ~span T_String)
-          ~result:(Ty.inferred ~span T_Unit) "print"
-          (fun ~caller ~state:_ value ->
+        native_fn "print" (fun _ty ~caller ~state:_ value ->
             (match value |> Value.await_inferred with
             | V_String s -> println "%s" s
             | _ -> Error.error caller "print expected a string");
             V_Unit |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_String)
-          ~result:(Ty.inferred ~span T_String) "input"
-          (fun ~caller ~state:_ value ->
+        native_fn "input" (fun _ty ~caller ~state:_ value ->
             match value |> Value.await_inferred with
             | V_String s ->
                 let line = Effect.perform (Input s) in
@@ -404,32 +341,7 @@ let init_natives () =
             | _ ->
                 Error.error caller "input expected a string";
                 V_Error |> Value.inferred ~span);
-        native_fn
-          ~arg:
-            (Ty.inferred ~span
-               (T_Tuple
-                  {
-                    name = OptionalName.new_inferred ~span None;
-                    tuple =
-                      Tuple.make []
-                        [
-                          ( "min",
-                            ({
-                               ty = Ty.inferred ~span T_Int32;
-                               label = Label.create_definition span "min";
-                             }
-                              : Types.ty_tuple_field) );
-                          ( "max",
-                            ({
-                               ty = Ty.inferred ~span T_Int32;
-                               label = Label.create_definition span "max";
-                             }
-                              : Types.ty_tuple_field) );
-                        ];
-                  }))
-          ~result:(Ty.inferred ~span T_Int32)
-          "rng"
-          (fun ~caller ~state:_ arg ->
+        native_fn "rng" (fun _ty ~caller ~state:_ arg ->
             try
               let { ty = _; tuple } : Kast_types.Types.value_tuple =
                 arg |> Value.expect_tuple |> Option.get
@@ -447,9 +359,7 @@ let init_natives () =
             with exc ->
               Error.error caller "rng: %s" (Printexc.to_string exc);
               V_Error |> Value.inferred ~span);
-        native_fn ~arg:(Ty.new_not_inferred ~span)
-          ~result:(Ty.inferred ~span T_String) "to_string"
-          (fun ~caller ~state:_ arg ->
+        native_fn "to_string" (fun _ty ~caller ~state:_ arg ->
             with_return (fun { return } : Value.Shape.t ->
                 let s =
                   match arg |> Value.await_inferred with
@@ -465,53 +375,37 @@ let init_natives () =
                 in
                 V_String s)
             |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_String)
-          ~result:(Ty.inferred ~span T_Int32) "string_to_int32"
-          (fun ~caller ~state:_ arg ->
+        native_fn "parse" (fun ty ~caller ~state:_ arg ->
+            let { arg = _; result = result_ty } : Types.ty_fn = ty in
             match arg |> Value.await_inferred with
             | V_String s ->
                 let shape : Value.shape =
-                  match Int32.of_string_opt s with
-                  | Some value -> V_Int32 value
+                  let parsed =
+                    match result_ty |> Ty.await_inferred with
+                    | T_Int32 ->
+                        Int32.of_string_opt s
+                        |> Option.map (fun x : Value.shape -> V_Int32 x)
+                    | T_Int64 ->
+                        Int64.of_string_opt s
+                        |> Option.map (fun x : Value.shape -> V_Int64 x)
+                    | T_Float64 ->
+                        Float.of_string_opt s
+                        |> Option.map (fun x : Value.shape -> V_Float64 x)
+                    | _ ->
+                        Error.error caller "no idea how to parse %a" Ty.print
+                          result_ty;
+                        Some V_Error
+                  in
+                  match parsed with
+                  | Some value -> value
                   | None ->
-                      Error.error caller "could not parse int32 %S" s;
+                      Error.error caller "could not parse %S as %a" s Ty.print
+                        result_ty;
                       V_Error
                 in
                 shape |> Value.inferred ~span
             | _ ->
                 Error.error caller "string_to_int32 expected a string";
-                V_Error |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_String)
-          ~result:(Ty.inferred ~span T_Float64) "string_to_float64"
-          (fun ~caller ~state:_ arg ->
-            match arg |> Value.await_inferred with
-            | V_String s ->
-                let shape : Value.shape =
-                  match Float.of_string_opt s with
-                  | Some value -> V_Float64 value
-                  | None ->
-                      Error.error caller "could not parse float64 %S" s;
-                      V_Error
-                in
-                shape |> Value.inferred ~span
-            | _ ->
-                Error.error caller "string_to_float64 expected a string";
-                V_Error |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_String)
-          ~result:(Ty.inferred ~span T_Int64) "string_to_int64"
-          (fun ~caller ~state:_ arg ->
-            match arg |> Value.await_inferred with
-            | V_String s ->
-                let shape : Value.shape =
-                  match Int64.of_string_opt s with
-                  | Some value -> V_Int64 value
-                  | None ->
-                      Error.error caller "could not parse int64 %S" s;
-                      V_Error
-                in
-                shape |> Value.inferred ~span
-            | _ ->
-                Error.error caller "string_to_int64 expected a string";
                 V_Error |> Value.inferred ~span);
         cmp_fn "<" ( < );
         cmp_fn "<=" ( <= );
@@ -535,9 +429,7 @@ let init_natives () =
           (fun a b -> Int32.shift_right a (Int32.to_int b))
           (fun a b -> Int64.shift_right a (Int64.to_int b))
           None;
-        native_fn ~arg:(Ty.inferred ~span T_Ty)
-          ~result:(Ty.inferred ~span T_ContextTy) "bit_not"
-          (fun ~caller ~state:_ arg ->
+        native_fn "bit_not" (fun _ty ~caller ~state:_ arg ->
             (match arg |> Value.await_inferred with
               | V_Int32 x -> V_Int32 (Int32.lognot x)
               | V_Int64 x -> V_Int64 (Int64.lognot x)
@@ -546,9 +438,7 @@ let init_natives () =
                     Value.Shape.print value;
                   V_Error)
             |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_Ty)
-          ~result:(Ty.inferred ~span T_ContextTy) "unary -"
-          (fun ~caller ~state:_ arg ->
+        native_fn "unary -" (fun _ty ~caller ~state:_ arg ->
             (match arg |> Value.await_inferred with
               | V_Int32 x -> V_Int32 (Int32.neg x)
               | V_Int64 x -> V_Int64 (Int64.neg x)
@@ -558,18 +448,14 @@ let init_natives () =
                     Value.Shape.print value;
                   V_Error)
             |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_Ty)
-          ~result:(Ty.inferred ~span T_ContextTy) "create_context_type"
-          (fun ~caller ~state:_ arg ->
+        native_fn "create_context_type" (fun _ty ~caller ~state:_ arg ->
             match arg |> Value.await_inferred with
             | V_Ty ty ->
                 V_ContextTy { id = Id.gen (); ty } |> Value.inferred ~span
             | _ ->
                 Error.error caller "create_context_type expected a type";
                 V_Error |> Value.inferred ~span);
-        native_fn ~arg:(Ty.inferred ~span T_String)
-          ~result:(Ty.new_not_inferred ~span) "panic"
-          (fun ~caller:_ ~state:_ arg ->
+        native_fn "panic" (fun _ty ~caller:_ ~state:_ arg ->
             match arg |> Value.expect_string with
             | Some s -> raise (Panic s)
             | None -> V_Error |> Value.inferred ~span);

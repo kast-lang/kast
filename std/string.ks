@@ -113,19 +113,19 @@ const FromString = [Self] type (
 
 impl int32 as FromString = (
     .from_string = s => cfg_if (
-        | target.name == "interpreter" => (@native "string_to_int32") s
+        | target.name == "interpreter" => (@native "parse") s
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
 impl int64 as FromString = (
     .from_string = s => cfg_if (
-        | target.name == "interpreter" => (@native "string_to_int64") s
+        | target.name == "interpreter" => (@native "parse") s
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
 impl float64 as FromString = (
     .from_string = s => cfg_if (
-        | target.name == "interpreter" => (@native "string_to_float64") s
+        | target.name == "interpreter" => (@native "parse") s
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
