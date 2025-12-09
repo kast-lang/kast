@@ -504,6 +504,26 @@ let init_natives () =
         bin_op "*" Int32.mul Int64.mul;
         bin_op "/" Int32.div Int64.div;
         bin_op "%" Int32.rem Int64.rem;
+        bin_op "bit_and" Int32.logand Int64.logand;
+        bin_op "bit_or" Int32.logor Int64.logor;
+        bin_op "bit_xor" Int32.logxor Int64.logxor;
+        bin_op "bit_shift_left"
+          (fun a b -> Int32.shift_left a (Int32.to_int b))
+          (fun a b -> Int64.shift_left a (Int64.to_int b));
+        bin_op "bit_shift_right"
+          (fun a b -> Int32.shift_right a (Int32.to_int b))
+          (fun a b -> Int64.shift_right a (Int64.to_int b));
+        native_fn ~arg:(Ty.inferred ~span T_Ty)
+          ~result:(Ty.inferred ~span T_ContextTy) "bit_not"
+          (fun ~caller ~state:_ arg ->
+            (match arg |> Value.await_inferred with
+              | V_Int32 x -> V_Int32 (Int32.lognot x)
+              | V_Int64 x -> V_Int64 (Int64.lognot x)
+              | value ->
+                  Error.error caller "bit_not doesnt work with %a"
+                    Value.Shape.print value;
+                  V_Error)
+            |> Value.inferred ~span);
         native_fn ~arg:(Ty.inferred ~span T_Ty)
           ~result:(Ty.inferred ~span T_ContextTy) "unary -"
           (fun ~caller ~state:_ arg ->

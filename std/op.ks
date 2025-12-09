@@ -32,3 +32,21 @@ const div = [T] (a :: T, b :: T) -> T => (
 const rem = [T] (a :: T, b :: T) -> T => cfg_if (
     | target.name == "interpreter" => (@native "%") (a, b)
 );
+const bit_and = [T] (a :: T, b :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "bit_and") (a, b)
+);
+const bit_or = [T] (a :: T, b :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "bit_or") (a, b)
+);
+const bit_xor = [T] (a :: T, b :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "bit_xor") (a, b)
+);
+const bit_not = [T] (x :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "bit_not") x
+);
+const bit_shift_left = [T] (a :: T, b :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "bit_shift_left") (a, b)
+);
+const bit_shift_right = [T] (a :: T, b :: T) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "bit_shift_right") (a, b)
+);
