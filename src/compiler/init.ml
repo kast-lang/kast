@@ -162,6 +162,7 @@ and init_expr :
                         id = Id.gen ();
                         def = { compiled = Some def_ty; on_compiled = [] };
                         captured = generic_ty_interpreter.scope;
+                        calculated_natives = Hashtbl.create 0;
                       }
                     in
                     let result =

@@ -21,4 +21,5 @@
     "examples/mutually-recursive-generic-types.ks",
     "examples/treap.ks",
     "examples/refs.ks",
+    "examples/lots-of-math.ks",
 )

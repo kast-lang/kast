@@ -795,7 +795,7 @@ let native : core_syntax =
             in
             match kind with
             | Expr ->
-                E_Native { expr = expr_value }
+                E_Native { id = Id.gen (); expr = expr_value }
                 |> init_expr ~evaled_exprs:[ expr ] span C.state
             | PlaceExpr ->
                 error span "native must be expr, not place expr";

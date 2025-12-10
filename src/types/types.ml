@@ -67,6 +67,7 @@ module rec TypesImpl : sig
   and value_untyped_fn = {
     id : Id.t;
     def : maybe_compiled_fn;
+    calculated_natives : (id, value) Hashtbl.t;
     captured : interpreter_scope;
   }
 
@@ -203,7 +204,11 @@ module rec TypesImpl : sig
     value : place_expr;
   }
 
-  and expr_native = { expr : string }
+  and expr_native = {
+    id : Id.t;
+    expr : string;
+  }
+
   and expr_module = { def : expr }
 
   and expr_use_dot_star = {
@@ -463,6 +468,7 @@ module rec TypesImpl : sig
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
+    current_fn_natives : (id, value) Hashtbl.t;
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
     cast_impls : cast_impls;
@@ -559,6 +565,8 @@ end = struct
   and value_untyped_fn = {
     id : Id.t;
     def : maybe_compiled_fn;
+    calculated_natives : (id, value) Hashtbl.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     captured : interpreter_scope;
   }
 
@@ -695,7 +703,11 @@ end = struct
     value : place_expr;
   }
 
-  and expr_native = { expr : string }
+  and expr_native = {
+    id : Id.t;
+    expr : string;
+  }
+
   and expr_module = { def : expr }
 
   and expr_use_dot_star = {
@@ -955,6 +967,8 @@ end = struct
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
+    current_fn_natives : (id, value) Hashtbl.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
     cast_impls : cast_impls;

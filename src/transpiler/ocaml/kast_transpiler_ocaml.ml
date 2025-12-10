@@ -67,7 +67,9 @@ and transpile_value : Value.t -> state -> OcamlAst.t =
                tuple.tuple
       | Types.V_Variant _ -> failwith __LOC__
       | Types.V_Ty _ -> OcamlAst.unit_value
-      | Types.V_Fn { fn = { id = _; def; captured = _ }; ty = _ } ->
+      | Types.V_Fn
+          { fn = { id = _; def; captured = _; calculated_natives = _ }; ty = _ }
+        ->
           let def =
             Kast_interpreter.await_compiled
               ~span:(Span.fake "transpiling value")
@@ -173,7 +175,7 @@ and transpile_expr : Expr.t -> state -> OcamlAst.t =
            })
         (perform_assign assignee (OcamlAst.Var value_ident))
   | Types.E_Ty _ -> fail "Tried to transpile type expr"
-  | Types.E_Native { expr } ->
+  | Types.E_Native { id = _; expr } ->
       OcamlAst.RawCode
         (expr |> String.to_seq
         |> Seq.filter (fun c -> c <> '{' && c <> '}')

@@ -150,6 +150,7 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
           scope =
             Scope.with_values ~recursive:false ~parent:(Some fn.captured)
               arg_bindings;
+          current_fn_natives = fn.calculated_natives;
         }
       in
       let result = eval new_state def.body in
@@ -385,7 +386,17 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
 and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
  fun state expr { def; ty } ->
   let span = expr.data.span in
-  V_Fn { ty; fn = { id = Id.gen (); def; captured = state.scope } }
+  V_Fn
+    {
+      ty;
+      fn =
+        {
+          id = Id.gen ();
+          def;
+          captured = state.scope;
+          calculated_natives = Hashtbl.create 0;
+        };
+    }
   |> Value.inferred ~span
 
 and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
@@ -395,7 +406,13 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
     {
       id = Id.gen ();
       name = current_name state;
-      fn = { id = Id.gen (); def; captured = state.scope };
+      fn =
+        {
+          id = Id.gen ();
+          def;
+          captured = state.scope;
+          calculated_natives = Hashtbl.create 0;
+        };
     }
   |> Value.inferred ~span
 
@@ -482,15 +499,22 @@ and eval_expr_instantiategeneric :
   instantiate expr.data.span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
- fun state expr { expr = native_expr } ->
-  let span = expr.data.span in
-  match StringMap.find_opt native_expr state.natives.by_name with
-  | Some f ->
-      let ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
-      f ty
+ fun state expr { id; expr = native_expr } ->
+  match Hashtbl.find_opt state.current_fn_natives id with
+  | Some value -> value
   | None ->
-      Error.error expr.data.span "no native %S" native_expr;
-      V_Error |> Value.inferred ~span
+      let value =
+        let span = expr.data.span in
+        match StringMap.find_opt native_expr state.natives.by_name with
+        | Some f ->
+            let ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+            f ty
+        | None ->
+            Error.error expr.data.span "no native %S" native_expr;
+            V_Error |> Value.inferred ~span
+      in
+      Hashtbl.add state.current_fn_natives id value;
+      value
 
 and eval_expr_module : state -> expr -> Types.expr_module -> value =
  fun state expr { def } ->

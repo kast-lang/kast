@@ -254,7 +254,8 @@ module Impl = struct
           value
     | E_Ty expr ->
         fprintf fmt "@{<magenta>type@} %a" (print_ty_expr ~options) expr
-    | E_Native { expr } -> fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
+    | E_Native { id = _; expr } ->
+        fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
     | E_Module { def } -> fprintf fmt "@{<magenta>module@} %a" print_expr def
     | E_UseDotStar { used; bindings = _ } ->
         fprintf fmt "@{<magenta>use .*@} (@;<0 2>@[<v>used = %a,@]@ )"
