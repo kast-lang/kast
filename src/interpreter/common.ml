@@ -262,7 +262,7 @@ and instantiate (span : span) (state : state) (generic : value) (arg : value) :
       V_Error |> Value.inferred ~span
 
 and call (span : span) (state : state) (f : value) (arg : value) : value =
-  Kast_profiling.begin_ (make_string "%a" Span.print span);
+  Kast_profiling.begin_ (fun () -> make_string "%a" Span.print span);
   let result =
     match f |> Value.await_inferred with
     | V_Fn { fn; ty = _ } -> call_untyped_fn ~sub_mode:None span state fn arg
@@ -272,7 +272,7 @@ and call (span : span) (state : state) (f : value) (arg : value) : value =
         Error.error span "expected fn";
         V_Error |> Value.inferred ~span
   in
-  Kast_profiling.end_ (make_string "%a" Span.print span);
+  Kast_profiling.end_ (fun () -> make_string "%a" Span.print span);
   result
 
 and assign : span:span -> state -> Expr.assignee -> place -> unit =

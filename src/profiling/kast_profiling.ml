@@ -56,25 +56,31 @@ let event (e : Event.t) =
       e |> Event.yojson_of_t |> Yojson.to_channel ch
 
 let begin_ name =
-  event
-    {
-      name;
-      categories = [];
-      ty = Begin;
-      timestamp_ns = timestamp ();
-      pid = 1;
-      tid = 1;
-      args = StringMap.empty;
-    }
+  match !out with
+  | None -> ()
+  | Some _ ->
+      event
+        {
+          name = name ();
+          categories = [];
+          ty = Begin;
+          timestamp_ns = timestamp ();
+          pid = 1;
+          tid = 1;
+          args = StringMap.empty;
+        }
 
 let end_ name =
-  event
-    {
-      name;
-      categories = [];
-      ty = End;
-      timestamp_ns = timestamp ();
-      pid = 1;
-      tid = 1;
-      args = StringMap.empty;
-    }
+  match !out with
+  | None -> ()
+  | Some _ ->
+      event
+        {
+          name = name ();
+          categories = [];
+          ty = End;
+          timestamp_ns = timestamp ();
+          pid = 1;
+          tid = 1;
+          args = StringMap.empty;
+        }
