@@ -880,10 +880,17 @@ let dot : core_syntax =
                   |> Tuple.unwrap_named2 [ "obj"; "field" ]
                 in
                 let obj = C.compile PlaceExpr obj in
-                let field =
+                let field : Types.field_expr =
                   match field_ast.shape with
                   | Simple { token = { shape = Ident ident; _ }; _ } ->
-                      ident.name
+                      Name (Label.create_reference field_ast.span ident.name)
+                  | Simple { token = { shape = Number { raw; _ }; _ }; _ } -> (
+                      match raw |> int_of_string_opt with
+                      | Some i -> Index i
+                      | None ->
+                          error span "Failed to parse as member";
+                          return <| init_error span C.state kind)
+                  | Complex _ -> Expr (C.compile Expr field_ast)
                   | _ ->
                       error span "field must be ident";
                       return <| init_error span C.state kind
@@ -894,25 +901,29 @@ let dot : core_syntax =
                     let obj =
                       Kast_interpreter.eval C.state.interpreter obj_expr
                     in
-                    match obj.var |> Inference.Var.inferred_opt with
-                    | Some (V_CompilerScope scope) ->
-                        let binding =
-                          State.Scope.find_binding ~from:span field scope
+                    match
+                      Kast_interpreter.eval_field_expr C.state.interpreter field
+                    with
+                    | Error () -> return <| init_error span C.state kind
+                    | Ok member -> (
+                        let field =
+                          match member with
+                          | Index i -> Int.to_string i
+                          | Name s -> s
                         in
-                        PE_Binding binding
-                        |> init_place_expr span ~evaled_exprs:[ obj_expr ]
-                             C.state
-                    | _ ->
-                        error span "expected obj to be compiler scope";
-                        return <| init_error span C.state kind)
+                        match obj.var |> Inference.Var.inferred_opt with
+                        | Some (V_CompilerScope scope) ->
+                            let binding =
+                              State.Scope.find_binding ~from:span field scope
+                            in
+                            PE_Binding binding
+                            |> init_place_expr span ~evaled_exprs:[ obj_expr ]
+                                 C.state
+                        | _ ->
+                            error span "expected obj to be compiler scope";
+                            return <| init_error span C.state kind))
                 | _ ->
-                    PE_Field
-                      {
-                        obj;
-                        field;
-                        field_span = field_ast.span;
-                        label = Label.create_reference field_ast.span field;
-                      }
+                    PE_Field { obj; field; field_span = field_ast.span }
                     |> init_place_expr span C.state)));
   }
 
@@ -1132,15 +1143,20 @@ let use : core_syntax =
               | PE_Binding binding ->
                   P_Binding
                     { binding with name = Symbol.create binding.name.name }
-              | PE_Field { obj = _; field; field_span; label } ->
-                  P_Binding
-                    {
-                      id = Id.gen ();
-                      name = Symbol.create field;
-                      span = field_span;
-                      ty = used_expr.data.ty;
-                      label;
-                    }
+              | PE_Field { obj = _; field; field_span } -> (
+                  match field with
+                  | Name label ->
+                      P_Binding
+                        {
+                          id = Id.gen ();
+                          name = Symbol.create (Label.get_name label);
+                          span = field_span;
+                          ty = used_expr.data.ty;
+                          label;
+                        }
+                  | Index _ | Expr _ ->
+                      error span "must use named field";
+                      P_Placeholder)
               | _ ->
                   error span "Can't use this";
                   P_Placeholder

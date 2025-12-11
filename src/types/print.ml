@@ -351,12 +351,20 @@ module Impl = struct
           (print_expr ~options) expr
     | PE_Binding binding ->
         fprintf fmt "@{<magenta>binding@} %a" print_binding binding
-    | PE_Field { obj; field; field_span = _; label = _ } ->
+    | PE_Field { obj; field; field_span = _ } ->
         fprintf fmt
           "@{<magenta>field@} (@;<0 2>@[<v>obj = %a,@]@;<0 2>@[<v>field = %a@]@ )"
           (print_place_expr ~options)
-          obj String.print_maybe_escaped field
+          obj
+          (print_field_expr ~options)
+          field
     | PE_Error -> fprintf fmt "@{<red><error>@}"
+
+  and print_field_expr ~options fmt (field : field_expr) =
+    match field with
+    | Index i -> fprintf fmt "%d" i
+    | Name s -> String.print_maybe_escaped fmt (Label.get_name s)
+    | Expr e -> fprintf fmt "(%a)" (print_expr ~options) e
 
   and print_place_expr : options:options -> formatter -> place_expr -> unit =
    fun ~options fmt { shape; data } ->

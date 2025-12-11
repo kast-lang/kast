@@ -11,18 +11,32 @@ module Tuple = struct
 
   type 'a tuple = 'a t
 
-  type member =
-    | Index of int
-    | Name of string
+  module Member = struct
+    type t =
+      | Index of int
+      | Name of string
+
+    let print fmt = function
+      | Index i -> fprintf fmt "%d" i
+      | Name name -> fprintf fmt "%S" name
+  end
+
+  type member = Member.t
 
   let get_unnamed index tuple = Array.get tuple.unnamed index
+  let get_unnamed_opt index tuple = Array.get_opt tuple.unnamed index
   let get_named name tuple = StringMap.find name tuple.named
   let get_named_opt name tuple = StringMap.find_opt name tuple.named
 
-  let get member tuple =
+  let get (member : member) tuple =
     match member with
     | Index index -> get_unnamed index tuple
     | Name name -> get_named name tuple
+
+  let get_opt (member : member) tuple =
+    match member with
+    | Index index -> get_unnamed_opt index tuple
+    | Name name -> get_named_opt name tuple
 
   let is_unnamed len tuple =
     tuple.named_order_rev |> List.length = 0
@@ -48,9 +62,10 @@ module Tuple = struct
   let to_seq : 'a. 'a tuple -> (member * 'a) Seq.t =
    fun { unnamed; named; named_order_rev } ->
     Seq.append
-      (unnamed |> Array.to_seq |> Seq.mapi (fun i x -> (Index i, x)))
+      (unnamed |> Array.to_seq |> Seq.mapi (fun i x -> ((Index i : member), x)))
       (named_order_rev |> List.rev |> List.to_seq
-      |> Seq.map (fun name -> (Name name, StringMap.find name named)))
+      |> Seq.map (fun name -> ((Name name : member), StringMap.find name named))
+      )
 
   let empty : 'a. 'a tuple =
     { unnamed = [||]; named = StringMap.empty; named_order_rev = [] }

@@ -335,11 +335,16 @@ module rec TypesImpl : sig
   }
 
   (* PLACE EXPR *)
+  (* PLACE EXPR *)
+  and field_expr =
+    | Index of int
+    | Name of Label.t
+    | Expr of expr
+
   and place_expr_field = {
     obj : place_expr;
-    field : string;
+    field : field_expr;
     field_span : Span.t;
-    label : Label.t;
   }
 
   and place_expr_shape =
@@ -834,11 +839,15 @@ end = struct
   }
 
   (* PLACE EXPR *)
+  and field_expr =
+    | Index of int
+    | Name of Label.t
+    | Expr of expr
+
   and place_expr_field = {
     obj : place_expr;
-    field : string;
+    field : field_expr;
     field_span : Span.t;
-    label : Label.t;
   }
 
   and place_expr_shape =

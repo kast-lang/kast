@@ -309,58 +309,80 @@ and assign : span:span -> state -> Expr.assignee -> place -> unit =
 
 and error_place : ty -> place = fun ty -> Place.init_state Uninitialized ty
 
+and eval_field_expr : state -> Types.field_expr -> (Tuple.member, unit) result =
+ fun state field ->
+  match field with
+  | Index i -> Ok (Index i)
+  | Name name -> Ok (Name (Label.get_name name))
+  | Expr e -> (
+      match eval state e |> Value.await_inferred with
+      | V_Int32 i -> Ok (Index (Int32.to_int i))
+      | V_String s -> Ok (Name s)
+      | _ ->
+          Error.error e.data.span "field label incorrect type";
+          Error ())
+
 and eval_place : state -> Types.place_expr -> place =
  fun state expr ->
   try
     let span = expr.data.span in
     Log.trace (fun log -> log "evaluating place at %a" Span.print span);
     let result =
-      match expr.shape with
-      | PE_Error -> error_place expr.data.ty
-      | PE_Binding binding ->
-          let result =
-            Scope.find_opt binding.name state.scope
-            |> Option.unwrap_or_else (fun () : place ->
-                Log.trace (fun log ->
-                    log "all in scope: %a" Scope.print_all state.scope);
-                Error.error expr.data.span "%a not found" Symbol.print
-                  binding.name;
-                error_place expr.data.ty)
-          in
-          Log.trace (fun log ->
-              log "evaled binding %a = %a" Binding.print binding Id.print
-                result.id);
-          result
-      | PE_Temp expr ->
-          let value = eval state expr in
-          Place.init value
-      | PE_Deref ref_expr -> (
-          match eval state ref_expr |> Value.expect_ref with
-          | None ->
-              Error.error ref_expr.data.span "Expected a reference";
-              error_place expr.data.ty
-          | Some place -> place)
-      | PE_Field { obj; field; field_span = _; label = _ } -> (
-          let obj = eval_place state obj in
-          match obj |> claim ~span |> Value.await_inferred with
-          | V_Tuple { ty = _; tuple } -> (
-              match Tuple.get_named_opt field tuple with
-              | Some field -> field.place
+      with_return (fun { return } ->
+          match expr.shape with
+          | PE_Error -> error_place expr.data.ty
+          | PE_Binding binding ->
+              let result =
+                Scope.find_opt binding.name state.scope
+                |> Option.unwrap_or_else (fun () : place ->
+                    Log.trace (fun log ->
+                        log "all in scope: %a" Scope.print_all state.scope);
+                    Error.error expr.data.span "%a not found" Symbol.print
+                      binding.name;
+                    error_place expr.data.ty)
+              in
+              Log.trace (fun log ->
+                  log "evaled binding %a = %a" Binding.print binding Id.print
+                    result.id);
+              result
+          | PE_Temp expr ->
+              let value = eval state expr in
+              Place.init value
+          | PE_Deref ref_expr -> (
+              match eval state ref_expr |> Value.expect_ref with
               | None ->
-                  Error.error expr.data.span "field %S doesnt exist" field;
-                  error_place expr.data.ty)
-          | V_Target { name } -> (
-              match field with
-              | "name" -> Place.init (V_String name |> Value.inferred ~span)
-              | _ ->
-                  Error.error expr.data.span "field %S doesnt exist in target"
-                    field;
-                  error_place expr.data.ty)
-          | V_Error -> error_place expr.data.ty
-          | value ->
-              Error.error expr.data.span "%a doesnt have fields"
-                Value.Shape.print value;
-              error_place expr.data.ty)
+                  Error.error ref_expr.data.span "Expected a reference";
+                  error_place expr.data.ty
+              | Some place -> place)
+          | PE_Field { obj; field; field_span = _ } -> (
+              let obj = eval_place state obj in
+              let member : Tuple.member =
+                match eval_field_expr state field with
+                | Ok member -> member
+                | Error () -> return <| error_place expr.data.ty
+              in
+              match obj |> claim ~span |> Value.await_inferred with
+              | V_Tuple { ty = _; tuple } -> (
+                  match Tuple.get_opt member tuple with
+                  | Some field -> field.place
+                  | None ->
+                      Error.error expr.data.span "field %a doesnt exist"
+                        Tuple.Member.print member;
+                      error_place expr.data.ty)
+              | V_Target { name } -> (
+                  match member with
+                  | Name "name" ->
+                      Place.init (V_String name |> Value.inferred ~span)
+                  | _ ->
+                      Error.error expr.data.span
+                        "field %a doesnt exist in target" Tuple.Member.print
+                        member;
+                      error_place expr.data.ty)
+              | V_Error -> error_place expr.data.ty
+              | value ->
+                  Error.error expr.data.span "%a doesnt have fields"
+                    Value.Shape.print value;
+                  error_place expr.data.ty))
     in
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
     result

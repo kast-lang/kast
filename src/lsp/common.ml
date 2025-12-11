@@ -47,8 +47,12 @@ let inner_compiled_with_handler =
       | PE_Binding _ -> ()
       | PE_Deref ref -> handler.handle Expr ref
       | PE_Temp expr -> handler.handle Expr expr
-      | PE_Field { obj; field = _; field_span = _; label = _ } ->
-          handler.handle PlaceExpr obj)
+      | PE_Field { obj; field; field_span = _ } -> (
+          handler.handle PlaceExpr obj;
+          match field with
+          | Name _ -> ()
+          | Index _ -> ()
+          | Expr e -> handler.handle Expr e))
   | Expr -> (
       match compiled.shape with
       | E_Ref place -> handler.handle PlaceExpr place

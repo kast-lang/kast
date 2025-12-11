@@ -122,12 +122,17 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                     definition_mode =
                       DefinedNotHere (binding_definition binding);
                   }
-            | PE_Field { obj = _; field = _; field_span; label } ->
-                Some
-                  {
-                    span = field_span;
-                    definition_mode = DefinedNotHere (label_definition label);
-                  }
+            | PE_Field { obj = _; field; field_span } -> (
+                match field with
+                | Index _ -> None
+                | Expr _ -> None
+                | Name label ->
+                    Some
+                      {
+                        span = field_span;
+                        definition_mode =
+                          DefinedNotHere (label_definition label);
+                      })
             | _ -> None
           in
           {
