@@ -2003,6 +2003,7 @@ let and_ : core_syntax =
           children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
         in
         match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
             E_And { lhs = C.compile Expr lhs; rhs = C.compile Expr rhs }
             |> init_expr span C.state
@@ -2028,11 +2029,12 @@ let or_ : core_syntax =
           children |> Tuple.map Ast.Child.expect_ast |> Tuple.unwrap_unnamed2
         in
         match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
             E_Or { lhs = C.compile Expr lhs; rhs = C.compile Expr rhs }
             |> init_expr span C.state
         | _ ->
-            error span "and must be expr";
+            error span "or must be expr";
             init_error span C.state kind);
   }
 
