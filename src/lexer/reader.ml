@@ -11,6 +11,9 @@ type t = reader
 let init : string -> reader =
  fun contents -> { contents; position = Position.beginning }
 
+let prev : reader -> char option =
+ fun reader -> String.get reader.contents (reader.position.index - 1)
+
 let peek : reader -> char option =
  fun reader -> String.get reader.contents reader.position.index
 

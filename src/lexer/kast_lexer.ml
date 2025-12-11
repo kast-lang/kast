@@ -187,7 +187,7 @@ module DefaultRules = struct
   let read_number reader =
     let* c = Reader.peek reader in
     let* () = if Char.is_digit c then Some () else None in
-    let seen_dot = ref false in
+    let seen_dot = ref (Reader.prev reader = Some '.') in
     let raw =
       reader
       |> Reader.read_while (function
