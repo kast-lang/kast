@@ -8,62 +8,66 @@ module Inference = Kast_inference
 let tuple_ty : 'a. span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty =
  fun ~span kind { parts } ->
   let result = Ty.new_not_inferred ~span in
-  result.var
-  |> Inference.Var.once_inferred (fun shape ->
-      let field_parts_unnamed_before_packed = ref 0 in
-      let field_parts_unnamed = ref 0 in
-      let field_parts_named = ref StringSet.empty in
-      let unpacked_parts = ref [] in
-      parts
-      |> List.iter (fun part ->
-          match (part : 'a Types.tuple_part_of) with
-          | Field { label; label_span = _; field = _ } -> (
-              match label with
-              | None ->
-                  field_parts_unnamed := !field_parts_unnamed + 1;
-                  if !unpacked_parts = [] then
-                    field_parts_unnamed_before_packed :=
-                      !field_parts_unnamed_before_packed + 1
-              | Some label ->
-                  field_parts_named :=
-                    !field_parts_named |> StringSet.add (Label.get_name label))
-          | Unpack packed -> unpacked_parts := packed :: !unpacked_parts);
-      match !unpacked_parts with
-      | [ packed ] -> (
-          match shape |> Ty.Shape.expect_tuple with
-          | None -> Error.error span "expected a tuple"
-          | Some tuple ->
-              let packed_ty = ref Tuple.empty in
-              let total_unnamed =
-                tuple.tuple |> Tuple.to_seq
-                |> Seq.filter (fun (member, _) ->
-                    match (member : Tuple.member) with
-                    | Index _ -> true
-                    | Name _ -> false)
-                |> Seq.length
-              in
-              let packed_unnamed = total_unnamed - !field_parts_unnamed in
-              tuple.tuple
-              |> Tuple.iter (fun member field ->
-                  match member with
-                  | Index i ->
-                      let packed_idx = i - !field_parts_unnamed_before_packed in
-                      if 0 <= packed_idx && packed_idx < packed_unnamed then
-                        packed_ty := !packed_ty |> Tuple.add None field
-                  | Name name ->
-                      if !field_parts_named |> StringSet.contains name |> not
-                      then
-                        packed_ty := !packed_ty |> Tuple.add (Some name) field);
-              (get_data kind packed).ty
-              |> Inference.Ty.expect_inferred_as ~span
-                   (Ty.inferred ~span
-                      (T_Tuple
-                         {
-                           name = OptionalName.new_not_inferred ~span;
-                           tuple = !packed_ty;
-                         })))
-      | [] -> ()
-      | _ -> ( (* more than 1 unpack parts *) ));
+  if false then
+    result.var
+    |> Inference.Var.once_inferred (fun shape ->
+        let field_parts_unnamed_before_packed = ref 0 in
+        let field_parts_unnamed = ref 0 in
+        let field_parts_named = ref StringSet.empty in
+        let unpacked_parts = ref [] in
+        parts
+        |> List.iter (fun part ->
+            match (part : 'a Types.tuple_part_of) with
+            | Field { label; label_span = _; field = _ } -> (
+                match label with
+                | None ->
+                    field_parts_unnamed := !field_parts_unnamed + 1;
+                    if !unpacked_parts = [] then
+                      field_parts_unnamed_before_packed :=
+                        !field_parts_unnamed_before_packed + 1
+                | Some label ->
+                    field_parts_named :=
+                      !field_parts_named |> StringSet.add (Label.get_name label)
+                )
+            | Unpack packed -> unpacked_parts := packed :: !unpacked_parts);
+        match !unpacked_parts with
+        | [ packed ] -> (
+            match shape |> Ty.Shape.expect_tuple with
+            | None -> Error.error span "expected a tuple"
+            | Some tuple ->
+                let packed_ty = ref Tuple.empty in
+                let total_unnamed =
+                  tuple.tuple |> Tuple.to_seq
+                  |> Seq.filter (fun (member, _) ->
+                      match (member : Tuple.member) with
+                      | Index _ -> true
+                      | Name _ -> false)
+                  |> Seq.length
+                in
+                let packed_unnamed = total_unnamed - !field_parts_unnamed in
+                tuple.tuple
+                |> Tuple.iter (fun member field ->
+                    match member with
+                    | Index i ->
+                        let packed_idx =
+                          i - !field_parts_unnamed_before_packed
+                        in
+                        if 0 <= packed_idx && packed_idx < packed_unnamed then
+                          packed_ty := !packed_ty |> Tuple.add None field
+                    | Name name ->
+                        if !field_parts_named |> StringSet.contains name |> not
+                        then
+                          packed_ty := !packed_ty |> Tuple.add (Some name) field);
+                (get_data kind packed).ty
+                |> Inference.Ty.expect_inferred_as ~span
+                     (Ty.inferred ~span
+                        (T_Tuple
+                           {
+                             name = OptionalName.new_not_inferred ~span;
+                             tuple = !packed_ty;
+                           })))
+        | [] -> ()
+        | _ -> ( (* more than 1 unpack parts *) ));
   State.Scope.fork (fun () ->
       with_return (fun { return } ->
           let result_tuple = ref Tuple.empty in
@@ -450,13 +454,13 @@ let init_assignee :
       | A_Place place -> place.data.ty
       | A_Error -> Ty.new_not_inferred ~span
     in
-    (* ty.var
+    ty.var
     |> Inference.Var.once_inferred (fun shape ->
         println "Inferred %a = %a" Span.print span Ty.Shape.print shape);
     State.Scope.fork (fun () ->
         let shape = Ty.await_inferred ty in
         println "Inferred via await %a = %a" Span.print span Ty.Shape.print
-          shape); *)
+          shape);
     {
       shape;
       data =

@@ -1,3 +1,1 @@
-use std.prelude.*;
-print "hello";
-"world" |> print;
+let _, ..._ = 1
