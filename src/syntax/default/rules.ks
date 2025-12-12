@@ -15,11 +15,14 @@
 @syntax "rem_assign" 2 wrap never = _ " " "%=" " " _;
 @syntax "core:let" 3 wrap never = "let" " " pattern;
 @syntax "let rec" 3 wrap never = "let" " " "rec" " " pattern " " "=" " " value;
-@syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
-@syntax "core:trailing comma" 5 wrap never = <- _ ",";
 
 @syntax "core:leading union" 4.99 wrap never = "|" " " _;
 @syntax "core:union" 5 wrap if_any = <- _ " "/"\n" "|" " " _;
+
+@syntax "core:comma" 5 wrap if_any = <- _ "," " "/"\n" _;
+@syntax "core:trailing comma" 5 wrap never = <- _ ",";
+
+@syntax "core:unpack" 5.5 wrap never = "..." _;
 
 @syntax "core:field init" 6 wrap never = "." label type=(" " "::" " " _)? value=(" " "=" " " _)?;
 @syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->" " " _ " ")? "=>" " " body;

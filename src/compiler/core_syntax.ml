@@ -929,7 +929,7 @@ let dot : core_syntax =
 
 let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
     (ast : Ast.t) ({ children; _ } : Ast.group) :
-    string * field_span:span * field_label:Label.t * a =
+    string * field_span:span * field_label:Label.t option * a =
   let span = ast.span in
   let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
   let label =
@@ -971,13 +971,13 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
       | None ->
           ( label,
             ~field_span:label_ast.span,
-            ~field_label:(Label.create_reference label_ast.span label),
+            ~field_label:(Some (Label.create_reference label_ast.span label)),
             value )
       | Some (ty, ty_expr) ->
           value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
           ( label,
             ~field_span:label_ast.span,
-            ~field_label:(Label.create_reference label_ast.span label),
+            ~field_label:(Some (Label.create_reference label_ast.span label)),
             {
               value with
               data = { value.data with ty_ascription = Some ty_expr };
@@ -1001,7 +1001,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
       in
       ( label,
         ~field_span:label_ast.span,
-        ~field_label:(Label.create_definition label_ast.span label),
+        ~field_label:(Some (Label.create_definition label_ast.span label)),
         value )
   | Assignee ->
       error span "todo %s" __LOC__;
@@ -1025,13 +1025,13 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
       | None ->
           ( label,
             ~field_span:label_ast.span,
-            ~field_label:(Label.create_reference label_ast.span label),
+            ~field_label:(Some (Label.create_reference label_ast.span label)),
             value )
       | Some (ty, ty_expr) ->
           value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
           ( label,
             ~field_span:label_ast.span,
-            ~field_label:(Label.create_reference label_ast.span label),
+            ~field_label:(Some (Label.create_reference label_ast.span label)),
             {
               value with
               data = { value.data with ty_ascription = Some ty_expr };
@@ -1044,7 +1044,7 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
   | _ -> (
       let span = ast.span in
       let children = ast |> Ast.collect_list ~binary_rule_name:"core:comma" in
-      let tuple = ref Tuple.empty in
+      let parts_rev : a Types.tuple_part_of list ref = ref [] in
       let unnamed_idx = ref 0 in
       children
       |> List.iter (fun (child : Ast.t) ->
@@ -1053,39 +1053,48 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind)
               let name, ~field_span, ~field_label, value =
                 tuple_field (module C) kind child root
               in
-              tuple :=
-                !tuple
-                |> Tuple.add (Some name)
-                     ({
-                        label_span = field_span;
-                        label = field_label;
-                        field = value;
-                      }
-                       : a Types.tuple_field_of)
-          | _ ->
-              let field_label =
-                match kind with
-                | TyExpr -> Label.create_reference
-                | _ -> Label.create_definition
+              let part : a Types.tuple_part_of =
+                Field
+                  {
+                    label_span = field_span;
+                    label = field_label;
+                    field = value;
+                  }
               in
-              let label = Int.to_string !unnamed_idx in
+              parts_rev := part :: !parts_rev
+          | Complex { rule = { name = "core:unpack"; _ }; root; _ } ->
+              let packed =
+                root.children |> Tuple.unwrap_single_unnamed
+                |> Ast.Child.expect_ast
+              in
+              let part : a Types.tuple_part_of =
+                Unpack (C.compile kind packed)
+              in
+              parts_rev := part :: !parts_rev
+          | _ ->
               unnamed_idx := !unnamed_idx + 1;
-              tuple :=
-                !tuple
-                |> Tuple.add None
-                     ({
-                        label_span = child.span;
-                        label = field_label child.span label;
-                        field = C.compile kind child;
-                      }
-                       : a Types.tuple_field_of));
+              let part : a Types.tuple_part_of =
+                Field
+                  {
+                    label_span = child.span;
+                    label = None;
+                    field = C.compile kind child;
+                  }
+              in
+              parts_rev := part :: !parts_rev);
       match kind with
       | PlaceExpr -> unreachable "comma: checked earier"
-      | Assignee -> A_Tuple { tuple = !tuple } |> init_assignee span C.state
-      | Pattern -> P_Tuple { tuple = !tuple } |> init_pattern span C.state
+      | Assignee ->
+          A_Tuple { parts = !parts_rev |> List.rev }
+          |> init_assignee span C.state
+      | Pattern ->
+          P_Tuple { parts = !parts_rev |> List.rev }
+          |> init_pattern span C.state
       | TyExpr ->
-          (fun () -> TE_Tuple { tuple = !tuple }) |> init_ty_expr span C.state
-      | Expr -> E_Tuple { tuple = !tuple } |> init_expr span C.state)
+          (fun () -> TE_Tuple { parts = !parts_rev |> List.rev })
+          |> init_ty_expr span C.state
+      | Expr ->
+          E_Tuple { parts = !parts_rev |> List.rev } |> init_expr span C.state)
 
 let comma : core_syntax =
   {
@@ -1199,16 +1208,18 @@ let use_dot_star : core_syntax =
               match Value.ty_of used |> Ty.await_inferred with
               | T_Tuple { name = _; tuple } ->
                   tuple.named |> StringMap.to_list
-                  |> List.map (fun (name, field) ->
+                  |> List.filter_map (fun (name, field) ->
                       let field : Types.ty_tuple_field = field in
-                      ({
-                         id = Id.gen ();
-                         name = Symbol.create name;
-                         span = field.label |> Label.get_span;
-                         ty = field.ty;
-                         label = field.label;
-                       }
-                        : binding))
+                      field.label
+                      |> Option.map (fun label ->
+                          ({
+                             id = Id.gen ();
+                             name = Symbol.create name;
+                             span = Label.get_span label;
+                             ty = field.ty;
+                             label;
+                           }
+                            : binding)))
               | other ->
                   error span "can't use .* %a" Ty.Shape.print other;
                   []
@@ -1352,22 +1363,29 @@ let impl_syntax : core_syntax =
                       let arg =
                         P_Tuple
                           {
-                            tuple =
-                              fields
-                              |> Tuple.map
+                            parts =
+                              fields |> Tuple.to_seq
+                              |> Seq.map
                                    (fun
-                                     (field : Ast.t)
+                                     ((member : Tuple.member), (field : Ast.t))
                                      :
-                                     pattern Types.tuple_field_of
+                                     pattern Types.tuple_part_of
                                    ->
-                                     {
-                                       label_span = field.span;
-                                       label =
-                                         Label.create_definition field.span
-                                           (* TODO wrong span *)
-                                           "<TODO>";
-                                       field = C.compile ~state Pattern field;
-                                     });
+                                     let field : pattern Types.tuple_field_of =
+                                       {
+                                         label_span = field.span;
+                                         label =
+                                           (match member with
+                                           | Index _ -> None
+                                           | Name name ->
+                                               Some
+                                                 (Label.create_definition
+                                                    field.span name));
+                                         field = C.compile ~state Pattern field;
+                                       }
+                                     in
+                                     Field field)
+                              |> List.of_seq;
                           }
                         |> init_pattern name.span C.state
                       in

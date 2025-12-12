@@ -10,13 +10,11 @@ module Args = struct
     output_type : output_type;
   }
 
-  and output_type =
-    | Ir
-    | Ocaml
+  and output_type = Ir
 
   type t = args
 
-  let default_output_type = Ocaml
+  let default_output_type = Ir
 
   let rec parse : string list -> args = function
     | [] -> { path = Uri.stdin; output_type = default_output_type }
@@ -25,7 +23,6 @@ module Args = struct
         let output_type =
           match output_type with
           | "ir" -> Ir
-          | "ocaml" -> Ocaml
           | _ -> fail "Unknown output type %S" output_type
         in
         { (parse rest) with output_type }
@@ -42,7 +39,4 @@ let run : Args.t -> unit =
       let compiler = Compiler.default (Uri source.uri) () in
       let expr : expr = Compiler.compile compiler Expr ast in
       match output_type with
-      | Ir -> println "%a" Expr.print_with_types expr
-      | Ocaml ->
-          let ocaml_ast = Kast_transpiler_ocaml.Full.transpile_expr expr in
-          println "%a" Kast_transpiler_ocaml.OcamlAst.print ocaml_ast)
+      | Ir -> println "%a" Expr.print_with_types expr)

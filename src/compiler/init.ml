@@ -5,6 +5,107 @@ open Kast_types
 open Error
 module Inference = Kast_inference
 
+let tuple_ty : 'a. span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty =
+ fun ~span kind { parts } ->
+  let result = Ty.new_not_inferred ~span in
+  result.var
+  |> Inference.Var.once_inferred (fun shape ->
+      let field_parts_unnamed_before_packed = ref 0 in
+      let field_parts_unnamed = ref 0 in
+      let field_parts_named = ref StringSet.empty in
+      let unpacked_parts = ref [] in
+      parts
+      |> List.iter (fun part ->
+          match (part : 'a Types.tuple_part_of) with
+          | Field { label; label_span = _; field = _ } -> (
+              match label with
+              | None ->
+                  field_parts_unnamed := !field_parts_unnamed + 1;
+                  if !unpacked_parts = [] then
+                    field_parts_unnamed_before_packed :=
+                      !field_parts_unnamed_before_packed + 1
+              | Some label ->
+                  field_parts_named :=
+                    !field_parts_named |> StringSet.add (Label.get_name label))
+          | Unpack packed -> unpacked_parts := packed :: !unpacked_parts);
+      match !unpacked_parts with
+      | [ packed ] -> (
+          match shape |> Ty.Shape.expect_tuple with
+          | None -> Error.error span "expected a tuple"
+          | Some tuple ->
+              let packed_ty = ref Tuple.empty in
+              let total_unnamed =
+                tuple.tuple |> Tuple.to_seq
+                |> Seq.filter (fun (member, _) ->
+                    match (member : Tuple.member) with
+                    | Index _ -> true
+                    | Name _ -> false)
+                |> Seq.length
+              in
+              let packed_unnamed = total_unnamed - !field_parts_unnamed in
+              tuple.tuple
+              |> Tuple.iter (fun member field ->
+                  match member with
+                  | Index i ->
+                      let packed_idx = i - !field_parts_unnamed_before_packed in
+                      if 0 <= packed_idx && packed_idx < packed_unnamed then
+                        packed_ty := !packed_ty |> Tuple.add None field
+                  | Name name ->
+                      if !field_parts_named |> StringSet.contains name |> not
+                      then
+                        packed_ty := !packed_ty |> Tuple.add (Some name) field);
+              (get_data kind packed).ty
+              |> Inference.Ty.expect_inferred_as ~span
+                   (Ty.inferred ~span
+                      (T_Tuple
+                         {
+                           name = OptionalName.new_not_inferred ~span;
+                           tuple = !packed_ty;
+                         })))
+      | [] -> ()
+      | _ -> ( (* more than 1 unpack parts *) ));
+  State.Scope.fork (fun () ->
+      with_return (fun { return } ->
+          let result_tuple = ref Tuple.empty in
+          parts
+          |> List.iter (fun (part : 'a Types.tuple_part_of) ->
+              match part with
+              | Field { label; label_span = _; field = (field_expr : 'a) } ->
+                  let name = label |> Option.map Label.get_name in
+                  let ty_field : Types.ty_tuple_field =
+                    { ty = (get_data kind field_expr).ty; label }
+                  in
+                  result_tuple := !result_tuple |> Tuple.add name ty_field
+              | Unpack packed -> (
+                  match
+                    (get_data kind packed).ty |> Ty.await_inferred
+                    |> Ty.Shape.expect_tuple
+                  with
+                  | Some { name = _; tuple } ->
+                      tuple
+                      |> Tuple.iter (fun member ty_field ->
+                          let name =
+                            match member with
+                            | Index _ -> None
+                            | Name name -> Some name
+                          in
+                          result_tuple :=
+                            !result_tuple |> Tuple.add name ty_field)
+                  | None ->
+                      Error.error (get_data kind packed).span
+                        "packed must be tuple";
+                      return ()));
+          let inferred =
+            Ty.inferred ~span
+            <| T_Tuple
+                 {
+                   name = OptionalName.new_not_inferred ~span;
+                   tuple = !result_tuple;
+                 }
+          in
+          result |> Inference.Ty.expect_inferred_as ~span inferred));
+  result
+
 let rec _unused () = ()
 
 and expr_placeholder : span -> State.t -> expr =
@@ -57,10 +158,12 @@ and init_place_expr :
                     | T_Tuple { name = _; tuple } -> (
                         match Tuple.get_opt member tuple with
                         | Some ty_field ->
-                            (match label with
-                            | Some label ->
-                                ignore <| Label.unite label ty_field.label
-                            | None -> ());
+                            (let _ : Label.t option =
+                               Inference_impl.unite_option ~span
+                                 (fun ~span:_ -> Label.unite)
+                                 label ty_field.label
+                             in
+                             ());
                             ty_field.ty
                         | None ->
                             error span "field %a is not there"
@@ -189,23 +292,7 @@ and init_expr :
               in
               ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
           ty
-      | E_Tuple { tuple } ->
-          Ty.inferred ~span
-          <| T_Tuple
-               {
-                 name = OptionalName.new_not_inferred ~span;
-                 tuple =
-                   tuple
-                   |> Tuple.map
-                        (fun
-                          ({ label_span = _; label; field = field_expr } :
-                            expr Types.tuple_field_of)
-                          :
-                          Types.ty_tuple_field
-                        ->
-                          let field_expr : expr = field_expr in
-                          { ty = field_expr.data.ty; label });
-               }
+      | E_Tuple tuple -> tuple_ty ~span Expr tuple
       | E_Variant { label; label_span = _; value } ->
           Ty.inferred ~span
           <| T_Variant
@@ -258,7 +345,7 @@ and init_expr :
                      (state.scope.bindings |> StringMap.to_list
                      |> List.map (fun (name, (binding : binding)) ->
                          ( name,
-                           ({ ty = binding.ty; label = binding.label }
+                           ({ ty = binding.ty; label = Some binding.label }
                              : Types.ty_tuple_field) )));
                })
       | E_UseDotStar { used = _; bindings = _ } -> Ty.inferred ~span T_Unit
@@ -358,27 +445,18 @@ let init_assignee :
       match shape with
       | A_Placeholder -> Ty.new_not_inferred ~span
       | A_Unit -> Ty.inferred ~span T_Unit
-      | A_Tuple { tuple } ->
-          Ty.inferred ~span
-          <| T_Tuple
-               {
-                 name = OptionalName.new_not_inferred ~span;
-                 tuple =
-                   tuple
-                   |> Tuple.map
-                        (fun
-                          ({ label_span = _; label; field = field_expr } :
-                            Expr.assignee Types.tuple_field_of)
-                          :
-                          Types.ty_tuple_field
-                        ->
-                          let field_expr : Expr.assignee = field_expr in
-                          { ty = field_expr.data.ty; label });
-               }
+      | A_Tuple tuple -> tuple_ty ~span Assignee tuple
       | A_Let pattern -> pattern.data.ty
       | A_Place place -> place.data.ty
       | A_Error -> Ty.new_not_inferred ~span
     in
+    (* ty.var
+    |> Inference.Var.once_inferred (fun shape ->
+        println "Inferred %a = %a" Span.print span Ty.Shape.print shape);
+    State.Scope.fork (fun () ->
+        let shape = Ty.await_inferred ty in
+        println "Inferred via await %a = %a" Span.print span Ty.Shape.print
+          shape); *)
     {
       shape;
       data =
@@ -406,23 +484,7 @@ let init_pattern :
       | P_Unit -> Ty.inferred ~span T_Unit
       | P_Ref inner -> Ty.inferred ~span <| T_Ref inner.data.ty
       | P_Binding binding -> binding.ty
-      | P_Tuple { tuple } ->
-          Ty.inferred ~span
-            (T_Tuple
-               {
-                 name = OptionalName.new_not_inferred ~span;
-                 tuple =
-                   tuple
-                   |> Tuple.map
-                        (fun
-                          ({ label_span = _; label; field = field_pattern } :
-                            pattern Types.tuple_field_of)
-                          :
-                          Types.ty_tuple_field
-                        ->
-                          let field_pattern : pattern = field_pattern in
-                          { ty = field_pattern.data.ty; label });
-               })
+      | P_Tuple tuple -> tuple_ty ~span Pattern tuple
       | P_Variant { label; label_span = _; value } ->
           Ty.inferred ~span
           <| T_Variant
@@ -502,7 +564,7 @@ let init_ty_expr :
         | TE_Expr expr ->
             expr.data.ty
             |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty
-        | TE_Tuple { tuple = _ } -> ()
+        | TE_Tuple _ -> ()
         | TE_Union { elements = _ } -> ()
         | TE_Variant { variants = _ } -> ()
         | TE_Error -> ());

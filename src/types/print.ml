@@ -194,9 +194,7 @@ module Impl = struct
     fprintf fmt "%s" name
 
   and print_expr_shape : options:options -> formatter -> expr_shape -> unit =
-   fun ~options fmt ->
-    let print_expr = print_expr ~options in
-    function
+   fun ~options fmt -> function
     | E_Ref place ->
         fprintf fmt "@{<magenta>ref@} (@;<0 2>@[<v>place = %a,@]@ )"
           (print_place_expr ~options)
@@ -207,43 +205,45 @@ module Impl = struct
           place
     | E_Constant value -> fprintf fmt "@{<magenta>const@} %a" print_value value
     | E_Then { list } ->
-        fprintf fmt "@{<magenta>then@} %a" (Tuple.print print_expr)
+        fprintf fmt "@{<magenta>then@} %a"
+          (Tuple.print (print_expr ~options))
           (Tuple.make list [])
     | E_Stmt { expr } ->
-        fprintf fmt "@{<magenta>stmt@} %a" (Tuple.print print_expr)
+        fprintf fmt "@{<magenta>stmt@} %a"
+          (Tuple.print (print_expr ~options))
           (Tuple.make [ expr ] [])
     | E_Scope { expr } ->
-        fprintf fmt "@{<magenta>scope@} %a" (Tuple.print print_expr)
+        fprintf fmt "@{<magenta>scope@} %a"
+          (Tuple.print (print_expr ~options))
           (Tuple.make [ expr ] [])
     | E_Fn { def = { compiled; on_compiled = _ }; _ } -> (
         match compiled with
         | Some { arg; body; evaled_result = _ } ->
             fprintf fmt
               "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-              (print_pattern ~options) arg print_expr body
+              (print_pattern ~options) arg (print_expr ~options) body
         | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
     | E_Generic { def = { compiled; on_compiled = _ }; _ } -> (
         match compiled with
         | Some { arg; body; evaled_result = _ } ->
             fprintf fmt
               "@{<magenta>generic@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-              (print_pattern ~options) arg print_expr body
+              (print_pattern ~options) arg (print_expr ~options) body
         | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
-    | E_Tuple { tuple } ->
-        fprintf fmt "tuple %a"
-          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
-               print_expr fmt field))
-          tuple
+    | E_Tuple tuple -> print_ir_tuple '=' (print_expr ~options) fmt tuple
     | E_Variant { label; label_span = _; value } ->
         fprintf fmt
           "@{<magenta>variant@} (@;<0 2>@[<v>label = %a,@]@;<0 2>@[<v>value = %a@]@ )"
-          Label.print label (Option.print print_expr) value
+          Label.print label
+          (Option.print (print_expr ~options))
+          value
     | E_Apply { f; arg } ->
-        fprintf fmt "@{<magenta>apply@} %a" (Tuple.print print_expr)
+        fprintf fmt "@{<magenta>apply@} %a"
+          (Tuple.print (print_expr ~options))
           (Tuple.make [] [ ("f", f); ("arg", arg) ])
     | E_InstantiateGeneric { generic; arg } ->
         fprintf fmt "@{<magenta>instantiate_generic@} %a"
-          (Tuple.print print_expr)
+          (Tuple.print (print_expr ~options))
           (Tuple.make [] [ ("generic", generic); ("arg", arg) ])
     | E_Assign { assignee; value } ->
         fprintf fmt
@@ -256,12 +256,14 @@ module Impl = struct
         fprintf fmt "@{<magenta>type@} %a" (print_ty_expr ~options) expr
     | E_Native { id = _; expr } ->
         fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
-    | E_Module { def } -> fprintf fmt "@{<magenta>module@} %a" print_expr def
+    | E_Module { def } ->
+        fprintf fmt "@{<magenta>module@} %a" (print_expr ~options) def
     | E_UseDotStar { used; bindings = _ } ->
         fprintf fmt "@{<magenta>use .*@} (@;<0 2>@[<v>used = %a,@]@ )"
-          print_expr used
+          (print_expr ~options) used
     | E_If { cond; then_case; else_case } ->
-        fprintf fmt "@{<magenta>if@} %a" (Tuple.print print_expr)
+        fprintf fmt "@{<magenta>if@} %a"
+          (Tuple.print (print_expr ~options))
           (Tuple.make []
              [
                ("cond", cond); ("then_case", then_case); ("else_case", else_case);
@@ -269,11 +271,11 @@ module Impl = struct
     | E_And { lhs; rhs } ->
         fprintf fmt
           "@{<magenta>and@} (@;<0 2>@[<v>lhs = %a,@]@;<0 2>@[<v>rhs = %a@]@ )"
-          print_expr lhs print_expr rhs
+          (print_expr ~options) lhs (print_expr ~options) rhs
     | E_Or { lhs; rhs } ->
         fprintf fmt
           "@{<magenta>or@} (@;<0 2>@[<v>lhs = %a,@]@;<0 2>@[<v>rhs = %a@]@ )"
-          print_expr lhs print_expr rhs
+          (print_expr ~options) lhs (print_expr ~options) rhs
     | E_Match { value; branches } ->
         fprintf fmt
           "@{<magenta>match@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>branches = %a@]@ )"
@@ -283,21 +285,21 @@ module Impl = struct
           branches
     | E_Error -> fprintf fmt "@{<red><error>@}"
     | E_Loop { body } ->
-        fprintf fmt "@{<magenta>loop@} (@;<0 2>@[<v>body = %a,@]@ )" print_expr
-          body
+        fprintf fmt "@{<magenta>loop@} (@;<0 2>@[<v>body = %a,@]@ )"
+          (print_expr ~options) body
     | E_QuoteAst _ -> fprintf fmt "@{<magenta>quote_ast ...@}"
     | E_Unwindable { token; body } ->
         fprintf fmt
           "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-          (print_pattern ~options) token print_expr body
+          (print_pattern ~options) token (print_expr ~options) body
     | E_Unwind { token; value } ->
         fprintf fmt
           "@{<magenta>unwindable@} (@;<0 2>@[<v>token = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-          print_expr token print_expr value
+          (print_expr ~options) token (print_expr ~options) value
     | E_InjectContext { context_ty; value } ->
         fprintf fmt
           "@{<magenta>inject_context@} (@;<0 2>@[<v>context_type = %a,@]@;<0 2>@[<v>value = %a@]@ )"
-          print_context_type context_ty print_expr value
+          print_context_type context_ty (print_expr ~options) value
     | E_CurrentContext { context_ty } ->
         fprintf fmt
           "@{<magenta>current_context@} (@;<0 2>@[<v>context_type = %a,@]@ )"
@@ -305,11 +307,12 @@ module Impl = struct
     | E_ImplCast { value; target; impl } ->
         fprintf fmt
           "@{<magenta>cast@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>target = %a@]@;<0 2>@[<v>impl = %a@]@ )"
-          print_expr value print_value target print_expr impl
+          (print_expr ~options) value print_value target (print_expr ~options)
+          impl
     | E_Cast { value; target } ->
         fprintf fmt
           "@{<magenta>cast@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>target = %a@]@ )"
-          print_expr value print_value target
+          (print_expr ~options) value print_value target
     | E_TargetDependent { branches; interpreter_branch = _ } ->
         fprintf fmt "@{<magenta>target dependent@} (";
         branches
@@ -318,6 +321,32 @@ module Impl = struct
               (print_target_dependent_branch ~options)
               branch);
         fprintf fmt " )"
+
+  and print_ir_tuple :
+      'a. char -> (formatter -> 'a -> unit) -> formatter -> 'a tuple_of -> unit
+      =
+   fun eq print_a fmt { parts } ->
+    fprintf fmt "tuple %a" (List.print (print_ir_tuple_part eq print_a)) parts
+
+  and print_ir_tuple_part :
+      'a.
+      char -> (formatter -> 'a -> unit) -> formatter -> 'a tuple_part_of -> unit
+      =
+   fun eq print_a fmt -> function
+    | Field field -> print_ir_tuple_field eq print_a fmt field
+    | Unpack a -> fprintf fmt "...%a" print_a a
+
+  and print_ir_tuple_field :
+      'a.
+      char ->
+      (formatter -> 'a -> unit) ->
+      formatter ->
+      'a tuple_field_of ->
+      unit =
+   fun eq print_a fmt { label; label_span = _; field } ->
+    match label with
+    | Some label -> fprintf fmt "%a %c %a" Label.print label eq print_a field
+    | None -> print_a fmt field
 
   and print_expr_match_branch :
       options:options -> formatter -> expr_match_branch -> unit =
@@ -382,11 +411,8 @@ module Impl = struct
         fprintf fmt "@{<magenta>place@} (@;<0 2>place = %a@ )"
           (print_place_expr ~options)
           place
-    | A_Tuple { tuple } ->
-        fprintf fmt "@{<magenta>tuple@} %a"
-          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
-               (print_assignee_expr ~options) fmt field))
-          tuple
+    | A_Tuple tuple ->
+        print_ir_tuple '=' (print_assignee_expr ~options) fmt tuple
     | A_Let pattern ->
         fprintf fmt "@{<magenta>let@} (@;<0 2>pattern = %a@ )"
           (print_pattern ~options) pattern
@@ -414,11 +440,7 @@ module Impl = struct
           (Tuple.make [] [ ("arg", arg); ("result", result) ])
     | TE_Expr expr ->
         fprintf fmt "@{<magenta>expr@} %a" (print_expr ~options) expr
-    | TE_Tuple { tuple } ->
-        fprintf fmt "@{<magenta>tuple@} %a"
-          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
-               (print_ty_expr ~options) fmt field))
-          tuple
+    | TE_Tuple tuple -> print_ir_tuple '=' (print_ty_expr ~options) fmt tuple
     | TE_Union { elements } ->
         fprintf fmt "@{<magenta>union@} %a"
           (Tuple.print (print_ty_expr ~options))
@@ -442,31 +464,6 @@ module Impl = struct
     print_data ~options fmt data
 
   (* PATTERN *)
-
-  and print_pattern_shape2 :
-      options:options -> formatter -> pattern_shape -> unit =
-   fun ~options fmt -> function
-    | P_Placeholder -> fprintf fmt "@{<magenta>_@}"
-    | P_Unit -> fprintf fmt "()"
-    | P_Ref inner ->
-        fprintf fmt "@{<magenta>ref@} %a"
-          (Tuple.print (print_pattern ~options))
-          (Tuple.make [ inner ] [])
-    | P_Binding binding ->
-        fprintf fmt "@{<magenta>binding@} %a" print_binding binding
-    | P_Tuple { tuple } ->
-        fprintf fmt "@{<magenta>tuple@} %a"
-          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
-               print_pattern ~options fmt field))
-          tuple
-    | P_Variant { label; label_span = _; value } ->
-        fprintf fmt
-          "@{<magenta>variant@} (@;<0 2>@[<v>label = %a,@]@;<0 2>@[<v>value = %a,@]@ )"
-          Label.print label
-          (Option.print (print_pattern ~options))
-          value
-    | P_Error -> fprintf fmt "@{<red><error>@}"
-
   and print_pattern_shape :
       options:options -> formatter -> pattern_shape -> unit =
    fun ~options fmt -> function
@@ -477,11 +474,7 @@ module Impl = struct
           (Tuple.print (print_pattern ~options))
           (Tuple.make [ inner ] [])
     | P_Binding binding -> print_binding fmt binding
-    | P_Tuple { tuple } ->
-        fprintf fmt "%a"
-          (Tuple.print (fun fmt { label_span = _; label = _; field } ->
-               print_pattern ~options fmt field))
-          tuple
+    | P_Tuple tuple -> print_ir_tuple '=' (print_pattern ~options) fmt tuple
     | P_Variant { label; label_span = _; value } ->
         fprintf fmt ":%a %a" Label.print label
           (Option.print (print_pattern ~options))

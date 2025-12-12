@@ -37,6 +37,15 @@ let uri_from_lsp (uri : Lsp.Uri0.t) : Uri.t =
 
 type inner_compiled_handler = { handle : 'a. 'a compiled_kind -> 'a -> unit }
 
+let inner_tuple_compiled_with_handler =
+ fun (type a) (kind : a compiled_kind) (tuple : a Types.tuple_of)
+     (handler : inner_compiled_handler) : unit ->
+  tuple.parts
+  |> List.iter (fun (part : a Types.tuple_part_of) ->
+      match part with
+      | Field { label = _; label_span = _; field } -> handler.handle kind field
+      | Unpack packed -> handler.handle kind packed)
+
 let inner_compiled_with_handler =
  fun (type a) (kind : a compiled_kind) (compiled : a)
      (handler : inner_compiled_handler) : unit ->
@@ -70,14 +79,7 @@ let inner_compiled_with_handler =
               match evaled_result with
               | Some expr -> handler.handle TyExpr expr
               | None -> ()))
-      | E_Tuple { tuple } ->
-          tuple |> Tuple.to_seq
-          |> Seq.iter
-               (fun
-                 ( _member,
-                   ({ label_span = _; label = _; field = field_expr } :
-                     expr Types.tuple_field_of) )
-               -> handler.handle Expr field_expr)
+      | E_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler
       | E_Variant { label = _; label_span = _; value } ->
           value |> Option.iter (handler.handle Expr)
       | E_Apply { f; arg } ->
@@ -145,14 +147,7 @@ let inner_compiled_with_handler =
       | A_Placeholder -> ()
       | A_Unit -> ()
       | A_Place place -> handler.handle PlaceExpr place
-      | A_Tuple { tuple } ->
-          tuple |> Tuple.to_seq
-          |> Seq.iter
-               (fun
-                 ( _member,
-                   ({ label_span = _; label = _; field = field_assignee } :
-                     Expr.assignee Types.tuple_field_of) )
-               -> handler.handle Assignee field_assignee)
+      | A_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler
       | A_Let pattern -> handler.handle Pattern pattern
       | A_Error -> ())
   | Pattern -> (
@@ -161,14 +156,7 @@ let inner_compiled_with_handler =
       | P_Unit -> ()
       | P_Ref inner -> handler.handle Pattern inner
       | P_Binding _ -> ()
-      | P_Tuple { tuple } ->
-          tuple |> Tuple.to_seq
-          |> Seq.iter
-               (fun
-                 ( _member,
-                   ({ label_span = _; label = _; field = field_pattern } :
-                     pattern Types.tuple_field_of) )
-               -> handler.handle Pattern field_pattern)
+      | P_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler
       | P_Variant { label = _; label_span = _; value } ->
           value |> Option.iter (handler.handle Pattern)
       | P_Error -> ())
@@ -183,14 +171,8 @@ let inner_compiled_with_handler =
               handler.handle TyExpr arg;
               handler.handle TyExpr result
           | TE_Expr expr -> handler.handle Expr expr
-          | TE_Tuple { tuple } ->
-              tuple |> Tuple.to_seq
-              |> Seq.iter
-                   (fun
-                     ( _member,
-                       ({ label_span = _; label = _; field = field_expr } :
-                         Expr.ty Types.tuple_field_of) )
-                   -> handler.handle TyExpr field_expr)
+          | TE_Tuple tuple ->
+              inner_tuple_compiled_with_handler kind tuple handler
           | TE_Union { elements } ->
               elements |> List.iter (handler.handle TyExpr)
           | TE_Variant { variants } ->

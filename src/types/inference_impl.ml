@@ -81,7 +81,10 @@ and unite_ty_tuple : ty_tuple Inference.unite =
 and unite_ty_tuple_field =
  fun ~span (a : Types.ty_tuple_field) (b : Types.ty_tuple_field) :
      Types.ty_tuple_field ->
-  { ty = unite_ty ~span a.ty b.ty; label = Label.unite a.label b.label }
+  {
+    ty = unite_ty ~span a.ty b.ty;
+    label = unite_option (fun ~span:_ -> Label.unite) ~span a.label b.label;
+  }
 
 and unite_ty_variant_data =
  fun ~span ({ data = a } : Types.ty_variant_data)

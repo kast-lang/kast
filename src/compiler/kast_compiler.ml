@@ -28,7 +28,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
                name;
                ty = local.place.ty;
                span = Span.fake "<interpreter>";
-               label = local.ty_field.label;
+               label = local.ty_field.label |> Option.get;
              })
       compile_for.scope.locals.by_symbol scope
   in
@@ -138,19 +138,25 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 let args =
                   root.children
                   |> Tuple.map Ast.Child.expect_ast
-                  |> Tuple.map (fun (ast : Ast.t) : Types.value_tuple_field ->
-                      {
-                        place =
-                          Place.init (V_Ast ast |> Value.inferred ~span:ast.span);
-                        ty_field =
-                          {
-                            ty = Ty.inferred ~span:ast.span T_Ast;
-                            label = Label.create_definition ast.span "<TODO>";
-                          };
-                        span =
-                          ast.span
-                          (* TODO not sure if this is correct span, but there is no span? *);
-                      })
+                  |> Tuple.mapi
+                       (fun member (ast : Ast.t) : Types.value_tuple_field ->
+                         {
+                           place =
+                             Place.init
+                               (V_Ast ast |> Value.inferred ~span:ast.span);
+                           ty_field =
+                             {
+                               ty = Ty.inferred ~span:ast.span T_Ast;
+                               label =
+                                 (match member with
+                                 | Index _ -> None
+                                 | Name name ->
+                                     Some (Label.create_reference ast.span name));
+                             };
+                           span =
+                             ast.span
+                             (* TODO not sure if this is correct span, but there is no span? *);
+                         })
                 in
                 let arg : value =
                   V_Tuple
@@ -240,7 +246,7 @@ let default name_part ?(import_cache : import_cache option) () : state =
           SymbolMap.singleton std_symbol
             ({
                place = Place.init std;
-               ty_field = { ty = Value.ty_of std; label = std_label };
+               ty_field = { ty = Value.ty_of std; label = Some std_label };
              }
               : Types.interpreter_local);
       }

@@ -9,6 +9,15 @@ type _ compiled_kind =
   | TyExpr : Expr.ty compiled_kind
   | Pattern : pattern compiled_kind
 
+let get_data : 'a. 'a compiled_kind -> 'a -> ir_data =
+ fun (type a) (kind : a compiled_kind) (compiled : a) : ir_data ->
+  match kind with
+  | Expr -> compiled.data
+  | Assignee -> compiled.data
+  | TyExpr -> compiled.data
+  | Pattern -> compiled.data
+  | PlaceExpr -> compiled.data
+
 module CompilerEffect = struct
   type 'a file_included = {
     root : Uri.t;

@@ -31,6 +31,7 @@ let claim ~span (place : place) : value =
       Error.error span "place has been moved out of";
       V_Error |> Value.inferred ~span
 
+(* TODO do in two steps - can_match and perform_match *)
 let rec pattern_match :
     span:span -> place -> pattern -> (matched:bool * Scope.locals) =
  fun ~span place pattern ->
@@ -52,45 +53,78 @@ let rec pattern_match :
             SymbolMap.singleton binding.name
               ({
                  place = Place.init <| claim ~span place;
-                 ty_field = { ty = place.ty; label = binding.label };
+                 ty_field = { ty = place.ty; label = Some binding.label };
                }
                 : Types.interpreter_local);
         } )
-  | P_Tuple { tuple = tuple_pattern } -> (
+  | P_Tuple { parts } -> (
       match place |> claim ~span |> Value.await_inferred with
       | V_Tuple { ty = _; tuple } ->
-          with_return (fun { return } : (matched:bool * Scope.locals) ->
-              let ~matched, matches =
-                (try Tuple.zip_order_a tuple_pattern tuple
-                 with Invalid_argument _ ->
-                   Error.error pattern.data.span
-                     "Tuple has different set of fields";
-                   return (~matched:false, Scope.Locals.empty))
-                |> Tuple.to_seq
-                |> Seq.fold_left
-                     (fun (~matched, acc)
-                          (_member, (field_pattern, field_value)) ->
-                       let { label_span = _; label = _; field = field_pattern }
-                           : pattern Types.tuple_field_of =
-                         field_pattern
-                       in
-                       let field_value : Types.value_tuple_field =
-                         field_value
-                       in
-                       let ~matched:field_matched, field_matches =
-                         pattern_match ~span field_value.place field_pattern
-                       in
-                       ( ~matched:(matched && field_matched),
-                         SymbolMap.union
-                           (fun symbol _a b ->
-                             Error.error pattern.data.span
-                               "multiple bindings of same symbol %a"
-                               Symbol.print symbol;
-                             Some b)
-                           acc field_matches.by_symbol ))
-                     (~matched:true, SymbolMap.empty)
-              in
-              (~matched, { by_symbol = matches }))
+          let matched = ref true in
+          let matches = ref Scope.Locals.empty in
+          let update_matches =
+           fun (~matched:new_matched, (new_matches : Scope.Locals.t)) ->
+            if not new_matched then matched := false;
+            matches :=
+              {
+                by_symbol =
+                  SymbolMap.union
+                    (fun symbol a _b ->
+                      Error.error span "%a is matched multiple times in pattern"
+                        Symbol.print symbol;
+                      Some a)
+                    !matches.by_symbol new_matches.by_symbol;
+              }
+          in
+          let next_indexed_field = ref 0 in
+          parts
+          |> List.iter (fun (part : _ Types.tuple_part_of) ->
+              match part with
+              | Field { label; label_span = _; field = field_pattern } -> (
+                  let member : Tuple.member =
+                    match label with
+                    | None ->
+                        let idx = !next_indexed_field in
+                        next_indexed_field := idx + 1;
+                        Index idx
+                    | Some label -> Name (Label.get_name label)
+                  in
+                  match Tuple.get_opt member tuple with
+                  | Some field ->
+                      pattern_match ~span field.place field_pattern
+                      |> update_matches
+                  | None ->
+                      Error.error span "No field %a" Tuple.Member.print member)
+              | Unpack packed_pattern -> (
+                  match
+                    packed_pattern.data.ty |> Ty.await_inferred
+                    |> Ty.Shape.expect_tuple
+                  with
+                  | Some ty_tuple ->
+                      let tuple =
+                        ty_tuple.tuple
+                        |> Tuple.mapi
+                             (fun member (field : Types.ty_tuple_field) ->
+                               let member : Tuple.member =
+                                 match member with
+                                 | Index _ ->
+                                     let idx = !next_indexed_field in
+                                     next_indexed_field := idx + 1;
+                                     Index idx
+                                 | Name name -> Name name
+                               in
+                               tuple |> Tuple.get member)
+                      in
+                      let placed =
+                        Place.init
+                          (V_Tuple { tuple; ty = ty_tuple }
+                          |> Value.inferred ~span)
+                      in
+                      pattern_match ~span placed packed_pattern
+                      |> update_matches
+                  | None -> Error.error span "packed pattern type is not tuple?"
+                  ));
+          (~matched:!matched, !matches)
       | value ->
           Error.error pattern.data.span "Expected tuple, got %a"
             Value.Shape.print value;
@@ -286,19 +320,27 @@ and assign : span:span -> state -> Expr.assignee -> place -> unit =
       let assignee_place : place = eval_place state assignee_place_expr in
       let value = claim ~span place in
       assignee_place.state <- Occupied value
-  | A_Tuple { tuple = assignee_tuple } -> (
+  | A_Tuple { parts } -> (
       match place |> claim ~span |> Value.await_inferred with
       | V_Tuple { ty = _; tuple } ->
-          Tuple.zip_order_a assignee_tuple tuple
-          |> Tuple.to_seq
-          |> Seq.iter
-               (fun
-                 ( _member,
-                   ( (assignee : Types.assignee_expr Types.tuple_field_of),
-                     (field : Types.value_tuple_field) ) )
-               ->
-                 let assignee = assignee.field in
-                 assign ~span state assignee field.place)
+          let next_indexed_field = ref 0 in
+          parts
+          |> List.iter (fun (part : _ Types.tuple_part_of) ->
+              match part with
+              | Field { label; label_span = _; field = assignee_field } -> (
+                  let member : Tuple.member =
+                    match label with
+                    | None ->
+                        let idx = !next_indexed_field in
+                        next_indexed_field := idx + 1;
+                        Index idx
+                    | Some label -> Name (Label.get_name label)
+                  in
+                  match Tuple.get_opt member tuple with
+                  | Some field -> assign ~span state assignee_field field.place
+                  | None ->
+                      Error.error span "no field %a" Tuple.Member.print member)
+              | Unpack _ -> Error.error span "TODO unpack assignee")
       | _ -> Error.error span "Expected tuple")
   | A_Let pattern ->
       let ~matched, new_bindings = pattern_match ~span place pattern in
@@ -439,29 +481,61 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   |> Value.inferred ~span
 
 and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
- fun state expr { tuple } ->
+ fun state expr { parts } ->
   let span = expr.data.span in
   (*  TODO dont panic - get rid of Option.get *)
   let ty =
-    expr.data.ty.var |> Kast_inference_base.Var.inferred_opt |> Option.get
-    |> Ty.Shape.expect_tuple |> Option.get
+    expr.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.get
   in
+  let result = ref Tuple.empty in
+  parts
+  |> List.iter (fun (part : _ Types.tuple_part_of) ->
+      match part with
+      | Field { label; label_span; field = field_expr } ->
+          let name = label |> Option.map Label.get_name in
+          let member : Tuple.member =
+            match name with
+            | None -> Index (!result.unnamed |> Array.length)
+            | Some name -> Name name
+          in
+          let field_value = eval state field_expr in
+          let field : Types.value_tuple_field =
+            {
+              place = Place.init field_value;
+              span = label_span;
+              ty_field =
+                (match ty.tuple |> Tuple.get_opt member with
+                | Some ty_field -> ty_field
+                | None -> { label; ty = Value.ty_of field_value });
+            }
+          in
+          result := !result |> Tuple.add name field
+      | Unpack packed -> (
+          let packed = eval state packed in
+          match packed |> Value.expect_tuple with
+          | Some { tuple; ty = _ } ->
+              tuple
+              |> Tuple.iter (fun member (field : Types.value_tuple_field) ->
+                  let name =
+                    match member with
+                    | Index _ -> None
+                    | Name name -> Some name
+                  in
+                  let field_value = field.place |> claim ~span in
+                  let field : Types.value_tuple_field =
+                    {
+                      place = Place.init field_value;
+                      span = field.span;
+                      ty_field = field.ty_field;
+                    }
+                  in
+                  result := !result |> Tuple.add name field)
+          | None -> Error.error span "packed was not tuple"));
   V_Tuple
     {
       ty;
-      tuple =
-        tuple
-        |> Tuple.mapi
-             (fun
-               member
-               ({ label_span; label = _; field = field_expr } :
-                 expr Types.tuple_field_of)
-               :
-               Types.value_tuple_field
-             ->
-               let value = field_expr |> eval state in
-               let ty_field = ty.tuple |> Tuple.get member in
-               { place = Place.init value; span = label_span; ty_field });
+      tuple = !result;
+      (*        { place = Place.init value; span = label_span; ty_field }); *)
     }
   |> Value.inferred ~span
 
@@ -551,7 +625,7 @@ and eval_expr_module : state -> expr -> Types.expr_module -> value =
         ( Some symbol.name,
           ({
              place = local.place;
-             span = local.ty_field.label |> Label.get_span;
+             span = local.ty_field.label |> Option.get |> Label.get_span;
              ty_field = local.ty_field;
            }
             : Types.value_tuple_field) ))
@@ -916,23 +990,19 @@ and eval_ty : state -> Expr.ty -> ty =
                   Error.error expr.data.span "Expected a type, got %a" Ty.print
                     (Value.ty_of value);
                   Ty.inferred ~span T_Error)
-          | TE_Tuple { tuple } ->
+          | TE_Tuple { parts } ->
+              let tuple = ref Tuple.empty in
+              parts
+              |> List.iter (fun (part : _ Types.tuple_part_of) ->
+                  match part with
+                  | Field { label; label_span = _; field = field_expr } ->
+                      let name = label |> Option.map Label.get_name in
+                      let ty = field_expr |> eval_ty state in
+                      let ty_field : Types.ty_tuple_field = { ty; label } in
+                      tuple := !tuple |> Tuple.add name ty_field
+                  | Unpack _ -> Error.error span "todo unpack ty expr tuple");
               Ty.inferred ~span
-              <| T_Tuple
-                   {
-                     name = current_optional_name state;
-                     tuple =
-                       tuple
-                       |> Tuple.map
-                            (fun
-                              ({ label_span = _; label; field = field_expr } :
-                                Expr.ty Types.tuple_field_of)
-                              :
-                              Types.ty_tuple_field
-                            ->
-                              let ty = field_expr |> eval_ty state in
-                              { ty; label });
-                   }
+              <| T_Tuple { name = current_optional_name state; tuple = !tuple }
           | TE_Union { elements } ->
               let variants =
                 elements

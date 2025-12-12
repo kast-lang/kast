@@ -68,6 +68,7 @@ module rec TypesImpl : sig
     id : Id.t;
     def : maybe_compiled_fn;
     calculated_natives : (id, value) Hashtbl.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     captured : interpreter_scope;
   }
 
@@ -105,7 +106,7 @@ module rec TypesImpl : sig
   (* TY *)
   and ty_tuple_field = {
     ty : ty;
-    label : Label.t;
+    label : Label.t option;
   }
 
   and ty_tuple = {
@@ -174,12 +175,18 @@ module rec TypesImpl : sig
 
   and 'a tuple_field_of = {
     label_span : Span.t;
-    label : Label.t;
+    label : Label.t option;
     field : 'a;
   }
 
   and expr_stmt = { expr : expr }
-  and expr_tuple = { tuple : expr tuple_field_of Tuple.t }
+
+  and 'a tuple_part_of =
+    | Field of 'a tuple_field_of
+    | Unpack of 'a
+
+  and 'a tuple_of = { parts : 'a tuple_part_of list }
+  and expr_tuple = expr tuple_of
 
   and expr_variant = {
     label : Label.t;
@@ -335,7 +342,6 @@ module rec TypesImpl : sig
   }
 
   (* PLACE EXPR *)
-  (* PLACE EXPR *)
   and field_expr =
     | Index of int
     | Name of Label.t
@@ -368,7 +374,7 @@ module rec TypesImpl : sig
     | A_Let of pattern
     | A_Error
 
-  and assignee_expr_tuple = { tuple : assignee_expr tuple_field_of Tuple.t }
+  and assignee_expr_tuple = assignee_expr tuple_of
 
   and assignee_expr = {
     shape : assignee_expr_shape;
@@ -381,7 +387,7 @@ module rec TypesImpl : sig
     result : ty_expr;
   }
 
-  and ty_expr_tuple = { tuple : ty_expr tuple_field_of Tuple.t }
+  and ty_expr_tuple = ty_expr tuple_of
   and ty_expr_union = { elements : ty_expr list }
 
   and ty_expr_variant_variant = {
@@ -411,7 +417,7 @@ module rec TypesImpl : sig
   }
 
   (* PATTERN *)
-  and pattern_tuple = { tuple : pattern tuple_field_of Tuple.t }
+  and pattern_tuple = pattern tuple_of
 
   and pattern_variant = {
     label : Label.t;
@@ -474,6 +480,7 @@ module rec TypesImpl : sig
     natives : natives;
     scope : interpreter_scope;
     current_fn_natives : (id, value) Hashtbl.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
     cast_impls : cast_impls;
@@ -609,7 +616,7 @@ end = struct
   (* TY *)
   and ty_tuple_field = {
     ty : ty;
-    label : Label.t;
+    label : Label.t option;
   }
 
   and ty_tuple = {
@@ -678,12 +685,18 @@ end = struct
 
   and 'a tuple_field_of = {
     label_span : Span.t;
-    label : Label.t;
+    label : Label.t option;
     field : 'a;
   }
 
   and expr_stmt = { expr : expr }
-  and expr_tuple = { tuple : expr tuple_field_of Tuple.t }
+
+  and 'a tuple_part_of =
+    | Field of 'a tuple_field_of
+    | Unpack of 'a
+
+  and 'a tuple_of = { parts : 'a tuple_part_of list }
+  and expr_tuple = expr tuple_of
 
   and expr_variant = {
     label : Label.t;
@@ -871,7 +884,7 @@ end = struct
     | A_Let of pattern
     | A_Error
 
-  and assignee_expr_tuple = { tuple : assignee_expr tuple_field_of Tuple.t }
+  and assignee_expr_tuple = assignee_expr tuple_of
 
   and assignee_expr = {
     shape : assignee_expr_shape;
@@ -884,7 +897,7 @@ end = struct
     result : ty_expr;
   }
 
-  and ty_expr_tuple = { tuple : ty_expr tuple_field_of Tuple.t }
+  and ty_expr_tuple = ty_expr tuple_of
   and ty_expr_union = { elements : ty_expr list }
 
   and ty_expr_variant_variant = {
@@ -914,7 +927,7 @@ end = struct
   }
 
   (* PATTERN *)
-  and pattern_tuple = { tuple : pattern tuple_field_of Tuple.t }
+  and pattern_tuple = pattern tuple_of
 
   and pattern_variant = {
     label : Label.t;

@@ -81,7 +81,7 @@ let add_local_existing_place (span : span) (symbol : symbol) (place : place)
                 ty_field =
                   {
                     ty = place.ty;
-                    label = Label.create_reference span symbol.name;
+                    label = Some (Label.create_reference span symbol.name);
                   };
               }
                : Types.interpreter_local);
@@ -102,7 +102,7 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
                 ty_field =
                   {
                     ty = Value.ty_of value;
-                    label = Label.create_definition span symbol.name;
+                    label = Some (Label.create_definition span symbol.name);
                   };
               }
                : Types.interpreter_local);

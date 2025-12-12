@@ -6,6 +6,8 @@ open Error
 module Ast = Kast_ast
 module Inference = Kast_inference
 
+let get_data = get_data
+
 module CompiledKind = struct
   type 'a t = 'a compiled_kind
 
@@ -25,15 +27,6 @@ module type S = sig
 end
 
 type compiler = { compile : 'a. 'a compiled_kind -> Ast.t -> 'a }
-
-let get_data : 'a. 'a compiled_kind -> 'a -> ir_data =
- fun (type a) (kind : a compiled_kind) (compiled : a) : ir_data ->
-  match kind with
-  | Expr -> compiled.data
-  | Assignee -> compiled.data
-  | TyExpr -> compiled.data
-  | Pattern -> compiled.data
-  | PlaceExpr -> compiled.data
 
 let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
  fun (type a) (kind : a compiled_kind) (compiled : a) (f : ir_data -> ir_data) :
@@ -154,14 +147,14 @@ let rec inject_pattern_bindings ~(only_compiler : bool) (pattern : pattern)
   | P_Unit -> ()
   | P_Ref inner -> state |> inject_pattern_bindings ~only_compiler inner
   | P_Binding binding -> state |> inject_binding ~only_compiler binding
-  | P_Tuple { tuple } ->
-      tuple |> Tuple.to_seq
-      |> Seq.iter
-           (fun
-             ( _member,
-               ({ label_span = _; label = _; field = field_pattern } :
-                 pattern Types.tuple_field_of) )
-           -> state |> inject_pattern_bindings ~only_compiler field_pattern)
+  | P_Tuple { parts } ->
+      parts
+      |> List.iter (fun (part : _ Types.tuple_part_of) ->
+          match part with
+          | Field { label = _; label_span = _; field = field_pattern } ->
+              state |> inject_pattern_bindings ~only_compiler field_pattern
+          | Unpack pattern_to_unpack ->
+              state |> inject_pattern_bindings ~only_compiler pattern_to_unpack)
   | P_Variant { label = _; label_span = _; value } -> (
       match value with
       | None -> ()
@@ -174,12 +167,15 @@ let rec inject_assignee_bindings ~(only_compiler : bool)
   | A_Placeholder -> ()
   | A_Unit -> ()
   | A_Place _ -> ()
-  | A_Tuple { tuple } ->
-      tuple |> Tuple.to_seq
-      |> Seq.iter
-           (fun
-             (_member, ({ field; _ } : Types.assignee_expr Types.tuple_field_of))
-           -> state |> inject_assignee_bindings ~only_compiler field)
+  | A_Tuple { parts } ->
+      parts
+      |> List.iter (fun (part : _ Types.tuple_part_of) ->
+          match part with
+          | Field { label = _; label_span = _; field = assignee_field } ->
+              state |> inject_assignee_bindings ~only_compiler assignee_field
+          | Unpack assignee_to_unpack ->
+              state
+              |> inject_assignee_bindings ~only_compiler assignee_to_unpack)
   | A_Let pattern -> state |> inject_pattern_bindings ~only_compiler pattern
   | A_Error -> ()
 

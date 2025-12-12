@@ -1,3 +1,0 @@
-(library
- (name kast_transpiler_ocaml)
- (libraries std kast_util kast_types kast_compiler))

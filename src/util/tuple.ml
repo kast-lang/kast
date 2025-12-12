@@ -67,6 +67,10 @@ module Tuple = struct
       |> Seq.map (fun name -> ((Name name : member), StringMap.find name named))
       )
 
+  let iter : 'a. (member -> 'a -> unit) -> 'a tuple -> unit =
+   fun f tuple ->
+    to_seq tuple |> Seq.iter (fun (member, value) -> f member value)
+
   let empty : 'a. 'a tuple =
     { unnamed = [||]; named = StringMap.empty; named_order_rev = [] }
 

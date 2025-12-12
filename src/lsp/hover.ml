@@ -58,51 +58,53 @@ let binding_definition : binding -> definition =
  fun binding -> label_definition binding.label
 
 let get_tuple (type a) (kind : a compiled_kind) (compiled : a) :
-    a Types.tuple_field_of tuple option =
+    a Types.tuple_of option =
   match kind with
   | PlaceExpr -> None
   | Expr -> (
       match compiled.shape with
-      | E_Tuple { tuple } -> Some tuple
+      | E_Tuple tuple -> Some tuple
       | _ -> None)
   | Assignee -> (
       match compiled.shape with
-      (* TODO | A_Tuple { tuple } -> Some tuple *)
+      | A_Tuple tuple -> Some tuple
       | _ -> None)
   | TyExpr -> (
       match compiled.compiled_shape with
-      | Some (TE_Tuple { tuple }) -> Some tuple
+      | Some (TE_Tuple tuple) -> Some tuple
       | _ -> None)
   | Pattern -> (
       match compiled.shape with
-      | P_Tuple { tuple } -> Some tuple
+      | P_Tuple tuple -> Some tuple
       | _ -> None)
 
 let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
      hover_info option ->
   let* tuple = get_tuple kind compiled in
-  tuple |> Tuple.to_seq
-  |> Seq.find_map
-       (fun
-         (_member, ({ label_span; label; field } : a Types.tuple_field_of)) ->
-         if label_span |> Span.contains_span hover_span then
-           let data = Compiler.get_data kind field in
-           Some
-             {
-               ty = { span = label_span; ty = data.ty };
-               rename =
-                 Some
-                   {
-                     span = label_span;
-                     definition_mode =
-                       (match kind with
-                       | TyExpr -> DefinedHere (label_definition label)
-                       | _ -> DefinedNotHere (label_definition label));
-                   };
-               file = None;
-             }
-         else None)
+  tuple.parts
+  |> List.find_map (fun (part : a Types.tuple_part_of) ->
+      match part with
+      | Unpack _ -> None
+      | Field { label_span; label; field } ->
+          if label_span |> Span.contains_span hover_span then
+            let data = Compiler.get_data kind field in
+            Some
+              {
+                ty = { span = label_span; ty = data.ty };
+                rename =
+                  label
+                  |> Option.map (fun label ->
+                      {
+                        span = label_span;
+                        definition_mode =
+                          (match kind with
+                          | TyExpr -> DefinedHere (label_definition label)
+                          | _ -> DefinedNotHere (label_definition label));
+                      });
+                file = None;
+              }
+          else None)
 
 let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
  fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) :
