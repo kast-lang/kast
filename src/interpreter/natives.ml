@@ -307,7 +307,55 @@ let init_natives () =
               Error.error caller "sys.exec expected string arg";
               V_Error |> Value.inferred ~span)
     in
-    [ chdir; argc; argv_at; exec ]
+    let get_env =
+      native_fn "sys.get_env" (fun _ty ~caller ~state arg : value ->
+          let found_variant_ty =
+            {
+              Types.data =
+                Some { var = Inference.Var.new_inferred ~span Types.T_String };
+            }
+          in
+          let not_found_variant_ty = { Types.data = None } in
+          let sum_variant_ty : Types.ty_variant =
+            {
+              name = Common.current_optional_name state;
+              variants =
+                Row.of_list ~span
+                  [
+                    (Label.create_definition span "Found", found_variant_ty);
+                    ( Label.create_definition span "NotFound",
+                      not_found_variant_ty );
+                  ];
+            }
+          in
+          match arg |> Value.await_inferred with
+          | V_String var -> (
+              let env_val =
+                try Some (Sys.getenv var) with Not_found -> None
+              in
+              match env_val with
+              | Some s ->
+                  V_Variant
+                    {
+                      label = Label.create_definition span "Found";
+                      data =
+                        Some (Place.init (V_String s |> Value.inferred ~span));
+                      ty = sum_variant_ty;
+                    }
+                  |> Value.inferred ~span
+              | None ->
+                  V_Variant
+                    {
+                      label = Label.create_definition span "NotFound";
+                      data = None;
+                      ty = sum_variant_ty;
+                    }
+                  |> Value.inferred ~span)
+          | _ ->
+              Error.error caller "sys.exec expected string arg";
+              V_Error |> Value.inferred ~span)
+    in
+    [ chdir; argc; argv_at; exec; get_env ]
   in
 
   let fs =
