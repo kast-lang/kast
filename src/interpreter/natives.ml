@@ -298,7 +298,16 @@ let init_natives () =
               Error.error caller "sys.argv_at expected int32 arg";
               V_Error |> Value.inferred ~span)
     in
-    [ chdir; argc; argv_at ]
+    let exec =
+      native_fn "sys.exec" (fun _ty ~caller ~state:_ arg : value ->
+          match arg |> Value.await_inferred with
+          | V_String cmd ->
+              V_Int32 (Sys.command cmd |> Int32.of_int) |> Value.inferred ~span
+          | _ ->
+              Error.error caller "sys.exec expected string arg";
+              V_Error |> Value.inferred ~span)
+    in
+    [ chdir; argc; argv_at; exec ]
   in
 
   let fs =
