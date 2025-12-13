@@ -79,10 +79,15 @@ module Tuple = struct
        a tuple ->
     match name with
     | Some name ->
+        let name_was_present =
+          StringMap.find_opt name tuple.named |> Option.is_some
+        in
         {
           tuple with
           named = StringMap.add name value tuple.named;
-          named_order_rev = name :: tuple.named_order_rev;
+          named_order_rev =
+            (if name_was_present then tuple.named_order_rev
+             else name :: tuple.named_order_rev);
         }
     | None ->
         { tuple with unnamed = Array.append tuple.unnamed (Array.make 1 value) }
