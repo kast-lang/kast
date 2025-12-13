@@ -107,6 +107,48 @@ const trim_matches = (s :: string, f :: char -> bool) -> string => (
 );
 const trim = s => trim_matches (s, Char.is_whitespace);
 
+# replace all occurences of a string by a new string
+const replace_all_owned = (s :: string, .old :: string, .new :: string) => with_return (
+    # an empty `old` means we cannot replace
+    if String.length old == 0 then return s;
+    # an empty `s` means we cannot replace
+    if String.length s == 0 then return s;
+    # `s` smaller than `old` means we cannot replace
+    if String.length s < String.length old then return s;
+    if String.length s == String.length old then return (
+        if s == old then (
+            # `s` == `old` means replaced is just `new`
+            new
+        ) else (
+            # `s` equal to `old` in size but not contents means we cannot replace
+            s
+        )
+    );
+    
+    let end = (String.length s - String.length old + 1);
+    let start :: int32 = 0;
+    while start < end and String.substring (s, start, String.length old) != old do (
+        start += 1
+    );
+    
+    if start == end then (
+        # `old` not found in `s`
+        s
+    ) else (
+        # `old` found in `s`, replace with `new` and continue searching in remaining portion of `s`
+        let rest = String.substring (
+            s,
+            start + String.length old,
+            String.length s - start - String.length old
+        );
+        let replaced_rest = replace_all_owned (rest, .old, .new);
+        
+        String.substring (s, 0, start)
+        + new
+        + replaced_rest
+    )
+);
+
 const FromString = [Self] newtype (
     .from_string :: string -> Self
 );
