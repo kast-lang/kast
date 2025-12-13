@@ -1,5 +1,5 @@
 module:
-const list = [T] type (
+const list = [T] newtype (
     .inner :: treap.t[T]
 );
 const t = list;

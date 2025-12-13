@@ -331,6 +331,7 @@ and init_expr :
                assignee.data.ty;
           Ty.inferred ~span T_Unit
       | E_Ty _ -> Ty.inferred ~span T_Ty
+      | E_Newtype _ -> Ty.inferred ~span T_Ty
       | E_Native _ -> Ty.new_not_inferred ~span
       | E_Module { def } ->
           def.data.ty
@@ -339,7 +340,9 @@ and init_expr :
           Ty.inferred ~span
             (T_Tuple
                {
-                 name = Kast_interpreter.current_optional_name state.interpreter;
+                 name =
+                   OptionalName.new_inferred ~span
+                     (Some (Kast_interpreter.current_name state.interpreter));
                  tuple =
                    Tuple.make []
                      (state.scope.bindings |> StringMap.to_list

@@ -1,5 +1,5 @@
 module:
-const queue = [T] type (
+const queue = [T] newtype (
     .inner :: treap.t[T]
 );
 const t = queue;

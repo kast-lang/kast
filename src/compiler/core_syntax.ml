@@ -546,6 +546,36 @@ let type_expr : core_syntax =
             init_error span C.state kind);
   }
 
+let newtype : core_syntax =
+  {
+    name = "newtype";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let expr =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | Expr -> E_Newtype (C.compile TyExpr expr) |> init_expr span C.state
+        | TyExpr ->
+            error span "newtype can't be type expr";
+            init_error span C.state kind
+        | Assignee ->
+            error span "newtype can't be assignee";
+            init_error span C.state kind
+        | Pattern ->
+            error span "newtype can't be a pattern";
+            init_error span C.state kind);
+  }
+
 let type_ascribe : core_syntax =
   {
     name = "type ascribe";
@@ -752,7 +782,22 @@ let const : core_syntax =
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
             let pattern = C.compile Pattern pattern in
-            let value_expr = C.compile Expr value in
+            let new_state =
+              match pattern.shape with
+              | P_Binding binding ->
+                  {
+                    C.state with
+                    interpreter =
+                      {
+                        C.state.interpreter with
+                        current_name_parts_rev =
+                          Symbol binding.name
+                          :: C.state.interpreter.current_name_parts_rev;
+                      };
+                  }
+              | _ -> C.state
+            in
+            let value_expr = C.compile ~state:new_state Expr value in
             const_let span pattern value_expr (module C)
         | Assignee ->
             error span "const must be expr, not assignee expr";
@@ -2216,6 +2261,7 @@ let core =
     unit;
     type';
     type_expr;
+    newtype;
     type_ascribe;
     import;
     include';

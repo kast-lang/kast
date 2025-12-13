@@ -1,13 +1,13 @@
 module:
 
-const data = [T] type (
+const data = [T] newtype (
     .left :: treap[T],
     .value :: T,
     .count :: int32,
     .priority :: int32,
     .right :: treap[T],
 );
-const t = [T] type (
+const t = [T] newtype (
     | :Empty
     | :Node data[T]
 );
@@ -59,7 +59,7 @@ const join = [T] (left :: treap[T], right :: treap[T]) -> treap[T] => (
         )
     )
 );
-const node_split_behavior = [T] type (
+const node_split_behavior = [T] newtype (
     | :LeftSubtree
     | :RightSubtree
     | :Node (T, T)

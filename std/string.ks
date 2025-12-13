@@ -107,7 +107,7 @@ const trim_matches = (s :: string, f :: char -> bool) -> string => (
 );
 const trim = s => trim_matches (s, Char.is_whitespace);
 
-const FromString = [Self] type (
+const FromString = [Self] newtype (
     .from_string :: string -> Self
 );
 
@@ -130,7 +130,7 @@ impl float64 as FromString = (
     )
 );
 
-const ToString = [Self] type (
+const ToString = [Self] newtype (
     .to_string :: Self -> string
 );
 

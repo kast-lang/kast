@@ -92,6 +92,7 @@ let inner_compiled_with_handler =
           handler.handle Assignee assignee;
           handler.handle PlaceExpr value
       | E_Ty expr -> handler.handle TyExpr expr
+      | E_Newtype expr -> handler.handle TyExpr expr
       | E_Native _ -> ()
       | E_Module { def } -> handler.handle Expr def
       | E_UseDotStar { used; bindings = _ } -> handler.handle Expr used

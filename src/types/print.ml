@@ -173,6 +173,7 @@ module Impl = struct
       | E_InstantiateGeneric _ -> "InstantiateGeneric"
       | E_Assign _ -> "Assign"
       | E_Ty _ -> "Ty"
+      | E_Newtype _ -> "Newtype"
       | E_Native _ -> "Native"
       | E_Module _ -> "Module"
       | E_UseDotStar _ -> "UseDotStar"
@@ -254,6 +255,10 @@ module Impl = struct
           value
     | E_Ty expr ->
         fprintf fmt "@{<magenta>type@} %a" (print_ty_expr ~options) expr
+    | E_Newtype e ->
+        fprintf fmt "@{<magenta>newtype@} %a"
+          (Tuple.print (print_ty_expr ~options))
+          (Tuple.make [ e ] [])
     | E_Native { id = _; expr } ->
         fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
     | E_Module { def } ->

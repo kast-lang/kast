@@ -318,6 +318,7 @@ module rec TypesImpl : sig
     | E_InstantiateGeneric of expr_instantiate_generic
     | E_Assign of expr_assign
     | E_Ty of ty_expr
+    | E_Newtype of ty_expr
     | E_Native of expr_native
     | E_Module of expr_module
     | E_UseDotStar of expr_use_dot_star
@@ -828,6 +829,7 @@ end = struct
     | E_InstantiateGeneric of expr_instantiate_generic
     | E_Assign of expr_assign
     | E_Ty of ty_expr
+    | E_Newtype of ty_expr
     | E_Native of expr_native
     | E_Module of expr_module
     | E_UseDotStar of expr_use_dot_star

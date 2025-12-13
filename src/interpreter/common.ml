@@ -879,6 +879,25 @@ and eval : state -> expr -> value =
       | E_Apply e -> eval_expr_apply state expr e
       | E_InstantiateGeneric e -> eval_expr_instantiategeneric state expr e
       | E_Ty e -> eval_expr_ty state expr e
+      | E_Newtype ty_expr ->
+          let result_ty = Ty.new_not_inferred ~span in
+          fork (fun () ->
+              let inner_ty = eval_ty state ty_expr in
+              let name =
+                OptionalName.new_inferred ~span (Some (current_name state))
+              in
+              let newtype : Ty.Shape.t =
+                match inner_ty |> Ty.await_inferred with
+                | T_Tuple { name = _; tuple } -> T_Tuple { name; tuple }
+                | T_Variant { name = _; variants } ->
+                    T_Variant { name; variants }
+                | _ ->
+                    Error.error span "Can only newtype variant or tuple types";
+                    T_Error
+              in
+              let newtype = Ty.inferred ~span newtype in
+              result_ty |> Inference.Ty.expect_inferred_as ~span newtype);
+          V_Ty result_ty |> Value.inferred ~span
       | E_Native e -> eval_expr_native state expr e
       | E_Module e -> eval_expr_module state expr e
       | E_UseDotStar e -> eval_expr_usedotstar state expr e
@@ -957,12 +976,6 @@ and current_name : state -> Types.name_shape =
   let parts = state.current_name_parts_rev |> List.rev in
   { parts }
 
-and current_optional_name : state -> Types.optional_name =
-  let span = Span.fake "<current_name>" in
-  fun state ->
-    let name = current_name state in
-    OptionalName.new_inferred ~span (Some name)
-
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
   let span = expr.data.span in
@@ -1002,7 +1015,11 @@ and eval_ty : state -> Expr.ty -> ty =
                       tuple := !tuple |> Tuple.add name ty_field
                   | Unpack _ -> Error.error span "todo unpack ty expr tuple");
               Ty.inferred ~span
-              <| T_Tuple { name = current_optional_name state; tuple = !tuple }
+              <| T_Tuple
+                   {
+                     name = OptionalName.new_inferred ~span None;
+                     tuple = !tuple;
+                   }
           | TE_Union { elements } ->
               let variants =
                 elements
@@ -1020,14 +1037,14 @@ and eval_ty : state -> Expr.ty -> ty =
               Ty.inferred ~span
               <| T_Variant
                    {
-                     name = current_optional_name state;
+                     name = OptionalName.new_inferred ~span None;
                      variants = Row.of_list ~span variants;
                    }
           | TE_Variant { variants } ->
               Ty.inferred ~span
               <| T_Variant
                    {
-                     name = current_optional_name state;
+                     name = OptionalName.new_inferred ~span None;
                      variants =
                        Row.of_list ~span
                          (variants
