@@ -17,3 +17,7 @@ const exec = (cmd :: string) -> int32 => cfg_if (
 const get_env = (var :: string) -> type (:Found string | :NotFound) => cfg_if (
     | target.name == "interpreter" => (@native "sys.get_env") var
 );
+# exit with the provided return code
+const exit = [T] (status_code :: int32) -> T => cfg_if (
+    | target.name == "interpreter" => (@native "sys.exit") status_code
+);

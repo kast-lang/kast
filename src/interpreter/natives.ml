@@ -370,7 +370,15 @@ let init_natives () =
               Error.error caller "sys.exec expected string arg";
               V_Error |> Value.inferred ~span)
     in
-    [ chdir; argc; argv_at; exec; get_env ]
+    let exit =
+      native_fn "sys.exit" (fun _ty ~caller ~state:_ arg : value ->
+          match arg |> Value.await_inferred with
+          | V_Int32 idx -> Int32.to_int idx |> exit
+          | _ ->
+              Error.error caller "sys.exit expected int32 arg";
+              V_Error |> Value.inferred ~span)
+    in
+    [ chdir; argc; argv_at; exec; get_env; exit ]
   in
 
   let fs =
