@@ -1019,7 +1019,19 @@ and eval_ty : state -> Expr.ty -> ty =
                       let ty = field_expr |> eval_ty state in
                       let ty_field : Types.ty_tuple_field = { ty; label } in
                       tuple := !tuple |> Tuple.add name ty_field
-                  | Unpack _ -> Error.error span "todo unpack ty expr tuple");
+                  | Unpack packed -> (
+                      let packed = eval_ty state packed in
+                      match packed |> Ty.await_inferred with
+                      | T_Tuple { name = _; tuple = packed } ->
+                          packed
+                          |> Tuple.iter (fun member field ->
+                              let name =
+                                match member with
+                                | Index _ -> None
+                                | Name name -> Some name
+                              in
+                              tuple := !tuple |> Tuple.add name field)
+                      | _ -> Error.error span "can only unpack tuples"));
               Ty.inferred ~span
               <| T_Tuple
                    {
