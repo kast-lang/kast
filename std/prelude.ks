@@ -11,6 +11,7 @@ use String;
 use String.parse;
 use String.to_string;
 use io.print;
+use io.eprint;
 use io.input;
 use panic;
 use collections.list;

@@ -5,4 +5,5 @@ let input prompt =
   read_line ()
 
 let print line = print_endline line
+let eprint line = Printf.eprintf "%s" line
 let todo () = failwith "todo"

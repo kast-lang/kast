@@ -440,6 +440,11 @@ let init_natives () =
             | V_String s -> println "%s" s
             | _ -> Error.error caller "print expected a string");
             V_Unit |> Value.inferred ~span);
+        native_fn "eprint" (fun _ty ~caller ~state:_ value ->
+            (match value |> Value.await_inferred with
+            | V_String s -> eprintln "%s" s
+            | _ -> Error.error caller "eprint expected a string");
+            V_Unit |> Value.inferred ~span);
         native_fn "input" (fun _ty ~caller ~state:_ value ->
             match value |> Value.await_inferred with
             | V_String s ->
