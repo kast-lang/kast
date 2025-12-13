@@ -80,6 +80,7 @@
 @syntax "core:generic" 6.5 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
 @syntax "core:type expr" 500 wrap never = "type" " " _;
 @syntax "core:newtype" 500 wrap never = "newtype" " " _;
+@syntax "core:typeof" 500 wrap never = "typeof" " " _;
 @syntax "core:type" 500 wrap never = "type";
 @syntax "core:true" 500 wrap never = "true";
 @syntax "core:false" 500 wrap never = "false";

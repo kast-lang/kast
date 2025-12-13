@@ -2296,6 +2296,36 @@ let by_ref : core_syntax =
             init_error span C.state kind);
   }
 
+let typeof : core_syntax =
+  {
+    name = "typeof";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let expr =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let expr () =
+          let expr = C.compile Expr expr in
+          E_Constant (V_Ty expr.data.ty |> Value.inferred ~span)
+          |> init_expr ~evaled_exprs:[ expr ] span C.state
+        in
+        match kind with
+        | Expr -> expr ()
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | TyExpr -> (fun () -> TE_Expr (expr ())) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
+            error span "typeof can't be pattern | assignee";
+            init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -2352,6 +2382,7 @@ let core =
     impl_cast;
     cast;
     by_ref;
+    typeof;
   ]
 
 let all : core_syntax StringMap.t =
