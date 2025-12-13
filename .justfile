@@ -19,3 +19,6 @@ profile *args:
 
 lsp-stress-test:
     python lsp-stress-test/main.py 2>/dev/null | kast lsp >/dev/null
+
+test-aoc:
+    KAST_STD=$(pwd)/std kast ${AOC:-~/projects/aoc2025/test.ks}
