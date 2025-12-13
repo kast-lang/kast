@@ -118,7 +118,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                     label = Label.create_definition ast.span ident.name;
                   }
                 in
-                P_Binding binding |> init_pattern span state
+                P_Binding { by_ref = false; binding } |> init_pattern span state
             | Token.Shape.String _ ->
                 Error.error span "string can't be pattern";
                 init_error span state kind

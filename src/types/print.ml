@@ -478,7 +478,9 @@ module Impl = struct
         fprintf fmt "@{<magenta>&@}%a"
           (Tuple.print (print_pattern ~options))
           (Tuple.make [ inner ] [])
-    | P_Binding binding -> print_binding fmt binding
+    | P_Binding { by_ref; binding } ->
+        if by_ref then fprintf fmt "@{<magenta>ref@} ";
+        print_binding fmt binding
     | P_Tuple tuple -> print_ir_tuple '=' (print_pattern ~options) fmt tuple
     | P_Variant { label; label_span = _; value } ->
         fprintf fmt ":%a %a" Label.print label

@@ -426,11 +426,16 @@ module rec TypesImpl : sig
     value : pattern option;
   }
 
+  and pattern_binding = {
+    by_ref : bool;
+    binding : binding;
+  }
+
   and pattern_shape =
     | P_Placeholder
     | P_Ref of pattern
     | P_Unit
-    | P_Binding of binding
+    | P_Binding of pattern_binding
     | P_Tuple of pattern_tuple
     | P_Variant of pattern_variant
     | P_Error
@@ -937,11 +942,16 @@ end = struct
     value : pattern option;
   }
 
+  and pattern_binding = {
+    by_ref : bool;
+    binding : binding;
+  }
+
   and pattern_shape =
     | P_Placeholder
     | P_Ref of pattern
     | P_Unit
-    | P_Binding of binding
+    | P_Binding of pattern_binding
     | P_Tuple of pattern_tuple
     | P_Variant of pattern_variant
     | P_Error

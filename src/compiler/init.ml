@@ -486,7 +486,14 @@ let init_pattern :
       | P_Placeholder -> Ty.new_not_inferred ~span
       | P_Unit -> Ty.inferred ~span T_Unit
       | P_Ref inner -> Ty.inferred ~span <| T_Ref inner.data.ty
-      | P_Binding binding -> binding.ty
+      | P_Binding { by_ref; binding } ->
+          if by_ref then (
+            let result = Ty.new_not_inferred ~span in
+            binding.ty
+            |> Inference.Ty.expect_inferred_as ~span
+                 (Ty.inferred ~span (T_Ref result));
+            result)
+          else binding.ty
       | P_Tuple tuple -> tuple_ty ~span Pattern tuple
       | P_Variant { label; label_span = _; value } ->
           Ty.inferred ~span

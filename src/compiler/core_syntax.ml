@@ -733,7 +733,7 @@ let const_let (span : span) (pattern : pattern) (value_expr : expr)
   |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span pattern.data.ty;
   let interpreter_state =
     match pattern.shape with
-    | P_Binding binding ->
+    | P_Binding { by_ref = false; binding } ->
         {
           C.state.interpreter with
           current_name_parts_rev =
@@ -784,7 +784,7 @@ let const : core_syntax =
             let pattern = C.compile Pattern pattern in
             let new_state =
               match pattern.shape with
-              | P_Binding binding ->
+              | P_Binding { by_ref = false; binding } ->
                   {
                     C.state with
                     interpreter =
@@ -1058,11 +1058,15 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
         | None ->
             P_Binding
               {
-                id = Id.gen ();
-                name = Symbol.create label;
-                ty = Ty.new_not_inferred ~span:label_ast.span;
-                span = label_ast.span;
-                label = Label.create_reference label_ast.span label;
+                by_ref = false;
+                binding =
+                  {
+                    id = Id.gen ();
+                    name = Symbol.create label;
+                    ty = Ty.new_not_inferred ~span:label_ast.span;
+                    span = label_ast.span;
+                    label = Label.create_reference label_ast.span label;
+                  };
               }
             |> init_pattern span C.state
       in
@@ -1196,17 +1200,25 @@ let use : core_syntax =
               match used_expr.shape with
               | PE_Binding binding ->
                   P_Binding
-                    { binding with name = Symbol.create binding.name.name }
+                    {
+                      by_ref = false;
+                      binding =
+                        { binding with name = Symbol.create binding.name.name };
+                    }
               | PE_Field { obj = _; field; field_span } -> (
                   match field with
                   | Name label ->
                       P_Binding
                         {
-                          id = Id.gen ();
-                          name = Symbol.create (Label.get_name label);
-                          span = field_span;
-                          ty = used_expr.data.ty;
-                          label;
+                          by_ref = false;
+                          binding =
+                            {
+                              id = Id.gen ();
+                              name = Symbol.create (Label.get_name label);
+                              span = field_span;
+                              ty = used_expr.data.ty;
+                              label;
+                            };
                         }
                   | Index _ | Expr _ ->
                       error span "must use named field";
@@ -2245,6 +2257,45 @@ let cast : core_syntax =
             init_error span C.state kind);
   }
 
+let by_ref : core_syntax =
+  {
+    name = "by_ref";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let ident_ast =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        match kind with
+        | Pattern -> (
+            match ident_ast.shape with
+            | Simple { token = { shape = Ident ident; _ }; _ } ->
+                let binding : binding =
+                  {
+                    id = Id.gen ();
+                    name = Symbol.create ident.name;
+                    ty = Ty.new_not_inferred ~span:ident_ast.span;
+                    span = ident_ast.span;
+                    label = Label.create_definition ident_ast.span ident.name;
+                  }
+                in
+                P_Binding { by_ref = true; binding }
+                |> init_pattern span C.state
+            | _ ->
+                error span "expected ident";
+                init_error ident_ast.span C.state kind)
+        | _ ->
+            error span "by_ref must be pattern";
+            init_error span C.state kind);
+  }
+
 let core =
   [
     apply;
@@ -2300,6 +2351,7 @@ let core =
     deref;
     impl_cast;
     cast;
+    by_ref;
   ]
 
 let all : core_syntax StringMap.t =

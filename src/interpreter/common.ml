@@ -46,14 +46,20 @@ let rec pattern_match :
           Error.error span "Expected a ref";
           (~matched:false, Scope.Locals.empty)
       | Some place -> pattern_match ~span place inner)
-  | P_Binding binding ->
+  | P_Binding { by_ref; binding } ->
+      let ty, value =
+        if by_ref then
+          ( Ty.inferred ~span (T_Ref place.ty),
+            Value.inferred ~span (V_Ref place) )
+        else (place.ty, claim ~span place)
+      in
       ( ~matched:true,
         {
           by_symbol =
             SymbolMap.singleton binding.name
               ({
-                 place = Place.init <| claim ~span place;
-                 ty_field = { ty = place.ty; label = Some binding.label };
+                 place = Place.init value;
+                 ty_field = { ty; label = Some binding.label };
                }
                 : Types.interpreter_local);
         } )

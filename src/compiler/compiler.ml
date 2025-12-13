@@ -146,7 +146,8 @@ let rec inject_pattern_bindings ~(only_compiler : bool) (pattern : pattern)
   | P_Placeholder -> ()
   | P_Unit -> ()
   | P_Ref inner -> state |> inject_pattern_bindings ~only_compiler inner
-  | P_Binding binding -> state |> inject_binding ~only_compiler binding
+  | P_Binding { by_ref = _; binding } ->
+      state |> inject_binding ~only_compiler binding
   | P_Tuple { parts } ->
       parts
       |> List.iter (fun (part : _ Types.tuple_part_of) ->

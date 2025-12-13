@@ -13,6 +13,7 @@ const float64 :: type = @native "float64";
 const char :: type = @native "char";
 const string :: type = @native "string";
 #
+const Option = include "./option.ks";
 const dbg = include "./dbg.ks";
 const convert = include "./convert.ks";
 const op = include "./op.ks";
