@@ -1,6 +1,4 @@
-const Foo = (
-    module:
-    const ty = [T] newtype (.x :: T);
-);
+use std.prelude.*;
 
-let _ :: Foo.ty[std.int32] = _;
+print "hello";
+"world" |> print;
