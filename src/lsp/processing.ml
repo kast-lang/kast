@@ -7,11 +7,14 @@ open Kast_types
 
 let log_error = Log.trace
 
+module UriSet = Set.Make (Uri)
+
 type global_state = {
   workspaces : workspace_state list;
   mutable vfs : string UriMap.t;
   mutable import_cache : Compiler.import_cache;
   mutable diagnostics : Lsp.Types.Diagnostic.t list UriMap.t;
+  mutable parse_errors : UriSet.t;
   root_of_included : (Uri.t, Uri.t) Hashtbl.t;
 }
 
@@ -30,6 +33,7 @@ let process_file (global : global_state) (source : source) : file_state =
   Log.debug (fun log -> log "Processing %a" Uri.print source.uri);
   Hashtbl.remove global.root_of_included source.uri;
   global.diagnostics <- global.diagnostics |> UriMap.add source.uri [];
+  global.parse_errors <- global.parse_errors |> UriSet.remove source.uri;
 
   let add_diagnostic uri (diag : Lsp.Types.Diagnostic.t) : unit =
     Log.trace (fun log -> log "Added diag for %a" Uri.print uri);
@@ -47,6 +51,7 @@ let process_file (global : global_state) (source : source) : file_state =
     with
     | effect Parser.Error.Error error, k ->
         log_error (fun log -> log "%a" Parser.Error.print error);
+        global.parse_errors <- global.parse_errors |> UriSet.add source.uri;
         add_diagnostic error.span.uri
           {
             range = error.span |> Common.span_to_range;
@@ -60,8 +65,8 @@ let process_file (global : global_state) (source : source) : file_state =
             data = None;
           };
         Effect.continue k ()
-    (* TODO msg about crash? *)
     | Cancel -> raise Cancel
+    (* TODO msg about crash? *)
     | _ -> None
   in
   let ast = Option.bind parsed (fun ({ ast; _ } : Parser.result) -> ast) in
@@ -180,6 +185,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
     | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
         Log.trace (fun log -> log "removed diags for %a" Uri.print uri);
         global.diagnostics <- global.diagnostics |> UriMap.add uri [];
+        global.parse_errors <- global.parse_errors |> UriSet.remove uri;
         Effect.Deep.continue k ()
     | effect
         Compiler.Effect.FileIncluded { root; uri; parsed; kind; compiled }, k ->
@@ -227,6 +233,7 @@ let init (workspaces : Lsp.Uri0.t list) : global_state =
       vfs = UriMap.empty;
       import_cache = Compiler.init_import_cache ();
       diagnostics = UriMap.empty;
+      parse_errors = UriSet.empty;
       root_of_included = Hashtbl.create 0;
     }
   in

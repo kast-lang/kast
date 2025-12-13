@@ -67,7 +67,7 @@ let lsp =
   object%js
     method format (state : file_state) =
       cross_js (fun () ->
-          match Kast_lsp.Formatting.run state with
+          match Kast_lsp.Formatting.run global state with
           | Some result ->
               `List (result |> List.map Lsp.Types.TextEdit.yojson_of_t)
               |> yojson_to_js

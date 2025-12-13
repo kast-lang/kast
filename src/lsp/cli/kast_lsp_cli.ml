@@ -207,7 +207,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         Lsp.Types.TextEdit.t list option =
       fun ~notify_back:_ params ->
         let* file_state = self#file_state params.textDocument.uri in
-        file_state |> Kast_lsp.Formatting.run
+        file_state |> Kast_lsp.Formatting.run (self#get_state ())
 
     method private on_semantic_tokens :
         notify_back:Linol_eio.Jsonrpc2.notify_back ->
