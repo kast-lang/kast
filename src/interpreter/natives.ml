@@ -308,25 +308,40 @@ let init_natives () =
               V_Error |> Value.inferred ~span)
     in
     let get_env =
-      native_fn "sys.get_env" (fun _ty ~caller ~state arg : value ->
-          let found_variant_ty =
-            {
-              Types.data =
-                Some { var = Inference.Var.new_inferred ~span Types.T_String };
-            }
+      native_fn "sys.get_env" (fun ty ~caller ~state:_ arg : value ->
+          let sum_variant_ty =
+            match Ty.await_inferred ty.result with
+            | Types.T_Variant variant_ty -> variant_ty
+            | _ -> unreachable "sys.get_env returns variant type"
           in
-          let not_found_variant_ty = { Types.data = None } in
-          let sum_variant_ty : Types.ty_variant =
-            {
-              name = Common.current_optional_name state;
-              variants =
-                Row.of_list ~span
-                  [
-                    (Label.create_definition span "Found", found_variant_ty);
-                    ( Label.create_definition span "NotFound",
-                      not_found_variant_ty );
-                  ];
-            }
+          (* Get label `:Found` of get_env's return type *)
+          let label_found, xs =
+            match
+              Inference.Var.inferred_opt sum_variant_ty.variants.var
+              |> Option.get
+            with
+            | R_Cons { label; rest; _ } ->
+                (* Assert label has name `Found` *)
+                if Label.get_name label <> "Found" then
+                  unreachable
+                    "sys.get_env's return type has first variant called Found";
+                (label, rest)
+            | _ -> unreachable "sys.get_env returns row of 2 variants"
+          in
+          (* Get label `:NotFound` of get_env's return type *)
+          let label_not_found =
+            match Inference.Var.inferred_opt xs.var |> Option.get with
+            | R_Cons { label; rest; _ } ->
+                (* Assert label has name `NotFound` *)
+                if Label.get_name label <> "NotFound" then
+                  unreachable
+                    "sys.get_env's return type has first variant called Found";
+                (* Assert this is the last variant *)
+                (match Inference.Var.inferred_opt rest.var |> Option.get with
+                | R_Empty -> ()
+                | _ -> unreachable "sys.get_env returns row of 2 variants");
+                label
+            | _ -> unreachable "sys.get_env returns row of 2 variants"
           in
           match arg |> Value.await_inferred with
           | V_String var -> (
@@ -337,7 +352,7 @@ let init_natives () =
               | Some s ->
                   V_Variant
                     {
-                      label = Label.create_definition span "Found";
+                      label = label_found;
                       data =
                         Some (Place.init (V_String s |> Value.inferred ~span));
                       ty = sum_variant_ty;
@@ -346,7 +361,7 @@ let init_natives () =
               | None ->
                   V_Variant
                     {
-                      label = Label.create_definition span "NotFound";
+                      label = label_not_found;
                       data = None;
                       ty = sum_variant_ty;
                     }
