@@ -7,6 +7,13 @@ const print = (line :: string) -> () => (
         # | target.name == "ocaml" => (@native "@natives.print") line
     )
 );
+# similar to print, but print to stderr
+const eprint = (line :: string) -> () => (
+    cfg_if (
+        | target.name == "interpreter" => (@native "eprint") line
+        | target.name == "ocaml" => (@native "@natives.eprint") line
+    )
+);
 const input = (prompt :: string) -> string => (
     cfg_if (
         | target.name == "interpreter" => (@native "input") prompt

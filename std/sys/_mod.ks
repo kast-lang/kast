@@ -9,3 +9,11 @@ const argc = () -> int32 => cfg_if (
 const argv_at = (idx :: int32) -> string => cfg_if (
     | target.name == "interpreter" => (@native "sys.argv_at") idx
 );
+# accepts the command to exec, returns the return-code
+const exec = (cmd :: string) -> int32 => cfg_if (
+    | target.name == "interpreter" => (@native "sys.exec") cmd
+);
+# accepts the environment variable, returns its value if it exists or NotFound
+const get_env = (var :: string) -> type (:Found string | :NotFound) => cfg_if (
+    | target.name == "interpreter" => (@native "sys.get_env") var
+);
