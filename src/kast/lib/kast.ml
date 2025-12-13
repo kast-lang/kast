@@ -18,7 +18,9 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
     else Effect.continue k ()
   in
   try f () with
-  | Kast_interpreter.Natives.Panic s -> Log.error (fun log -> log "panic: %s" s)
+  | Kast_interpreter.Natives.Panic s ->
+      Log.error (fun log -> log "panic: %s" s);
+      exit (-1)
   | effect Kast_interpreter.Error.Error error, k ->
       Log.error (fun log -> log "%a" Kast_interpreter.Error.print error);
       handle_error k
