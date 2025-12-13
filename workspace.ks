@@ -22,4 +22,5 @@
     "examples/treap.ks",
     "examples/refs.ks",
     "examples/lots-of-math.ks",
+    "examples/monad.ks",
 )
