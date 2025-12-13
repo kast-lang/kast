@@ -298,7 +298,87 @@ let init_natives () =
               Error.error caller "sys.argv_at expected int32 arg";
               V_Error |> Value.inferred ~span)
     in
-    [ chdir; argc; argv_at ]
+    let exec =
+      native_fn "sys.exec" (fun _ty ~caller ~state:_ arg : value ->
+          match arg |> Value.await_inferred with
+          | V_String cmd ->
+              V_Int32 (Sys.command cmd |> Int32.of_int) |> Value.inferred ~span
+          | _ ->
+              Error.error caller "sys.exec expected string arg";
+              V_Error |> Value.inferred ~span)
+    in
+    let get_env =
+      native_fn "sys.get_env" (fun ty ~caller ~state:_ arg : value ->
+          let sum_variant_ty =
+            match Ty.await_inferred ty.result with
+            | Types.T_Variant variant_ty -> variant_ty
+            | _ -> unreachable "sys.get_env returns variant type"
+          in
+          (* Get label `:Found` of get_env's return type *)
+          let label_found, xs =
+            match
+              Inference.Var.inferred_opt sum_variant_ty.variants.var
+              |> Option.get
+            with
+            | R_Cons { label; rest; _ } ->
+                (* Assert label has name `Found` *)
+                if Label.get_name label <> "Found" then
+                  unreachable
+                    "sys.get_env's return type has first variant called Found";
+                (label, rest)
+            | _ -> unreachable "sys.get_env returns row of 2 variants"
+          in
+          (* Get label `:NotFound` of get_env's return type *)
+          let label_not_found =
+            match Inference.Var.inferred_opt xs.var |> Option.get with
+            | R_Cons { label; rest; _ } ->
+                (* Assert label has name `NotFound` *)
+                if Label.get_name label <> "NotFound" then
+                  unreachable
+                    "sys.get_env's return type has first variant called Found";
+                (* Assert this is the last variant *)
+                (match Inference.Var.inferred_opt rest.var |> Option.get with
+                | R_Empty -> ()
+                | _ -> unreachable "sys.get_env returns row of 2 variants");
+                label
+            | _ -> unreachable "sys.get_env returns row of 2 variants"
+          in
+          match arg |> Value.await_inferred with
+          | V_String var -> (
+              let env_val =
+                try Some (Sys.getenv var) with Not_found -> None
+              in
+              match env_val with
+              | Some s ->
+                  V_Variant
+                    {
+                      label = label_found;
+                      data =
+                        Some (Place.init (V_String s |> Value.inferred ~span));
+                      ty = sum_variant_ty;
+                    }
+                  |> Value.inferred ~span
+              | None ->
+                  V_Variant
+                    {
+                      label = label_not_found;
+                      data = None;
+                      ty = sum_variant_ty;
+                    }
+                  |> Value.inferred ~span)
+          | _ ->
+              Error.error caller "sys.exec expected string arg";
+              V_Error |> Value.inferred ~span)
+    in
+    let exit =
+      native_fn "sys.exit" (fun _ty ~caller ~state:_ arg : value ->
+          match arg |> Value.await_inferred with
+          | V_Int32 idx -> Int32.to_int idx |> exit
+          | _ ->
+              Error.error caller "sys.exit expected int32 arg";
+              V_Error |> Value.inferred ~span)
+    in
+    [ chdir; argc; argv_at; exec; get_env; exit ]
   in
 
   let fs =
@@ -367,6 +447,11 @@ let init_natives () =
             (match value |> Value.await_inferred with
             | V_String s -> println "%s" s
             | _ -> Error.error caller "print expected a string");
+            V_Unit |> Value.inferred ~span);
+        native_fn "eprint" (fun _ty ~caller ~state:_ value ->
+            (match value |> Value.await_inferred with
+            | V_String s -> eprintln "%s" s
+            | _ -> Error.error caller "eprint expected a string");
             V_Unit |> Value.inferred ~span);
         native_fn "input" (fun _ty ~caller ~state:_ value ->
             match value |> Value.await_inferred with
