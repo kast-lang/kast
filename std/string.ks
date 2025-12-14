@@ -171,6 +171,15 @@ impl float64 as FromString = (
         | target.name == "ocaml" => @native "@natives.todo()"
     )
 );
+impl bool as FromString = (
+    .from_string = s => if s == "true" then (
+        true
+    ) else if s == "false" then (
+        false
+    ) else (
+        panic ("cannot parse '" + s + "' as bool")
+    )
+);
 
 const ToString = [Self] newtype (
     .to_string :: Self -> string
@@ -193,6 +202,9 @@ impl float64 as ToString = (
         | target.name == "interpreter" => (@native "to_string") num
         | target.name == "ocaml" => @native "@natives.todo()"
     )
+);
+impl bool as ToString = (
+    .to_string = b => if b then "true" else "false"
 );
 
 const parse = [T] (s :: string) -> T => (
