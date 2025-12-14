@@ -53,14 +53,14 @@
 @syntax ">=" 14 wrap never = _ " " ">=" " " _;
 @syntax ">" 14 wrap never = _ " " ">" " " _;
 
+@syntax "|>" 14.5 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
+@syntax "<|" 14.5 wrap if_any = <- f " "/"\n\t" "<|" " " arg ""/"\\";
+
 @syntax "+" 15 wrap if_any = <- _ " "/"\n" "+" " " _;
 @syntax "-" 15 wrap if_any = <- _ " "/"\n" "-" " " _;
 @syntax "*" 17 wrap if_any = <- _ " "/"\n" "*" " " _;
 @syntax "/" 17 wrap if_any = <- _ " "/"\n" "/" " " _;
 @syntax "%" 17 wrap if_any = <- _ " "/"\n" "%" " " _;
-
-@syntax "|>" 20 wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
-@syntax "<|" 20 wrap if_any = <- arg " "/"\n\t" "<|" " " f ""/"\\";
 
 @syntax "return_without_value" 40 wrap never = "return";
 @syntax "return_with_value" 40 wrap never = "return" " " value;
