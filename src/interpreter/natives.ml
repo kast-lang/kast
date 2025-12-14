@@ -312,30 +312,28 @@ let init_natives () =
           let sum_variant_ty =
             match Ty.await_inferred ty.result with
             | Types.T_Variant variant_ty -> variant_ty
-            | _ -> unreachable "sys.get_env returns variant type"
+            | _ -> unreachable "sys.get_env returns variant type `Option.t`"
           in
-          (* Get label `:Found` of get_env's return type *)
+          (* Get label `:Some` of get_env's return type Option.t[string] *)
           let label_found, xs =
             match
               Inference.Var.inferred_opt sum_variant_ty.variants.var
               |> Option.get
             with
             | R_Cons { label; rest; _ } ->
-                (* Assert label has name `Found` *)
-                if Label.get_name label <> "Found" then
-                  unreachable
-                    "sys.get_env's return type has first variant called Found";
+                (* Assert label has name `Some` *)
+                if Label.get_name label <> "Some" then
+                  unreachable "`Option.t` should have first variant Some";
                 (label, rest)
             | _ -> unreachable "sys.get_env returns row of 2 variants"
           in
-          (* Get label `:NotFound` of get_env's return type *)
+          (* Get label `:None` of get_env's return type Option.t[string] *)
           let label_not_found =
             match Inference.Var.inferred_opt xs.var |> Option.get with
             | R_Cons { label; rest; _ } ->
-                (* Assert label has name `NotFound` *)
-                if Label.get_name label <> "NotFound" then
-                  unreachable
-                    "sys.get_env's return type has first variant called Found";
+                (* Assert label has name `None` *)
+                if Label.get_name label <> "None" then
+                  unreachable "`Option.t` should have second variant None";
                 (* Assert this is the last variant *)
                 (match Inference.Var.inferred_opt rest.var |> Option.get with
                 | R_Empty -> ()

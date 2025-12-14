@@ -14,7 +14,7 @@ const exec = (cmd :: string) -> int32 => cfg_if (
     | target.name == "interpreter" => (@native "sys.exec") cmd
 );
 # accepts the environment variable, returns its value if it exists or NotFound
-const get_env = (var :: string) -> type (:Found string | :NotFound) => cfg_if (
+const get_env = (var :: string) -> Option.t[string] => cfg_if (
     | target.name == "interpreter" => (@native "sys.get_env") var
 );
 # exit with the provided return code
