@@ -149,6 +149,34 @@ const replace_all_owned = (s :: string, .old :: string, .new :: string) => with_
     )
 );
 
+# find if string contains another string
+const contains = (s :: string, search :: string) -> bool => with_return (
+    # an empty `search` is not contained
+    if String.length search == 0 then return false;
+    # an empty `s` contains nothing
+    if String.length s == 0 then return false;
+    # `s` smaller than `search` means it cannot be contained
+    if String.length s < String.length search then return false;
+    if String.length s == String.length search then return (
+        if s == search then (
+            # `s` == `search` means `s` contains `search`
+            true
+        ) else (
+            # `s` equal to `search` in size but not contents means `s` does not contains `search`
+            false
+        )
+    );
+    
+    let end = (String.length s - String.length search + 1);
+    let start :: int32 = 0;
+    while start < end and String.substring (s, start, String.length search) != search do (
+        start += 1
+    );
+    
+    # if loop ended before end, `s` contains `search`
+    start != end
+);
+
 const FromString = [Self] newtype (
     .from_string :: string -> Self
 );
