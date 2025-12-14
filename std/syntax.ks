@@ -125,3 +125,6 @@ impl syntax (return) = `(
 impl syntax (return value) = `(
     unwind _returnable $value
 );
+impl syntax (@opaque_type) = `(
+    (@native "new_opaque_type") ()
+);

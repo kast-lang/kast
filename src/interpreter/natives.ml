@@ -11,9 +11,22 @@ exception Panic of string
 
 let argv : string array ref = ref [||]
 
-let init_natives () =
-  let span = Span.of_ocaml __POS__ in
+type tcp_stream = Unix.file_descr
 
+let span = Span.of_ocaml __POS__
+
+let native_fn name impl : string * (ty -> value) =
+  ( name,
+    fun ty ->
+      let fn_ty : Types.ty_fn =
+        { arg = Ty.new_not_inferred ~span; result = Ty.new_not_inferred ~span }
+      in
+      ty
+      |> Inference.Ty.expect_inferred_as ~span (T_Fn fn_ty |> Ty.inferred ~span);
+      V_NativeFn { id = Id.gen (); ty = fn_ty; name; impl = impl fn_ty }
+      |> Value.inferred ~span )
+
+let init_natives () =
   let plain_types : (string * Ty.Shape.t) list =
     [
       ("unit", T_Unit);
@@ -71,22 +84,6 @@ let init_natives () =
                    (T_Fn fn_ty |> Ty.inferred ~span);
               V_NativeFn { id = Id.gen (); name; ty = fn_ty; impl }
               |> Value.inferred ~span )))
-  in
-
-  let native_fn name impl : string * (ty -> value) =
-    ( name,
-      fun ty ->
-        let fn_ty : Types.ty_fn =
-          {
-            arg = Ty.new_not_inferred ~span;
-            result = Ty.new_not_inferred ~span;
-          }
-        in
-        ty
-        |> Inference.Ty.expect_inferred_as ~span
-             (T_Fn fn_ty |> Ty.inferred ~span);
-        V_NativeFn { id = Id.gen (); ty = fn_ty; name; impl = impl fn_ty }
-        |> Value.inferred ~span )
   in
 
   let dbg =
@@ -393,6 +390,105 @@ let init_natives () =
     [ read_file ]
   in
 
+  let net =
+    let tcp =
+      let read_line =
+        let buffer = Bytes.create 4096 in
+        let buf_pos = ref 0 in
+        native_fn "net.tcp.read_line" (fun _ty ~caller ~state:_ arg : value ->
+            match arg |> Value.await_inferred with
+            | V_Ref place -> (
+                match Common.read_place ~span place |> Value.await_inferred with
+                | V_Opaque { ty = _; value = socket } ->
+                    let socket : tcp_stream = Obj.obj socket in
+                    let result = ref (Bytes.sub_string buffer 0 !buf_pos) in
+                    let rec read_loop () =
+                      match String.index_opt !result '\n' with
+                      | Some newline_idx ->
+                          let after_newline =
+                            String.length !result - newline_idx - 1
+                          in
+                          Bytes.blit_string !result (newline_idx + 1) buffer 0
+                            after_newline;
+                          buf_pos := after_newline;
+                          result := String.sub !result 0 newline_idx
+                      | None ->
+                          let bytes_read =
+                            Unix.read socket buffer !buf_pos
+                              (Bytes.length buffer - !buf_pos)
+                          in
+                          if bytes_read <= 0 then failwith "YO bytes read <= 0";
+                          let read =
+                            Bytes.sub_string buffer !buf_pos bytes_read
+                          in
+                          result := !result ^ read;
+                          buf_pos := 0;
+                          read_loop ()
+                    in
+                    read_loop ();
+                    V_String !result |> Value.inferred ~span
+                | _ ->
+                    Error.error caller "net.tcp.connect expected the &tcpstream";
+                    V_Error |> Value.inferred ~span)
+            | _ ->
+                Error.error caller "net.tcp.connect expected the &tcpstream";
+                V_Error |> Value.inferred ~span)
+      in
+      let write =
+        native_fn "net.tcp.write" (fun _ty ~caller:_ ~state:_ arg : value ->
+            let args = arg |> Value.expect_tuple |> Option.get in
+            let socket, data = args.tuple |> Tuple.unwrap_unnamed2 in
+            let socket : tcp_stream =
+              socket.place |> Common.claim ~span |> Value.expect_ref
+              |> Option.get |> Common.read_place ~span |> Value.expect_opaque
+              |> Option.get
+            in
+            let data =
+              data.place |> Common.claim ~span |> Value.expect_ref |> Option.get
+              |> Common.read_place ~span |> Value.expect_string |> Option.get
+            in
+            let wrote =
+              Unix.write_substring socket data 0 (String.length data)
+            in
+            if String.length data <> wrote then failwith "SHORT WRITE";
+            V_Unit |> Value.inferred ~span)
+      in
+      let connect =
+        native_fn "net.tcp.connect" (fun ty ~caller ~state:_ arg : value ->
+            match Ty.await_inferred ty.result with
+            | T_Opaque result_ty -> (
+                match arg |> Value.await_inferred with
+                | V_String uri ->
+                    println "Connecting to %S" uri;
+                    let host, port =
+                      match String.split_on_char ':' uri with
+                      | [ host; port ] -> (host, port)
+                      | _ -> failwith "Expected host:port"
+                    in
+                    let addr =
+                      match Unix.getaddrinfo host port [] with
+                      | addr :: _ -> addr
+                      | [] -> failwith "could not resolve addr"
+                    in
+                    let socket : tcp_stream =
+                      Unix.socket addr.ai_family addr.ai_socktype
+                        addr.ai_protocol
+                    in
+                    Unix.connect socket addr.ai_addr;
+                    V_Opaque { ty = result_ty; value = Obj.repr socket }
+                    |> Value.inferred ~span
+                | _ ->
+                    Error.error caller "net.tcp.connect expected string arg";
+                    V_Error |> Value.inferred ~span)
+            | _ ->
+                Error.error caller "wrong type???";
+                V_Error |> Value.inferred ~span)
+      in
+      [ write; connect; read_line ]
+    in
+    tcp
+  in
+
   let natives : natives =
     let cmp_fn name op =
       native_fn name (fun _ty ~caller ~state:_ value ->
@@ -559,8 +655,17 @@ let init_natives () =
             match arg |> Value.expect_string with
             | Some s -> raise (Panic s)
             | None -> V_Error |> Value.inferred ~span);
+        native_fn "new_opaque_type" (fun _ty ~caller:_ ~state _arg ->
+            V_Ty
+              (Ty.inferred ~span
+                 (T_Opaque
+                    {
+                      name =
+                        Common.current_name state |> Name.new_inferred ~span;
+                    }))
+            |> Value.inferred ~span);
       ]
-      @ types @ fs @ sys @ rng @ mod_char @ mod_string @ dbg
+      @ types @ fs @ sys @ rng @ mod_char @ mod_string @ dbg @ net
     in
     { by_name = list |> StringMap.of_list }
   in

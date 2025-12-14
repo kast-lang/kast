@@ -82,6 +82,8 @@ module Impl = struct
       | V_Target _ -> original_value
       | V_ContextTy { id; ty } ->
           V_ContextTy { id; ty = sub_ty ~state ty } |> shaped
+      | V_Opaque { ty; value } ->
+          V_Opaque { ty = sub_ty_opaque ~state ty; value } |> shaped
       | V_Binding binding -> (
           match Scope.find_local_opt binding.name state.scope with
           | None -> original_value
@@ -98,6 +100,15 @@ module Impl = struct
         log "subbed value shape = %a into %a" Value.Shape.print shape
           Value.print result);
     result
+
+  and sub_name ~state (name : name) : name =
+    let ctx = Effect.perform GetCtx in
+    sub_var ~unite_shape:Inference_impl.unite_name_shape
+      ~sub_shape:(fun ~state (_original : name) shape ->
+        sub_name_shape ~state shape |> Name.new_inferred ~span:ctx.span)
+      ~new_not_inferred:Name.new_not_inferred
+      ~get_var:(fun (name : name) -> name.var)
+      ~state name
 
   and sub_optional_name ~state (name : optional_name) : optional_name =
     sub_var
@@ -160,6 +171,9 @@ module Impl = struct
                { data = data |> Option.map (sub_ty ~state) });
     }
 
+  and sub_ty_opaque ~state ({ name } : ty_opaque) : ty_opaque =
+    { name = sub_name ~state name }
+
   and sub_ty_shape ~(state : interpreter_state) (original_ty : ty)
       (shape : ty_shape) : ty =
     let ctx = Effect.perform GetCtx in
@@ -176,6 +190,7 @@ module Impl = struct
       | T_Unit | T_Bool | T_Int32 | T_Int64 | T_Float64 | T_String | T_Char
       | T_Target | T_ContextTy | T_CompilerScope | T_Error | T_Ast | T_Ty ->
           original_ty
+      | T_Opaque ty -> T_Opaque (sub_ty_opaque ~state ty) |> shaped
       | T_Ref inner -> T_Ref (sub_ty ~state inner) |> shaped
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped

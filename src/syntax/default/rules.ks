@@ -88,6 +88,7 @@
 @syntax "break" 500 wrap never = "break";
 @syntax "continue" 500 wrap never = "continue";
 @syntax "core:by_ref" 500 wrap never = "ref" " " _;
+@syntax "opaque_type" 500 wrap never = "@opaque_type";
 @syntax "core:loop" 500 wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:unit" 1000 wrap never = "(" ")";
 @syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";

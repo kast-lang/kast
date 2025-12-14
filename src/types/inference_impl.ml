@@ -60,6 +60,9 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_ContextTy, _ -> fail ()
   | T_CompilerScope, T_CompilerScope -> T_CompilerScope
   | T_CompilerScope, _ -> fail ()
+  | T_Opaque { name = name_a }, T_Opaque { name = name_b } ->
+      T_Opaque { name = unite_name ~span name_a name_b }
+  | T_Opaque _, _ -> fail ()
   | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
 
@@ -189,6 +192,7 @@ and unite_value_shape : value_shape Inference.unite =
   | V_UnwindToken _, _ -> fail ()
   | V_Target _, _ -> fail ()
   | V_ContextTy _, _ -> fail ()
+  | V_Opaque _, _ -> fail ()
   | V_Binding a, V_Binding b when a.id = b.id -> V_Binding a
   | V_Binding _, _ -> fail ()
   | V_CompilerScope _, _ -> fail ()
@@ -203,6 +207,10 @@ and unite_value : value Inference.unite =
 and unite_optional_name : optional_name Inference.unite =
  fun ~span { var = a } { var = b } ->
   { var = Inference.Var.unite ~span (unite_option unite_name_shape) a b }
+
+and unite_name : name Inference.unite =
+ fun ~span { var = a } { var = b } ->
+  { var = Inference.Var.unite ~span unite_name_shape a b }
 
 and unite_option : 'a. 'a Inference.unite -> 'a option Inference.unite =
  fun unite_value ~span a b ->
@@ -259,6 +267,7 @@ and infer_value_shape : span:span -> ty_shape -> value_shape option =
   | T_String -> None
   | T_Variant _ -> None
   | T_Ref _ -> None
+  | T_Opaque _ -> None
   | T_Tuple ({ name = _; tuple } as ty) ->
       Some
         (V_Tuple
@@ -315,6 +324,7 @@ and ty_of_value_shape : value_shape -> ty =
     | V_Float64 _ -> inferred_ty ~span T_Float64
     | V_Char _ -> inferred_ty ~span T_Char
     | V_String _ -> inferred_ty ~span T_String
+    | V_Opaque { ty; value = _ } -> inferred_ty ~span (T_Opaque ty)
     | V_Ref place -> inferred_ty ~span (T_Ref place.ty)
     | V_Tuple { ty; tuple = _ } -> inferred_ty ~span <| T_Tuple ty
     | V_Variant { ty; _ } -> inferred_ty ~span <| T_Variant ty

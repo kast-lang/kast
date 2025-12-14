@@ -66,6 +66,7 @@ module Impl = struct
     | V_Error -> fprintf fmt "@{<red><error>@}"
     | V_Binding binding -> fprintf fmt "<binding %a>" print_binding binding
     | V_CompilerScope _ -> fprintf fmt "@{<italic><compiler scope>@}"
+    | V_Opaque { ty = _; value = _ } -> fprintf fmt "@{<italic><opaque>@}"
     | V_Target target -> print_target fmt target
 
   and print_value : formatter -> value -> unit =
@@ -129,6 +130,7 @@ module Impl = struct
     | T_ContextTy -> fprintf fmt "context_type"
     | T_CompilerScope -> fprintf fmt "<compiler scope>"
     | T_Binding binding -> fprintf fmt "%a" print_binding binding
+    | T_Opaque { name } -> print_name fmt name
     | T_Error -> fprintf fmt "@{<red><error>@}"
 
   and print_ty : formatter -> ty -> unit =

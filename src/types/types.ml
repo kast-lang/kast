@@ -40,11 +40,17 @@ module rec TypesImpl : sig
     | V_ContextTy of value_context_ty
     | V_Binding of binding
     | V_CompilerScope of compiler_scope
+    | V_Opaque of value_opaque
     | V_Error
 
   and value = {
     var : value_shape Inference.var;
     ty : ty;
+  }
+
+  and value_opaque = {
+    ty : ty_opaque;
+    value : Obj.t;
   }
 
   and value_target = { name : string }
@@ -128,6 +134,8 @@ module rec TypesImpl : sig
     variants : ty_variant_data Row.t;
   }
 
+  and ty_opaque = { name : name }
+
   and ty_shape =
     | T_Unit
     | T_Bool
@@ -148,6 +156,7 @@ module rec TypesImpl : sig
     | T_ContextTy
     | T_CompilerScope
     | T_Binding of binding
+    | T_Opaque of ty_opaque
     | T_Error
 
   and ty = { var : ty_shape Inference.var }
@@ -556,11 +565,17 @@ end = struct
     | V_ContextTy of value_context_ty
     | V_Binding of binding
     | V_CompilerScope of compiler_scope
+    | V_Opaque of value_opaque
     | V_Error
 
   and value = {
     var : value_shape Inference.var;
     ty : ty;
+  }
+
+  and value_opaque = {
+    ty : ty_opaque;
+    value : Obj.t; [@equal Stdlib.( = )] [@compare Stdlib.compare]
   }
 
   and value_target = { name : string }
@@ -644,6 +659,8 @@ end = struct
     variants : ty_variant_data Row.t;
   }
 
+  and ty_opaque = { name : name }
+
   and ty_shape =
     | T_Unit
     | T_Bool
@@ -664,6 +681,7 @@ end = struct
     | T_ContextTy
     | T_CompilerScope
     | T_Binding of binding
+    | T_Opaque of ty_opaque
     | T_Error
 
   and ty = { var : ty_shape Inference.var }

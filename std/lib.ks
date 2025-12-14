@@ -23,6 +23,7 @@ const Char = include "./char.ks";
 const String = include "./string.ks";
 const path = include "./path.ks";
 const fs = include "./fs/_mod.ks";
+const net = include "./net/_mod.ks";
 const sys = include "./sys/_mod.ks";
 const rng = include "./rng/_mod.ks";
 const collections = include "./collections/_mod.ks";

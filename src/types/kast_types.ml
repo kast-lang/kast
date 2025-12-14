@@ -64,6 +64,12 @@ module Value = struct
     | V_Ref place -> Some place
     | _ -> None
 
+  let expect_opaque : 'a. value -> 'a option =
+   fun value ->
+    match value |> await_inferred with
+    | V_Opaque { ty = _; value } -> Some (Obj.obj value)
+    | _ -> None
+
   let expect_unwind_token : value -> Types.value_unwind_token option =
    fun value ->
     match value |> await_inferred with
@@ -241,6 +247,16 @@ module Place = struct
 end
 
 type place = Place.t
+
+module Name = struct
+  type t = name
+
+  let new_inferred ~span value : name =
+    { var = Inference.Var.new_inferred ~span value }
+
+  let new_not_inferred ~span : name =
+    { var = Inference.Var.new_not_inferred ~span }
+end
 
 module OptionalName = struct
   type t = optional_name

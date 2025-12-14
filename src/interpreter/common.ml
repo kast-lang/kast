@@ -17,6 +17,16 @@ exception
 
 let is_copy_ty (_ty : ty) : bool = true
 
+let read_place ~span (place : place) : value =
+  match place.state with
+  | Occupied value -> value
+  | Uninitialized ->
+      Error.error span "place is not initialized";
+      V_Error |> Value.inferred ~span
+  | MovedOut ->
+      Error.error span "place has been moved out of";
+      V_Error |> Value.inferred ~span
+
 let claim ~span (place : place) : value =
   match place.state with
   | Occupied value ->
