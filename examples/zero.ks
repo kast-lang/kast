@@ -1,1 +1,1 @@
-0 :: std.int32
+0 :: std.Int32

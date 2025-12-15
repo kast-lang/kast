@@ -3,8 +3,8 @@ module:
 const data = [T] newtype (
     .left :: Treap.t[T],
     .value :: T,
-    .count :: int32,
-    .priority :: int32,
+    .count :: Int32,
+    .priority :: Int32,
     .right :: Treap.t[T],
 );
 const t = [T] newtype (
@@ -21,7 +21,7 @@ const singleton = [T] (value :: T) -> Treap.t[T] => (
         .priority = std.rng.gen_range (.min = 0, .max = 1000000000),
     )
 );
-const length = [T] (v :: &Treap.t[T]) -> int32 => (
+const length = [T] (v :: &Treap.t[T]) -> Int32 => (
     match v^ with (
         | :Empty => 0
         | :Node v => v.count
@@ -99,7 +99,7 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> (t[T], t[T]) => (
     )
 );
 
-const split_at = [T] (v :: Treap.t[T], idx :: int32) -> (Treap.t[T], Treap.t[T]) => (
+const split_at = [T] (v :: Treap.t[T], idx :: Int32) -> (Treap.t[T], Treap.t[T]) => (
     split (
         v,
         node => (
@@ -119,7 +119,7 @@ const split_at = [T] (v :: Treap.t[T], idx :: int32) -> (Treap.t[T], Treap.t[T])
         )
     )
 );
-const at = [T] (v :: &Treap.t[T], idx :: int32) -> &T => (
+const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
     match v^ with (
         | :Empty => panic "oob"
         | :Node v => (
@@ -133,15 +133,15 @@ const at = [T] (v :: &Treap.t[T], idx :: int32) -> &T => (
         )
     )
 );
-const set_at = [T] (v :: Treap.t[T], idx :: int32, value :: T) -> Treap.t[T] => (
+const set_at = [T] (v :: Treap.t[T], idx :: Int32, value :: T) -> Treap.t[T] => (
     let left, v = split_at (v, idx);
     let _, right = split_at (v, 1);
     join (left, join (singleton value, right))
 );
-const update_at = [T] (a :: Treap.t[T], idx :: int32, f :: &T -> T) -> Treap.t[T] => (
+const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T] => (
     set_at (a, idx, f (at (&a, idx)))
 );
-const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> string) -> string => (
+const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String => (
     let result = "[";
     let i = 0;
     iter (

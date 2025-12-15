@@ -412,35 +412,41 @@ and eval_place : state -> Types.place_expr -> place =
                   Error.error ref_expr.data.span "Expected a reference";
                   error_place expr.data.ty
               | Some place -> place)
-          | PE_Field { obj; field; field_span = _ } -> (
+          | PE_Field { obj; field; field_span = _ } ->
               let obj = eval_place state obj in
               let member : Tuple.member =
                 match eval_field_expr state field with
                 | Ok member -> member
                 | Error () -> return <| error_place expr.data.ty
               in
-              match obj |> claim ~span |> Value.await_inferred with
-              | V_Tuple { ty = _; tuple } -> (
-                  match Tuple.get_opt member tuple with
-                  | Some field -> field.place
-                  | None ->
-                      Error.error expr.data.span "field %a doesnt exist"
-                        Tuple.Member.print member;
-                      error_place expr.data.ty)
-              | V_Target { name } -> (
-                  match member with
-                  | Name "name" ->
-                      Place.init (V_String name |> Value.inferred ~span)
-                  | _ ->
-                      Error.error expr.data.span
-                        "field %a doesnt exist in target" Tuple.Member.print
-                        member;
-                      error_place expr.data.ty)
-              | V_Error -> error_place expr.data.ty
-              | value ->
-                  Error.error expr.data.span "%a doesnt have fields"
-                    Value.Shape.print value;
-                  error_place expr.data.ty))
+              let rec get_field obj =
+                match obj |> Value.await_inferred with
+                | V_Tuple { ty = _; tuple } -> (
+                    match Tuple.get_opt member tuple with
+                    | Some field -> field.place
+                    | None ->
+                        Error.error expr.data.span "field %a doesnt exist"
+                          Tuple.Member.print member;
+                        error_place expr.data.ty)
+                | V_Target { name } -> (
+                    match member with
+                    | Name "name" ->
+                        Place.init (V_String name |> Value.inferred ~span)
+                    | _ ->
+                        Error.error expr.data.span
+                          "field %a doesnt exist in target" Tuple.Member.print
+                          member;
+                        error_place expr.data.ty)
+                | V_Error -> error_place expr.data.ty
+                | obj_shape -> (
+                    match cast_as_module_opt ~span state obj with
+                    | Some obj_mod -> get_field obj_mod
+                    | None ->
+                        Error.error expr.data.span "%a doesnt have fields"
+                          Value.Shape.print obj_shape;
+                        error_place expr.data.ty)
+              in
+              get_field (obj |> claim ~span))
     in
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
     result
@@ -818,10 +824,7 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
  fun state expr { value; target } ->
   let span = expr.data.span in
   let value = eval state value in
-  (* TODO Value.await_fully_inferred *)
-  (match value.var |> Inference.Var.inferred_or_default with
-  | Some (V_Ty ty) -> ty.var |> Inference.Var.setup_default_if_needed
-  | _ -> ());
+  value |> await_fully_inferred;
   let impl =
     state.cast_impls.map
     |> Types.ValueMap.find_opt target
@@ -844,6 +847,38 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
               Log.trace (fun log ->
                   log "Exists impl: %a as %a" Value.print existing_value
                     Value.print existing_target)));
+      V_Error |> Value.inferred ~span
+
+and await_fully_inferred value =
+  (* TODO actual impl *)
+  match value.var |> Inference.Var.inferred_or_default with
+  | Some (V_Ty ty) -> ty.var |> Inference.Var.setup_default_if_needed
+  | _ -> ()
+
+and impl_cast_as_module :
+    span:span -> state -> value:value -> impl:value -> unit =
+ fun ~span state ~value ~impl ->
+  value |> await_fully_inferred;
+  state.cast_impls.as_module <-
+    state.cast_impls.as_module
+    |> Types.ValueMap.update value (fun current_impl ->
+        match current_impl with
+        | None -> Some impl
+        | Some current_impl ->
+            Error.error span "Duplicate impl as module";
+            Some current_impl)
+
+and cast_as_module_opt : span:span -> state -> value -> value option =
+ fun ~span:_ state value ->
+  value |> await_fully_inferred;
+  state.cast_impls.as_module |> Types.ValueMap.find_opt value
+
+and cast_as_module : span:span -> state -> value -> value =
+ fun ~span state value ->
+  match cast_as_module_opt ~span state value with
+  | Some impl -> impl
+  | None ->
+      Error.error span "no impl of %a as module" Value.print value;
       V_Error |> Value.inferred ~span
 
 and eval_expr_targetdependent :

@@ -82,7 +82,11 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
                 (* TODO should be brand new interpreter? and compiler? *)
                 C.state.interpreter
                 with
-                cast_impls = { map = Types.ValueMap.empty };
+                cast_impls =
+                  {
+                    map = Types.ValueMap.empty;
+                    as_module = Types.ValueMap.empty;
+                  };
               };
           }
         in
@@ -115,7 +119,8 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
         {
           value = V_Error |> Value.inferred ~span;
           custom_syntax_impls = Hashtbl.create 0;
-          cast_impls = { map = Types.ValueMap.empty };
+          cast_impls =
+            { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
         }
   in
   Hashtbl.add_seq C.state.custom_syntax_impls
@@ -132,6 +137,12 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
                Some a)
              impls_a impls_b))
       C.state.interpreter.cast_impls.map result.cast_impls.map;
+  C.state.interpreter.cast_impls.as_module <-
+    Types.ValueMap.union
+      (fun value a _b ->
+        error span "conflicting impls of cast %a as module" Value.print value;
+        Some a)
+      C.state.interpreter.cast_impls.as_module result.cast_impls.as_module;
   result.value
 
 let inject_binding ~(only_compiler : bool) (binding : binding) (state : State.t)

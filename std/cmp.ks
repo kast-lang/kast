@@ -1,35 +1,35 @@
 module:
-const less = [T] (a :: T, b :: T) -> bool => (
+const less = [T] (a :: T, b :: T) -> Bool => (
     cfg_if (
         | (@native "==") (target.name, "interpreter") => (@native "<") (a, b)
         | (@native "==") (target.name, "ocaml") => @native "({a} < {b})"
     )
 );
-const less_or_equal = [T] (a :: T, b :: T) -> bool => (
+const less_or_equal = [T] (a :: T, b :: T) -> Bool => (
     cfg_if (
         | (@native "==") (target.name, "interpreter") => (@native "<=") (a, b)
         | (@native "==") (target.name, "ocaml") => @native "({a} <= {b})"
     )
 );
-const equal = [T] (a :: T, b :: T) -> bool => (
+const equal = [T] (a :: T, b :: T) -> Bool => (
     cfg_if (
         | (@native "==") (target.name, "interpreter") => (@native "==") (a, b)
         | (@native "==") (target.name, "ocaml") => @native "({a} = {b})"
     )
 );
-const not_equal = [T] (a :: T, b :: T) -> bool => (
+const not_equal = [T] (a :: T, b :: T) -> Bool => (
     cfg_if (
         | (@native "==") (target.name, "interpreter") => (@native "!=") (a, b)
         | (@native "==") (target.name, "ocaml") => @native "({a} <> {b})"
     )
 );
-const greater_or_equal = [T] (a :: T, b :: T) -> bool => (
+const greater_or_equal = [T] (a :: T, b :: T) -> Bool => (
     cfg_if (
         | (@native "==") (target.name, "interpreter") => (@native ">=") (a, b)
         | (@native "==") (target.name, "ocaml") => @native "({a} >= {b})"
     )
 );
-const greater = [T] (a :: T, b :: T) -> bool => (
+const greater = [T] (a :: T, b :: T) -> Bool => (
     cfg_if (
         | (@native "==") (target.name, "interpreter") => (@native ">") (a, b)
         | (@native "==") (target.name, "ocaml") => @native "({a} > {b})"

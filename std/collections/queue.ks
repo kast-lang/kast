@@ -17,6 +17,6 @@ const pop = [T] (q :: &Queue.t[T]) -> T => (
 const front = [T] (q :: &Queue.t[T]) -> &T => (
     Treap.at (&q^.inner, 0)
 );
-const length = [T] (q :: &Queue.t[T]) -> int32 => (
+const length = [T] (q :: &Queue.t[T]) -> Int32 => (
     Treap.length &q^.inner
 );

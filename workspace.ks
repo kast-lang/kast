@@ -1,5 +1,4 @@
 .roots = (
-    "std/lib.ks",
     "examples/example.ks",
     "examples/guess-a-number.ks",
     "examples/hello.ks",

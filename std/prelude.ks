@@ -1,14 +1,11 @@
 module:
-use bool;
-use uint32;
-use int32;
-use int64;
-use float64;
-use char;
+use Bool;
+use UInt32;
+use Int32;
+use Int64;
+use Float64;
 use Char;
-use string;
 use String;
-use String.parse;
 use String.to_string;
 use io.print;
 use io.eprint;

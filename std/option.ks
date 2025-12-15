@@ -6,12 +6,12 @@ const t = [T] newtype (
 );
 const Option = t;
 
-const is_some = [T] (opt :: &Option[T]) -> bool => match opt^ with (
+const is_some = [T] (opt :: &Option[T]) -> Bool => match opt^ with (
     | :Some _ => true
     | :None => false
 );
 
-const is_none = [T] (opt :: &Option[T]) -> bool => match opt^ with (
+const is_none = [T] (opt :: &Option[T]) -> Bool => match opt^ with (
     | :Some _ => false
     | :None => true
 );

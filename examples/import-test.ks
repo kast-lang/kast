@@ -1,2 +1,2 @@
-let x :: string = 0;
+let x :: String = 0;
 type ()

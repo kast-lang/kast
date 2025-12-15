@@ -6,7 +6,7 @@ print (id 1 |> to_string);
 # const 
 const @"const" = [A, B] a :: A => (_ :: B => a);
 let const2 = @"const"[_, _] 2;
-print (const2 "hello" |> parse);
+print (const2 "hello" |> String.parse);
 const @"const_v2" = [A] a :: A => ([B] _ :: B => a);
 let const3 = @"const_v2" 3;
 # print (const3 "hello"); # type error

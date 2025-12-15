@@ -6,6 +6,7 @@
 @syntax "core:use" 1 wrap never = "use" " " _;
 @syntax "core:impl syntax" 1 wrap never = "impl" " " "syntax" " " name " " "=" " " impl;
 @syntax "core:impl_cast" 1 wrap never = "impl" " " value " " "as" " " target " " "=" " " impl;
+@syntax "core:impl_as_module" 1 wrap never = "impl" " " value " " "as" " " "module" " " "=" " " impl;
 @syntax "core:assign" 2 wrap never = assignee " " "=" " " value;
 @syntax "core:const" 2 wrap never = "const" " " pattern " " "=" " " value;
 @syntax "add_assign" 2 wrap never = _ " " "+=" " " _;

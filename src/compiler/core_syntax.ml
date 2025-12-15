@@ -2229,6 +2229,43 @@ let impl_cast : core_syntax =
             init_error span C.state kind);
   }
 
+let impl_as_module : core_syntax =
+  {
+    name = "impl_as_module";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let value, impl =
+          children
+          |> Tuple.map Ast.Child.expect_ast
+          |> Tuple.unwrap_named2 [ "value"; "impl" ]
+        in
+        match kind with
+        | Expr ->
+            let value, value_expr =
+              Compiler.eval ~ty:(Ty.new_not_inferred ~span) (module C) value
+            in
+            let impl_temp = Value.new_not_inferred ~span in
+            Kast_interpreter.impl_cast_as_module ~span C.state.interpreter
+              ~value ~impl:impl_temp;
+            let impl, impl_expr =
+              Compiler.eval ~ty:(Ty.new_not_inferred ~span) (module C) impl
+            in
+            Inference.Value.expect_inferred_as ~span impl impl_temp;
+            E_Constant (V_Unit |> Value.inferred ~span)
+            |> init_expr ~evaled_exprs:[ value_expr; impl_expr ] span C.state
+        | _ ->
+            error span "impl cast must be expr";
+            init_error span C.state kind);
+  }
+
 let cast : core_syntax =
   {
     name = "cast";
@@ -2386,6 +2423,7 @@ let core =
     ref_;
     deref;
     impl_cast;
+    impl_as_module;
     cast;
     by_ref;
     typeof;

@@ -133,6 +133,54 @@ and auto_instantiate_generics : span -> State.t -> expr -> expr =
       |> init_expr span state
   | _ -> expr
 
+and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span
+    (obj_ty : ty) field =
+  with_return (fun { return } ->
+      let (label, member) : Label.t option * Tuple.member =
+        match (field : Types.field_expr) with
+        | Index i -> (None, Index i)
+        | Name label -> (Some label, Name (Label.get_name label))
+        | Expr _e ->
+            error span "todo expr field access";
+            return <| Ty.new_not_inferred ~span:field_span
+      in
+      let ty = Ty.new_not_inferred ~span in
+      obj_ty.var
+      |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
+          let field_ty =
+            match obj_shape with
+            | T_Tuple { name = _; tuple } -> (
+                match Tuple.get_opt member tuple with
+                | Some ty_field ->
+                    (let _ : Label.t option =
+                       Inference_impl.unite_option ~span
+                         (fun ~span:_ -> Label.unite)
+                         label ty_field.label
+                     in
+                     ());
+                    ty_field.ty
+                | None ->
+                    error span "field %a is not there" Tuple.Member.print member;
+                    Ty.new_not_inferred ~span:field_span)
+            | T_Target -> (
+                match member with
+                | Name "name" -> Ty.inferred ~span:field_span T_String
+                | _ ->
+                    error span "field %a is not in target" Tuple.Member.print
+                      member;
+                    Ty.new_not_inferred ~span:field_span)
+            | T_Ty when Option.is_some obj ->
+                let module_ty =
+                  cast_as_module_ty ~span state (Option.get obj)
+                in
+                field_ty ~span ~state ~field_span module_ty field
+            | other ->
+                error span "%a doesnt have fields" Ty.Shape.print other;
+                Ty.new_not_inferred ~span:field_span
+          in
+          ty |> Inference.Ty.expect_inferred_as ~span field_ty);
+      ty)
+
 and init_place_expr :
     ?evaled_exprs:expr list ->
     span ->
@@ -142,59 +190,18 @@ and init_place_expr :
  fun ?(evaled_exprs = []) span state shape ->
   try
     let ty =
-      with_return (fun { return } ->
-          match shape with
-          | PE_Error -> Ty.new_not_inferred ~span
-          | PE_Binding binding -> binding.ty
-          | PE_Temp expr -> expr.data.ty
-          | PE_Deref ref ->
-              let value_ty = Ty.new_not_inferred ~span in
-              ref.data.ty
-              |> Inference.Ty.expect_inferred_as ~span
-                   (Ty.inferred ~span (T_Ref value_ty));
-              value_ty
-          | PE_Field { obj; field; field_span } ->
-              let ty = Ty.new_not_inferred ~span in
-              let (label, member) : Label.t option * Tuple.member =
-                match field with
-                | Index i -> (None, Index i)
-                | Name label -> (Some label, Name (Label.get_name label))
-                | Expr _e ->
-                    error span "todo expr field access";
-                    return <| Ty.new_not_inferred ~span:field_span
-              in
-              obj.data.ty.var
-              |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
-                  let field_ty =
-                    match obj_shape with
-                    | T_Tuple { name = _; tuple } -> (
-                        match Tuple.get_opt member tuple with
-                        | Some ty_field ->
-                            (let _ : Label.t option =
-                               Inference_impl.unite_option ~span
-                                 (fun ~span:_ -> Label.unite)
-                                 label ty_field.label
-                             in
-                             ());
-                            ty_field.ty
-                        | None ->
-                            error span "field %a is not there"
-                              Tuple.Member.print member;
-                            Ty.new_not_inferred ~span:field_span)
-                    | T_Target -> (
-                        match member with
-                        | Name "name" -> Ty.inferred ~span:field_span T_String
-                        | _ ->
-                            error span "field %a is not in target"
-                              Tuple.Member.print member;
-                            Ty.new_not_inferred ~span:field_span)
-                    | other ->
-                        error obj.data.span "%a doesnt have fields"
-                          Ty.Shape.print other;
-                        Ty.new_not_inferred ~span:field_span
-                  in
-                  ty |> Inference.Ty.expect_inferred_as ~span field_ty);
-              ty)
+      match shape with
+      | PE_Error -> Ty.new_not_inferred ~span
+      | PE_Binding binding -> binding.ty
+      | PE_Temp expr -> expr.data.ty
+      | PE_Deref ref ->
+          let value_ty = Ty.new_not_inferred ~span in
+          ref.data.ty
+          |> Inference.Ty.expect_inferred_as ~span
+               (Ty.inferred ~span (T_Ref value_ty));
+          value_ty
+      | PE_Field { obj; field; field_span } ->
+          field_ty ~state ~span ~obj ~field_span obj.data.ty field
     in
     {
       shape;
@@ -212,6 +219,20 @@ and init_place_expr :
     Log.error (fun log ->
         log "while initializing place expr at %a" Span.print span);
     raise exc
+
+and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
+ fun ~span state value ->
+  let ty = Ty.new_not_inferred ~span in
+  State.Scope.fork (fun () ->
+      let value =
+        Kast_interpreter.eval_place state.interpreter value
+        |> Kast_interpreter.claim ~span
+      in
+      let module_ =
+        Kast_interpreter.cast_as_module ~span state.interpreter value
+      in
+      ty |> Inference.Ty.expect_inferred_as ~span (Value.ty_of module_));
+  ty
 
 and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
  fun ~span state value target ->

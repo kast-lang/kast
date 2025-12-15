@@ -489,7 +489,11 @@ module rec TypesImpl : sig
   }
 
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
-  and cast_impls = { mutable map : value ValueMap.t ValueMap.t }
+
+  and cast_impls = {
+    mutable map : value ValueMap.t ValueMap.t;
+    mutable as_module : value ValueMap.t;
+  }
 
   and interpreter_state = {
     natives : natives;
@@ -1014,7 +1018,11 @@ end = struct
   }
 
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
-  and cast_impls = { mutable map : value ValueMap.t ValueMap.t }
+
+  and cast_impls = {
+    mutable map : value ValueMap.t ValueMap.t;
+    mutable as_module : value ValueMap.t;
+  }
 
   and interpreter_state = {
     natives : natives;

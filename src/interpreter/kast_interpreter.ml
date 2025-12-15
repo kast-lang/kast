@@ -13,7 +13,8 @@ let init : Types.name_part -> Scope.locals -> state =
     natives = Natives.init_natives ();
     contexts = Id.Map.empty;
     instantiated_generics = { map = Id.Map.empty };
-    cast_impls = { map = Types.ValueMap.empty };
+    cast_impls =
+      { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
     current_name_parts_rev = [ name_part ];
   }
 

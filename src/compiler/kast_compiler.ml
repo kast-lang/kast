@@ -285,6 +285,8 @@ let default name_part ?(import_cache : import_cache option) () : state =
   in
   (* TODO hack??? *)
   interpreter_with_std.cast_impls.map <- interpreter_without_std.cast_impls.map;
+  interpreter_with_std.cast_impls.as_module <-
+    interpreter_without_std.cast_impls.as_module;
   let scope = State.Scope.init ~recursive:false in
   let scope =
     scope

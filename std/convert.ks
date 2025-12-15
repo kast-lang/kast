@@ -3,13 +3,13 @@ module:
 const Into = [T] [Self] newtype (
     .into :: Self -> T
 );
-impl int32 as Into[int64] = (
+impl Int32 as Into[Int64] = (
     .into = value => (
-        value |> String.to_string |> String.parse
+        value |> String.to_string[_] |> String.parse[_]
     )
 );
-impl int64 as Into[int32] = (
+impl Int64 as Into[Int32] = (
     .into = value => (
-        value |> String.to_string |> String.parse
+        value |> String.to_string[_] |> String.parse[_]
     )
 );
