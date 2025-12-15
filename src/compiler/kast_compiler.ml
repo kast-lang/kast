@@ -41,6 +41,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
   }
 
 type 'a compiled_kind = 'a Compiler_types.compiled_kind
+type compiled = Compiler_types.compiled
 
 let get_data = Compiler.get_data
 

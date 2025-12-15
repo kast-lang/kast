@@ -66,12 +66,9 @@ let rec inlay_hints :
   in
   rest |> Seq.append (hint |> Option.to_seq) |> Seq.append ascription
 
-let inlay_hints ~uri (expr : expr) : Lsp.Types.InlayHint.t list =
-  inlay_hints ~uri Expr expr |> List.of_seq
-
 let get ({ uri; compiled; _ } : Processing.file_state) :
     Lsp.Types.InlayHint.t list option =
   Log.trace (fun log -> log "got inlay hint req");
-  let* expr = compiled in
-  let hints = inlay_hints ~uri expr in
+  let* (Compiled (kind, compiled)) = compiled in
+  let hints = inlay_hints ~uri kind compiled |> List.of_seq in
   Some hints

@@ -86,8 +86,8 @@ let completions (pos : Lsp.Types.Position.t)
   let pos = Common.lsp_to_kast_pos pos in
   Log.info (fun log -> log "Completing at %a" Position.print pos);
   match compiled with
-  | Some expr -> (
-      match complete Expr expr pos with
+  | Some (Compiled (kind, compiled)) -> (
+      match complete kind compiled pos with
       | Some list -> list
       | None -> [])
   | None -> []

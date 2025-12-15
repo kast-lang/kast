@@ -235,8 +235,8 @@ let find_definition (pos : Lsp.Types.Position.t)
     ({ uri; compiled; _ } : Processing.file_state) :
     Lsp.Types.Locations.t option =
   let pos : position = Common.lsp_to_kast_pos pos in
-  let* expr = compiled in
-  let* hover_info = hover Expr expr (Span.single_char pos uri) in
+  let* (Compiled (kind, compiled)) = compiled in
+  let* hover_info = hover kind compiled (Span.single_char pos uri) in
   match hover_info.file with
   | Some file ->
       let location : Lsp.Types.Location.t =
@@ -265,8 +265,8 @@ let find_references (params : Lsp.Types.ReferenceParams.t)
     ({ uri; compiled; _ } : Processing.file_state) :
     Lsp.Types.Location.t list option =
   let pos : position = Common.lsp_to_kast_pos params.position in
-  let* expr = compiled in
-  let* hover_info = hover Expr expr (Span.single_char pos uri) in
+  let* (Compiled (kind, compiled)) = compiled in
+  let* hover_info = hover kind compiled (Span.single_char pos uri) in
   let* definition =
     match hover_info.rename with
     | Some
@@ -290,8 +290,8 @@ let find_references (params : Lsp.Types.ReferenceParams.t)
 let prepare_rename (pos : Lsp.Types.Position.t)
     ({ uri; compiled; _ } : Processing.file_state) : Lsp.Types.Range.t option =
   let pos : position = Common.lsp_to_kast_pos pos in
-  let* expr = compiled in
-  let* hover_info = hover Expr expr (Span.single_char pos uri) in
+  let* (Compiled (kind, compiled)) = compiled in
+  let* hover_info = hover kind compiled (Span.single_char pos uri) in
   let* rename = hover_info.rename in
   Some (rename.span |> Common.span_to_range)
 
@@ -303,8 +303,8 @@ let rename (position : Lsp.Types.Position.t) (newName : string)
   try
     let newText = Kast_lexer.maybe_convert_to_raw_ident newName in
     let pos : position = Common.lsp_to_kast_pos position in
-    let* expr = compiled in
-    let* hover_info = hover Expr expr (Span.single_char pos uri) in
+    let* (Compiled (kind, compiled)) = compiled in
+    let* hover_info = hover kind compiled (Span.single_char pos uri) in
     let* rename = hover_info.rename in
     let definition =
       match rename.definition_mode with
@@ -348,8 +348,8 @@ let hover (pos : Lsp.Types.Position.t)
     ({ uri; compiled; _ } : Processing.file_state) : Lsp.Types.Hover.t option =
   let pos = Common.lsp_to_kast_pos pos in
   Log.trace (fun log -> log "Hovering %a" Position.print pos);
-  let* expr = compiled in
-  let* hover_info = hover Expr expr (Span.single_char pos uri) in
+  let* (Compiled (kind, compiled)) = compiled in
+  let* hover_info = hover kind compiled (Span.single_char pos uri) in
   let hover_text = hover_text hover_info in
   Log.trace (fun log -> log "Hover result: %S" hover_text);
   Some

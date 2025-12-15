@@ -26,7 +26,7 @@ and workspace_state = {
 and file_state = {
   uri : Uri.t;
   parsed : Parser.result option;
-  compiled : expr option;
+  compiled : Compiler.compiled option;
 }
 
 let process_file (global : global_state) (source : source) : file_state =
@@ -128,7 +128,12 @@ let process_file (global : global_state) (source : source) : file_state =
         | _ -> None)
   in
   Log.debug (fun log -> log "Processing done %a" Uri.print source.uri);
-  { uri = source.uri; parsed; compiled }
+  {
+    uri = source.uri;
+    parsed;
+    compiled =
+      compiled |> Option.map (fun e : Compiler.compiled -> Compiled (Expr, e));
+  }
 
 let workspace_file (root : Uri.t) (path : string) =
   Uri.with_path root (Uri.path root ^ "/" ^ path)
@@ -146,9 +151,12 @@ let workspace_roots (global : global_state) (workspace : workspace_state) :
   handle_processed workspace workspace_ks.uri processed_workspace_ks;
   let compiled = processed_workspace_ks.compiled |> Option.get in
   let evaled =
-    Kast_interpreter.eval
-      (Kast_interpreter.default (Uri workspace_ks.uri))
-      compiled
+    match compiled with
+    | Compiled (Expr, compiled) ->
+        Kast_interpreter.eval
+          (Kast_interpreter.default (Uri workspace_ks.uri))
+          compiled
+    | Compiled _ -> failwith "Compiled workspace.ks not as expr???"
   in
   let workspace_def = evaled |> Value.expect_tuple |> Option.get in
   let workspace_roots =
@@ -180,7 +188,10 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
           let processed = process_file global (Source.read uri) in
           handle_processed workspace uri processed);
       Log.debug (fun log ->
-          log "Workspace processed at %a" Uri.print workspace.root)
+          log "Workspace processed at %a" Uri.print workspace.root);
+      Log.info (fun log ->
+          log "All workspace files: %a" (List.print Uri.print)
+            (workspace.files |> UriMap.to_list |> List.map fst))
     with
     | effect Kast_compiler.Effect.FileStartedProcessing uri, k ->
         Log.trace (fun log -> log "removed diags for %a" Uri.print uri);
@@ -190,19 +201,24 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
     | effect
         Compiler.Effect.FileIncluded { root; uri; parsed; kind; compiled }, k ->
         Hashtbl.add global.root_of_included uri root;
-        (match kind with
-        | Expr ->
-            let file_state : file_state =
-              { uri; parsed = Some parsed; compiled = Some compiled }
-            in
-            handle_processed workspace uri file_state
-        | _ -> ());
+        let file_state : file_state =
+          {
+            uri;
+            parsed = Some parsed;
+            compiled = Some (Compiled (kind, compiled));
+          }
+        in
+        handle_processed workspace uri file_state;
         Effect.Deep.continue k ()
     | effect
         Compiler.Effect.FileImported { uri; parsed; compiled; value = _ }, k ->
         Hashtbl.remove global.root_of_included uri;
         let file_state : file_state =
-          { uri; parsed = Some parsed; compiled = Some compiled }
+          {
+            uri;
+            parsed = Some parsed;
+            compiled = Some (Compiled (Expr, compiled));
+          }
         in
         handle_processed workspace uri file_state;
         Effect.Deep.continue k ()
