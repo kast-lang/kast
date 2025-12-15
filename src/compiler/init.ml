@@ -8,7 +8,7 @@ module Inference = Kast_inference
 let tuple_ty : 'a. span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty =
  fun ~span kind { parts } ->
   let result = Ty.new_not_inferred ~span in
-  if false then
+  if true then
     result.var
     |> Inference.Var.once_inferred (fun shape ->
         let field_parts_unnamed_before_packed = ref 0 in

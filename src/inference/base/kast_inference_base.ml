@@ -135,7 +135,6 @@ module Var = struct
       }
     in
     on_unite |> List.iter (fun f -> f data);
-    data |> run_once_inferred_if_needed;
     data
 
   let unite : 'a. 'a unite -> 'a var unite =
@@ -160,6 +159,7 @@ module Var = struct
           unite_data ~span unite_inferred united_data root_data
         in
         root.state <- Root { data = united_data_final };
+        united_data_final |> run_once_inferred_if_needed;
         root
     with effect (Error.Error _ as eff), _k ->
       Effect.perform eff;
