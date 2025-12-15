@@ -1,15 +1,15 @@
 use std.prelude.*;
-use std.collections.treap;
-let v = treap.create ();
+use std.collections.Treap;
+let v = Treap.create ();
 for i in 0..10 do (
-    v = treap.join (v, treap.singleton (i + 10));
+    v = Treap.join (v, Treap.singleton (i + 10));
 );
 # std.dbg.print v;
-let treap_to_string = v => treap.to_string (v, &x => to_string x);
-print ("v = " + treap_to_string &v);
-let left, right = treap.split_at (v, 8);
-print ("split_at 8:\n  left = " + treap_to_string &left + "\n  right = " + treap_to_string &right);
-print ("at 5 = " + to_string (treap.at (&v, 5))^);
-let v = treap.set_at (v, 7, 67);
+let Treap_to_string = v => Treap.to_string (v, &x => to_string x);
+print ("v = " + Treap_to_string &v);
+let left, right = Treap.split_at (v, 8);
+print ("split_at 8:\n  left = " + Treap_to_string &left + "\n  right = " + Treap_to_string &right);
+print ("at 5 = " + to_string (Treap.at (&v, 5))^);
+let v = Treap.set_at (v, 7, 67);
 print ("set at 7 = 67");
-print ("v = " + treap_to_string &v);
+print ("v = " + Treap_to_string &v);

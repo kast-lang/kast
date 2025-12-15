@@ -8,6 +8,7 @@ let code = (c :: char) -> uint32 => cfg_if (
 let from_code = (code :: uint32) -> char => cfg_if (
     | target.name == "interpreter" => (@native "char.from_code") code
 );
+
 let code_0 = code '0';
 let code_a = code 'a';
 let code_A = code 'A';

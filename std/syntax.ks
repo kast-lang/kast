@@ -73,17 +73,17 @@ impl syntax (@context ty) = `(
 );
 impl syntax (loop ( body )) = `(
     unwindable loop_block (
-        @comptime with std.loop_block = loop_block;
+        @comptime with std.LoopBlock = loop_block;
         @loop (
             unwindable loop_body (
-                @comptime with std.loop_body = loop_body;
+                @comptime with std.LoopBody = loop_body;
                 $body
             );
         );
     );
 );
 impl syntax (break) = `(
-    unwind (@binding @current std.loop_block) ();
+    unwind (@binding @current std.LoopBlock) ();
 );
 impl syntax (continue) = `(
     unwind (@binding @current std.loop_body) ();
@@ -107,7 +107,7 @@ impl syntax (for pattern in start..end do body) = `(
     let _loop_var = $start;
     while _loop_var < $end do (
         unwindable loop_body (
-            @comptime with std.loop_body = loop_body;
+            @comptime with std.LoopBody = loop_body;
             let $pattern = _loop_var;
             $body;
         );

@@ -1,4 +1,5 @@
 module:
-const list = include "./list.ks";
-const treap = include "./treap.ks";
-const queue = include "./queue.ks";
+const List = include "./list.ks";
+const Treap = include "./treap.ks";
+const Queue = include "./queue.ks";
+const Map = include "./map.ks";

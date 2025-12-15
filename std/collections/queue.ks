@@ -1,23 +1,22 @@
 module:
-const queue = [T] newtype (
-    .inner :: treap.t[T]
+const t = [T] newtype (
+    .inner :: Treap.t[T]
 );
-const t = queue;
 
-const create = [T] () -> queue[T] => (
-    .inner = treap.create ()
+const create = [T] () -> Queue.t[T] => (
+    .inner = Treap.create ()
 );
-const push = [T] (q :: &queue[T], value :: T) => (
-    q^.inner = treap.join (q^.inner, treap.singleton value);
+const push = [T] (q :: &Queue.t[T], value :: T) => (
+    q^.inner = Treap.join (q^.inner, Treap.singleton value);
 );
-const pop = [T] (q :: &queue[T]) -> T => (
-    let first, rest = treap.split_at (q^.inner, 1);
+const pop = [T] (q :: &Queue.t[T]) -> T => (
+    let first, rest = Treap.split_at (q^.inner, 1);
     q^.inner = rest;
-    (treap.at (&first, 0))^
+    (Treap.at (&first, 0))^
 );
-const front = [T] (q :: &queue[T]) -> &T => (
-    treap.at (&q^.inner, 0)
+const front = [T] (q :: &Queue.t[T]) -> &T => (
+    Treap.at (&q^.inner, 0)
 );
-const length = [T] (q :: &queue[T]) -> int32 => (
-    treap.length &q^.inner
+const length = [T] (q :: &Queue.t[T]) -> int32 => (
+    Treap.length &q^.inner
 );
