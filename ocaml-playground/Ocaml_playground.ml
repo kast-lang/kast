@@ -1,8 +1,4 @@
-type ('a, 'b) pair = {
-  first : 'a;
-  second : 'b;
-}
-
-type ('a, 'b, 'c) triple = ('a, ('b, 'c) pair) pair
-
-let f : (int, int, int) triple -> _ = fun x -> x
+let () =
+  let path = "/home/kuvi/projects/doom" in
+  let uri = Uri.make ~scheme:"file" ~host:"" ~path () in
+  print_endline (Uri.to_string uri)

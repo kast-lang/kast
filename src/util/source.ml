@@ -35,7 +35,7 @@ module Uri = struct
   include Uri
 
   let stdin = of_string "stdin:"
-  let file path = make ~scheme:"file" ~path ()
+  let file path = make ~scheme:"file" ~host:"" ~path () |> canonicalize
 
   let print : formatter -> Uri.t -> unit =
    fun fmt uri ->
