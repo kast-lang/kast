@@ -11,6 +11,9 @@ module Var : sig
   val new_not_inferred : 'a. span:span -> 'a var
   val new_inferred : 'a. span:span -> 'a -> 'a var
   val inferred_opt : 'a. 'a var -> 'a option
+  val setup_default : 'a. (unit -> unit) -> 'a var -> unit
+  val setup_default_if_needed : 'a. 'a var -> unit
+  val inferred_or_default : 'a. 'a var -> 'a option
   val print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit
   val unite : 'a. 'a unite -> 'a var unite
   val infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit

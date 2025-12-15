@@ -818,6 +818,10 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
  fun state expr { value; target } ->
   let span = expr.data.span in
   let value = eval state value in
+  (* TODO Value.await_fully_inferred *)
+  (match value.var |> Inference.Var.inferred_or_default with
+  | Some (V_Ty ty) -> ty.var |> Inference.Var.setup_default_if_needed
+  | _ -> ());
   let impl =
     state.cast_impls.map
     |> Types.ValueMap.find_opt target

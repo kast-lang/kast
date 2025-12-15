@@ -46,6 +46,7 @@ module Value = struct
   end
 
   let new_not_inferred = Inference_impl.new_not_inferred_value
+  let new_not_inferred_of_ty = Inference_impl.new_not_inferred_value_of_ty
   let inferred = Inference_impl.inferred_value
   let ty_of : value -> ty = fun { var = _; ty } -> ty
 
@@ -252,20 +253,20 @@ module Name = struct
   type t = name
 
   let new_inferred ~span value : name =
-    { var = Inference.Var.new_inferred ~span value }
+    { var = Inference.Var.new_inferred span value }
 
   let new_not_inferred ~span : name =
-    { var = Inference.Var.new_not_inferred ~span }
+    { var = Inference.Var.new_not_inferred span }
 end
 
 module OptionalName = struct
   type t = optional_name
 
   let new_inferred ~span value : optional_name =
-    { var = Inference.Var.new_inferred ~span value }
+    { var = Inference.Var.new_inferred span value }
 
   let new_not_inferred ~span : optional_name =
-    { var = Inference.Var.new_not_inferred ~span }
+    { var = Inference.Var.new_not_inferred span }
 end
 
 type optional_name = OptionalName.t

@@ -86,9 +86,40 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 E_Constant (value |> Value.inferred ~span)
                 |> init_expr span state
             | Token.Shape.Number { raw; _ } ->
-                let value = Int32.of_string raw in
-                E_Constant (V_Int32 value |> Value.inferred ~span)
-                |> init_expr span state
+                let default : Ty.Shape.t =
+                  if String.contains raw '.' then T_Float64 else T_Int32
+                in
+                let ty = Ty.new_not_inferred ~span in
+                let setup_default () =
+                  ty
+                  |> Inference.Ty.expect_inferred_as ~span
+                       (Ty.inferred ~span default)
+                in
+                ty.var |> Inference.Var.setup_default setup_default;
+                let const = Value.new_not_inferred_of_ty ~span ty in
+                const.var |> Inference.Var.setup_default setup_default;
+                ty.var
+                |> Inference.Var.once_inferred (fun (ty : Ty.Shape.t) ->
+                    let actual_const : Value.Shape.t =
+                      match ty with
+                      | T_Int32 ->
+                          let value = Int32.of_string raw in
+                          V_Int32 value
+                      | T_Int64 ->
+                          let value = Int64.of_string raw in
+                          V_Int64 value
+                      | T_Float64 ->
+                          let value = Float.of_string raw in
+                          V_Float64 value
+                      | other ->
+                          Error.error span "Number literal inferred as %a"
+                            Ty.Shape.print other;
+                          V_Error
+                    in
+                    const
+                    |> Inference.Value.expect_inferred_as ~span
+                         (actual_const |> Value.inferred ~span));
+                E_Constant const |> init_expr span state
             | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                 unreachable "!")
         | TyExpr ->

@@ -61,11 +61,13 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
       let line = read_line () in
       Effect.continue k line
   | effect Compiler.Scope.AwaitUpdate _, k -> Effect.continue k false
-  | effect Interpreter.Scope.AwaitUpdate (name, _scope), k ->
-      if name.name = "TTT" then Effect.discontinue k (Failure "HAHAHHA")
-      else Effect.continue k false
-  | effect Inference.Var.AwaitUpdate var, k ->
-      Effect.continue_with k (fun () ->
-          fail "var at %a is not inferred and can't be awaited"
-            (List.print Span.print)
-            (Inference.Var.spans var |> SpanSet.to_list))
+  | effect Interpreter.Scope.AwaitUpdate (_name, _scope), k ->
+      Effect.continue k false
+  | effect Inference.Var.AwaitUpdate var, k -> (
+      match Inference.Var.inferred_or_default var with
+      | Some _ -> Effect.continue k true
+      | None ->
+          Effect.continue_with k (fun () ->
+              fail "var at %a is not inferred and can't be awaited"
+                (List.print Span.print)
+                (Inference.Var.spans var |> SpanSet.to_list)))

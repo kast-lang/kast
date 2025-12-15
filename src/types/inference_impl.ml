@@ -250,10 +250,10 @@ and unite_name_part : name_part Inference.unite =
   | Instantiation _, _ -> fail ()
 
 and inferred_ty ~span shape : ty =
-  { var = Inference.Var.new_inferred ~span shape }
+  { var = Inference.Var.new_inferred span shape }
 
 and inferred_value ~span shape : value =
-  { var = Inference.Var.new_inferred ~span shape; ty = ty_of_value_shape shape }
+  { var = Inference.Var.new_inferred span shape; ty = ty_of_value_shape shape }
 
 and infer_value_shape : span:span -> ty_shape -> value_shape option =
  fun ~span ty_shape ->

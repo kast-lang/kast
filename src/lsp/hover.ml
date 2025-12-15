@@ -66,7 +66,10 @@ let combine_hover_info a b : hover_info =
 
 let hover_text info =
   match info.ty with
-  | Some ty -> make_string "```kast@\n@[<v>%a@]\n```" Ty.print ty.ty
+  | Some ty ->
+      (* TODO better solution *)
+      ty.ty.var |> Kast_inference.Var.setup_default_if_needed;
+      make_string "```kast@\n@[<v>%a@]\n```" Ty.print ty.ty
   | None -> ""
 
 let binding_definition : binding -> definition =

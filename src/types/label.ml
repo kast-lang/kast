@@ -21,14 +21,14 @@ let compare a b = Inference.compare_var compare_label_data a.var b.var
 let create_definition span name =
   {
     var =
-      Inference.Var.new_inferred ~span
+      Inference.Var.new_inferred span
         { id = Id.gen (); name; definition = Some span; references = [] };
   }
 
 let create_reference span name =
   {
     var =
-      Inference.Var.new_inferred ~span
+      Inference.Var.new_inferred span
         { id = Id.gen (); name; definition = None; references = [ span ] };
   }
 

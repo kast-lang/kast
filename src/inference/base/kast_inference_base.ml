@@ -14,6 +14,7 @@ module Var = struct
   and 'a var_data = {
     recurse_id : id;
     inferred : 'a option;
+    setup_default : (unit -> unit) option;
     spans : SpanSet.t;
     mutable once_inferred : ('a -> unit) list;
     mutable on_unite : ('a var_data -> unit) list;
@@ -29,6 +30,7 @@ module Var = struct
               {
                 recurse_id = Id.gen ();
                 inferred = None;
+                setup_default = None;
                 once_inferred = [];
                 on_unite = [];
                 spans = SpanSet.singleton span;
@@ -45,6 +47,7 @@ module Var = struct
             data =
               {
                 recurse_id = Id.gen ();
+                setup_default = None;
                 inferred = Some inferred;
                 once_inferred = [];
                 on_unite = [];
@@ -72,6 +75,11 @@ module Var = struct
   let inferred_opt : 'a. 'a var -> 'a option =
    fun var -> (find_root var).inferred
 
+  let setup_default f var =
+    let root_var = find_root_var var in
+    let root = find_root root_var in
+    root_var.state <- Root { data = { root with setup_default = Some f } }
+
   type 'a t = 'a var
 
   let run_once_inferred_if_needed : 'a. 'a var_data -> unit =
@@ -85,7 +93,14 @@ module Var = struct
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
-    let { recurse_id; inferred; once_inferred = _; on_unite = _; spans } =
+    let {
+      recurse_id = _;
+      inferred;
+      setup_default = _;
+      once_inferred = _;
+      on_unite = _;
+      spans = _;
+    } =
       find_root var
     in
     match inferred with
@@ -100,6 +115,7 @@ module Var = struct
        ({
           recurse_id = recurse_id_a;
           inferred = inferred_a;
+          setup_default = default_a;
           once_inferred = _;
           on_unite = _;
           spans = spans_a;
@@ -107,6 +123,7 @@ module Var = struct
        ({
           recurse_id = recurse_id_b;
           inferred = inferred_b;
+          setup_default = default_b;
           once_inferred = _;
           on_unite = _;
           spans = spans_b;
@@ -129,6 +146,11 @@ module Var = struct
       {
         recurse_id = recurse_id_a;
         inferred;
+        setup_default =
+          (match (default_a, default_b) with
+          | None, None -> None
+          | Some x, None | None, Some x -> Some x
+          | Some a, Some _b -> Some a);
         once_inferred;
         on_unite = [];
         spans = SpanSet.union spans_a spans_b;
@@ -168,6 +190,20 @@ module Var = struct
   let infer_as : 'a. 'a unite -> span:span -> 'a -> 'a var -> unit =
    fun unite_inferred ~span infer_as var ->
     unite unite_inferred ~span (new_inferred ~span infer_as) var |> ignore
+
+  let setup_default_if_needed var =
+    match inferred_opt var with
+    | Some _ -> ()
+    | None -> (
+        let root = find_root var in
+        match root.setup_default with
+        | None -> ()
+        | Some f -> f ())
+
+  let inferred_or_default =
+   fun var ->
+    setup_default_if_needed var;
+    inferred_opt var
 
   let once_inferred : 'a. ('a -> unit) -> 'a var -> unit =
    fun f var ->
