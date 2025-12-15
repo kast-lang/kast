@@ -1203,7 +1203,13 @@ let use : core_syntax =
                     {
                       by_ref = false;
                       binding =
-                        { binding with name = Symbol.create binding.name.name };
+                        {
+                          id = Id.gen ();
+                          name = Symbol.create binding.name.name;
+                          span = used_expr.data.span;
+                          ty = binding.ty;
+                          label = binding.label;
+                        };
                     }
               | PE_Field { obj = _; field; field_span } -> (
                   match field with
