@@ -86,7 +86,7 @@ impl syntax (break) = `(
     unwind (@binding @current std.LoopBlock) ();
 );
 impl syntax (continue) = `(
-    unwind (@binding @current std.loop_body) ();
+    unwind (@binding @current std.LoopBody) ();
 );
 impl syntax (let rec pattern = value) = `(
     let _mod = (
