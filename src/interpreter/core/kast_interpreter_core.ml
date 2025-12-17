@@ -4,6 +4,7 @@ open Kast_types
 module Ast = Kast_ast
 module Error = Error
 module Inference = Kast_inference
+module Scope = Scope
 
 type state = Types.interpreter_state
 type _ Effect.t += AwaitCompiled : Types.maybe_compiled_fn -> unit Effect.t

@@ -2,6 +2,7 @@ open Std
 open Kast_util
 open Kast_types
 module Inference = Kast_inference
+open Kast_interpreter_core
 
 type natives = Types.natives
 type t = natives
@@ -144,11 +145,11 @@ let init_natives () =
                 error "expected 2 unnamed fields" ();
               let s, idx = arg.tuple |> Tuple.unwrap_unnamed2 in
               let s =
-                s.place |> Common.claim ~span:caller |> Value.expect_string
+                s.place |> claim ~span:caller |> Value.expect_string
                 |> Option.unwrap_or_else (error "expected string as first arg")
               in
               let idx =
-                idx.place |> Common.claim ~span:caller |> Value.expect_int32
+                idx.place |> claim ~span:caller |> Value.expect_int32
                 |> Option.unwrap_or_else (error "expected idx be int32")
               in
               V_Char
@@ -184,15 +185,15 @@ let init_natives () =
                 error "expected 2 unnamed fields" ();
               let s, start, len = arg.tuple |> Tuple.unwrap_unnamed3 in
               let s =
-                s.place |> Common.claim ~span:caller |> Value.expect_string
+                s.place |> claim ~span:caller |> Value.expect_string
                 |> Option.unwrap_or_else (error "expected string as first arg")
               in
               let start =
-                start.place |> Common.claim ~span:caller |> Value.expect_int32
+                start.place |> claim ~span:caller |> Value.expect_int32
                 |> Option.unwrap_or_else (error "expected start be int32")
               in
               let len =
-                len.place |> Common.claim ~span:caller |> Value.expect_int32
+                len.place |> claim ~span:caller |> Value.expect_int32
                 |> Option.unwrap_or_else (error "expected len be int32")
               in
               V_String (String.sub s (Int32.to_int start) (Int32.to_int len))
@@ -213,10 +214,10 @@ let init_natives () =
                 error "expected 2 unnamed fields" ();
               let s, f = arg.tuple |> Tuple.unwrap_unnamed2 in
               let s =
-                s.place |> Common.claim ~span:caller |> Value.expect_string
+                s.place |> claim ~span:caller |> Value.expect_string
                 |> Option.unwrap_or_else (error "expected string as first arg")
               in
-              let f = f.place |> Common.claim ~span:caller in
+              let f = f.place |> claim ~span:caller in
               let _ =
                 f |> Value.expect_fn
                 |> Option.unwrap_or_else (error "expected fn as second arg")
@@ -224,7 +225,7 @@ let init_natives () =
               s
               |> String.iter (fun c ->
                   let c : value = V_Char c |> Value.inferred ~span in
-                  ignore <| Common.call caller state f c;
+                  ignore <| call caller state f c;
                   ());
               V_Unit |> Value.inferred ~span))
     in
@@ -239,8 +240,8 @@ let init_natives () =
                arg |> Value.expect_tuple |> Option.get
              in
              let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
-             let min = min.place |> Common.claim ~span:caller in
-             let max = max.place |> Common.claim ~span:caller in
+             let min = min.place |> claim ~span:caller in
+             let max = max.place |> claim ~span:caller in
              match ty.result |> Ty.await_inferred with
              | T_Int32 ->
                  let min = min |> Value.expect_int32 |> Option.get in
@@ -398,7 +399,7 @@ let init_natives () =
         native_fn "net.tcp.read_line" (fun _ty ~caller ~state:_ arg : value ->
             match arg |> Value.await_inferred with
             | V_Ref place -> (
-                match Common.read_place ~span place |> Value.await_inferred with
+                match read_place ~span place |> Value.await_inferred with
                 | V_Opaque { ty = _; value = socket } ->
                     let socket : tcp_stream = Obj.obj socket in
                     let result = ref (Bytes.sub_string buffer 0 !buf_pos) in
@@ -440,13 +441,12 @@ let init_natives () =
             let args = arg |> Value.expect_tuple |> Option.get in
             let socket, data = args.tuple |> Tuple.unwrap_unnamed2 in
             let socket : tcp_stream =
-              socket.place |> Common.claim ~span |> Value.expect_ref
-              |> Option.get |> Common.read_place ~span |> Value.expect_opaque
-              |> Option.get
+              socket.place |> claim ~span |> Value.expect_ref |> Option.get
+              |> read_place ~span |> Value.expect_opaque |> Option.get
             in
             let data =
-              data.place |> Common.claim ~span |> Value.expect_ref |> Option.get
-              |> Common.read_place ~span |> Value.expect_string |> Option.get
+              data.place |> claim ~span |> Value.expect_ref |> Option.get
+              |> read_place ~span |> Value.expect_string |> Option.get
             in
             let wrote =
               Unix.write_substring socket data 0 (String.length data)
@@ -523,12 +523,11 @@ let init_natives () =
             let args = arg |> Value.expect_tuple |> Option.get in
             let socket, max_pending = args.tuple |> Tuple.unwrap_unnamed2 in
             let socket : tcp_stream =
-              socket.place |> Common.claim ~span |> Value.expect_ref
-              |> Option.get |> Common.read_place ~span |> Value.expect_opaque
-              |> Option.get
+              socket.place |> claim ~span |> Value.expect_ref |> Option.get
+              |> read_place ~span |> Value.expect_opaque |> Option.get
             in
             let max_pending =
-              max_pending.place |> Common.claim ~span |> Value.expect_int32
+              max_pending.place |> claim ~span |> Value.expect_int32
               |> Option.get
             in
             (* Native call *)
@@ -556,13 +555,13 @@ let init_natives () =
                       args.tuple |> Tuple.unwrap_unnamed2
                     in
                     let socket : tcp_stream =
-                      socket.place |> Common.claim ~span |> Value.expect_ref
-                      |> Option.get |> Common.read_place ~span
-                      |> Value.expect_opaque |> Option.get
+                      socket.place |> claim ~span |> Value.expect_ref
+                      |> Option.get |> read_place ~span |> Value.expect_opaque
+                      |> Option.get
                     in
                     let close_on_exec =
-                      close_on_exec.place |> Common.claim ~span
-                      |> Value.expect_bool |> Option.get
+                      close_on_exec.place |> claim ~span |> Value.expect_bool
+                      |> Option.get
                     in
                     (* Native call *)
                     let client_stream, client_addr =
@@ -640,12 +639,8 @@ let init_natives () =
           match value |> Value.await_inferred with
           | V_Tuple { ty = _; tuple } ->
               let a, b = tuple |> Tuple.unwrap_unnamed2 in
-              let a =
-                a.place |> Common.claim ~span:caller |> Value.await_inferred
-              in
-              let b =
-                b.place |> Common.claim ~span:caller |> Value.await_inferred
-              in
+              let a = a.place |> claim ~span:caller |> Value.await_inferred in
+              let b = b.place |> claim ~span:caller |> Value.await_inferred in
               let result : bool = op a b in
               V_Bool result |> Value.inferred ~span
           | _ ->
@@ -661,9 +656,8 @@ let init_natives () =
               let a, b = tuple |> Tuple.unwrap_unnamed2 in
               let result : Value.shape =
                 match
-                  ( a.place |> Common.claim ~span:caller |> Value.await_inferred,
-                    b.place |> Common.claim ~span:caller |> Value.await_inferred
-                  )
+                  ( a.place |> claim ~span:caller |> Value.await_inferred,
+                    b.place |> claim ~span:caller |> Value.await_inferred )
                 with
                 | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
                 | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
@@ -804,10 +798,7 @@ let init_natives () =
             V_Ty
               (Ty.inferred ~span
                  (T_Opaque
-                    {
-                      name =
-                        Common.current_name state |> Name.new_inferred ~span;
-                    }))
+                    { name = current_name state |> Name.new_inferred ~span }))
             |> Value.inferred ~span);
       ]
       @ types @ fs @ sys @ rng @ mod_char @ mod_string @ dbg @ net

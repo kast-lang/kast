@@ -1,9 +1,8 @@
 open Std
 open Kast_util
 open Kast_types
-module Natives = Natives
-module Scope = Scope
-include Common
+include Kast_interpreter_core
+module Natives = Kast_interpreter_natives
 
 let init : Types.name_part -> Scope.locals -> state =
  fun name_part values ->

@@ -1,0 +1,3 @@
+(library
+ (name kast_interpreter_natives)
+ (libraries kast_interpreter_core))

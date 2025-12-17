@@ -7,7 +7,7 @@ let stream = tcp.TcpStream.connect "127.0.0.1:1234";
 # write to stream
 tcp.TcpStream.write (
     &stream,
-    &"Hello from Kast\n"
+    &"Hello from client\n"
 );
 std.io.print "Waiting for reply from server";
 
