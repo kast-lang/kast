@@ -21,4 +21,6 @@
     "examples/refs.ks",
     "examples/lots-of-math.ks",
     "examples/monad.ks",
+    "examples/tcp-client.ks",
+    "examples/tcp-server.ks",
 )
