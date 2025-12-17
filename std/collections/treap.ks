@@ -176,3 +176,14 @@ const iter = [T] (v :: &Treap.t[T], f :: &T -> ()) => (
         )
     )
 );
+const iter_mut = [T] (v :: &mut Treap.t[T], f :: &mut T -> ()) => (
+    match v^ with (
+        | :Empty => ()
+        # TODO ref mut
+        | :Node mut data => (
+            iter_mut (&mut data.left, f);
+            f &mut data.value;
+            iter_mut (&mut data.right, f);
+        )
+    )
+);

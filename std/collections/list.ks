@@ -11,6 +11,9 @@ const push_back = [T] (a :: &mut List.t[T], value :: T) => (
 const iter = [T] (a :: &List.t[T], f :: &T -> ()) -> () => (
     Treap.iter (&a^.inner, f);
 );
+const iter_mut = [T] (a :: &mut List.t[T], f :: &mut T -> ()) -> () => (
+    Treap.iter_mut (&mut a^.inner, f);
+);
 const at = [T] (a :: &List.t[T], idx :: Int32) -> &T => (
     Treap.at (&a^.inner, idx)
 );
