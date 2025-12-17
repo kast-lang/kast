@@ -135,9 +135,6 @@ let process_file (global : global_state) (source : source) : file_state =
       compiled |> Option.map (fun e : Compiler.compiled -> Compiled (Expr, e));
   }
 
-let workspace_file (root : Uri.t) (path : string) =
-  Uri.with_path root (Uri.path root ^ "/" ^ path)
-
 let handle_processed workspace uri file_state =
   Log.trace (fun log -> log "File processed %a" Uri.print uri);
   workspace.files <- UriMap.add uri file_state workspace.files
@@ -145,7 +142,7 @@ let handle_processed workspace uri file_state =
 let workspace_roots (global : global_state) (workspace : workspace_state) :
     Uri.t list =
   let workspace_ks =
-    Source.read (workspace_file workspace.root "workspace.ks")
+    Source.read (Uri.resolve "" workspace.root (Uri.of_string "workspace.ks"))
   in
   let processed_workspace_ks = process_file global workspace_ks in
   handle_processed workspace workspace_ks.uri processed_workspace_ks;
@@ -165,15 +162,34 @@ let workspace_roots (global : global_state) (workspace : workspace_state) :
       |> Kast_interpreter.claim ~span:(Span.fake "lsp")
     in
     let roots = roots |> Value.expect_tuple |> Option.get in
-    roots.tuple.unnamed |> Array.to_list
-    |> List.map (fun (field : Types.value_tuple_field) ->
-        field.place
-        |> Kast_interpreter.claim ~span:(Span.fake "lsp")
-        |> Value.expect_string |> Option.get)
+    let roots =
+      roots.tuple.unnamed |> Array.to_list
+      |> List.map (fun (field : Types.value_tuple_field) ->
+          field.place
+          |> Kast_interpreter.claim ~span:(Span.fake "lsp")
+          |> Value.expect_string |> Option.get)
+    in
+    roots
+    |> List.map (fun s ->
+        match String.rindex_opt s '/' with
+        | Some i ->
+            let dir = String.sub s 0 i in
+            let file = String.sub s (i + 1) (String.length s - (i + 1)) in
+            if file = "*.ks" then
+              let files = Sys.readdir dir in
+              files |> Array.to_list
+              |> List.filter_map (fun file ->
+                  if file |> String.ends_with ~suffix:".ks" then
+                    Some (Uri.of_string (dir ^ "/" ^ file))
+                  else None)
+            else [ Uri.of_string s ]
+        | None -> [ Uri.of_string s ])
+    |> List.flatten
+    |> List.map (fun uri -> Uri.resolve "" workspace.root uri)
   in
-  Log.trace (fun log ->
-      log "WORKSPACE ROOTS = %a" (List.print String.print_dbg) workspace_roots);
-  workspace_roots |> List.map (fun path -> workspace_file workspace.root path)
+  Log.info (fun log ->
+      log "WORKSPACE ROOTS = %a" (List.print Uri.print) workspace_roots);
+  workspace_roots
 
 let process_workspace (global : global_state) (workspace : workspace_state) =
   Log.debug (fun log ->
@@ -238,6 +254,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
       ()
 
 let init_workspace (global : global_state) (root : Uri.t) : workspace_state =
+  let root = Uri.with_path root (Uri.path root ^ "/") in
   let workspace : workspace_state = { root; files = UriMap.empty } in
   (try process_workspace global workspace with Cancel -> ());
   workspace
