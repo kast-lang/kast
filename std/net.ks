@@ -3,40 +3,49 @@ module:
 const tcp = (
     module:
     
-    # A TCP stream file descriptor
-    const TcpStream = @opaque_type;
+    const Stream = @opaque_type;
     
-    impl TcpStream as module = (
+    impl Stream as module = (
         module:
-        const connect = (addr :: String) -> TcpStream => @cfg (
+        const connect = (addr :: String) -> Stream => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.connect") addr
         );
         
-        const read_line = (stream :: &TcpStream) -> String => @cfg (
+        const read_line = (stream :: &Stream) -> String => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.read_line") stream
         );
         
-        const write = (stream :: &TcpStream, data :: &String) -> () => @cfg (
+        const write = (stream :: &Stream, data :: &String) -> () => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.write") (stream, data)
         );
         
-        const bind = (addr :: String) -> TcpStream => @cfg (
+        const close = (stream :: Stream) -> () => @cfg (
+            | target.name == "interpreter" => (@native "net.tcp.stream.close") stream
+        );
+    );
+    
+    const Listener = @opaque_type;
+    
+    impl Listener as module = (
+        module:
+        
+        const bind = (addr :: String) -> Listener => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.bind") addr
         );
         
-        const listen = (stream :: &TcpStream, max_pending :: Int32) -> () => @cfg (
-            | target.name == "interpreter" => (@native "net.tcp.listen") (stream, max_pending)
+        const listen = (listener :: &Listener, max_pending :: Int32) -> () => @cfg (
+            | target.name == "interpreter" => (@native "net.tcp.listen") (listener, max_pending)
         );
         
-        const accept = (stream :: &TcpStream, .close_on_exec :: Bool) -> (
-            .stream :: TcpStream,
+        const accept = (listener :: &Listener, .close_on_exec :: Bool) -> (
+            .stream :: Stream,
             .addr :: String
         ) => @cfg (
-            | target.name == "interpreter" => (@native "net.tcp.accept") (stream, close_on_exec)
+            | target.name == "interpreter" => (@native "net.tcp.accept") (listener, close_on_exec)
         );
         
-        const close = (stream :: TcpStream) -> () => @cfg (
-            | target.name == "interpreter" => (@native "net.tcp.close") stream
+        const close = (listener :: Listener) -> () => @cfg (
+            | target.name == "interpreter" => (@native "net.tcp.listener.close") listener
         );
     );
 )

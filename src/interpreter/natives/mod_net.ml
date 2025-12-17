@@ -6,6 +6,8 @@ type tcp_stream = {
   mutable buf_pos : int;
 }
 
+type tcp_listener = { file : Unix.file_descr }
+
 let tcp () =
   [
     native_fn "net.tcp.read_line" (fun _ty ~caller ~state:_ arg : value ->
@@ -103,7 +105,7 @@ let tcp () =
         | T_Opaque result_ty -> (
             match arg |> Value.await_inferred with
             | V_String uri ->
-                println "Binding to %S" uri;
+                Log.trace (fun log -> log "Binding to %S" uri);
                 let host, port =
                   match String.split_on_char ':' uri with
                   | [ host; port ] -> (host, port)
@@ -115,18 +117,16 @@ let tcp () =
                   | [] -> failwith "could not resolve addr"
                 in
                 (* Create socket *)
-                let stream : tcp_stream =
+                let listener : tcp_listener =
                   {
                     file =
                       Unix.socket addr.ai_family addr.ai_socktype
                         addr.ai_protocol;
-                    buffer = Bytes.create 4096;
-                    buf_pos = 0;
                   }
                 in
                 (* Bind socket *)
-                Unix.bind stream.file addr.ai_addr;
-                V_Opaque { ty = result_ty; value = Obj.repr stream }
+                Unix.bind listener.file addr.ai_addr;
+                V_Opaque { ty = result_ty; value = Obj.repr listener }
                 |> Value.inferred ~span
             | _ ->
                 Error.error caller "net.tcp.bind expected string arg";
@@ -178,6 +178,13 @@ let tcp () =
                 let client_stream, client_addr =
                   Unix.accept ?cloexec:(Some close_on_exec) stream.file
                 in
+                let client_stream : tcp_stream =
+                  {
+                    file = client_stream;
+                    buffer = Bytes.create 4096;
+                    buf_pos = 0;
+                  }
+                in
                 let client_addr =
                   match client_addr with
                   | Unix.ADDR_UNIX str -> str
@@ -224,7 +231,7 @@ let tcp () =
         | _ ->
             Error.error caller "net.tcp.accept returns tuple";
             V_Error |> Value.inferred ~span);
-    native_fn "net.tcp.close" (fun _ty ~caller ~state:_ arg : value ->
+    native_fn "net.tcp.stream.close" (fun _ty ~caller ~state:_ arg : value ->
         match arg |> Value.await_inferred with
         | V_Opaque { ty = _; value = stream } ->
             let stream : tcp_stream = Obj.obj stream in
@@ -232,7 +239,18 @@ let tcp () =
             Unix.close stream.file;
             V_Unit |> Value.inferred ~span
         | _ ->
-            Error.error caller "net.tcp.read_line expected the &tcpstream";
+            Error.error caller "net.tcp.stream.close expected the tcp.stream";
+            V_Error |> Value.inferred ~span);
+    native_fn "net.tcp.listener.close" (fun _ty ~caller ~state:_ arg : value ->
+        match arg |> Value.await_inferred with
+        | V_Opaque { ty = _; value = stream } ->
+            let listener : tcp_listener = Obj.obj stream in
+            (* Native call *)
+            Unix.close listener.file;
+            V_Unit |> Value.inferred ~span
+        | _ ->
+            Error.error caller
+              "net.tcp.listener.close expected the tcp.listener";
             V_Error |> Value.inferred ~span);
   ]
 
