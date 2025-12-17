@@ -30,7 +30,7 @@ const sys = include "./sys/_mod.ks";
 const rng = include "./rng/_mod.ks";
 const collections = include "./collections/_mod.ks";
 
-const panic = [T] (s :: String) -> T => cfg_if (
+const panic = [T] (s :: String) -> T => @cfg (
     | target.name == "interpreter" => (@native "panic") s
 );
 const type_of_value = [T] (x :: T) -> type => T;

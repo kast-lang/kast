@@ -1,15 +1,15 @@
 impl String as module = (
     module:
-    const length = (s :: String) -> Int32 => cfg_if (
+    const length = (s :: String) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "string.length") s
     );
-    const at = (s :: String, idx :: Int32) -> Char => cfg_if (
+    const at = (s :: String, idx :: Int32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "string.at") (s, idx)
     );
-    const substring = (s :: String, start :: Int32, len :: Int32) -> String => cfg_if (
+    const substring = (s :: String, start :: Int32, len :: Int32) -> String => @cfg (
         | target.name == "interpreter" => (@native "string.substring") (s, start, len)
     );
-    const iter = (s :: String, f :: Char -> ()) -> () => cfg_if (
+    const iter = (s :: String, f :: Char -> ()) -> () => @cfg (
         | target.name == "interpreter" => (@native "string.iter") (s, f)
     );
     const iteri = (s :: String, f :: (Int32, Char) -> ()) => (
@@ -183,19 +183,19 @@ impl String as module = (
     );
     
     impl Int32 as FromString = (
-        .from_string = s => cfg_if (
+        .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse") s
             | target.name == "ocaml" => @native "@natives.todo()"
         )
     );
     impl Int64 as FromString = (
-        .from_string = s => cfg_if (
+        .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse") s
             | target.name == "ocaml" => @native "@natives.todo()"
         )
     );
     impl Float64 as FromString = (
-        .from_string = s => cfg_if (
+        .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse") s
             | target.name == "ocaml" => @native "@natives.todo()"
         )
@@ -215,19 +215,19 @@ impl String as module = (
     );
     
     impl Int32 as ToString = (
-        .to_string = num => cfg_if (
+        .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string") num
             | target.name == "ocaml" => @native "@natives.todo()"
         )
     );
     impl Int64 as ToString = (
-        .to_string = num => cfg_if (
+        .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string") num
             | target.name == "ocaml" => @native "@natives.todo()"
         )
     );
     impl Float64 as ToString = (
-        .to_string = num => cfg_if (
+        .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string") num
             | target.name == "ocaml" => @native "@natives.todo()"
         )

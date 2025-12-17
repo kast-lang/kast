@@ -3,10 +3,10 @@ impl Char as module = (
     let is_whitespace = (c :: Char) -> Bool => (
         c == ' ' or c == '\n' or c == '\t'
     );
-    let code = (c :: Char) -> UInt32 => cfg_if (
+    let code = (c :: Char) -> UInt32 => @cfg (
         | target.name == "interpreter" => (@native "char.code") c
     );
-    let from_code = (code :: UInt32) -> Char => cfg_if (
+    let from_code = (code :: UInt32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "char.from_code") code
     );
     
