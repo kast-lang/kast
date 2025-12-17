@@ -29,6 +29,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
                ty = local.place.ty;
                span = Span.fake "<interpreter>";
                label = local.ty_field.label |> Option.get;
+               mut = Place.Mut.to_bool local.place.mut;
              })
       compile_for.scope.locals.by_symbol scope
   in
@@ -38,6 +39,8 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
     interpreter = compile_for;
     import_cache;
     custom_syntax_impls = Hashtbl.create 0;
+    mut_enabled = false;
+    by_ref = false;
   }
 
 type 'a compiled_kind = 'a Compiler_types.compiled_kind
@@ -148,9 +151,11 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                     ty = Ty.new_not_inferred ~span:token.span;
                     span = ast.span;
                     label = Label.create_definition ast.span ident.name;
+                    mut = state.mut_enabled;
                   }
                 in
-                P_Binding { by_ref = false; binding } |> init_pattern span state
+                P_Binding { by_ref = state.by_ref; binding }
+                |> init_pattern span state
             | Token.Shape.String _ ->
                 Error.error span "string can't be pattern";
                 init_error span state kind
@@ -174,7 +179,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                        (fun member (ast : Ast.t) : Types.value_tuple_field ->
                          {
                            place =
-                             Place.init
+                             Place.init ~mut:Immutable
                                (V_Ast ast |> Value.inferred ~span:ast.span);
                            ty_field =
                              {
@@ -277,7 +282,7 @@ let default name_part ?(import_cache : import_cache option) () : state =
         by_symbol =
           SymbolMap.singleton std_symbol
             ({
-               place = Place.init std;
+               place = Place.init ~mut:Immutable std;
                ty_field = { ty = Value.ty_of std; label = Some std_label };
              }
               : Types.interpreter_local);
@@ -297,6 +302,7 @@ let default name_part ?(import_cache : import_cache option) () : state =
            ty = Value.ty_of std;
            span = Span.beginning_of std_uri;
            label = std_label;
+           mut = false;
          }
   in
   {
@@ -305,6 +311,8 @@ let default name_part ?(import_cache : import_cache option) () : state =
     interpreter = interpreter_with_std;
     import_cache;
     custom_syntax_impls = bootstrap.custom_syntax_impls;
+    mut_enabled = false;
+    by_ref = false;
   }
 
 let compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =

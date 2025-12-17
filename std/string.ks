@@ -13,7 +13,7 @@ impl String as module = (
         | target.name == "interpreter" => (@native "string.iter") (s, f)
     );
     const iteri = (s :: String, f :: (Int32, Char) -> ()) => (
-        let i = 0;
+        let mut i = 0;
         iter (
             s,
             c => (
@@ -30,11 +30,11 @@ impl String as module = (
                     if c == c_at_i then (unwind block i) else ()
                 )
             );
-            0 - 1
+            -1
         )
     );
     const last_index_of = (c :: Char, s :: String) -> Int32 => (
-        let result = 0 - 1;
+        let mut result = -1;
         iteri (
             s,
             (i, c_at_i) => (
@@ -44,7 +44,7 @@ impl String as module = (
         result
     );
     const lines = (s :: String, f :: String -> ()) -> () => (
-        let start = 0;
+        let mut start = 0;
         let endline = i => (
             let line = substring (s, start, (@native "-") (i, start));
             f line;
@@ -61,7 +61,7 @@ impl String as module = (
         endline (length s);
     );
     const split = (s :: String, sep :: Char, f :: String -> ()) => (
-        let start = 0;
+        let mut start = 0;
         let perform_split = i => (
             let part = substring (s, start, i - start);
             f part;
@@ -96,11 +96,11 @@ impl String as module = (
     );
     const trim_matches = (s :: String, f :: Char -> Bool) -> String => (
         let len = length s;
-        let start = 0;
+        let mut start = 0;
         while start < len and at (s, start) |> f do (
             start += 1;
         );
-        let end = len;
+        let mut end = len;
         while end > start and at (s, end - 1) |> f do (
             end -= 1;
         );
@@ -127,7 +127,7 @@ impl String as module = (
         );
         
         let end = (length s - length old + 1);
-        let start :: Int32 = 0;
+        let mut start :: Int32 = 0;
         while start < end and substring (s, start, length old) != old do (
             start += 1
         );
@@ -169,7 +169,7 @@ impl String as module = (
         );
         
         let end = (length s - length search + 1);
-        let start :: Int32 = 0;
+        let mut start :: Int32 = 0;
         while start < end and substring (s, start, length search) != search do (
             start += 1
         );

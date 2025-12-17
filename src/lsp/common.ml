@@ -64,7 +64,7 @@ let inner_compiled_with_handler =
           | Expr e -> handler.handle Expr e))
   | Expr -> (
       match compiled.shape with
-      | E_Ref place -> handler.handle PlaceExpr place
+      | E_Ref { mut = _; place } -> handler.handle PlaceExpr place
       | E_Claim place -> handler.handle PlaceExpr place
       | E_Constant _ -> ()
       | E_Then { list } -> list |> List.iter (handler.handle Expr)
@@ -167,7 +167,7 @@ let inner_compiled_with_handler =
       | Some shape -> (
           match shape with
           | TE_Unit -> ()
-          | TE_Ref inner -> handler.handle TyExpr inner
+          | TE_Ref { mut = _; referenced } -> handler.handle TyExpr referenced
           | TE_Fn { arg; result } ->
               handler.handle TyExpr arg;
               handler.handle TyExpr result

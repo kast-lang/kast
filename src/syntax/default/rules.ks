@@ -73,12 +73,14 @@
 @syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:cast" 60.5 wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 wrap never = "&" _ ->;
+@syntax "core:ref_mut" 61 wrap never = "&" "mut" " " _ ->;
 @syntax "core:variant_without_value" 62 wrap never = ":" label;
 @syntax "core:variant" 62 wrap never = ":" label " " value;
 @syntax "core:instantiate_generic" 70 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
 @syntax "core:." 70 wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:deref" 70 wrap never = <- _ "^";
 @syntax "core:generic" 6.5 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
+@syntax "core:mut" 500 wrap never = "mut" " " _;
 @syntax "core:type expr" 500 wrap never = "type" " " _;
 @syntax "core:newtype" 500 wrap never = "newtype" " " _;
 @syntax "core:typeof" 500 wrap never = "typeof" " " _;

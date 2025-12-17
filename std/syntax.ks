@@ -49,23 +49,23 @@ impl syntax (+x) = `(
     std.op.pos $x
 );
 impl syntax (a += b) = `(
-    let _ref = &$a;
+    let _ref = &mut $a;
     _ref^ = _ref^ + $b
 );
 impl syntax (a -= b) = `(
-    let _ref = &$a;
+    let _ref = &mut $a;
     _ref^ = _ref^ - $b
 );
 impl syntax (a *= b) = `(
-    let _ref = &$a;
+    let _ref = &mut $a;
     _ref^ = _ref^ * $b
 );
 impl syntax (a /= b) = `(
-    let _ref = &$a;
+    let _ref = &mut $a;
     _ref^ = _ref^ / $b
 );
 impl syntax (a %= b) = `(
-    let _ref = &$a;
+    let _ref = &mut $a;
     _ref^ = _ref^ % $b
 );
 impl syntax (@context ty) = `(
@@ -104,7 +104,7 @@ impl syntax (while cond do body) = `(
     )
 );
 impl syntax (for pattern in start..end do body) = `(
-    let _loop_var = $start;
+    let mut _loop_var = $start;
     while _loop_var < $end do (
         unwindable loop_body (
             @comptime with std.LoopBody = loop_body;

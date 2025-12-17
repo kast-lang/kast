@@ -24,8 +24,9 @@ module Impl = struct
 
   let rec sub_place ~state (place : place) : place =
     match place.state with
-    | Occupied value -> Place.init <| sub_value ~state value
-    | Uninitialized | MovedOut -> Place.init_state place.state place.ty
+    | Occupied value -> Place.init ~mut:place.mut <| sub_value ~state value
+    | Uninitialized | MovedOut ->
+        Place.init_state ~mut:place.mut place.state place.ty
 
   and sub_value ~(state : interpreter_state) (value : value) : value =
     sub_var ~unite_shape:Inference_impl.unite_value_shape
@@ -191,7 +192,8 @@ module Impl = struct
       | T_Target | T_ContextTy | T_CompilerScope | T_Error | T_Ast | T_Ty ->
           original_ty
       | T_Opaque ty -> T_Opaque (sub_ty_opaque ~state ty) |> shaped
-      | T_Ref inner -> T_Ref (sub_ty ~state inner) |> shaped
+      | T_Ref { mut; referenced } ->
+          T_Ref { mut; referenced = sub_ty ~state referenced } |> shaped
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped

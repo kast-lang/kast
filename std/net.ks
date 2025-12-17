@@ -11,11 +11,11 @@ const tcp = (
             | target.name == "interpreter" => (@native "net.tcp.connect") addr
         );
         
-        const read_line = (stream :: &Stream) -> String => @cfg (
+        const read_line = (stream :: &mut Stream) -> String => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.read_line") stream
         );
         
-        const write = (stream :: &Stream, data :: &String) -> () => @cfg (
+        const write = (stream :: &mut Stream, data :: &String) -> () => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.write") (stream, data)
         );
         
@@ -33,11 +33,11 @@ const tcp = (
             | target.name == "interpreter" => (@native "net.tcp.bind") addr
         );
         
-        const listen = (listener :: &Listener, max_pending :: Int32) -> () => @cfg (
+        const listen = (listener :: &mut Listener, max_pending :: Int32) -> () => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.listen") (listener, max_pending)
         );
         
-        const accept = (listener :: &Listener, .close_on_exec :: Bool) -> (
+        const accept = (listener :: &mut Listener, .close_on_exec :: Bool) -> (
             .stream :: Stream,
             .addr :: String
         ) => @cfg (

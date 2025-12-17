@@ -5,7 +5,7 @@ const t = [T] newtype (
 const create = [T] () -> List.t[T] => (
     .inner = Treap.create ()
 );
-const push_back = [T] (a :: &List.t[T], value :: T) => (
+const push_back = [T] (a :: &mut List.t[T], value :: T) => (
     a^.inner = Treap.join (a^.inner, Treap.singleton value);
 );
 const iter = [T] (a :: &List.t[T], f :: &T -> ()) -> () => (
@@ -13,6 +13,9 @@ const iter = [T] (a :: &List.t[T], f :: &T -> ()) -> () => (
 );
 const at = [T] (a :: &List.t[T], idx :: Int32) -> &T => (
     Treap.at (&a^.inner, idx)
+);
+const at_mut = [T] (a :: &mut List.t[T], idx :: Int32) -> &mut T => (
+    Treap.at_mut (&mut a^.inner, idx)
 );
 const length = [T] (q :: &List.t[T]) -> Int32 => (
     Treap.length &q^.inner

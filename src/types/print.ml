@@ -45,7 +45,10 @@ module Impl = struct
     | V_Float64 value -> fprintf fmt "@{<italic>%f@}" value
     | V_Char value -> fprintf fmt "@{<green>%C@}" value
     | V_String value -> fprintf fmt "@{<green>%S@}" value
-    | V_Ref place -> fprintf fmt "&%a" print_place_ref place
+    | V_Ref { mut; place } ->
+        fprintf fmt "&";
+        if mut then fprintf fmt "mut ";
+        print_place_ref fmt place
     | V_Tuple { ty = _; tuple } ->
         fprintf fmt "%a"
           (Tuple.print (fun fmt (field : value_tuple_field) ->
@@ -111,7 +114,8 @@ module Impl = struct
     | T_Float64 -> fprintf fmt "float64"
     | T_Char -> fprintf fmt "char"
     | T_String -> fprintf fmt "string"
-    | T_Ref inner -> fprintf fmt "&%a" print_ty inner
+    | T_Ref { mut; referenced } ->
+        fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
     | T_Variant v -> print_ty_variant fmt v
     | T_Tuple t -> print_ty_tuple fmt t
     | T_Ty -> fprintf fmt "type"
@@ -135,6 +139,13 @@ module Impl = struct
 
   and print_ty : formatter -> ty -> unit =
    fun fmt { var } -> print_var print_ty_shape fmt var
+
+  and print_is_mutable : formatter -> is_mutable -> unit =
+   fun fmt { var } ->
+    match var |> Inference.Var.inferred_opt with
+    | Some true -> fprintf fmt "mut "
+    | Some false -> ()
+    | None -> fprintf fmt "?mut "
 
   and print_ty_fn : formatter -> ty_fn -> unit =
    fun fmt { arg; result } ->
@@ -198,8 +209,9 @@ module Impl = struct
 
   and print_expr_shape : options:options -> formatter -> expr_shape -> unit =
    fun ~options fmt -> function
-    | E_Ref place ->
-        fprintf fmt "@{<magenta>ref@} (@;<0 2>@[<v>place = %a,@]@ )"
+    | E_Ref { mut; place } ->
+        fprintf fmt "@{<magenta>ref%s@} (@;<0 2>@[<v>place = %a,@]@ )"
+          (if mut then " mut" else "")
           (print_place_expr ~options)
           place
     | E_Claim place ->
@@ -403,7 +415,7 @@ module Impl = struct
     | Expr e -> fprintf fmt "(%a)" (print_expr ~options) e
 
   and print_place_expr : options:options -> formatter -> place_expr -> unit =
-   fun ~options fmt { shape; data } ->
+   fun ~options fmt { shape; mut = _; data } ->
     print_place_expr_shape ~options fmt shape;
     print_data ~options fmt data
 
@@ -437,10 +449,10 @@ module Impl = struct
       options:options -> formatter -> ty_expr_shape -> unit =
    fun ~options fmt -> function
     | TE_Unit -> fprintf fmt "()"
-    | TE_Ref inner ->
-        fprintf fmt "@{<magenta>ref@} %a"
+    | TE_Ref { mut; referenced } ->
+        fprintf fmt "@{<magenta>ref%a@} %a" print_is_mutable mut
           (Tuple.print (print_ty_expr ~options))
-          (Tuple.make [ inner ] [])
+          (Tuple.make [ referenced ] [])
     | TE_Fn { arg; result } ->
         fprintf fmt "@{<magenta>fn@} %a"
           (Tuple.print (print_ty_expr ~options))

@@ -59,10 +59,10 @@ module Value = struct
     | V_Unit -> Some ()
     | _ -> None
 
-  let expect_ref : value -> place option =
+  let expect_ref : value -> value_ref option =
    fun value ->
     match value |> await_inferred with
-    | V_Ref place -> Some place
+    | V_Ref ref -> Some ref
     | _ -> None
 
   let expect_opaque : 'a. value -> 'a option =
@@ -242,9 +242,34 @@ module Place = struct
   type t = place
 
   let init = Inference_impl.init_place
-  let init_state state ty : place = { id = Id.gen (); state; ty }
+  let init_state ~mut state ty : place = { id = Id.gen (); state; ty; mut }
+
+  let is_mutable ~(parent_mut : bool) (place : place) : bool =
+    match place.mut with
+    | Immutable -> false
+    | Mutable -> parent_mut
+    | Inherit -> parent_mut
+
+  let assign (value : value) (place : place) ~(parent_mut : bool) =
+    if (not (is_mutable ~parent_mut place)) && place.state <> Uninitialized then
+      fail "Mutated non-mut place";
+    place.state <- Occupied value
+
   let print_value = print_place_value
   let print_ref = print_place_ref
+
+  module Mut = struct
+    type t = place_mut
+
+    let bool : bool -> t = function
+      | true -> Mutable
+      | false -> Immutable
+
+    let to_bool : t -> bool = function
+      | Mutable -> true
+      | Immutable -> false
+      | Inherit -> fail "Place.Mut.to_bool with Inherit"
+  end
 end
 
 type place = Place.t
@@ -253,20 +278,20 @@ module Name = struct
   type t = name
 
   let new_inferred ~span value : name =
-    { var = Inference.Var.new_inferred span value }
+    { var = Inference.Var.new_inferred ~span value }
 
   let new_not_inferred ~span : name =
-    { var = Inference.Var.new_not_inferred span }
+    { var = Inference.Var.new_not_inferred ~span }
 end
 
 module OptionalName = struct
   type t = optional_name
 
   let new_inferred ~span value : optional_name =
-    { var = Inference.Var.new_inferred span value }
+    { var = Inference.Var.new_inferred ~span value }
 
   let new_not_inferred ~span : optional_name =
-    { var = Inference.Var.new_not_inferred span }
+    { var = Inference.Var.new_not_inferred ~span }
 end
 
 type optional_name = OptionalName.t

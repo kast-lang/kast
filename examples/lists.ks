@@ -1,16 +1,15 @@
 use std.prelude.*;
-let a = List.create ();
-List.push_back (&a, 1 :: Int32);
-List.push_back (&a, 2);
-List.push_back (&a, 3);
+let mut a = List.create ();
+List.push_back (&mut a, 1 :: Int32);
+List.push_back (&mut a, 2);
+List.push_back (&mut a, 3);
 List.iter (&a, &x => dbg.print x);
 
 use std.collections.Queue;
-let queue = Queue.create ();
-let n = 1;
+let mut queue = Queue.create ();
 for i in 0..1 do (
-    Queue.push (&queue, i);
+    Queue.push (&mut queue, i);
 );
 for _ in 0..1 do (
-    dbg.print <| Queue.pop (&queue);
+    dbg.print <| Queue.pop (&mut queue);
 );

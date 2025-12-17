@@ -99,7 +99,7 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> (t[T], t[T]) => (
     )
 );
 
-const split_at = [T] (v :: Treap.t[T], idx :: Int32) -> (Treap.t[T], Treap.t[T]) => (
+const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> (Treap.t[T], Treap.t[T]) => (
     split (
         v,
         node => (
@@ -127,6 +127,21 @@ const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
         )
     )
 );
+const at_mut = [T] (v :: &mut Treap.t[T], idx :: Int32) -> &mut T => (
+    match v^ with (
+        | :Empty => panic "oob"
+        # TODO ref mut
+        | :Node mut v => (
+            if idx == length &v.left then (
+                &mut v.value
+            ) else if idx < length &v.left then (
+                at_mut (&mut v.left, idx)
+            ) else (
+                at_mut (&mut v.right, idx - length &v.left - 1)
+            )
+        )
+    )
+);
 const set_at = [T] (v :: Treap.t[T], idx :: Int32, value :: T) -> Treap.t[T] => (
     let left, v = split_at (v, idx);
     let _, right = split_at (v, 1);
@@ -136,8 +151,8 @@ const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T
     set_at (a, idx, f (at (&a, idx)))
 );
 const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String => (
-    let result = "[";
-    let i = 0;
+    let mut result = "[";
+    let mut i = 0;
     iter (
         v,
         x => (

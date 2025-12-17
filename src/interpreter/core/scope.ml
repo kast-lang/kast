@@ -87,18 +87,19 @@ let add_local_existing_place (span : span) (symbol : symbol) (place : place)
                : Types.interpreter_local);
        }
 
-let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
-    unit =
+let add_local (span : span) ~(mut : bool) (symbol : symbol) (value : value)
+    (scope : scope) : unit =
   Log.trace (fun log ->
       log "Added %a=%a in scope %a" Symbol.print symbol Value.print value
         Id.print scope.id);
+  let mut = Place.Mut.bool mut in
   scope.locals <-
     {
       by_symbol =
         scope.locals.by_symbol
         |> SymbolMap.add symbol
              ({
-                place = Place.init value;
+                place = Place.init ~mut value;
                 ty_field =
                   {
                     ty = Value.ty_of value;
@@ -111,7 +112,7 @@ let add_local (span : span) (symbol : symbol) (value : value) (scope : scope) :
 
 let inject_binding (binding : binding) (scope : scope) : unit =
   scope
-  |> add_local binding.span binding.name
+  |> add_local ~mut:false binding.span binding.name
        (V_Binding binding |> Value.inferred ~span:binding.span)
 
 let rec print_all : formatter -> scope -> unit =

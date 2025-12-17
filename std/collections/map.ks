@@ -11,7 +11,7 @@ const create = [K, V] () -> Map.t[K, V] => (
     .inner = Treap.create ()
 );
 
-const add = [K, V] (map :: &Map.t[K, V], key :: K, value :: V) => (
+const add = [K, V] (map :: &mut Map.t[K, V], key :: K, value :: V) => (
     get_or_init (map, key, () => value);
 );
 
@@ -44,10 +44,10 @@ const get = [K, V] (map :: &Map.t[K, V], key :: K) -> Option.t[type (&V)] => (
 );
 
 const get_or_init = [K, V] (
-    map :: &Map.t[K, V],
+    map :: &mut Map.t[K, V],
     key :: K,
     init :: () -> V,
-) -> &V => (
+) -> &mut V => (
     let less, greater_or_equal = Treap.split (
         map^.inner,
         data => (
@@ -58,7 +58,7 @@ const get_or_init = [K, V] (
             )
         ),
     );
-    let equal, greater = Treap.split (
+    let mut equal, greater = Treap.split (
         greater_or_equal,
         data => (
             if data^.value.key <= key then (
@@ -72,7 +72,7 @@ const get_or_init = [K, V] (
         equal = Treap.singleton (.key, .value = init ());
     );
     map^.inner = Treap.join (less, Treap.join (equal, greater));
-    &(Treap.at (&equal, 0))^.value
+    &mut (Treap.at_mut (&mut equal, 0))^.value
 );
 
 const iter = [K, V] (map :: &Map.t[K, V], f :: &KV[K, V] -> ()) => (

@@ -6,11 +6,11 @@ let variant_name = value => match value with (
     | :None => "None"
     | :Any => "Any"
 );
-let a :: (:Some _ | :None | :Any) = :None;
+let mut a :: (:Some _ | :None | :Any) = :None;
 print <| variant_name a;
 a = :Some (.a = 123, .b = "some_value");
 print <| variant_name a;
-let b = :Any;
+let mut b = :Any;
 print <| variant_name b;
 b = :None;
 print <| variant_name b;

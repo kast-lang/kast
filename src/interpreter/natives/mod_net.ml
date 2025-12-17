@@ -12,7 +12,7 @@ let tcp () =
   [
     native_fn "net.tcp.read_line" (fun _ty ~caller ~state:_ arg : value ->
         match arg |> Value.await_inferred with
-        | V_Ref place -> (
+        | V_Ref { mut = _; place } -> (
             match read_place ~span place |> Value.await_inferred with
             | V_Opaque { ty = _; value = stream } ->
                 let stream : tcp_stream = Obj.obj stream in
@@ -54,11 +54,11 @@ let tcp () =
         let args = arg |> Value.expect_tuple |> Option.get in
         let stream, data = args.tuple |> Tuple.unwrap_unnamed2 in
         let stream : tcp_stream =
-          stream.place |> claim ~span |> Value.expect_ref |> Option.get
+          (stream.place |> claim ~span |> Value.expect_ref |> Option.get).place
           |> read_place ~span |> Value.expect_opaque |> Option.get
         in
         let data =
-          data.place |> claim ~span |> Value.expect_ref |> Option.get
+          (data.place |> claim ~span |> Value.expect_ref |> Option.get).place
           |> read_place ~span |> Value.expect_string |> Option.get
         in
         let wrote =
@@ -138,7 +138,7 @@ let tcp () =
         let args = arg |> Value.expect_tuple |> Option.get in
         let stream, max_pending = args.tuple |> Tuple.unwrap_unnamed2 in
         let stream : tcp_stream =
-          stream.place |> claim ~span |> Value.expect_ref |> Option.get
+          (stream.place |> claim ~span |> Value.expect_ref |> Option.get).place
           |> read_place ~span |> Value.expect_opaque |> Option.get
         in
         let max_pending =
@@ -167,8 +167,9 @@ let tcp () =
                   args.tuple |> Tuple.unwrap_unnamed2
                 in
                 let stream : tcp_stream =
-                  stream.place |> claim ~span |> Value.expect_ref |> Option.get
-                  |> read_place ~span |> Value.expect_opaque |> Option.get
+                  (stream.place |> claim ~span |> Value.expect_ref |> Option.get)
+                    .place |> read_place ~span |> Value.expect_opaque
+                  |> Option.get
                 in
                 let close_on_exec =
                   close_on_exec.place |> claim ~span |> Value.expect_bool
@@ -200,7 +201,7 @@ let tcp () =
                           ty = client_stream_ty;
                           value = Obj.repr client_stream;
                         }
-                      |> Value.inferred ~span |> Place.init;
+                      |> Value.inferred ~span |> Place.init ~mut:Inherit;
                     span;
                     ty_field = stream_ty;
                   }
@@ -208,7 +209,8 @@ let tcp () =
                 let client_addr_value : Types.value_tuple_field =
                   {
                     place =
-                      V_String client_addr |> Value.inferred ~span |> Place.init;
+                      V_String client_addr |> Value.inferred ~span
+                      |> Place.init ~mut:Inherit;
                     span;
                     ty_field = addr_ty;
                   }

@@ -1066,6 +1066,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
                     ty = Ty.new_not_inferred ~span:label_ast.span;
                     span = label_ast.span;
                     label = Label.create_reference label_ast.span label;
+                    mut = false;
                   };
               }
             |> init_pattern span C.state
@@ -1209,6 +1210,7 @@ let use : core_syntax =
                           span = used_expr.data.span;
                           ty = binding.ty;
                           label = binding.label;
+                          mut = false;
                         };
                     }
               | PE_Field { obj = _; field; field_span } -> (
@@ -1224,6 +1226,7 @@ let use : core_syntax =
                               span = field_span;
                               ty = used_expr.data.ty;
                               label;
+                              mut = false;
                             };
                         }
                   | Index _ | Expr _ ->
@@ -1281,6 +1284,7 @@ let use_dot_star : core_syntax =
                              span = Label.get_span label;
                              ty = field.ty;
                              label;
+                             mut = false;
                            }
                             : binding)))
               | other ->
@@ -1715,6 +1719,7 @@ let target_dependent : core_syntax =
                             label =
                               Label.create_definition span
                                 Types.target_symbol.name;
+                            mut = false;
                           }
                            : binding)
                   in
@@ -2135,9 +2140,33 @@ let or_ : core_syntax =
             init_error span C.state kind);
   }
 
-let ref_ : core_syntax =
+let mut : core_syntax =
   {
-    name = "ref";
+    name = "mut";
+    handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        :
+        a
+      ->
+        let span = ast.span in
+        let inner =
+          children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        match kind with
+        | Pattern ->
+            C.compile ~state:{ C.state with mut_enabled = true } Pattern inner
+        | Expr | PlaceExpr | TyExpr | Assignee ->
+            error span "mut must be pattern";
+            init_error span C.state kind);
+  }
+
+let ref_impl ~name ~(mut : bool) : core_syntax =
+  {
+    name;
     handle =
       (fun (type a)
         (module C : Compiler.S)
@@ -2153,9 +2182,16 @@ let ref_ : core_syntax =
         in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
-        | Expr -> E_Ref (C.compile PlaceExpr inner) |> init_expr span C.state
+        | Expr ->
+            E_Ref { mut; place = C.compile PlaceExpr inner }
+            |> init_expr span C.state
         | TyExpr ->
-            (fun () -> TE_Ref (C.compile TyExpr inner))
+            (fun () ->
+              TE_Ref
+                {
+                  mut = { var = Inference.Var.new_inferred ~span mut };
+                  referenced = C.compile TyExpr inner;
+                })
             |> init_ty_expr span C.state
         | Pattern ->
             P_Ref (C.compile Pattern inner) |> init_pattern span C.state
@@ -2163,6 +2199,9 @@ let ref_ : core_syntax =
             error span "ref can not be assignee";
             init_error span C.state kind);
   }
+
+let ref_ = ref_impl ~name:"ref" ~mut:false
+let ref_mut = ref_impl ~name:"ref_mut" ~mut:true
 
 let deref : core_syntax =
   {
@@ -2313,27 +2352,12 @@ let by_ref : core_syntax =
         a
       ->
         let span = ast.span in
-        let ident_ast =
+        let inner =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
         match kind with
-        | Pattern -> (
-            match ident_ast.shape with
-            | Simple { token = { shape = Ident ident; _ }; _ } ->
-                let binding : binding =
-                  {
-                    id = Id.gen ();
-                    name = Symbol.create ident.name;
-                    ty = Ty.new_not_inferred ~span:ident_ast.span;
-                    span = ident_ast.span;
-                    label = Label.create_definition ident_ast.span ident.name;
-                  }
-                in
-                P_Binding { by_ref = true; binding }
-                |> init_pattern span C.state
-            | _ ->
-                error span "expected ident";
-                init_error ident_ast.span C.state kind)
+        | Pattern ->
+            C.compile ~state:{ C.state with by_ref = true } Pattern inner
         | _ ->
             error span "by_ref must be pattern";
             init_error span C.state kind);
@@ -2421,6 +2445,8 @@ let core =
     and_;
     or_;
     ref_;
+    ref_mut;
+    mut;
     deref;
     impl_cast;
     impl_as_module;

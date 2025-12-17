@@ -6,10 +6,10 @@ const t = [T] newtype (
 const create = [T] () -> Queue.t[T] => (
     .inner = Treap.create ()
 );
-const push = [T] (q :: &Queue.t[T], value :: T) => (
+const push = [T] (q :: &mut Queue.t[T], value :: T) => (
     q^.inner = Treap.join (q^.inner, Treap.singleton value);
 );
-const pop = [T] (q :: &Queue.t[T]) -> T => (
+const pop = [T] (q :: &mut Queue.t[T]) -> T => (
     let first, rest = Treap.split_at (q^.inner, 1);
     q^.inner = rest;
     (Treap.at (&first, 0))^

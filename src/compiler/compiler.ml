@@ -88,6 +88,8 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
                     as_module = Types.ValueMap.empty;
                   };
               };
+            mut_enabled = false;
+            by_ref = false;
           }
         in
         let source = Source.read uri in

@@ -84,7 +84,9 @@ let init () =
                   {
                     label = label_found;
                     data =
-                      Some (Place.init (V_String s |> Value.inferred ~span));
+                      Some
+                        (Place.init ~mut:Inherit
+                           (V_String s |> Value.inferred ~span));
                     ty = sum_variant_ty;
                   }
                 |> Value.inferred ~span

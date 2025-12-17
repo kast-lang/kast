@@ -11,7 +11,13 @@ module rec TypesImpl : sig
     id : Id.t;
     mutable state : place_state;
     ty : ty;
+    mut : place_mut;
   }
+
+  and place_mut =
+    | Immutable
+    | Mutable
+    | Inherit
 
   and place_state =
     | Uninitialized
@@ -26,7 +32,7 @@ module rec TypesImpl : sig
     | V_Int64 of int64
     | V_Float64 of float
     | V_Char of char
-    | V_Ref of place
+    | V_Ref of value_ref
     | V_String of string
     | V_Tuple of value_tuple
     | V_Variant of value_variant
@@ -42,6 +48,11 @@ module rec TypesImpl : sig
     | V_CompilerScope of compiler_scope
     | V_Opaque of value_opaque
     | V_Error
+
+  and value_ref = {
+    mut : bool;
+    place : place;
+  }
 
   and value = {
     var : value_shape Inference.var;
@@ -135,6 +146,12 @@ module rec TypesImpl : sig
   }
 
   and ty_opaque = { name : name }
+  and is_mutable = { var : bool Inference.var }
+
+  and ty_ref = {
+    mut : is_mutable;
+    referenced : ty;
+  }
 
   and ty_shape =
     | T_Unit
@@ -144,7 +161,7 @@ module rec TypesImpl : sig
     | T_Float64
     | T_String
     | T_Char
-    | T_Ref of ty
+    | T_Ref of ty_ref
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
     | T_Ty
@@ -312,9 +329,14 @@ module rec TypesImpl : sig
     target : value;
   }
 
+  and expr_ref = {
+    mut : bool;
+    place : place_expr;
+  }
+
   and expr_shape =
     | E_Constant of value
-    | E_Ref of place_expr
+    | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_Then of expr_then
     | E_Stmt of expr_stmt
@@ -372,6 +394,7 @@ module rec TypesImpl : sig
 
   and place_expr = {
     shape : place_expr_shape;
+    mut : is_mutable;
     data : ir_data;
   }
 
@@ -408,9 +431,14 @@ module rec TypesImpl : sig
 
   and ty_expr_variant = { variants : ty_expr_variant_variant list }
 
+  and ty_expr_ref = {
+    mut : is_mutable;
+    referenced : ty_expr;
+  }
+
   and ty_expr_shape =
     | TE_Unit
-    | TE_Ref of ty_expr
+    | TE_Ref of ty_expr_ref
     | TE_Fn of ty_expr_fn
     | TE_Expr of expr
     | TE_Tuple of ty_expr_tuple
@@ -513,6 +541,7 @@ module rec TypesImpl : sig
     span : Span.t;
     ty : ty;
     label : Label.t;
+    mut : bool;
   }
 
   and ir_data = {
@@ -540,7 +569,13 @@ end = struct
     id : Id.t;
     mutable state : place_state;
     ty : ty;
+    mut : place_mut;
   }
+
+  and place_mut =
+    | Immutable
+    | Mutable
+    | Inherit
 
   and place_state =
     | Uninitialized
@@ -555,7 +590,7 @@ end = struct
     | V_Int64 of int64
     | V_Float64 of float
     | V_Char of char
-    | V_Ref of place
+    | V_Ref of value_ref
     | V_String of string
     | V_Tuple of value_tuple
     | V_Variant of value_variant
@@ -571,6 +606,11 @@ end = struct
     | V_CompilerScope of compiler_scope
     | V_Opaque of value_opaque
     | V_Error
+
+  and value_ref = {
+    mut : bool;
+    place : place;
+  }
 
   and value = {
     var : value_shape Inference.var;
@@ -664,6 +704,12 @@ end = struct
   }
 
   and ty_opaque = { name : name }
+  and is_mutable = { var : bool Inference.var }
+
+  and ty_ref = {
+    mut : is_mutable;
+    referenced : ty;
+  }
 
   and ty_shape =
     | T_Unit
@@ -673,7 +719,7 @@ end = struct
     | T_Float64
     | T_String
     | T_Char
-    | T_Ref of ty
+    | T_Ref of ty_ref
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
     | T_Ty
@@ -841,9 +887,14 @@ end = struct
     target : value;
   }
 
+  and expr_ref = {
+    mut : bool;
+    place : place_expr;
+  }
+
   and expr_shape =
     | E_Constant of value
-    | E_Ref of place_expr
+    | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_Then of expr_then
     | E_Stmt of expr_stmt
@@ -901,6 +952,7 @@ end = struct
 
   and place_expr = {
     shape : place_expr_shape;
+    mut : is_mutable;
     data : ir_data;
   }
 
@@ -937,9 +989,14 @@ end = struct
 
   and ty_expr_variant = { variants : ty_expr_variant_variant list }
 
+  and ty_expr_ref = {
+    mut : is_mutable;
+    referenced : ty_expr;
+  }
+
   and ty_expr_shape =
     | TE_Unit
-    | TE_Ref of ty_expr
+    | TE_Ref of ty_expr_ref
     | TE_Fn of ty_expr_fn
     | TE_Expr of expr
     | TE_Tuple of ty_expr_tuple
@@ -1042,6 +1099,7 @@ end = struct
     span : Span.t;
     ty : ty;
     label : Label.t;
+    mut : bool;
   }
 
   and ir_data = {

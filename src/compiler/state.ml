@@ -83,6 +83,7 @@ module Scope = struct
           span = from;
           ty = Ty.new_not_inferred ~span:from;
           label = Label.create_definition from ident;
+          mut = false;
         })
 
   let close : scope -> unit =
@@ -132,6 +133,8 @@ type t = {
   import_cache : import_cache;
   interpreter : Interpreter.state;
   custom_syntax_impls : (Id.t, value) Hashtbl.t;
+  mut_enabled : bool;
+  by_ref : bool;
 }
 
 type state = t
@@ -143,6 +146,8 @@ let blank name_part ~import_cache =
     import_cache;
     interpreter = Interpreter.default name_part;
     custom_syntax_impls = Hashtbl.create 0;
+    mut_enabled = false;
+    by_ref = false;
   }
 
 let enter_scope : recursive:bool -> state -> state =
@@ -153,6 +158,8 @@ let enter_scope : recursive:bool -> state -> state =
        interpreter;
        import_cache;
        custom_syntax_impls;
+       mut_enabled;
+       by_ref;
      } ->
   {
     scope = Scope.enter ~recursive ~parent:scope;
@@ -160,4 +167,6 @@ let enter_scope : recursive:bool -> state -> state =
     currently_compiled_file;
     import_cache;
     custom_syntax_impls;
+    mut_enabled;
+    by_ref;
   }

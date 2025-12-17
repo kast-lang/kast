@@ -1,6 +1,6 @@
 use std.prelude.*;
 use std.collections.Treap;
-let v = Treap.create ();
+let mut v = Treap.create ();
 for i in 0..10 do (
     v = Treap.join (v, Treap.singleton (i + 10));
 );

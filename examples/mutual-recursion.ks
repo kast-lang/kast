@@ -1,7 +1,7 @@
 use std.prelude.*;
 (
     module:
-    let depth = 0;
+    let mut depth = 0;
     let f = () => (
         print "inside f";
         depth = depth + 1;

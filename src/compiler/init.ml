@@ -189,22 +189,29 @@ and init_place_expr :
     Expr.Place.t =
  fun ?(evaled_exprs = []) span state shape ->
   try
-    let ty =
+    let inferred_mut mut : Types.is_mutable =
+      { var = Inference.Var.new_inferred ~span mut }
+    in
+    let mut, ty =
       match shape with
-      | PE_Error -> Ty.new_not_inferred ~span
-      | PE_Binding binding -> binding.ty
-      | PE_Temp expr -> expr.data.ty
+      | PE_Error -> (inferred_mut true, Ty.new_not_inferred ~span)
+      | PE_Binding binding -> (inferred_mut binding.mut, binding.ty)
+      | PE_Temp expr -> (inferred_mut true, expr.data.ty)
       | PE_Deref ref ->
+          let mut : Types.is_mutable =
+            { var = Inference.Var.new_not_inferred ~span }
+          in
           let value_ty = Ty.new_not_inferred ~span in
           ref.data.ty
           |> Inference.Ty.expect_inferred_as ~span
-               (Ty.inferred ~span (T_Ref value_ty));
-          value_ty
+               (Ty.inferred ~span (T_Ref { mut; referenced = value_ty }));
+          (mut, value_ty)
       | PE_Field { obj; field; field_span } ->
-          field_ty ~state ~span ~obj ~field_span obj.data.ty field
+          (obj.mut, field_ty ~state ~span ~obj ~field_span obj.data.ty field)
     in
     {
       shape;
+      mut;
       data =
         {
           span;
@@ -226,7 +233,7 @@ and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
   State.Scope.fork (fun () ->
       let value =
         Kast_interpreter.eval_place state.interpreter value
-        |> Kast_interpreter.claim ~span
+        |> Kast_interpreter.claim_ ~span
       in
       let module_ =
         Kast_interpreter.cast_as_module ~span state.interpreter value
@@ -259,7 +266,17 @@ and init_expr :
     let ty =
       match shape with
       | E_Constant value -> Value.ty_of value
-      | E_Ref place -> Ty.inferred ~span <| T_Ref place.data.ty
+      | E_Ref { mut; place } ->
+          if mut then
+            place.mut.var
+            |> Inference.Var.once_inferred (fun place_mut ->
+                if not place_mut then Error.error span "not mutable");
+          Ty.inferred ~span
+          <| T_Ref
+               {
+                 mut = { var = Inference.Var.new_inferred ~span mut };
+                 referenced = place.data.ty;
+               }
       | E_Claim place -> place.data.ty
       | E_Then { list } -> (
           match List.last_opt list with
@@ -483,7 +500,11 @@ let init_assignee :
       | A_Unit -> Ty.inferred ~span T_Unit
       | A_Tuple tuple -> tuple_ty ~span Assignee tuple
       | A_Let pattern -> pattern.data.ty
-      | A_Place place -> place.data.ty
+      | A_Place place ->
+          place.mut.var
+          |> Inference.Var.once_inferred (fun mut ->
+              if not mut then Error.error span "Not mutable");
+          place.data.ty
       | A_Error -> Ty.new_not_inferred ~span
     in
     (* ty.var
@@ -518,13 +539,24 @@ let init_pattern :
       match shape with
       | P_Placeholder -> Ty.new_not_inferred ~span
       | P_Unit -> Ty.inferred ~span T_Unit
-      | P_Ref inner -> Ty.inferred ~span <| T_Ref inner.data.ty
+      | P_Ref inner ->
+          Ty.inferred ~span
+          <| T_Ref
+               {
+                 mut = { var = Inference.Var.new_inferred ~span false };
+                 referenced = inner.data.ty;
+               }
       | P_Binding { by_ref; binding } ->
           if by_ref then (
             let result = Ty.new_not_inferred ~span in
             binding.ty
             |> Inference.Ty.expect_inferred_as ~span
-                 (Ty.inferred ~span (T_Ref result));
+                 (Ty.inferred ~span
+                    (T_Ref
+                       {
+                         mut = { var = Inference.Var.new_inferred ~span false };
+                         referenced = result;
+                       }));
             result)
           else binding.ty
       | P_Tuple tuple -> tuple_ty ~span Pattern tuple

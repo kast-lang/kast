@@ -30,7 +30,7 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_Char, _ -> fail ()
   | T_String, T_String -> T_String
   | T_String, _ -> fail ()
-  | T_Ref a, T_Ref b -> T_Ref (unite_ty ~span a b)
+  | T_Ref a, T_Ref b -> T_Ref (unite_ty_ref ~span a b)
   | T_Ref _, _ -> fail ()
   | T_Tuple a, T_Tuple b -> T_Tuple (unite_ty_tuple ~span a b)
   | T_Tuple _, _ -> fail ()
@@ -65,6 +65,25 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_Opaque _, _ -> fail ()
   | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
+
+and unite_ty_ref : ty_ref Inference.unite =
+ fun ~span ({ mut = mut_a; referenced = ref_a } as a)
+     ({ mut = mut_b; referenced = ref_b } as b) ->
+  {
+    mut = unite_is_mutable ~span mut_a mut_b;
+    referenced = unite_ty ~span ref_a ref_b;
+  }
+
+and unite_is_mutable : is_mutable Inference.unite =
+ fun ~span { var = a } { var = b } ->
+  { var = Inference.Var.unite unite_bool ~span a b }
+
+and unite_bool : bool Inference.unite =
+ fun ~span a b ->
+  if a = b then a
+  else (
+    Inference.Error.error span "bool unite failed";
+    a)
 
 and unite_ty_tuple : ty_tuple Inference.unite =
  fun ~span ({ name = name_a; tuple = a } as tuple_a)
@@ -114,7 +133,7 @@ and unite_ty : ty Inference.unite =
   { var = Inference.Var.unite ~span unite_ty_shape a b }
 
 and unite_place : place Inference.unite =
- fun ~span a b ->
+ fun ~span place_a place_b ->
   let get_value (place : place) : value =
     match place.state with
     | Uninitialized ->
@@ -125,9 +144,26 @@ and unite_place : place Inference.unite =
         Inference.Error.error span "moved out place";
         V_Error |> inferred_value ~span
   in
-  let a = get_value a in
-  let b = get_value b in
-  init_place (unite_value ~span a b)
+  let a = get_value place_a in
+  let b = get_value place_b in
+  init_place
+    ~mut:(unite_place_mut ~span place_a.mut place_b.mut)
+    (unite_value ~span a b)
+
+and unite_place_mut : place_mut Inference.unite =
+ fun ~span a b ->
+  let fail () =
+    Inference.Error.error span "different mutabilities";
+    a
+  in
+  match (a, b) with
+  | Inherit, m | m, Inherit -> m
+  | Immutable, Immutable -> Immutable
+  | Immutable, _ -> fail ()
+  | Mutable, Mutable -> Mutable
+  | Mutable, _ -> fail ()
+(* | Inherit, Inherit -> Inherit
+  | Inherit, _ -> fail () *)
 
 and unite_value_shape : value_shape Inference.unite =
  fun ~span a b ->
@@ -250,10 +286,10 @@ and unite_name_part : name_part Inference.unite =
   | Instantiation _, _ -> fail ()
 
 and inferred_ty ~span shape : ty =
-  { var = Inference.Var.new_inferred span shape }
+  { var = Inference.Var.new_inferred ~span shape }
 
 and inferred_value ~span shape : value =
-  { var = Inference.Var.new_inferred span shape; ty = ty_of_value_shape shape }
+  { var = Inference.Var.new_inferred ~span shape; ty = ty_of_value_shape shape }
 
 and infer_value_shape : span:span -> ty_shape -> value_shape option =
  fun ~span ty_shape ->
@@ -278,7 +314,8 @@ and infer_value_shape : span:span -> ty_shape -> value_shape option =
                |> Tuple.map (fun (field : ty_tuple_field) : value_tuple_field ->
                    {
                      place =
-                       init_place <| new_not_inferred_value_of_ty ~span field.ty;
+                       init_place ~mut:Inherit
+                       <| new_not_inferred_value_of_ty ~span field.ty;
                      span;
                      ty_field = field;
                    });
@@ -325,7 +362,13 @@ and ty_of_value_shape : value_shape -> ty =
     | V_Char _ -> inferred_ty ~span T_Char
     | V_String _ -> inferred_ty ~span T_String
     | V_Opaque { ty; value = _ } -> inferred_ty ~span (T_Opaque ty)
-    | V_Ref place -> inferred_ty ~span (T_Ref place.ty)
+    | V_Ref { mut; place } ->
+        inferred_ty ~span
+          (T_Ref
+             {
+               mut = { var = Inference.Var.new_inferred ~span mut };
+               referenced = place.ty;
+             })
     | V_Tuple { ty; tuple = _ } -> inferred_ty ~span <| T_Tuple ty
     | V_Variant { ty; _ } -> inferred_ty ~span <| T_Variant ty
     | V_Ty _ -> inferred_ty ~span T_Ty
@@ -343,5 +386,5 @@ and ty_of_value_shape : value_shape -> ty =
     | V_CompilerScope _ -> inferred_ty ~span T_CompilerScope
     | V_Error -> inferred_ty ~span T_Error
 
-and init_place value : place =
-  { id = Id.gen (); state = Occupied value; ty = value.ty }
+and init_place ~mut value : place =
+  { id = Id.gen (); state = Occupied value; ty = value.ty; mut }
