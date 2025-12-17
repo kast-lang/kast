@@ -30,3 +30,8 @@ const as_ref = [T] (opt :: &Option[T]) -> Option[type (&T)] => match opt^ with (
     | :Some (ref x) => :Some x
     | :None => :None
 );
+
+const unwrap = [T] (opt :: Option[T]) -> T => match opt with (
+    | :Some x => x
+    | :None => panic "unwrapped :None"
+);
