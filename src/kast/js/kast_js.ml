@@ -31,7 +31,7 @@ let cross_js : 'a. (unit -> 'a) -> 'a =
 let cross_js_async : 'a. (unit -> 'a) -> 'a Promise.t =
  fun f ->
   try Promise.return (cross_js f)
-  with effect Kast_interpreter.Natives.Input s, k ->
+  with effect Kast_interpreter.Natives.Io.Input s, k ->
     !current_input s |> Promise.bind (fun line : 'a -> Effect.continue k line)
 
 let global = cross_js (fun () -> Kast_lsp.Processing.init [])

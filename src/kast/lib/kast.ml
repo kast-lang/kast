@@ -55,7 +55,7 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
               fail "unsupported uri scheme %a"
                 (Option.print String.print_dbg)
                 scheme)
-  | effect Interpreter.Natives.Input s, k ->
+  | effect Interpreter.Natives.Io.Input s, k ->
       print_string s;
       flush stdout;
       let line = read_line () in

@@ -22,12 +22,12 @@ include "./string.ks";
 const Option = include "./option.ks";
 const dbg = include "./dbg.ks";
 const convert = include "./convert.ks";
-const io = include "./io/_mod.ks";
+const io = include "./io.ks";
 const path = include "./path.ks";
-const fs = include "./fs/_mod.ks";
-const net = include "./net/_mod.ks";
-const sys = include "./sys/_mod.ks";
-const rng = include "./rng/_mod.ks";
+const fs = include "./fs.ks";
+const net = include "./net.ks";
+const sys = include "./sys.ks";
+const random = include "./random.ks";
 const collections = include "./collections/_mod.ks";
 
 const panic = [T] (s :: String) -> T => @cfg (

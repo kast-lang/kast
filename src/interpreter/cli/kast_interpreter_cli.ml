@@ -12,7 +12,7 @@ module Args = struct
   let parse : string list -> args = function
     | [] -> { path = None }
     | path :: _rest as argv ->
-        Kast_interpreter.Natives.argv := argv |> Array.of_list;
+        Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
         { path = Some (Uri.file path) }
 end
 
