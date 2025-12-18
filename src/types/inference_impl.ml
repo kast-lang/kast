@@ -51,8 +51,7 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_UnwindToken _, _ -> fail ()
   | T_Fn a, T_Fn b -> T_Fn (unite_ty_fn ~span a b)
   | T_Fn _, _ -> fail ()
-  | T_Generic { def = a }, T_Generic { def = b } when a == b ->
-      T_Generic { def = a }
+  | T_Generic a, T_Generic b -> T_Generic (unite_ty_generic ~span a b)
   | T_Generic _, _ -> fail ()
   | T_Target, T_Target -> T_Target
   | T_Target, _ -> fail ()
@@ -65,6 +64,26 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_Opaque _, _ -> fail ()
   | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
   | T_Binding _, _ -> fail ()
+
+and unite_ty_generic : ty_generic Inference.unite =
+ fun ~span
+     {
+       fn = fn_a;
+       evaluated_with_normalized_bindings = evaled_norm_a;
+       evaluated_with_original_bindings = evaled_orig_a;
+     }
+     {
+       fn = _fn_b;
+       evaluated_with_normalized_bindings = evaled_norm_b;
+       evaluated_with_original_bindings = _evaled_orig_b;
+     } ->
+  (* TODO fork and enforce type of fn_a and fn_b arg are same *)
+  {
+    fn = fn_a;
+    evaluated_with_original_bindings = evaled_orig_a;
+    evaluated_with_normalized_bindings =
+      unite_ty ~span evaled_norm_a evaled_norm_b;
+  }
 
 and unite_ty_ref : ty_ref Inference.unite =
  fun ~span ({ mut = mut_a; referenced = ref_a } as a)
@@ -373,8 +392,8 @@ and ty_of_value_shape : value_shape -> ty =
     | V_Variant { ty; _ } -> inferred_ty ~span <| T_Variant ty
     | V_Ty _ -> inferred_ty ~span T_Ty
     | V_Fn { ty; _ } -> inferred_ty ~span <| T_Fn ty
-    | V_Generic { id = _; name = _; fn } ->
-        inferred_ty ~span <| T_Generic { def = fn.def }
+    | V_Generic { id = _; name = _; fn = _; ty } ->
+        inferred_ty ~span <| T_Generic ty
     | V_NativeFn { id = _; ty; name = _; impl = _ } ->
         inferred_ty ~span <| T_Fn ty
     | V_Ast _ -> inferred_ty ~span T_Ast

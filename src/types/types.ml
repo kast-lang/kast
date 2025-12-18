@@ -93,6 +93,7 @@ module rec TypesImpl : sig
     id : Id.t;
     name : name_shape;
     fn : value_untyped_fn;
+    ty : ty_generic;
   }
 
   and value_tuple_field = {
@@ -136,7 +137,12 @@ module rec TypesImpl : sig
     result : ty;
   }
 
-  and ty_generic = { def : maybe_compiled_fn (* fn : value_untyped_fn; *) }
+  and ty_generic = {
+    fn : value_untyped_fn;
+    evaluated_with_normalized_bindings : ty;
+    evaluated_with_original_bindings : ty;
+  }
+
   and ty_unwind_token = { result : ty }
   and ty_variant_data = { data : ty option }
 
@@ -196,7 +202,11 @@ module rec TypesImpl : sig
     def : maybe_compiled_fn;
   }
 
-  and expr_generic = { def : maybe_compiled_fn }
+  and expr_generic = {
+    def : maybe_compiled_fn;
+    def_ty : maybe_compiled_fn;
+  }
+
   and expr_then = { list : expr list }
 
   and 'a tuple_field_of = {
@@ -651,6 +661,7 @@ end = struct
     id : Id.t;
     name : name_shape;
     fn : value_untyped_fn;
+    ty : ty_generic;
   }
 
   and value_tuple_field = {
@@ -694,7 +705,12 @@ end = struct
     result : ty;
   }
 
-  and ty_generic = { def : maybe_compiled_fn (* fn : value_untyped_fn; *) }
+  and ty_generic = {
+    fn : value_untyped_fn;
+    evaluated_with_normalized_bindings : ty;
+    evaluated_with_original_bindings : ty;
+  }
+
   and ty_unwind_token = { result : ty }
   and ty_variant_data = { data : ty option }
 
@@ -754,7 +770,11 @@ end = struct
     def : maybe_compiled_fn;
   }
 
-  and expr_generic = { def : maybe_compiled_fn }
+  and expr_generic = {
+    def : maybe_compiled_fn;
+    def_ty : maybe_compiled_fn;
+  }
+
   and expr_then = { list : expr list }
 
   and 'a tuple_field_of = {

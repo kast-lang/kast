@@ -394,14 +394,32 @@ let generic : core_syntax =
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Assignee ->
-            error span "fn can't be assignee";
+            error span "generic can't be assignee";
             init_error span C.state kind
         | Pattern ->
-            error span "fn can't be a pattern";
+            error span "generic can't be a pattern";
             init_error span C.state kind
         | TyExpr ->
-            error span "fn can't be a ty";
-            init_error span C.state kind
+            (* TODO copypasta *)
+            let def : Types.maybe_compiled_fn =
+              { compiled = None; on_compiled = [] }
+            in
+            State.Scope.fork (fun () ->
+                let state = C.state |> State.enter_scope ~recursive:false in
+                let arg = C.compile ~state Pattern arg in
+                state
+                |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
+                let body = C.compile ~state TyExpr body in
+                let body = E_Ty body |> init_expr span state in
+                Compiler.finish_compiling def
+                  { arg; body; evaled_result = None });
+            let generic_ty =
+              T_Generic (Interpreter.generic_ty ~span C.state.interpreter def)
+              |> Ty.inferred ~span
+            in
+            let generic_ty = V_Ty generic_ty |> Value.inferred ~span in
+            let expr = E_Constant generic_ty |> init_expr span C.state in
+            (fun () -> TE_Expr expr) |> init_ty_expr span C.state
         | Expr ->
             let ty : Types.ty_fn =
               {
@@ -411,6 +429,9 @@ let generic : core_syntax =
             in
             (* TODO copypasta with fn *)
             let def : Types.maybe_compiled_fn =
+              { compiled = None; on_compiled = [] }
+            in
+            let def_ty : Types.maybe_compiled_fn =
               { compiled = None; on_compiled = [] }
             in
             State.Scope.fork (fun () ->
@@ -426,8 +447,16 @@ let generic : core_syntax =
                      arg.data.ty;
                 ty.result
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
-                     body.data.ty);
-            E_Generic { def } |> init_expr span C.state);
+                     body.data.ty;
+                Compiler.finish_compiling def_ty
+                  {
+                    arg;
+                    body =
+                      E_Constant (V_Ty body.data.ty |> Value.inferred ~span)
+                      |> init_expr span C.state;
+                    evaled_result = None;
+                  });
+            E_Generic { def; def_ty } |> init_expr span C.state);
   }
 
 let unit : core_syntax =

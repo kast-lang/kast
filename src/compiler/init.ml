@@ -285,13 +285,20 @@ and init_expr :
       | E_Stmt { expr } -> Ty.inferred ~span T_Unit
       | E_Scope { expr } -> expr.data.ty
       | E_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty
-      | E_Generic { def } -> T_Generic { def } |> Ty.inferred ~span
+      | E_Generic { def = _; def_ty } ->
+          T_Generic (Kast_interpreter.generic_ty ~span state.interpreter def_ty)
+          |> Ty.inferred ~span
       | E_InstantiateGeneric { generic; arg } ->
           let ty = Ty.new_not_inferred ~span in
           State.Scope.fork (fun () ->
               let inferred_ty =
                 with_return (fun { return } ->
-                    let ({ def } : Types.ty_generic) =
+                    let ({
+                           fn;
+                           evaluated_with_normalized_bindings = _;
+                           evaluated_with_original_bindings = _;
+                         }
+                          : Types.ty_generic) =
                       match generic.data.ty |> Ty.await_inferred with
                       | T_Generic ty -> ty
                       | _ ->
@@ -299,20 +306,10 @@ and init_expr :
                           return (Ty.inferred ~span T_Error)
                     in
                     let def =
-                      Kast_interpreter.await_compiled ~span def
+                      Kast_interpreter.await_compiled ~span fn.def
                       |> Option.unwrap_or_else (fun () ->
                           Error.error span "Generic is not compiled yet";
                           return (Ty.inferred ~span T_Error))
-                    in
-                    let def_ty : Types.compiled_fn =
-                      {
-                        arg = def.arg;
-                        body =
-                          E_Constant
-                            (V_Ty def.body.data.ty |> Value.inferred ~span)
-                          |> init_expr def.body.data.span state;
-                        evaled_result = None;
-                      }
                     in
                     arg.data.ty
                     |> Inference.Ty.expect_inferred_as ~span:arg.data.span
@@ -322,17 +319,9 @@ and init_expr :
                       state.interpreter
                       (*TODO*)
                     in
-                    let generic_ty : Types.value_untyped_fn =
-                      {
-                        id = Id.gen ();
-                        def = { compiled = Some def_ty; on_compiled = [] };
-                        captured = generic_ty_interpreter.scope;
-                        calculated_natives = Hashtbl.create 0;
-                      }
-                    in
                     let result =
                       Kast_interpreter.call_untyped_fn ~sub_mode:TyOnly span
-                        generic_ty_interpreter generic_ty arg
+                        generic_ty_interpreter fn arg
                     in
                     match result |> Value.expect_ty with
                     | Some ty -> ty

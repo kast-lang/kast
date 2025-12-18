@@ -75,7 +75,7 @@ module Impl = struct
           |> shaped
       | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
       | V_Fn { ty; fn } -> V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped
-      | V_Generic { id = _; name = _; fn = _ } -> original_value
+      | V_Generic { id = _; name = _; fn = _; ty = _ } -> original_value
       | V_NativeFn { id; name; ty; impl } ->
           V_NativeFn { id; name; ty = sub_ty_fn ~state ty; impl } |> shaped
       | V_UnwindToken { id; result_ty } ->
@@ -197,7 +197,21 @@ module Impl = struct
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped
-      | T_Generic { def = _ } -> original_ty
+      | T_Generic
+          {
+            fn;
+            evaluated_with_normalized_bindings;
+            evaluated_with_original_bindings;
+          } ->
+          T_Generic
+            {
+              fn;
+              evaluated_with_original_bindings =
+                sub_ty ~state evaluated_with_original_bindings;
+              evaluated_with_normalized_bindings =
+                sub_ty ~state evaluated_with_normalized_bindings;
+            }
+          |> shaped
       | T_UnwindToken { result } ->
           T_UnwindToken { result = result |> sub_ty ~state } |> shaped
       | T_Binding binding -> (

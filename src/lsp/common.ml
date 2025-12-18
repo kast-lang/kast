@@ -70,7 +70,7 @@ let inner_compiled_with_handler =
       | E_Then { list } -> list |> List.iter (handler.handle Expr)
       | E_Stmt { expr } -> handler.handle Expr expr
       | E_Scope { expr } -> handler.handle Expr expr
-      | E_Fn { def; ty = _ } | E_Generic { def } -> (
+      | E_Fn { def; ty = _ } | E_Generic { def; def_ty = _ } -> (
           match def.compiled with
           | None -> ()
           | Some { arg; body; evaled_result } -> (

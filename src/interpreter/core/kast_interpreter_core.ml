@@ -245,7 +245,7 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
 and instantiate (span : span) (state : state) (generic : value) (arg : value) :
     value =
   match generic |> Value.await_inferred with
-  | V_Generic { id; name; fn } -> (
+  | V_Generic { id; name; fn; ty = _ } -> (
       let save new_state =
         let generic_instantiations =
           match state.instantiated_generics.map |> Id.Map.find_opt id with
@@ -507,8 +507,154 @@ and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
     }
   |> Value.inferred ~span
 
+and normalized_binding_at_idx : int -> binding =
+  let span = Span.fake "<normalized binding>" in
+  let cache =
+    Array.init 100 (fun i : binding ->
+        let name = "_" ^ Int.to_string i in
+        {
+          id = Id.gen ();
+          name = Symbol.create name;
+          span;
+          label = Label.create_reference span name;
+          ty = Ty.new_not_inferred ~span;
+          mut = true;
+        })
+  in
+  fun idx -> Array.get cache idx
+
+and construct_bindings_arg ~span pattern =
+  construct_bindings_arg_impl (fun _idx binding -> binding) ~span pattern
+
+and construct_normalized_bindings_arg ~span pattern =
+  construct_bindings_arg_impl
+    (fun idx (pattern_binding : binding) : binding ->
+      let normalized_binding_blueprint = normalized_binding_at_idx idx in
+      {
+        id = normalized_binding_blueprint.id;
+        name = normalized_binding_blueprint.name;
+        label = normalized_binding_blueprint.label;
+        span = normalized_binding_blueprint.span;
+        ty = pattern_binding.ty;
+        mut = true;
+      })
+    ~span pattern
+
+and construct_bindings_arg_impl :
+    (int -> binding -> binding) -> span:span -> pattern -> value =
+ fun get_binding ->
+  let rec impl ~(idx : int ref) ~(span : span) (pattern : pattern) : value =
+    let ty = pattern.data.ty in
+    match pattern.shape with
+    | P_Placeholder -> Value.new_not_inferred_of_ty ~span ty
+    | P_Ref p ->
+        V_Ref
+          { mut = false; place = Place.init ~mut:Inherit (impl ~idx ~span p) }
+        |> Value.inferred ~span
+    | P_Unit -> Value.new_not_inferred_of_ty ~span ty
+    | P_Binding { by_ref = _; binding = pattern_binding } ->
+        let binding : binding = get_binding !idx pattern_binding in
+        let result = V_Binding binding |> Value.inferred ~span in
+        idx := !idx + 1;
+        result
+    | P_Tuple { parts } ->
+        let tuple_ty =
+          ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.get
+        in
+        let tuple = ref Tuple.empty in
+        parts
+        |> List.iter (fun (part : pattern Types.tuple_part_of) ->
+            match part with
+            | Field { label_span; label; field = field_pattern } ->
+                let name = label |> Option.map Label.get_name in
+                let value = impl ~idx ~span field_pattern in
+                let field : Types.value_tuple_field =
+                  {
+                    span = label_span;
+                    place = Place.init ~mut:Inherit value;
+                    ty_field = { label; ty = field_pattern.data.ty };
+                  }
+                in
+                tuple := !tuple |> Tuple.add name field
+            | Unpack packed_pattern ->
+                let packed_value = impl ~idx ~span packed_pattern in
+                let packed_value : Types.value_tuple =
+                  packed_value |> Value.expect_tuple |> Option.get
+                in
+                packed_value.tuple
+                |> Tuple.iter (fun member field ->
+                    let name =
+                      match member with
+                      | Index _ -> None
+                      | Name name -> Some name
+                    in
+                    tuple := !tuple |> Tuple.add name field));
+        V_Tuple { tuple = !tuple; ty = tuple_ty } |> Value.inferred ~span
+    | P_Variant { label; label_span = _; value } ->
+        let variant_ty =
+          ty |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.get
+        in
+        V_Variant
+          {
+            label;
+            data =
+              value
+              |> Option.map (impl ~idx ~span)
+              |> Option.map (Place.init ~mut:Inherit);
+            ty = variant_ty;
+          }
+        |> Value.inferred ~span
+    | P_Error -> V_Error |> Value.inferred ~span
+  in
+  fun ~span pattern -> impl ~idx:(ref 0) ~span pattern
+
+and generic_ty :
+    span:span -> state -> Types.maybe_compiled_fn -> Types.ty_generic =
+ fun ~span state def_ty ->
+  let ty_fn : Types.value_untyped_fn =
+    {
+      id = Id.gen ();
+      def = def_ty;
+      captured = state.scope;
+      calculated_natives = Hashtbl.create 0;
+    }
+  in
+  {
+    fn = ty_fn;
+    evaluated_with_normalized_bindings =
+      (let evaled = Ty.new_not_inferred ~span in
+       fork (fun () ->
+           let compiled =
+             ty_fn.def |> await_compiled ~span
+             |> Option.unwrap_or_else (fun () -> fail "TODO not compiled")
+           in
+           let arg = construct_normalized_bindings_arg ~span compiled.arg in
+           let result = call_untyped_fn ~sub_mode:Full span state ty_fn arg in
+           let result =
+             result |> Value.expect_ty
+             |> Option.unwrap_or_else (fun () -> fail "TODO expected ty")
+           in
+           evaled |> Inference.Ty.expect_inferred_as ~span result);
+       evaled);
+    evaluated_with_original_bindings =
+      (let evaled = Ty.new_not_inferred ~span in
+       fork (fun () ->
+           let compiled =
+             ty_fn.def |> await_compiled ~span
+             |> Option.unwrap_or_else (fun () -> fail "TODO not compiled")
+           in
+           let arg = construct_bindings_arg ~span compiled.arg in
+           let result = call_untyped_fn ~sub_mode:Full span state ty_fn arg in
+           let result =
+             result |> Value.expect_ty
+             |> Option.unwrap_or_else (fun () -> fail "TODO expected ty")
+           in
+           evaled |> Inference.Ty.expect_inferred_as ~span result);
+       evaled);
+  }
+
 and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
- fun state expr { def } ->
+ fun state expr { def; def_ty } ->
   let span = expr.data.span in
   V_Generic
     {
@@ -521,6 +667,7 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
           captured = state.scope;
           calculated_natives = Hashtbl.create 0;
         };
+      ty = generic_ty ~span state def_ty;
     }
   |> Value.inferred ~span
 

@@ -1,6 +1,7 @@
 use std.prelude.*;
-# id
-const id = [T] x :: T => x;
+
+const id_t = type ([X] X -> X);
+const id :: id_t = [T] x :: T => x;
 print (id "hello, world!");
 print (id 1 |> to_string);
 # const 
