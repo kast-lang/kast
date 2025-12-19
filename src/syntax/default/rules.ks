@@ -26,6 +26,13 @@
 @syntax "core:unpack" 5.5 wrap never = "..." _;
 
 @syntax "core:field init" 6 wrap never = "." label type=(" " "::" " " _)? value=(" " "=" " " _)?;
+
+@syntax "core:type ascribe" 6.2 wrap never = expr " " "::" " " type;
+
+@syntax "core:generic" 6.5 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
+@syntax "generic_non_dependent" 6.5 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " "->" " " body ->;
+@syntax "core:fn_type" 6.5 wrap never = arg " " context=("with" " " _ " ")? "->" " " result ->;
+
 @syntax "core:fn" 7 wrap never = arg " " context=("with" " " _ " ")? result=("->" " " _ " ")? "=>" " " body;
 
 @syntax "if_without_else" 7.5 wrap never = "if" " " cond " " "then" " " then_case;
@@ -34,8 +41,6 @@
 @syntax "while" 7.5 wrap never = "while" " " cond " " "do" " " body;
 @syntax "for_range" 7.5 wrap never = "for" " " pattern " " "in" " " start  ".." end " " "do" " " body;
 
-@syntax "core:type ascribe" 8 wrap never = expr " " "::" " " type;
-@syntax "core:fn_type" 8.5 wrap never = arg " " context=("with" " " _ " ")? "->" " " result;
 @syntax "core:import" 9 wrap never = "import" " " path;
 @syntax "core:include" 9 wrap never = "include" " " path;
 @syntax "create_context_type" 9 wrap never = "@context" " " type;
@@ -79,7 +84,6 @@
 @syntax "core:instantiate_generic" 70 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
 @syntax "core:." 70 wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:deref" 70 wrap never = <- _ "^";
-@syntax "core:generic" 6.5 wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
 @syntax "core:mut" 500 wrap never = "mut" " " _;
 @syntax "core:type expr" 500 wrap never = "type" " " _;
 @syntax "core:newtype" 500 wrap never = "newtype" " " _;

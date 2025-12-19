@@ -18,7 +18,7 @@ impl String as module = (
             s,
             c => (
                 f (i, c);
-                i = i + 1;
+                i += 1;
             )
         )
     );

@@ -394,6 +394,10 @@ and new_not_inferred_ty ~span : ty =
 and new_not_inferred_value ~span : value =
   let var = Inference.Var.new_not_inferred ~span in
   let ty = new_not_inferred_ty ~span in
+  var
+  |> Inference.Var.once_inferred (fun value_shape ->
+      let _ : ty = unite_ty ~span (ty_of_value_shape value_shape) ty in
+      ());
   ty.var
   |> Inference.Var.once_inferred (fun ty_shape ->
       match infer_value_shape ~span ty_shape with
@@ -404,7 +408,7 @@ and new_not_inferred_value ~span : value =
 
 and new_not_inferred_value_of_ty ~span ty : value =
   let value = new_not_inferred_value ~span in
-  unite_ty ~span value.ty ty |> ignore;
+  let _ : ty = unite_ty ~span value.ty ty in
   value
 
 and ty_of_value_shape : value_shape -> ty =

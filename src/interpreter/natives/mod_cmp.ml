@@ -6,8 +6,8 @@ let init () =
         match value |> Value.await_inferred with
         | V_Tuple { ty = _; tuple } ->
             let a, b = tuple |> Tuple.unwrap_unnamed2 in
-            let a = a.place |> claim ~span:caller |> Value.await_inferred in
-            let b = b.place |> claim ~span:caller |> Value.await_inferred in
+            let a = a.place |> claim ~span:caller |> await_fully_inferred in
+            let b = b.place |> claim ~span:caller |> await_fully_inferred in
             let result : bool = op a b in
             V_Bool result |> Value.inferred ~span
         | _ ->

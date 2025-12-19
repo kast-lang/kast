@@ -128,3 +128,7 @@ impl syntax (return value) = `(
 impl syntax (@opaque_type) = `(
     (@native "new_opaque_type") ()
 );
+
+impl syntax ([arg] -> body) = `(
+    [_ :: $arg] $body
+);

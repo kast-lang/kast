@@ -167,7 +167,10 @@ module Span = struct
       (* fprintf fmt "vscode://file%a:%d.%d-%d.%d" Uri.print uri start.line
         start.column finish.line finish.column *)
     in
-    fprintf fmt "\x1b]8;;%a\x07%a\x1b]8;;\x07" print_span span print_value value
+    let printed_span = make_string "%a" print_span span in
+    Format.pp_open_stag fmt (Format.OSC8 printed_span);
+    print_value fmt value;
+    Format.pp_close_stag fmt ()
 end
 
 module SpanSet = Set.Make (Span)

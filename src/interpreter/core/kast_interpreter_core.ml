@@ -217,8 +217,8 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
       in
       let result = eval new_state def.body in
       Log.trace (fun log ->
-          log "evaled call (before sub) at %a = %a" Span.print span Value.print
-            result);
+          log "evaled call (before sub) at %a = %a :: %a" Span.print span
+            Value.print result Ty.print result.ty);
       let result =
         match sub_mode with
         | None -> result
@@ -239,13 +239,17 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
                      Ty.inferred ~span T_Error))
       in
       Log.trace (fun log ->
-          log "evaled call (after sub) at %a = %a" Span.print span Value.print
-            result);
+          log "evaled call (after sub) at %a = %a :: %a" Span.print span
+            Value.print result Ty.print result.ty);
       result)
 
-and instantiate ~(result_ty : ty) (span : span) (state : state)
+and instantiate ?(result_ty : ty option) (span : span) (state : state)
     (generic : value) (arg : value) : value =
-  let result = Value.new_not_inferred_of_ty ~span result_ty in
+  let result =
+    match result_ty with
+    | Some result_ty -> Value.new_not_inferred_of_ty ~span result_ty
+    | None -> Value.new_not_inferred ~span
+  in
   fork (fun () ->
       Log.trace (fun log ->
           log "Waiting for instantiation name at %a" Span.print span);
@@ -270,7 +274,7 @@ and instantiate ~(result_ty : ty) (span : span) (state : state)
         match generic |> Value.await_inferred with
         | V_Blocked generic ->
             V_Blocked
-              { shape = BV_Instantiate { generic; arg }; ty = result_ty }
+              { shape = BV_Instantiate { generic; arg }; ty = result.ty }
             |> Value.inferred ~span
         | V_Generic { id; name; fn; ty = _ } -> (
             let save new_state =
@@ -815,7 +819,8 @@ and eval_expr_instantiategeneric :
   let span = expr.data.span in
   let generic = eval state generic in
   let arg = eval state arg in
-  instantiate ~result_ty:expr.data.ty expr.data.span state generic arg
+  let result_ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+  instantiate ~result_ty expr.data.span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
  fun state expr { id; expr = native_expr } ->
@@ -1026,7 +1031,7 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
  fun state expr { value; target } ->
   let span = expr.data.span in
   let value = eval state value in
-  value |> await_fully_inferred;
+  let _ : Value.shape = value |> await_fully_inferred in
   let impl =
     state.cast_impls.map
     |> Types.ValueMap.find_opt target
@@ -1051,16 +1056,17 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
                     Value.print existing_target)));
       V_Error |> Value.inferred ~span
 
-and await_fully_inferred value =
+and await_fully_inferred value : Value.Shape.t =
   (* TODO actual impl *)
-  match value.var |> Inference.Var.inferred_or_default with
+  (match value.var |> Inference.Var.inferred_or_default with
   | Some (V_Ty ty) -> ty.var |> Inference.Var.setup_default_if_needed
-  | _ -> ()
+  | _ -> ());
+  Value.await_inferred value
 
 and impl_cast_as_module :
     span:span -> state -> value:value -> impl:value -> unit =
  fun ~span state ~value ~impl ->
-  value |> await_fully_inferred;
+  let _ : Value.shape = value |> await_fully_inferred in
   state.cast_impls.as_module <-
     state.cast_impls.as_module
     |> Types.ValueMap.update value (fun current_impl ->
@@ -1072,7 +1078,7 @@ and impl_cast_as_module :
 
 and cast_as_module_opt : span:span -> state -> value -> value option =
  fun ~span:_ state value ->
-  value |> await_fully_inferred;
+  let _ : Value.shape = value |> await_fully_inferred in
   state.cast_impls.as_module |> Types.ValueMap.find_opt value
 
 and cast_as_module : span:span -> state -> value -> value =
@@ -1124,7 +1130,7 @@ and eval : state -> expr -> value =
       match expr.shape with
       | E_Ref place -> eval_expr_ref state expr place
       | E_Claim place -> eval_expr_claim state expr place
-      | E_Constant value -> value
+      | E_Constant value -> Substitute_bindings.sub_value ~span ~state value
       | E_Fn f -> eval_expr_fn state expr f
       | E_Generic f -> eval_expr_generic state expr f
       | E_Tuple tuple -> eval_expr_tuple state expr tuple

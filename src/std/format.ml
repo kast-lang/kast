@@ -7,6 +7,8 @@ module Format = struct
     f fmt;
     pp_close_box fmt ()
 
+  type stag += OSC8 of string
+
   module Iter = struct
     type sep = {
       fits : string * int * string;
@@ -56,17 +58,18 @@ module Format = struct
   let sprintln format = fprintln str_formatter format
   let eprintln format = fprintln err_formatter format
   let println format = fprintln std_formatter format
+  let make_string_lock = Mutex.create ()
 
   let make_string : 'a. ('a, formatter, unit, string) format4 -> 'a =
    fun format ->
-    Mutex.lock fprintln_lock;
+    (* Mutex.lock make_string_lock; *)
     let buffer = Buffer.create 32 in
     let fmt = formatter_of_buffer buffer in
     kfprintf
       (fun _ ->
         pp_print_flush fmt ();
         let result = buffer |> Buffer.contents in
-        Mutex.unlock fprintln_lock;
+        (* Mutex.unlock make_string_lock; *)
         result)
       fmt format
 
@@ -102,6 +105,7 @@ module Format = struct
     if tty then
       let mark_stag which tag =
         match tag with
+        | OSC8 url -> which ("\x1b]8;;" ^ url ^ "\x07", "\x1b]8;;\x07")
         | String_tag tag ->
             let codes =
               Stdlib.String.split_on_char ';' tag

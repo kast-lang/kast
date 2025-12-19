@@ -14,7 +14,7 @@ module Var = struct
   and 'a var_data = {
     recurse_id : id;
     inferred : 'a option;
-    setup_default : (unit -> unit) option;
+    mutable setup_default : (unit -> unit) option;
     spans : SpanSet.t;
     mutable once_inferred : ('a -> unit) list;
     mutable on_unite : ('a var_data -> unit) list;
@@ -177,7 +177,21 @@ module Var = struct
    fun from var ->
     let from = find_root from in
     let root = find_root var in
-    root.subbed_in <- root.subbed_in |> Id.Set.union from.subbed_in
+    root.subbed_in <- root.subbed_in |> Id.Set.union from.subbed_in;
+    match (root.setup_default, from.setup_default) with
+    | None, Some f ->
+        let called = ref false in
+        let f =
+         fun () ->
+          match !called with
+          | false ->
+              called := true;
+              f ()
+          | true -> ()
+        in
+        root.setup_default <- Some f;
+        from.setup_default <- Some f
+    | _ -> ()
 
   let was_subbed_in : 'a. Id.t -> 'a var -> bool =
    fun id var ->

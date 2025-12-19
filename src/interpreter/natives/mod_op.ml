@@ -10,8 +10,8 @@ let init () =
             let a, b = tuple |> Tuple.unwrap_unnamed2 in
             let result : Value.shape =
               match
-                ( a.place |> claim ~span:caller |> Value.await_inferred,
-                  b.place |> claim ~span:caller |> Value.await_inferred )
+                ( a.place |> claim ~span:caller |> await_fully_inferred,
+                  b.place |> claim ~span:caller |> await_fully_inferred )
               with
               | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
               | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)

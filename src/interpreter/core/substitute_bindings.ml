@@ -6,7 +6,7 @@ open Types
 module Impl = struct
   module Interpreter = struct
     let instantiate :
-        (result_ty:ty -> span -> interpreter_state -> value -> value -> value)
+        (?result_ty:ty -> span -> interpreter_state -> value -> value -> value)
         option
         ref =
       ref None
@@ -82,7 +82,12 @@ module Impl = struct
             }
           |> shaped
       | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
-      | V_Fn { ty; fn } -> V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped
+      | V_Fn { ty; fn } ->
+          let result = V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped in
+          Log.trace (fun log ->
+              log "Subbed fn into %a :: %a" Value.print result Ty.print
+                result.ty);
+          result
       | V_Generic { id = _; name = _; fn = _; ty = _ } -> original_value
       | V_NativeFn { id; name; ty; impl } ->
           V_NativeFn { id; name; ty = sub_ty_fn ~state ty; impl } |> shaped
