@@ -765,8 +765,8 @@ let const_let (span : span) (pattern : pattern) (value_expr : expr)
     | P_Binding { by_ref = false; binding } ->
         {
           C.state.interpreter with
-          current_name_parts_rev =
-            Symbol binding.name :: C.state.interpreter.current_name_parts_rev;
+          current_name =
+            Concat (C.state.interpreter.current_name, Symbol binding.name);
         }
     | _ -> C.state.interpreter
   in
@@ -819,9 +819,10 @@ let const : core_syntax =
                     interpreter =
                       {
                         C.state.interpreter with
-                        current_name_parts_rev =
-                          Symbol binding.name
-                          :: C.state.interpreter.current_name_parts_rev;
+                        current_name =
+                          Concat
+                            ( C.state.interpreter.current_name,
+                              Symbol binding.name );
                       };
                   }
               | _ -> C.state

@@ -278,12 +278,7 @@ and instantiate ~(result_ty : ty) (span : span) (state : state)
           fork (fun () ->
               try
                 let state =
-                  {
-                    state with
-                    current_name_parts_rev =
-                      (Instantiation arg : Types.name_part)
-                      :: (name.parts |> List.rev);
-                  }
+                  { state with current_name = Instantiation { generic; arg } }
                 in
                 let evaluated_result =
                   call_untyped_fn ~sub_mode:Full span state fn arg
@@ -1202,8 +1197,10 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
 
 and current_name : state -> Types.name_shape =
  fun state ->
-  let parts = state.current_name_parts_rev |> List.rev in
-  { parts }
+  Log.trace (fun log ->
+      log "Current name = %a" Kast_types.Print.print_name_shape
+        state.current_name);
+  state.current_name
 
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->

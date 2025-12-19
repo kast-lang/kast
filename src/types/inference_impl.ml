@@ -302,16 +302,30 @@ and unite_option : 'a. 'a Inference.unite -> 'a option Inference.unite =
       Some value
   | None, None -> None
 
+and unite_name_instantiation : name_instantiation Inference.unite =
+ fun ~span { generic = generic_a; arg = arg_a }
+     { generic = generic_b; arg = arg_b } ->
+  {
+    generic = unite_value ~span generic_a generic_b;
+    arg = unite_value ~span arg_a arg_b;
+  }
+
 and unite_name_shape : name_shape Inference.unite =
- fun ~span ({ parts = a } as name_a) ({ parts = b } as name_b) ->
-  if List.length a <> List.length b then (
-    Inference.Error.error span "name_shape %a != %a" print_name_shape name_a
-      print_name_shape name_b;
-    { parts = a })
-  else
-    {
-      parts = List.zip a b |> List.map (fun (a, b) -> unite_name_part ~span a b);
-    }
+ fun ~span a b ->
+  let fail () =
+    Inference.Error.error span "name_shape %a != %a" print_name_shape a
+      print_name_shape b;
+    a
+  in
+  match (a, b) with
+  | Simple a, Simple b -> Simple (unite_name_part ~span a b)
+  | Simple a, _ -> fail ()
+  | Concat (a1, a2), Concat (b1, b2) ->
+      Concat (unite_name_shape ~span a1 b1, unite_name_part ~span a2 b2)
+  | Concat _, _ -> fail ()
+  | Instantiation a, Instantiation b ->
+      Instantiation (unite_name_instantiation ~span a b)
+  | Instantiation _, _ -> fail ()
 
 and unite_name_part : name_part Inference.unite =
  fun ~span a b ->
@@ -327,8 +341,6 @@ and unite_name_part : name_part Inference.unite =
   | Str _, _ -> fail ()
   | Symbol a, Symbol b when Symbol.equal a b -> Symbol a
   | Symbol _, _ -> fail ()
-  | Instantiation a, Instantiation b -> Instantiation (unite_value ~span a b)
-  | Instantiation _, _ -> fail ()
 
 and inferred_ty ~span shape : ty =
   { var = Inference.Var.new_inferred ~span shape }

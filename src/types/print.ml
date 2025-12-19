@@ -60,7 +60,9 @@ module Impl = struct
         match data with
         | Some data -> fprintf fmt " %a" print_place_value data
         | None -> ())
-    | V_Generic g -> fprintf fmt "@{<italic><generic %a>@}" Id.print g.id
+    | V_Generic g ->
+        print_name_shape fmt g.name
+        (* fprintf fmt "@{<italic><generic %a>@}" Id.print g.id *)
     | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
     | V_Ast ast -> fprintf fmt "%a" Ast.print ast
     | V_UnwindToken { id; result_ty = _ } ->
@@ -540,27 +542,25 @@ module Impl = struct
    fun fmt { var } -> print_var print_name_shape fmt var
 
   and print_name_part : formatter -> name_part -> unit =
-   fun fmt -> print_name_shape_part fmt ~first:true
+   fun fmt -> print_name_shape_part fmt
 
-  and print_name_shape_part : formatter -> first:bool -> name_part -> unit =
-   fun fmt ~first -> function
+  and print_name_shape_part : formatter -> name_part -> unit =
+   fun fmt -> function
     | Uri uri ->
         let name =
           Uri.path uri |> Filename.basename |> Filename.remove_extension
         in
         fprintf fmt "%s" name
-    | Str s ->
-        if not first then fprintf fmt ".";
-        fprintf fmt "%s" s
-    | Symbol symbol ->
-        if not first then fprintf fmt ".";
-        Symbol.print fmt symbol
-    | Instantiation value -> fprintf fmt "[%a]" print_value value
+    | Str s -> fprintf fmt "%s" s
+    | Symbol symbol -> Symbol.print fmt symbol
 
   and print_name_shape : formatter -> name_shape -> unit =
-   fun fmt { parts } ->
-    parts
-    |> List.iteri (fun i part -> print_name_shape_part fmt ~first:(i = 0) part)
+   fun fmt shape ->
+    match shape with
+    | Simple part -> print_name_shape_part fmt part
+    | Concat (a, b) -> fprintf fmt "%a.%a" print_name_shape a print_name_part b
+    | Instantiation { generic; arg } ->
+        fprintf fmt "%a[%a]" print_value generic print_value arg
 end
 
 let with_cache f =

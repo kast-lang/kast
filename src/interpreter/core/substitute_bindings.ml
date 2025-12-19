@@ -144,9 +144,17 @@ module Impl = struct
       ~get_var:(fun (name : optional_name) -> name.var)
       ~state name
 
-  and sub_name_shape ~(state : interpreter_state) ({ parts } : name_shape) :
+  and sub_name_shape ~(state : interpreter_state) (shape : name_shape) :
       name_shape =
-    { parts = parts |> List.map (sub_name_part ~state) }
+    match shape with
+    | Simple part -> Simple (sub_name_part ~state part)
+    | Concat (a, b) -> Concat (sub_name_shape ~state a, sub_name_part ~state b)
+    | Instantiation { generic; arg } ->
+        Instantiation
+          {
+            generic = generic |> sub_value ~state;
+            arg = arg |> sub_value ~state;
+          }
 
   and sub_name_part ~(state : interpreter_state) (part : name_part) : name_part
       =
@@ -154,7 +162,6 @@ module Impl = struct
     | Uri uri -> Uri uri
     | Str s -> Str s
     | Symbol symbol -> Symbol symbol
-    | Instantiation value -> Instantiation (sub_value ~state value)
 
   and sub_option :
       'v 'shape.

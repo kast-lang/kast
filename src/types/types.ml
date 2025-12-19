@@ -556,7 +556,7 @@ module rec TypesImpl : sig
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
     cast_impls : cast_impls;
-    current_name_parts_rev : name_part list;
+    current_name : name_shape;
   }
 
   (* OTHER *)
@@ -580,13 +580,21 @@ module rec TypesImpl : sig
 
   and name = { var : name_shape Inference.var }
   and optional_name = { var : name_shape option Inference.var }
-  and name_shape = { parts : name_part list }
+
+  and name_shape =
+    | Simple of name_part
+    | Concat of name_shape * name_part
+    | Instantiation of name_instantiation
+
+  and name_instantiation = {
+    generic : value;
+    arg : value;
+  }
 
   and name_part =
     | Uri of Uri.t
     | Str of string
     | Symbol of Symbol.t
-    | Instantiation of value
   [@@deriving eq, ord]
 end = struct
   (* PLACE *)
@@ -1139,7 +1147,7 @@ end = struct
     mutable contexts : value Id.Map.t;
     instantiated_generics : instantiated_generics;
     cast_impls : cast_impls;
-    current_name_parts_rev : name_part list;
+    current_name : name_shape;
   }
 
   (* OTHER *)
@@ -1163,13 +1171,21 @@ end = struct
 
   and name = { var : name_shape Inference.var }
   and optional_name = { var : name_shape option Inference.var }
-  and name_shape = { parts : name_part list }
+
+  and name_shape =
+    | Simple of name_part
+    | Concat of name_shape * name_part
+    | Instantiation of name_instantiation
+
+  and name_instantiation = {
+    generic : value;
+    arg : value;
+  }
 
   and name_part =
     | Uri of Uri.t
     | Str of string
     | Symbol of Symbol.t
-    | Instantiation of value
   [@@deriving eq, ord]
 end
 

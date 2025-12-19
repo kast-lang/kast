@@ -6,6 +6,7 @@ module Types = Types
 module Label = Label
 module Row = Row
 module Inference_impl = Inference_impl
+module Print = Print
 
 module Ty = struct
   type t = ty
