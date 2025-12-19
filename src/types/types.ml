@@ -24,6 +24,21 @@ module rec TypesImpl : sig
     | Occupied of value
     | MovedOut
 
+  (* blocked_value *)
+  and blocked_value = {
+    shape : blocked_value_shape;
+    ty : ty;
+  }
+
+  and blocked_value_shape =
+    | BV_Binding of binding
+    | BV_Instantiate of blocked_value_instantiate
+
+  and blocked_value_instantiate = {
+    generic : blocked_value;
+    arg : value;
+  }
+
   (* VALUE *)
   and value_shape =
     | V_Unit
@@ -44,9 +59,9 @@ module rec TypesImpl : sig
     | V_UnwindToken of value_unwind_token
     | V_Target of value_target
     | V_ContextTy of value_context_ty
-    | V_Binding of binding
     | V_CompilerScope of compiler_scope
     | V_Opaque of value_opaque
+    | V_Blocked of blocked_value
     | V_Error
 
   and value_ref = {
@@ -178,8 +193,8 @@ module rec TypesImpl : sig
     | T_Target
     | T_ContextTy
     | T_CompilerScope
-    | T_Binding of binding
     | T_Opaque of ty_opaque
+    | T_Blocked of blocked_value
     | T_Error
 
   and ty = { var : ty_shape Inference.var }
@@ -592,6 +607,21 @@ end = struct
     | Occupied of value
     | MovedOut
 
+  (* blocked_value *)
+  and blocked_value = {
+    shape : blocked_value_shape;
+    ty : ty;
+  }
+
+  and blocked_value_shape =
+    | BV_Binding of binding
+    | BV_Instantiate of blocked_value_instantiate
+
+  and blocked_value_instantiate = {
+    generic : blocked_value;
+    arg : value;
+  }
+
   (* VALUE *)
   and value_shape =
     | V_Unit
@@ -612,9 +642,9 @@ end = struct
     | V_UnwindToken of value_unwind_token
     | V_Target of value_target
     | V_ContextTy of value_context_ty
-    | V_Binding of binding
     | V_CompilerScope of compiler_scope
     | V_Opaque of value_opaque
+    | V_Blocked of blocked_value
     | V_Error
 
   and value_ref = {
@@ -746,8 +776,8 @@ end = struct
     | T_Target
     | T_ContextTy
     | T_CompilerScope
-    | T_Binding of binding
     | T_Opaque of ty_opaque
+    | T_Blocked of blocked_value
     | T_Error
 
   and ty = { var : ty_shape Inference.var }

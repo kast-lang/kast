@@ -50,6 +50,9 @@ module Value = struct
   let inferred = Inference_impl.inferred_value
   let ty_of : value -> ty = fun { var = _; ty } -> ty
 
+  let binding ~span binding =
+    V_Blocked { shape = BV_Binding binding; ty = binding.ty } |> inferred ~span
+
   let await_inferred : value -> value_shape =
    fun value -> value.var |> Inference.Var.await_inferred ~error_shape:V_Error
 
@@ -108,13 +111,13 @@ module Value = struct
     | _ -> None
 
   let expect_ty : value -> ty option =
-   fun value ->
-    let inferred = value |> await_inferred in
-    match inferred with
-    | V_Binding binding ->
-        Some (Ty.inferred ~span:binding.span (T_Binding binding))
-    | V_Ty ty -> Some ty
-    | _ -> None
+    let span = Span.fake "<expect_ty>" in
+    fun value ->
+      let inferred = value |> await_inferred in
+      match inferred with
+      | V_Blocked blocked -> Some (Ty.inferred ~span (T_Blocked blocked))
+      | V_Ty ty -> Some ty
+      | _ -> None
 
   let expect_string : value -> string option =
    fun value ->

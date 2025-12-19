@@ -4,6 +4,14 @@ open Kast_types
 open Types
 
 module Impl = struct
+  module Interpreter = struct
+    let instantiate :
+        (result_ty:ty -> span -> interpreter_state -> value -> value -> value)
+        option
+        ref =
+      ref None
+  end
+
   type subbed_vars = Obj.t Inference.Var.Map.t
 
   type ctx = {
@@ -85,22 +93,37 @@ module Impl = struct
           V_ContextTy { id; ty = sub_ty ~state ty } |> shaped
       | V_Opaque { ty; value } ->
           V_Opaque { ty = sub_ty_opaque ~state ty; value } |> shaped
-      | V_Binding binding -> (
-          match Scope.find_local_opt binding.name state.scope with
-          | None -> original_value
-          | Some local -> (
-              subs_count := !subs_count + 1;
-              match local.place.state with
-              | Occupied value -> value
-              | Uninitialized | MovedOut ->
-                  Error.error span "Tried to sub with %a" Place.print_ref
-                    local.place;
-                  original_value))
+      | V_Blocked blocked -> sub_blocked ~original_value ~state blocked
     in
     Log.trace (fun log ->
         log "subbed value shape = %a into %a" Value.Shape.print shape
           Value.print result);
     result
+
+  and sub_blocked ~original_value ~state (blocked : blocked_value) : value =
+    let ctx = Effect.perform GetCtx in
+    let span = ctx.span in
+    match blocked.shape with
+    | BV_Instantiate { generic; arg } ->
+        let generic =
+          sub_blocked
+            ~original_value:(Value.inferred ~span (V_Blocked generic))
+            ~state generic
+        in
+        let arg = sub_value ~state arg in
+        let instantiate = !Interpreter.instantiate |> Option.get in
+        instantiate ~result_ty:blocked.ty span state generic arg
+    | BV_Binding binding -> (
+        match Scope.find_local_opt binding.name state.scope with
+        | None -> original_value
+        | Some local -> (
+            subs_count := !subs_count + 1;
+            match local.place.state with
+            | Occupied value -> value
+            | Uninitialized | MovedOut ->
+                Error.error span "Tried to sub with %a" Place.print_ref
+                  local.place;
+                original_value))
 
   and sub_name ~state (name : name) : name =
     let ctx = Effect.perform GetCtx in
@@ -214,24 +237,18 @@ module Impl = struct
           |> shaped
       | T_UnwindToken { result } ->
           T_UnwindToken { result = result |> sub_ty ~state } |> shaped
-      | T_Binding binding -> (
-          match Scope.find_local_opt binding.name state.scope with
-          | None -> original_ty
-          | Some local -> (
-              subs_count := !subs_count + 1;
-
-              match local.place.state with
-              | Occupied value -> (
-                  match value |> Value.expect_ty with
-                  | Some ty -> ty
-                  | None ->
-                      Error.error ctx.span
-                        "substituted type binding with non-type";
-                      T_Error |> shaped)
-              | Uninitialized | MovedOut ->
-                  Error.error ctx.span "Tried to use sub with %a"
-                    Place.print_ref local.place;
-                  original_ty))
+      | T_Blocked blocked -> (
+          let value =
+            sub_blocked
+              ~original_value:
+                (V_Blocked blocked |> Value.inferred ~span:ctx.span)
+              ~state blocked
+          in
+          match value |> Value.expect_ty with
+          | Some ty -> ty
+          | None ->
+              Error.error ctx.span "substituted type binding with non-type";
+              T_Error |> shaped)
     in
     Log.trace (fun log ->
         log "subbed ty shape = %a into %a" Ty.Shape.print shape Ty.print result);
@@ -300,29 +317,37 @@ module Impl = struct
     let span = Span.fake "<sub_var>" in
     let var = get_var original_value in
     let ctx = Effect.perform GetCtx in
-    if ctx.depth > 32 then fail "Went too deep" ~span
+    let scope_id = state.scope.id in
+    if var |> Inference.Var.was_subbed_in scope_id then original_value
+    else if ctx.depth > 32 then fail "Went too deep" ~span
     else
       match ctx.subs |> Inference.Var.Map.find_opt var with
       | None ->
           let id = Inference.Var.recurse_id var in
           Log.trace (fun log ->
-              log "subbing var %a at %a" Id.print id Span.print span);
+              log "subbing var %a at %a" Id.print id Id.print scope_id);
           let subbed_temp = new_not_inferred ~span in
+          let subbed_temp_var = subbed_temp |> get_var in
+          subbed_temp_var |> Inference.Var.remember_subbed scope_id;
+          subbed_temp_var |> Inference.Var.remember_subbed_from var;
           Log.trace (fun log ->
               log "created new var %a at %a" Id.print
-                (Inference.Var.recurse_id (get_var subbed_temp))
-                Span.print span);
+                (Inference.Var.recurse_id subbed_temp_var)
+                Id.print scope_id);
           ctx.subs |> Inference.Var.Map.add var (Obj.repr subbed_temp);
           ctx.subs
-          |> Inference.Var.Map.add (get_var subbed_temp) (Obj.repr subbed_temp);
+          |> Inference.Var.Map.add subbed_temp_var (Obj.repr subbed_temp);
           var
           |> Inference.Var.once_inferred (fun shape ->
               Log.trace (fun log ->
                   log "var %a was inferred, resuming subbing" Id.print id);
               with_ctx (go_deeper ctx) (fun () ->
                   let subbed = sub_shape ~state original_value shape in
-                  Inference.Var.unite ~span unite_shape (get_var subbed_temp)
-                    (get_var subbed)
+                  let subbed_var = get_var subbed in
+                  subbed_var |> Inference.Var.remember_subbed scope_id;
+                  subbed_var |> Inference.Var.remember_subbed_from var;
+                  Inference.Var.unite ~span unite_shape subbed_temp_var
+                    subbed_var
                   |> ignore));
           subbed_temp
       | Some sub -> sub |> Obj.obj

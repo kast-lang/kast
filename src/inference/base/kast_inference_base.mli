@@ -21,6 +21,9 @@ module Var : sig
   val await_inferred : 'a. error_shape:'a -> 'a var -> 'a
   val recurse_id : 'a. 'a var -> id
   val spans : 'a. 'a var -> Set.Make(Span).t
+  val remember_subbed : 'a. Id.t -> 'a var -> unit
+  val remember_subbed_from : 'a. 'a var -> 'a var -> unit
+  val was_subbed_in : 'a. Id.t -> 'a var -> bool
 
   module Map : sig
     type 'a t

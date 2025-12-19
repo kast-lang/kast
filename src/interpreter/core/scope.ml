@@ -113,7 +113,7 @@ let add_local (span : span) ~(mut : bool) (symbol : symbol) (value : value)
 let inject_binding (binding : binding) (scope : scope) : unit =
   scope
   |> add_local ~mut:false binding.span binding.name
-       (V_Binding binding |> Value.inferred ~span:binding.span)
+       (Value.binding ~span:binding.span binding)
 
 let rec print_all : formatter -> scope -> unit =
  fun fmt scope ->

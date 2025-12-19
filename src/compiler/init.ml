@@ -249,7 +249,8 @@ and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
       match target |> Value.await_inferred with
       | V_Generic _ -> (
           let result =
-            Kast_interpreter.instantiate span state.interpreter target value
+            Kast_interpreter.instantiate ~result_ty:(Ty.inferred ~span T_Ty)
+              span state.interpreter target value
           in
           match result |> Value.expect_ty with
           | Some result_ty ->

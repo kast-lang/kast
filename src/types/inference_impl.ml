@@ -62,8 +62,34 @@ and unite_ty_shape : span:span -> ty_shape -> ty_shape -> ty_shape =
   | T_Opaque { name = name_a }, T_Opaque { name = name_b } ->
       T_Opaque { name = unite_name ~span name_a name_b }
   | T_Opaque _, _ -> fail ()
-  | T_Binding a, T_Binding b when a.id = b.id -> T_Binding a
-  | T_Binding _, _ -> fail ()
+  | T_Blocked a, T_Blocked b -> T_Blocked (unite_blocked_value ~span a b)
+  | T_Blocked _, _ -> fail ()
+
+and unite_blocked_value : blocked_value Inference.unite =
+ fun ~span a b ->
+  {
+    shape = unite_blocked_value_shape ~span a.shape b.shape;
+    ty = unite_ty ~span a.ty b.ty;
+  }
+
+and unite_blocked_value_shape : blocked_value_shape Inference.unite =
+ fun ~span a b ->
+  let fail () : blocked_value_shape =
+    error span "blocked_value_shape %a != %a" print_blocked_value_shape a
+      print_blocked_value_shape b;
+    a
+  in
+  match (a, b) with
+  | BV_Binding a, BV_Binding b when a.id = b.id -> BV_Binding a
+  | BV_Binding _, _ -> fail ()
+  | ( BV_Instantiate { generic = generic_a; arg = arg_a },
+      BV_Instantiate { generic = generic_b; arg = arg_b } ) ->
+      BV_Instantiate
+        {
+          generic = unite_blocked_value ~span generic_a generic_b;
+          arg = unite_value ~span arg_a arg_b;
+        }
+  | BV_Instantiate _, _ -> fail ()
 
 and unite_ty_generic : ty_generic Inference.unite =
  fun ~span
@@ -193,8 +219,8 @@ and unite_value_shape : value_shape Inference.unite =
   in
   match (a, b) with
   | V_Error, smth | smth, V_Error -> smth
-  | V_Ty ty, V_Binding b | V_Binding b, V_Ty ty ->
-      V_Ty (unite_ty ~span ty (T_Binding b |> inferred_ty ~span))
+  | V_Ty ty, V_Blocked b | V_Blocked b, V_Ty ty ->
+      V_Ty (unite_ty ~span ty (T_Blocked b |> inferred_ty ~span))
   | V_Unit, V_Unit -> V_Unit
   | V_Unit, _ -> fail ()
   | V_Bool a, V_Bool b when a = b -> V_Bool a
@@ -248,8 +274,8 @@ and unite_value_shape : value_shape Inference.unite =
   | V_Target _, _ -> fail ()
   | V_ContextTy _, _ -> fail ()
   | V_Opaque _, _ -> fail ()
-  | V_Binding a, V_Binding b when a.id = b.id -> V_Binding a
-  | V_Binding _, _ -> fail ()
+  | V_Blocked a, V_Blocked b -> V_Blocked (unite_blocked_value ~span a b)
+  | V_Blocked _, _ -> fail ()
   | V_CompilerScope _, _ -> fail ()
 
 and unite_value : value Inference.unite =
@@ -347,7 +373,7 @@ and infer_value_shape : span:span -> ty_shape -> value_shape option =
   | T_Target -> None
   | T_ContextTy -> None
   | T_CompilerScope -> None
-  | T_Binding _ -> None
+  | T_Blocked _ -> None
   | T_Error -> None
 
 and new_not_inferred_ty ~span : ty =
@@ -401,9 +427,11 @@ and ty_of_value_shape : value_shape -> ty =
         inferred_ty ~span <| T_UnwindToken { result = result_ty }
     | V_Target _ -> inferred_ty ~span T_Target
     | V_ContextTy _ -> inferred_ty ~span T_ContextTy
-    | V_Binding binding -> binding.ty
     | V_CompilerScope _ -> inferred_ty ~span T_CompilerScope
+    | V_Blocked b -> ty_of_blocked b
     | V_Error -> inferred_ty ~span T_Error
+
+and ty_of_blocked : blocked_value -> ty = fun value -> value.ty
 
 and init_place ~mut value : place =
   { id = Id.gen (); state = Occupied value; ty = value.ty; mut }

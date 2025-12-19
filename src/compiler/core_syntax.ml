@@ -1930,7 +1930,7 @@ let binding : core_syntax =
           binding |> Compiler.eval ~ty:(Ty.new_not_inferred ~span) (module C)
         in
         match binding.var |> Inference.Var.inferred_opt with
-        | Some (V_Binding binding) -> (
+        | Some (V_Blocked { shape = BV_Binding binding; ty = _ }) -> (
             let place =
               PE_Binding binding
               |> init_place_expr ~evaled_exprs:[ binding_expr ] span C.state

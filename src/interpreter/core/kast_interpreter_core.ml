@@ -242,9 +242,12 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
             result);
       result)
 
-and instantiate (span : span) (state : state) (generic : value) (arg : value) :
-    value =
+and instantiate ~(result_ty : ty) (span : span) (state : state)
+    (generic : value) (arg : value) : value =
   match generic |> Value.await_inferred with
+  | V_Blocked generic ->
+      V_Blocked { shape = BV_Instantiate { generic; arg }; ty = result_ty }
+      |> Value.inferred ~span
   | V_Generic { id; name; fn; ty = _ } -> (
       let save new_state =
         let generic_instantiations =
@@ -554,7 +557,7 @@ and construct_bindings_arg_impl :
     | P_Unit -> Value.new_not_inferred_of_ty ~span ty
     | P_Binding { by_ref = _; binding = pattern_binding } ->
         let binding : binding = get_binding !idx pattern_binding in
-        let result = V_Binding binding |> Value.inferred ~span in
+        let result = Value.binding ~span binding in
         idx := !idx + 1;
         result
     | P_Tuple { parts } ->
@@ -783,7 +786,7 @@ and eval_expr_instantiategeneric :
   let span = expr.data.span in
   let generic = eval state generic in
   let arg = eval state arg in
-  instantiate expr.data.span state generic arg
+  instantiate ~result_ty:expr.data.ty expr.data.span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
  fun state expr { id; expr = native_expr } ->
@@ -1343,3 +1346,5 @@ and fork (f : unit -> unit) : unit =
       | effect Inference.Var.AwaitUpdate var, k ->
           let k = dont_leak_please k in
           Inference.Var.once_inferred (fun _ -> k.continue true) var)
+
+let () = Substitute_bindings.Impl.Interpreter.instantiate := Some instantiate

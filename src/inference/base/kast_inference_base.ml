@@ -18,6 +18,7 @@ module Var = struct
     spans : SpanSet.t;
     mutable once_inferred : ('a -> unit) list;
     mutable on_unite : ('a var_data -> unit) list;
+    mutable subbed_in : Id.Set.t;
   }
 
   let new_not_inferred : 'a. span:span -> 'a var =
@@ -34,6 +35,7 @@ module Var = struct
                 once_inferred = [];
                 on_unite = [];
                 spans = SpanSet.singleton span;
+                subbed_in = Id.Set.empty;
               };
           };
     }
@@ -52,6 +54,7 @@ module Var = struct
                 once_inferred = [];
                 on_unite = [];
                 spans = SpanSet.singleton span;
+                subbed_in = Id.Set.empty;
               };
           };
     }
@@ -100,6 +103,7 @@ module Var = struct
       once_inferred = _;
       on_unite = _;
       spans = _;
+      subbed_in = _;
     } =
       find_root var
     in
@@ -119,6 +123,7 @@ module Var = struct
           once_inferred = _;
           on_unite = _;
           spans = spans_a;
+          subbed_in = subbed_in_a;
         } as data_a)
        ({
           recurse_id = recurse_id_b;
@@ -127,6 +132,7 @@ module Var = struct
           once_inferred = _;
           on_unite = _;
           spans = spans_b;
+          subbed_in = subbed_in_b;
         } as data_b) ->
     let inferred =
       match (inferred_a, inferred_b) with
@@ -154,10 +160,27 @@ module Var = struct
         once_inferred;
         on_unite = [];
         spans = SpanSet.union spans_a spans_b;
+        subbed_in = Id.Set.union subbed_in_a subbed_in_b;
       }
     in
     on_unite |> List.iter (fun f -> f data);
     data
+
+  let remember_subbed : 'a. id -> 'a var -> unit =
+   fun id var ->
+    let root = find_root var in
+    root.subbed_in <- root.subbed_in |> Id.Set.add id
+
+  let remember_subbed_from : 'a. 'a var -> 'a var -> unit =
+   fun from var ->
+    let from = find_root from in
+    let root = find_root var in
+    root.subbed_in <- root.subbed_in |> Id.Set.union from.subbed_in
+
+  let was_subbed_in : 'a. Id.t -> 'a var -> bool =
+   fun id var ->
+    let root = find_root var in
+    root.subbed_in |> Id.Set.mem id
 
   let unite : 'a. 'a unite -> 'a var unite =
    fun unite_inferred ~span a b ->

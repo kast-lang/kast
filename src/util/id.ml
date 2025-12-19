@@ -22,6 +22,7 @@ module Id = struct
 
   include T
   module Map = Map.Make (T)
+  module Set = Set.Make (T)
 end
 
 type id = Id.t

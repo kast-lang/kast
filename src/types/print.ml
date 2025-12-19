@@ -67,13 +67,23 @@ module Impl = struct
         fprintf fmt "<unwind %a>" Id.print id
     | V_ContextTy ty -> print_context_type fmt ty
     | V_Error -> fprintf fmt "@{<red><error>@}"
-    | V_Binding binding -> fprintf fmt "<binding %a>" print_binding binding
     | V_CompilerScope _ -> fprintf fmt "@{<italic><compiler scope>@}"
     | V_Opaque { ty = _; value = _ } -> fprintf fmt "@{<italic><opaque>@}"
+    | V_Blocked blocked -> print_blocked_value fmt blocked
     | V_Target target -> print_target fmt target
 
   and print_value : formatter -> value -> unit =
    fun fmt { var; ty = _ } -> print_var print_value_shape fmt var
+
+  and print_blocked_value : formatter -> blocked_value -> unit =
+   fun fmt value -> print_blocked_value_shape fmt value.shape
+
+  and print_blocked_value_shape : formatter -> blocked_value_shape -> unit =
+   fun fmt value ->
+    match value with
+    | BV_Binding binding -> print_binding fmt binding
+    | BV_Instantiate { generic; arg } ->
+        fprintf fmt "%a[%a]" print_blocked_value generic print_value arg
 
   (* TY *)
   and print_ty_tuple : formatter -> ty_tuple -> unit =
@@ -138,8 +148,8 @@ module Impl = struct
     | T_Target -> fprintf fmt "target"
     | T_ContextTy -> fprintf fmt "context_type"
     | T_CompilerScope -> fprintf fmt "<compiler scope>"
-    | T_Binding binding -> fprintf fmt "%a" print_binding binding
     | T_Opaque { name } -> print_name fmt name
+    | T_Blocked blocked -> print_blocked_value fmt blocked
     | T_Error -> fprintf fmt "@{<red><error>@}"
 
   and print_ty : formatter -> ty -> unit =
@@ -562,6 +572,8 @@ let with_cache f =
 
 let print_ty = with_cache Impl.print_ty
 let print_ty_shape = with_cache Impl.print_ty_shape
+let print_blocked_value = with_cache Impl.print_blocked_value
+let print_blocked_value_shape = with_cache Impl.print_blocked_value_shape
 let print_value = with_cache Impl.print_value
 let print_value_shape = with_cache Impl.print_value_shape
 
