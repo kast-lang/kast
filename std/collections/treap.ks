@@ -1,18 +1,18 @@
 module:
 
-const data = [T_data] newtype (
-    .left :: Treap.t[T_data],
-    .value :: T_data,
+const data = [T] newtype (
+    .left :: Treap.t[T],
+    .value :: T,
     .count :: Int32,
     .priority :: Int32,
-    .right :: Treap.t[T_data],
+    .right :: Treap.t[T],
 );
-const t = [T_t] newtype (
+const t = [T] newtype (
     | :Empty
-    | :Node data[T_t]
+    | :Node data[T]
 );
-const create = [T_create] () -> Treap.t[T_create] => :Empty;
-const singleton = [T_single] (value :: T_single) -> Treap.t[T_single] => (
+const create = [T] () -> Treap.t[T] => :Empty;
+const singleton = [T] (value :: T) -> Treap.t[T] => (
     :Node (
         .left = :Empty,
         .right = :Empty,
@@ -150,7 +150,7 @@ const set_at = [T] (v :: Treap.t[T], idx :: Int32, value :: T) -> Treap.t[T] => 
 const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T] => (
     set_at (a, idx, f (at (&a, idx)))
 );
-const to_string = [T_tostring] (v :: &Treap.t[T_tostring], t_to_string :: &T_tostring -> String) -> String => (
+const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String => (
     let mut result = "[";
     let mut i = 0;
     iter (
