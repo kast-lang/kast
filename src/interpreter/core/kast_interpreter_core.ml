@@ -5,6 +5,7 @@ module Ast = Kast_ast
 module Error = Error
 module Inference = Kast_inference
 module Scope = Scope
+module Substitute_bindings = Substitute_bindings
 
 type state = Types.interpreter_state
 type _ Effect.t += AwaitCompiled : Types.maybe_compiled_fn -> unit Effect.t
@@ -269,11 +270,11 @@ and instantiate ~(result_ty : ty) (span : span) (state : state)
       in
       match current_state with
       | None ->
-          Log.trace (fun log ->
-              log "Instantiating generic with arg=%a at %a" Value.print arg
-                Span.print span);
           let placeholder = Value.new_not_inferred ~span in
           save placeholder;
+          Log.trace (fun log ->
+              log "Instantiating generic with arg=%a at %a placeholder=%a"
+                Value.print arg Span.print span Value.print placeholder);
           fork (fun () ->
               try
                 let state =
@@ -285,7 +286,7 @@ and instantiate ~(result_ty : ty) (span : span) (state : state)
                   }
                 in
                 let evaluated_result =
-                  call_untyped_fn ~sub_mode:FnOnly span state fn arg
+                  call_untyped_fn ~sub_mode:Full span state fn arg
                 in
                 Log.trace (fun log ->
                     log

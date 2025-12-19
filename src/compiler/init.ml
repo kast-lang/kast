@@ -297,7 +297,7 @@ and init_expr :
                     let ({
                            fn;
                            evaluated_with_normalized_bindings = _;
-                           evaluated_with_original_bindings = _;
+                           evaluated_with_original_bindings;
                          }
                           : Types.ty_generic) =
                       match generic.data.ty |> Ty.await_inferred with
@@ -316,19 +316,25 @@ and init_expr :
                     |> Inference.Ty.expect_inferred_as ~span:arg.data.span
                          def.arg.data.ty;
                     let arg = Kast_interpreter.eval state.interpreter arg in
-                    let generic_ty_interpreter =
-                      state.interpreter
-                      (*TODO*)
+                    let ~matched:arg_matched, arg_bindings =
+                      Kast_interpreter.pattern_match ~span
+                        (Place.init ~mut:Inherit arg)
+                        def.arg
                     in
-                    let result =
-                      Kast_interpreter.call_untyped_fn ~sub_mode:TyOnly span
-                        generic_ty_interpreter fn arg
+                    if not arg_matched then
+                      Error.error span "Failed to pattern match fn's arg";
+                    let new_state =
+                      {
+                        state.interpreter with
+                        scope =
+                          Kast_interpreter.Scope.with_values ~recursive:false
+                            ~parent:(Some fn.captured) arg_bindings;
+                        current_fn_natives = fn.calculated_natives;
+                      }
                     in
-                    match result |> Value.expect_ty with
-                    | Some ty -> ty
-                    | None ->
-                        Error.error span "generic type is not a type???";
-                        Ty.inferred ~span T_Error)
+                    evaluated_with_original_bindings
+                    |> Kast_interpreter.Substitute_bindings.sub_ty ~span
+                         ~state:new_state)
               in
               ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
           ty

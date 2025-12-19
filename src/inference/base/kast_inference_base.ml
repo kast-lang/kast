@@ -97,22 +97,24 @@ module Var = struct
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_inferred fmt var ->
     let {
-      recurse_id = _;
+      recurse_id;
       inferred;
       setup_default = _;
       once_inferred = _;
       on_unite = _;
-      spans = _;
+      spans;
       subbed_in = _;
     } =
       find_root var
     in
     match inferred with
-    | None ->
-        fprintf fmt "_"
-        (* fprintf fmt "_%a%a" Id.print recurse_id (List.print Span.print)
+    | None -> fprintf fmt "_"
+    (* fprintf fmt "_%a%a" Id.print recurse_id (List.print Span.print)
           (spans |> SpanSet.to_list) *)
-    | Some inferred -> print_inferred fmt inferred
+    | Some inferred ->
+        (* fprintf fmt "_%a%a=" Id.print recurse_id (List.print Span.print)
+          (spans |> SpanSet.to_list); *)
+        print_inferred fmt inferred
 
   let unite_data =
    fun ~span unite_inferred
@@ -256,13 +258,20 @@ module Var = struct
     let a = find_root a in
     let b = find_root b in
     if a.recurse_id = b.recurse_id then 0
-    else Option.compare compare_inferred a.inferred b.inferred
+    else
+      match (a.inferred, b.inferred) with
+      | Some a, Some b -> compare_inferred a b
+      | Some _, None | None, Some _ | None, None ->
+          Id.compare a.recurse_id b.recurse_id
 
   let equal equal_inferred a b =
     let a = find_root a in
     let b = find_root b in
     if a.recurse_id = b.recurse_id then true
-    else Option.equal equal_inferred a.inferred b.inferred
+    else
+      match (a.inferred, b.inferred) with
+      | Some a, Some b -> equal_inferred a b
+      | Some _, None | None, Some _ | None, None -> false
 
   let recurse_id var =
     let data = find_root var in
