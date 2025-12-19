@@ -526,7 +526,9 @@ module Impl = struct
 
   (* OTHER *)
   and print_binding : formatter -> binding -> unit =
-   fun fmt binding -> fprintf fmt "%a" Symbol.print binding.name
+   fun fmt binding ->
+    let span = binding.label |> Label.get_span in
+    Span.print_osc8 span Symbol.print binding.name fmt
 
   and print_target : formatter -> value_target -> unit =
    fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name

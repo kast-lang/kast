@@ -41,10 +41,13 @@ module Uri = struct
     let path = Uri.of_string path in
     Uri.resolve "" cwd path
 
+  let print_full : formatter -> Uri.t -> unit =
+   fun fmt uri -> fprintf fmt "%s" (Uri.to_string uri)
+
   let print : formatter -> Uri.t -> unit =
    fun fmt uri ->
     if scheme uri = Some "file" then fprintf fmt "%s" (Uri.path uri)
-    else fprintf fmt "%s" (Uri.to_string uri)
+    else print_full fmt uri
 
   let append_if_relative parent maybe_relative =
     match Uri.scheme maybe_relative with
@@ -148,10 +151,23 @@ module Span = struct
     && Position.compare outer.start inner.start <= 0
     && Position.compare inner.finish outer.finish <= 0
 
-  let print : 'a. formatter -> span -> unit =
-   fun fmt { start; finish; uri } ->
-    fprintf fmt "%a:%d.%d-%d.%d" Uri.print uri start.line start.column
+  let print_with : 'a. (formatter -> Uri.t -> unit) -> formatter -> span -> unit
+      =
+   fun print_uri fmt { start; finish; uri } ->
+    fprintf fmt "%a:%d.%d-%d.%d" print_uri uri start.line start.column
       finish.line finish.column
+
+  let print = print_with Uri.print
+
+  let print_osc8 :
+      'a. span -> (formatter -> 'a -> unit) -> 'a -> formatter -> unit =
+   fun span print_value value fmt ->
+    let print_span fmt { start; finish; uri } =
+      fprintf fmt "vscode://file%a:%d:%d" Uri.print uri start.line start.column
+      (* fprintf fmt "vscode://file%a:%d.%d-%d.%d" Uri.print uri start.line
+        start.column finish.line finish.column *)
+    in
+    fprintf fmt "\x1b]8;;%a\x07%a\x1b]8;;\x07" print_span span print_value value
 end
 
 module SpanSet = Set.Make (Span)
