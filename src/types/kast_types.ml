@@ -8,6 +8,26 @@ module Row = Row
 module Inference_impl = Inference_impl
 module Print = Print
 
+module Name = struct
+  type t = name
+
+  let new_inferred ~span value : name =
+    { var = Inference.Var.new_inferred ~span value }
+
+  let new_not_inferred ~span : name =
+    { var = Inference.Var.new_not_inferred ~span }
+end
+
+module OptionalName = struct
+  type t = optional_name
+
+  let new_inferred ~span value : optional_name =
+    { var = Inference.Var.new_inferred ~span value }
+
+  let new_not_inferred ~span : optional_name =
+    { var = Inference.Var.new_not_inferred ~span }
+end
+
 module Ty = struct
   type t = ty
 
@@ -31,7 +51,19 @@ module Ty = struct
     let expect_variant : t -> ty_variant option = function
       | T_Variant t -> Some t
       | _ -> None
+
+    let name : t -> optional_name =
+      let span = Span.fake "<Ty.Shape.name>" in
+      function
+      | T_Unit | T_Bool | T_Int32 | T_Int64 | T_Float64 | T_String | T_Char
+      | T_Ref _ | T_Ty | T_Fn _ | T_Generic _ | T_Ast | T_UnwindToken _
+      | T_Target | T_ContextTy | T_CompilerScope | T_Opaque _ | T_Blocked _
+      | T_Error ->
+          None |> OptionalName.new_inferred ~span
+      | T_Variant { name; _ } | T_Tuple { name; _ } -> name
   end
+
+  let name ty = await_inferred ty |> Shape.name
 end
 
 type ty = Ty.t
@@ -44,6 +76,21 @@ module Value = struct
 
     let print = print_value_shape
     let ty_of = Inference_impl.ty_of_value_shape
+
+    let name : value_shape -> optional_name =
+      let span = Span.fake "<Value.Shape.name>" in
+      function
+      | V_Unit | V_Bool _ | V_Int32 _ | V_Int64 _ | V_Float64 _ | V_Char _
+      | V_Ref _ | V_String _ | V_Tuple _ | V_Variant _ | V_Ast _
+      | V_UnwindToken _ | V_Target _ | V_ContextTy _ | V_CompilerScope _
+      | V_Opaque _ | V_Blocked _ | V_Error ->
+          None |> OptionalName.new_inferred ~span
+      | V_Fn _ | V_NativeFn _ ->
+          (* TODO *)
+          None |> OptionalName.new_inferred ~span
+      | V_Generic generic ->
+          Some generic.name |> OptionalName.new_inferred ~span
+      | V_Ty ty -> ty |> Ty.name
   end
 
   let new_not_inferred = Inference_impl.new_not_inferred_value
@@ -56,6 +103,8 @@ module Value = struct
 
   let await_inferred : value -> value_shape =
    fun value -> value.var |> Inference.Var.await_inferred ~error_shape:V_Error
+
+  let name value = await_inferred value |> Shape.name
 
   let expect_unit : value -> unit option =
    fun value ->
@@ -277,25 +326,4 @@ module Place = struct
 end
 
 type place = Place.t
-
-module Name = struct
-  type t = name
-
-  let new_inferred ~span value : name =
-    { var = Inference.Var.new_inferred ~span value }
-
-  let new_not_inferred ~span : name =
-    { var = Inference.Var.new_not_inferred ~span }
-end
-
-module OptionalName = struct
-  type t = optional_name
-
-  let new_inferred ~span value : optional_name =
-    { var = Inference.Var.new_inferred ~span value }
-
-  let new_not_inferred ~span : optional_name =
-    { var = Inference.Var.new_not_inferred ~span }
-end
-
 type optional_name = OptionalName.t

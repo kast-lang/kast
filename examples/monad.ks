@@ -57,7 +57,15 @@ impl syntax (a >> b) = `(
 
 let opt :: Option.t[Int32] = :Some 1;
 let result = opt >>= (x => (:Some 2 >>= (y => :Some (x + y))));
-dbg.print result; # prints 3
+dbg.print result;
+# prints 3
+const O = _;
+let m :: Monad[O] = O as Monad;
+@comptime (eprint "======");
+m.bind[_] (opt, _);
+dbg.print (typeof ((O as Monad).bind));
+# opt :: O[_];
+dbg.print O;
 # const fmap = [F] [T, U] (a :: F[T], f :: T -> U) -> F[U] => (
 #     (F as Functor).fmap (a, f)
 # );

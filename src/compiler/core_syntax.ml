@@ -626,9 +626,14 @@ let type_ascribe : core_syntax =
         let expr = C.compile kind expr in
         let expr_data = Compiler.get_data kind expr in
         State.Scope.fork (fun () ->
+            Log.trace (fun log ->
+                log "Evaling ascription at %a" Span.print span);
             let expected_ty, expected_ty_expr =
               Compiler.eval_ty (module C) expected_ty
             in
+            Log.trace (fun log ->
+                log "Evaled ascription at %a = %a" Span.print span Ty.print
+                  expected_ty);
             expr_data.ty
             |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
 
