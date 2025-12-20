@@ -4,8 +4,6 @@ open Kast_types
 module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 
-type 'a compiled_kind = 'a Compiler.compiled_kind
-
 let rename_options : Lsp.Types.RenameOptions.t =
   { workDoneProgress = None; prepareProvider = Some true }
 
@@ -240,7 +238,7 @@ let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
   let inner =
     Common.inner_compiled kind compiled
     |> Seq.fold_left
-         (fun acc (Common.CompiledThing (kind, inner)) ->
+         (fun acc (Types.Compiled (kind, inner)) ->
            combine_hover_info acc (hover kind inner hover_span))
          hover_info_none
   in

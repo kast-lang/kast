@@ -18,4 +18,4 @@ b = :Any;
 print <| variant_name b;
 a = b;
 print <| variant_name a;
-let f = x :: std.Int32 => :Some x;
+let f = (x :: std.Int32) => :Some x;

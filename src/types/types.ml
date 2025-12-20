@@ -153,9 +153,9 @@ module rec TypesImpl : sig
   }
 
   and ty_generic = {
-    fn : value_untyped_fn;
-    evaluated_with_normalized_bindings : ty;
-    evaluated_with_original_bindings : ty;
+    arg : pattern;
+    result : ty;
+    result_normalized : ty;
   }
 
   and ty_unwind_token = { result : ty }
@@ -219,7 +219,7 @@ module rec TypesImpl : sig
 
   and expr_generic = {
     def : maybe_compiled_fn;
-    def_ty : maybe_compiled_fn;
+    ty : ty_generic;
   }
 
   and expr_then = { list : expr list }
@@ -573,9 +573,15 @@ module rec TypesImpl : sig
     span : Span.t;
     ty : ty;
     compiler_scope : compiler_scope;
-    mutable ty_ascription : ty_expr option;
-    mutable evaled_exprs : expr list;
+    evaled : ir_evaled;
     included_file : Uri.t option;
+  }
+
+  and ir_evaled = {
+    mutable patterns : pattern list;
+    mutable exprs : expr list;
+    mutable ty_exprs : ty_expr list;
+    mutable ty_ascribed : bool;
   }
 
   and name = { var : name_shape Inference.var }
@@ -596,6 +602,15 @@ module rec TypesImpl : sig
     | Str of string
     | Symbol of Symbol.t
   [@@deriving eq, ord]
+
+  type _ compiled_kind =
+    | Assignee : assignee_expr compiled_kind
+    | Expr : expr compiled_kind
+    | PlaceExpr : place_expr compiled_kind
+    | TyExpr : ty_expr compiled_kind
+    | Pattern : pattern compiled_kind
+
+  and compiled = Compiled : 'a. 'a compiled_kind * 'a -> compiled
 end = struct
   (* PLACE *)
   type place = {
@@ -744,9 +759,9 @@ end = struct
   }
 
   and ty_generic = {
-    fn : value_untyped_fn;
-    evaluated_with_normalized_bindings : ty;
-    evaluated_with_original_bindings : ty;
+    arg : pattern;
+    result : ty;
+    result_normalized : ty;
   }
 
   and ty_unwind_token = { result : ty }
@@ -810,7 +825,7 @@ end = struct
 
   and expr_generic = {
     def : maybe_compiled_fn;
-    def_ty : maybe_compiled_fn;
+    ty : ty_generic;
   }
 
   and expr_then = { list : expr list }
@@ -1164,9 +1179,15 @@ end = struct
     span : Span.t;
     ty : ty;
     compiler_scope : compiler_scope;
-    mutable ty_ascription : ty_expr option;
-    mutable evaled_exprs : expr list;
+    evaled : ir_evaled;
     included_file : Uri.t option;
+  }
+
+  and ir_evaled = {
+    mutable patterns : pattern list;
+    mutable exprs : expr list;
+    mutable ty_exprs : ty_expr list;
+    mutable ty_ascribed : bool;
   }
 
   and name = { var : name_shape Inference.var }
@@ -1187,6 +1208,15 @@ end = struct
     | Str of string
     | Symbol of Symbol.t
   [@@deriving eq, ord]
+
+  type _ compiled_kind =
+    | Assignee : assignee_expr compiled_kind
+    | Expr : expr compiled_kind
+    | PlaceExpr : place_expr compiled_kind
+    | TyExpr : ty_expr compiled_kind
+    | Pattern : pattern compiled_kind
+
+  and compiled = Compiled : 'a. 'a compiled_kind * 'a -> compiled
 end
 
 and ValueImpl : (Map.OrderedType with type t = TypesImpl.value) = struct

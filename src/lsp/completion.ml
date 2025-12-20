@@ -4,8 +4,6 @@ open Kast_types
 module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 
-type 'a compiled_kind = 'a Compiler.compiled_kind
-
 let rec complete_from_compiler_scope (scope : Types.compiler_scope) :
     Lsp.Types.CompletionItem.t StringMap.t =
   let parent_completions =
@@ -40,22 +38,21 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope) :
   in
   StringMap.merge (fun _ a b -> b |> Option.or_ a) parent_completions locals
 
-let rec find_expr :
-    'a. 'a compiled_kind -> 'a -> position -> Common.compiled_thing option =
+let rec find_expr : 'a. 'a compiled_kind -> 'a -> position -> compiled option =
  fun (type a) (kind : a compiled_kind) (compiled : a) (pos : position) ->
   let data = Compiler.get_data kind compiled in
   Log.trace (fun log -> log "Considering %a" Span.print data.span);
   if Position.compare data.span.finish pos <= 0 then
-    Some (Common.CompiledThing (kind, compiled))
+    Some (Types.Compiled (kind, compiled))
   else if data.span |> Span.contains_position pos then
     let inner =
       Common.inner_compiled kind compiled
-      |> Seq.filter_map (fun (Common.CompiledThing (kind, compiled)) ->
+      |> Seq.filter_map (fun (Types.Compiled (kind, compiled)) ->
           find_expr kind compiled pos)
       |> Seq.fold_left
-           (fun acc (Common.CompiledThing (kind, compiled) as b) ->
+           (fun acc (Types.Compiled (kind, compiled) as b) ->
              match acc with
-             | Some (Common.CompiledThing (akind, acompiled) as a) ->
+             | Some (Types.Compiled (akind, acompiled) as a) ->
                  let adata = Compiler.get_data akind acompiled in
                  let data = Compiler.get_data kind compiled in
                  Some
@@ -65,11 +62,11 @@ let rec find_expr :
              | None -> Some b)
            None
     in
-    inner (* |> Option.or_ (Some (Common.CompiledThing (kind, compiled))) *)
+    inner (* |> Option.or_ (Some (Types.Compiled (kind, compiled))) *)
   else None
 
 let complete (type a) (kind : a compiled_kind) (compiled : a) (pos : position) =
-  let* (CompiledThing (kind, compiled)) = find_expr kind compiled pos in
+  let* (Compiled (kind, compiled)) = find_expr kind compiled pos in
   let data = Compiler.get_data kind compiled in
   Log.trace (fun log -> log "Completing from %a" Span.print data.span);
   let completions = complete_from_compiler_scope data.compiler_scope in

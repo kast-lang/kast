@@ -644,136 +644,77 @@ and construct_bindings_arg_impl :
   in
   fun ~span pattern -> impl ~idx:(ref 0) ~span pattern
 
-and generic_ty :
-    span:span -> state -> Types.maybe_compiled_fn -> Types.ty_generic =
- fun ~span state def_ty ->
-  let read_local (local : Types.interpreter_local) =
-    match local.place |> read_place ~span |> Value.await_inferred with
-    | V_Blocked { shape = BV_Binding b; _ } -> b
-    | _ -> failwith "should never panic"
-  in
-  let ty_fn : Types.value_untyped_fn =
-    {
-      id = Id.gen ();
-      def = def_ty;
-      captured = state.scope;
-      calculated_natives = Hashtbl.create 0;
-    }
-  in
-  let evaluated_with_normalized_bindings =
-    let evaled = Ty.new_not_inferred ~span in
-    fork (fun () ->
-        let compiled =
-          ty_fn.def |> await_compiled ~span
-          |> Option.unwrap_or_else (fun () -> fail "TODO not compiled")
-        in
-        let arg = construct_normalized_bindings_arg ~span compiled.arg in
-        let result = call_untyped_fn ~sub_mode:Full span state ty_fn arg in
-        let result =
-          result |> Value.expect_ty
-          |> Option.unwrap_or_else (fun () -> fail "TODO expected ty")
-        in
-        evaled |> Inference.Ty.expect_inferred_as ~span result);
-    evaled
-  in
-  let evaluated_with_original_bindings =
-    let evaled = Ty.new_not_inferred ~span in
-    fork (fun () ->
-        let compiled =
-          ty_fn.def |> await_compiled ~span
-          |> Option.unwrap_or_else (fun () -> fail "TODO not compiled")
-        in
-        let arg = construct_bindings_arg ~span compiled.arg in
-        let result = call_untyped_fn ~sub_mode:Full span state ty_fn arg in
-        let result =
-          result |> Value.expect_ty
-          |> Option.unwrap_or_else (fun () -> fail "TODO expected ty")
-        in
-        evaled |> Inference.Ty.expect_inferred_as ~span result);
-    evaled
-  in
-  (* TODO *)
-  if false then (
-    fork (fun () ->
-        let compiled =
-          ty_fn.def |> await_compiled ~span
-          |> Option.unwrap_or_else (fun () -> fail "TODO not compiled")
-        in
-        let original_arg = construct_bindings_arg ~span compiled.arg in
-        let normalized_arg =
-          construct_normalized_bindings_arg ~span compiled.arg
-        in
-        let ~matched, original_subs =
-          compiled.arg
-          |> pattern_match ~span (Place.init ~mut:Inherit original_arg)
-        in
-        let ~matched, normalized_subs =
-          compiled.arg
-          |> pattern_match ~span (Place.init ~mut:Inherit normalized_arg)
-        in
-        let subs = ref SymbolMap.empty in
-        SymbolMap.merge
-          (fun _ a b ->
-            let* a = a in
-            let* b = b in
-            Some (a, b))
-          original_subs.by_symbol normalized_subs.by_symbol
-        |> SymbolMap.iter (fun _ (original, normalized) ->
-            let normalized = normalized |> read_local in
-            subs := !subs |> SymbolMap.add normalized.name original);
-        let subs : Scope.locals = { by_symbol = !subs } in
+and pattern_bindings : pattern -> binding list =
+ fun pattern ->
+  match pattern.shape with
+  | P_Binding { by_ref = _; binding } -> [ binding ]
+  | P_Placeholder | P_Unit | P_Error -> []
+  | P_Ref referenced -> pattern_bindings referenced
+  | P_Tuple { parts } ->
+      parts
+      |> List.map (fun (part : pattern Types.tuple_part_of) ->
+          match part with
+          | Field { label = _; label_span = _; field } -> pattern_bindings field
+          | Unpack packed -> pattern_bindings packed)
+      |> List.flatten
+  | P_Variant { label = _; label_span = _; value } -> (
+      match value with
+      | Some value -> pattern_bindings value
+      | None -> [])
 
-        (* println "====";
-      subs.by_symbol
-      |> SymbolMap.iter (fun symbol (local : Types.interpreter_local) ->
-          println "%a = %a" Symbol.print symbol Binding.print (read_local local));
-      println "===="; *)
-        if not matched then Error.error span "????";
-        let sub_state =
-          {
-            state with
-            scope = Scope.with_values ~recursive:false ~parent:None subs;
-          }
-        in
-        let normalized_subbed_back_to_original =
-          evaluated_with_normalized_bindings
-          |> Substitute_bindings.sub_ty ~span ~state:sub_state
-        in
-        (* println "original = %a, norm = %a, norm back to original = %a" Ty.print
-        evaluated_with_original_bindings Ty.print
-        evaluated_with_normalized_bindings Ty.print
-        normalized_subbed_back_to_original; *)
-        evaluated_with_original_bindings
-        |> Inference.Ty.expect_inferred_as ~span
-             normalized_subbed_back_to_original);
-    fork (fun () ->
-        let compiled =
-          ty_fn.def |> await_compiled ~span
-          |> Option.unwrap_or_else (fun () -> fail "TODO not compiled")
-        in
-        let arg = construct_normalized_bindings_arg ~span compiled.arg in
-        let ~matched, subs =
-          compiled.arg |> pattern_match ~span (Place.init ~mut:Inherit arg)
-        in
-        if not matched then Error.error span "????";
-        let sub_state =
-          {
-            state with
-            scope = Scope.with_values ~recursive:false ~parent:None subs;
-          }
-        in
-        evaluated_with_normalized_bindings
-        |> Inference.Ty.expect_inferred_as ~span
-             (evaluated_with_original_bindings
-             |> Substitute_bindings.sub_ty ~span ~state:sub_state)));
-  {
-    fn = ty_fn;
-    evaluated_with_normalized_bindings;
-    evaluated_with_original_bindings;
-  }
+and generic_ty : span:span -> pattern -> ty -> Types.ty_generic =
+ fun ~span arg result ->
+  let sub_with f ty =
+    let state : Types.interpreter_state =
+      let binding_idx = ref 0 in
+      let locals : Types.interpreter_locals =
+        {
+          by_symbol =
+            pattern_bindings arg
+            |> List.map (fun (original_binding : binding) ->
+                let normalized = normalized_binding_at_idx !binding_idx in
+                let symbol, binding = f original_binding ~normalized in
+                let binding =
+                  V_Blocked { shape = BV_Binding binding; ty = binding.ty }
+                  |> Value.inferred ~span
+                in
+                let binding = Place.init ~mut:Inherit binding in
+                let binding : Types.interpreter_local =
+                  {
+                    place = binding;
+                    ty_field = { ty = binding.ty; label = None };
+                  }
+                in
+                binding_idx := !binding_idx + 1;
+                (symbol, binding))
+            |> SymbolMap.of_list;
+        }
+      in
+      {
+        scope = Scope.with_values ~recursive:false ~parent:None locals;
+        (* TODO only scope is needed, change Substitute_bindings *)
+        natives = { by_name = StringMap.empty };
+        current_fn_natives = Hashtbl.create 0;
+        contexts = Id.Map.empty;
+        instantiated_generics = { map = Id.Map.empty };
+        cast_impls =
+          { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
+        current_name = Simple (Str "<unused>");
+      }
+    in
+    Substitute_bindings.sub_ty ~span ~state ty
+  in
+  let result_normalized =
+    result |> sub_with (fun binding ~normalized -> (binding.name, normalized))
+  in
+  result
+  |> Inference.Ty.expect_inferred_as ~span
+       (result_normalized
+       |> sub_with (fun binding ~normalized -> (normalized.name, binding)));
+  { arg; result; result_normalized }
 
 and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
- fun state expr { def; def_ty } ->
+ fun state expr { def; ty } ->
   let span = expr.data.span in
   V_Generic
     {
@@ -786,7 +727,7 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
           captured = state.scope;
           calculated_natives = Hashtbl.create 0;
         };
-      ty = generic_ty ~span state def_ty;
+      ty;
     }
   |> Value.inferred ~span
 

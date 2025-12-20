@@ -18,7 +18,7 @@ module Args = struct
     | "--no-std" :: rest -> { (parse rest) with no_std = true }
     | path :: _rest as argv ->
         Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
-        { path = Some (Uri.file path); no_std = true }
+        { path = Some (Uri.file path); no_std = false }
 end
 
 type evaled = {

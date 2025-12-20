@@ -4,8 +4,6 @@ open Kast_types
 module Lsp = Linol_lsp
 module Compiler = Kast_compiler
 
-type 'a compiled_kind = 'a Compiler.compiled_kind
-
 let span_to_range (span : span) : Lsp.Types.Range.t =
   {
     start = { line = span.start.line - 1; character = span.start.column - 1 };
@@ -70,7 +68,7 @@ let inner_compiled_with_handler =
       | E_Then { list } -> list |> List.iter (handler.handle Expr)
       | E_Stmt { expr } -> handler.handle Expr expr
       | E_Scope { expr } -> handler.handle Expr expr
-      | E_Fn { def; ty = _ } | E_Generic { def; def_ty = _ } -> (
+      | E_Fn { def; ty = _ } | E_Generic { def; ty = _ } -> (
           match def.compiled with
           | None -> ()
           | Some { arg; body; evaled_result } -> (
@@ -185,33 +183,30 @@ let inner_compiled_with_handler =
                    -> variant_data |> Option.iter (handler.handle TyExpr))
           | TE_Error -> ())));
   let data = Compiler.get_data kind compiled in
-  data.evaled_exprs |> List.iter (fun expr -> handler.handle Expr expr);
-  match data.ty_ascription with
-  | Some ty_expr -> handler.handle TyExpr ty_expr
-  | None -> ()
+  let { exprs; patterns; ty_exprs; ty_ascribed = _ } : Types.ir_evaled =
+    data.evaled
+  in
+  exprs |> List.iter (handler.handle Expr);
+  ty_exprs |> List.iter (handler.handle TyExpr);
+  patterns |> List.iter (handler.handle Pattern)
 
-type compiled_thing =
-  | CompiledThing : 'a. 'a compiled_kind * 'a -> compiled_thing
-
-type _ Effect.t += Yield : compiled_thing -> unit Effect.t
+type _ Effect.t += Yield : compiled -> unit Effect.t
 
 let inner_compiled =
- fun (type a) (kind : a compiled_kind) (compiled : a) : compiled_thing Seq.t ->
-  let next : (compiled_thing * (unit, unit) continuation) option ref =
-    ref None
-  in
+ fun (type a) (kind : a compiled_kind) (compiled : a) : compiled Seq.t ->
+  let next : (compiled * (unit, unit) continuation) option ref = ref None in
   (try
      inner_compiled_with_handler kind compiled
        {
          handle =
            (fun (type b) (kind : b compiled_kind) (compiled : b) ->
-             Effect.perform (Yield (CompiledThing (kind, compiled))));
+             Effect.perform (Yield (Compiled (kind, compiled))));
        }
-   with effect Yield compiled_thing, k -> next := Some (compiled_thing, k));
+   with effect Yield compiled, k -> next := Some (compiled, k));
   Seq.of_dispenser (fun () ->
       match !next with
-      | Some (compiled_thing, k) ->
+      | Some (compiled, k) ->
           next := None;
           Effect.continue k ();
-          Some compiled_thing
+          Some compiled
       | None -> None)

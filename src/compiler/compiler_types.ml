@@ -2,15 +2,6 @@ open Std
 open Kast_util
 open Kast_types
 
-type _ compiled_kind =
-  | Assignee : Expr.assignee compiled_kind
-  | Expr : expr compiled_kind
-  | PlaceExpr : Expr.Place.t compiled_kind
-  | TyExpr : Expr.ty compiled_kind
-  | Pattern : pattern compiled_kind
-
-type compiled = Compiled : 'a. 'a compiled_kind * 'a -> compiled
-
 let get_data : 'a. 'a compiled_kind -> 'a -> ir_data =
  fun (type a) (kind : a compiled_kind) (compiled : a) : ir_data ->
   match kind with

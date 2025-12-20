@@ -26,7 +26,7 @@ and workspace_state = {
 and file_state = {
   uri : Uri.t;
   parsed : Parser.result option;
-  compiled : Compiler.compiled option;
+  compiled : compiled option;
 }
 
 let process_file (global : global_state) (source : source) : file_state =
@@ -131,8 +131,7 @@ let process_file (global : global_state) (source : source) : file_state =
   {
     uri = source.uri;
     parsed;
-    compiled =
-      compiled |> Option.map (fun e : Compiler.compiled -> Compiled (Expr, e));
+    compiled = compiled |> Option.map (fun e : compiled -> Compiled (Expr, e));
   }
 
 let handle_processed workspace uri file_state =

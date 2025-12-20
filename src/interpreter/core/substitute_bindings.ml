@@ -232,19 +232,12 @@ module Impl = struct
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped
-      | T_Generic
-          {
-            fn;
-            evaluated_with_normalized_bindings;
-            evaluated_with_original_bindings;
-          } ->
+      | T_Generic { arg; result; result_normalized } ->
           T_Generic
             {
-              fn;
-              evaluated_with_original_bindings =
-                sub_ty ~state evaluated_with_original_bindings;
-              evaluated_with_normalized_bindings =
-                sub_ty ~state evaluated_with_normalized_bindings;
+              arg;
+              result = sub_ty ~state result;
+              result_normalized = sub_ty ~state result_normalized;
             }
           |> shaped
       | T_UnwindToken { result } ->

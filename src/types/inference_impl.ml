@@ -93,22 +93,17 @@ and unite_blocked_value_shape : blocked_value_shape Inference.unite =
 
 and unite_ty_generic : ty_generic Inference.unite =
  fun ~span
+     { arg = arg_a; result = result_a; result_normalized = result_normalized_a }
      {
-       fn = fn_a;
-       evaluated_with_normalized_bindings = evaled_norm_a;
-       evaluated_with_original_bindings = evaled_orig_a;
-     }
-     {
-       fn = _fn_b;
-       evaluated_with_normalized_bindings = evaled_norm_b;
-       evaluated_with_original_bindings = _evaled_orig_b;
+       arg = _arg_b;
+       result = _result_b;
+       result_normalized = result_normalized_b;
      } ->
-  (* TODO fork and enforce type of fn_a and fn_b arg are same *)
+  (* TODO enforce type of arg are same *)
   {
-    fn = fn_a;
-    evaluated_with_original_bindings = evaled_orig_a;
-    evaluated_with_normalized_bindings =
-      unite_ty ~span evaled_norm_a evaled_norm_b;
+    arg = arg_a;
+    result = result_a;
+    result_normalized = unite_ty ~span result_normalized_a result_normalized_b;
   }
 
 and unite_ty_ref : ty_ref Inference.unite =

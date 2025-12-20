@@ -133,18 +133,10 @@ module Impl = struct
     | T_Ty -> fprintf fmt "type"
     | T_Fn { arg; result } ->
         fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
-    | T_Generic
-        {
-          fn = { def; _ };
-          evaluated_with_normalized_bindings = _;
-          evaluated_with_original_bindings;
-        } -> (
-        match def.compiled with
-        | None -> fprintf fmt "@{<italic><generic>@}"
-        | Some { arg; body = _; evaled_result = _ } ->
-            fprintf fmt "[%a] %a"
-              (print_pattern ~options:{ spans = false; types = false })
-              arg print_ty evaluated_with_original_bindings)
+    | T_Generic { arg; result_normalized = _; result } ->
+        fprintf fmt "[%a] %a"
+          (print_pattern ~options:{ spans = false; types = false })
+          arg print_ty result
     | T_Ast -> fprintf fmt "ast"
     | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
     | T_Target -> fprintf fmt "target"

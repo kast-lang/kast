@@ -26,6 +26,15 @@ module type S = sig
   val compile : 'a. ?state:State.t -> 'a compiled_kind -> Ast.t -> 'a
 end
 
+let update_module (module C : S) state : (module S) =
+  (module struct
+    let state = state
+
+    let compile ?state:state_override kind ast =
+      let state = state_override |> Option.value ~default:state in
+      C.compile ~state kind ast
+  end)
+
 type compiler = { compile : 'a. 'a compiled_kind -> Ast.t -> 'a }
 
 let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
@@ -37,6 +46,16 @@ let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
   | TyExpr -> { compiled with data = f compiled.data }
   | Pattern -> { compiled with data = f compiled.data }
   | PlaceExpr -> { compiled with data = f compiled.data }
+
+let data_add (type a) (added_kind : a compiled_kind) (added : a) (type b)
+    (kind : b compiled_kind) (compiled : b) : b =
+  let evaled = (get_data kind compiled).evaled in
+  (match added_kind with
+  | TyExpr -> evaled.ty_exprs <- added :: evaled.ty_exprs
+  | Expr -> evaled.exprs <- added :: evaled.exprs
+  | Pattern -> evaled.patterns <- added :: evaled.patterns
+  | _ -> failwith __LOC__);
+  compiled
 
 let eval_ty (module C : S) (ast : Ast.t) : ty * Expr.ty =
   let ty_expr = C.compile TyExpr ast in

@@ -5,6 +5,9 @@ open Kast_types
 open Error
 module Inference = Kast_inference
 
+let init_evaled () : Types.ir_evaled =
+  { exprs = []; ty_exprs = []; patterns = []; ty_ascribed = false }
+
 let tuple_ty : 'a. span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty =
  fun (type a) ~span (kind : a compiled_kind) ({ parts } : a Types.tuple_of) ->
   let result = Ty.new_not_inferred ~span in
@@ -181,13 +184,8 @@ and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span
           ty |> Inference.Ty.expect_inferred_as ~span field_ty);
       ty)
 
-and init_place_expr :
-    ?evaled_exprs:expr list ->
-    span ->
-    State.t ->
-    Expr.Place.Shape.t ->
-    Expr.Place.t =
- fun ?(evaled_exprs = []) span state shape ->
+and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
+ fun span state shape ->
   try
     let inferred_mut mut : Types.is_mutable =
       { var = Inference.Var.new_inferred ~span mut }
@@ -216,8 +214,7 @@ and init_place_expr :
         {
           span;
           ty;
-          ty_ascription = None;
-          evaled_exprs;
+          evaled = init_evaled ();
           compiler_scope = state.scope;
           included_file = None;
         };
@@ -259,9 +256,8 @@ and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
       | other -> Error.error span "can't cast into %a" Value.Shape.print other);
   ty
 
-and init_expr :
-    ?evaled_exprs:expr list -> span -> State.t -> Expr.Shape.t -> expr =
- fun ?(evaled_exprs = []) span state shape ->
+and init_expr : span -> State.t -> Expr.Shape.t -> expr =
+ fun span state shape ->
   try
     let overwrite_shape : Expr.Shape.t option ref = ref None in
     let ty =
@@ -286,18 +282,16 @@ and init_expr :
       | E_Stmt { expr } -> Ty.inferred ~span T_Unit
       | E_Scope { expr } -> expr.data.ty
       | E_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty
-      | E_Generic { def = _; def_ty } ->
-          T_Generic (Kast_interpreter.generic_ty ~span state.interpreter def_ty)
-          |> Ty.inferred ~span
+      | E_Generic { def = _; ty } -> T_Generic ty |> Ty.inferred ~span
       | E_InstantiateGeneric { generic; arg } ->
           let ty = Ty.new_not_inferred ~span in
           State.Scope.fork (fun () ->
               let inferred_ty =
                 with_return (fun { return } ->
                     let ({
-                           fn;
-                           evaluated_with_normalized_bindings = _;
-                           evaluated_with_original_bindings;
+                           arg = arg_pattern;
+                           result = result_ty;
+                           result_normalized = _;
                          }
                           : Types.ty_generic) =
                       match generic.data.ty |> Ty.await_inferred with
@@ -306,35 +300,28 @@ and init_expr :
                           Error.error span "Expected a generic";
                           return (Ty.inferred ~span T_Error)
                     in
-                    let def =
-                      Kast_interpreter.await_compiled ~span fn.def
-                      |> Option.unwrap_or_else (fun () ->
-                          Error.error span "Generic is not compiled yet";
-                          return (Ty.inferred ~span T_Error))
-                    in
                     arg.data.ty
                     |> Inference.Ty.expect_inferred_as ~span:arg.data.span
-                         def.arg.data.ty;
+                         arg_pattern.data.ty;
                     let arg = Kast_interpreter.eval state.interpreter arg in
                     let ~matched:arg_matched, arg_bindings =
                       Kast_interpreter.pattern_match ~span
                         (Place.init ~mut:Inherit arg)
-                        def.arg
+                        arg_pattern
                     in
                     if not arg_matched then
                       Error.error span "Failed to pattern match fn's arg";
-                    let new_state =
+                    let sub_state =
                       {
                         state.interpreter with
                         scope =
                           Kast_interpreter.Scope.with_values ~recursive:false
-                            ~parent:(Some fn.captured) arg_bindings;
-                        current_fn_natives = fn.calculated_natives;
+                            ~parent:None arg_bindings;
                       }
                     in
-                    evaluated_with_original_bindings
+                    result_ty
                     |> Kast_interpreter.Substitute_bindings.sub_ty ~span
-                         ~state:new_state)
+                         ~state:sub_state)
               in
               ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
           ty
@@ -472,8 +459,7 @@ and init_expr :
         {
           span;
           ty;
-          ty_ascription = None;
-          evaled_exprs;
+          evaled = init_evaled ();
           compiler_scope = state.scope;
           included_file = None;
         };
@@ -482,13 +468,8 @@ and init_expr :
     Log.error (fun log -> log "while initializing expr at %a" Span.print span);
     raise exc
 
-let init_assignee :
-    ?evaled_exprs:expr list ->
-    span ->
-    State.t ->
-    Expr.Assignee.Shape.t ->
-    Expr.assignee =
- fun ?(evaled_exprs = []) span state shape ->
+let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
+ fun span state shape ->
   try
     let ty =
       match shape with
@@ -516,9 +497,8 @@ let init_assignee :
         {
           span;
           ty;
-          ty_ascription = None;
+          evaled = init_evaled ();
           compiler_scope = state.scope;
-          evaled_exprs;
           included_file = None;
         };
     }
@@ -527,9 +507,8 @@ let init_assignee :
         log "while initializing assignee expr at %a" Span.print span);
     raise exc
 
-let init_pattern :
-    ?evaled_exprs:expr list -> span -> State.t -> Pattern.Shape.t -> pattern =
- fun ?(evaled_exprs = []) span state shape ->
+let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
+ fun span state shape ->
   try
     let ty =
       match shape with
@@ -584,9 +563,8 @@ let init_pattern :
         {
           span;
           ty;
-          ty_ascription = None;
+          evaled = init_evaled ();
           compiler_scope = state.scope;
-          evaled_exprs;
           included_file = None;
         };
     }
@@ -595,13 +573,8 @@ let init_pattern :
         log "while initializing pattern at %a" Span.print span);
     raise exc
 
-let init_ty_expr :
-    ?evaled_exprs:expr list ->
-    span ->
-    State.t ->
-    (unit -> Expr.Ty.Shape.t) ->
-    Expr.ty =
- fun ?(evaled_exprs = []) span state shape ->
+let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
+ fun span state shape ->
   let type_ty = Ty.inferred ~span T_Ty in
   try
     let result : Expr.ty =
@@ -612,9 +585,8 @@ let init_ty_expr :
           {
             span;
             ty = type_ty;
-            ty_ascription = None;
+            evaled = init_evaled ();
             compiler_scope = state.scope;
-            evaled_exprs;
             included_file = None;
           };
       }
