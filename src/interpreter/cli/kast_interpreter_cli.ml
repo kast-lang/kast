@@ -6,14 +6,19 @@ module Interpreter = Kast_interpreter
 open Kast_types
 
 module Args = struct
-  type args = { path : Uri.t option }
+  type args = {
+    path : Uri.t option;
+    no_std : bool;
+  }
+
   type t = args
 
-  let parse : string list -> args = function
-    | [] -> { path = None }
+  let rec parse : string list -> args = function
+    | [] -> { path = None; no_std = false }
+    | "--no-std" :: rest -> { (parse rest) with no_std = true }
     | path :: _rest as argv ->
         Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
-        { path = Some (Uri.file path) }
+        { path = Some (Uri.file path); no_std = true }
 end
 
 type evaled = {
@@ -22,14 +27,23 @@ type evaled = {
   interpreter : Interpreter.state;
 }
 
-let init_compiler_interpreter name_part =
-  let compiler = Compiler.default name_part () in
-  (* TODO *)
-  let interpreter = compiler.interpreter in
-  (compiler, interpreter)
+let init_compiler_interpreter ~no_std name_part =
+  if no_std then
+    let interpreter = Interpreter.default name_part in
+    let compiler =
+      Compiler.init
+        ~import_cache:(Compiler.init_import_cache ())
+        ~compile_for:interpreter
+    in
+    (compiler, interpreter)
+  else
+    let compiler = Compiler.default name_part () in
+    (* TODO *)
+    let interpreter = compiler.interpreter in
+    (compiler, interpreter)
 
 let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
- fun f { path } ->
+ fun f { path; no_std } ->
   let name_part : Types.name_part =
     match path with
     | Some path -> Uri path
@@ -40,7 +54,7 @@ let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
   match parsed.ast with
   | None -> f None
   | Some ast ->
-      let compiler, interpreter = init_compiler_interpreter name_part in
+      let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
       let expr : expr = Compiler.compile compiler Expr ast in
       let value : value = Interpreter.eval interpreter expr in
       f (Some { compiler; interpreter; value })
@@ -52,16 +66,16 @@ let eval =
 
 let run = eval_and ignore
 
-let repl (args : Args.t) =
+let repl ({ path; no_std } as args : Args.t) =
   let evaled =
-    match args.path with
+    match path with
     | Some _ -> args |> eval_and (fun result -> result)
     | None -> None
   in
   let compiler, interpreter =
     match evaled with
     | Some { compiler; interpreter; value = _ } -> (compiler, interpreter)
-    | None -> init_compiler_interpreter (Str "<repl>")
+    | None -> init_compiler_interpreter ~no_std (Str "<repl>")
   in
   let rec loop () =
     print_string "> ";
