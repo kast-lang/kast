@@ -228,14 +228,14 @@ and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
  fun ~span state value ->
   let ty = Ty.new_not_inferred ~span in
   State.Scope.fork (fun () ->
-      let value =
-        Kast_interpreter.eval_place state.interpreter value
-        |> Kast_interpreter.claim_ ~span
-      in
-      let module_ =
-        Kast_interpreter.cast_as_module ~span state.interpreter value
-      in
-      ty |> Inference.Ty.expect_inferred_as ~span (Value.ty_of module_));
+      match Kast_interpreter.eval_place state.interpreter value with
+      | RefBlocked _ -> Error.error span "refblocked cast_as_module_ty"
+      | Place p ->
+          let value = Kast_interpreter.claim_ ~span p in
+          let module_ =
+            Kast_interpreter.cast_as_module ~span state.interpreter value
+          in
+          ty |> Inference.Ty.expect_inferred_as ~span (Value.ty_of module_));
   ty
 
 and cast_result_ty : span:span -> State.t -> expr -> value -> ty =

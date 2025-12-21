@@ -2,11 +2,30 @@ open Std
 open Kast_util
 open Kast_types
 open Types
+open Common
 
 module Impl = struct
   module Interpreter = struct
     let instantiate :
         (?result_ty:ty -> span -> interpreter_state -> value -> value -> value)
+        option
+        ref =
+      ref None
+
+    let get_field :
+        (span:span ->
+        state:interpreter_state ->
+        result_ty:ty ->
+        obj_mut:bool ->
+        value ->
+        Tuple.member ->
+        evaled_place_expr)
+        option
+        ref =
+      ref None
+
+    let claim_ref :
+        (span:span -> state:interpreter_state -> result_ty:ty -> value -> value)
         option
         ref =
       ref None
@@ -129,6 +148,27 @@ module Impl = struct
                 Error.error span "Tried to sub with %a" Place.print_ref
                   local.place;
                 original_value))
+    | BV_FieldRef { obj_ref; member } -> (
+        let obj_ref =
+          sub_blocked
+            ~original_value:(Value.inferred ~span (V_Blocked obj_ref))
+            ~state obj_ref
+        in
+        let get_field = !Interpreter.get_field |> Option.get in
+        match
+          get_field ~result_ty:blocked.ty ~span ~state ~obj_mut:true obj_ref
+            member
+        with
+        | RefBlocked ref -> V_Blocked ref |> Value.inferred ~span
+        | Place (~mut, place) -> V_Ref { mut; place } |> Value.inferred ~span)
+    | BV_ClaimRef ref ->
+        let ref =
+          sub_blocked
+            ~original_value:(Value.inferred ~span (V_Blocked ref))
+            ~state ref
+        in
+        let claim_ref = !Interpreter.claim_ref |> Option.get in
+        claim_ref ~result_ty:blocked.ty ~span ~state ref
 
   and sub_name ~state (name : name) : name =
     let ctx = Effect.perform GetCtx in

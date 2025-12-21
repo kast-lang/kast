@@ -1,6 +1,7 @@
 open Std
 open Kast_util
 open Kast_types
+open Common
 module Ast = Kast_ast
 module Error = Error
 module Inference = Kast_inference
@@ -45,6 +46,16 @@ let claim ~span (place : place) : value =
 
 let claim_ ~span ((~mut:_, place) : mut:bool * place) : value =
   claim ~span place
+
+let claim_ref ~span ~state ~result_ty ref : value =
+  match ref |> Value.await_inferred with
+  | V_Ref { mut; place } -> claim_ ~span (~mut, place)
+  | V_Blocked blocked ->
+      V_Blocked { shape = BV_ClaimRef blocked; ty = result_ty }
+      |> Value.inferred ~span
+  | _ ->
+      Error.error span "Expected a ref";
+      V_Error |> Value.inferred ~span
 
 (* TODO do in two steps - can_match and perform_match *)
 let rec pattern_match :
@@ -380,12 +391,12 @@ and assign :
   | A_Unit ->
       (* TODO assert that value is unit 🦄 *)
       ()
-  | A_Place assignee_place_expr ->
-      let ~mut:assignee_mut, assignee_place =
-        eval_place state assignee_place_expr
-      in
-      let value = claim ~span place in
-      assignee_place |> Place.assign ~parent_mut:assignee_mut value
+  | A_Place assignee_place_expr -> (
+      match eval_place state assignee_place_expr with
+      | RefBlocked _ -> Error.error span "can't assign to blocked value"
+      | Place (~mut:assignee_mut, assignee_place) ->
+          let value = claim ~span place in
+          assignee_place |> Place.assign ~parent_mut:assignee_mut value)
   | A_Tuple { parts } -> (
       let parent_mut = Place.is_mutable ~parent_mut place in
       match place |> claim ~span |> Value.await_inferred with
@@ -433,7 +444,47 @@ and eval_field_expr : state -> Types.field_expr -> (Tuple.member, unit) result =
           Error.error e.data.span "field label incorrect type";
           Error ())
 
-and eval_place : state -> Types.place_expr -> (mut:bool * place) =
+and get_field ~span ~state ~(result_ty : ty) ~obj_mut obj member :
+    evaled_place_expr =
+  with_return (fun { return } ->
+      let place : place =
+        match obj |> Value.await_inferred with
+        | V_Tuple { ty = _; tuple } -> (
+            match Tuple.get_opt member tuple with
+            | Some field -> field.place
+            | None ->
+                Error.error span "field %a doesnt exist" Tuple.Member.print
+                  member;
+                error_place result_ty)
+        | V_Target { name } -> (
+            match member with
+            | Name "name" ->
+                Place.init ~mut:Immutable (V_String name |> Value.inferred ~span)
+            | _ ->
+                Error.error span "field %a doesnt exist in target"
+                  Tuple.Member.print member;
+                error_place result_ty)
+        | V_Blocked blocked ->
+            return
+            <| RefBlocked
+                 {
+                   shape = BV_FieldRef { obj_ref = blocked; member };
+                   ty = result_ty;
+                 }
+        | V_Error -> error_place result_ty
+        | obj_shape -> (
+            match cast_as_module_opt ~span state obj with
+            | Some obj_mod ->
+                return
+                <| get_field ~state ~span ~result_ty ~obj_mut obj_mod member
+            | None ->
+                Error.error span "%a doesnt have fields" Value.Shape.print
+                  obj_shape;
+                error_place result_ty)
+      in
+      Place (~mut:(Place.is_mutable ~parent_mut:obj_mut place), place))
+
+and eval_place : state -> Types.place_expr -> evaled_place_expr =
  fun state expr ->
   try
     let span = expr.data.span in
@@ -441,7 +492,7 @@ and eval_place : state -> Types.place_expr -> (mut:bool * place) =
     let result =
       with_return (fun { return } ->
           match expr.shape with
-          | PE_Error -> (~mut:true, error_place expr.data.ty)
+          | PE_Error -> Place (~mut:true, error_place expr.data.ty)
           | PE_Binding binding ->
               let result =
                 Scope.find_opt binding.name state.scope
@@ -455,54 +506,41 @@ and eval_place : state -> Types.place_expr -> (mut:bool * place) =
               Log.trace (fun log ->
                   log "evaled binding %a = %a" Binding.print binding Id.print
                     result.id);
-              (~mut:true, result)
+              Place (~mut:true, result)
           | PE_Temp expr ->
               let value = eval state expr in
-              (~mut:true, Place.init ~mut:Mutable value)
+              Place (~mut:true, Place.init ~mut:Mutable value)
           | PE_Deref ref_expr -> (
               match eval state ref_expr |> Value.expect_ref with
               | None ->
                   Error.error ref_expr.data.span "Expected a reference";
-                  (~mut:true, error_place expr.data.ty)
+                  Place (~mut:true, error_place expr.data.ty)
               | Some { mut; place } ->
-                  (~mut:(Place.is_mutable ~parent_mut:mut place), place))
-          | PE_Field { obj; field; field_span = _ } ->
-              let ~mut:obj_mut, obj = eval_place state obj in
+                  Place (~mut:(Place.is_mutable ~parent_mut:mut place), place))
+          | PE_Field { obj; field; field_span = _ } -> (
               let member : Tuple.member =
                 match eval_field_expr state field with
                 | Ok member -> member
-                | Error () -> return <| (~mut:true, error_place expr.data.ty)
+                | Error () ->
+                    return <| Place (~mut:true, error_place expr.data.ty)
               in
-              let rec get_field obj =
-                match obj |> Value.await_inferred with
-                | V_Tuple { ty = _; tuple } -> (
-                    match Tuple.get_opt member tuple with
-                    | Some field -> field.place
-                    | None ->
-                        Error.error expr.data.span "field %a doesnt exist"
-                          Tuple.Member.print member;
-                        error_place expr.data.ty)
-                | V_Target { name } -> (
-                    match member with
-                    | Name "name" ->
-                        Place.init ~mut:Immutable
-                          (V_String name |> Value.inferred ~span)
-                    | _ ->
-                        Error.error expr.data.span
-                          "field %a doesnt exist in target" Tuple.Member.print
-                          member;
-                        error_place expr.data.ty)
-                | V_Error -> error_place expr.data.ty
-                | obj_shape -> (
-                    match cast_as_module_opt ~span state obj with
-                    | Some obj_mod -> get_field obj_mod
-                    | None ->
-                        Error.error expr.data.span "%a doesnt have fields"
-                          Value.Shape.print obj_shape;
-                        error_place expr.data.ty)
-              in
-              let place = get_field (obj |> read_place ~span) in
-              (~mut:(Place.is_mutable ~parent_mut:obj_mut place), place))
+              match eval_place state obj with
+              | RefBlocked obj_ref ->
+                  RefBlocked
+                    {
+                      shape = BV_FieldRef { obj_ref; member };
+                      ty =
+                        T_Ref
+                          {
+                            mut = { var = Inference.Var.new_not_inferred ~span };
+                            referenced = expr.data.ty;
+                          }
+                        |> Ty.inferred ~span;
+                    }
+              | Place (~mut:obj_mut, obj) ->
+                  get_field ~state ~result_ty:expr.data.ty ~span ~obj_mut
+                    (obj |> read_place ~span)
+                    member))
     in
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
     result
@@ -516,16 +554,23 @@ and eval_place : state -> Types.place_expr -> (mut:bool * place) =
 and eval_expr_ref : state -> expr -> Types.expr_ref -> value =
  fun state expr { mut; place } ->
   let span = expr.data.span in
-  let ~mut:place_mut, place = eval_place state place in
-  if mut && not place_mut then
-    Error.error span "Constructing mutable ref to non-mut place";
-  V_Ref { mut; place } |> Value.inferred ~span
+  match eval_place state place with
+  | RefBlocked _ ->
+      Error.error span "Can't get ref to blocked value";
+      V_Error |> Value.inferred ~span
+  | Place (~mut:place_mut, place) ->
+      if mut && not place_mut then
+        Error.error span "Constructing mutable ref to non-mut place";
+      V_Ref { mut; place } |> Value.inferred ~span
 
 and eval_expr_claim : state -> expr -> Types.place_expr -> value =
  fun state expr place ->
   let span = expr.data.span in
-  let ~mut:_, place = eval_place state place in
-  place |> claim ~span
+  match eval_place state place with
+  | RefBlocked blocked ->
+      V_Blocked { shape = BV_ClaimRef blocked; ty = expr.data.ty }
+      |> Value.inferred ~span
+  | Place (~mut:_, place) -> place |> claim ~span
 
 and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
  fun state expr { def; ty } ->
@@ -664,54 +709,71 @@ and pattern_bindings : pattern -> binding list =
 
 and generic_ty : span:span -> pattern -> ty -> Types.ty_generic =
  fun ~span arg result ->
-  let sub_with f ty =
-    let state : Types.interpreter_state =
-      let binding_idx = ref 0 in
-      let locals : Types.interpreter_locals =
+  try
+    let sub_with f ty =
+      let state : Types.interpreter_state =
+        let binding_idx = ref 0 in
+        let locals : Types.interpreter_locals =
+          {
+            by_symbol =
+              pattern_bindings arg
+              |> List.map (fun (original_binding : binding) ->
+                  let normalized = normalized_binding_at_idx !binding_idx in
+                  let symbol, binding = f original_binding ~normalized in
+                  let binding =
+                    V_Blocked { shape = BV_Binding binding; ty = binding.ty }
+                    |> Value.inferred ~span
+                  in
+                  let binding = Place.init ~mut:Inherit binding in
+                  let binding : Types.interpreter_local =
+                    {
+                      place = binding;
+                      ty_field = { ty = binding.ty; label = None };
+                    }
+                  in
+                  binding_idx := !binding_idx + 1;
+                  (symbol, binding))
+              |> SymbolMap.of_list;
+          }
+        in
         {
-          by_symbol =
-            pattern_bindings arg
-            |> List.map (fun (original_binding : binding) ->
-                let normalized = normalized_binding_at_idx !binding_idx in
-                let symbol, binding = f original_binding ~normalized in
-                let binding =
-                  V_Blocked { shape = BV_Binding binding; ty = binding.ty }
-                  |> Value.inferred ~span
-                in
-                let binding = Place.init ~mut:Inherit binding in
-                let binding : Types.interpreter_local =
-                  {
-                    place = binding;
-                    ty_field = { ty = binding.ty; label = None };
-                  }
-                in
-                binding_idx := !binding_idx + 1;
-                (symbol, binding))
-            |> SymbolMap.of_list;
+          scope = Scope.with_values ~recursive:false ~parent:None locals;
+          (* TODO only scope is needed, change Substitute_bindings *)
+          natives = { by_name = StringMap.empty };
+          current_fn_natives = Hashtbl.create 0;
+          contexts = Id.Map.empty;
+          instantiated_generics = { map = Id.Map.empty };
+          cast_impls =
+            { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
+          current_name = Simple (Str "<unused>");
         }
       in
-      {
-        scope = Scope.with_values ~recursive:false ~parent:None locals;
-        (* TODO only scope is needed, change Substitute_bindings *)
-        natives = { by_name = StringMap.empty };
-        current_fn_natives = Hashtbl.create 0;
-        contexts = Id.Map.empty;
-        instantiated_generics = { map = Id.Map.empty };
-        cast_impls =
-          { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
-        current_name = Simple (Str "<unused>");
-      }
+      Substitute_bindings.sub_ty ~span ~state ty
     in
-    Substitute_bindings.sub_ty ~span ~state ty
-  in
-  let result_normalized =
-    result |> sub_with (fun binding ~normalized -> (binding.name, normalized))
-  in
-  result
-  |> Inference.Ty.expect_inferred_as ~span
-       (result_normalized
-       |> sub_with (fun binding ~normalized -> (normalized.name, binding)));
-  { arg; result; result_normalized }
+    let result_normalized =
+      result |> sub_with (fun binding ~normalized -> (binding.name, normalized))
+    in
+    let subbed_back =
+      result_normalized
+      |> sub_with (fun binding ~normalized -> (normalized.name, binding))
+    in
+    subbed_back.var
+    |> Inference.Var.once_inferred (fun _ ->
+        Log.trace (fun log -> log "subbed back = %a" Ty.print subbed_back);
+        result |> Inference.Ty.expect_inferred_as ~span subbed_back);
+    result_normalized.var
+    |> Inference.Var.once_inferred (fun _ ->
+        Log.trace (fun log ->
+            log "result_normalized = %a" Ty.print result_normalized));
+    result.var
+    |> Inference.Var.once_inferred (fun _ ->
+        Log.trace (fun log -> log "result = %a" Ty.print result));
+    { arg; result; result_normalized }
+  with
+  | Cancel -> raise Cancel
+  | e ->
+      Log.error (fun log -> log "while calculating generic type");
+      raise e
 
 and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
  fun state expr { def; ty } ->
@@ -826,9 +888,13 @@ and eval_expr_scope : state -> expr -> Types.expr_scope -> value =
 and eval_expr_assign : state -> expr -> Types.expr_assign -> value =
  fun state expr { assignee; value = value_expr } ->
   let span = expr.data.span in
-  let ~mut, place = eval_place state value_expr in
-  assign ~span:value_expr.data.span state assignee ~parent_mut:mut place;
-  V_Unit |> Value.inferred ~span
+  match eval_place state value_expr with
+  | RefBlocked _ ->
+      Error.error span "can't assign blocked values";
+      V_Unit |> Value.inferred ~span
+  | Place (~mut, place) ->
+      assign ~span:value_expr.data.span state assignee ~parent_mut:mut place;
+      V_Unit |> Value.inferred ~span
 
 and eval_expr_apply : state -> expr -> Types.expr_apply -> value =
  fun state expr { f; arg } ->
@@ -950,25 +1016,29 @@ and eval_expr_or : state -> expr -> Types.expr_or -> value =
 and eval_expr_match : state -> expr -> Types.expr_match -> value =
  fun state expr { value = place_expr; branches } ->
   let span = expr.data.span in
-  let ~mut, place = eval_place state place_expr in
-  let result =
-    branches
-    |> List.find_map (fun (branch : Types.expr_match_branch) ->
-        let ~matched, matches =
-          pattern_match ~span:place_expr.data.span place branch.pattern
-        in
-        if matched then
-          Some
-            (let inner_state = enter_scope ~recursive:false state in
-             inner_state.scope |> Scope.add_locals matches;
-             eval inner_state branch.body)
-        else None)
-  in
-  match result with
-  | Some result -> result
-  | None ->
-      Error.error expr.data.span "pattern match non exhaustive";
+  match eval_place state place_expr with
+  | RefBlocked _ ->
+      Error.error span "Can't match blocked values";
       V_Error |> Value.inferred ~span
+  | Place (~mut, place) -> (
+      let result =
+        branches
+        |> List.find_map (fun (branch : Types.expr_match_branch) ->
+            let ~matched, matches =
+              pattern_match ~span:place_expr.data.span place branch.pattern
+            in
+            if matched then
+              Some
+                (let inner_state = enter_scope ~recursive:false state in
+                 inner_state.scope |> Scope.add_locals matches;
+                 eval inner_state branch.body)
+            else None)
+      in
+      match result with
+      | Some result -> result
+      | None ->
+          Error.error expr.data.span "pattern match non exhaustive";
+          V_Error |> Value.inferred ~span)
 
 and eval_expr_loop : state -> expr -> Types.expr_loop -> value =
  fun state expr { body } ->
@@ -1408,4 +1478,7 @@ and fork (f : unit -> unit) : unit =
           let k = dont_leak_please k in
           Inference.Var.once_inferred (fun _ -> k.continue true) var)
 
-let () = Substitute_bindings.Impl.Interpreter.instantiate := Some instantiate
+let () =
+  Substitute_bindings.Impl.Interpreter.instantiate := Some instantiate;
+  Substitute_bindings.Impl.Interpreter.get_field := Some get_field;
+  Substitute_bindings.Impl.Interpreter.claim_ref := Some claim_ref

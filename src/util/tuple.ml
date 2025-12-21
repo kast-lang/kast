@@ -15,6 +15,7 @@ module Tuple = struct
     type t =
       | Index of int
       | Name of string
+    [@@deriving eq, ord]
 
     let print fmt = function
       | Index i -> fprintf fmt "%d" i

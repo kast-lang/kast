@@ -421,16 +421,13 @@ let generic : core_syntax =
             (fun () -> TE_Expr expr) |> init_ty_expr span C.state
         | Expr ->
             let arg = C.compile Pattern arg in
-            let ty : Types.ty_fn =
-              {
-                arg = arg.data.ty;
-                result = Ty.new_not_inferred ~span:body.span;
-              }
-            in
             let def : Types.maybe_compiled_fn =
               { compiled = None; on_compiled = [] }
             in
-            let generic_ty = Interpreter.generic_ty ~span arg ty.result in
+            let ty =
+              Interpreter.generic_ty ~span arg
+                (Ty.new_not_inferred ~span:body.span)
+            in
             State.Scope.fork (fun () ->
                 let state = C.state |> State.enter_scope ~recursive:false in
                 state
@@ -438,13 +435,14 @@ let generic : core_syntax =
                 let body = C.compile ~state Expr body in
                 Compiler.finish_compiling def
                   { arg; body; evaled_result = None };
-                ty.arg
-                |> Inference.Ty.expect_inferred_as ~span:arg.data.span
-                     arg.data.ty;
+                Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
+                Log.trace (fun log ->
+                    log "body.data.ty = %a" Ty.print body.data.ty);
                 ty.result
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
                      body.data.ty);
-            E_Generic { def; ty = generic_ty } |> init_expr span C.state);
+            let result = E_Generic { def; ty } |> init_expr span C.state in
+            result);
   }
 
 let unit : core_syntax =

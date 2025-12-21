@@ -90,6 +90,14 @@ and unite_blocked_value_shape : blocked_value_shape Inference.unite =
           arg = unite_value ~span arg_a arg_b;
         }
   | BV_Instantiate _, _ -> fail ()
+  | ( BV_FieldRef { obj_ref = obj_a; member = member_a },
+      BV_FieldRef { obj_ref = obj_b; member = member_b } )
+    when Tuple.Member.equal member_a member_b ->
+      BV_FieldRef
+        { obj_ref = unite_blocked_value ~span obj_a obj_b; member = member_a }
+  | BV_FieldRef _, _ -> fail ()
+  | BV_ClaimRef a, BV_ClaimRef b -> BV_ClaimRef (unite_blocked_value ~span a b)
+  | BV_ClaimRef _, _ -> fail ()
 
 and unite_ty_generic : ty_generic Inference.unite =
  fun ~span
