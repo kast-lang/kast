@@ -28,7 +28,7 @@ impl Treap.t as Monad = (
     ),
 );
 
-const join = [M :: [type] -> type] (
+const join = [M :: [_unused :: type] type] (
     [T] (a :: M[M[T]]) -> M[T] => (
         (M as Monad).flat_map (a, x => x)
     )

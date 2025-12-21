@@ -137,10 +137,10 @@ module Impl = struct
     | T_Ty -> fprintf fmt "type"
     | T_Fn { arg; result } ->
         fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
-    | T_Generic { arg; result_normalized; result } ->
-        fprintf fmt "[%a] %a (normalized = %a)"
-          (print_pattern ~options:{ spans = false; types = false })
-          arg print_ty result print_ty result_normalized
+    | T_Generic { arg; result } ->
+        fprintf fmt "[%a] %a"
+          (print_pattern ~options:{ spans = false; types = true })
+          arg print_ty result
     | T_Ast -> fprintf fmt "ast"
     | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
     | T_Target -> fprintf fmt "target"

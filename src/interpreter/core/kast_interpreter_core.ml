@@ -708,72 +708,7 @@ and pattern_bindings : pattern -> binding list =
       | None -> [])
 
 and generic_ty : span:span -> pattern -> ty -> Types.ty_generic =
- fun ~span arg result ->
-  try
-    let sub_with f ty =
-      let state : Types.interpreter_state =
-        let binding_idx = ref 0 in
-        let locals : Types.interpreter_locals =
-          {
-            by_symbol =
-              pattern_bindings arg
-              |> List.map (fun (original_binding : binding) ->
-                  let normalized = normalized_binding_at_idx !binding_idx in
-                  let symbol, binding = f original_binding ~normalized in
-                  let binding =
-                    V_Blocked { shape = BV_Binding binding; ty = binding.ty }
-                    |> Value.inferred ~span
-                  in
-                  let binding = Place.init ~mut:Inherit binding in
-                  let binding : Types.interpreter_local =
-                    {
-                      place = binding;
-                      ty_field = { ty = binding.ty; label = None };
-                    }
-                  in
-                  binding_idx := !binding_idx + 1;
-                  (symbol, binding))
-              |> SymbolMap.of_list;
-          }
-        in
-        {
-          scope = Scope.with_values ~recursive:false ~parent:None locals;
-          (* TODO only scope is needed, change Substitute_bindings *)
-          natives = { by_name = StringMap.empty };
-          current_fn_natives = Hashtbl.create 0;
-          contexts = Id.Map.empty;
-          instantiated_generics = { map = Id.Map.empty };
-          cast_impls =
-            { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
-          current_name = Simple (Str "<unused>");
-        }
-      in
-      Substitute_bindings.sub_ty ~span ~state ty
-    in
-    let result_normalized =
-      result |> sub_with (fun binding ~normalized -> (binding.name, normalized))
-    in
-    let subbed_back =
-      result_normalized
-      |> sub_with (fun binding ~normalized -> (normalized.name, binding))
-    in
-    subbed_back.var
-    |> Inference.Var.once_inferred (fun _ ->
-        Log.trace (fun log -> log "subbed back = %a" Ty.print subbed_back);
-        result |> Inference.Ty.expect_inferred_as ~span subbed_back);
-    result_normalized.var
-    |> Inference.Var.once_inferred (fun _ ->
-        Log.trace (fun log ->
-            log "result_normalized = %a" Ty.print result_normalized));
-    result.var
-    |> Inference.Var.once_inferred (fun _ ->
-        Log.trace (fun log -> log "result = %a" Ty.print result));
-    { arg; result; result_normalized }
-  with
-  | Cancel -> raise Cancel
-  | e ->
-      Log.error (fun log -> log "while calculating generic type");
-      raise e
+ fun ~span arg result -> { arg; result }
 
 and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
  fun state expr { def; ty } ->

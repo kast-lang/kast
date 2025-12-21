@@ -272,14 +272,8 @@ module Impl = struct
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped
-      | T_Generic { arg; result; result_normalized } ->
-          T_Generic
-            {
-              arg;
-              result = sub_ty ~state result;
-              result_normalized = sub_ty ~state result_normalized;
-            }
-          |> shaped
+      | T_Generic { arg; result } ->
+          T_Generic { arg; result = sub_ty ~state result } |> shaped
       | T_UnwindToken { result } ->
           T_UnwindToken { result = result |> sub_ty ~state } |> shaped
       | T_Blocked blocked -> (

@@ -288,11 +288,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           State.Scope.fork (fun () ->
               let inferred_ty =
                 with_return (fun { return } ->
-                    let ({
-                           arg = arg_pattern;
-                           result = result_ty;
-                           result_normalized = _;
-                         }
+                    let ({ arg = arg_pattern; result = result_ty }
                           : Types.ty_generic) =
                       match generic.data.ty |> Ty.await_inferred with
                       | T_Generic ty -> ty

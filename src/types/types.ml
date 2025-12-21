@@ -162,7 +162,6 @@ module rec TypesImpl : sig
   and ty_generic = {
     arg : pattern;
     result : ty;
-    result_normalized : ty;
   }
 
   and ty_unwind_token = { result : ty }
@@ -775,7 +774,6 @@ end = struct
   and ty_generic = {
     arg : pattern;
     result : ty;
-    result_normalized : ty;
   }
 
   and ty_unwind_token = { result : ty }
