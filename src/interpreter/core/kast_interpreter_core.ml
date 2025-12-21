@@ -538,7 +538,10 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                         |> Ty.inferred ~span;
                     }
               | Place (~mut:obj_mut, obj) ->
-                  get_field ~state ~result_ty:expr.data.ty ~span ~obj_mut
+                  let result_ty =
+                    Substitute_bindings.sub_ty ~span ~state expr.data.ty
+                  in
+                  get_field ~state ~result_ty ~span ~obj_mut
                     (obj |> read_place ~span)
                     member))
     in
@@ -568,8 +571,8 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
   let span = expr.data.span in
   match eval_place state place with
   | RefBlocked blocked ->
-      V_Blocked { shape = BV_ClaimRef blocked; ty = expr.data.ty }
-      |> Value.inferred ~span
+      let ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+      V_Blocked { shape = BV_ClaimRef blocked; ty } |> Value.inferred ~span
   | Place (~mut:_, place) -> place |> claim ~span
 
 and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
@@ -603,91 +606,6 @@ and normalized_binding_at_idx : int -> binding =
         })
   in
   fun idx -> Array.get cache idx
-
-and construct_bindings_arg ~span pattern =
-  construct_bindings_arg_impl (fun _idx binding -> binding) ~span pattern
-
-and construct_normalized_bindings_arg ~span pattern =
-  construct_bindings_arg_impl
-    (fun idx (pattern_binding : binding) : binding ->
-      let normalized_binding_blueprint = normalized_binding_at_idx idx in
-      {
-        id = normalized_binding_blueprint.id;
-        name = normalized_binding_blueprint.name;
-        label = normalized_binding_blueprint.label;
-        span = normalized_binding_blueprint.span;
-        ty = pattern_binding.ty;
-        mut = true;
-      })
-    ~span pattern
-
-and construct_bindings_arg_impl :
-    (int -> binding -> binding) -> span:span -> pattern -> value =
- fun get_binding ->
-  let rec impl ~(idx : int ref) ~(span : span) (pattern : pattern) : value =
-    let ty = pattern.data.ty in
-    match pattern.shape with
-    | P_Placeholder -> Value.new_not_inferred_of_ty ~span ty
-    | P_Ref p ->
-        V_Ref
-          { mut = false; place = Place.init ~mut:Inherit (impl ~idx ~span p) }
-        |> Value.inferred ~span
-    | P_Unit -> Value.new_not_inferred_of_ty ~span ty
-    | P_Binding { by_ref = _; binding = pattern_binding } ->
-        let binding : binding = get_binding !idx pattern_binding in
-        let result = Value.binding ~span binding in
-        idx := !idx + 1;
-        result
-    | P_Tuple { parts } ->
-        let tuple_ty =
-          ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.get
-        in
-        let tuple = ref Tuple.empty in
-        parts
-        |> List.iter (fun (part : pattern Types.tuple_part_of) ->
-            match part with
-            | Field { label_span; label; field = field_pattern } ->
-                let name = label |> Option.map Label.get_name in
-                let value = impl ~idx ~span field_pattern in
-                let field : Types.value_tuple_field =
-                  {
-                    span = label_span;
-                    place = Place.init ~mut:Inherit value;
-                    ty_field = { label; ty = field_pattern.data.ty };
-                  }
-                in
-                tuple := !tuple |> Tuple.add name field
-            | Unpack packed_pattern ->
-                let packed_value = impl ~idx ~span packed_pattern in
-                let packed_value : Types.value_tuple =
-                  packed_value |> Value.expect_tuple |> Option.get
-                in
-                packed_value.tuple
-                |> Tuple.iter (fun member field ->
-                    let name =
-                      match member with
-                      | Index _ -> None
-                      | Name name -> Some name
-                    in
-                    tuple := !tuple |> Tuple.add name field));
-        V_Tuple { tuple = !tuple; ty = tuple_ty } |> Value.inferred ~span
-    | P_Variant { label; label_span = _; value } ->
-        let variant_ty =
-          ty |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.get
-        in
-        V_Variant
-          {
-            label;
-            data =
-              value
-              |> Option.map (impl ~idx ~span)
-              |> Option.map (Place.init ~mut:Inherit);
-            ty = variant_ty;
-          }
-        |> Value.inferred ~span
-    | P_Error -> V_Error |> Value.inferred ~span
-  in
-  fun ~span pattern -> impl ~idx:(ref 0) ~span pattern
 
 and pattern_bindings : pattern -> binding list =
  fun pattern ->
@@ -987,7 +905,9 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
  fun state expr { token = token_pattern; body } ->
   let span = expr.data.span in
   let id = Id.gen () in
-  let token : Types.value_unwind_token = { id; result_ty = body.data.ty } in
+  let token : Types.value_unwind_token =
+    { id; result_ty = Substitute_bindings.sub_ty ~span ~state body.data.ty }
+  in
   let token : value =
     V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
   in
