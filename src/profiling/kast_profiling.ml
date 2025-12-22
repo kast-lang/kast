@@ -84,3 +84,9 @@ let end_ name =
           tid = 1;
           args = StringMap.empty;
         }
+
+let record name f =
+  begin_ name;
+  let result = f () in
+  end_ name;
+  result
