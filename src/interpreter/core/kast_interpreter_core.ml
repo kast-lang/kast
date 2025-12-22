@@ -378,18 +378,13 @@ and instantiate ?(result_ty : ty option) (span : span) (state : state)
   result
 
 and call (span : span) (state : state) (f : value) (arg : value) : value =
-  Kast_profiling.begin_ (fun () -> make_string "%a" Span.print span);
-  let result =
-    match f |> Value.await_inferred with
-    | V_Fn { fn; ty = _ } -> call_untyped_fn ~sub_mode:None span state fn arg
-    | V_NativeFn f -> f.impl ~caller:span ~state arg
-    | V_Error -> V_Error |> Value.inferred ~span
-    | _ ->
-        Error.error span "expected fn";
-        V_Error |> Value.inferred ~span
-  in
-  Kast_profiling.end_ (fun () -> make_string "%a" Span.print span);
-  result
+  match f |> Value.await_inferred with
+  | V_Fn { fn; ty = _ } -> call_untyped_fn ~sub_mode:None span state fn arg
+  | V_NativeFn f -> f.impl ~caller:span ~state arg
+  | V_Error -> V_Error |> Value.inferred ~span
+  | _ ->
+      Error.error span "expected fn";
+      V_Error |> Value.inferred ~span
 
 and assign :
     span:span -> state -> Expr.assignee -> parent_mut:bool -> place -> unit =
@@ -1080,73 +1075,77 @@ and eval_expr_quote_ast : state -> expr -> Types.expr_quote_ast -> value =
 
 and eval : state -> expr -> value =
  fun state expr ->
-  try
-    let span = expr.data.span in
-    Log.trace (fun log -> log "evaluating at %a" Span.print span);
-    let result =
-      match expr.shape with
-      | E_Ref place -> eval_expr_ref state expr place
-      | E_Claim place -> eval_expr_claim state expr place
-      | E_Constant value -> Substitute_bindings.sub_value ~span ~state value
-      | E_Fn f -> eval_expr_fn state expr f
-      | E_Generic f -> eval_expr_generic state expr f
-      | E_Tuple tuple -> eval_expr_tuple state expr tuple
-      | E_Variant e -> eval_expr_variant state expr e
-      | E_Then e -> eval_expr_then state expr e
-      | E_Stmt e -> eval_expr_stmt state expr e
-      | E_Scope e -> eval_expr_scope state expr e
-      | E_Assign e -> eval_expr_assign state expr e
-      | E_Apply e -> eval_expr_apply state expr e
-      | E_InstantiateGeneric e -> eval_expr_instantiategeneric state expr e
-      | E_Ty e -> eval_expr_ty state expr e
-      | E_Newtype ty_expr ->
-          let result_ty = Ty.new_not_inferred ~span in
-          fork (fun () ->
-              let inner_ty = eval_ty state ty_expr in
-              let name =
-                OptionalName.new_inferred ~span (Some (current_name state))
-              in
-              let newtype : Ty.Shape.t =
-                match inner_ty |> Ty.await_inferred with
-                | T_Tuple { name = _; tuple } -> T_Tuple { name; tuple }
-                | T_Variant { name = _; variants } ->
-                    T_Variant { name; variants }
-                | _ ->
-                    Error.error span "Can only newtype variant or tuple types";
-                    T_Error
-              in
-              let newtype = Ty.inferred ~span newtype in
-              result_ty |> Inference.Ty.expect_inferred_as ~span newtype);
-          V_Ty result_ty |> Value.inferred ~span
-      | E_Native e -> eval_expr_native state expr e
-      | E_Module e -> eval_expr_module state expr e
-      | E_UseDotStar e -> eval_expr_usedotstar state expr e
-      | E_If e -> eval_expr_if state expr e
-      | E_And e -> eval_expr_and state expr e
-      | E_Or e -> eval_expr_or state expr e
-      | E_Match e -> eval_expr_match state expr e
-      | E_QuoteAst e -> eval_expr_quote_ast state expr e
-      | E_Loop e -> eval_expr_loop state expr e
-      | E_Error -> V_Error |> Value.inferred ~span
-      | E_Unwindable e -> eval_expr_unwindable state expr e
-      | E_Unwind e -> eval_expr_unwind state expr e
-      | E_InjectContext e -> eval_expr_injectcontext state expr e
-      | E_CurrentContext e -> eval_expr_currentcontext state expr e
-      | E_ImplCast e -> eval_expr_implcast state expr e
-      | E_Cast e -> eval_expr_cast state expr e
-      | E_TargetDependent e -> eval_expr_targetdependent state expr e
-    in
-    (* let result = Substitute_bindings.sub_value ~state result in *)
-    Log.trace (fun log ->
-        log "evaled at %a = %a" Span.print span Value.print result);
-    result
-  with
-  | Unwind _ as exc -> raise exc
-  | exc ->
-      Log.error (fun log ->
-          log "While evaluating %a expr at %a" Expr.print_short expr Span.print
-            expr.data.span);
-      raise exc
+  let span = expr.data.span in
+  Kast_profiling.record
+    (fun () -> make_string "eval %a" Span.print span)
+    (fun () ->
+      try
+        Log.trace (fun log -> log "evaluating at %a" Span.print span);
+        let result =
+          match expr.shape with
+          | E_Ref place -> eval_expr_ref state expr place
+          | E_Claim place -> eval_expr_claim state expr place
+          | E_Constant value -> Substitute_bindings.sub_value ~span ~state value
+          | E_Fn f -> eval_expr_fn state expr f
+          | E_Generic f -> eval_expr_generic state expr f
+          | E_Tuple tuple -> eval_expr_tuple state expr tuple
+          | E_Variant e -> eval_expr_variant state expr e
+          | E_Then e -> eval_expr_then state expr e
+          | E_Stmt e -> eval_expr_stmt state expr e
+          | E_Scope e -> eval_expr_scope state expr e
+          | E_Assign e -> eval_expr_assign state expr e
+          | E_Apply e -> eval_expr_apply state expr e
+          | E_InstantiateGeneric e -> eval_expr_instantiategeneric state expr e
+          | E_Ty e -> eval_expr_ty state expr e
+          | E_Newtype ty_expr ->
+              let result_ty = Ty.new_not_inferred ~span in
+              fork (fun () ->
+                  let inner_ty = eval_ty state ty_expr in
+                  let name =
+                    OptionalName.new_inferred ~span (Some (current_name state))
+                  in
+                  let newtype : Ty.Shape.t =
+                    match inner_ty |> Ty.await_inferred with
+                    | T_Tuple { name = _; tuple } -> T_Tuple { name; tuple }
+                    | T_Variant { name = _; variants } ->
+                        T_Variant { name; variants }
+                    | _ ->
+                        Error.error span
+                          "Can only newtype variant or tuple types";
+                        T_Error
+                  in
+                  let newtype = Ty.inferred ~span newtype in
+                  result_ty |> Inference.Ty.expect_inferred_as ~span newtype);
+              V_Ty result_ty |> Value.inferred ~span
+          | E_Native e -> eval_expr_native state expr e
+          | E_Module e -> eval_expr_module state expr e
+          | E_UseDotStar e -> eval_expr_usedotstar state expr e
+          | E_If e -> eval_expr_if state expr e
+          | E_And e -> eval_expr_and state expr e
+          | E_Or e -> eval_expr_or state expr e
+          | E_Match e -> eval_expr_match state expr e
+          | E_QuoteAst e -> eval_expr_quote_ast state expr e
+          | E_Loop e -> eval_expr_loop state expr e
+          | E_Error -> V_Error |> Value.inferred ~span
+          | E_Unwindable e -> eval_expr_unwindable state expr e
+          | E_Unwind e -> eval_expr_unwind state expr e
+          | E_InjectContext e -> eval_expr_injectcontext state expr e
+          | E_CurrentContext e -> eval_expr_currentcontext state expr e
+          | E_ImplCast e -> eval_expr_implcast state expr e
+          | E_Cast e -> eval_expr_cast state expr e
+          | E_TargetDependent e -> eval_expr_targetdependent state expr e
+        in
+        (* let result = Substitute_bindings.sub_value ~state result in *)
+        Log.trace (fun log ->
+            log "evaled at %a = %a" Span.print span Value.print result);
+        result
+      with
+      | Unwind _ as exc -> raise exc
+      | exc ->
+          Log.error (fun log ->
+              log "While evaluating %a expr at %a" Expr.print_short expr
+                Span.print expr.data.span);
+          raise exc)
 
 and find_target_dependent_branch :
     state ->

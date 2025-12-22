@@ -48,202 +48,214 @@ let get_data = Compiler.get_data
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
  fun (type a) (state : state) (kind : a compiled_kind) (ast : Ast.t) : a ->
   let { shape = _; span } : Ast.t = ast in
-  try
-    match ast.shape with
-    | Ast.Error _ ->
-        Error.error span "Trying to compile error node";
-        init_error span state kind
-    | Ast.Simple { token; _ } -> (
-        match kind with
-        | PlaceExpr -> (
-            match token.shape with
-            | Token.Shape.Ident ident ->
-                PE_Binding
-                  (State.Scope.find_binding ~from:ast.span ident.name
-                     state.scope)
-                |> init_place_expr span state
-            | _ ->
-                PE_Temp (compile state Expr ast) |> init_place_expr span state)
-        | Expr -> (
-            match token.shape with
-            | Token.Shape.Ident _ ->
-                E_Claim (compile state PlaceExpr ast) |> init_expr span state
-            | Token.Shape.String s ->
-                let value : Value.shape =
-                  match s.delimeter with
-                  | "\"" -> V_String s.contents
-                  | "'" ->
-                      if s.contents |> String.length = 1 then
-                        V_Char (String.get s.contents 0 |> Option.get)
-                      else (
-                        Error.error ast.span
-                          "Char literals must have a single char";
-                        V_Error)
-                  | _ ->
-                      Error.error ast.span "Unexpected delimeter %S" s.delimeter;
-                      V_Error
-                in
-                E_Constant (value |> Value.inferred ~span)
-                |> init_expr span state
-            | Token.Shape.Number { raw; _ } ->
-                let default : Ty.Shape.t =
-                  if String.contains raw '.' then T_Float64 else T_Int32
-                in
-                let ty = Ty.new_not_inferred ~span in
-                let setup_default () =
-                  ty
-                  |> Inference.Ty.expect_inferred_as ~span
-                       (Ty.inferred ~span default)
-                in
-                ty.var |> Inference.Var.setup_default setup_default;
-                let const = Value.new_not_inferred_of_ty ~span ty in
-                const.var |> Inference.Var.setup_default setup_default;
-                ty.var
-                |> Inference.Var.once_inferred (fun (ty : Ty.Shape.t) ->
-                    let actual_const : Value.Shape.t =
-                      match ty with
-                      | T_Int32 ->
-                          let value = Int32.of_string raw in
-                          V_Int32 value
-                      | T_Int64 ->
-                          let value = Int64.of_string raw in
-                          V_Int64 value
-                      | T_Float64 ->
-                          let value = Float.of_string raw in
-                          V_Float64 value
-                      | other ->
-                          Error.error span "Number literal inferred as %a"
-                            Ty.Shape.print other;
+  Kast_profiling.record
+    (fun () -> make_string "Compiling %a" Span.print ast.span)
+    (fun () ->
+      try
+        match ast.shape with
+        | Ast.Error _ ->
+            Error.error span "Trying to compile error node";
+            init_error span state kind
+        | Ast.Simple { token; _ } -> (
+            match kind with
+            | PlaceExpr -> (
+                match token.shape with
+                | Token.Shape.Ident ident ->
+                    PE_Binding
+                      (State.Scope.find_binding ~from:ast.span ident.name
+                         state.scope)
+                    |> init_place_expr span state
+                | _ ->
+                    PE_Temp (compile state Expr ast)
+                    |> init_place_expr span state)
+            | Expr -> (
+                match token.shape with
+                | Token.Shape.Ident _ ->
+                    E_Claim (compile state PlaceExpr ast)
+                    |> init_expr span state
+                | Token.Shape.String s ->
+                    let value : Value.shape =
+                      match s.delimeter with
+                      | "\"" -> V_String s.contents
+                      | "'" ->
+                          if s.contents |> String.length = 1 then
+                            V_Char (String.get s.contents 0 |> Option.get)
+                          else (
+                            Error.error ast.span
+                              "Char literals must have a single char";
+                            V_Error)
+                      | _ ->
+                          Error.error ast.span "Unexpected delimeter %S"
+                            s.delimeter;
                           V_Error
                     in
-                    const
-                    |> Inference.Value.expect_inferred_as ~span
-                         (actual_const |> Value.inferred ~span));
-                E_Constant const |> init_expr span state
-            | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
-                unreachable "!")
-        | TyExpr ->
-            (fun () -> TE_Expr (compile state Expr ast))
-            |> init_ty_expr span state
-        | Assignee -> (
-            match token.shape with
-            | Token.Shape.Ident _ ->
-                A_Place (compile state PlaceExpr ast)
-                |> init_assignee span state
-            | Token.Shape.String _ ->
-                Error.error span "string can't be assignee";
-                init_error span state kind
-            | Token.Shape.Number _ ->
-                Error.error span "number can't be assignee";
-                init_error span state kind
-            | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
-                unreachable "!")
-        | Pattern -> (
-            match token.shape with
-            | Token.Shape.Ident ident ->
-                let binding : binding =
-                  {
-                    id = Id.gen ();
-                    name = Symbol.create ident.name;
-                    ty = Ty.new_not_inferred ~span:token.span;
-                    span = ast.span;
-                    label = Label.create_definition ast.span ident.name;
-                    mut = state.mut_enabled;
-                  }
-                in
-                P_Binding { by_ref = state.by_ref; binding }
-                |> init_pattern span state
-            | Token.Shape.String _ ->
-                Error.error span "string can't be pattern";
-                init_error span state kind
-            | Token.Shape.Number _ ->
-                Error.error span "number can't be pattern";
-                init_error span state kind
-            | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
-                unreachable "!"))
-    | Ast.Complex { rule; root } -> (
-        match rule.name |> String.strip_prefix ~prefix:"core:" with
-        | Some name ->
-            Core_syntax.handle name (make_compiler state) kind ast root
-        | None -> (
-            match Hashtbl.find_opt state.custom_syntax_impls rule.id with
-            | Some impl -> (
-                (* TODO *)
-                let args =
-                  root.children
-                  |> Tuple.map Ast.Child.expect_ast
-                  |> Tuple.mapi
-                       (fun member (ast : Ast.t) : Types.value_tuple_field ->
-                         {
-                           place =
-                             Place.init ~mut:Immutable
-                               (V_Ast ast |> Value.inferred ~span:ast.span);
-                           ty_field =
+                    E_Constant (value |> Value.inferred ~span)
+                    |> init_expr span state
+                | Token.Shape.Number { raw; _ } ->
+                    let default : Ty.Shape.t =
+                      if String.contains raw '.' then T_Float64 else T_Int32
+                    in
+                    let ty = Ty.new_not_inferred ~span in
+                    let setup_default () =
+                      ty
+                      |> Inference.Ty.expect_inferred_as ~span
+                           (Ty.inferred ~span default)
+                    in
+                    ty.var |> Inference.Var.setup_default setup_default;
+                    let const = Value.new_not_inferred_of_ty ~span ty in
+                    const.var |> Inference.Var.setup_default setup_default;
+                    ty.var
+                    |> Inference.Var.once_inferred (fun (ty : Ty.Shape.t) ->
+                        let actual_const : Value.Shape.t =
+                          match ty with
+                          | T_Int32 ->
+                              let value = Int32.of_string raw in
+                              V_Int32 value
+                          | T_Int64 ->
+                              let value = Int64.of_string raw in
+                              V_Int64 value
+                          | T_Float64 ->
+                              let value = Float.of_string raw in
+                              V_Float64 value
+                          | other ->
+                              Error.error span "Number literal inferred as %a"
+                                Ty.Shape.print other;
+                              V_Error
+                        in
+                        const
+                        |> Inference.Value.expect_inferred_as ~span
+                             (actual_const |> Value.inferred ~span));
+                    E_Constant const |> init_expr span state
+                | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof
+                  ->
+                    unreachable "!")
+            | TyExpr ->
+                (fun () -> TE_Expr (compile state Expr ast))
+                |> init_ty_expr span state
+            | Assignee -> (
+                match token.shape with
+                | Token.Shape.Ident _ ->
+                    A_Place (compile state PlaceExpr ast)
+                    |> init_assignee span state
+                | Token.Shape.String _ ->
+                    Error.error span "string can't be assignee";
+                    init_error span state kind
+                | Token.Shape.Number _ ->
+                    Error.error span "number can't be assignee";
+                    init_error span state kind
+                | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof
+                  ->
+                    unreachable "!")
+            | Pattern -> (
+                match token.shape with
+                | Token.Shape.Ident ident ->
+                    let binding : binding =
+                      {
+                        id = Id.gen ();
+                        name = Symbol.create ident.name;
+                        ty = Ty.new_not_inferred ~span:token.span;
+                        span = ast.span;
+                        label = Label.create_definition ast.span ident.name;
+                        mut = state.mut_enabled;
+                      }
+                    in
+                    P_Binding { by_ref = state.by_ref; binding }
+                    |> init_pattern span state
+                | Token.Shape.String _ ->
+                    Error.error span "string can't be pattern";
+                    init_error span state kind
+                | Token.Shape.Number _ ->
+                    Error.error span "number can't be pattern";
+                    init_error span state kind
+                | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof
+                  ->
+                    unreachable "!"))
+        | Ast.Complex { rule; root } -> (
+            match rule.name |> String.strip_prefix ~prefix:"core:" with
+            | Some name ->
+                Core_syntax.handle name (make_compiler state) kind ast root
+            | None -> (
+                match Hashtbl.find_opt state.custom_syntax_impls rule.id with
+                | Some impl -> (
+                    (* TODO *)
+                    let args =
+                      root.children
+                      |> Tuple.map Ast.Child.expect_ast
+                      |> Tuple.mapi
+                           (fun
+                             member (ast : Ast.t) : Types.value_tuple_field ->
                              {
-                               ty = Ty.inferred ~span:ast.span T_Ast;
-                               label =
-                                 (match member with
-                                 | Index _ -> None
-                                 | Name name ->
-                                     Some (Label.create_reference ast.span name));
-                             };
-                           span =
-                             ast.span
-                             (* TODO not sure if this is correct span, but there is no span? *);
-                         })
-                in
-                let arg : value =
-                  V_Tuple
-                    {
-                      ty =
+                               place =
+                                 Place.init ~mut:Immutable
+                                   (V_Ast ast |> Value.inferred ~span:ast.span);
+                               ty_field =
+                                 {
+                                   ty = Ty.inferred ~span:ast.span T_Ast;
+                                   label =
+                                     (match member with
+                                     | Index _ -> None
+                                     | Name name ->
+                                         Some
+                                           (Label.create_reference ast.span name));
+                                 };
+                               span =
+                                 ast.span
+                                 (* TODO not sure if this is correct span, but there is no span? *);
+                             })
+                    in
+                    let arg : value =
+                      V_Tuple
                         {
-                          name = OptionalName.new_not_inferred ~span;
-                          tuple =
-                            args
-                            |> Tuple.map
-                                 (fun (field : Types.value_tuple_field) ->
-                                   field.ty_field);
-                        };
-                      tuple = args;
-                    }
-                  |> Value.inferred ~span
-                in
-                let expr =
-                  E_Apply
-                    {
-                      f = E_Constant impl |> init_expr span state;
-                      arg = E_Constant arg |> init_expr span state;
-                    }
-                  |> init_expr span state
-                in
-                let result = Interpreter.eval state.interpreter expr in
-                match result.var |> Inference.Var.inferred_opt with
-                | Some (V_Ast result) -> compile state kind result
+                          ty =
+                            {
+                              name = OptionalName.new_not_inferred ~span;
+                              tuple =
+                                args
+                                |> Tuple.map
+                                     (fun (field : Types.value_tuple_field) ->
+                                       field.ty_field);
+                            };
+                          tuple = args;
+                        }
+                      |> Value.inferred ~span
+                    in
+                    let expr =
+                      E_Apply
+                        {
+                          f = E_Constant impl |> init_expr span state;
+                          arg = E_Constant arg |> init_expr span state;
+                        }
+                      |> init_expr span state
+                    in
+                    let result = Interpreter.eval state.interpreter expr in
+                    match result.var |> Inference.Var.inferred_opt with
+                    | Some (V_Ast result) -> compile state kind result
+                    | _ ->
+                        Error.error span "macro expanded not to ast???";
+                        init_error span state kind)
+                | None ->
+                    Error.error span "Must impl rule before using it: %S"
+                      rule.name;
+                    init_error span state kind))
+        | Ast.Syntax { mode; value_after; comments_before = _; tokens = _ } -> (
+            match value_after with
+            | Some value -> compile state kind value
+            | None -> (
+                match kind with
+                | Expr ->
+                    E_Constant (V_Unit |> Value.inferred ~span)
+                    |> init_expr span state
                 | _ ->
-                    Error.error span "macro expanded not to ast???";
-                    init_error span state kind)
-            | None ->
-                Error.error span "Must impl rule before using it: %S" rule.name;
-                init_error span state kind))
-    | Ast.Syntax { mode; value_after; comments_before = _; tokens = _ } -> (
-        match value_after with
-        | Some value -> compile state kind value
-        | None -> (
-            match kind with
-            | Expr ->
-                E_Constant (V_Unit |> Value.inferred ~span)
-                |> init_expr span state
-            | _ ->
-                Error.error span "expected a value after syntax";
-                init_error span state kind))
-  with
-  | Cancel -> raise Cancel
-  | exc ->
-      Log.trace (fun log -> log "Exception: %S" (Printexc.to_string exc));
-      Log.error (fun log ->
-          log "While compiling %a %a at %a" Compiler.CompiledKind.print kind
-            Ast.Shape.print_short ast.shape Span.print ast.span);
-      raise exc
+                    Error.error span "expected a value after syntax";
+                    init_error span state kind))
+      with
+      | Cancel -> raise Cancel
+      | exc ->
+          Log.trace (fun log -> log "Exception: %S" (Printexc.to_string exc));
+          Log.error (fun log ->
+              log "While compiling %a %a at %a" Compiler.CompiledKind.print kind
+                Ast.Shape.print_short ast.shape Span.print ast.span);
+          raise exc)
 
 and make_compiler (original_state : state) : (module Compiler.S) =
   (module struct
