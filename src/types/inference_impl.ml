@@ -130,6 +130,7 @@ module Impl = struct
       let bindings_ab = unite_pattern ~span arg_a arg_b in
       let sub_ty = Option.get !sub_ty in
 
+      let sub_scope_id = Id.gen () in
       let sub_with (bindings : (binding * binding) list) ty =
         let state : Types.interpreter_state =
           let locals : Types.interpreter_locals =
@@ -158,7 +159,7 @@ module Impl = struct
           {
             scope =
               {
-                id = Id.gen ();
+                id = sub_scope_id;
                 parent = None;
                 recursive = false;
                 locals;
@@ -180,6 +181,7 @@ module Impl = struct
 
       let bindings_ba = bindings_ab |> List.map (fun (a, b) -> (b, a)) in
 
+      (* println "unite_generic_ty at %a" Span.print span; *)
       let _ : ty = unite_ty ~span (result_a |> sub_with bindings_ab) result_b in
       let _ : ty = unite_ty ~span (result_b |> sub_with bindings_ba) result_a in
 
