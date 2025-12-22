@@ -7,6 +7,8 @@ type options = {
   spans : bool;
 }
 
+module RecurseCache = RecurseCache.Make (Id)
+
 module Impl = struct
   let is_recursive = RecurseCache.create ()
 

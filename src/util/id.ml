@@ -23,6 +23,13 @@ module Id = struct
   include T
   module Map = Map.Make (T)
   module Set = Set.Make (T)
+
+  module Pair = struct
+    type t = T.t * T.t
+
+    let equal = ( = )
+    let hash = Hashtbl.hash
+  end
 end
 
 type id = Id.t

@@ -4,6 +4,8 @@ module Error = Error
 
 type 'a unite = span:span -> 'a -> 'a -> 'a
 
+module CompareRecurseCache = RecurseCache.Make (Id.Pair)
+
 module Var = struct
   type 'a var = { mutable state : 'a var_state }
 
@@ -283,9 +285,14 @@ module Var = struct
     let b = find_root b in
     if a.recurse_id = b.recurse_id then true
     else
-      match (a.inferred, b.inferred) with
-      | Some a, Some b -> equal_inferred a b
-      | Some _, None | None, Some _ | None, None -> false
+      let cache = CompareRecurseCache.get () in
+      let ids = (a.recurse_id, b.recurse_id) in
+      if cache |> CompareRecurseCache.is_visited ids then true
+      else (
+        cache |> CompareRecurseCache.enter ids;
+        match (a.inferred, b.inferred) with
+        | Some a, Some b -> equal_inferred a b
+        | Some _, None | None, Some _ | None, None -> false)
 
   let recurse_id var =
     let data = find_root var in

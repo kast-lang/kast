@@ -1159,11 +1159,16 @@ end = struct
         [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
-  and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
+  and instantiated_generics = {
+    mutable map : value ValueMap.t Id.Map.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+  }
 
   and cast_impls = {
     mutable map : value ValueMap.t ValueMap.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     mutable as_module : value ValueMap.t;
+        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
   and interpreter_state = {
@@ -1231,13 +1236,78 @@ end = struct
   and compiled = Compiled : 'a. 'a compiled_kind * 'a -> compiled
 end
 
-and ValueImpl : (Map.OrderedType with type t = TypesImpl.value) = struct
+and ValueImpl : sig
   type t = TypesImpl.value
 
-  let compare = TypesImpl.compare_value
+  val equal : t -> t -> bool
+  val compare : t -> t -> int
+end = struct
+  type t = TypesImpl.value
+
+  module RecurseCache = Inference.CompareRecurseCache
+
+  let equal a b =
+    RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
+        TypesImpl.equal_value a b)
+
+  let compare a b =
+    RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
+        TypesImpl.compare_value a b)
 end
 
-and ValueMap : (Map.S with type key = TypesImpl.value) = Map.Make (ValueImpl)
+and ValueMap : sig
+  type 'a t
+  type key = ValueImpl.t
+
+  val empty : 'a t
+  val add : key -> 'a -> 'a t -> 'a t
+  val find_opt : key -> 'a t -> 'a option
+  val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+  val iter : (key -> 'a -> unit) -> 'a t -> unit
+  val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+end = struct
+  type key = ValueImpl.t
+  type 'a t = { entries : (key * 'a) list }
+
+  let empty = { entries = [] }
+  let add key value map = { entries = (key, value) :: map.entries }
+
+  let find_opt key map =
+    map.entries
+    |> List.find_map (fun (map_key, value) ->
+        if ValueImpl.equal key map_key then Some value else None)
+
+  let update (key : key) (f : 'a option -> 'a option) (map : 'a t) : 'a t =
+    let existed = ref false in
+    let updated_if_existed =
+      map.entries
+      |> List.filter_map (fun (map_key, current_value) ->
+          (if ValueImpl.equal key map_key then (
+             existed := true;
+             f (Some current_value))
+           else Some current_value)
+          |> Option.map (fun new_value -> (map_key, new_value)))
+    in
+    if !existed then { entries = updated_if_existed }
+    else
+      match f None with
+      | None -> map
+      | Some value -> { entries = (key, value) :: map.entries }
+
+  let iter f map = map.entries |> List.iter (fun (key, value) -> f key value)
+
+  let union f a b =
+    let result = ref a in
+    b
+    |> iter (fun key value ->
+        result :=
+          !result
+          |> update key (fun current_value ->
+              match current_value with
+              | None -> Some value
+              | Some current_value -> f key value current_value));
+    !result
+end
 
 let target_symbol : symbol = Symbol.create "target"
 

@@ -1,41 +1,45 @@
 open Id
 
 module RecurseCache = struct
-  type recurse_cache = {
-    visit_count : (id, int) Hashtbl.t;
-    depth : (id, int) Hashtbl.t;
-  }
+  module Make (Key : Hashtbl.HashedType) = struct
+    module Hashtbl = Hashtbl.Make (Key)
 
-  type t = recurse_cache
-  type _ Effect.t += Get : unit -> recurse_cache Effect.t
+    type recurse_cache = {
+      visit_count : int Hashtbl.t;
+      depth : int Hashtbl.t;
+    }
 
-  let get () = Effect.perform (Get ())
+    type t = recurse_cache
+    type _ Effect.t += Get : unit -> recurse_cache Effect.t
 
-  let with_cache (cache : recurse_cache) f =
-    try f () with effect Get (), k -> Effect.Deep.continue k cache
+    let get () = Effect.perform (Get ())
 
-  let create () = { visit_count = Hashtbl.create 0; depth = Hashtbl.create 0 }
+    let with_cache (cache : recurse_cache) f =
+      try f () with effect Get (), k -> Effect.Deep.continue k cache
 
-  let visit_count (id : id) cache : int =
-    Hashtbl.find_opt cache.visit_count id |> Option.value ~default:0
+    let create () = { visit_count = Hashtbl.create 0; depth = Hashtbl.create 0 }
 
-  let is_visited (id : id) cache : bool =
-    Hashtbl.find_opt cache.visit_count id |> Option.is_some
+    let visit_count id cache : int =
+      Hashtbl.find_opt cache.visit_count id |> Option.value ~default:0
 
-  let depth (id : id) cache : int =
-    Hashtbl.find_opt cache.depth id |> Option.value ~default:0
+    let is_visited id cache : bool =
+      Hashtbl.find_opt cache.visit_count id |> Option.is_some
 
-  let enter (id : id) cache : unit =
-    let visit_count = cache |> visit_count id in
-    Hashtbl.add cache.visit_count id (visit_count + 1);
-    let current_depth = cache |> depth id in
-    Hashtbl.add cache.depth id (current_depth + 1)
+    let depth id cache : int =
+      Hashtbl.find_opt cache.depth id |> Option.value ~default:0
 
-  let exit (id : id) cache =
-    let current_depth = cache |> depth id in
-    Hashtbl.add cache.depth id (current_depth - 1)
+    let enter id cache : unit =
+      let visit_count = cache |> visit_count id in
+      Hashtbl.add cache.visit_count id (visit_count + 1);
+      let current_depth = cache |> depth id in
+      Hashtbl.add cache.depth id (current_depth + 1)
 
-  let clear { visit_count; depth } =
-    Hashtbl.clear visit_count;
-    Hashtbl.clear depth
+    let exit id cache =
+      let current_depth = cache |> depth id in
+      Hashtbl.add cache.depth id (current_depth - 1)
+
+    let clear { visit_count; depth } =
+      Hashtbl.clear visit_count;
+      Hashtbl.clear depth
+  end
 end
