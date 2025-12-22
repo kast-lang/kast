@@ -212,6 +212,10 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
             return (V_Error |> Value.inferred ~span))
       in
       Log.trace (fun log -> log "Fn for call at %a is compiled" Span.print span);
+      Log.trace (fun log ->
+          log "fn arg (%a) = %a"
+            (Pattern.print ~options:{ spans = false; types = false })
+            def.arg Value.print arg);
       let ~matched:arg_matched, arg_bindings =
         pattern_match ~span (Place.init ~mut:Inherit arg) def.arg
       in
@@ -261,6 +265,10 @@ and instantiate ?(result_ty : ty option) (span : span) (state : state)
     | Some result_ty -> Value.new_not_inferred_of_ty ~span result_ty
     | None -> Value.new_not_inferred ~span
   in
+  Log.trace (fun log ->
+      log "%t with arg=%a, result_ty = %a"
+        (Span.print_osc8 span String.print "instantiating")
+        Value.print arg Ty.print result.ty);
   fork (fun () ->
       Log.trace (fun log ->
           log "Waiting for instantiation name at %a" Span.print span);

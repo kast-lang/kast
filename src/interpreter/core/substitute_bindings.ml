@@ -411,6 +411,8 @@ let sub_ty ~span ~state ty =
   let result = with_cache ~span Impl.sub_ty ~state ty in
   result
 
+let () = Kast_types.Inference_impl.sub_ty := Some sub_ty
+
 type mode =
   | None
   | TyOnly

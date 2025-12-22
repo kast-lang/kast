@@ -7,6 +7,9 @@ module Inference = Kast_inference_base
 type ctx = { mutable normalized_bindings : binding Id.Map.t }
 type _ Effect.t += GetCtx : ctx Effect.t
 
+let sub_ty : (span:span -> state:interpreter_state -> ty -> ty) option ref =
+  ref None
+
 let with_ctx f =
   let ctx = { normalized_bindings = Id.Map.empty } in
   try f () with effect GetCtx, k -> Effect.continue k ctx
@@ -124,62 +127,116 @@ module Impl = struct
    fun ~span { arg = arg_a; result = result_a }
        { arg = arg_b; result = result_b } ->
     let result : ty_generic =
-      let arg =
-        unite_pattern ~span arg_a arg_b;
-        arg_a
+      let bindings_ab = unite_pattern ~span arg_a arg_b in
+      let sub_ty = Option.get !sub_ty in
+
+      let sub_with (bindings : (binding * binding) list) ty =
+        let state : Types.interpreter_state =
+          let locals : Types.interpreter_locals =
+            {
+              by_symbol =
+                bindings
+                |> List.map (fun (a, b) : (symbol * interpreter_local) ->
+                    let binding =
+                      V_Blocked { shape = BV_Binding b; ty = b.ty }
+                      |> inferred_value ~span
+                    in
+
+                    let binding = init_place ~mut:Inherit binding in
+
+                    let binding : Types.interpreter_local =
+                      {
+                        place = binding;
+                        ty_field = { ty = binding.ty; label = None };
+                      }
+                    in
+                    (a.name, binding))
+                |> SymbolMap.of_list;
+            }
+          in
+
+          {
+            scope =
+              {
+                id = Id.gen ();
+                parent = None;
+                recursive = false;
+                locals;
+                closed = false;
+                on_update = [];
+              };
+            (* TODO only scope is needed, change Substitute_bindings *)
+            natives = { by_name = StringMap.empty };
+            current_fn_natives = Hashtbl.create 0;
+            contexts = Id.Map.empty;
+            instantiated_generics = { map = Id.Map.empty };
+            cast_impls =
+              { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
+            current_name = Simple (Str "<unused>");
+          }
+        in
+        sub_ty ~span ~state ty
       in
-      let result = unite_ty ~span result_a result_b in
-      { arg; result }
+
+      let bindings_ba = bindings_ab |> List.map (fun (a, b) -> (b, a)) in
+
+      let _ : ty = unite_ty ~span (result_a |> sub_with bindings_ab) result_b in
+      let _ : ty = unite_ty ~span (result_b |> sub_with bindings_ba) result_a in
+
+      { arg = arg_a; result = result_a }
     in
     result
 
-  and unite_pattern : span:span -> pattern -> pattern -> unit =
+  and unite_pattern :
+      span:span -> pattern -> pattern -> (binding * binding) list =
    fun ~span a b ->
     let fail () =
       let print_pattern =
         print_pattern ~options:{ spans = false; types = false }
       in
       error span "patterns can't be united: %a and %a" print_pattern a
-        print_pattern b
+        print_pattern b;
+      []
     in
     let _ : ty = unite_ty ~span a.data.ty b.data.ty in
     match (a.shape, b.shape) with
-    | P_Placeholder, P_Placeholder -> ()
+    | P_Placeholder, P_Placeholder -> []
     | P_Placeholder, _ -> fail ()
-    | P_Unit, P_Unit -> ()
+    | P_Unit, P_Unit -> []
     | P_Unit, _ -> fail ()
     | P_Ref a, P_Ref b -> unite_pattern ~span a b
     | P_Ref _, _ -> fail ()
     | ( P_Binding { by_ref = by_ref_a; binding = a },
         P_Binding { by_ref = by_ref_b; binding = b } )
       when Bool.equal by_ref_a by_ref_b ->
-        let ctx = Effect.perform GetCtx in
-        let binding = a in
-        ctx.normalized_bindings <-
-          ctx.normalized_bindings |> Id.Map.add a.id binding
-          |> Id.Map.add b.id binding
-    | P_Binding _, _ -> ()
+        [ (a, b) ]
+    | P_Binding _, _ -> fail ()
     | P_Tuple { parts = parts_a }, P_Tuple { parts = parts_b } ->
         let rec check_parts (a : pattern tuple_part_of list)
-            (b : pattern tuple_part_of list) =
+            (b : pattern tuple_part_of list) : (binding * binding) list =
           match (a, b) with
-          | [], [] -> ()
+          | [], [] -> []
           | head_a :: tail_a, head_b :: tail_b ->
-              (match (head_a, head_b) with
-              | Unpack a, Unpack b -> unite_pattern ~span a b
-              | Unpack _, _ -> fail ()
-              | ( Field { label = label_a; label_span = _; field = field_a },
-                  Field { label = label_b; label_span = _; field = field_b } )
-                ->
-                  (match (label_a, label_b) with
-                  | None, None -> ()
-                  | Some a, Some b ->
-                      let _ : Label.t = Label.unite a b in
-                      ()
-                  | Some _, None | None, Some _ -> fail ());
-                  unite_pattern ~span field_a field_b
-              | Field _, _ -> ());
-              check_parts tail_a tail_b
+              let head_bindings =
+                match (head_a, head_b) with
+                | Unpack a, Unpack b -> unite_pattern ~span a b
+                | Unpack _, _ -> fail ()
+                | ( Field { label = label_a; label_span = _; field = field_a },
+                    Field { label = label_b; label_span = _; field = field_b } )
+                  ->
+                    (match (label_a, label_b) with
+                    | None, None -> ()
+                    | Some a, Some b ->
+                        let _ : Label.t = Label.unite a b in
+                        ()
+                    | Some _, None | None, Some _ ->
+                        let _ : _ list = fail () in
+                        ());
+                    unite_pattern ~span field_a field_b
+                | Field _, _ -> fail ()
+              in
+              let tail_bindings = check_parts tail_a tail_b in
+              head_bindings @ tail_bindings
           | [], _ | _, [] -> fail ()
         in
         check_parts parts_a parts_b
@@ -188,11 +245,11 @@ module Impl = struct
         P_Variant { label = label_b; label_span = _; value = value_b } ) -> (
         let _ : Label.t = Label.unite label_a label_b in
         match (value_a, value_b) with
-        | None, None -> ()
+        | None, None -> []
         | Some a, Some b -> unite_pattern ~span a b
         | Some _, None | None, Some _ -> fail ())
     | P_Variant _, _ -> fail ()
-    | P_Error, P_Error -> ()
+    | P_Error, P_Error -> []
     | P_Error, _ -> fail ()
 
   and unite_ty_ref : ty_ref Inference.unite =
