@@ -311,18 +311,18 @@ module Var = struct
     let create () = { id = Id.gen (); by_recurse_id = Id.Map.empty }
 
     let add var value map =
-      let current_id = recurse_id var in
-      map.by_recurse_id <- map.by_recurse_id |> Id.Map.add current_id value;
-      Log.trace (fun log ->
-          log "varmap.add %a to map %a" Id.print current_id Id.print map.id);
-      let rec check_unite data =
+      let rec check_unite current_id data =
         let new_id = data.recurse_id in
+        map.by_recurse_id <- map.by_recurse_id |> Id.Map.remove current_id;
+        Log.trace (fun log ->
+            log "Adding id %a, map size = %a" Id.print new_id Int.print
+              (Id.Map.cardinal map.by_recurse_id));
         map.by_recurse_id <- map.by_recurse_id |> Id.Map.add new_id value;
         Log.trace (fun log ->
             log "varmap.add %a to map %a" Id.print new_id Id.print map.id);
-        data.on_unite <- check_unite :: data.on_unite
+        data.on_unite <- check_unite new_id :: data.on_unite
       in
-      check_unite (find_root var)
+      check_unite (recurse_id var) (find_root var)
 
     let find_opt var map =
       Log.trace (fun log ->
