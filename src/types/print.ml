@@ -405,10 +405,10 @@ module Impl = struct
       options:options -> formatter -> place_expr_shape -> unit =
    fun ~options fmt -> function
     | PE_Deref ref ->
-        fprintf fmt "@{<magenta>deref@} (@;<0 2>@[<v>ref = %a,@ )"
+        fprintf fmt "@{<magenta>deref@} (@;<0 2>@[<v>ref = %a,@]@ )"
           (print_expr ~options) ref
     | PE_Temp expr ->
-        fprintf fmt "@{<magenta>temp@} (@;<0 2>@[<v>expr = %a,@ )"
+        fprintf fmt "@{<magenta>temp@} (@;<0 2>@[<v>expr = %a,@]@ )"
           (print_expr ~options) expr
     | PE_Binding binding ->
         fprintf fmt "@{<magenta>binding@} %a" print_binding binding
