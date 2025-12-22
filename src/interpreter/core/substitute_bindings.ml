@@ -63,7 +63,8 @@ module Impl = struct
 
   and sub_value_shape ~(state : interpreter_state) (original_value : value)
       (shape : value_shape) : value =
-    let span = Span.fake "<sub_value_shape>" in
+    let ctx = Effect.perform GetCtx in
+    let span = ctx.span in
     Log.trace (fun log ->
         log "subbing value shape = %a" Value.Shape.print shape);
     let shaped shape = Value.inferred ~span shape in
@@ -353,9 +354,9 @@ module Impl = struct
       'value =
    fun ~unite_shape ~sub_shape ~new_not_inferred ~get_var ~state
        original_value ->
-    let span = Span.fake "<sub_var>" in
-    let var = get_var original_value in
     let ctx = Effect.perform GetCtx in
+    let span = ctx.span in
+    let var = get_var original_value in
     let scope_id = state.scope.id in
     if var |> Inference.Var.was_subbed_in scope_id then original_value
     else if ctx.depth > 32 then fail "Went too deep" ~span
