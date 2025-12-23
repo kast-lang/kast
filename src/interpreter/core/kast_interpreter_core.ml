@@ -225,8 +225,8 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
         {
           state with
           scope =
-            Scope.with_values ~recursive:false ~parent:(Some fn.captured)
-              arg_bindings;
+            Scope.with_values ~span:def.body.data.span ~recursive:false
+              ~parent:(Some fn.captured) arg_bindings;
           current_fn_natives = fn.calculated_natives;
         }
       in
@@ -738,7 +738,7 @@ and eval_expr_stmt : state -> expr -> Types.expr_stmt -> value =
 and eval_expr_scope : state -> expr -> Types.expr_scope -> value =
  fun state expr { expr } ->
   let span = expr.data.span in
-  let state = state |> enter_scope ~recursive:false in
+  let state = state |> enter_scope ~span:expr.data.span ~recursive:false in
   eval state expr
 
 and eval_expr_assign : state -> expr -> Types.expr_assign -> value =
@@ -789,7 +789,9 @@ and eval_expr_native : state -> expr -> Types.expr_native -> value =
 and eval_expr_module : state -> expr -> Types.expr_module -> value =
  fun state expr { def } ->
   let span = expr.data.span in
-  let module_scope = Scope.init ~recursive:true ~parent:(Some state.scope) in
+  let module_scope =
+    Scope.init ~span:def.data.span ~recursive:true ~parent:(Some state.scope)
+  in
   let new_state = { state with scope = module_scope } in
   ignore @@ eval new_state def;
   Scope.close module_scope;
@@ -885,7 +887,10 @@ and eval_expr_match : state -> expr -> Types.expr_match -> value =
             in
             if matched then
               Some
-                (let inner_state = enter_scope ~recursive:false state in
+                (let inner_state =
+                   enter_scope ~span:branch.body.data.span ~recursive:false
+                     state
+                 in
                  inner_state.scope |> Scope.add_locals matches;
                  eval inner_state branch.body)
             else None)
@@ -899,7 +904,7 @@ and eval_expr_match : state -> expr -> Types.expr_match -> value =
 and eval_expr_loop : state -> expr -> Types.expr_loop -> value =
  fun state expr { body } ->
   let span = expr.data.span in
-  let state = state |> enter_scope ~recursive:false in
+  let state = state |> enter_scope ~span:body.data.span ~recursive:false in
   while true do
     ignore @@ eval state body
   done
@@ -914,7 +919,7 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
   let token : value =
     V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
   in
-  let inner_state = enter_scope ~recursive:false state in
+  let inner_state = enter_scope ~span:body.data.span ~recursive:false state in
   inner_state.scope
   |> Scope.add_locals
        ( pattern_match ~span:token_pattern.data.span
@@ -1157,7 +1162,7 @@ and find_target_dependent_branch :
     branches
     |> List.find_map (fun (branch : Types.expr_target_dependent_branch) ->
         let scope_with_target =
-          Scope.init ~recursive:false ~parent:(Some state.scope)
+          Scope.init ~span ~recursive:false ~parent:(Some state.scope)
         in
         scope_with_target
         |> Scope.add_local ~mut:false span Types.target_symbol
@@ -1310,12 +1315,13 @@ and eval_ty : state -> Expr.ty -> ty =
   (* let result = Substitute_bindings.sub_ty ~state result in *)
   result
 
-and enter_scope ~(recursive : bool) (state : state) : state =
+and enter_scope ~span ~(recursive : bool) (state : state) : state =
   {
     state with
     scope =
       {
         id = Id.gen ();
+        span;
         parent = Some state.scope;
         locals = Scope.Locals.empty;
         recursive;
@@ -1335,7 +1341,8 @@ and fork (f : unit -> unit) : unit =
           expr.on_compiled <- k.continue :: expr.on_compiled
       | effect Scope.AwaitUpdate (name, scope), k ->
           let k = dont_leak_please k in
-          scope.on_update <- (fun () -> k.continue true) :: scope.on_update
+          scope.on_update <-
+            (name, fun () -> k.continue true) :: scope.on_update
       | effect Inference.Var.AwaitUpdate var, k ->
           let k = dont_leak_please k in
           Inference.Var.once_inferred (fun _ -> k.continue true) var)

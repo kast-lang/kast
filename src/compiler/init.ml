@@ -311,7 +311,8 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                       {
                         state.interpreter with
                         scope =
-                          Kast_interpreter.Scope.with_values ~recursive:false
+                          Kast_interpreter.Scope.with_values
+                            ~span:arg_pattern.data.span ~recursive:false
                             ~parent:None arg_bindings;
                       }
                     in

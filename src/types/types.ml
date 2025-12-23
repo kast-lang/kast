@@ -523,11 +523,12 @@ module rec TypesImpl : sig
 
   and interpreter_scope = {
     id : Id.t;
+    span : span;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
     recursive : bool;
     mutable closed : bool;
-    mutable on_update : (unit -> unit) list;
+    mutable on_update : (symbol * (unit -> unit)) list;
         [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
@@ -1135,11 +1136,12 @@ end = struct
 
   and interpreter_scope = {
     id : Id.t;
+    span : Span.t;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
     recursive : bool;
     mutable closed : bool;
-    mutable on_update : (unit -> unit) list;
+    mutable on_update : (symbol * (unit -> unit)) list;
         [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 

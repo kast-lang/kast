@@ -13,9 +13,10 @@ end
 
 type locals = Locals.t
 
-let with_values ~recursive ~parent values : scope =
+let with_values ~span ~recursive ~parent values : scope =
   {
     id = Id.gen ();
+    span;
     locals = values;
     parent;
     recursive;
@@ -38,7 +39,12 @@ let rec find_local_opt (name : symbol) (scope : scope) :
       if scope.recursive && not scope.closed then (
         Log.trace (fun log ->
             log "awaiting scope update for %a" Symbol.print name);
-        let await_result = Effect.perform (AwaitUpdate (name, scope)) in
+        let await_result =
+          Kast_profiling.record
+            (fun () ->
+              make_string "awaiting scope update for %a" Symbol.print name)
+            (fun () -> Effect.perform (AwaitUpdate (name, scope)))
+        in
         Log.trace (fun log ->
             log "awaited scope update for %a" Symbol.print name);
         if await_result then find_local_opt name scope else find_in_parent ())
@@ -51,7 +57,12 @@ let find_opt (name : symbol) (scope : scope) : place option =
 let notify_update (scope : scope) : unit =
   let fs = scope.on_update in
   scope.on_update <- [];
-  fs |> List.iter (fun f -> f ())
+  Kast_profiling.record
+    (fun () ->
+      make_string "Interpreter.Scope.notify_update %a %a" Span.print scope.span
+        (List.print Symbol.print)
+        (fs |> List.map fst))
+    (fun () -> fs |> List.map snd |> List.iter (fun f -> f ()))
 
 (* TODO should be removed? *)
 let add_locals (new_locals : locals) (scope : scope) : unit =

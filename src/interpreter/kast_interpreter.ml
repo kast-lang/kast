@@ -7,7 +7,9 @@ module Natives = Kast_interpreter_natives
 let init : Types.name_part -> Scope.locals -> state =
  fun name_part values ->
   {
-    scope = Scope.with_values ~recursive:false ~parent:None values;
+    scope =
+      Scope.with_values ~span:(Span.fake "<init>") ~recursive:false ~parent:None
+        values;
     current_fn_natives = Hashtbl.create 0;
     natives = Natives.init_natives ();
     contexts = Id.Map.empty;

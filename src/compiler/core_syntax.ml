@@ -152,7 +152,9 @@ let scope : core_syntax =
           |> Tuple.map Ast.Child.expect_ast
           |> Tuple.unwrap_single_unnamed
         in
-        let state = C.state |> State.enter_scope ~recursive:false in
+        let state =
+          C.state |> State.enter_scope ~span:expr.span ~recursive:false
+        in
         match kind with
         | Expr ->
             let expr = C.compile ~state Expr expr in
@@ -284,7 +286,7 @@ let fn_type : core_syntax =
             init_error span C.state kind
         | TyExpr ->
             (fun () ->
-              let state = C.state |> State.enter_scope ~recursive:false in
+              let state = C.state |> State.enter_scope ~span ~recursive:false in
               let arg = C.compile ~state TyExpr arg in
               let result = C.compile ~state TyExpr result in
               TE_Fn { arg; result })
@@ -349,7 +351,9 @@ let fn : core_syntax =
               { compiled = None; on_compiled = [] }
             in
             State.Scope.fork (fun () ->
-                let state = C.state |> State.enter_scope ~recursive:false in
+                let state =
+                  C.state |> State.enter_scope ~span ~recursive:false
+                in
                 let arg = C.compile ~state Pattern arg in
                 ty.arg
                 |> Inference.Ty.expect_inferred_as ~span:arg.data.span
@@ -403,7 +407,7 @@ let generic : core_syntax =
             let (module C : Compiler.S) =
               Compiler.update_module
                 (module C)
-                (C.state |> State.enter_scope ~recursive:false)
+                (C.state |> State.enter_scope ~span ~recursive:false)
             in
             let arg = C.compile Pattern arg in
             C.state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
@@ -429,7 +433,9 @@ let generic : core_syntax =
                 (Ty.new_not_inferred ~span:body.span)
             in
             State.Scope.fork (fun () ->
-                let state = C.state |> State.enter_scope ~recursive:false in
+                let state =
+                  C.state |> State.enter_scope ~span ~recursive:false
+                in
                 state
                 |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                 let body = C.compile ~state Expr body in
@@ -893,10 +899,15 @@ let module' : core_syntax =
         let def =
           children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
-        let state = C.state |> State.enter_scope ~recursive:true in
+        let state = C.state |> State.enter_scope ~span ~recursive:true in
         let def = C.compile ~state Expr def in
-        state.scope |> State.Scope.close;
-        state.interpreter.scope |> Interpreter.Scope.close;
+        Kast_profiling.record
+          (fun () -> "closing module compiler scope")
+          (fun () -> state.scope |> State.Scope.close);
+
+        Kast_profiling.record
+          (fun () -> "closing module interpreter scope")
+          (fun () -> state.interpreter.scope |> Interpreter.Scope.close);
         match kind with
         | Expr -> E_Module { def } |> init_expr span state
         | PlaceExpr ->
@@ -1441,7 +1452,9 @@ let impl_syntax : core_syntax =
                     { compiled = None; on_compiled = [] }
                   in
                   State.Scope.fork (fun () ->
-                      let state = State.enter_scope C.state ~recursive:false in
+                      let state =
+                        State.enter_scope C.state ~span ~recursive:false
+                      in
                       let arg =
                         P_Tuple
                           {
@@ -1621,7 +1634,7 @@ let loop : core_syntax =
               {
                 body =
                   C.compile
-                    ~state:(State.enter_scope C.state ~recursive:false)
+                    ~state:(State.enter_scope ~span C.state ~recursive:false)
                     Expr body;
               }
             |> init_expr span C.state
@@ -1652,7 +1665,7 @@ let unwindable : core_syntax =
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
             let token = C.compile Pattern token in
-            let state = State.enter_scope C.state ~recursive:false in
+            let state = State.enter_scope ~span C.state ~recursive:false in
             state |> Compiler.inject_pattern_bindings ~only_compiler:false token;
             let body = C.compile ~state Expr body in
             E_Unwindable { token; body } |> init_expr span C.state
@@ -1748,7 +1761,9 @@ let target_dependent : core_syntax =
                        cond = C.compile ~state:state_with_target Expr cond;
                        body =
                          C.compile
-                           ~state:(C.state |> State.enter_scope ~recursive:false)
+                           ~state:
+                             (C.state
+                             |> State.enter_scope ~span ~recursive:false)
                            Expr body;
                      }
                       : Types.expr_target_dependent_branch)
@@ -1807,7 +1822,8 @@ let match_ : core_syntax =
                         |> Ast.Child.expect_ast
                       in
                       let branch_state =
-                        C.state |> State.enter_scope ~recursive:false
+                        C.state
+                        |> State.enter_scope ~span:body.span ~recursive:false
                       in
                       Compiler.inject_pattern_bindings ~only_compiler:false
                         pattern branch_state;

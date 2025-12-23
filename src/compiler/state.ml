@@ -150,8 +150,8 @@ let blank name_part ~import_cache =
     by_ref = false;
   }
 
-let enter_scope : recursive:bool -> state -> state =
- fun ~recursive
+let enter_scope : span:span -> recursive:bool -> state -> state =
+ fun ~span ~recursive
      {
        scope;
        currently_compiled_file;
@@ -163,7 +163,7 @@ let enter_scope : recursive:bool -> state -> state =
      } ->
   {
     scope = Scope.enter ~recursive ~parent:scope;
-    interpreter = Interpreter.enter_scope ~recursive interpreter;
+    interpreter = Interpreter.enter_scope ~span ~recursive interpreter;
     currently_compiled_file;
     import_cache;
     custom_syntax_impls;

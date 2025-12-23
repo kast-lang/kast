@@ -160,6 +160,7 @@ module Impl = struct
             scope =
               {
                 id = sub_scope_id;
+                span;
                 parent = None;
                 recursive = false;
                 locals;
