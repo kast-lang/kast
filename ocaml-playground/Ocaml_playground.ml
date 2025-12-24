@@ -1,49 +1,23 @@
-module Id = struct
-  type t = { raw : int }
-
-  let next_id = ref 0
-
-  let gen () =
-    next_id := !next_id + 1;
-    { raw = !next_id }
-
-  let compare a b = Int.compare a.raw b.raw
+module ModuleTypes = struct
+  module type A = sig end
+  module type B = sig end
 end
 
-module Value = struct
-  type t = {
-    id : Id.t;
-    mutable inferred : int option;
-  }
+module NonRec = struct
+  module A = struct
+    module type S = ModuleTypes.A
 
-  let compare a b =
-    if a.id = b.id then 0
-    else
-      match (a.inferred, b.inferred) with
-      | Some a, Some b -> Int.compare a b
-      | _, _ -> Id.compare a.id b.id
+    module Make (B : ModuleTypes.B) : S = struct
+      type t = unit
+    end
+  end
+
+  module B = struct
+    module type S = sig end
+
+    module Make (A : ModuleTypes.A) : S = struct end
+  end
 end
 
-module ValueMap = struct
-  type 'a t = { entries : (Value.t * 'a) list }
-
-  let empty = { entries = [] }
-  let add key value map = { entries = (key, value) :: map.entries }
-
-  let find key map =
-    map.entries
-    |> List.find_map (fun (existing_key, value) ->
-        if Value.compare key existing_key = 0 then Some value else None)
-end
-
-let main () =
-  let a : Value.t = { id = Id.gen (); inferred = None } in
-  let b : Value.t = { id = Id.gen (); inferred = None } in
-  let map = ValueMap.empty |> ValueMap.add a 0 |> ValueMap.add b 1 in
-  map |> ValueMap.find b |> ignore;
-  a.inferred <- Some 2;
-  map |> ValueMap.find b |> ignore;
-  b.inferred <- Some 1;
-  map |> ValueMap.find b |> ignore
-
-let () = main ()
+module rec A : NonRec.A.S = NonRec.A.Make (B)
+and B : NonRec.B.S = NonRec.B.Make (A)

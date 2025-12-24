@@ -1,27 +1,9 @@
-const Int32 = @native "int32";
-const String = @native "string";
-const print = (s :: String) -> () => (@native "io.print") s;
-const panic = [T] (s :: String) -> T => (@native "panic") s;
+module:
 
-const List = (
-    module:
+_;
+const Foo = [T] _;
 
-    const t = [T] type (
-        | :Nil
-        | :Cons t[T]
-    );
-);
+Foo[Int32];
 
-const Foo = type (
-    .bar :: List.t[Int32],
-);
-
-impl Foo as module = (
-    module:
-    let new = () -> Foo => (
-        print "here";
-        panic "never"
-    );
-);
-
-let p = Foo.new ();
+const A = type ( .a :: A );
+(@native "dbg.print") A;
