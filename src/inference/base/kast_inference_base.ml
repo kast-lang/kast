@@ -305,19 +305,19 @@ module Var = struct
   module Map = struct
     type 'a t = {
       id : Id.t;
-      mutable by_recurse_id : 'a Id.Map.t;
+      mutable by_recurse_id : (Id.t, 'a) Hashtbl.t;
     }
 
-    let create () = { id = Id.gen (); by_recurse_id = Id.Map.empty }
+    let create () = { id = Id.gen (); by_recurse_id = Hashtbl.create 0 }
 
     let add var value map =
       let rec check_unite current_id data =
         let new_id = data.recurse_id in
-        map.by_recurse_id <- map.by_recurse_id |> Id.Map.remove current_id;
+        Hashtbl.remove map.by_recurse_id current_id;
         Log.trace (fun log ->
             log "Adding id %a, map size = %a" Id.print new_id Int.print
-              (Id.Map.cardinal map.by_recurse_id));
-        map.by_recurse_id <- map.by_recurse_id |> Id.Map.add new_id value;
+              (Hashtbl.length map.by_recurse_id));
+        Hashtbl.add map.by_recurse_id new_id value;
         Log.trace (fun log ->
             log "varmap.add %a to map %a" Id.print new_id Id.print map.id);
         data.on_unite <- check_unite new_id :: data.on_unite
@@ -328,7 +328,7 @@ module Var = struct
       Log.trace (fun log ->
           log "varmap.find_opt %a in map %a" Id.print (recurse_id var) Id.print
             map.id);
-      map.by_recurse_id |> Id.Map.find_opt (recurse_id var)
+      Hashtbl.find_opt map.by_recurse_id (recurse_id var)
   end
 end
 
