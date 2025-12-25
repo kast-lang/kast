@@ -1,5 +1,5 @@
 (library
  (name kast_types)
- (libraries kast_types_impl)
+ (libraries std kast_util kast_inference_base kast_ast kast_types_new_way)
  (preprocess
   (pps ppx_deriving.eq ppx_deriving.ord)))

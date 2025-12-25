@@ -1,12 +1,44 @@
-open Std
-open Kast_util
-module Inference = Kast_inference_base
+open Kast_common
 
 module type S = sig
-  type t
+  module Value : Inference.Inferrable
+
+  module T : sig
+    type t
+  end
+
+  module Shape : sig
+    type t =
+      | R_Empty
+      | R_Cons of {
+          label : Label.t;
+          value : Value.t;
+          rest : T.t;
+        }
+      | R_Error
+
+    module Scope : Inference.Scope
+
+    val scope : t -> Scope.t
+    val equal : t -> t -> bool
+    val compare : t -> t -> int
+    val unite : t Inference.unite
+    val error : unit -> t
+  end
+
+  type t = T.t
+
+  val scope : t -> Value.Scope.t
+  val equal : t -> t -> bool
+  val compare : t -> t -> int
+  val unite : t Inference.unite
+  val new_inferred : span:span -> Shape.t -> t
+  val new_not_inferred : span:span -> scope:Value.Scope.t -> t
 end
 
 module Make (Value : Inference.Inferrable) : S = struct
+  module Value = Value
+
   module rec Shape : sig
     type t =
       | R_Empty
