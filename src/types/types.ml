@@ -527,6 +527,7 @@ module rec TypesImpl : sig
 
   and interpreter_scope = {
     id : Id.t;
+    depth : int;
     span : Span.t;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
@@ -573,6 +574,7 @@ module rec TypesImpl : sig
   (* OTHER *)
   and binding = {
     id : Id.t;
+    scope : var_scope;
     name : Symbol.t;
     span : Span.t;
     ty : ty;
@@ -1144,6 +1146,7 @@ end = struct
 
   and interpreter_scope = {
     id : Id.t;
+    depth : int;
     span : Span.t;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
@@ -1195,6 +1198,7 @@ end = struct
   (* OTHER *)
   and binding = {
     id : Id.t;
+    scope : var_scope;
     name : Symbol.t;
     span : Span.t;
     ty : ty;

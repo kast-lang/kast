@@ -1216,7 +1216,7 @@ and current_name : state -> Types.name_shape =
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
   let span = expr.data.span in
-  let result = Ty.new_not_inferred ~scope:(Some state.scope) ~span in 
+  let result = Ty.new_not_inferred ~scope:(Some state.scope) ~span in
   fork (fun () ->
       try
         Log.trace (fun log -> log "started eval ty expr at %a" Span.print span);
@@ -1337,6 +1337,7 @@ and enter_scope ~span ~(recursive : bool) (state : state) : state =
     scope =
       {
         id = Id.gen ();
+        depth = state.scope.depth + 1;
         span;
         parent = Some state.scope;
         locals = Scope.Locals.empty;

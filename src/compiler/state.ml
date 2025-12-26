@@ -80,6 +80,7 @@ module Scope = struct
         error from "Could not find %S in scope" ident;
         {
           id = Id.gen ();
+          scope = from_scope;
           name = Symbol.create ident;
           span = from;
           ty = Ty.new_not_inferred ~scope:from_scope ~span:from;

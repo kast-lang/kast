@@ -9,8 +9,16 @@ module VarScopeImpl = struct
 
   let root () = None
 
-  (* TODO LCA *)
-  let unite (a : t) (b : t) : t = failwith __LOC__
+  let rec unite (a : t) (b : t) : t =
+    (* TODO more effecient algorithm? *)
+    match (a, b) with
+    | None, None | None, Some _ | Some _, None -> None
+    | Some a, Some b ->
+        let diff = Int.compare a.depth b.depth in
+        if diff < 0 then unite (Some a) b.parent
+        else if diff > 0 then unite a.parent (Some b)
+        else if Id.equal a.id b.id then Some a
+        else None
 
   let equal =
     Option.equal (fun (a : interpreter_scope) (b : interpreter_scope) ->
@@ -20,15 +28,23 @@ module VarScopeImpl = struct
     Option.compare (fun (a : interpreter_scope) (b : interpreter_scope) ->
         Id.compare a.id b.id)
 
-  let contains (child : t) (ansestor : t) : bool = failwith __LOC__
+  let rec contains (child : t) (ansestor : t) : bool =
+    (* TODO more effecient? *)
+    match (child, ansestor) with
+    | _, None -> true
+    | None, Some _ -> false
+    | Some child, Some ansestor ->
+        let diff = Int.compare child.depth ansestor.depth in
+        if diff < 0 then false
+        else if diff > 0 then contains child.parent (Some ansestor)
+        else if Id.equal child.id ansestor.id then true
+        else false
 
   let deepest (a : t) (b : t) : t =
     match (a, b) with
     | None, None -> None
     | None, Some scope | Some scope, None -> Some scope
-    | Some a, Some b ->
-        (* TODO *)
-        failwith __LOC__
+    | Some a, Some b -> if a.depth > b.depth then Some a else Some b
 end
 
 module VarScope = struct
@@ -118,7 +134,7 @@ module VarScope = struct
    fun { shape; ty } -> deepest (of_blocked_value_shape shape) (of_ty ty)
 
   and of_blocked_value_shape : blocked_value_shape -> var_scope = function
-    | BV_Binding binding -> failwith __LOC__
+    | BV_Binding binding -> binding.scope
     | BV_Instantiate x -> of_blocked_value_instantiate x
     | BV_ClaimRef x -> of_blocked_value x
     | BV_FieldRef x -> of_blocked_value_field_ref x
@@ -374,6 +390,7 @@ module Impl = struct
             scope =
               {
                 id = sub_scope_id;
+                depth = 0;
                 span;
                 parent = None;
                 recursive = false;
