@@ -40,7 +40,7 @@ module Shape = struct
     [@@deriving eq, ord]
   end
 
-  module Make (Deps : Deps) : S = struct
+  module Make (Deps : Deps) : S with module Deps = Deps = struct
     module Deps = Deps
 
     type tuple = Deps.Pattern.t tuple_of [@@deriving eq, ord]
@@ -91,7 +91,7 @@ module T = struct
     [@@deriving eq, ord]
   end
 
-  module Make (Deps : Deps) : S = struct
+  module Make (Deps : Deps) : S with module Deps = Deps = struct
     module Deps = Deps
 
     type t = {

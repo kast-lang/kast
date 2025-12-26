@@ -21,7 +21,7 @@ module type S = sig
   [@@deriving eq, ord]
 end
 
-module Make (Deps : Deps) : S = struct
+module Make (Deps : Deps) : S with module Deps = Deps = struct
   module Deps = Deps
 
   type t = {

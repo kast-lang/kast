@@ -50,7 +50,7 @@ module Shape = struct
       | Error
   end
 
-  module Make (Deps : Deps) : S = struct
+  module Make (Deps : Deps) : S with module Deps = Deps = struct
     module Deps = Deps
 
     type fn = {
@@ -108,7 +108,7 @@ module T = struct
     }
   end
 
-  module Make (Deps : Deps) : S = struct
+  module Make (Deps : Deps) : S with module Deps = Deps = struct
     module Deps = Deps
 
     type t = {
