@@ -80,7 +80,7 @@ let rec pattern_match :
           ( Ty.inferred ~span
               (T_Ref
                  {
-                   mut = { var = Inference.Var.new_inferred ~span mut };
+                   mut = IsMutable.new_inferred ~span mut;
                    referenced = place.ty;
                  }),
             Value.inferred ~span (V_Ref { mut; place }) )
@@ -234,21 +234,24 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
       Log.trace (fun log ->
           log "evaled call (before sub) at %a = %a :: %a" Span.print span
             Value.print result Ty.print result.ty);
+      let sub_state : Types.sub_state =
+        { interpreter = new_state; target_scope = Some state.scope }
+      in
       let result =
         match sub_mode with
         | None -> result
-        | Full -> Substitute_bindings.sub_value ~span ~state:new_state result
+        | Full -> Substitute_bindings.sub_value ~span ~state:sub_state result
         | FnOnly -> (
             match result |> Value.expect_fn with
             | Some f ->
-                Substitute_bindings.sub_value ~span ~state:new_state result
+                Substitute_bindings.sub_value ~span ~state:sub_state result
             | None -> result)
         | TyOnly ->
             Value.inferred ~span
               (V_Ty
                  (match result |> Value.expect_ty with
                  | Some ty ->
-                     Substitute_bindings.sub_ty ~span ~state:new_state ty
+                     Substitute_bindings.sub_ty ~span ~state:sub_state ty
                  | None ->
                      Error.error span "Expected ty, got smth else";
                      Ty.inferred ~span T_Error))
@@ -260,10 +263,11 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
 
 and instantiate ?(result_ty : ty option) (span : span) (state : state)
     (generic : value) (arg : value) : value =
+  let scope : VarScope.t = Some state.scope in
   let result =
     match result_ty with
-    | Some result_ty -> Value.new_not_inferred_of_ty ~span result_ty
-    | None -> Value.new_not_inferred ~span
+    | Some result_ty -> Value.new_not_inferred_of_ty ~scope ~span result_ty
+    | None -> Value.new_not_inferred ~scope ~span
   in
   Log.trace (fun log ->
       log "%t with arg=%a, result_ty = %a"
@@ -316,7 +320,7 @@ and instantiate ?(result_ty : ty option) (span : span) (state : state)
             in
             match current_state with
             | None ->
-                let placeholder = Value.new_not_inferred ~span in
+                let placeholder = Value.new_not_inferred ~scope ~span in
                 save placeholder;
                 Log.trace (fun log ->
                     log "Instantiating generic with arg=%a at %a placeholder=%a"
@@ -487,6 +491,9 @@ and get_field ~span ~state ~(result_ty : ty) ~obj_mut obj member :
       in
       Place (~mut:(Place.is_mutable ~parent_mut:obj_mut place), place))
 
+and sub_here : state -> Types.sub_state =
+ fun state -> { interpreter = state; target_scope = Some state.scope }
+
 and eval_place : state -> Types.place_expr -> evaled_place_expr =
  fun state expr ->
   try
@@ -535,14 +542,20 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                       ty =
                         T_Ref
                           {
-                            mut = { var = Inference.Var.new_not_inferred ~span };
+                            mut =
+                              {
+                                var =
+                                  Inference.Var.new_not_inferred
+                                    ~scope:(Some state.scope) ~span;
+                              };
                             referenced = expr.data.ty;
                           }
                         |> Ty.inferred ~span;
                     }
               | Place (~mut:obj_mut, obj) ->
                   let result_ty =
-                    Substitute_bindings.sub_ty ~span ~state expr.data.ty
+                    Substitute_bindings.sub_ty ~span ~state:(sub_here state)
+                      expr.data.ty
                   in
                   get_field ~state ~result_ty ~span ~obj_mut
                     (obj |> read_place ~span)
@@ -574,7 +587,9 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
   let span = expr.data.span in
   match eval_place state place with
   | RefBlocked blocked ->
-      let ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+      let ty =
+        Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty
+      in
       V_Blocked { shape = BV_ClaimRef blocked; ty } |> Value.inferred ~span
   | Place (~mut:_, place) -> place |> claim ~span
 
@@ -593,22 +608,6 @@ and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
         };
     }
   |> Value.inferred ~span
-
-and normalized_binding_at_idx : int -> binding =
-  let span = Span.fake "<normalized binding>" in
-  let cache =
-    Array.init 100 (fun i : binding ->
-        let name = "_" ^ Int.to_string i in
-        {
-          id = Id.gen ();
-          name = Symbol.create name;
-          span;
-          label = Label.create_reference span name;
-          ty = Ty.new_not_inferred ~span;
-          mut = true;
-        })
-  in
-  fun idx -> Array.get cache idx
 
 and pattern_bindings : pattern -> binding list =
  fun pattern ->
@@ -765,7 +764,9 @@ and eval_expr_instantiategeneric :
   let span = expr.data.span in
   let generic = eval state generic in
   let arg = eval state arg in
-  let result_ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+  let result_ty =
+    Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty
+  in
   instantiate ~result_ty expr.data.span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
@@ -777,7 +778,10 @@ and eval_expr_native : state -> expr -> Types.expr_native -> value =
         let span = expr.data.span in
         match StringMap.find_opt native_expr state.natives.by_name with
         | Some f ->
-            let ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+            let ty =
+              Substitute_bindings.sub_ty ~span ~state:(sub_here state)
+                expr.data.ty
+            in
             f ty
         | None ->
             Error.error expr.data.span "no native %S" native_expr;
@@ -914,7 +918,11 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
   let span = expr.data.span in
   let id = Id.gen () in
   let token : Types.value_unwind_token =
-    { id; result_ty = Substitute_bindings.sub_ty ~span ~state body.data.ty }
+    {
+      id;
+      result_ty =
+        Substitute_bindings.sub_ty ~span ~state:(sub_here state) body.data.ty;
+    }
   in
   let token : value =
     V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
@@ -1090,7 +1098,8 @@ and eval : state -> expr -> value =
           match expr.shape with
           | E_Ref place -> eval_expr_ref state expr place
           | E_Claim place -> eval_expr_claim state expr place
-          | E_Constant value -> Substitute_bindings.sub_value ~span ~state value
+          | E_Constant value ->
+              Substitute_bindings.sub_value ~span ~state:(sub_here state) value
           | E_Fn f -> eval_expr_fn state expr f
           | E_Generic f -> eval_expr_generic state expr f
           | E_Tuple tuple -> eval_expr_tuple state expr tuple
@@ -1103,7 +1112,9 @@ and eval : state -> expr -> value =
           | E_InstantiateGeneric e -> eval_expr_instantiategeneric state expr e
           | E_Ty e -> eval_expr_ty state expr e
           | E_Newtype ty_expr ->
-              let result_ty = Ty.new_not_inferred ~span in
+              let result_ty =
+                Ty.new_not_inferred ~scope:(Some state.scope) ~span
+              in
               fork (fun () ->
                   let inner_ty = eval_ty state ty_expr in
                   let name =
@@ -1205,7 +1216,7 @@ and current_name : state -> Types.name_shape =
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
   let span = expr.data.span in
-  let result = Ty.new_not_inferred ~span in
+  let result = Ty.new_not_inferred ~scope:(Some state.scope) ~span in 
   fork (fun () ->
       try
         Log.trace (fun log -> log "started eval ty expr at %a" Span.print span);
@@ -1276,7 +1287,10 @@ and eval_ty : state -> Expr.ty -> ty =
               <| T_Variant
                    {
                      name = OptionalName.new_inferred ~span None;
-                     variants = Row.of_list ~span variants;
+                     variants =
+                       Row.of_list
+                         (module VarScope)
+                         VarScope.of_ty_variant_data ~span variants;
                    }
           | TE_Variant { variants } ->
               Ty.inferred ~span
@@ -1284,7 +1298,9 @@ and eval_ty : state -> Expr.ty -> ty =
                    {
                      name = OptionalName.new_inferred ~span None;
                      variants =
-                       Row.of_list ~span
+                       Row.of_list
+                         (module VarScope)
+                         VarScope.of_ty_variant_data ~span
                          (variants
                          |> List.map
                               (fun

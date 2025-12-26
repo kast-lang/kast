@@ -4,11 +4,219 @@ open Print
 open Types
 module Inference = Kast_inference_base
 
+module VarScopeImpl = struct
+  type t = var_scope
+
+  let root () = None
+
+  (* TODO LCA *)
+  let unite (a : t) (b : t) : t = failwith __LOC__
+
+  let equal =
+    Option.equal (fun (a : interpreter_scope) (b : interpreter_scope) ->
+        Id.equal a.id b.id)
+
+  let compare =
+    Option.compare (fun (a : interpreter_scope) (b : interpreter_scope) ->
+        Id.compare a.id b.id)
+
+  let contains (child : t) (ansestor : t) : bool = failwith __LOC__
+
+  let deepest (a : t) (b : t) : t =
+    match (a, b) with
+    | None, None -> None
+    | None, Some scope | Some scope, None -> Some scope
+    | Some a, Some b ->
+        (* TODO *)
+        failwith __LOC__
+end
+
+module VarScope = struct
+  include VarScopeImpl
+
+  let of_bool : bool -> var_scope = fun _ -> root ()
+
+  let rec _unused () = ()
+  and of_ty : ty -> var_scope = fun { var } -> Inference.Var.scope var
+
+  and of_ty_shape : ty_shape -> var_scope =
+   fun shape ->
+    match shape with
+    | T_Unit | T_Bool | T_Int32 | T_Int64 | T_Float64 | T_String | T_Char ->
+        root ()
+    | T_Ref x -> of_ty_ref x
+    | T_Variant x -> of_ty_variant x
+    | T_Tuple x -> of_ty_tuple x
+    | T_Ty -> root ()
+    | T_Fn x -> of_ty_fn x
+    | T_Generic x -> of_ty_generic x
+    | T_Ast -> root ()
+    | T_UnwindToken x -> of_ty_unwind_token x
+    | T_Target -> root ()
+    | T_ContextTy -> root ()
+    | T_CompilerScope -> root ()
+    | T_Opaque x -> of_ty_opaque x
+    | T_Blocked x -> of_blocked_value x
+    | T_Error -> root ()
+
+  and of_ty_variant_data : ty_variant_data -> var_scope =
+   fun { data } ->
+    match data with
+    | None -> root ()
+    | Some data -> of_ty data
+
+  and of_ty_unwind_token : ty_unwind_token -> var_scope =
+   fun { result } -> of_ty result
+
+  and of_ty_fn : ty_fn -> var_scope =
+   fun { arg; result } -> deepest (of_ty arg) (of_ty result)
+
+  and of_ty_generic : ty_generic -> var_scope =
+   fun { arg; result } -> deepest (of_ty arg.data.ty) (of_ty result)
+
+  and of_ty_opaque : ty_opaque -> var_scope = fun { name } -> of_name name
+
+  and of_ty_variant : ty_variant -> var_scope =
+   fun { name; variants } ->
+    deepest (of_optional_name name) (Row.scope (module VarScopeImpl) variants)
+
+  and of_ty_tuple : ty_tuple -> var_scope =
+   fun { name; tuple } ->
+    tuple |> Tuple.to_seq
+    |> Seq.fold_left
+         (fun acc (_member, field) -> deepest acc (of_ty_tuple_field field))
+         (of_optional_name name)
+
+  and of_ty_tuple_field : ty_tuple_field -> var_scope =
+   fun { ty; label = _ } -> of_ty ty
+
+  and of_ty_ref : ty_ref -> var_scope =
+   fun { mut; referenced } -> deepest (of_is_mutable mut) (of_ty referenced)
+
+  and of_is_mutable : is_mutable -> var_scope =
+   fun { var } -> Inference.Var.scope var
+
+  and of_optional_name : optional_name -> var_scope =
+   fun { var } -> Inference.Var.scope var
+
+  and of_name : name -> var_scope = fun { var } -> Inference.Var.scope var
+
+  and of_name_shape : name_shape -> var_scope = function
+    | Simple part -> of_name_part part
+    | Concat (a, b) -> deepest (of_name_shape a) (of_name_part b)
+    | Instantiation x -> of_name_instantiation x
+
+  and of_name_part : name_part -> var_scope = function
+    | Uri _ -> root ()
+    | Str _ -> root ()
+    | Symbol _ -> root ()
+
+  and of_name_instantiation : name_instantiation -> var_scope =
+   fun { generic; arg } -> deepest (of_value generic) (of_value arg)
+
+  and of_blocked_value : blocked_value -> var_scope =
+   fun { shape; ty } -> deepest (of_blocked_value_shape shape) (of_ty ty)
+
+  and of_blocked_value_shape : blocked_value_shape -> var_scope = function
+    | BV_Binding binding -> failwith __LOC__
+    | BV_Instantiate x -> of_blocked_value_instantiate x
+    | BV_ClaimRef x -> of_blocked_value x
+    | BV_FieldRef x -> of_blocked_value_field_ref x
+
+  and of_blocked_value_instantiate : blocked_value_instantiate -> var_scope =
+   fun { generic; arg } -> deepest (of_blocked_value generic) (of_value arg)
+
+  and of_blocked_value_field_ref : blocked_value_field_ref -> var_scope =
+   fun { obj_ref; member : Tuple.member = _ } -> of_blocked_value obj_ref
+
+  and of_value : value -> var_scope =
+   fun { var; ty } -> deepest (Inference.Var.scope var) (of_ty ty)
+
+  and of_value_shape : value_shape -> var_scope = function
+    | V_Unit -> root ()
+    | V_Bool (_ : bool) -> root ()
+    | V_Int32 (_ : int32) -> root ()
+    | V_Int64 (_ : int64) -> root ()
+    | V_Float64 (_ : float) -> root ()
+    | V_Char (_ : char) -> root ()
+    | V_Ref x -> of_value_ref x
+    | V_String (_ : string) -> root ()
+    | V_Tuple x -> of_value_tuple x
+    | V_Variant x -> of_value_variant x
+    | V_Ty ty -> of_ty ty
+    | V_Fn x -> of_value_fn x
+    | V_Generic x -> of_value_generic x
+    | V_NativeFn x -> of_value_native_fn x
+    | V_Ast (_ : Ast.t) -> root ()
+    | V_UnwindToken x -> of_value_unwind_token x
+    | V_Target x -> of_value_target x
+    | V_ContextTy x -> of_value_context_ty x
+    | V_CompilerScope (_ : compiler_scope) -> root ()
+    | V_Opaque x -> of_value_opaque x
+    | V_Blocked blocked -> of_blocked_value blocked
+    | V_Error -> root ()
+
+  and of_value_ref : value_ref -> var_scope =
+   fun { mut : bool = _; place } ->
+    (*  TODO check if place can be ignored *)
+    of_place place
+
+  and of_value_tuple : value_tuple -> var_scope =
+   fun { tuple; ty } ->
+    tuple |> Tuple.to_seq
+    |> Seq.fold_left
+         (fun acc (_member, field) -> deepest acc (of_value_tuple_field field))
+         (of_ty_tuple ty)
+
+  and of_value_tuple_field : value_tuple_field -> var_scope =
+   fun { place; span : Span.t = _; ty_field } ->
+    deepest (of_place place) (of_ty_tuple_field ty_field)
+
+  and of_value_variant : value_variant -> var_scope =
+   fun { label = _; data; ty } ->
+    deepest (of_option of_place data) (of_ty_variant ty)
+
+  and of_value_fn : value_fn -> var_scope =
+   fun { ty; fn : value_untyped_fn = _ } -> of_ty_fn ty
+
+  and of_value_generic : value_generic -> var_scope =
+   fun { id = _; name; fn : value_untyped_fn = _; ty } ->
+    deepest (of_name_shape name) (of_ty_generic ty)
+
+  and of_value_native_fn : value_native_fn -> var_scope =
+   fun { id = _; name : string = _; ty; impl = _ } -> of_ty_fn ty
+
+  and of_value_unwind_token : value_unwind_token -> var_scope =
+   fun { id = _; result_ty } -> of_ty result_ty
+
+  and of_value_target : value_target -> var_scope =
+   fun { name : string = _ } -> root ()
+
+  and of_value_context_ty : value_context_ty -> var_scope =
+   fun { id = _; ty } -> of_ty ty
+
+  and of_value_opaque : value_opaque -> var_scope =
+   fun { ty; value : Obj.t = _ } -> of_ty_opaque ty
+
+  and of_place : place -> var_scope =
+   fun { id = _; ty; mut : place_mut = _; state } ->
+    deepest (of_ty ty) (of_place_state state)
+
+  and of_place_state : place_state -> var_scope = function
+    | Uninitialized -> root ()
+    | MovedOut -> root ()
+    | Occupied value -> of_value value
+
+  and of_option : 'a. ('a -> var_scope) -> 'a option -> var_scope =
+   fun of_x -> function
+    | None -> root ()
+    | Some x -> of_x x
+end
+
 type ctx = { mutable normalized_bindings : binding Id.Map.t }
 type _ Effect.t += GetCtx : ctx Effect.t
 
-let sub_ty : (span:span -> state:interpreter_state -> ty -> ty) option ref =
-  ref None
+let sub_ty : (span:span -> state:sub_state -> ty -> ty) option ref = ref None
 
 let with_ctx f =
   let ctx = { normalized_bindings = Id.Map.empty } in
@@ -53,7 +261,10 @@ module Impl = struct
         T_Variant
           {
             name = unite_optional_name ~span name_a name_b;
-            variants = Row.unite ~span unite_ty_variant_data a b;
+            variants =
+              Row.unite
+                (module VarScopeImpl)
+                VarScope.of_ty_variant_data ~span unite_ty_variant_data a b;
           }
     | T_Variant _, _ -> fail ()
     | T_Ty, T_Ty -> T_Ty
@@ -124,9 +335,13 @@ module Impl = struct
     | BV_ClaimRef _, _ -> fail ()
 
   and unite_ty_generic : ty_generic Inference.unite =
-   fun ~span { arg = arg_a; result = result_a }
-       { arg = arg_b; result = result_b } ->
+   fun ~span ({ arg = arg_a; result = result_a } as a)
+       ({ arg = arg_b; result = result_b } as b) ->
     let result : ty_generic =
+      let common_scope =
+        VarScopeImpl.unite (VarScope.of_ty_generic a) (VarScope.of_ty_generic b)
+      in
+
       let bindings_ab = unite_pattern ~span arg_a arg_b in
       let sub_ty = Option.get !sub_ty in
 
@@ -155,7 +370,6 @@ module Impl = struct
                 |> SymbolMap.of_list;
             }
           in
-
           {
             scope =
               {
@@ -177,7 +391,9 @@ module Impl = struct
             current_name = Simple (Str "<unused>");
           }
         in
-        sub_ty ~span ~state ty
+        sub_ty ~span
+          ~state:{ interpreter = state; target_scope = common_scope }
+          ty
       in
 
       let bindings_ba = bindings_ab |> List.map (fun (a, b) -> (b, a)) in
@@ -265,7 +481,7 @@ module Impl = struct
 
   and unite_is_mutable : is_mutable Inference.unite =
    fun ~span { var = a } { var = b } ->
-    { var = Inference.Var.unite unite_bool ~span a b }
+    { var = Inference.Var.unite unite_bool VarScopeImpl.unite ~span a b }
 
   and unite_bool : bool Inference.unite =
    fun ~span a b ->
@@ -319,7 +535,7 @@ module Impl = struct
 
   and unite_ty : ty Inference.unite =
    fun ~span { var = a } { var = b } ->
-    { var = Inference.Var.unite ~span unite_ty_shape a b }
+    { var = Inference.Var.unite unite_ty_shape VarScopeImpl.unite ~span a b }
 
   and unite_place : place Inference.unite =
    fun ~span place_a place_b ->
@@ -426,17 +642,22 @@ module Impl = struct
   and unite_value : value Inference.unite =
    fun ~span { var = a; ty = ty_a } { var = b; ty = ty_b } ->
     {
-      var = Inference.Var.unite ~span unite_value_shape a b;
+      var = Inference.Var.unite unite_value_shape VarScopeImpl.unite ~span a b;
       ty = unite_ty ~span ty_a ty_b;
     }
 
   and unite_optional_name : optional_name Inference.unite =
    fun ~span { var = a } { var = b } ->
-    { var = Inference.Var.unite ~span (unite_option unite_name_shape) a b }
+    {
+      var =
+        Inference.Var.unite
+          (unite_option unite_name_shape)
+          VarScopeImpl.unite ~span a b;
+    }
 
   and unite_name : name Inference.unite =
    fun ~span { var = a } { var = b } ->
-    { var = Inference.Var.unite ~span unite_name_shape a b }
+    { var = Inference.Var.unite unite_name_shape VarScopeImpl.unite ~span a b }
 
   and unite_option : 'a. 'a Inference.unite -> 'a option Inference.unite =
    fun unite_value ~span a b ->
@@ -486,16 +707,17 @@ module Impl = struct
     | Symbol _, _ -> fail ()
 
   and inferred_ty ~span shape : ty =
-    { var = Inference.Var.new_inferred ~span shape }
+    { var = Inference.Var.new_inferred VarScope.of_ty_shape ~span shape }
 
   and inferred_value ~span shape : value =
     {
-      var = Inference.Var.new_inferred ~span shape;
+      var = Inference.Var.new_inferred VarScope.of_value_shape ~span shape;
       ty = ty_of_value_shape shape;
     }
 
-  and infer_value_shape : span:span -> ty_shape -> value_shape option =
-   fun ~span ty_shape ->
+  and infer_value_shape :
+      scope:var_scope -> span:span -> ty_shape -> value_shape option =
+   fun ~scope ~span ty_shape ->
     match ty_shape with
     | T_Unit -> Some V_Unit
     | T_Bool -> None
@@ -519,12 +741,13 @@ module Impl = struct
                         {
                           place =
                             init_place ~mut:Inherit
-                            <| new_not_inferred_value_of_ty ~span field.ty;
+                            <| new_not_inferred_value_of_ty ~scope ~span
+                                 field.ty;
                           span;
                           ty_field = field;
                         });
              })
-    | T_Ty -> Some (V_Ty (new_not_inferred_ty ~span))
+    | T_Ty -> Some (V_Ty (new_not_inferred_ty ~scope ~span))
     | T_Fn _ -> None
     | T_Generic _ -> None
     | T_Ast -> None
@@ -535,12 +758,12 @@ module Impl = struct
     | T_Blocked _ -> None
     | T_Error -> None
 
-  and new_not_inferred_ty ~span : ty =
-    { var = Inference.Var.new_not_inferred ~span }
+  and new_not_inferred_ty ~scope ~span : ty =
+    { var = Inference.Var.new_not_inferred ~scope ~span }
 
-  and new_not_inferred_value ~span : value =
-    let var = Inference.Var.new_not_inferred ~span in
-    let ty = new_not_inferred_ty ~span in
+  and new_not_inferred_value ~scope ~span : value =
+    let var = Inference.Var.new_not_inferred ~scope ~span in
+    let ty = new_not_inferred_ty ~scope ~span in
     var
     |> Inference.Var.once_inferred (fun value_shape ->
         let _ : ty =
@@ -550,14 +773,16 @@ module Impl = struct
     ty.var
     |> Inference.Var.once_inferred (fun ty_shape ->
         with_ctx (fun () ->
-            match infer_value_shape ~span ty_shape with
+            match infer_value_shape ~scope ~span ty_shape with
             | Some shape ->
-                var |> Inference.Var.infer_as unite_value_shape shape ~span
+                var
+                |> Inference.Var.infer_as VarScope.of_value_shape
+                     unite_value_shape VarScopeImpl.unite ~span shape
             | None -> ()));
     { var; ty }
 
-  and new_not_inferred_value_of_ty ~span ty : value =
-    let value = new_not_inferred_value ~span in
+  and new_not_inferred_value_of_ty ~scope ~span ty : value =
+    let value = new_not_inferred_value ~scope ~span in
     let _ : ty = unite_ty ~span value.ty ty in
     value
 
@@ -577,7 +802,10 @@ module Impl = struct
           inferred_ty ~span
             (T_Ref
                {
-                 mut = { var = Inference.Var.new_inferred ~span mut };
+                 mut =
+                   {
+                     var = Inference.Var.new_inferred VarScope.of_bool ~span mut;
+                   };
                  referenced = place.ty;
                })
       | V_Tuple { ty; tuple = _ } -> inferred_ty ~span <| T_Tuple ty
@@ -633,16 +861,16 @@ let inferred_value ~span shape =
 let infer_value_shape ~span shape =
   with_ctx (fun () -> Impl.infer_value_shape ~span shape)
 
-let new_not_inferred_ty ~span =
-  with_ctx (fun () -> Impl.new_not_inferred_ty ~span)
+let new_not_inferred_ty ~scope ~span =
+  with_ctx (fun () -> Impl.new_not_inferred_ty ~scope ~span)
 
 let unite_option unite_value = unite_with_ctx (Impl.unite_option unite_value)
 
-let new_not_inferred_value ~span : value =
-  with_ctx (fun () -> Impl.new_not_inferred_value ~span)
+let new_not_inferred_value ~scope ~span : value =
+  with_ctx (fun () -> Impl.new_not_inferred_value ~scope ~span)
 
-let new_not_inferred_value_of_ty ~span ty : value =
-  with_ctx (fun () -> Impl.new_not_inferred_value_of_ty ~span ty)
+let new_not_inferred_value_of_ty ~scope ~span ty : value =
+  with_ctx (fun () -> Impl.new_not_inferred_value_of_ty ~scope ~span ty)
 
 let ty_of_value_shape = Impl.ty_of_value_shape
 let init_place = Impl.init_place

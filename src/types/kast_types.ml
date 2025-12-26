@@ -7,6 +7,7 @@ module Label = Label
 module Row = Row
 module Inference_impl = Inference_impl
 module Print = Print
+module VarScope = Inference_impl.VarScope
 
 type 'a compiled_kind = 'a Types.compiled_kind
 type compiled = Types.compiled
@@ -15,20 +16,25 @@ module Name = struct
   type t = name
 
   let new_inferred ~span value : name =
-    { var = Inference.Var.new_inferred ~span value }
+    { var = Inference.Var.new_inferred VarScope.of_name_shape ~span value }
 
-  let new_not_inferred ~span : name =
-    { var = Inference.Var.new_not_inferred ~span }
+  let new_not_inferred ~scope ~span : name =
+    { var = Inference.Var.new_not_inferred ~scope ~span }
 end
 
 module OptionalName = struct
   type t = optional_name
 
   let new_inferred ~span value : optional_name =
-    { var = Inference.Var.new_inferred ~span value }
+    {
+      var =
+        Inference.Var.new_inferred
+          (VarScope.of_option VarScope.of_name_shape)
+          ~span value;
+    }
 
-  let new_not_inferred ~span : optional_name =
-    { var = Inference.Var.new_not_inferred ~span }
+  let new_not_inferred ~scope ~span : optional_name =
+    { var = Inference.Var.new_not_inferred ~scope ~span }
 end
 
 module Ty = struct
@@ -330,3 +336,13 @@ end
 
 type place = Place.t
 type optional_name = OptionalName.t
+
+module IsMutable = struct
+  type t = is_mutable
+
+  let new_inferred ~span inferred : t =
+    { var = Inference.Var.new_inferred VarScope.of_bool ~span inferred }
+
+  let new_not_inferred ~scope ~span : t =
+    { var = Inference.Var.new_not_inferred ~scope ~span }
+end

@@ -167,8 +167,7 @@ module Impl = struct
     fprintf fmt "%a -> %a" print_ty arg print_ty result
 
   (* VAR *)
-  and print_var :
-      'a. (formatter -> 'a -> unit) -> formatter -> 'a Inference.Var.t -> unit =
+  and print_var : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_shape fmt var ->
     let id = var |> Inference.Var.recurse_id in
     let cache = RecurseCache.get () in

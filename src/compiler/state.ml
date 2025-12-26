@@ -71,8 +71,9 @@ module Scope = struct
     (* println "# of waiters: %d" (List.length fs); *)
     fs |> List.iter (fun f -> f ())
 
-  let find_binding : from:span -> string -> scope -> binding =
-   fun ~from ident scope ->
+  let find_binding :
+      from_scope:VarScope.t -> from:span -> string -> scope -> binding =
+   fun ~from_scope ~from ident scope ->
     scope
     |> find_binding_opt ~from ident
     |> Option.unwrap_or_else (fun () : binding ->
@@ -81,7 +82,7 @@ module Scope = struct
           id = Id.gen ();
           name = Symbol.create ident;
           span = from;
-          ty = Ty.new_not_inferred ~span:from;
+          ty = Ty.new_not_inferred ~scope:from_scope ~span:from;
           label = Label.create_definition from ident;
           mut = false;
         })
@@ -170,3 +171,5 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
     mut_enabled;
     by_ref;
   }
+
+let var_scope : t -> VarScope.t = fun state -> Some state.interpreter.scope

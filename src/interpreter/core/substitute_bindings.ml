@@ -55,13 +55,13 @@ module Impl = struct
     | Uninitialized | MovedOut ->
         Place.init_state ~mut:place.mut place.state place.ty
 
-  and sub_value ~(state : interpreter_state) (value : value) : value =
+  and sub_value ~(state : sub_state) (value : value) : value =
     sub_var ~unite_shape:Inference_impl.unite_value_shape
       ~sub_shape:sub_value_shape ~new_not_inferred:Value.new_not_inferred
       ~get_var:(fun (value : value) -> value.var)
       ~state value
 
-  and sub_value_shape ~(state : interpreter_state) (original_value : value)
+  and sub_value_shape ~(state : sub_state) (original_value : value)
       (shape : value_shape) : value =
     let ctx = Effect.perform GetCtx in
     let span = ctx.span in
@@ -137,9 +137,9 @@ module Impl = struct
         in
         let arg = sub_value ~state arg in
         let instantiate = !Interpreter.instantiate |> Option.get in
-        instantiate ~result_ty:blocked.ty span state generic arg
+        instantiate ~result_ty:blocked.ty span state.interpreter generic arg
     | BV_Binding binding -> (
-        match Scope.find_local_opt binding.name state.scope with
+        match Scope.find_local_opt binding.name state.interpreter.scope with
         | None -> original_value
         | Some local -> (
             subs_count := !subs_count + 1;
@@ -157,8 +157,8 @@ module Impl = struct
         in
         let get_field = !Interpreter.get_field |> Option.get in
         match
-          get_field ~result_ty:blocked.ty ~span ~state ~obj_mut:true obj_ref
-            member
+          get_field ~result_ty:blocked.ty ~span ~state:state.interpreter
+            ~obj_mut:true obj_ref member
         with
         | RefBlocked ref -> V_Blocked ref |> Value.inferred ~span
         | Place (~mut, place) -> V_Ref { mut; place } |> Value.inferred ~span)
@@ -169,7 +169,7 @@ module Impl = struct
             ~state ref
         in
         let claim_ref = !Interpreter.claim_ref |> Option.get in
-        claim_ref ~result_ty:blocked.ty ~span ~state ref
+        claim_ref ~result_ty:blocked.ty ~span ~state:state.interpreter ref
 
   and sub_name ~state (name : name) : name =
     let ctx = Effect.perform GetCtx in
@@ -190,8 +190,7 @@ module Impl = struct
       ~get_var:(fun (name : optional_name) -> name.var)
       ~state name
 
-  and sub_name_shape ~(state : interpreter_state) (shape : name_shape) :
-      name_shape =
+  and sub_name_shape ~(state : sub_state) (shape : name_shape) : name_shape =
     match shape with
     | Simple part -> Simple (sub_name_part ~state part)
     | Concat (a, b) -> Concat (sub_name_shape ~state a, sub_name_part ~state b)
@@ -202,8 +201,7 @@ module Impl = struct
             arg = arg |> sub_value ~state;
           }
 
-  and sub_name_part ~(state : interpreter_state) (part : name_part) : name_part
-      =
+  and sub_name_part ~(state : sub_state) (part : name_part) : name_part =
     match part with
     | Uri uri -> Uri uri
     | Str s -> Str s
@@ -212,8 +210,8 @@ module Impl = struct
   and sub_option :
       'v 'shape.
       new_inferred:(span:span -> 'shape option -> 'v) ->
-      sub_value:(state:interpreter_state -> 'shape -> 'shape) ->
-      state:interpreter_state ->
+      sub_value:(state:sub_state -> 'shape -> 'shape) ->
+      state:sub_state ->
       'v ->
       'shape option ->
       'v =
@@ -229,20 +227,21 @@ module Impl = struct
       ~get_var:(fun (ty : ty) -> ty.var)
       ~state ty
 
-  and sub_ty_tuple ~(state : interpreter_state) ({ name; tuple } : ty_tuple) :
-      ty_tuple =
+  and sub_ty_tuple ~(state : sub_state) ({ name; tuple } : ty_tuple) : ty_tuple
+      =
     {
       name = sub_optional_name ~state name;
       tuple = tuple |> Tuple.map (fun field -> sub_ty_tuple_field ~state field);
     }
 
-  and sub_ty_variant ~(state : interpreter_state)
-      ({ name; variants } : ty_variant) : ty_variant =
+  and sub_ty_variant ~(state : sub_state) ({ name; variants } : ty_variant) :
+      ty_variant =
     {
       name = sub_optional_name ~state name;
       variants =
         variants
-        |> sub_row ~unite_value:Inference_impl.unite_ty_variant_data ~state
+        |> sub_row ~scope_of_value:VarScope.of_ty_variant_data
+             ~unite_value:Inference_impl.unite_ty_variant_data ~state
              ~sub_value:(fun
                  ~state ({ data } : ty_variant_data) : ty_variant_data ->
                { data = data |> Option.map (sub_ty ~state) });
@@ -251,8 +250,8 @@ module Impl = struct
   and sub_ty_opaque ~state ({ name } : ty_opaque) : ty_opaque =
     { name = sub_name ~state name }
 
-  and sub_ty_shape ~(state : interpreter_state) (original_ty : ty)
-      (shape : ty_shape) : ty =
+  and sub_ty_shape ~(state : sub_state) (original_ty : ty) (shape : ty_shape) :
+      ty =
     let ctx = Effect.perform GetCtx in
     Log.trace (fun log ->
         log "subbing ty shape = %a at %a" Ty.Shape.print shape Span.print
@@ -294,8 +293,8 @@ module Impl = struct
         log "subbed ty shape = %a into %a" Ty.Shape.print shape Ty.print result);
     result
 
-  and sub_ty_tuple_field ~(state : interpreter_state)
-      ({ label; ty } : ty_tuple_field) : ty_tuple_field =
+  and sub_ty_tuple_field ~(state : sub_state) ({ label; ty } : ty_tuple_field) :
+      ty_tuple_field =
     { label; ty = sub_ty ~state ty }
 
   and sub_ty_fn ~state ({ arg; result } : ty_fn) : ty_fn =
@@ -304,29 +303,36 @@ module Impl = struct
   and sub_row :
       'a.
       unite_value:'a Inference.unite ->
-      sub_value:(state:interpreter_state -> 'a -> 'a) ->
-      state:interpreter_state ->
-      'a Row.t ->
-      'a Row.t =
-   fun ~unite_value ~sub_value ~state row ->
+      scope_of_value:('a -> var_scope) ->
+      sub_value:(state:sub_state -> 'a -> 'a) ->
+      state:sub_state ->
+      ('a, var_scope) Row.t ->
+      ('a, var_scope) Row.t =
+   fun ~unite_value ~scope_of_value ~sub_value ~state row ->
     sub_var
-      ~unite_shape:(Row.unite_shape unite_value)
-      ~sub_shape:(sub_row_shape ~unite_value ~sub_value)
-      ~get_var:(fun (row : 'a Row.t) -> row.var)
+      ~unite_shape:
+        (Row.unite_shape
+           (module Inference_impl.VarScope)
+           scope_of_value unite_value)
+      ~sub_shape:(sub_row_shape ~scope_of_value ~unite_value ~sub_value)
+      ~get_var:(fun (row : ('a, var_scope) Row.t) -> row.var)
       ~new_not_inferred:Row.new_not_inferred ~state row
 
   and sub_row_shape :
       'a.
+      scope_of_value:('a -> var_scope) ->
       unite_value:'a Inference.unite ->
-      sub_value:(state:interpreter_state -> 'a -> 'a) ->
-      state:interpreter_state ->
-      'a Row.t ->
-      'a Row.shape ->
-      'a Row.t =
-   fun ~unite_value ~sub_value ~state original_row shape ->
+      sub_value:(state:sub_state -> 'a -> 'a) ->
+      state:sub_state ->
+      ('a, var_scope) Row.t ->
+      ('a, var_scope) Row.shape ->
+      ('a, var_scope) Row.t =
+   fun ~scope_of_value ~unite_value ~sub_value ~state original_row shape ->
     let span = original_row.var |> Inference.Var.spans |> SpanSet.min_elt in
     let inferred ~span value =
-      let result = Row.inferred ~span value in
+      let result =
+        Row.inferred (module Inference_impl.VarScope) scope_of_value ~span value
+      in
       let ctx = Effect.perform GetCtx in
       ctx.subs |> Inference.Var.Map.add result.var (Obj.repr result);
       result
@@ -340,16 +346,17 @@ module Impl = struct
              {
                label;
                value = sub_value ~state value;
-               rest = sub_row ~unite_value ~sub_value ~state rest;
+               rest =
+                 sub_row ~scope_of_value ~unite_value ~sub_value ~state rest;
              }
 
   and sub_var :
       'value 'shape.
       unite_shape:'shape Inference.unite ->
-      sub_shape:(state:interpreter_state -> 'value -> 'shape -> 'value) ->
-      new_not_inferred:(span:span -> 'value) ->
-      get_var:('value -> 'shape Inference.Var.t) ->
-      state:interpreter_state ->
+      sub_shape:(state:sub_state -> 'value -> 'shape -> 'value) ->
+      new_not_inferred:(scope:var_scope -> span:span -> 'value) ->
+      get_var:('value -> 'shape var) ->
+      state:sub_state ->
       'value ->
       'value =
    fun ~unite_shape ~sub_shape ~new_not_inferred ~get_var ~state
@@ -357,23 +364,15 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     let span = ctx.span in
     let var = get_var original_value in
-    let scope_id = state.scope.id in
-    if var |> Inference.Var.was_subbed_in scope_id then original_value
+    if var |> Inference.Var.scope |> VarScope.contains state.target_scope then
+      original_value
     else if ctx.depth > 32 then fail "Went too deep" ~span
     else
       match ctx.subs |> Inference.Var.Map.find_opt var with
       | None ->
           let id = Inference.Var.recurse_id var in
-          Log.trace (fun log ->
-              log "subbing var %a at %a" Id.print id Id.print scope_id);
-          let subbed_temp = new_not_inferred ~span in
+          let subbed_temp = new_not_inferred ~scope:state.target_scope ~span in
           let subbed_temp_var = subbed_temp |> get_var in
-          subbed_temp_var |> Inference.Var.remember_subbed scope_id;
-          subbed_temp_var |> Inference.Var.remember_subbed_from var;
-          Log.trace (fun log ->
-              log "created new var %a at %a" Id.print
-                (Inference.Var.recurse_id subbed_temp_var)
-                Id.print scope_id);
           ctx.subs |> Inference.Var.Map.add var (Obj.repr subbed_temp);
           ctx.subs
           |> Inference.Var.Map.add subbed_temp_var (Obj.repr subbed_temp);
@@ -384,10 +383,8 @@ module Impl = struct
               with_ctx (go_deeper ctx) (fun () ->
                   let subbed = sub_shape ~state original_value shape in
                   let subbed_var = get_var subbed in
-                  subbed_var |> Inference.Var.remember_subbed scope_id;
-                  subbed_var |> Inference.Var.remember_subbed_from var;
-                  Inference.Var.unite ~span unite_shape subbed_temp_var
-                    subbed_var
+                  Inference.Var.unite unite_shape VarScope.unite ~span
+                    subbed_temp_var subbed_var
                   |> ignore));
           subbed_temp
       | Some sub -> sub |> Obj.obj
