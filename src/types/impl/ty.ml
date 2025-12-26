@@ -230,8 +230,15 @@ end
 
 module T = struct
   module type Deps = sig
+    module VarScope : sig
+      type t
+    end
+
     module TyVar : sig
       type t [@@deriving eq, ord]
+
+      val scope : t -> VarScope.t
+      val unite : t Inference.unite
     end
   end
 
@@ -239,12 +246,18 @@ module T = struct
     module Deps : Deps
 
     type t = { var : Deps.TyVar.t } [@@deriving eq, ord]
+
+    val scope : t -> Deps.VarScope.t
+    val unite : t Inference.unite
   end
 
   module Make (Deps : Deps) : S = struct
     module Deps = Deps
 
     type t = { var : Deps.TyVar.t } [@@deriving eq, ord]
+
+    let scope { var } = Deps.TyVar.scope var
+    let unite ~span a b = { var = Deps.TyVar.unite ~span a.var b.var }
   end
 end
 

@@ -31,9 +31,7 @@ module Shape = struct
       type t
     end
 
-    module VarScope : sig
-      include Inference.Scope
-    end
+    module VarScope : Inference.Scope
 
     module Interpreter : sig
       type state
@@ -160,7 +158,7 @@ module Shape = struct
       | Error
     [@@deriving eq, ord]
 
-    module Scope : Inference.Scope
+    module Scope = Deps.VarScope
 
     val error : unit -> t
     val scope : t -> Scope.t
@@ -298,12 +296,24 @@ end
 
 module T = struct
   module type Deps = sig
+    module VarScope : sig
+      type t
+
+      val common : t -> t -> t
+    end
+
     module ValueVar : sig
       type t [@@deriving eq, ord]
+
+      val scope : t -> VarScope.t
+      val unite : t Inference.unite
     end
 
     module Ty : sig
       type t [@@deriving eq, ord]
+
+      val scope : t -> VarScope.t
+      val unite : t Inference.unite
     end
   end
 
@@ -315,6 +325,9 @@ module T = struct
       ty : Deps.Ty.t;
     }
     [@@deriving eq, ord]
+
+    val scope : t -> Deps.VarScope.t
+    val unite : t Inference.unite
   end
 
   module Make (Deps : Deps) : S = struct
@@ -325,6 +338,15 @@ module T = struct
       ty : Deps.Ty.t;
     }
     [@@deriving eq, ord]
+
+    let scope { var; ty } =
+      Deps.VarScope.common (Deps.ValueVar.scope var) (Deps.Ty.scope ty)
+
+    let unite ~span a b =
+      {
+        var = Deps.ValueVar.unite ~span a.var b.var;
+        ty = Deps.Ty.unite ~span a.ty b.ty;
+      }
   end
 end
 

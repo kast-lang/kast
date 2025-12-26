@@ -3,12 +3,21 @@ module Impl = Kast_types_impl
 
 module rec Unused : sig end = struct end
 
-and All : sig
+(* and All : sig
   module BlockedValueShape : Impl.BlockedValue.Shape.S
   module BlockedValue : Impl.BlockedValue.S
-  module ValueShape : Impl.Value.Shape.S
-  module ValueVar : Inference.Var.S
-  module Value : Impl.Value.S
+
+  module ValueShape :
+    Impl.Value.Shape.S
+      with type Deps.VarScope.t = VarScope.t
+       and type Scope.t = VarScope.t
+
+  module ValueVar :
+    Inference.Var.S
+      with type Value.t = ValueShape.t
+       and type Value.Scope.t = VarScope.t
+
+  module Value : Impl.Value.S with type Deps.VarScope.t = VarScope.t
   module ValueMap : Impl.Value.Map.S
   module TyShape : Impl.Ty.Shape.S
   module TyVar : Inference.Var.S
@@ -67,48 +76,95 @@ end = struct
   module OptionalName = OptionalName
   module TyVariantRow = TyVariantRow
   module VarScope = VarScope
-end
-
+end *)
 and BlockedValueShape : Impl.BlockedValue.Shape.S =
-  Impl.BlockedValue.Shape.Make (All)
+Impl.BlockedValue.Shape.Make (struct
+  module Value = Value
+  module Binding = Binding
+  module BlockedValue = BlockedValue
+end)
 
-and BlockedValue : Impl.BlockedValue.S = Impl.BlockedValue.Make (All)
-and TyShape : Impl.Ty.Shape.S = Impl.Ty.Shape.Make (All)
-and Ty : Impl.Ty.S = Impl.Ty.Make (All)
-and ValueShape : Impl.Value.Shape.S = Impl.Value.Shape.Make (All)
-and ValueVar : Inference.Var.S = Inference.Var.Make (ValueShape)
-and ValueMap : Impl.Value.Map.S = Impl.Value.Map.Make (All)
-and Value : Impl.Value.S = Impl.Value.Make (All)
-and Place : Impl.Place.S = Impl.Place.Make (All)
-and Binding : Impl.Binding.S = Impl.Binding.Make (All)
-and ExprShape : Impl.Ir.Expr.Shape.S = Impl.Ir.Expr.Shape.Make (All)
-and Expr : Impl.Ir.Expr.S = Impl.Ir.Expr.Make (All)
+and BlockedValue : Impl.BlockedValue.S = Impl.BlockedValue.Make (struct
+  module Ty = Ty
+  module BlockedValueShape = BlockedValueShape
+end)
+
+and TyShape : (Impl.Ty.Shape.S with type Deps.VarScope.t = VarScope.t) =
+Impl.Ty.Shape.Make (struct
+  module Ty = Ty
+  module VarScope = VarScope
+  module OptionalName = OptionalName
+  module Name = Name
+  module Pattern = Pattern
+  module TyVariantRow = TyVariantRow
+  module BlockedValue = BlockedValue
+  module Unsorted = Unsorted
+end)
+
+and TyVar :
+  (Inference.Var.S
+    with type Value.t = TyShape.t
+     and type Value.Scope.t = VarScope.t) =
+  Inference.Var.Make (TyShape)
+
+and Ty : (Impl.Ty.S with type Deps.VarScope.t = VarScope.t) =
+Impl.Ty.Make (struct
+  module VarScope = VarScope
+  module TyVar = TyVar
+end)
+
+and ValueShape :
+  (Impl.Value.Shape.S
+    with type Deps.VarScope.t = VarScope.t
+     and type Scope.t = VarScope.t) = Impl.Value.Shape.Make (struct end)
+
+and ValueVar :
+  (Inference.Var.S
+    with type Value.t = ValueShape.t
+     and type Value.Scope.t = VarScope.t) =
+  Inference.Var.Make (ValueShape)
+
+and ValueMap : Impl.Value.Map.S = Impl.Value.Map.Make (struct end)
+
+and Value : (Impl.Value.S with type Deps.VarScope.t = VarScope.t) =
+Impl.Value.Make (struct
+  module VarScope = VarScope
+  module ValueVar = ValueVar
+  module Ty = Ty
+end)
+
+and Place : Impl.Place.S = Impl.Place.Make (struct end)
+and Binding : Impl.Binding.S = Impl.Binding.Make (struct end)
+and ExprShape : Impl.Ir.Expr.Shape.S = Impl.Ir.Expr.Shape.Make (struct end)
+and Expr : Impl.Ir.Expr.S = Impl.Ir.Expr.Make (struct end)
 
 and AssigneeExprShape : Impl.Ir.AssigneeExpr.Shape.S =
-  Impl.Ir.AssigneeExpr.Shape.Make (All)
+Impl.Ir.AssigneeExpr.Shape.Make (struct end)
 
-and AssigneeExpr : Impl.Ir.AssigneeExpr.S = Impl.Ir.AssigneeExpr.Make (All)
-and TyExprShape : Impl.Ir.TyExpr.Shape.S = Impl.Ir.TyExpr.Shape.Make (All)
-and TyVar : Inference.Var.S = Inference.Var.Make (TyShape)
-and TyExpr : Impl.Ir.TyExpr.S = Impl.Ir.TyExpr.Make (All)
+and AssigneeExpr : Impl.Ir.AssigneeExpr.S = Impl.Ir.AssigneeExpr.Make (struct end)
+
+and TyExprShape : Impl.Ir.TyExpr.Shape.S = Impl.Ir.TyExpr.Shape.Make (struct end)
+and TyExpr : Impl.Ir.TyExpr.S = Impl.Ir.TyExpr.Make (struct end)
 
 and PlaceExprShape : Impl.Ir.PlaceExpr.Shape.S =
-  Impl.Ir.PlaceExpr.Shape.Make (All)
+Impl.Ir.PlaceExpr.Shape.Make (struct end)
 
-and PlaceExpr : Impl.Ir.PlaceExpr.S = Impl.Ir.PlaceExpr.Make (All)
-and PatternShape : Impl.Ir.Pattern.Shape.S = Impl.Ir.Pattern.Shape.Make (All)
-and Pattern : Impl.Ir.Pattern.S = Impl.Ir.Pattern.Make (All)
-and IrData : Impl.Ir.Data.S = Impl.Ir.Data.Make (All)
-and CompilerScope : Impl.Compiler.Scope.S = Impl.Compiler.Scope.Make (All)
+and PlaceExpr : Impl.Ir.PlaceExpr.S = Impl.Ir.PlaceExpr.Make (struct end)
+
+and PatternShape : Impl.Ir.Pattern.Shape.S = Impl.Ir.Pattern.Shape.Make (struct end)
+
+and Pattern : Impl.Ir.Pattern.S = Impl.Ir.Pattern.Make (struct end)
+and IrData : Impl.Ir.Data.S = Impl.Ir.Data.Make (struct end)
+and CompilerScope : Impl.Compiler.Scope.S = Impl.Compiler.Scope.Make (struct end)
 
 and InterpreterScope : Impl.Interpreter.Scope.S =
-  Impl.Interpreter.Scope.Make (All)
+Impl.Interpreter.Scope.Make (struct end)
 
-and Interpreter : Impl.Interpreter.S = Impl.Interpreter.Make (All)
-and Unsorted : Impl.Unsorted.S = Impl.Unsorted.Make (All)
-and NameShape : Impl.Name.Shape.S = Impl.Name.Shape.Make (All)
+and Interpreter : Impl.Interpreter.S = Impl.Interpreter.Make (struct end)
+and Unsorted : Impl.Unsorted.S = Impl.Unsorted.Make (struct end)
+and NameShape : Impl.Name.Shape.S = Impl.Name.Shape.Make (struct end)
 and NameVar : Inference.Var.S = Inference.Var.Make (NameShape)
-and Name : Impl.Name.S = Impl.Name.Make (All)
-and OptionalName : Impl.Name.Optional.S = Impl.Name.Optional.Make (All)
-and TyVariantRow : Impl.Ty.VariantRow.S = Impl.Ty.VariantRow.Make (All)
+and Name : Impl.Name.S = Impl.Name.Make (struct end)
+and OptionalName : Impl.Name.Optional.S = Impl.Name.Optional.Make (struct end)
+and TyVariantRow : Impl.Ty.VariantRow.S = Impl.Ty.VariantRow.Make (struct end)
 and VarScope : Inference.Scope = InterpreterScope.VarScope

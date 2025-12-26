@@ -1,0 +1,1353 @@
+File "src/types/kast_types.ml", line 103, characters 2-23:
+103 |   Impl.Value.Make (All)
+        ^^^^^^^^^^^^^^^^^^^^^
+Error: Modules do not match:
+       sig
+         module BlockedValueShape :
+           sig
+             module Deps :
+               sig
+                 module Value :
+                   sig
+                     type t = All.BlockedValueShape.Deps.Value.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module BlockedValue :
+                   sig
+                     type t = All.BlockedValueShape.Deps.BlockedValue.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Binding :
+                   sig
+                     type t = All.BlockedValueShape.Deps.Binding.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type field_ref =
+               All.BlockedValueShape.field_ref = {
+               obj_ref : Deps.BlockedValue.t;
+               member : Kast_util__Tuple.Tuple.Member.t;
+             }
+             val equal_field_ref : field_ref -> field_ref -> bool
+             val compare_field_ref : field_ref -> field_ref -> int
+             type instantiate =
+               All.BlockedValueShape.instantiate = {
+               generic : Deps.BlockedValue.t;
+               arg : Deps.Value.t;
+             }
+             val equal_instantiate : instantiate -> instantiate -> bool
+             val compare_instantiate : instantiate -> instantiate -> int
+             type t =
+               All.BlockedValueShape.t =
+                 Binding of Deps.Binding.t
+               | Instantiate of instantiate
+               | ClaimRef of Deps.BlockedValue.t
+               | FieldRef of field_ref
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module BlockedValue :
+           sig
+             module Deps :
+               sig
+                 module BlockedValueShape :
+                   sig
+                     type t = All.BlockedValue.Deps.BlockedValueShape.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Ty :
+                   sig
+                     type t = All.BlockedValue.Deps.Ty.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type t =
+               All.BlockedValue.t = {
+               shape : Deps.BlockedValueShape.t;
+               ty : Deps.Ty.t;
+             }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module ValueShape :
+           sig
+             module Deps :
+               sig
+                 module Place :
+                   sig
+                     type t = All.ValueShape.Deps.Place.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Value :
+                   sig
+                     type t = All.ValueShape.Deps.Value.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module TyShape :
+                   sig
+                     type opaque = All.ValueShape.Deps.TyShape.opaque
+                     val equal_opaque : opaque -> opaque -> bool
+                     val compare_opaque : opaque -> opaque -> int
+                     type generic = All.ValueShape.Deps.TyShape.generic
+                     val equal_generic : generic -> generic -> bool
+                     val compare_generic : generic -> generic -> int
+                     type fn = All.ValueShape.Deps.TyShape.fn
+                     val equal_fn : fn -> fn -> bool
+                     val compare_fn : fn -> fn -> int
+                     type tuple_field =
+                         All.ValueShape.Deps.TyShape.tuple_field
+                     val equal_tuple_field :
+                       tuple_field -> tuple_field -> bool
+                     val compare_tuple_field :
+                       tuple_field -> tuple_field -> int
+                     type tuple = All.ValueShape.Deps.TyShape.tuple
+                     val equal_tuple : tuple -> tuple -> bool
+                     val compare_tuple : tuple -> tuple -> int
+                     type variant = All.ValueShape.Deps.TyShape.variant
+                     val equal_variant : variant -> variant -> bool
+                     val compare_variant : variant -> variant -> int
+                   end
+                 module Ty :
+                   sig
+                     type t = All.ValueShape.Deps.Ty.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module CompilerScope :
+                   sig
+                     type t = All.ValueShape.Deps.CompilerScope.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module InterpreterScope :
+                   sig type t = All.ValueShape.Deps.InterpreterScope.t end
+                 module VarScope :
+                   sig
+                     type t = VarScope.t
+                     val root : unit -> t
+                     val common : t -> t -> t
+                   end
+                 module Interpreter :
+                   sig type state = All.ValueShape.Deps.Interpreter.state end
+                 module NameShape :
+                   sig
+                     type t = All.ValueShape.Deps.NameShape.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module BlockedValue :
+                   sig
+                     type t = All.ValueShape.Deps.BlockedValue.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Unsorted :
+                   sig
+                     type maybe_compiled_fn =
+                         All.ValueShape.Deps.Unsorted.maybe_compiled_fn
+                   end
+               end
+             type ref =
+               All.ValueShape.ref = {
+               mut : bool;
+               place : Deps.Place.t;
+             }
+             val equal_ref : ref -> ref -> bool
+             val compare_ref : ref -> ref -> int
+             type opaque =
+               All.ValueShape.opaque = {
+               ty : Deps.TyShape.opaque;
+               value : Obj.t;
+             }
+             val equal_opaque : opaque -> opaque -> bool
+             val compare_opaque : opaque -> opaque -> int
+             type target = All.ValueShape.target = { name : string; }
+             val equal_target : target -> target -> bool
+             val compare_target : target -> target -> int
+             type context_ty =
+               All.ValueShape.context_ty = {
+               id : Kast_util__Id.Id.T.t;
+               ty : Deps.Ty.t;
+             }
+             val equal_context_ty : context_ty -> context_ty -> bool
+             val compare_context_ty : context_ty -> context_ty -> int
+             type unwind_token =
+               All.ValueShape.unwind_token = {
+               id : Kast_util__Id.Id.T.t;
+               result_ty : Deps.Ty.t;
+             }
+             val equal_unwind_token : unwind_token -> unwind_token -> bool
+             val compare_unwind_token : unwind_token -> unwind_token -> int
+             type untyped_fn =
+               All.ValueShape.untyped_fn = {
+               id : Kast_util__Id.Id.T.t;
+               def : Deps.Unsorted.maybe_compiled_fn;
+               calculated_natives :
+                 (Kast_util__Id.Id.T.t, Deps.Value.t) Hashtbl.t;
+               captured : Deps.InterpreterScope.t;
+             }
+             val equal_untyped_fn : untyped_fn -> untyped_fn -> bool
+             val compare_untyped_fn : untyped_fn -> untyped_fn -> int
+             type fn =
+               All.ValueShape.fn = {
+               ty : Deps.TyShape.fn;
+               fn : untyped_fn;
+             }
+             val equal_fn : fn -> fn -> bool
+             val compare_fn : fn -> fn -> int
+             type generic =
+               All.ValueShape.generic = {
+               id : Kast_util__Id.Id.T.t;
+               name : Deps.NameShape.t;
+               fn : untyped_fn;
+               ty : Deps.TyShape.generic;
+             }
+             val equal_generic : generic -> generic -> bool
+             val compare_generic : generic -> generic -> int
+             type tuple_field =
+               All.ValueShape.tuple_field = {
+               place : Deps.Place.t;
+               span : Kast_util__Source.Span.t;
+               ty_field : Deps.TyShape.tuple_field;
+             }
+             val equal_tuple_field : tuple_field -> tuple_field -> bool
+             val compare_tuple_field : tuple_field -> tuple_field -> int
+             type tuple =
+               All.ValueShape.tuple = {
+               ty : Deps.TyShape.tuple;
+               tuple : tuple_field Kast_util__Tuple.Tuple.t;
+             }
+             val equal_tuple : tuple -> tuple -> bool
+             val compare_tuple : tuple -> tuple -> int
+             type variant =
+               All.ValueShape.variant = {
+               label : Kast_common.Label.label;
+               data : Deps.Place.t option;
+               ty : Deps.TyShape.variant;
+             }
+             val equal_variant : variant -> variant -> bool
+             val compare_variant : variant -> variant -> int
+             type native_fn =
+               All.ValueShape.native_fn = {
+               id : Kast_util__Id.Id.T.t;
+               name : string;
+               ty : Deps.TyShape.fn;
+               impl :
+                 caller:Kast_util__Source.Span.t ->
+                 state:Deps.Interpreter.state -> Deps.Value.t -> Deps.Value.t;
+             }
+             val equal_native_fn : native_fn -> native_fn -> bool
+             val compare_native_fn : native_fn -> native_fn -> int
+             type t =
+               All.ValueShape.t =
+                 Unit
+               | Bool of bool
+               | Int32 of int32
+               | Int64 of int64
+               | Float64 of float
+               | Char of char
+               | Ref of ref
+               | String of string
+               | Tuple of tuple
+               | Variant of variant
+               | Ty of Deps.Ty.t
+               | Fn of fn
+               | Generic of generic
+               | NativeFn of native_fn
+               | Ast of Kast_ast.t
+               | UnwindToken of unwind_token
+               | Target of target
+               | ContextTy of context_ty
+               | CompilerScope of Deps.CompilerScope.t
+               | Opaque of opaque
+               | Blocked of Deps.BlockedValue.t
+               | Error
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+             module Scope = Deps.VarScope
+             val error : unit -> t
+             val scope : t -> Scope.t
+             val unite : t Kast_inference_base.unite
+           end
+         module ValueVar :
+           sig
+             module Value :
+               sig
+                 type t = ValueShape.t
+                 module Scope :
+                   sig
+                     type t = ValueShape.Deps.VarScope.t
+                     val root : unit -> t
+                     val common : t -> t -> t
+                   end
+                 val scope : t -> Scope.t
+                 val equal : t -> t -> bool
+                 val compare : t -> t -> int
+                 val unite : t Kast_inference_base.unite
+                 val error : unit -> t
+               end
+             type t = All.ValueVar.t
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+             val new_inferred : span:Kast_util__Source.Span.t -> Value.t -> t
+             val new_not_inferred :
+               span:Kast_util__Source.Span.t -> scope:Value.Scope.t -> t
+             val inferred_opt : t -> Value.t option
+             val unite : t Kast_inference_base.unite
+             val scope : t -> Value.Scope.t
+             val infer_as :
+               span:Kast_util__Source.Span.t -> Value.t -> t -> unit
+             val print :
+               (Std__Format.Format.formatter -> Value.t -> unit) ->
+               Std__Format.Format.formatter -> t -> unit
+             val await_inferred : t -> Value.t
+           end
+         module Value :
+           sig
+             module Deps :
+               sig
+                 module VarScope :
+                   sig
+                     type t = ValueVar.Value.Scope.t
+                     val common : t -> t -> t
+                   end
+                 module ValueVar :
+                   sig
+                     type t = All.Value.Deps.ValueVar.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                     val scope : t -> VarScope.t
+                     val unite : t Kast_inference_base.unite
+                   end
+                 module Ty :
+                   sig
+                     type t = All.Value.Deps.Ty.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                     val scope : t -> VarScope.t
+                     val unite : t Kast_inference_base.unite
+                   end
+               end
+             type t =
+               All.Value.t = {
+               var : Deps.ValueVar.t;
+               ty : Deps.Ty.t;
+             }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+             val scope : t -> Deps.VarScope.t
+             val unite : t Kast_inference_base.unite
+           end
+         module ValueMap :
+           sig
+             module Deps :
+               sig
+                 module Value :
+                   sig
+                     type t = All.ValueMap.Deps.Value.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type 'a t = 'a All.ValueMap.t
+             type key = Deps.Value.t
+             val empty : 'a t
+             val add : key -> 'a -> 'a t -> 'a t
+             val find_opt : key -> 'a t -> 'a option
+             val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
+             val iter : (key -> 'a -> unit) -> 'a t -> unit
+             val union :
+               (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+           end
+         module TyShape :
+           sig
+             module Deps :
+               sig
+                 module Ty :
+                   sig
+                     type t = All.TyShape.Deps.Ty.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module VarScope :
+                   sig
+                     type t = All.TyShape.Deps.VarScope.t
+                     val root : unit -> t
+                     val common : t -> t -> t
+                   end
+                 module OptionalName :
+                   sig
+                     type t = All.TyShape.Deps.OptionalName.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Name :
+                   sig
+                     type t = All.TyShape.Deps.Name.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Pattern :
+                   sig
+                     type t = All.TyShape.Deps.Pattern.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module TyVariantRow :
+                   sig
+                     type t = All.TyShape.Deps.TyVariantRow.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module BlockedValue :
+                   sig
+                     type t = All.TyShape.Deps.BlockedValue.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Unsorted :
+                   sig
+                     type is_mutable = All.TyShape.Deps.Unsorted.is_mutable
+                     val equal_is_mutable : is_mutable -> is_mutable -> bool
+                     val compare_is_mutable : is_mutable -> is_mutable -> int
+                   end
+               end
+             type tuple_field =
+               All.TyShape.tuple_field = {
+               ty : Deps.Ty.t;
+               label : Kast_common.Label.label option;
+             }
+             val equal_tuple_field : tuple_field -> tuple_field -> bool
+             val compare_tuple_field : tuple_field -> tuple_field -> int
+             type tuple =
+               All.TyShape.tuple = {
+               name : Deps.OptionalName.t;
+               tuple : tuple_field Kast_util__Tuple.Tuple.t;
+             }
+             val equal_tuple : tuple -> tuple -> bool
+             val compare_tuple : tuple -> tuple -> int
+             type fn =
+               All.TyShape.fn = {
+               arg : Deps.Ty.t;
+               result : Deps.Ty.t;
+             }
+             val equal_fn : fn -> fn -> bool
+             val compare_fn : fn -> fn -> int
+             type generic =
+               All.TyShape.generic = {
+               arg : Deps.Pattern.t;
+               result : Deps.Ty.t;
+             }
+             val equal_generic : generic -> generic -> bool
+             val compare_generic : generic -> generic -> int
+             type unwind_token =
+               All.TyShape.unwind_token = {
+               result : Deps.Ty.t;
+             }
+             val equal_unwind_token : unwind_token -> unwind_token -> bool
+             val compare_unwind_token : unwind_token -> unwind_token -> int
+             type variant_data =
+               All.TyShape.variant_data = {
+               data : Deps.Ty.t option;
+             }
+             val equal_variant_data : variant_data -> variant_data -> bool
+             val compare_variant_data : variant_data -> variant_data -> int
+             type variant =
+               All.TyShape.variant = {
+               name : Deps.OptionalName.t;
+               variants : Deps.TyVariantRow.t;
+             }
+             val equal_variant : variant -> variant -> bool
+             val compare_variant : variant -> variant -> int
+             type opaque = All.TyShape.opaque = { name : Deps.Name.t; }
+             val equal_opaque : opaque -> opaque -> bool
+             val compare_opaque : opaque -> opaque -> int
+             type ref =
+               All.TyShape.ref = {
+               mut : Deps.Unsorted.is_mutable;
+               referenced : Deps.Ty.t;
+             }
+             val equal_ref : ref -> ref -> bool
+             val compare_ref : ref -> ref -> int
+             type t =
+               All.TyShape.t =
+                 Unit
+               | Bool
+               | Int32
+               | Int64
+               | Float64
+               | String
+               | Char
+               | Ref of ref
+               | Variant of variant
+               | Tuple of tuple
+               | Ty
+               | Fn of fn
+               | Generic of generic
+               | Ast
+               | UnwindToken of unwind_token
+               | Target
+               | ContextTy
+               | CompilerScope
+               | Opaque of opaque
+               | Blocked of Deps.BlockedValue.t
+               | Error
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+             module Scope :
+               sig
+                 type t = All.TyShape.Scope.t
+                 val root : unit -> t
+                 val common : t -> t -> t
+               end
+             val error : unit -> t
+             val scope : t -> Scope.t
+             val unite : t Kast_inference_base.unite
+           end
+         module TyVar :
+           sig
+             module Value :
+               sig
+                 type t = All.TyVar.Value.t
+                 module Scope :
+                   sig
+                     type t = All.TyVar.Value.Scope.t
+                     val root : unit -> t
+                     val common : t -> t -> t
+                   end
+                 val scope : t -> Scope.t
+                 val equal : t -> t -> bool
+                 val compare : t -> t -> int
+                 val unite : t Kast_inference_base.unite
+                 val error : unit -> t
+               end
+             type t = All.TyVar.t
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+             val new_inferred : span:Kast_util__Source.Span.t -> Value.t -> t
+             val new_not_inferred :
+               span:Kast_util__Source.Span.t -> scope:Value.Scope.t -> t
+             val inferred_opt : t -> Value.t option
+             val unite : t Kast_inference_base.unite
+             val scope : t -> Value.Scope.t
+             val infer_as :
+               span:Kast_util__Source.Span.t -> Value.t -> t -> unit
+             val print :
+               (Std__Format.Format.formatter -> Value.t -> unit) ->
+               Std__Format.Format.formatter -> t -> unit
+             val await_inferred : t -> Value.t
+           end
+         module Ty :
+           sig
+             module Deps :
+               sig
+                 module TyVar :
+                   sig
+                     type t = All.Ty.Deps.TyVar.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type t = All.Ty.t = { var : Deps.TyVar.t; }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module Place :
+           sig
+             module Deps :
+               sig
+                 module Value :
+                   sig
+                     type t = All.Place.Deps.Value.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Ty :
+                   sig
+                     type t = All.Place.Deps.Ty.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type mut = All.Place.mut = Immutable | Mutable | Inherit
+             val equal_mut : mut -> mut -> bool
+             val compare_mut : mut -> mut -> int
+             type state =
+               All.Place.state =
+                 Uninitialized
+               | Occupied of Deps.Value.t
+               | MovedOut
+             val equal_state : state -> state -> bool
+             val compare_state : state -> state -> int
+             type t =
+               All.Place.t = {
+               id : Kast_util__Id.Id.T.t;
+               mutable state : state;
+               ty : Deps.Ty.t;
+               mut : mut;
+             }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module Binding :
+           sig
+             module Deps :
+               sig module Ty : sig type t = All.Binding.Deps.Ty.t end end
+             type t =
+               All.Binding.t = {
+               id : Kast_util__Id.Id.T.t;
+               name : Kast_util__Symbol.Symbol.t;
+               span : Kast_util__Source.Span.t;
+               ty : Deps.Ty.t;
+               label : Kast_common.Label.label;
+               mut : bool;
+             }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module ExprShape :
+           sig
+             module Deps :
+               sig
+                 module TyShape :
+                   sig
+                     type fn = All.ExprShape.Deps.TyShape.fn
+                     type generic = All.ExprShape.Deps.TyShape.generic
+                   end
+                 module ValueShape :
+                   sig
+                     type context_ty =
+                         All.ExprShape.Deps.ValueShape.context_ty
+                   end
+                 module Value : sig type t = All.ExprShape.Deps.Value.t end
+                 module Expr : sig type t = All.ExprShape.Deps.Expr.t end
+                 module AssigneeExpr :
+                   sig type t = All.ExprShape.Deps.AssigneeExpr.t end
+                 module PlaceExpr :
+                   sig type t = All.ExprShape.Deps.PlaceExpr.t end
+                 module TyExpr : sig type t = All.ExprShape.Deps.TyExpr.t end
+                 module Pattern :
+                   sig type t = All.ExprShape.Deps.Pattern.t end
+                 module Binding :
+                   sig type t = All.ExprShape.Deps.Binding.t end
+                 module Unsorted :
+                   sig
+                     type maybe_compiled_fn =
+                         All.ExprShape.Deps.Unsorted.maybe_compiled_fn
+                   end
+               end
+             type fn =
+               All.ExprShape.fn = {
+               ty : Deps.TyShape.fn;
+               def : Deps.Unsorted.maybe_compiled_fn;
+             }
+             type generic =
+               All.ExprShape.generic = {
+               def : Deps.Unsorted.maybe_compiled_fn;
+               ty : Deps.TyShape.generic;
+             }
+             type then' = All.ExprShape.then' = { list : Deps.Expr.t list; }
+             type stmt = All.ExprShape.stmt = { expr : Deps.Expr.t; }
+             type tuple = Deps.Expr.t Kast_common.tuple_of
+             type variant =
+               All.ExprShape.variant = {
+               label : Kast_common.Label.label;
+               label_span : Kast_util__Source.Span.t;
+               value : Deps.Expr.t option;
+             }
+             type apply =
+               All.ExprShape.apply = {
+               f : Deps.Expr.t;
+               arg : Deps.Expr.t;
+             }
+             type instantiate_generic =
+               All.ExprShape.instantiate_generic = {
+               generic : Deps.Expr.t;
+               arg : Deps.Expr.t;
+             }
+             type scope = All.ExprShape.scope = { expr : Deps.Expr.t; }
+             type assign =
+               All.ExprShape.assign = {
+               assignee : Deps.AssigneeExpr.t;
+               value : Deps.PlaceExpr.t;
+             }
+             type native =
+               All.ExprShape.native = {
+               id : Kast_util__Id.Id.T.t;
+               expr : string;
+             }
+             type module' = All.ExprShape.module' = { def : Deps.Expr.t; }
+             type use_dot_star =
+               All.ExprShape.use_dot_star = {
+               used : Deps.Expr.t;
+               bindings : Deps.Binding.t list;
+             }
+             type if' =
+               All.ExprShape.if' = {
+               cond : Deps.Expr.t;
+               then_case : Deps.Expr.t;
+               else_case : Deps.Expr.t;
+             }
+             type match_branch =
+               All.ExprShape.match_branch = {
+               pattern : Deps.Pattern.t;
+               body : Deps.Expr.t;
+             }
+             type match' =
+               All.ExprShape.match' = {
+               value : Deps.PlaceExpr.t;
+               branches : match_branch list;
+             }
+             type quote_ast_group =
+               All.ExprShape.quote_ast_group = {
+               rule : Kast_syntax.Rule.group option;
+               children : quote_ast_child Kast_util__Tuple.Tuple.t;
+             }
+             and quote_ast_child =
+               All.ExprShape.quote_ast_child =
+                 Group of quote_ast_group
+               | Ast of Deps.Expr.t
+             type quote_ast =
+               All.ExprShape.quote_ast = {
+               rule : Kast_syntax.Rule.t;
+               root : quote_ast_group;
+             }
+             type loop = All.ExprShape.loop = { body : Deps.Expr.t; }
+             type unwindable =
+               All.ExprShape.unwindable = {
+               token : Deps.Pattern.t;
+               body : Deps.Expr.t;
+             }
+             type unwind =
+               All.ExprShape.unwind = {
+               token : Deps.Expr.t;
+               value : Deps.Expr.t;
+             }
+             type target_dependent_branch =
+               All.ExprShape.target_dependent_branch = {
+               cond : Deps.Expr.t;
+               body : Deps.Expr.t;
+             }
+             type target_dependent =
+               All.ExprShape.target_dependent = {
+               branches : target_dependent_branch list;
+               mutable interpreter_branch : target_dependent_branch option;
+             }
+             type inject_context =
+               All.ExprShape.inject_context = {
+               context_ty : Deps.ValueShape.context_ty;
+               value : Deps.Expr.t;
+             }
+             type current_context =
+               All.ExprShape.current_context = {
+               context_ty : Deps.ValueShape.context_ty;
+             }
+             type and' =
+               All.ExprShape.and' = {
+               lhs : Deps.Expr.t;
+               rhs : Deps.Expr.t;
+             }
+             type or' =
+               All.ExprShape.or' = {
+               lhs : Deps.Expr.t;
+               rhs : Deps.Expr.t;
+             }
+             type impl_cast =
+               All.ExprShape.impl_cast = {
+               value : Deps.Expr.t;
+               target : Deps.Value.t;
+               impl : Deps.Expr.t;
+             }
+             type cast =
+               All.ExprShape.cast = {
+               value : Deps.Expr.t;
+               target : Deps.Value.t;
+             }
+             type ref =
+               All.ExprShape.ref = {
+               mut : bool;
+               place : Deps.PlaceExpr.t;
+             }
+             type t =
+               All.ExprShape.t =
+                 Constant of Deps.Value.t
+               | Ref of ref
+               | Claim of Deps.PlaceExpr.t
+               | Then of then'
+               | Stmt of stmt
+               | Scope of scope
+               | Fn of fn
+               | Generic of generic
+               | Tuple of tuple
+               | Variant of variant
+               | Apply of apply
+               | InstantiateGeneric of instantiate_generic
+               | Assign of assign
+               | Ty of Deps.TyExpr.t
+               | Newtype of Deps.TyExpr.t
+               | Native of native
+               | Module of module'
+               | UseDotStar of use_dot_star
+               | If of if'
+               | And of and'
+               | Or of or'
+               | Match of match'
+               | QuoteAst of quote_ast
+               | Loop of loop
+               | Unwindable of unwindable
+               | Unwind of unwind
+               | InjectContext of inject_context
+               | CurrentContext of current_context
+               | ImplCast of impl_cast
+               | Cast of cast
+               | TargetDependent of target_dependent
+               | Error
+           end
+         module Expr :
+           sig
+             module Deps :
+               sig
+                 module ExprShape :
+                   sig type t = All.Expr.Deps.ExprShape.t end
+                 module IrData : sig type t = All.Expr.Deps.IrData.t end
+               end
+             type t =
+               All.Expr.t = {
+               shape : Deps.ExprShape.t;
+               data : Deps.IrData.t;
+             }
+           end
+         module AssigneeExprShape :
+           sig
+             module Deps :
+               sig
+                 module AssigneeExpr :
+                   sig type t = All.AssigneeExprShape.Deps.AssigneeExpr.t end
+                 module PlaceExpr :
+                   sig type t = All.AssigneeExprShape.Deps.PlaceExpr.t end
+                 module Pattern :
+                   sig type t = All.AssigneeExprShape.Deps.Pattern.t end
+               end
+             type tuple = Deps.AssigneeExpr.t Kast_common.tuple_of
+             type t =
+               All.AssigneeExprShape.t =
+                 Placeholder
+               | Unit
+               | Tuple of tuple
+               | Place of Deps.PlaceExpr.t
+               | Let of Deps.Pattern.t
+               | Error
+           end
+         module AssigneeExpr :
+           sig
+             module Deps :
+               sig
+                 module AssigneeExprShape :
+                   sig type t = All.AssigneeExpr.Deps.AssigneeExprShape.t end
+                 module IrData :
+                   sig type t = All.AssigneeExpr.Deps.IrData.t end
+               end
+             type t =
+               All.AssigneeExpr.t = {
+               shape : Deps.AssigneeExprShape.t;
+               data : Deps.IrData.t;
+             }
+           end
+         module TyExprShape :
+           sig
+             module Deps :
+               sig
+                 module Expr : sig type t = All.TyExprShape.Deps.Expr.t end
+                 module TyExpr :
+                   sig type t = All.TyExprShape.Deps.TyExpr.t end
+                 module Unsorted :
+                   sig
+                     type is_mutable =
+                         All.TyExprShape.Deps.Unsorted.is_mutable
+                   end
+               end
+             type fn =
+               All.TyExprShape.fn = {
+               arg : Deps.TyExpr.t;
+               result : Deps.TyExpr.t;
+             }
+             and tuple = Deps.TyExpr.t Kast_common.tuple_of
+             and union =
+               All.TyExprShape.union = {
+               elements : Deps.TyExpr.t list;
+             }
+             and variant_variant =
+               All.TyExprShape.variant_variant = {
+               label_span : Kast_util__Source.Span.t;
+               label : Kast_common.Label.label;
+               value : Deps.TyExpr.t option;
+             }
+             and variant =
+               All.TyExprShape.variant = {
+               variants : variant_variant list;
+             }
+             and ref =
+               All.TyExprShape.ref = {
+               mut : Deps.Unsorted.is_mutable;
+               referenced : Deps.TyExpr.t;
+             }
+             and t =
+               All.TyExprShape.t =
+                 Unit
+               | Ref of ref
+               | Fn of fn
+               | Expr of Deps.Expr.t
+               | Tuple of tuple
+               | Variant of variant
+               | Union of union
+               | Error
+           end
+         module TyExpr :
+           sig
+             module Deps :
+               sig
+                 module TyExprShape :
+                   sig type t = All.TyExpr.Deps.TyExprShape.t end
+                 module IrData : sig type t = All.TyExpr.Deps.IrData.t end
+               end
+             type t =
+               All.TyExpr.t = {
+               mutable compiled_shape : Deps.TyExprShape.t option;
+               mutable on_compiled : (unit -> unit) list;
+               data : Deps.IrData.t;
+             }
+           end
+         module PlaceExprShape :
+           sig
+             module Deps :
+               sig
+                 module Expr :
+                   sig type t = All.PlaceExprShape.Deps.Expr.t end
+                 module PlaceExpr :
+                   sig type t = All.PlaceExprShape.Deps.PlaceExpr.t end
+                 module Binding :
+                   sig type t = All.PlaceExprShape.Deps.Binding.t end
+               end
+             type field_expr =
+               All.PlaceExprShape.field_expr =
+                 Index of int
+               | Name of Kast_common.Label.label
+               | Expr of Deps.Expr.t
+             type field =
+               All.PlaceExprShape.field = {
+               obj : Deps.PlaceExpr.t;
+               field : field_expr;
+               field_span : Kast_util__Source.Span.t;
+             }
+             type t =
+               All.PlaceExprShape.t =
+                 Binding of Deps.Binding.t
+               | Field of field
+               | Deref of Deps.Expr.t
+               | Temp of Deps.Expr.t
+               | Error
+           end
+         module PlaceExpr :
+           sig
+             module Deps :
+               sig
+                 module PlaceExprShape :
+                   sig type t = All.PlaceExpr.Deps.PlaceExprShape.t end
+                 module IrData : sig type t = All.PlaceExpr.Deps.IrData.t end
+                 module Unsorted :
+                   sig
+                     type is_mutable = All.PlaceExpr.Deps.Unsorted.is_mutable
+                   end
+               end
+             type t =
+               All.PlaceExpr.t = {
+               shape : Deps.PlaceExprShape.t;
+               mut : Deps.Unsorted.is_mutable;
+               data : Deps.IrData.t;
+             }
+           end
+         module PatternShape :
+           sig
+             module Deps :
+               sig
+                 module Pattern :
+                   sig
+                     type t = All.PatternShape.Deps.Pattern.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module Binding :
+                   sig
+                     type t = All.PatternShape.Deps.Binding.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type tuple = Deps.Pattern.t Kast_common.tuple_of
+             and variant =
+               All.PatternShape.variant = {
+               label : Kast_common.Label.label;
+               label_span : Kast_util__Source.Span.t;
+               value : Deps.Pattern.t option;
+             }
+             and binding =
+               All.PatternShape.binding = {
+               by_ref : bool;
+               binding : Deps.Binding.t;
+             }
+             and t =
+               All.PatternShape.t =
+                 Placeholder
+               | Ref of Deps.Pattern.t
+               | Unit
+               | Binding of binding
+               | Tuple of tuple
+               | Variant of variant
+               | Error
+             val equal_tuple : tuple -> tuple -> bool
+             val equal_variant : variant -> variant -> bool
+             val equal_binding : binding -> binding -> bool
+             val equal : t -> t -> bool
+             val compare_tuple : tuple -> tuple -> int
+             val compare_variant : variant -> variant -> int
+             val compare_binding : binding -> binding -> int
+             val compare : t -> t -> int
+           end
+         module Pattern :
+           sig
+             module Deps :
+               sig
+                 module PatternShape :
+                   sig
+                     type t = All.Pattern.Deps.PatternShape.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+                 module IrData :
+                   sig
+                     type t = All.Pattern.Deps.IrData.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type t =
+               All.Pattern.t = {
+               shape : Deps.PatternShape.t;
+               data : Deps.IrData.t;
+             }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module CompilerScope :
+           sig
+             module Deps :
+               sig
+                 module Binding :
+                   sig type t = All.CompilerScope.Deps.Binding.t end
+               end
+             type t =
+               All.CompilerScope.t = {
+               id : Kast_util__Id.Id.T.t;
+               parent : t option;
+               recursive : bool;
+               mutable bindings :
+                 Deps.Binding.t Map.Make(Std__String.String).t;
+               mutable closed : bool;
+               mutable on_update : (unit -> unit) list;
+             }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module InterpreterScope :
+           sig
+             module Deps :
+               sig
+                 module Place :
+                   sig type t = All.InterpreterScope.Deps.Place.t end
+                 module TyShape :
+                   sig
+                     type tuple_field =
+                         All.InterpreterScope.Deps.TyShape.tuple_field
+                   end
+               end
+             type local =
+               All.InterpreterScope.local = {
+               place : Deps.Place.t;
+               ty_field : Deps.TyShape.tuple_field;
+             }
+             and t =
+               All.InterpreterScope.t = {
+               id : Kast_util__Id.Id.T.t;
+               span : Kast_util__Source.Span.t;
+               mutable locals : local Map.Make(Kast_util__Symbol.Symbol).t;
+               parent : t option;
+               recursive : bool;
+               mutable closed : bool;
+               mutable on_update :
+                 (Kast_util__Symbol.Symbol.t * (unit -> unit)) list;
+             }
+             module VarScope :
+               sig
+                 type t = All.InterpreterScope.VarScope.t
+                 val root : unit -> t
+                 val common : t -> t -> t
+               end
+           end
+         module Interpreter :
+           sig
+             module Deps :
+               sig
+                 module Ty : sig type t = All.Interpreter.Deps.Ty.t end
+                 module Value : sig type t = All.Interpreter.Deps.Value.t end
+                 module ValueMap :
+                   sig type 'a t = 'a All.Interpreter.Deps.ValueMap.t end
+                 module NameShape :
+                   sig type t = All.Interpreter.Deps.NameShape.t end
+                 module InterpreterScope :
+                   sig type t = All.Interpreter.Deps.InterpreterScope.t end
+               end
+             type natives =
+               All.Interpreter.natives = {
+               by_name :
+                 (Deps.Ty.t -> Deps.Value.t) Map.Make(Std__String.String).t;
+             }
+             and instantiated_generics =
+               All.Interpreter.instantiated_generics = {
+               mutable map :
+                 Deps.Value.t Deps.ValueMap.t Map.Make(Kast_util__Id.Id.T).t;
+             }
+             and cast_impls =
+               All.Interpreter.cast_impls = {
+               mutable map : Deps.Value.t Deps.ValueMap.t Deps.ValueMap.t;
+               mutable as_module : Deps.Value.t Deps.ValueMap.t;
+             }
+             and state =
+               All.Interpreter.state = {
+               natives : natives;
+               scope : Deps.InterpreterScope.t;
+               current_fn_natives :
+                 (Kast_util__Id.Id.T.t, Deps.Value.t) Hashtbl.t;
+               mutable contexts : Deps.Value.t Map.Make(Kast_util__Id.Id.T).t;
+               instantiated_generics : instantiated_generics;
+               cast_impls : cast_impls;
+               current_name : Deps.NameShape.t;
+             }
+           end
+         module IrData :
+           sig
+             module Deps :
+               sig
+                 module Pattern : sig type t = All.IrData.Deps.Pattern.t end
+                 module Expr : sig type t = All.IrData.Deps.Expr.t end
+                 module TyExpr : sig type t = All.IrData.Deps.TyExpr.t end
+                 module CompilerScope :
+                   sig type t = All.IrData.Deps.CompilerScope.t end
+                 module Ty :
+                   sig
+                     type t = All.IrData.Deps.Ty.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type evaled =
+               All.IrData.evaled = {
+               mutable patterns : Deps.Pattern.t list;
+               mutable exprs : Deps.Expr.t list;
+               mutable ty_exprs : Deps.TyExpr.t list;
+               mutable ty_ascribed : bool;
+             }
+             type t =
+               All.IrData.t = {
+               span : Kast_util__Source.Span.t;
+               ty : Deps.Ty.t;
+               compiler_scope : Deps.CompilerScope.t;
+               evaled : evaled;
+               included_file : Uri.t option;
+             }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module Unsorted :
+           sig
+             module Deps :
+               sig
+                 module Pattern :
+                   sig type t = All.Unsorted.Deps.Pattern.t end
+                 module Expr : sig type t = All.Unsorted.Deps.Expr.t end
+                 module TyExpr : sig type t = All.Unsorted.Deps.TyExpr.t end
+               end
+             type compiled_fn =
+               All.Unsorted.compiled_fn = {
+               arg : Deps.Pattern.t;
+               body : Deps.Expr.t;
+               evaled_result_ty : Deps.TyExpr.t option;
+             }
+             type maybe_compiled_fn =
+               All.Unsorted.maybe_compiled_fn = {
+               mutable compiled : compiled_fn option;
+               mutable on_compiled : (unit -> unit) list;
+             }
+             type is_mutable =
+               All.Unsorted.is_mutable = {
+               var :
+                 Kast_inference_base.Var.Make(Kast_common.InferrableBool).t;
+             }
+             val equal_is_mutable : is_mutable -> is_mutable -> bool
+             val compare_is_mutable : is_mutable -> is_mutable -> int
+           end
+         module NameShape :
+           sig
+             module Deps :
+               sig
+                 module VarScope :
+                   sig
+                     type t = All.NameShape.Deps.VarScope.t
+                     val root : unit -> t
+                     val common : t -> t -> t
+                   end
+                 module Value :
+                   sig
+                     type t = All.NameShape.Deps.Value.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                     val scope : t -> VarScope.t
+                     val unite : t Kast_inference_base.unite
+                   end
+               end
+             type part =
+               All.NameShape.part =
+                 Uri of Uri.t
+               | Str of string
+               | Symbol of Kast_util__Symbol.Symbol.t
+             val equal_part : part -> part -> bool
+             val compare_part : part -> part -> int
+             type instantiation =
+               All.NameShape.instantiation = {
+               generic : Deps.Value.t;
+               arg : Deps.Value.t;
+             }
+             val equal_instantiation : instantiation -> instantiation -> bool
+             val compare_instantiation :
+               instantiation -> instantiation -> int
+             type t =
+               All.NameShape.t =
+                 Simple of part
+               | Concat of t * part
+               | Instantiation of instantiation
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+             module Scope :
+               sig
+                 type t = All.NameShape.Scope.t
+                 val root : unit -> t
+                 val common : t -> t -> t
+               end
+             val scope : t -> Scope.t
+             val unite : t Kast_inference_base.unite
+             val error : unit -> t
+           end
+         module Name :
+           sig
+             module Deps :
+               sig
+                 module NameVar :
+                   sig
+                     type t = All.Name.Deps.NameVar.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type t = All.Name.t = { var : Deps.NameVar.t; }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module OptionalName :
+           sig
+             module Deps :
+               sig
+                 module OptionalNameVar :
+                   sig
+                     type t = All.OptionalName.Deps.OptionalNameVar.t
+                     val equal : t -> t -> bool
+                     val compare : t -> t -> int
+                   end
+               end
+             type t = All.OptionalName.t = { var : Deps.OptionalNameVar.t; }
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+           end
+         module TyVariantRow :
+           sig
+             module Value :
+               sig
+                 type t = All.TyVariantRow.Value.t
+                 module Scope :
+                   sig
+                     type t = All.TyVariantRow.Value.Scope.t
+                     val root : unit -> t
+                     val common : t -> t -> t
+                   end
+                 val scope : t -> Scope.t
+                 val equal : t -> t -> bool
+                 val compare : t -> t -> int
+                 val unite : t Kast_inference_base.unite
+                 val error : unit -> t
+               end
+             module T : sig type t = All.TyVariantRow.T.t end
+             module Shape :
+               sig
+                 type t =
+                   All.TyVariantRow.Shape.t =
+                     R_Empty
+                   | R_Cons of { label : Kast_common.Label.label;
+                       value : Value.t; rest : T.t;
+                     }
+                   | R_Error
+                 module Scope :
+                   sig
+                     type t = All.TyVariantRow.Shape.Scope.t
+                     val root : unit -> t
+                     val common : t -> t -> t
+                   end
+                 val scope : t -> Scope.t
+                 val equal : t -> t -> bool
+                 val compare : t -> t -> int
+                 val unite : t Kast_inference_base.unite
+                 val error : unit -> t
+               end
+             type t = T.t
+             val scope : t -> Value.Scope.t
+             val equal : t -> t -> bool
+             val compare : t -> t -> int
+             val unite : t Kast_inference_base.unite
+             val new_inferred : span:Kast_util__Source.Span.t -> Shape.t -> t
+             val new_not_inferred :
+               span:Kast_util__Source.Span.t -> scope:Value.Scope.t -> t
+           end
+         module VarScope :
+           sig
+             type t = All.VarScope.t
+             val root : unit -> t
+             val common : t -> t -> t
+           end
+       end
+     is not included in Kast_types_impl.Value.T.Deps
+     ... In module ValueVar:
+     Values do not match:
+       val scope : t -> Value.Scope.t
+     is not included in
+       val scope : t -> VarScope.t
+     The type t -> Value.Scope.t is not compatible with the type
+       t -> VarScope.t
+     Type Value.Scope.t is not compatible with type VarScope.t
+     File "src/types/impl/value.ml", line 308, characters 6-33:
+       Expected declaration
+     File "src/inference/base/kast_inference_base.ml", line 47, characters 4-34:
+       Actual declaration
