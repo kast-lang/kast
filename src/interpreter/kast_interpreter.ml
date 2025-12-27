@@ -10,6 +10,7 @@ let init : Types.name_part -> Scope.locals -> state =
     scope =
       Scope.with_values ~span:(Span.fake "<root>") ~recursive:false ~parent:None
         values;
+    result_scope = None;
     current_fn_natives = Hashtbl.create 0;
     natives = Natives.init_natives ();
     contexts = Id.Map.empty;

@@ -161,7 +161,9 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
      } ->
   {
     scope = Scope.enter ~recursive ~parent:scope;
-    interpreter = Interpreter.enter_scope ~span ~recursive interpreter;
+    interpreter =
+      Interpreter.enter_scope ~new_result_scope:true ~span ~recursive
+        interpreter;
     currently_compiled_file;
     import_cache;
     custom_syntax_impls;
@@ -169,4 +171,4 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
     by_ref;
   }
 
-let var_scope : t -> VarScope.t = fun state -> Some state.interpreter.scope
+let var_scope : t -> VarScope.t = fun state -> state.interpreter.result_scope

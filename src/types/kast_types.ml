@@ -174,7 +174,9 @@ module Value = struct
     fun value ->
       let inferred = value |> await_inferred in
       match inferred with
-      | V_Blocked blocked -> Some (Ty.inferred ~span (T_Blocked blocked))
+      | V_Blocked blocked ->
+          let ty = Ty.inferred ~span (T_Blocked blocked) in
+          Some ty
       | V_Ty ty -> Some ty
       | _ -> None
 

@@ -1,3 +1,5 @@
-const id = [T] (x :: T) => x;
-
-id[@native "string"] "hello"
+const Max = [Self] type ( .max :: Self );
+const max = [T] (
+    _ :: Max[T]
+);
+max

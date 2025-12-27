@@ -140,7 +140,10 @@ module Impl = struct
         instantiate ~result_ty:blocked.ty span state.interpreter generic arg
     | BV_Binding binding -> (
         match Scope.find_local_opt binding.name state.interpreter.scope with
-        | None -> original_value
+        | None ->
+            if not (binding.scope |> VarScope.contains state.target_scope) then
+              Error.error span "%a can't escape scope" Binding.print binding;
+            original_value
         | Some local -> (
             subs_count := !subs_count + 1;
             match local.place.state with

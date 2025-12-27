@@ -563,6 +563,7 @@ module rec TypesImpl : sig
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
+    result_scope : var_scope;
     current_fn_natives : (id, value) Hashtbl.t;
         [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     mutable contexts : value Id.Map.t;
@@ -1187,6 +1188,7 @@ end = struct
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
+    result_scope : var_scope;
     current_fn_natives : (id, value) Hashtbl.t;
         [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     mutable contexts : value Id.Map.t;

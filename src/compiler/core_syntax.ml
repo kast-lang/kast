@@ -627,8 +627,9 @@ let type_ascribe : core_syntax =
               Compiler.eval_ty (module C) expected_ty
             in
             Log.trace (fun log ->
-                log "Evaled ascription at %a = %a" Span.print span Ty.print
-                  expected_ty);
+                log "Evaled ascription at %a = %a (scope=%a)" Span.print span
+                  Ty.print expected_ty Print.print_var_scope
+                  (Inference.Var.scope expected_ty.var));
             expr_data.ty
             |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
             let _ : a =

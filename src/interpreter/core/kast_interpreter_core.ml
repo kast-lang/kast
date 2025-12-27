@@ -234,9 +234,7 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
       Log.trace (fun log ->
           log "evaled call (before sub) at %a = %a :: %a" Span.print span
             Value.print result Ty.print result.ty);
-      let sub_state : Types.sub_state =
-        { interpreter = new_state; target_scope = Some state.scope }
-      in
+      let sub_state : Types.sub_state = sub_here new_state in
       let result =
         match sub_mode with
         | None -> result
@@ -263,11 +261,11 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
 
 and instantiate ?(result_ty : ty option) (span : span) (state : state)
     (generic : value) (arg : value) : value =
-  let scope : VarScope.t = Some state.scope in
   let result =
     match result_ty with
-    | Some result_ty -> Value.new_not_inferred_of_ty ~scope ~span result_ty
-    | None -> Value.new_not_inferred ~scope ~span
+    | Some result_ty ->
+        Value.new_not_inferred_of_ty ~scope:state.result_scope ~span result_ty
+    | None -> Value.new_not_inferred ~scope:state.result_scope ~span
   in
   Log.trace (fun log ->
       log "%t with arg=%a, result_ty = %a"
@@ -320,7 +318,9 @@ and instantiate ?(result_ty : ty option) (span : span) (state : state)
             in
             match current_state with
             | None ->
-                let placeholder = Value.new_not_inferred ~scope ~span in
+                let placeholder =
+                  Value.new_not_inferred ~scope:state.result_scope ~span
+                in
                 save placeholder;
                 Log.trace (fun log ->
                     log "Instantiating generic with arg=%a at %a placeholder=%a"
@@ -492,7 +492,7 @@ and get_field ~span ~state ~(result_ty : ty) ~obj_mut obj member :
       Place (~mut:(Place.is_mutable ~parent_mut:obj_mut place), place))
 
 and sub_here : state -> Types.sub_state =
- fun state -> { interpreter = state; target_scope = Some state.scope }
+ fun state -> { interpreter = state; target_scope = state.result_scope }
 
 and eval_place : state -> Types.place_expr -> evaled_place_expr =
  fun state expr ->
@@ -546,7 +546,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                               {
                                 var =
                                   Inference.Var.new_not_inferred
-                                    ~scope:(Some state.scope) ~span;
+                                    ~scope:state.result_scope ~span;
                               };
                             referenced = expr.data.ty;
                           }
@@ -1121,7 +1121,7 @@ and eval : state -> expr -> value =
           | E_Ty e -> eval_expr_ty state expr e
           | E_Newtype ty_expr ->
               let result_ty =
-                Ty.new_not_inferred ~scope:(Some state.scope) ~span
+                Ty.new_not_inferred ~scope:state.result_scope ~span
               in
               fork (fun () ->
                   let inner_ty = eval_ty state ty_expr in
@@ -1162,6 +1162,10 @@ and eval : state -> expr -> value =
         (* let result = Substitute_bindings.sub_value ~state result in *)
         Log.trace (fun log ->
             log "evaled at %a = %a" Span.print span Value.print result);
+        Log.trace (fun log ->
+            log "scope = %a, result scope = %a" Print.print_var_scope
+              state.result_scope Print.print_var_scope
+              (VarScope.of_value result));
         result
       with
       | Unwind _ as exc -> raise exc
@@ -1224,7 +1228,7 @@ and current_name : state -> Types.name_shape =
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
   let span = expr.data.span in
-  let result = Ty.new_not_inferred ~scope:(Some state.scope) ~span in
+  let result = Ty.new_not_inferred ~scope:state.result_scope ~span in
   fork (fun () ->
       try
         Log.trace (fun log -> log "started eval ty expr at %a" Span.print span);
@@ -1327,7 +1331,11 @@ and eval_ty : state -> Expr.ty -> ty =
         |> Inference.Ty.expect_inferred_as ~span:expr.data.span evaled_result;
         Log.trace (fun log ->
             log "finished eval ty expr at %a = %a" Span.print span Ty.print
-              evaled_result)
+              evaled_result);
+        Log.trace (fun log ->
+            log "scope = %a, result scope = %a" Print.print_var_scope
+              state.result_scope Print.print_var_scope
+              (VarScope.of_ty evaled_result))
       with
       | effect Scope.AwaitUpdate (symbol, scope), k ->
           Effect.continue k (Effect.perform <| Scope.AwaitUpdate (symbol, scope))
@@ -1339,9 +1347,26 @@ and eval_ty : state -> Expr.ty -> ty =
   (* let result = Substitute_bindings.sub_ty ~state result in *)
   result
 
-and enter_scope ~span ~(recursive : bool) (state : state) : state =
+and enter_scope ?(new_result_scope : bool = false) ~span ~(recursive : bool)
+    (state : state) : state =
+  let result_scope : VarScope.t =
+    if new_result_scope then
+      Some
+        {
+          id = Id.gen ();
+          depth = state.scope.depth + 1;
+          span;
+          parent = state.result_scope;
+          locals = Scope.Locals.empty;
+          recursive;
+          closed = false;
+          on_update = [];
+        }
+    else state.result_scope
+  in
   {
     state with
+    result_scope;
     scope =
       {
         id = Id.gen ();

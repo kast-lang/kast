@@ -400,6 +400,7 @@ module Impl = struct
                 closed = false;
                 on_update = [];
               };
+            result_scope = target_scope;
             (* TODO only scope is needed, change Substitute_bindings *)
             natives = { by_name = StringMap.empty };
             current_fn_natives = Hashtbl.create 0;
