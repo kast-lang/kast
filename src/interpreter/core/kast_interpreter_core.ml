@@ -491,8 +491,7 @@ and get_field ~span ~state ~(result_ty : ty) ~obj_mut obj member :
       in
       Place (~mut:(Place.is_mutable ~parent_mut:obj_mut place), place))
 
-and sub_here : state -> Types.sub_state =
- fun state -> { interpreter = state; target_scope = state.result_scope }
+and sub_here : state -> Types.sub_state = fun state -> state
 
 and eval_place : state -> Types.place_expr -> evaled_place_expr =
  fun state expr ->

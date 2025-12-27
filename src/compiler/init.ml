@@ -324,8 +324,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                     in
                     result_ty
                     |> Kast_interpreter.Substitute_bindings.sub_ty ~span
-                         ~state:
-                           { interpreter = sub_state; target_scope = scope })
+                         ~state:sub_state)
               in
               ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
           ty

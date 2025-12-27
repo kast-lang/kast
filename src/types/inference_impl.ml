@@ -411,7 +411,7 @@ module Impl = struct
             current_name = Simple (Str "<unused>");
           }
         in
-        sub_ty ~span ~state:{ interpreter = state; target_scope } ty
+        sub_ty ~span ~state ty
       in
 
       let bindings_ba = bindings_ab |> List.map (fun (a, b) -> (b, a)) in

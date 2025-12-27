@@ -1329,7 +1329,4 @@ let target_symbol : symbol = Symbol.create "target"
 
 include TypesImpl
 
-type sub_state = {
-  interpreter : interpreter_state;
-  target_scope : var_scope;
-}
+type sub_state = interpreter_state

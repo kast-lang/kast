@@ -137,11 +137,11 @@ module Impl = struct
         in
         let arg = sub_value ~state arg in
         let instantiate = !Interpreter.instantiate |> Option.get in
-        instantiate ~result_ty:blocked.ty span state.interpreter generic arg
+        instantiate ~result_ty:blocked.ty span state generic arg
     | BV_Binding binding -> (
-        match Scope.find_local_opt binding.name state.interpreter.scope with
+        match Scope.find_local_opt binding.name state.scope with
         | None ->
-            if not (binding.scope |> VarScope.contains state.target_scope) then
+            if not (binding.scope |> VarScope.contains state.result_scope) then
               Error.error span "%a can't escape scope" Binding.print binding;
             original_value
         | Some local -> (
@@ -160,8 +160,8 @@ module Impl = struct
         in
         let get_field = !Interpreter.get_field |> Option.get in
         match
-          get_field ~result_ty:blocked.ty ~span ~state:state.interpreter
-            ~obj_mut:true obj_ref member
+          get_field ~result_ty:blocked.ty ~span ~state ~obj_mut:true obj_ref
+            member
         with
         | RefBlocked ref -> V_Blocked ref |> Value.inferred ~span
         | Place (~mut, place) -> V_Ref { mut; place } |> Value.inferred ~span)
@@ -172,7 +172,7 @@ module Impl = struct
             ~state ref
         in
         let claim_ref = !Interpreter.claim_ref |> Option.get in
-        claim_ref ~result_ty:blocked.ty ~span ~state:state.interpreter ref
+        claim_ref ~result_ty:blocked.ty ~span ~state ref
 
   and sub_name ~state (name : name) : name =
     let ctx = Effect.perform GetCtx in
@@ -368,14 +368,14 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     let span = ctx.span in
     let var = get_var original_value in
-    if var |> Inference.Var.scope |> VarScope.contains state.target_scope then
+    if var |> Inference.Var.scope |> VarScope.contains state.result_scope then
       original_value
     else if ctx.depth > 32 then fail "Went too deep" ~span
     else
       match ctx.subs |> Inference.Var.Map.find_opt var with
       | None ->
           let id = Inference.Var.recurse_id var in
-          let subbed_temp = new_not_inferred ~scope:state.target_scope ~span in
+          let subbed_temp = new_not_inferred ~scope:state.result_scope ~span in
           let subbed_temp_var = subbed_temp |> get_var in
           ctx.subs |> Inference.Var.Map.add var (Obj.repr subbed_temp);
           ctx.subs
