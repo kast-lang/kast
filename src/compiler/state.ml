@@ -61,14 +61,12 @@ module Scope = struct
     Kast_interpreter.fork (fun () ->
         try f ()
         with effect AwaitUpdate scope, k ->
-          (* println "registering waiter for %a" Id.print scope.id; *)
           let k = dont_leak_please k in
           scope.on_update <- (fun () -> k.continue true) :: scope.on_update)
 
   let notify_update (scope : scope) : unit =
     let fs = scope.on_update in
     scope.on_update <- [];
-    (* println "# of waiters: %d" (List.length fs); *)
     fs |> List.iter (fun f -> f ())
 
   let find_binding :
@@ -91,7 +89,6 @@ module Scope = struct
   let close : scope -> unit =
    fun scope ->
     scope.closed <- true;
-    (* println "closed %a" Id.print scope.id; *)
     notify_update scope
 
   let inject_binding : binding -> scope -> scope =
@@ -99,7 +96,6 @@ module Scope = struct
     if scope.recursive then (
       scope.bindings <-
         scope.bindings |> StringMap.add binding.name.name binding;
-      (* println "injected %S" binding.name.name; *)
       notify_update scope;
       scope)
     else (

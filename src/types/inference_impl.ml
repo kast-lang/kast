@@ -351,18 +351,20 @@ module Impl = struct
     | BV_ClaimRef _, _ -> fail ()
 
   and unite_ty_generic : ty_generic Inference.unite =
-   fun ~span ({ arg = arg_a; result = result_a } as a)
-       ({ arg = arg_b; result = result_b } as b) ->
+   fun ~span { arg = arg_a; result = result_a }
+       { arg = arg_b; result = result_b } ->
     let result : ty_generic =
-      let common_scope =
-        VarScopeImpl.unite (VarScope.of_ty_generic a) (VarScope.of_ty_generic b)
-      in
-
       let bindings_ab = unite_pattern ~span arg_a arg_b in
       let sub_ty = Option.get !sub_ty in
 
       let sub_scope_id = Id.gen () in
       let sub_with (bindings : (binding * binding) list) ty =
+        let target_scope =
+          bindings |> List.map snd
+          |> List.fold_left
+               (fun acc binding -> VarScope.deepest acc binding.scope)
+               None
+        in
         let state : Types.interpreter_state =
           let locals : Types.interpreter_locals =
             {
@@ -408,9 +410,7 @@ module Impl = struct
             current_name = Simple (Str "<unused>");
           }
         in
-        sub_ty ~span
-          ~state:{ interpreter = state; target_scope = common_scope }
-          ty
+        sub_ty ~span ~state:{ interpreter = state; target_scope } ty
       in
 
       let bindings_ba = bindings_ab |> List.map (fun (a, b) -> (b, a)) in

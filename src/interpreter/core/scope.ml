@@ -144,5 +144,4 @@ let rec print_all : formatter -> scope -> unit =
 let close : scope -> unit =
  fun scope ->
   scope.closed <- true;
-  (* println "closed %a" print_all scope; *)
   notify_update scope

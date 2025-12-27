@@ -7,6 +7,12 @@ type options = {
   spans : bool;
 }
 
+let print_var_scope fmt (scope : var_scope) =
+  match scope with
+  | None -> fprintf fmt "<root>"
+  | Some scope ->
+      fprintf fmt "<scope depth=%d %a>" scope.depth Span.print scope.span
+
 module RecurseCache = RecurseCache.Make (Id)
 
 module Impl = struct
@@ -63,8 +69,8 @@ module Impl = struct
         | Some data -> fprintf fmt " %a" print_place_value data
         | None -> ())
     | V_Generic g ->
-        print_name_shape fmt g.name
-        (* fprintf fmt "@{<italic><generic %a>@}" Id.print g.id *)
+        fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
+          print_ty_generic g.ty
     | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
     | V_Ast ast -> fprintf fmt "%a" Ast.print ast
     | V_UnwindToken { id; result_ty = _ } ->
@@ -123,6 +129,12 @@ module Impl = struct
                | None -> ()))
           variants)
 
+  and print_ty_generic : formatter -> ty_generic -> unit =
+   fun fmt { arg; result } ->
+    fprintf fmt "[%a] %a"
+      (print_pattern ~options:{ spans = false; types = true })
+      arg print_ty result
+
   and print_ty_shape : formatter -> ty_shape -> unit =
    fun fmt -> function
     | T_Unit -> fprintf fmt "()"
@@ -139,10 +151,7 @@ module Impl = struct
     | T_Ty -> fprintf fmt "type"
     | T_Fn { arg; result } ->
         fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
-    | T_Generic { arg; result } ->
-        fprintf fmt "[%a] %a"
-          (print_pattern ~options:{ spans = false; types = true })
-          arg print_ty result
+    | T_Generic ty -> print_ty_generic fmt ty
     | T_Ast -> fprintf fmt "ast"
     | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
     | T_Target -> fprintf fmt "target"

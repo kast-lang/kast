@@ -491,13 +491,6 @@ let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
           place.data.ty
       | A_Error -> Ty.new_not_inferred ~scope ~span
     in
-    (* ty.var
-    |> Inference.Var.once_inferred (fun shape ->
-        println "Inferred %a = %a" Span.print span Ty.Shape.print shape);
-    State.Scope.fork (fun () ->
-        let shape = Ty.await_inferred ty in
-        println "Inferred via await %a = %a" Span.print span Ty.Shape.print
-          shape); *)
     {
       shape;
       data =

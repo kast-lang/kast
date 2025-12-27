@@ -1099,7 +1099,15 @@ and eval : state -> expr -> value =
           | E_Ref place -> eval_expr_ref state expr place
           | E_Claim place -> eval_expr_claim state expr place
           | E_Constant value ->
-              Substitute_bindings.sub_value ~span ~state:(sub_here state) value
+              Log.trace (fun log ->
+                  log "const: before sub = %a" Value.print value);
+              let result =
+                Substitute_bindings.sub_value ~span ~state:(sub_here state)
+                  value
+              in
+              Log.trace (fun log ->
+                  log "const: after sub = %a" Value.print result);
+              result
           | E_Fn f -> eval_expr_fn state expr f
           | E_Generic f -> eval_expr_generic state expr f
           | E_Tuple tuple -> eval_expr_tuple state expr tuple

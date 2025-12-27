@@ -425,13 +425,13 @@ let generic : core_syntax =
             in
             (fun () -> TE_Expr expr) |> init_ty_expr span C.state
         | Expr ->
-            let arg = C.compile Pattern arg in
             let def : Types.maybe_compiled_fn =
               { compiled = None; on_compiled = [] }
             in
             let inner_state =
               C.state |> State.enter_scope ~span ~recursive:false
             in
+            let arg = C.compile ~state:inner_state Pattern arg in
             inner_state
             |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
             let ty =
@@ -2010,9 +2010,6 @@ let current_compiler_scope : core_syntax =
         match kind with
         | Expr ->
             let scope = C.state.scope in
-            (* scope.bindings
-            |> StringMap.iter (fun field _binding ->
-                println "@current_scope.%S" field); *)
             E_Constant (V_CompilerScope scope |> Value.inferred ~span)
             |> init_expr span C.state
         | _ ->
