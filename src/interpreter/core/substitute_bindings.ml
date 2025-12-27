@@ -276,8 +276,25 @@ module Impl = struct
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped
       | T_Generic { arg; result } ->
-          (* TODO *)
-          T_Generic { arg; result } |> shaped
+          (* TODO arg *)
+          let inner_state =
+            {
+              state with
+              scope =
+                {
+                  id = Id.gen ();
+                  depth = state.scope.depth + 1;
+                  span = ctx.span;
+                  parent = Some state.scope;
+                  locals = Scope.Locals.empty;
+                  recursive = false;
+                  closed = false;
+                  on_update = [];
+                };
+              result_scope = VarScope.enter ~span:ctx.span state.result_scope;
+            }
+          in
+          T_Generic { arg; result = sub_ty ~state:inner_state result } |> shaped
       | T_UnwindToken { result } ->
           T_UnwindToken { result = result |> sub_ty ~state } |> shaped
       | T_Blocked blocked -> (

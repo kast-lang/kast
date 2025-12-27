@@ -9,6 +9,22 @@ module VarScopeImpl = struct
 
   let root () = None
 
+  let enter ~span (parent : t) : t =
+    Some
+      {
+        id = Id.gen ();
+        parent;
+        span;
+        depth =
+          (match parent with
+          | None -> 0
+          | Some parent -> parent.depth + 1);
+        locals = { by_symbol = SymbolMap.empty };
+        recursive = false;
+        closed = false;
+        on_update = [];
+      }
+
   let rec unite (a : t) (b : t) : t =
     (* TODO more effecient algorithm? *)
     match (a, b) with

@@ -1,30 +1,21 @@
-const std = (
+const Int32 = @native "int32";
+
+const List = (
     module:
 
-    const Int32 = @native "int32";
-
-    const Treap = (
-        module:
-        
-        const data = [T] type (
-            .left :: t[T],
+    const t = [T] newtype (
+        | :Empty
+        | :Node (
             .value :: T,
-            .count :: Int32,
-            .priority :: Int32,
-            .right :: t[T],
-        );
-        const t = [T] type (
-            | :Empty
-            | :Node data[T]
-        );
+            .next :: t[T],
+        )
     );
-
-    const List = (
-        module:
-        const t = [T] type (
-            .inner :: Treap.t[T]
-        );
+    const update_data = [T] (
+        root,
+        .next :: t[T],
+    ) => (
+        :Empty
     );
 );
 
-std.List.t[std.Int32]
+List.update_data[Int32]
