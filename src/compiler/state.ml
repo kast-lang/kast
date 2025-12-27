@@ -61,27 +61,27 @@ module Scope = struct
     Kast_interpreter.fork (fun () ->
         try f ()
         with effect AwaitUpdate scope, k ->
-          (* println "registering waiter for %a" Id.print scope.id; *)
           let k = dont_leak_please k in
           scope.on_update <- (fun () -> k.continue true) :: scope.on_update)
 
   let notify_update (scope : scope) : unit =
     let fs = scope.on_update in
     scope.on_update <- [];
-    (* println "# of waiters: %d" (List.length fs); *)
     fs |> List.iter (fun f -> f ())
 
-  let find_binding : from:span -> string -> scope -> binding =
-   fun ~from ident scope ->
+  let find_binding :
+      from_scope:VarScope.t -> from:span -> string -> scope -> binding =
+   fun ~from_scope ~from ident scope ->
     scope
     |> find_binding_opt ~from ident
     |> Option.unwrap_or_else (fun () : binding ->
         error from "Could not find %S in scope" ident;
         {
           id = Id.gen ();
+          scope = from_scope;
           name = Symbol.create ident;
           span = from;
-          ty = Ty.new_not_inferred ~span:from;
+          ty = Ty.new_not_inferred ~scope:from_scope ~span:from;
           label = Label.create_definition from ident;
           mut = false;
         })
@@ -89,7 +89,6 @@ module Scope = struct
   let close : scope -> unit =
    fun scope ->
     scope.closed <- true;
-    (* println "closed %a" Id.print scope.id; *)
     notify_update scope
 
   let inject_binding : binding -> scope -> scope =
@@ -97,7 +96,6 @@ module Scope = struct
     if scope.recursive then (
       scope.bindings <-
         scope.bindings |> StringMap.add binding.name.name binding;
-      (* println "injected %S" binding.name.name; *)
       notify_update scope;
       scope)
     else (
@@ -163,10 +161,14 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
      } ->
   {
     scope = Scope.enter ~recursive ~parent:scope;
-    interpreter = Interpreter.enter_scope ~span ~recursive interpreter;
+    interpreter =
+      Interpreter.enter_scope ~new_result_scope:true ~span ~recursive
+        interpreter;
     currently_compiled_file;
     import_cache;
     custom_syntax_impls;
     mut_enabled;
     by_ref;
   }
+
+let var_scope : t -> VarScope.t = fun state -> state.interpreter.result_scope

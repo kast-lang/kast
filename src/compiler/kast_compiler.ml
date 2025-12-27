@@ -25,6 +25,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
         |> State.Scope.inject_binding
              {
                id = Id.gen ();
+               scope = Some compile_for.scope;
                name;
                ty = local.place.ty;
                span = Span.fake "<interpreter>";
@@ -62,8 +63,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 match token.shape with
                 | Token.Shape.Ident ident ->
                     PE_Binding
-                      (State.Scope.find_binding ~from:ast.span ident.name
-                         state.scope)
+                      (State.Scope.find_binding
+                         ~from_scope:(State.var_scope state) ~from:ast.span
+                         ident.name state.scope)
                     |> init_place_expr span state
                 | _ ->
                     PE_Temp (compile state Expr ast)
@@ -95,14 +97,15 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                     let default : Ty.Shape.t =
                       if String.contains raw '.' then T_Float64 else T_Int32
                     in
-                    let ty = Ty.new_not_inferred ~span in
+                    let scope = State.var_scope state in
+                    let ty = Ty.new_not_inferred ~scope ~span in
                     let setup_default () =
                       ty
                       |> Inference.Ty.expect_inferred_as ~span
                            (Ty.inferred ~span default)
                     in
                     ty.var |> Inference.Var.setup_default setup_default;
-                    let const = Value.new_not_inferred_of_ty ~span ty in
+                    let const = Value.new_not_inferred_of_ty ~scope ~span ty in
                     const.var |> Inference.Var.setup_default setup_default;
                     ty.var
                     |> Inference.Var.once_inferred (fun (ty : Ty.Shape.t) ->
@@ -149,11 +152,13 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | Pattern -> (
                 match token.shape with
                 | Token.Shape.Ident ident ->
+                    let scope = State.var_scope state in
                     let binding : binding =
                       {
                         id = Id.gen ();
+                        scope;
                         name = Symbol.create ident.name;
-                        ty = Ty.new_not_inferred ~span:token.span;
+                        ty = Ty.new_not_inferred ~scope ~span:token.span;
                         span = ast.span;
                         label = Label.create_definition ast.span ident.name;
                         mut = state.mut_enabled;
@@ -208,7 +213,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                         {
                           ty =
                             {
-                              name = OptionalName.new_not_inferred ~span;
+                              name =
+                                OptionalName.new_not_inferred
+                                  ~scope:(State.var_scope state) ~span;
                               tuple =
                                 args
                                 |> Tuple.map
@@ -307,6 +314,7 @@ let default name_part ?(import_cache : import_cache option) () : state =
     |> State.Scope.inject_binding
          {
            id = Id.gen ();
+           scope = None;
            name = std_symbol;
            ty = Value.ty_of std;
            span = Span.beginning_of std_uri;

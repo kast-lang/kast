@@ -44,7 +44,8 @@ let inner_tuple_compiled_with_handler =
       | Field { label = _; label_span = _; field } -> handler.handle kind field
       | Unpack packed -> handler.handle kind packed)
 
-let inner_compiled_with_handler =
+let inner_compiled_with_handler :
+    'a. 'a compiled_kind -> 'a -> inner_compiled_handler -> unit =
  fun (type a) (kind : a compiled_kind) (compiled : a)
      (handler : inner_compiled_handler) : unit ->
   (match kind with

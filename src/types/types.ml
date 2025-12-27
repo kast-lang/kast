@@ -6,8 +6,12 @@ module Inference = Kast_inference_base
 module Label = Label
 
 module rec TypesImpl : sig
+  (* VAR *)
+  type 'a var = ('a, var_scope) Inference.var
+  and var_scope = interpreter_scope option
+
   (* PLACE *)
-  type place = {
+  and place = {
     id : Id.t;
     mutable state : place_state;
     ty : ty;
@@ -77,13 +81,13 @@ module rec TypesImpl : sig
   }
 
   and value = {
-    var : value_shape Inference.var;
+    var : value_shape var;
     ty : ty;
   }
 
   and value_opaque = {
     ty : ty_opaque;
-    value : Obj.t;
+    value : Obj.t; [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
   and value_target = { name : string }
@@ -169,11 +173,11 @@ module rec TypesImpl : sig
 
   and ty_variant = {
     name : optional_name;
-    variants : ty_variant_data Row.t;
+    variants : (ty_variant_data, var_scope) Row.t;
   }
 
   and ty_opaque = { name : name }
-  and is_mutable = { var : bool Inference.var }
+  and is_mutable = { var : (bool, var_scope) Inference.var }
 
   and ty_ref = {
     mut : is_mutable;
@@ -203,7 +207,7 @@ module rec TypesImpl : sig
     | T_Blocked of blocked_value
     | T_Error
 
-  and ty = { var : ty_shape Inference.var }
+  and ty = { var : ty_shape var }
 
   (* EXPR *)
   and compiled_fn = {
@@ -523,7 +527,8 @@ module rec TypesImpl : sig
 
   and interpreter_scope = {
     id : Id.t;
-    span : span;
+    depth : int;
+    span : Span.t;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
     recursive : bool;
@@ -558,6 +563,7 @@ module rec TypesImpl : sig
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
+    result_scope : var_scope;
     current_fn_natives : (id, value) Hashtbl.t;
         [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     mutable contexts : value Id.Map.t;
@@ -569,6 +575,7 @@ module rec TypesImpl : sig
   (* OTHER *)
   and binding = {
     id : Id.t;
+    scope : var_scope;
     name : Symbol.t;
     span : Span.t;
     ty : ty;
@@ -591,8 +598,8 @@ module rec TypesImpl : sig
     mutable ty_ascribed : bool;
   }
 
-  and name = { var : name_shape Inference.var }
-  and optional_name = { var : name_shape option Inference.var }
+  and name = { var : name_shape var }
+  and optional_name = { var : name_shape option var }
 
   and name_shape =
     | Simple of name_part
@@ -619,8 +626,12 @@ module rec TypesImpl : sig
 
   and compiled = Compiled : 'a. 'a compiled_kind * 'a -> compiled
 end = struct
+  (* VAR *)
+  type 'a var = ('a, var_scope) Inference.var
+  and var_scope = interpreter_scope option
+
   (* PLACE *)
-  type place = {
+  and place = {
     id : Id.t;
     mutable state : place_state;
     ty : ty;
@@ -690,13 +701,13 @@ end = struct
   }
 
   and value = {
-    var : value_shape Inference.var;
+    var : value_shape var;
     ty : ty;
   }
 
   and value_opaque = {
     ty : ty_opaque;
-    value : Obj.t; [@equal Stdlib.( = )] [@compare Stdlib.compare]
+    value : Obj.t; [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
   }
 
   and value_target = { name : string }
@@ -782,11 +793,11 @@ end = struct
 
   and ty_variant = {
     name : optional_name;
-    variants : ty_variant_data Row.t;
+    variants : (ty_variant_data, var_scope) Row.t;
   }
 
   and ty_opaque = { name : name }
-  and is_mutable = { var : bool Inference.var }
+  and is_mutable = { var : (bool, var_scope) Inference.var }
 
   and ty_ref = {
     mut : is_mutable;
@@ -816,7 +827,7 @@ end = struct
     | T_Blocked of blocked_value
     | T_Error
 
-  and ty = { var : ty_shape Inference.var }
+  and ty = { var : ty_shape var }
 
   (* EXPR *)
   and compiled_fn = {
@@ -1136,6 +1147,7 @@ end = struct
 
   and interpreter_scope = {
     id : Id.t;
+    depth : int;
     span : Span.t;
     mutable locals : interpreter_locals;
     parent : interpreter_scope option;
@@ -1176,6 +1188,7 @@ end = struct
   and interpreter_state = {
     natives : natives;
     scope : interpreter_scope;
+    result_scope : var_scope;
     current_fn_natives : (id, value) Hashtbl.t;
         [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     mutable contexts : value Id.Map.t;
@@ -1187,6 +1200,7 @@ end = struct
   (* OTHER *)
   and binding = {
     id : Id.t;
+    scope : var_scope;
     name : Symbol.t;
     span : Span.t;
     ty : ty;
@@ -1209,8 +1223,8 @@ end = struct
     mutable ty_ascribed : bool;
   }
 
-  and name = { var : name_shape Inference.var }
-  and optional_name = { var : name_shape option Inference.var }
+  and name = { var : name_shape var }
+  and optional_name = { var : name_shape option var }
 
   and name_shape =
     | Simple of name_part
@@ -1314,3 +1328,5 @@ end
 let target_symbol : symbol = Symbol.create "target"
 
 include TypesImpl
+
+type sub_state = interpreter_state
