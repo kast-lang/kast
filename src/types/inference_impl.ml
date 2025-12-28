@@ -212,7 +212,7 @@ module VarScope = struct
    fun { ty; fn : value_untyped_fn = _ } -> of_ty_fn ty
 
   and of_value_generic : value_generic -> var_scope =
-   fun { id = _; name; fn : value_untyped_fn = _; ty } ->
+   fun { name; fn : value_untyped_fn = _; ty } ->
     deepest (of_name_shape name) (of_ty_generic ty)
 
   and of_value_native_fn : value_native_fn -> var_scope =
@@ -657,7 +657,13 @@ module Impl = struct
     | V_Fn a, V_Fn b when a.fn.id = b.fn.id ->
         V_Fn { ty = unite_ty_fn ~span a.ty b.ty; fn = a.fn }
     | V_Fn _, _ -> fail ()
-    | V_Generic a, V_Generic b when a.id = b.id -> V_Generic a
+    | V_Generic a, V_Generic b when a.fn.id = b.fn.id ->
+        V_Generic
+          {
+            name = unite_name_shape ~span a.name b.name;
+            fn = a.fn;
+            ty = unite_ty_generic ~span a.ty b.ty;
+          }
     | V_Generic _, _ -> fail ()
     | V_NativeFn _, _ -> fail () (* TODO *)
     | V_Ast _, _ -> fail ()
@@ -846,8 +852,7 @@ module Impl = struct
       | V_Variant { ty; _ } -> inferred_ty ~span <| T_Variant ty
       | V_Ty _ -> inferred_ty ~span T_Ty
       | V_Fn { ty; _ } -> inferred_ty ~span <| T_Fn ty
-      | V_Generic { id = _; name = _; fn = _; ty } ->
-          inferred_ty ~span <| T_Generic ty
+      | V_Generic { name = _; fn = _; ty } -> inferred_ty ~span <| T_Generic ty
       | V_NativeFn { id = _; ty; name = _; impl = _ } ->
           inferred_ty ~span <| T_Fn ty
       | V_Ast _ -> inferred_ty ~span T_Ast

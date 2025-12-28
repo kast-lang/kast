@@ -116,7 +116,6 @@ module rec TypesImpl : sig
   }
 
   and value_generic = {
-    id : Id.t;
     name : name_shape;
     fn : value_untyped_fn;
     ty : ty_generic;
@@ -736,7 +735,6 @@ end = struct
   }
 
   and value_generic = {
-    id : Id.t;
     name : name_shape;
     fn : value_untyped_fn;
     ty : ty_generic;

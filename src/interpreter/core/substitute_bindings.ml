@@ -108,10 +108,9 @@ module Impl = struct
               log "Subbed fn into %a :: %a" Value.print result Ty.print
                 result.ty);
           result
-      | V_Generic { id = _; name; fn; ty } ->
+      | V_Generic { name; fn; ty } ->
           V_Generic
             {
-              id = Id.gen ();
               name = sub_name_shape ~state name;
               fn;
               ty = sub_ty_generic ~state ty;

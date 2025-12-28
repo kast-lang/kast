@@ -297,7 +297,9 @@ and instantiate ?(result_ty : ty option) (span : span) (state : state)
             V_Blocked
               { shape = BV_Instantiate { generic; arg }; ty = result.ty }
             |> Value.inferred ~span
-        | V_Generic { id; name; fn; ty = _ } -> (
+        | V_Generic { name; fn; ty = _ } -> (
+            (* TODO this mixes different generics? *)
+            let id = fn.id in
             let save new_state =
               let generic_instantiations =
                 match state.instantiated_generics.map |> Id.Map.find_opt id with
@@ -634,7 +636,6 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   let span = expr.data.span in
   V_Generic
     {
-      id = Id.gen ();
       name = current_name state;
       fn =
         {
