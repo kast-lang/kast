@@ -322,10 +322,18 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                             ~parent:None arg_bindings;
                       }
                     in
+                    Log.trace (fun log ->
+                        log "generic %t (before sub) result ty = %a"
+                          (Span.print_osc8 span String.print "instantiation")
+                          Ty.print result_ty);
                     result_ty
                     |> Kast_interpreter.Substitute_bindings.sub_ty ~span
                          ~state:sub_state)
               in
+              Log.trace (fun log ->
+                  log "generic %t result ty = %a"
+                    (Span.print_osc8 span String.print "instantiation")
+                    Ty.print inferred_ty);
               ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
           ty
       | E_Tuple tuple -> tuple_ty ~scope ~span Expr tuple
@@ -469,9 +477,11 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           included_file = None;
         };
     }
-  with exc ->
-    Log.error (fun log -> log "while initializing expr at %a" Span.print span);
-    raise exc
+  with
+  | Cancel -> raise Cancel
+  | exc ->
+      Log.error (fun log -> log "while initializing expr at %a" Span.print span);
+      raise exc
 
 let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
  fun span state shape ->

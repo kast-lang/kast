@@ -355,29 +355,53 @@ let fn : core_syntax =
                 let state =
                   C.state |> State.enter_scope ~span ~recursive:false
                 in
+                Log.trace (fun log ->
+                    log "starting to compile fn at %a" Span.print span);
                 let arg = C.compile ~state Pattern arg in
+                Log.trace (fun log ->
+                    log "compiled fn arg = %a at %a"
+                      (Pattern.print ~options:{ types = false; spans = false })
+                      arg Span.print span);
                 ty.arg
                 |> Inference.Ty.expect_inferred_as ~span:arg.data.span
                      arg.data.ty;
                 state
                 |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                 let body = C.compile ~state Expr body in
+                Log.trace (fun log ->
+                    log "compiled fn body (ty = %a) at %a" Ty.print body.data.ty
+                      Span.print body.data.span);
                 let result_expr =
                   result
                   |> Option.map (fun result ->
                       let result, result_expr =
                         Compiler.eval_ty (module C) result
                       in
+                      Log.trace (fun log ->
+                          log "evaled fn expected result ty = %a at %a" Ty.print
+                            result Span.print body.data.span);
+                      Log.info (fun log ->
+                          log "unifying %a and %a" Ty.print body.data.ty
+                            Ty.print result);
                       body.data.ty
                       |> Inference.Ty.expect_inferred_as ~span:body.data.span
                            result;
+                      Log.trace (fun log ->
+                          log "unified result ty and body ty at %a" Span.print
+                            body.data.span);
+                      Log.info (fun log ->
+                          log "after unifying %a and %a" Ty.print body.data.ty
+                            Ty.print result);
                       result_expr)
                 in
-                Compiler.finish_compiling def
-                  { arg; body; evaled_result = result_expr };
                 ty.result
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
-                     body.data.ty);
+                     body.data.ty;
+                Compiler.finish_compiling def
+                  { arg; body; evaled_result = result_expr };
+                Log.trace (fun log ->
+                    log "finished compiling fn at %a, result ty = %a" Span.print
+                      span Ty.print ty.result));
             E_Fn { ty; def } |> init_expr span C.state);
   }
 

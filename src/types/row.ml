@@ -26,19 +26,12 @@ let rec shape_scope :
   | R_Empty -> Scope.root ()
   | R_Cons { label = _; value; rest } ->
       let value_scope : scope = value_scope value in
-      let rest_scope : scope =
-        scope (module Scope : Inference.Scope with type t = scope) rest
-      in
+      let rest_scope : scope = scope rest in
       Scope.deepest value_scope rest_scope
   | R_Error -> Scope.root ()
 
-and scope :
-    'a 'scope.
-    (module Inference.Scope with type t = 'scope) -> ('a, 'scope) row -> 'scope
-    =
- fun (type a) (type scope) (module Scope : Inference.Scope with type t = scope)
-     ({ var } : (a, scope) row) ->
-  Inference.Var.scope var
+and scope : 'a 'scope. ('a, 'scope) row -> 'scope =
+ fun (type a) (type scope) ({ var } : (a, scope) row) -> Inference.Var.scope var
 
 let new_not_inferred ~scope ~span =
   { var = Inference.Var.new_not_inferred ~scope ~span }
@@ -130,10 +123,7 @@ let rec unite_shape :
       else
         let rest =
           new_not_inferred ~span
-            ~scope:
-              (Scope.deepest
-                 (scope (module Scope) a.rest)
-                 (scope (module Scope) b.rest))
+            ~scope:(Scope.deepest (scope a.rest) (scope b.rest))
         in
         a.rest.var
         |> Inference.Var.infer_as

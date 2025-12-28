@@ -110,7 +110,7 @@ module VarScope = struct
 
   and of_ty_variant : ty_variant -> var_scope =
    fun { name; variants } ->
-    deepest (of_optional_name name) (Row.scope (module VarScopeImpl) variants)
+    deepest (of_optional_name name) (Row.scope variants)
 
   and of_ty_tuple : ty_tuple -> var_scope =
    fun { name; tuple } ->
@@ -258,69 +258,65 @@ let unite_with_ctx (f : 'a Inference.unite) ~span a b =
   with_ctx (fun () -> f ~span a b)
 
 let error = Inference.Error.error
+let error_context = Inference.Error.error_context
 
 module Impl = struct
   let rec _unused () = ()
 
   and unite_ty_shape : ty_shape Inference.unite =
    fun ~span a b ->
-    let fail () : ty_shape =
-      error span "ty_shape %a != %a" print_ty_shape a print_ty_shape b;
-      T_Error
-    in
-    match (a, b) with
-    | T_Error, smth | smth, T_Error -> smth
-    | T_Unit, T_Unit -> T_Unit
-    | T_Unit, _ -> fail ()
-    | T_Bool, T_Bool -> T_Bool
-    | T_Bool, _ -> fail ()
-    | T_Int32, T_Int32 -> T_Int32
-    | T_Int32, _ -> fail ()
-    | T_Int64, T_Int64 -> T_Int64
-    | T_Int64, _ -> fail ()
-    | T_Float64, T_Float64 -> T_Float64
-    | T_Float64, _ -> fail ()
-    | T_Char, T_Char -> T_Char
-    | T_Char, _ -> fail ()
-    | T_String, T_String -> T_String
-    | T_String, _ -> fail ()
-    | T_Ref a, T_Ref b -> T_Ref (unite_ty_ref ~span a b)
-    | T_Ref _, _ -> fail ()
-    | T_Tuple a, T_Tuple b -> T_Tuple (unite_ty_tuple ~span a b)
-    | T_Tuple _, _ -> fail ()
-    | ( T_Variant { name = name_a; variants = a },
-        T_Variant { name = name_b; variants = b } ) ->
-        T_Variant
-          {
-            name = unite_optional_name ~span name_a name_b;
-            variants =
-              Row.unite
-                (module VarScopeImpl)
-                VarScope.of_ty_variant_data ~span unite_ty_variant_data a b;
-          }
-    | T_Variant _, _ -> fail ()
-    | T_Ty, T_Ty -> T_Ty
-    | T_Ty, _ -> fail ()
-    | T_Ast, T_Ast -> T_Ast
-    | T_Ast, _ -> fail ()
-    | T_UnwindToken { result = a }, T_UnwindToken { result = b } ->
-        T_UnwindToken { result = unite_ty ~span a b }
-    | T_UnwindToken _, _ -> fail ()
-    | T_Fn a, T_Fn b -> T_Fn (unite_ty_fn ~span a b)
-    | T_Fn _, _ -> fail ()
-    | T_Generic a, T_Generic b -> T_Generic (unite_ty_generic ~span a b)
-    | T_Generic _, _ -> fail ()
-    | T_Target, T_Target -> T_Target
-    | T_Target, _ -> fail ()
-    | T_ContextTy, T_ContextTy -> T_ContextTy
-    | T_ContextTy, _ -> fail ()
-    | T_CompilerScope, T_CompilerScope -> T_CompilerScope
-    | T_CompilerScope, _ -> fail ()
-    | T_Opaque { name = name_a }, T_Opaque { name = name_b } ->
-        T_Opaque { name = unite_name ~span name_a name_b }
-    | T_Opaque _, _ -> fail ()
-    | T_Blocked a, T_Blocked b -> T_Blocked (unite_blocked_value ~span a b)
-    | T_Blocked _, _ -> fail ()
+    error_context
+      (fun () ->
+        let fail () : ty_shape =
+          error span "ty_shape %a != %a" print_ty_shape a print_ty_shape b;
+          T_Error
+        in
+        match (a, b) with
+        | T_Error, smth | smth, T_Error -> smth
+        | T_Unit, T_Unit -> T_Unit
+        | T_Unit, _ -> fail ()
+        | T_Bool, T_Bool -> T_Bool
+        | T_Bool, _ -> fail ()
+        | T_Int32, T_Int32 -> T_Int32
+        | T_Int32, _ -> fail ()
+        | T_Int64, T_Int64 -> T_Int64
+        | T_Int64, _ -> fail ()
+        | T_Float64, T_Float64 -> T_Float64
+        | T_Float64, _ -> fail ()
+        | T_Char, T_Char -> T_Char
+        | T_Char, _ -> fail ()
+        | T_String, T_String -> T_String
+        | T_String, _ -> fail ()
+        | T_Ref a, T_Ref b -> T_Ref (unite_ty_ref ~span a b)
+        | T_Ref _, _ -> fail ()
+        | T_Tuple a, T_Tuple b -> T_Tuple (unite_ty_tuple ~span a b)
+        | T_Tuple _, _ -> fail ()
+        | T_Variant a, T_Variant b -> T_Variant (unite_ty_variant ~span a b)
+        | T_Variant _, _ -> fail ()
+        | T_Ty, T_Ty -> T_Ty
+        | T_Ty, _ -> fail ()
+        | T_Ast, T_Ast -> T_Ast
+        | T_Ast, _ -> fail ()
+        | T_UnwindToken { result = a }, T_UnwindToken { result = b } ->
+            T_UnwindToken { result = unite_ty ~span a b }
+        | T_UnwindToken _, _ -> fail ()
+        | T_Fn a, T_Fn b -> T_Fn (unite_ty_fn ~span a b)
+        | T_Fn _, _ -> fail ()
+        | T_Generic a, T_Generic b -> T_Generic (unite_ty_generic ~span a b)
+        | T_Generic _, _ -> fail ()
+        | T_Target, T_Target -> T_Target
+        | T_Target, _ -> fail ()
+        | T_ContextTy, T_ContextTy -> T_ContextTy
+        | T_ContextTy, _ -> fail ()
+        | T_CompilerScope, T_CompilerScope -> T_CompilerScope
+        | T_CompilerScope, _ -> fail ()
+        | T_Opaque { name = name_a }, T_Opaque { name = name_b } ->
+            T_Opaque { name = unite_name ~span name_a name_b }
+        | T_Opaque _, _ -> fail ()
+        | T_Blocked a, T_Blocked b -> T_Blocked (unite_blocked_value ~span a b)
+        | T_Blocked _, _ -> fail ())
+      (fun fmt ->
+        fprintf fmt "ty_shape %a != %a" print_ty_shape a print_ty_shape b)
 
   and unite_blocked_value : blocked_value Inference.unite =
    fun ~span a b ->
@@ -524,6 +520,29 @@ module Impl = struct
       error span "bool unite failed";
       a)
 
+  and unite_ty_variant : ty_variant Inference.unite =
+   fun ~span ({ name = name_a; variants = variants_a } as a)
+       ({ name = name_b; variants = variants_b } as b) ->
+    Log.info (fun log ->
+        log "Unifying ty_variant %a and %a" print_ty_variant a print_ty_variant
+          b);
+    let variants =
+      Log.info (fun log ->
+          log "Unifying rows %a and %a" print_var_scope (Row.scope variants_a)
+            print_var_scope (Row.scope variants_b));
+      let row =
+        Row.unite
+          (module VarScopeImpl)
+          VarScope.of_ty_variant_data ~span unite_ty_variant_data variants_a
+          variants_b
+      in
+      Log.info (fun log ->
+          log "United rows into %a" print_var_scope (Row.scope row));
+      row
+    in
+    let name = unite_optional_name ~span name_a name_b in
+    { name; variants }
+
   and unite_ty_tuple : ty_tuple Inference.unite =
    fun ~span ({ name = name_a; tuple = a } as tuple_a)
        ({ name = name_b; tuple = b } as tuple_b) ->
@@ -606,78 +625,84 @@ module Impl = struct
 
   and unite_value_shape : value_shape Inference.unite =
    fun ~span a b ->
-    let fail () : value_shape =
-      error span "value_shape %a != %a" print_value_shape a print_value_shape b;
-      V_Error
-    in
-    match (a, b) with
-    | V_Error, smth | smth, V_Error -> smth
-    | V_Ty ty, V_Blocked b | V_Blocked b, V_Ty ty ->
-        V_Ty (unite_ty ~span ty (T_Blocked b |> inferred_ty ~span))
-    | V_Unit, V_Unit -> V_Unit
-    | V_Unit, _ -> fail ()
-    | V_Bool a, V_Bool b when a = b -> V_Bool a
-    | V_Bool _, _ -> fail ()
-    | V_Int32 a, V_Int32 b when a = b -> V_Int32 a
-    | V_Int32 _, _ -> fail ()
-    | V_Int64 a, V_Int64 b when a = b -> V_Int64 a
-    | V_Int64 _, _ -> fail ()
-    | V_Float64 a, V_Float64 b when a = b -> V_Float64 a
-    | V_Float64 _, _ -> fail ()
-    | V_Char a, V_Char b when a = b -> V_Char a
-    | V_Char _, _ -> fail ()
-    | V_String a, V_String b when a = b -> V_String a
-    | V_String _, _ -> fail ()
-    | V_Ref a, V_Ref b when Repr.equal a b -> V_Ref a
-    | V_Ref _, _ -> fail ()
-    | V_Tuple { ty = ty_a; tuple = a }, V_Tuple { ty = ty_b; tuple = b } ->
-        V_Tuple
-          {
-            ty = unite_ty_tuple ~span ty_a ty_b;
-            tuple =
-              Tuple.zip_order_a a b
-              |> Tuple.map
-                   (fun
-                     ((a, b) :
-                       Types.value_tuple_field * Types.value_tuple_field)
-                     :
-                     Types.value_tuple_field
-                   ->
-                     {
-                       place = unite_place ~span a.place b.place;
-                       span = a.span;
-                       ty_field =
-                         unite_ty_tuple_field ~span a.ty_field b.ty_field;
-                     });
-          }
-    | V_Tuple _, _ -> fail ()
-    | V_Variant _, _ -> fail () (* TODO *)
-    | V_Ty a, V_Ty b -> V_Ty (unite_ty ~span a b)
-    | V_Ty _, _ -> fail ()
-    | V_Fn a, V_Fn b when a.fn.id = b.fn.id ->
-        V_Fn { ty = unite_ty_fn ~span a.ty b.ty; fn = a.fn }
-    | V_Fn _, _ -> fail ()
-    | V_Generic a, V_Generic b when a.fn.id = b.fn.id ->
-        V_Generic
-          {
-            name = unite_name_shape ~span a.name b.name;
-            fn = a.fn;
-            ty = unite_ty_generic ~span a.ty b.ty;
-          }
-    | V_Generic _, _ -> fail ()
-    | V_NativeFn _, _ -> fail () (* TODO *)
-    | V_Ast _, _ -> fail ()
-    | ( V_UnwindToken { result_ty = ty_a; id = id_a },
-        V_UnwindToken { result_ty = ty_b; id = id_b } )
-      when id_a = id_b ->
-        V_UnwindToken { result_ty = unite_ty ~span ty_a ty_b; id = id_a }
-    | V_UnwindToken _, _ -> fail ()
-    | V_Target _, _ -> fail ()
-    | V_ContextTy _, _ -> fail ()
-    | V_Opaque _, _ -> fail ()
-    | V_Blocked a, V_Blocked b -> V_Blocked (unite_blocked_value ~span a b)
-    | V_Blocked _, _ -> fail ()
-    | V_CompilerScope _, _ -> fail ()
+    error_context
+      (fun () ->
+        let fail () : value_shape =
+          error span "value_shape %a != %a" print_value_shape a
+            print_value_shape b;
+          V_Error
+        in
+        match (a, b) with
+        | V_Error, smth | smth, V_Error -> smth
+        | V_Ty ty, V_Blocked b | V_Blocked b, V_Ty ty ->
+            V_Ty (unite_ty ~span ty (T_Blocked b |> inferred_ty ~span))
+        | V_Unit, V_Unit -> V_Unit
+        | V_Unit, _ -> fail ()
+        | V_Bool a, V_Bool b when a = b -> V_Bool a
+        | V_Bool _, _ -> fail ()
+        | V_Int32 a, V_Int32 b when a = b -> V_Int32 a
+        | V_Int32 _, _ -> fail ()
+        | V_Int64 a, V_Int64 b when a = b -> V_Int64 a
+        | V_Int64 _, _ -> fail ()
+        | V_Float64 a, V_Float64 b when a = b -> V_Float64 a
+        | V_Float64 _, _ -> fail ()
+        | V_Char a, V_Char b when a = b -> V_Char a
+        | V_Char _, _ -> fail ()
+        | V_String a, V_String b when a = b -> V_String a
+        | V_String _, _ -> fail ()
+        | V_Ref a, V_Ref b when Repr.equal a b -> V_Ref a
+        | V_Ref _, _ -> fail ()
+        | V_Tuple { ty = ty_a; tuple = a }, V_Tuple { ty = ty_b; tuple = b } ->
+            V_Tuple
+              {
+                ty = unite_ty_tuple ~span ty_a ty_b;
+                tuple =
+                  Tuple.zip_order_a a b
+                  |> Tuple.map
+                       (fun
+                         ((a, b) :
+                           Types.value_tuple_field * Types.value_tuple_field)
+                         :
+                         Types.value_tuple_field
+                       ->
+                         {
+                           place = unite_place ~span a.place b.place;
+                           span = a.span;
+                           ty_field =
+                             unite_ty_tuple_field ~span a.ty_field b.ty_field;
+                         });
+              }
+        | V_Tuple _, _ -> fail ()
+        | V_Variant _, _ -> fail () (* TODO *)
+        | V_Ty a, V_Ty b -> V_Ty (unite_ty ~span a b)
+        | V_Ty _, _ -> fail ()
+        | V_Fn a, V_Fn b when a.fn.id = b.fn.id ->
+            V_Fn { ty = unite_ty_fn ~span a.ty b.ty; fn = a.fn }
+        | V_Fn _, _ -> fail ()
+        | V_Generic a, V_Generic b when a.fn.id = b.fn.id ->
+            V_Generic
+              {
+                name = unite_name_shape ~span a.name b.name;
+                fn = a.fn;
+                ty = unite_ty_generic ~span a.ty b.ty;
+              }
+        | V_Generic _, _ -> fail ()
+        | V_NativeFn _, _ -> fail () (* TODO *)
+        | V_Ast _, _ -> fail ()
+        | ( V_UnwindToken { result_ty = ty_a; id = id_a },
+            V_UnwindToken { result_ty = ty_b; id = id_b } )
+          when id_a = id_b ->
+            V_UnwindToken { result_ty = unite_ty ~span ty_a ty_b; id = id_a }
+        | V_UnwindToken _, _ -> fail ()
+        | V_Target _, _ -> fail ()
+        | V_ContextTy _, _ -> fail ()
+        | V_Opaque _, _ -> fail ()
+        | V_Blocked a, V_Blocked b -> V_Blocked (unite_blocked_value ~span a b)
+        | V_Blocked _, _ -> fail ()
+        | V_CompilerScope _, _ -> fail ())
+      (fun fmt ->
+        fprintf fmt "value_shape %a != %a" print_value_shape a print_value_shape
+          b)
 
   and unite_value : value Inference.unite =
    fun ~span { var = a; ty = ty_a } { var = b; ty = ty_b } ->
@@ -712,25 +737,39 @@ module Impl = struct
    fun ~span { generic = generic_a; arg = arg_a }
        { generic = generic_b; arg = arg_b } ->
     {
-      generic = unite_value ~span generic_a generic_b;
-      arg = unite_value ~span arg_a arg_b;
+      generic =
+        error_context
+          (fun () -> unite_value ~span generic_a generic_b)
+          (fun fmt ->
+            fprintf fmt "different generics are instantiated: %a != %a"
+              print_value generic_a print_value generic_b);
+      arg =
+        error_context
+          (fun () -> unite_value ~span arg_a arg_b)
+          (fun fmt ->
+            fprintf fmt "different generic args: %a != %a" print_value arg_a
+              print_value arg_b);
     }
 
   and unite_name_shape : name_shape Inference.unite =
    fun ~span a b ->
-    let fail () =
-      error span "name_shape %a != %a" print_name_shape a print_name_shape b;
-      a
-    in
-    match (a, b) with
-    | Simple a, Simple b -> Simple (unite_name_part ~span a b)
-    | Simple a, _ -> fail ()
-    | Concat (a1, a2), Concat (b1, b2) ->
-        Concat (unite_name_shape ~span a1 b1, unite_name_part ~span a2 b2)
-    | Concat _, _ -> fail ()
-    | Instantiation a, Instantiation b ->
-        Instantiation (unite_name_instantiation ~span a b)
-    | Instantiation _, _ -> fail ()
+    error_context
+      (fun () ->
+        let fail () =
+          error span "name_shape %a != %a" print_name_shape a print_name_shape b;
+          a
+        in
+        match (a, b) with
+        | Simple a, Simple b -> Simple (unite_name_part ~span a b)
+        | Simple a, _ -> fail ()
+        | Concat (a1, a2), Concat (b1, b2) ->
+            Concat (unite_name_shape ~span a1 b1, unite_name_part ~span a2 b2)
+        | Concat _, _ -> fail ()
+        | Instantiation a, Instantiation b ->
+            Instantiation (unite_name_instantiation ~span a b)
+        | Instantiation _, _ -> fail ())
+      (fun fmt ->
+        fprintf fmt "name_shape %a != %a" print_name_shape a print_name_shape b)
 
   and unite_name_part : name_part Inference.unite =
    fun ~span a b ->

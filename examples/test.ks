@@ -6,5 +6,10 @@ const Treap = (
     const t = [T] newtype (
         | :Node t[T]
     );
-    const join = [T] (left :: t[T]) => ();
+    const update_data = [T] (x :: t[T]) -> t[T] => (
+        :Node _
+    );
+    const join = [T] () -> t[T] => (
+        update_data[T] _
+    );
 );

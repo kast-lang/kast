@@ -201,15 +201,20 @@ module Impl = struct
       ~state name
 
   and sub_name_shape ~(state : sub_state) (shape : name_shape) : name_shape =
+    let ctx = Effect.perform GetCtx in
     match shape with
     | Simple part -> Simple (sub_name_part ~state part)
     | Concat (a, b) -> Concat (sub_name_shape ~state a, sub_name_part ~state b)
     | Instantiation { generic; arg } ->
-        Instantiation
-          {
-            generic = generic |> sub_value ~state;
-            arg = arg |> sub_value ~state;
-          }
+        Log.trace (fun log ->
+            log "subbing instantiation %a[%a] at %a" Value.print generic
+              Value.print arg Span.print ctx.span);
+        let generic = generic |> sub_value ~state in
+        let arg = arg |> sub_value ~state in
+        Log.trace (fun log ->
+            log "subbed instantiation %a[%a] at %a" Value.print generic
+              Value.print arg Span.print ctx.span);
+        Instantiation { generic; arg }
 
   and sub_name_part ~(state : sub_state) (part : name_part) : name_part =
     match part with
@@ -244,18 +249,32 @@ module Impl = struct
       tuple = tuple |> Tuple.map (fun field -> sub_ty_tuple_field ~state field);
     }
 
-  and sub_ty_variant ~(state : sub_state) ({ name; variants } : ty_variant) :
-      ty_variant =
-    {
-      name = sub_optional_name ~state name;
-      variants =
-        variants
-        |> sub_row ~scope_of_value:VarScope.of_ty_variant_data
-             ~unite_value:Inference_impl.unite_ty_variant_data ~state
-             ~sub_value:(fun
-                 ~state ({ data } : ty_variant_data) : ty_variant_data ->
-               { data = data |> Option.map (sub_ty ~state) });
-    }
+  and sub_ty_variant ~(state : sub_state)
+      ({ name; variants } as ty : ty_variant) : ty_variant =
+    let name = sub_optional_name ~state name in
+    let variants =
+      variants
+      |> sub_row ~scope_of_value:VarScope.of_ty_variant_data
+           ~unite_value:Inference_impl.unite_ty_variant_data ~state
+           ~sub_value:(fun
+               ~state ({ data } : ty_variant_data) : ty_variant_data ->
+             {
+               data =
+                 data
+                 |> Option.map (fun ty ->
+                     let result = sub_ty ~state ty in
+                     Log.trace (fun log ->
+                         log "subbed variant data ty from %a to %a" Ty.print ty
+                           Ty.print result);
+                     result);
+             })
+    in
+    let result = { name; variants } in
+    Log.trace (fun log ->
+        log "subbed ty_variant from %a (row scope = %a) to %a"
+          Print.print_ty_variant ty Print.print_var_scope
+          (Row.scope ty.variants) Print.print_ty_variant result);
+    result
 
   and sub_ty_opaque ~state ({ name } : ty_opaque) : ty_opaque =
     { name = sub_name ~state name }
@@ -325,7 +344,7 @@ module Impl = struct
     let arg = sub_pattern_and_inject_replacements ~state:inner_state arg in
     let result = sub_ty ~state:inner_state result in
     let generic : ty_generic = { arg; result } in
-    Log.info (fun log ->
+    Log.trace (fun log ->
         log "subbed generic = %a" Print.print_ty_generic generic);
     generic
 
@@ -474,8 +493,12 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     let span = ctx.span in
     let var = get_var original_value in
-    if var |> Inference.Var.scope |> VarScope.contains state.result_scope then
-      original_value
+    let var_scope = var |> Inference.Var.scope in
+    if var_scope |> VarScope.contains state.result_scope then (
+      Log.trace (fun log ->
+          log "not subbing %a into %a" Print.print_var_scope var_scope
+            Print.print_var_scope state.result_scope);
+      original_value)
     else if ctx.depth > 32 then fail "Went too deep" ~span
     else
       match ctx.subs |> Inference.Var.Map.find_opt var with

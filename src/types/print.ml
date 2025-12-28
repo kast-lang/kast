@@ -7,11 +7,21 @@ type options = {
   spans : bool;
 }
 
+let rec print_scope_path fmt (scope : interpreter_scope) =
+  (match scope.parent with
+  | None -> ()
+  | Some parent ->
+      print_scope_path fmt parent;
+      fprintf fmt ".");
+  Id.print fmt scope.id
+
 let print_var_scope fmt (scope : var_scope) =
   match scope with
   | None -> fprintf fmt "<root>"
   | Some scope ->
-      fprintf fmt "<scope depth=%d %a>" scope.depth Span.print scope.span
+      Span.print_osc8 scope.span
+        (fun fmt () -> fprintf fmt "<%a>" print_scope_path scope)
+        () fmt
 
 module RecurseCache = RecurseCache.Make (Id)
 
@@ -102,7 +112,7 @@ module Impl = struct
   (* TY *)
   and print_ty_tuple : formatter -> ty_tuple -> unit =
    fun fmt { name; tuple } ->
-    print_optionally_named fmt name (fun () ->
+    print_optionally_named fmt name (fun fmt ->
         fprintf fmt "%a"
           (Tuple.print
              ~options:
@@ -112,7 +122,7 @@ module Impl = struct
 
   and print_ty_variant : formatter -> ty_variant -> unit =
    fun fmt { name; variants } ->
-    print_optionally_named fmt name (fun () ->
+    print_optionally_named fmt name (fun fmt ->
         fprintf fmt "%a"
           (Row.print
              ~options:
@@ -127,7 +137,9 @@ module Impl = struct
                match data with
                | Some data -> fprintf fmt " %a" print_ty data
                | None -> ()))
-          variants)
+          variants;
+        fprintf fmt "(row scope=%a)" print_var_scope
+          (Inference.Var.scope variants.var))
 
   and print_ty_generic : formatter -> ty_generic -> unit =
    fun fmt { arg; result } ->
@@ -540,11 +552,13 @@ module Impl = struct
    fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name
 
   and print_optionally_named :
-      formatter -> optional_name -> (unit -> unit) -> unit =
+      formatter -> optional_name -> (formatter -> unit) -> unit =
    fun fmt name f ->
     match name.var |> Inference.Var.inferred_opt with
-    | Some (Some name) -> print_name_shape fmt name
-    | Some None | None -> f ()
+    | Some (Some name) ->
+        print_name_shape fmt name;
+        fprintf fmt "(=%t)" f
+    | _ -> f fmt
 
   and print_name : formatter -> name -> unit =
    fun fmt { var } -> print_var print_name_shape fmt var
