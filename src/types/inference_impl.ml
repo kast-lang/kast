@@ -473,8 +473,7 @@ module Impl = struct
     in
     let _ : ty = unite_ty ~span a.data.ty b.data.ty in
     match (a.shape, b.shape) with
-    | P_Placeholder, P_Placeholder -> []
-    | P_Placeholder, _ -> fail ()
+    | P_Placeholder, _ | _, P_Placeholder -> []
     | P_Unit, P_Unit -> []
     | P_Unit, _ -> fail ()
     | P_Ref a, P_Ref b -> unite_pattern ~span a b

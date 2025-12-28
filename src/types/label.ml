@@ -26,7 +26,10 @@ let compare_label_data a b = Id.compare a.id b.id
 type label = { var : (label_data, NoScope.t) Inference.var }
 type t = label
 
-let equal a b = Inference.equal_var equal_label_data NoScope.equal a.var b.var
+let equal a b =
+  Inference.CompareRecurseCache.with_cache
+    (Inference.CompareRecurseCache.create ()) (fun () ->
+      Inference.equal_var equal_label_data NoScope.equal a.var b.var)
 
 let compare a b =
   Inference.compare_var compare_label_data NoScope.compare a.var b.var

@@ -1279,12 +1279,12 @@ and ValueMap : sig
   val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
   val iter : (key -> 'a -> unit) -> 'a t -> unit
   val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
+  val size : 'a t -> int
 end = struct
   type key = ValueImpl.t
   type 'a t = { entries : (key * 'a) list }
 
   let empty = { entries = [] }
-  let add key value map = { entries = (key, value) :: map.entries }
 
   let find_opt key map =
     map.entries
@@ -1308,6 +1308,7 @@ end = struct
       | None -> map
       | Some value -> { entries = (key, value) :: map.entries }
 
+  let add key value map = update key (fun _current -> Some value) map
   let iter f map = map.entries |> List.iter (fun (key, value) -> f key value)
 
   let union f a b =
@@ -1321,6 +1322,8 @@ end = struct
               | None -> Some value
               | Some current_value -> f key value current_value));
     !result
+
+  let size map = map.entries |> List.length
 end
 
 let target_symbol : symbol = Symbol.create "target"

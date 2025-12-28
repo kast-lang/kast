@@ -152,7 +152,7 @@ const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T
 );
 const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String => (
     let mut result = "[";
-    let mut i = 0;
+    let mut i :: Int32 = 0;
     iter (
         v,
         x => (
