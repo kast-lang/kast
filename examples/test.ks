@@ -1,21 +1,10 @@
 const Int32 = @native "int32";
 
-const List = (
+const Treap = (
     module:
 
     const t = [T] newtype (
-        | :Empty
-        | :Node (
-            .value :: T,
-            .next :: t[T],
-        )
+        | :Node t[T]
     );
-    const update_data = [T] (
-        root,
-        .next :: t[T],
-    ) => (
-        :Empty
-    );
+    const join = [T] (left :: t[T]) => ();
 );
-
-List.update_data[Int32]

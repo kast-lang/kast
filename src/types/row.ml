@@ -29,7 +29,7 @@ let rec shape_scope :
       let rest_scope : scope =
         scope (module Scope : Inference.Scope with type t = scope) rest
       in
-      Scope.unite value_scope rest_scope
+      Scope.deepest value_scope rest_scope
   | R_Error -> Scope.root ()
 
 and scope :
@@ -131,7 +131,7 @@ let rec unite_shape :
         let rest =
           new_not_inferred ~span
             ~scope:
-              (Scope.unite
+              (Scope.deepest
                  (scope (module Scope) a.rest)
                  (scope (module Scope) b.rest))
         in

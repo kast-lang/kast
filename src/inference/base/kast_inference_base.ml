@@ -11,6 +11,7 @@ module type Scope = sig
 
   val root : unit -> t
   val unite : t -> t -> t
+  val deepest : t -> t -> t
   val equal : t -> t -> bool
   val compare : t -> t -> int
 end

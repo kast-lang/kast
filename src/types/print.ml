@@ -131,10 +131,9 @@ module Impl = struct
 
   and print_ty_generic : formatter -> ty_generic -> unit =
    fun fmt { arg; result } ->
-    fprintf fmt "[%a] %a(%a)"
+    fprintf fmt "[%a] %a"
       (print_pattern ~options:{ spans = false; types = true })
-      arg print_ty result print_var_scope
-      (Inference.Var.scope result.var)
+      arg print_ty result
 
   and print_ty_shape : formatter -> ty_shape -> unit =
    fun fmt -> function
@@ -633,3 +632,4 @@ let print_name_shape = with_cache Impl.print_name_shape
 let print_name_part = with_cache Impl.print_name_part
 let print_ty_tuple = with_cache Impl.print_ty_tuple
 let print_ty_variant = with_cache Impl.print_ty_variant
+let print_ty_generic = with_cache Impl.print_ty_generic

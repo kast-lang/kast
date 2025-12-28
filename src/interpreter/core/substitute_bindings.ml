@@ -108,7 +108,15 @@ module Impl = struct
               log "Subbed fn into %a :: %a" Value.print result Ty.print
                 result.ty);
           result
-      | V_Generic { id = _; name = _; fn = _; ty = _ } -> original_value
+      | V_Generic { id = _; name; fn; ty } ->
+          V_Generic
+            {
+              id = Id.gen ();
+              name = sub_name_shape ~state name;
+              fn;
+              ty = sub_ty_generic ~state ty;
+            }
+          |> shaped
       | V_NativeFn { id; name; ty; impl } ->
           V_NativeFn { id; name; ty = sub_ty_fn ~state ty; impl } |> shaped
       | V_UnwindToken { id; result_ty } ->
@@ -275,26 +283,7 @@ module Impl = struct
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped
-      | T_Generic { arg; result } ->
-          (* TODO arg *)
-          let inner_state =
-            {
-              state with
-              scope =
-                {
-                  id = Id.gen ();
-                  depth = state.scope.depth + 1;
-                  span = ctx.span;
-                  parent = Some state.scope;
-                  locals = Scope.Locals.empty;
-                  recursive = false;
-                  closed = false;
-                  on_update = [];
-                };
-              result_scope = VarScope.enter ~span:ctx.span state.result_scope;
-            }
-          in
-          T_Generic { arg; result = sub_ty ~state:inner_state result } |> shaped
+      | T_Generic ty -> T_Generic (sub_ty_generic ~state ty) |> shaped
       | T_UnwindToken { result } ->
           T_UnwindToken { result = result |> sub_ty ~state } |> shaped
       | T_Blocked blocked -> (
@@ -314,12 +303,113 @@ module Impl = struct
         log "subbed ty shape = %a into %a" Ty.Shape.print shape Ty.print result);
     result
 
+  and sub_ty_generic ~(state : sub_state) ({ arg; result } : ty_generic) :
+      ty_generic =
+    let ctx = Effect.perform GetCtx in
+    let inner_state =
+      {
+        state with
+        scope =
+          {
+            id = Id.gen ();
+            depth = state.scope.depth + 1;
+            span = ctx.span;
+            parent = Some state.scope;
+            locals = Scope.Locals.empty;
+            recursive = false;
+            closed = false;
+            on_update = [];
+          };
+        result_scope = VarScope.enter ~span:ctx.span state.result_scope;
+      }
+    in
+    let arg = sub_pattern_and_inject_replacements ~state:inner_state arg in
+    let result = sub_ty ~state:inner_state result in
+    let generic : ty_generic = { arg; result } in
+    Log.info (fun log ->
+        log "subbed generic = %a" Print.print_ty_generic generic);
+    generic
+
   and sub_ty_tuple_field ~(state : sub_state) ({ label; ty } : ty_tuple_field) :
       ty_tuple_field =
     { label; ty = sub_ty ~state ty }
 
   and sub_ty_fn ~state ({ arg; result } : ty_fn) : ty_fn =
     { arg = arg |> sub_ty ~state; result = result |> sub_ty ~state }
+
+  and sub_pattern_and_inject_replacements :
+      state:sub_state -> pattern -> pattern =
+   fun ~state pattern ->
+    {
+      shape = sub_pattern_shape_and_inject_replacements ~state pattern.shape;
+      data = sub_ir_data ~state pattern.data;
+    }
+
+  and sub_pattern_shape_and_inject_replacements :
+      state:sub_state -> pattern_shape -> pattern_shape =
+   fun ~state shape ->
+    match shape with
+    | P_Placeholder -> P_Placeholder
+    | P_Ref referenced ->
+        P_Ref (sub_pattern_and_inject_replacements ~state referenced)
+    | P_Unit -> P_Unit
+    | P_Binding { by_ref : bool; binding } ->
+        let new_binding : binding =
+          {
+            id = Id.gen ();
+            scope = state.result_scope;
+            span = binding.span;
+            name = binding.name;
+            ty = sub_ty ~state binding.ty;
+            mut : bool = binding.mut;
+            label = binding.label;
+          }
+        in
+        state.scope
+        |> Scope.add_local binding.span ~mut:false binding.name
+             (V_Blocked { shape = BV_Binding new_binding; ty = new_binding.ty }
+             |> Value.inferred ~span:binding.span);
+        P_Binding { by_ref; binding = new_binding }
+    | P_Tuple { parts } ->
+        P_Tuple
+          {
+            parts =
+              parts
+              |> List.map
+                   (fun
+                     (part : pattern tuple_part_of) : pattern tuple_part_of ->
+                     match part with
+                     | Field { label; label_span; field } ->
+                         Field
+                           {
+                             label;
+                             label_span;
+                             field =
+                               sub_pattern_and_inject_replacements ~state field;
+                           }
+                     | Unpack packed ->
+                         Unpack
+                           (sub_pattern_and_inject_replacements ~state packed));
+          }
+    | P_Variant { label; label_span; value } ->
+        P_Variant
+          {
+            label;
+            label_span;
+            value =
+              value |> Option.map (sub_pattern_and_inject_replacements ~state);
+          }
+    | P_Error -> P_Error
+
+  and sub_ir_data : state:sub_state -> ir_data -> ir_data =
+   fun ~state data ->
+    {
+      evaled = { patterns = []; ty_exprs = []; exprs = []; ty_ascribed = false };
+      compiler_scope = data.compiler_scope;
+      span = data.span;
+      included_file = None;
+      ty = sub_ty ~state data.ty;
+    }
 
   and sub_row :
       'a.

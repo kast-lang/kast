@@ -7,6 +7,7 @@ module NoScope : Inference.Scope = struct
 
   let root () = ()
   let unite () () = ()
+  let deepest () () = ()
   let equal () () = true
   let compare () () = 0
 end
