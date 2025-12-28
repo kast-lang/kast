@@ -7,6 +7,7 @@ module Log = struct
     | Info
     | Debug
     | Trace
+    | None
 
   let max_level : level ref = ref Info
   let set_max_level : level -> unit = fun level -> max_level := level

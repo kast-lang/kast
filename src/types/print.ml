@@ -200,6 +200,7 @@ module Impl = struct
       if is_recursive |> RecurseCache.is_visited id then
         fprintf fmt "<id=%a>" Id.print id;
       Inference.Var.print print_shape fmt var;
+      (* fprintf fmt "@{<cyan>%a@}" print_var_scope (Inference.Var.scope var); *)
       cache |> RecurseCache.exit id)
 
   (* EXPR *)
@@ -546,7 +547,8 @@ module Impl = struct
   and print_binding : formatter -> binding -> unit =
    fun fmt binding ->
     let span = binding.label |> Label.get_span in
-    Span.print_osc8 span Symbol.print binding.name fmt
+    Span.print_osc8 span Symbol.print binding.name fmt;
+    Id.print fmt binding.id
 
   and print_target : formatter -> value_target -> unit =
    fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name

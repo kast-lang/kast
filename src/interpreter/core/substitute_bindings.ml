@@ -31,7 +31,8 @@ module Impl = struct
       ref None
   end
 
-  type subbed_vars = Obj.t Inference.Var.Map.t
+  (* var_scope.id -> var -> sub *)
+  type subbed_vars = (Id.t option, Obj.t Inference.Var.Map.t) Hashtbl.t
 
   type ctx = {
     subs : subbed_vars;
@@ -39,10 +40,31 @@ module Impl = struct
     depth : int;
   }
 
-  let new_ctx ~span = { subs = Inference.Var.Map.create (); span; depth = 0 }
+  let new_ctx ~span = { subs = Hashtbl.create 0; span; depth = 0 }
   let go_deeper ctx = { ctx with depth = ctx.depth + 1 }
 
   type _ Effect.t += GetCtx : ctx Effect.t
+
+  let find_sub (scope : var_scope) var ctx =
+    let key =
+      scope |> Option.map (fun (scope : interpreter_scope) -> scope.id)
+    in
+    let* scope_subs = Hashtbl.find_opt ctx.subs key in
+    scope_subs |> Inference.Var.Map.find_opt var
+
+  let remember_sub (scope : var_scope) var sub ctx =
+    let scope_subs =
+      let key =
+        scope |> Option.map (fun (scope : interpreter_scope) -> scope.id)
+      in
+      match Hashtbl.find_opt ctx.subs key with
+      | None ->
+          let subs = Inference.Var.Map.create () in
+          Hashtbl.add ctx.subs key subs;
+          subs
+      | Some subs -> subs
+    in
+    scope_subs |> Inference.Var.Map.add var sub
 
   let with_ctx (type a) (ctx : ctx) (f : unit -> a) : a =
     try f () with effect GetCtx, k -> Effect.continue k ctx
@@ -154,7 +176,11 @@ module Impl = struct
         | Some local -> (
             subs_count := !subs_count + 1;
             match local.place.state with
-            | Occupied value -> value
+            | Occupied value ->
+                Log.trace (fun log ->
+                    log "SUB BINDING %a into %a" Print.print_binding binding
+                      Print.print_value value);
+                value
             | Uninitialized | MovedOut ->
                 Error.error span "Tried to sub with %a" Place.print_ref
                   local.place;
@@ -287,7 +313,7 @@ module Impl = struct
           ctx.span);
     let shaped shape =
       let ty = Ty.inferred ~span:ctx.span shape in
-      ctx.subs |> Inference.Var.Map.add ty.var (Obj.repr ty);
+      ctx |> remember_sub state.result_scope ty.var (Obj.repr ty);
       ty
     in
     let result =
@@ -321,8 +347,8 @@ module Impl = struct
         log "subbed ty shape = %a into %a" Ty.Shape.print shape Ty.print result);
     result
 
-  and sub_ty_generic ~(state : sub_state) ({ arg; result } : ty_generic) :
-      ty_generic =
+  and sub_ty_generic ~(state : sub_state)
+      ({ arg; result } as generic : ty_generic) : ty_generic =
     let ctx = Effect.perform GetCtx in
     let inner_state =
       {
@@ -338,9 +364,13 @@ module Impl = struct
             closed = false;
             on_update = [];
           };
-        result_scope = VarScope.enter ~span:ctx.span state.result_scope;
+        result_scope = state.result_scope |> VarScope.enter ~span:ctx.span;
       }
     in
+    Log.trace (fun log ->
+        log "subbing generic = %a" Print.print_ty_generic generic);
+    Log.trace (fun log ->
+        log "inner scope = %a" Print.print_var_scope inner_state.result_scope);
     let arg = sub_pattern_and_inject_replacements ~state:inner_state arg in
     let result = sub_ty ~state:inner_state result in
     let generic : ty_generic = { arg; result } in
@@ -371,22 +401,32 @@ module Impl = struct
     | P_Ref referenced ->
         P_Ref (sub_pattern_and_inject_replacements ~state referenced)
     | P_Unit -> P_Unit
-    | P_Binding { by_ref : bool; binding } ->
+    | P_Binding { by_ref : bool; binding = old_binding } ->
         let new_binding : binding =
           {
             id = Id.gen ();
             scope = state.result_scope;
-            span = binding.span;
-            name = binding.name;
-            ty = sub_ty ~state binding.ty;
-            mut : bool = binding.mut;
-            label = binding.label;
+            span = old_binding.span;
+            name = old_binding.name;
+            ty = sub_ty ~state old_binding.ty;
+            mut : bool = old_binding.mut;
+            label = old_binding.label;
           }
         in
+        Log.trace (fun log ->
+            log "NEW BINDING %a in scope %a" Print.print_binding new_binding
+              Print.print_var_scope new_binding.scope);
+        let binding_value =
+          V_Blocked { shape = BV_Binding new_binding; ty = new_binding.ty }
+          |> Value.inferred ~span:new_binding.span
+        in
+        Log.trace (fun log ->
+            log "NEW BINDING %a in scope %a = %a :: %a" Print.print_binding
+              new_binding Print.print_var_scope new_binding.scope
+              Print.print_value binding_value Print.print_ty new_binding.ty);
         state.scope
-        |> Scope.add_local binding.span ~mut:false binding.name
-             (V_Blocked { shape = BV_Binding new_binding; ty = new_binding.ty }
-             |> Value.inferred ~span:binding.span);
+        |> Scope.add_local new_binding.span ~mut:false new_binding.name
+             binding_value;
         P_Binding { by_ref; binding = new_binding }
     | P_Tuple { parts } ->
         P_Tuple
@@ -463,7 +503,7 @@ module Impl = struct
         Row.inferred (module Inference_impl.VarScope) scope_of_value ~span value
       in
       let ctx = Effect.perform GetCtx in
-      ctx.subs |> Inference.Var.Map.add result.var (Obj.repr result);
+      ctx |> remember_sub state.result_scope result.var (Obj.repr result);
       result
     in
     match shape with
@@ -501,14 +541,15 @@ module Impl = struct
       original_value)
     else if ctx.depth > 32 then fail "Went too deep" ~span
     else
-      match ctx.subs |> Inference.Var.Map.find_opt var with
+      match ctx |> find_sub state.result_scope var with
       | None ->
           let id = Inference.Var.recurse_id var in
           let subbed_temp = new_not_inferred ~scope:state.result_scope ~span in
           let subbed_temp_var = subbed_temp |> get_var in
-          ctx.subs |> Inference.Var.Map.add var (Obj.repr subbed_temp);
-          ctx.subs
-          |> Inference.Var.Map.add subbed_temp_var (Obj.repr subbed_temp);
+          ctx |> remember_sub state.result_scope var (Obj.repr subbed_temp);
+          ctx
+          |> remember_sub state.result_scope subbed_temp_var
+               (Obj.repr subbed_temp);
           var
           |> Inference.Var.once_inferred (fun shape ->
               Log.trace (fun log ->

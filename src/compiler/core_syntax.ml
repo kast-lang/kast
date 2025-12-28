@@ -380,7 +380,7 @@ let fn : core_syntax =
                       Log.trace (fun log ->
                           log "evaled fn expected result ty = %a at %a" Ty.print
                             result Span.print body.data.span);
-                      Log.info (fun log ->
+                      Log.trace (fun log ->
                           log "unifying %a and %a" Ty.print body.data.ty
                             Ty.print result);
                       body.data.ty
@@ -389,7 +389,7 @@ let fn : core_syntax =
                       Log.trace (fun log ->
                           log "unified result ty and body ty at %a" Span.print
                             body.data.span);
-                      Log.info (fun log ->
+                      Log.trace (fun log ->
                           log "after unifying %a and %a" Ty.print body.data.ty
                             Ty.print result);
                       result_expr)

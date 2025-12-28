@@ -34,7 +34,7 @@ module VarScopeImpl = struct
         if diff < 0 then unite (Some a) b.parent
         else if diff > 0 then unite a.parent (Some b)
         else if Id.equal a.id b.id then Some a
-        else None
+        else unite a.parent b.parent
 
   let equal =
     Option.equal (fun (a : interpreter_scope) (b : interpreter_scope) ->
@@ -377,6 +377,8 @@ module Impl = struct
                (fun acc binding -> VarScope.deepest acc binding.scope)
                None
         in
+        Log.trace (fun log ->
+            log "target_scope = %a" Print.print_var_scope target_scope);
         let state : Types.interpreter_state =
           let locals : Types.interpreter_locals =
             {
@@ -423,14 +425,36 @@ module Impl = struct
             current_name = Simple (Str "<unused>");
           }
         in
-        sub_ty ~span ~state ty
+        let result = sub_ty ~span ~state ty in
+        Log.trace (fun log ->
+            log "subbed %a into %a" print_ty ty print_ty result);
+        result
       in
 
       let bindings_ba = bindings_ab |> List.map (fun (a, b) -> (b, a)) in
 
-      (* println "unite_generic_ty at %a" Span.print span; *)
-      let _ : ty = unite_ty ~span (result_a |> sub_with bindings_ab) result_b in
-      let _ : ty = unite_ty ~span (result_b |> sub_with bindings_ba) result_a in
+      Log.trace (fun log ->
+          log "unite_generic_ty arg: %a and %a"
+            (print_pattern ~options:{ spans = false; types = false })
+            arg_a
+            (print_pattern ~options:{ spans = false; types = false })
+            arg_b);
+      Log.trace (fun log ->
+          log "unite_generic_ty result_ty: %a and %a" print_ty result_a print_ty
+            result_b);
+      Log.trace (fun log ->
+          log "unite_generic_ty result_scope: %a and %a" print_var_scope
+            (VarScope.of_ty result_a) print_var_scope (VarScope.of_ty result_b));
+      let result_a_subbed = result_a |> sub_with bindings_ab in
+      Log.trace (fun log ->
+          log "unite_generic_ty a->b %a and %a" print_ty result_a_subbed
+            print_ty result_b);
+      let _ : ty = unite_ty ~span result_a_subbed result_b in
+      let result_b_subbed = result_b |> sub_with bindings_ba in
+      Log.trace (fun log ->
+          log "unite_generic_ty b->a %a and %a" print_ty result_b_subbed
+            print_ty result_a);
+      let _ : ty = unite_ty ~span result_b_subbed result_a in
 
       { arg = arg_a; result = result_a }
     in
@@ -523,21 +547,26 @@ module Impl = struct
   and unite_ty_variant : ty_variant Inference.unite =
    fun ~span ({ name = name_a; variants = variants_a } as a)
        ({ name = name_b; variants = variants_b } as b) ->
-    Log.info (fun log ->
-        log "Unifying ty_variant %a and %a" print_ty_variant a print_ty_variant
-          b);
+    let unite_id = Id.gen () in
+    Log.trace (fun log ->
+        log "%a :: Unifying ty_variant %a and %a" Id.print unite_id
+          print_ty_variant a print_ty_variant b);
     let variants =
-      Log.info (fun log ->
-          log "Unifying rows %a and %a" print_var_scope (Row.scope variants_a)
-            print_var_scope (Row.scope variants_b));
+      Log.trace (fun log ->
+          log "%a :: Unifying rows %a and %a" Id.print unite_id print_var_scope
+            (Row.scope variants_a) print_var_scope (Row.scope variants_b));
+      Log.trace (fun log ->
+          log "common scope = %a" print_var_scope
+            (VarScope.unite (Row.scope variants_a) (Row.scope variants_b)));
       let row =
         Row.unite
           (module VarScopeImpl)
           VarScope.of_ty_variant_data ~span unite_ty_variant_data variants_a
           variants_b
       in
-      Log.info (fun log ->
-          log "United rows into %a" print_var_scope (Row.scope row));
+      Log.trace (fun log ->
+          log "%a :: United rows into %a" Id.print unite_id print_var_scope
+            (Row.scope row));
       row
     in
     let name = unite_optional_name ~span name_a name_b in
@@ -658,19 +687,25 @@ module Impl = struct
                 ty = unite_ty_tuple ~span ty_a ty_b;
                 tuple =
                   Tuple.zip_order_a a b
-                  |> Tuple.map
+                  |> Tuple.mapi
                        (fun
+                         member
                          ((a, b) :
                            Types.value_tuple_field * Types.value_tuple_field)
                          :
                          Types.value_tuple_field
                        ->
-                         {
-                           place = unite_place ~span a.place b.place;
-                           span = a.span;
-                           ty_field =
-                             unite_ty_tuple_field ~span a.ty_field b.ty_field;
-                         });
+                         error_context
+                           (fun () ->
+                             {
+                               place = unite_place ~span a.place b.place;
+                               span = a.span;
+                               ty_field =
+                                 unite_ty_tuple_field ~span a.ty_field
+                                   b.ty_field;
+                             })
+                           (fun fmt ->
+                             fprintf fmt "field %a" Tuple.Member.print member));
               }
         | V_Tuple _, _ -> fail ()
         | V_Variant _, _ -> fail () (* TODO *)
