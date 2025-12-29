@@ -37,6 +37,8 @@
 
 @syntax "if_without_else" 7.5 wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
+@syntax "if_is" 7.5 wrap never = "if" " " value " " "is" " " pattern " " "then" " " body;
+@syntax "if_is_else" 7.5 wrap never = "if" " " value " " "is" " " pattern " " "then" " " body " " "else" " " else_body ->;
 @syntax "core:match" 7.5 wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
 @syntax "while" 7.5 wrap never = "while" " " cond " " "do" " " body;
 @syntax "for" 7.5 wrap never = "for" " " pattern " " "in" " " iterable " " "do" " " body;

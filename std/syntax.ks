@@ -135,4 +135,17 @@ impl syntax ([arg] -> body) = `(
 
 impl syntax (start..end) = `(
     std.range.range ($start, $end)
-)
+);
+
+impl syntax (if value is pattern then body) = `(
+    match $value with (
+        | $pattern => $body
+        | _ => ()
+    )
+);
+impl syntax (if value is pattern then body else else_body) = `(
+    match $value with (
+        | $pattern => $body
+        | _ => $else_body
+    )
+);
