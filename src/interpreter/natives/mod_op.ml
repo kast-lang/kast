@@ -5,27 +5,31 @@ let init () =
       (op_int64 : int64 -> int64 -> int64)
       (op_float : (float -> float -> float) option) =
     native_fn name (fun _ty ~caller ~state:_ value ->
-        match value |> Value.await_inferred with
-        | V_Tuple { ty = _; tuple } ->
-            let a, b = tuple |> Tuple.unwrap_unnamed2 in
-            let result : Value.shape =
-              match
-                ( a.place |> claim ~span:caller |> await_fully_inferred,
-                  b.place |> claim ~span:caller |> await_fully_inferred )
-              with
-              | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
-              | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
-              | V_Float64 a, V_Float64 b -> (
-                  match op_float with
-                  | Some op_float -> V_Float64 (op_float a b)
-                  | None -> V_Error)
-              | V_String a, V_String b -> V_String (a ^ b) (* TODO only for + *)
-              | _ -> V_Error
-            in
-            result |> Value.inferred ~span
-        | _ ->
-            Error.error caller "bin op %S expected a tuple as arg" name;
-            V_Error |> Value.inferred ~span)
+        Kast_profiling.record
+          (fun () -> make_string "native %S" name)
+          (fun () ->
+            match value |> Value.await_inferred with
+            | V_Tuple { ty = _; tuple } ->
+                let a, b = tuple |> Tuple.unwrap_unnamed2 in
+                let result : Value.shape =
+                  match
+                    ( a.place |> claim ~span:caller |> await_fully_inferred,
+                      b.place |> claim ~span:caller |> await_fully_inferred )
+                  with
+                  | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
+                  | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
+                  | V_Float64 a, V_Float64 b -> (
+                      match op_float with
+                      | Some op_float -> V_Float64 (op_float a b)
+                      | None -> V_Error)
+                  | V_String a, V_String b ->
+                      V_String (a ^ b) (* TODO only for + *)
+                  | _ -> V_Error
+                in
+                result |> Value.inferred ~span
+            | _ ->
+                Error.error caller "bin op %S expected a tuple as arg" name;
+                V_Error |> Value.inferred ~span))
   in
   [
     bin_op "+" Int32.add Int64.add (Some Float.add);

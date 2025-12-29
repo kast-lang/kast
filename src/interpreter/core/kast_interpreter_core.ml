@@ -261,127 +261,141 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
 
 and instantiate ?(result_ty : ty option) (span : span) (state : state)
     (generic : value) (arg : value) : value =
-  let result =
-    match result_ty with
-    | Some result_ty ->
-        Value.new_not_inferred_of_ty ~scope:state.result_scope ~span result_ty
-    | None -> Value.new_not_inferred ~scope:state.result_scope ~span
-  in
-  Log.trace (fun log ->
-      log "%t with arg=%a, result_ty = %a"
-        (Span.print_osc8 span String.print "instantiating")
-        Value.print arg Ty.print result.ty);
-  fork (fun () ->
+  Kast_profiling.record
+    (fun () -> make_string "instantiate at %a" Span.print span)
+    (fun () ->
+      let result =
+        match result_ty with
+        | Some result_ty ->
+            Value.new_not_inferred_of_ty ~scope:state.result_scope ~span
+              result_ty
+        | None -> Value.new_not_inferred ~scope:state.result_scope ~span
+      in
       Log.trace (fun log ->
-          log "Waiting for instantiation name at %a" Span.print span);
-      let name = Value.name result in
-      Log.trace (fun log ->
-          log "Inferred instantiation value at %a name = %a" Span.print span
-            Value.print result);
-      let name = name.var |> Inference.Var.await_inferred ~error_shape:None in
-      (match name with
-      | None -> ()
-      | Some name ->
+          log "%t with arg=%a, result_ty = %a"
+            (Span.print_osc8 span String.print "instantiating")
+            Value.print arg Ty.print result.ty);
+      fork (fun () ->
           Log.trace (fun log ->
-              log "Inferred instantiation at %a name = %a" Span.print span
-                Kast_types.Print.print_name_shape name));
-      match name with
-      | Some (Instantiation { generic = ty_generic; arg = ty_arg }) ->
-          generic |> Inference.Value.expect_inferred_as ~span ty_generic;
-          arg |> Inference.Value.expect_inferred_as ~span ty_arg
-      | _ -> ());
-  fork (fun () ->
-      let actual_result =
-        match generic |> Value.await_inferred with
-        | V_Blocked generic ->
-            V_Blocked
-              { shape = BV_Instantiate { generic; arg }; ty = result.ty }
-            |> Value.inferred ~span
-        | V_Generic { name; fn; ty = _ } -> (
-            (* TODO this mixes different generics? *)
-            let id = fn.id in
-            let save new_state =
-              let generic_instantiations =
-                match state.instantiated_generics.map |> Id.Map.find_opt id with
-                | None -> Types.ValueMap.empty
-                | Some instantiations -> instantiations
-              in
-              let generic_instantiations =
-                generic_instantiations |> Types.ValueMap.add arg new_state
-              in
-              state.instantiated_generics.map <-
-                state.instantiated_generics.map
-                |> Id.Map.add id generic_instantiations
-            in
-            let current_state =
-              state.instantiated_generics.map |> Id.Map.find_opt id
-              |> Option.and_then (fun instantiations ->
-                  instantiations |> Types.ValueMap.find_opt arg)
-            in
-            match current_state with
-            | None ->
-                let placeholder =
-                  Value.new_not_inferred ~scope:state.result_scope ~span
+              log "Waiting for instantiation name at %a" Span.print span);
+          let name = Value.name result in
+          Log.trace (fun log ->
+              log "Inferred instantiation value at %a name = %a" Span.print span
+                Value.print result);
+          let name =
+            name.var |> Inference.Var.await_inferred ~error_shape:None
+          in
+          (match name with
+          | None -> ()
+          | Some name ->
+              Log.trace (fun log ->
+                  log "Inferred instantiation at %a name = %a" Span.print span
+                    Kast_types.Print.print_name_shape name));
+          match name with
+          | Some (Instantiation { generic = ty_generic; arg = ty_arg }) ->
+              generic |> Inference.Value.expect_inferred_as ~span ty_generic;
+              arg |> Inference.Value.expect_inferred_as ~span ty_arg
+          | _ -> ());
+      fork (fun () ->
+          let actual_result =
+            match generic |> Value.await_inferred with
+            | V_Blocked generic ->
+                V_Blocked
+                  { shape = BV_Instantiate { generic; arg }; ty = result.ty }
+                |> Value.inferred ~span
+            | V_Generic { name = _; fn; ty = _ } -> (
+                (* TODO this mixes different generics? *)
+                let id = fn.id in
+                let save new_state =
+                  let generic_instantiations =
+                    match
+                      state.instantiated_generics.map |> Id.Map.find_opt id
+                    with
+                    | None -> Types.ValueMap.empty
+                    | Some instantiations -> instantiations
+                  in
+                  let generic_instantiations =
+                    generic_instantiations |> Types.ValueMap.add arg new_state
+                  in
+                  state.instantiated_generics.map <-
+                    state.instantiated_generics.map
+                    |> Id.Map.add id generic_instantiations
                 in
-                save placeholder;
-                Log.trace (fun log ->
-                    log "Instantiating generic with arg=%a at %a placeholder=%a"
-                      Value.print arg Span.print span Value.print placeholder);
-                fork (fun () ->
-                    try
-                      let state =
-                        {
-                          state with
-                          current_name = Instantiation { generic; arg };
-                        }
-                      in
-                      let evaluated_result =
-                        call_untyped_fn ~sub_mode:Full span state fn arg
-                      in
-                      Log.trace (fun log ->
-                          log
-                            "Instantiated generic with arg=%a, result=%a, uniting with=%a"
-                            Value.print arg Value.print evaluated_result
-                            Value.print placeholder);
-                      placeholder
-                      |> Inference.Value.expect_inferred_as ~span
-                           evaluated_result;
-                      Log.trace (fun log ->
-                          log "After uniting result=%a" Value.print placeholder)
-                    with effect Inference.Var.AwaitUpdate var, k ->
-                      Effect.continue k
-                        (Effect.perform <| Inference.Var.AwaitUpdate var));
-                placeholder
-            | Some result ->
-                Log.trace (fun log ->
-                    log
-                      "Using memoized generic instantiation with arg=%a at %a = %a"
-                      Value.print arg Span.print span Value.print result);
-
-                result.var
-                |> Inference.Var.once_inferred (fun shape ->
+                let current_state =
+                  Kast_profiling.record
+                    (fun () -> "finding generic instantiation")
+                    (fun () ->
+                      state.instantiated_generics.map |> Id.Map.find_opt id
+                      |> Option.and_then (fun instantiations ->
+                          instantiations |> Types.ValueMap.find_opt arg))
+                in
+                match current_state with
+                | None ->
+                    let placeholder =
+                      Value.new_not_inferred ~scope:state.result_scope ~span
+                    in
+                    save placeholder;
                     Log.trace (fun log ->
                         log
-                          "Memoized generic instantiation with arg=%a is inferred=%a"
-                          Value.print arg Value.Shape.print shape);
-                    match shape with
-                    | V_Ty ty ->
-                        ty.var
-                        |> Inference.Var.once_inferred
-                             (fun (ty_shape : Ty.Shape.t) ->
-                               Log.trace (fun log ->
-                                   log
-                                     "Memoized generic instantiation inferred as ty=%a"
-                                     Ty.Shape.print ty_shape))
-                    | _ -> ());
-                result)
-        | V_Error -> V_Error |> Value.inferred ~span
-        | _ ->
-            Error.error span "expected generic";
-            V_Error |> Value.inferred ~span
-      in
-      result |> Inference.Value.expect_inferred_as ~span actual_result);
-  result
+                          "Instantiating generic with arg=%a at %a placeholder=%a"
+                          Value.print arg Span.print span Value.print
+                          placeholder);
+                    fork (fun () ->
+                        try
+                          let state =
+                            {
+                              state with
+                              current_name = Instantiation { generic; arg };
+                            }
+                          in
+                          let evaluated_result =
+                            call_untyped_fn ~sub_mode:Full span state fn arg
+                          in
+                          Log.trace (fun log ->
+                              log
+                                "Instantiated generic with arg=%a, result=%a, uniting with=%a"
+                                Value.print arg Value.print evaluated_result
+                                Value.print placeholder);
+                          placeholder
+                          |> Inference.Value.expect_inferred_as ~span
+                               evaluated_result;
+                          Log.trace (fun log ->
+                              log "After uniting result=%a" Value.print
+                                placeholder)
+                        with effect Inference.Var.AwaitUpdate var, k ->
+                          Effect.continue k
+                            (Effect.perform <| Inference.Var.AwaitUpdate var));
+                    placeholder
+                | Some result ->
+                    Log.trace (fun log ->
+                        log
+                          "Using memoized generic instantiation with arg=%a at %a = %a"
+                          Value.print arg Span.print span Value.print result);
+
+                    result.var
+                    |> Inference.Var.once_inferred (fun shape ->
+                        Log.trace (fun log ->
+                            log
+                              "Memoized generic instantiation with arg=%a is inferred=%a"
+                              Value.print arg Value.Shape.print shape);
+                        match shape with
+                        | V_Ty ty ->
+                            ty.var
+                            |> Inference.Var.once_inferred
+                                 (fun (ty_shape : Ty.Shape.t) ->
+                                   Log.trace (fun log ->
+                                       log
+                                         "Memoized generic instantiation inferred as ty=%a"
+                                         Ty.Shape.print ty_shape))
+                        | _ -> ());
+                    result)
+            | V_Error -> V_Error |> Value.inferred ~span
+            | _ ->
+                Error.error span "expected generic";
+                V_Error |> Value.inferred ~span
+          in
+          result |> Inference.Value.expect_inferred_as ~span actual_result);
+      result)
 
 and call (span : span) (state : state) (f : value) (arg : value) : value =
   match f |> Value.await_inferred with
