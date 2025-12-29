@@ -19,6 +19,8 @@ const op = include "./op.ks";
 include "./char.ks";
 include "./string.ks";
 
+const range = include "./range.ks";
+const iter = include "./iter.ks";
 const Option = include "./option.ks";
 const dbg = include "./dbg.ks";
 const convert = include "./convert.ks";

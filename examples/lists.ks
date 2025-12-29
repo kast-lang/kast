@@ -3,7 +3,9 @@ let mut a = List.create ();
 List.push_back (&mut a, 1 :: Int32);
 List.push_back (&mut a, 2);
 List.push_back (&mut a, 3);
-List.iter (&a, &x => dbg.print x);
+for &x in List.iter &a do (
+    dbg.print x;
+);
 
 use std.collections.Queue;
 let mut queue = Queue.create ();

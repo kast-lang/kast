@@ -9,90 +9,58 @@ impl String as module = (
     const substring = (s :: String, start :: Int32, len :: Int32) -> String => @cfg (
         | target.name == "interpreter" => (@native "string.substring") (s, start, len)
     );
-    const iter = (s :: String, f :: Char -> ()) -> () => @cfg (
-        | target.name == "interpreter" => (@native "string.iter") (s, f)
-    );
-    const iteri = (s :: String, f :: (Int32, Char) -> ()) => (
-        let mut i = 0;
-        iter (
-            s,
-            c => (
-                f (i, c);
-                i += 1;
-            )
+    const iter = (s :: String) -> std.iter.Iterable[Char] => @cfg (
+        | target.name == "interpreter" => (
+            .iter = f => (@native "string.iter") (s, f)
         )
     );
-    const index_of = (c :: Char, s :: String) -> Int32 => (
-        unwindable block (
-            iteri (
-                s,
-                (i, c_at_i) => (
-                    if c == c_at_i then (unwind block i) else ()
-                )
+    const iteri = (s :: String) -> std.iter.Iterable[type (Int32, Char)] => (
+        iter s |> std.iter.enumerate
+    );
+    const index_of = (c :: Char, s :: String) -> Int32 => with_return (
+        for (i, c_at_i) in iteri s do (
+            if c == c_at_i then (
+                return i;
             );
-            -1
-        )
+        );
+        -1
     );
     const last_index_of = (c :: Char, s :: String) -> Int32 => (
         let mut result = -1;
-        iteri (
-            s,
-            (i, c_at_i) => (
-                if c == c_at_i then (result = i) else ()
-            )
+        for (i, c_at_i) in iteri s do (
+            if c == c_at_i then (
+                result = i;
+            );
         );
         result
     );
-    const lines = (s :: String, f :: String -> ()) -> () => (
-        let mut start = 0;
-        let endline = i => (
-            let line = substring (s, start, (@native "-") (i, start));
-            f line;
-            start = i + 1;
-        );
-        iteri (
-            s,
-            (i, c) => (
-                if c == '\n' then (
-                    endline i
-                ) else ()
-            )
-        );
-        endline (length s);
-    );
-    const split = (s :: String, sep :: Char, f :: String -> ()) => (
-        let mut start = 0;
-        let perform_split = i => (
-            let part = substring (s, start, i - start);
-            f part;
-            start = i + 1;
-        );
-        iteri (
-            s,
-            (i, c) => (
-                if c == sep then (
-                    perform_split i
-                ) else ()
-            ),
-        );
-        perform_split (length s);
-    );
-    const split_once = (s :: String, sep :: Char) -> (String, String) => (
-        unwindable block (
-            iteri (
-                s,
-                (i, c) => (
-                    if c == sep then (
-                        unwind block (
-                            substring (s, 0, i),
-                            substring (s, i + 1, length s - i - 1)
-                        )
-                    );
-                ),
+    const split = (s :: String, sep :: Char) -> std.iter.Iterable[String] => (
+        .iter = f => (
+            let mut start = 0;
+            let perform_split = i => (
+                let part = substring (s, start, i - start);
+                f part;
+                start = i + 1;
             );
-            # TODO panic
-            _
+            for (i, c) in iteri s do (
+                if c == sep then (
+                    perform_split i;
+                );
+            );
+            perform_split (length s);
         )
+    );
+    const lines = s => split (s, '\n');
+    const split_once = (s :: String, sep :: Char) -> (String, String) => with_return (
+        for (i, c) in iteri s do (
+            if c == sep then (
+                return (
+                    substring (s, 0, i),
+                    substring (s, i + 1, length s - i - 1)
+                )
+            );
+        );
+        panic "split_once separator not found"
     );
     const trim_matches = (s :: String, f :: Char -> Bool) -> String => (
         let len = length s;

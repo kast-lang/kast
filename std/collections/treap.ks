@@ -153,37 +153,39 @@ const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T
 const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String => (
     let mut result = "[";
     let mut i :: Int32 = 0;
-    iter (
-        v,
-        x => (
-            if i != 0 then (
-                result += ", ";
-            );
-            result += t_to_string x;
-            i += 1;
-        ),
+    for x in iter v do (
+        if i != 0 then (
+            result += ", ";
+        );
+        result += t_to_string x;
+        i += 1;
     );
     result += "]";
     result
 );
-const iter = [T] (v :: &Treap.t[T], f :: &T -> ()) => (
-    match v^ with (
-        | :Empty => ()
-        | :Node data => (
-            iter[T] (&data.left, f);
-            f &data.value;
-            iter[T] (&data.right, f);
+const iter = [T] (v :: &Treap.t[T]) -> std.iter.Iterable[type (&T)] => (
+    .iter = f => (
+        match v^ with (
+            | :Empty => ()
+            | :Node ref data => (
+                (iter[T] &data^.left).iter f;
+                f &data^.value;
+                (iter[T] &data^.right).iter f;
+            )
         )
     )
 );
-const iter_mut = [T] (v :: &mut Treap.t[T], f :: &mut T -> ()) => (
-    match v^ with (
-        | :Empty => ()
-        # TODO ref mut
-        | :Node mut data => (
-            iter_mut (&mut data.left, f);
-            f &mut data.value;
-            iter_mut (&mut data.right, f);
+const iter_mut = [T] (v :: &mut Treap.t[T]) -> std.iter.Iterable[type (&mut T)] => (
+    .iter = f => (
+        match v^ with (
+            | :Empty => ()
+            # TODO ref mut
+            | :Node mut data => (
+                let data = &mut data;
+                (iter_mut[T] &mut data^.left).iter f;
+                f &mut data^.value;
+                (iter_mut[T] &mut data^.right).iter f;
+            )
         )
     )
 );

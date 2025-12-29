@@ -103,16 +103,16 @@ impl syntax (while cond do body) = `(
         if $cond then $body else break
     )
 );
-impl syntax (for pattern in start..end do body) = `(
-    let mut _loop_var = $start;
-    while _loop_var < $end do (
-        unwindable loop_body (
-            @comptime with std.LoopBody = loop_body;
-            let $pattern = _loop_var;
-            $body;
+impl syntax (for pattern in iterable do body) = `(
+    unwindable loop_block (
+        @comptime with std.LoopBlock = loop_block;
+        $iterable.iter (
+            $pattern => unwindable loop_body (
+                @comptime with std.LoopBody = loop_body;
+                $body;
+            )
         );
-        _loop_var += 1;
-    )
+    );
 );
 impl syntax (with_return body) = `(
     unwindable _returnable (
@@ -132,3 +132,7 @@ impl syntax (@opaque_type) = `(
 impl syntax ([arg] -> body) = `(
     [_ :: $arg] $body
 );
+
+impl syntax (start..end) = `(
+    std.range.range ($start, $end)
+)

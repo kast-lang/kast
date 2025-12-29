@@ -39,7 +39,9 @@
 @syntax "core:if" 7.5 wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 @syntax "core:match" 7.5 wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
 @syntax "while" 7.5 wrap never = "while" " " cond " " "do" " " body;
-@syntax "for_range" 7.5 wrap never = "for" " " pattern " " "in" " " start  ".." end " " "do" " " body;
+@syntax "for" 7.5 wrap never = "for" " " pattern " " "in" " " iterable " " "do" " " body;
+
+@syntax "range" 8 wrap never = start ".." end;
 
 @syntax "core:import" 9 wrap never = "import" " " path;
 @syntax "core:include" 9 wrap never = "include" " " path;

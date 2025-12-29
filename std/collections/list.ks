@@ -8,11 +8,11 @@ const create = [T] () -> List.t[T] => (
 const push_back = [T] (a :: &mut List.t[T], value :: T) => (
     a^.inner = Treap.join (a^.inner, Treap.singleton value);
 );
-const iter = [T] (a :: &List.t[T], f :: &T -> ()) -> () => (
-    Treap.iter (&a^.inner, f);
+const iter = [T] (a :: &List.t[T]) -> std.iter.Iterable[type (&T)] => (
+    Treap.iter (&a^.inner)
 );
-const iter_mut = [T] (a :: &mut List.t[T], f :: &mut T -> ()) -> () => (
-    Treap.iter_mut (&mut a^.inner, f);
+const iter_mut = [T] (a :: &mut List.t[T]) -> std.iter.Iterable[type (&mut T)] => (
+    Treap.iter_mut (&mut a^.inner)
 );
 const at = [T] (a :: &List.t[T], idx :: Int32) -> &T => (
     Treap.at (&a^.inner, idx)

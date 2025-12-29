@@ -18,11 +18,8 @@ impl Treap.t as Monad = (
     .ret = Treap.singleton,
     .flat_map = [A, B] (a, f) => (
         let mut result = Treap.create ();
-        Treap.iter (
-            &a,
-            &x => (
-                result = Treap.join (result, f x);
-            ),
+        for &x in Treap.iter &a do (
+            result = Treap.join (result, f x);
         );
         result
     ),

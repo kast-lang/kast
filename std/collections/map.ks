@@ -75,6 +75,6 @@ const get_or_init = [K, V] (
     &mut (Treap.at_mut (&mut equal, 0))^.value
 );
 
-const iter = [K, V] (map :: &Map.t[K, V], f :: &KV[K, V] -> ()) => (
-    Treap.iter (&map^.inner, f)
+const iter = [K, V] (map :: &Map.t[K, V]) -> std.iter.Iterable[type (&KV[K, V])] => (
+    Treap.iter (&map^.inner)
 );

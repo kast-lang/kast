@@ -11,7 +11,9 @@ impl Option.t as Functor = (
 impl List.t as Functor = (
     .fmap = [A, B] (a, f) => (
         let mut result = List.create ();
-        List.iter (&a, &x => List.push_back (&mut result, f x));
+        for &x in List.iter &a do (
+            List.push_back (&mut result, f x);
+        );
         result
     ),
 );
