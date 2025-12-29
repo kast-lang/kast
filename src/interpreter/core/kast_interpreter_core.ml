@@ -272,9 +272,9 @@ and instantiate ?(result_ty : ty option) (span : span) (state : state)
         | None -> Value.new_not_inferred ~scope:state.result_scope ~span
       in
       Log.trace (fun log ->
-          log "%t with arg=%a, result_ty = %a"
+          log "%t %a[%a] :: %a"
             (Span.print_osc8 span String.print "instantiating")
-            Value.print arg Ty.print result.ty);
+            Value.print generic Value.print arg Ty.print result.ty);
       fork (fun () ->
           Log.trace (fun log ->
               log "Waiting for instantiation name at %a" Span.print span);

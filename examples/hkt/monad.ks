@@ -1,6 +1,6 @@
 use std.prelude.*;
 
-const Monad = [M :: [type] -> type] newtype (
+const Monad = [M :: [_ :: type] type] newtype (
     .ret :: [T] T -> M[T],
     .flat_map :: [A, B] (M[A], (A -> M[B])) -> M[B],
 );
@@ -28,7 +28,7 @@ impl Treap.t as Monad = (
     ),
 );
 
-const join = [M :: [_unused :: type] type] (
+const join = [M :: [_ :: type] type] (
     [T] (a :: M[M[T]]) -> M[T] => (
         (M as Monad).flat_map (a, x => x)
     )
@@ -54,7 +54,7 @@ const compose = [M :: [type] -> type] [A, B] (a :: M[A], b :: M[B]) -> M[B] => (
 
 @syntax ">>=" 6.5 wrap if_any = a " "/"\n" ">>=" " " b ->;
 impl syntax (a >>= b) = `(
-    (Option.t as Monad).flat_map ($a, $b)
+    (_ as Monad).flat_map ($a, $b)
     # TODO (_ as Monad).flat_map ($a, $b)
 );
 
@@ -73,6 +73,8 @@ impl syntax (a;; b) = `(compose ($a, $b));
 impl syntax (var <- expr;; b) = `($expr >>= ($var => $b));
 
 let opt :: Option.t[Int32] = :Some 1;
+
+(_ as Monad).flat_map (opt, x => :Some x);
 
 let result = do
     x <- opt;;

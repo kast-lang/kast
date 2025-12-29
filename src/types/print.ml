@@ -78,9 +78,9 @@ module Impl = struct
         match data with
         | Some data -> fprintf fmt " %a" print_place_value data
         | None -> ())
-    | V_Generic g ->
-        fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
-          print_ty_generic g.ty
+    | V_Generic g -> print_name_shape fmt g.name
+    (* fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
+          print_ty_generic g.ty *)
     | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
     | V_Ast ast -> fprintf fmt "%a" Ast.print ast
     | V_UnwindToken { id; result_ty = _ } ->
@@ -137,9 +137,9 @@ module Impl = struct
                match data with
                | Some data -> fprintf fmt " %a" print_ty data
                | None -> ()))
-          variants;
-        fprintf fmt "(row scope=%a)" print_var_scope
-          (Inference.Var.scope variants.var))
+          variants
+        (* ; fprintf fmt "(row scope=%a)" print_var_scope
+          (Inference.Var.scope variants.var) *))
 
   and print_ty_generic : formatter -> ty_generic -> unit =
    fun fmt { arg; result } ->
@@ -547,8 +547,8 @@ module Impl = struct
   and print_binding : formatter -> binding -> unit =
    fun fmt binding ->
     let span = binding.label |> Label.get_span in
-    Span.print_osc8 span Symbol.print binding.name fmt;
-    Id.print fmt binding.id
+    Span.print_osc8 span Symbol.print binding.name fmt
+  (* ; Id.print fmt binding.id *)
 
   and print_target : formatter -> value_target -> unit =
    fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name
@@ -557,9 +557,8 @@ module Impl = struct
       formatter -> optional_name -> (formatter -> unit) -> unit =
    fun fmt name f ->
     match name.var |> Inference.Var.inferred_opt with
-    | Some (Some name) ->
-        print_name_shape fmt name;
-        fprintf fmt "(=%t)" f
+    | Some (Some name) -> print_name_shape fmt name
+    (* ; fprintf fmt "(=%t)" f *)
     | _ -> f fmt
 
   and print_name : formatter -> name -> unit =
