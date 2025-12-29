@@ -179,9 +179,7 @@ const iter_mut = [T] (v :: &mut Treap.t[T]) -> std.iter.Iterable[type (&mut T)] 
     .iter = f => (
         match v^ with (
             | :Empty => ()
-            # TODO ref mut
-            | :Node mut data => (
-                let data = &mut data;
+            | :Node ref mut data => (
                 (iter_mut[T] &mut data^.left).iter f;
                 f &mut data^.value;
                 (iter_mut[T] &mut data^.right).iter f;

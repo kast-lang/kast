@@ -401,7 +401,7 @@ module Impl = struct
     | P_Ref referenced ->
         P_Ref (sub_pattern_and_inject_replacements ~state referenced)
     | P_Unit -> P_Unit
-    | P_Binding { by_ref : bool; binding = old_binding } ->
+    | P_Binding { bind_mode; binding = old_binding } ->
         let new_binding : binding =
           {
             id = Id.gen ();
@@ -427,7 +427,7 @@ module Impl = struct
         state.scope
         |> Scope.add_local new_binding.span ~mut:false new_binding.name
              binding_value;
-        P_Binding { by_ref; binding = new_binding }
+        P_Binding { bind_mode; binding = new_binding }
     | P_Tuple { parts } ->
         P_Tuple
           {

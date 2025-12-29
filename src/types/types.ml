@@ -497,8 +497,12 @@ module rec TypesImpl : sig
     value : pattern option;
   }
 
+  and bind_mode =
+    | Claim
+    | ByRef of { mut : bool }
+
   and pattern_binding = {
-    by_ref : bool;
+    bind_mode : bind_mode;
     binding : binding;
   }
 
@@ -1116,8 +1120,12 @@ end = struct
     value : pattern option;
   }
 
+  and bind_mode =
+    | Claim
+    | ByRef of { mut : bool }
+
   and pattern_binding = {
-    by_ref : bool;
+    bind_mode : bind_mode;
     binding : binding;
   }
 

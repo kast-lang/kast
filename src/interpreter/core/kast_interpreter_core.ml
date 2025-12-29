@@ -72,19 +72,18 @@ let rec pattern_match :
           Error.error span "Expected a ref";
           (~matched:false, Scope.Locals.empty)
       | Some ref -> pattern_match ~span ref.place inner)
-  | P_Binding { by_ref; binding } ->
-      (* TODO ref mut *)
-      let mut = false in
+  | P_Binding { bind_mode; binding } ->
       let ty, value =
-        if by_ref then
-          ( Ty.inferred ~span
-              (T_Ref
-                 {
-                   mut = IsMutable.new_inferred ~span mut;
-                   referenced = place.ty;
-                 }),
-            Value.inferred ~span (V_Ref { mut; place }) )
-        else (place.ty, claim ~span place)
+        match bind_mode with
+        | ByRef { mut } ->
+            ( Ty.inferred ~span
+                (T_Ref
+                   {
+                     mut = IsMutable.new_inferred ~span mut;
+                     referenced = place.ty;
+                   }),
+              Value.inferred ~span (V_Ref { mut; place }) )
+        | Claim -> (place.ty, claim ~span place)
       in
       ( ~matched:true,
         {
@@ -627,7 +626,7 @@ and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
 and pattern_bindings : pattern -> binding list =
  fun pattern ->
   match pattern.shape with
-  | P_Binding { by_ref = _; binding } -> [ binding ]
+  | P_Binding { bind_mode = _; binding } -> [ binding ]
   | P_Placeholder | P_Unit | P_Error -> []
   | P_Ref referenced -> pattern_bindings referenced
   | P_Tuple { parts } ->

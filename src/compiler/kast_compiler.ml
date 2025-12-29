@@ -41,7 +41,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
     import_cache;
     custom_syntax_impls = Hashtbl.create 0;
     mut_enabled = false;
-    by_ref = false;
+    bind_mode = Claim;
   }
 
 let get_data = Compiler.get_data
@@ -164,7 +164,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                         mut = state.mut_enabled;
                       }
                     in
-                    P_Binding { by_ref = state.by_ref; binding }
+                    P_Binding { bind_mode = state.bind_mode; binding }
                     |> init_pattern span state
                 | Token.Shape.String _ ->
                     Error.error span "string can't be pattern";
@@ -329,7 +329,7 @@ let default name_part ?(import_cache : import_cache option) () : state =
     import_cache;
     custom_syntax_impls = bootstrap.custom_syntax_impls;
     mut_enabled = false;
-    by_ref = false;
+    bind_mode = Claim;
   }
 
 let compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =

@@ -528,8 +528,12 @@ module Impl = struct
         fprintf fmt "@{<magenta>&@}%a"
           (Tuple.print (print_pattern ~options))
           (Tuple.make [ inner ] [])
-    | P_Binding { by_ref; binding } ->
-        if by_ref then fprintf fmt "@{<magenta>ref@} ";
+    | P_Binding { bind_mode; binding } ->
+        (match bind_mode with
+        | Claim -> ()
+        | ByRef { mut } ->
+            fprintf fmt "@{<magenta>ref@} ";
+            if mut then fprintf fmt "@{<magenta>mut@} ");
         print_binding fmt binding
     | P_Tuple tuple -> print_ir_tuple '=' (print_pattern ~options) fmt tuple
     | P_Variant { label; label_span = _; value } ->

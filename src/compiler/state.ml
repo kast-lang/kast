@@ -132,7 +132,7 @@ type t = {
   interpreter : Interpreter.state;
   custom_syntax_impls : (Id.t, value) Hashtbl.t;
   mut_enabled : bool;
-  by_ref : bool;
+  bind_mode : Types.bind_mode;
 }
 
 type state = t
@@ -145,7 +145,7 @@ let blank name_part ~import_cache =
     interpreter = Interpreter.default name_part;
     custom_syntax_impls = Hashtbl.create 0;
     mut_enabled = false;
-    by_ref = false;
+    bind_mode = Claim;
   }
 
 let enter_scope : span:span -> recursive:bool -> state -> state =
@@ -157,7 +157,7 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
        import_cache;
        custom_syntax_impls;
        mut_enabled;
-       by_ref;
+       bind_mode;
      } ->
   {
     scope = Scope.enter ~recursive ~parent:scope;
@@ -168,7 +168,7 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
     import_cache;
     custom_syntax_impls;
     mut_enabled;
-    by_ref;
+    bind_mode;
   }
 
 let var_scope : t -> VarScope.t = fun state -> state.interpreter.result_scope

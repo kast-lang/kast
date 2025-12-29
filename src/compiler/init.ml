@@ -531,19 +531,20 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
                  mut = IsMutable.new_inferred ~span false;
                  referenced = inner.data.ty;
                }
-      | P_Binding { by_ref; binding } ->
-          if by_ref then (
-            let result = Ty.new_not_inferred ~scope ~span in
-            binding.ty
-            |> Inference.Ty.expect_inferred_as ~span
-                 (Ty.inferred ~span
-                    (T_Ref
-                       {
-                         mut = IsMutable.new_inferred ~span false;
-                         referenced = result;
-                       }));
-            result)
-          else binding.ty
+      | P_Binding { bind_mode; binding } -> (
+          match bind_mode with
+          | ByRef { mut } ->
+              let result = Ty.new_not_inferred ~scope ~span in
+              binding.ty
+              |> Inference.Ty.expect_inferred_as ~span
+                   (Ty.inferred ~span
+                      (T_Ref
+                         {
+                           mut = IsMutable.new_inferred ~span mut;
+                           referenced = result;
+                         }));
+              result
+          | Claim -> binding.ty)
       | P_Tuple tuple -> tuple_ty ~scope ~span Pattern tuple
       | P_Variant { label; label_span = _; value } ->
           Ty.inferred ~span

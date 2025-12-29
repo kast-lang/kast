@@ -786,7 +786,7 @@ let const_let (span : span) (pattern : pattern) (value_expr : expr)
   |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span pattern.data.ty;
   let interpreter_state =
     match pattern.shape with
-    | P_Binding { by_ref = false; binding } ->
+    | P_Binding { bind_mode = Claim; binding } ->
         {
           C.state.interpreter with
           current_name =
@@ -837,7 +837,7 @@ let const : core_syntax =
             let pattern = C.compile Pattern pattern in
             let new_state =
               match pattern.shape with
-              | P_Binding { by_ref = false; binding } ->
+              | P_Binding { bind_mode = Claim; binding } ->
                   {
                     C.state with
                     interpreter =
@@ -1118,7 +1118,7 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
             let scope = State.var_scope C.state in
             P_Binding
               {
-                by_ref = false;
+                bind_mode = Claim;
                 binding =
                   {
                     id = Id.gen ();
@@ -1260,7 +1260,7 @@ let use : core_syntax =
               | PE_Binding binding ->
                   P_Binding
                     {
-                      by_ref = false;
+                      bind_mode = Claim;
                       binding =
                         {
                           id = Id.gen ();
@@ -1277,7 +1277,7 @@ let use : core_syntax =
                   | Name label ->
                       P_Binding
                         {
-                          by_ref = false;
+                          bind_mode = Claim;
                           binding =
                             {
                               id = Id.gen ();
@@ -2433,9 +2433,9 @@ let cast : core_syntax =
             init_error span C.state kind);
   }
 
-let by_ref : core_syntax =
+let by_ref name ~mut : core_syntax =
   {
-    name = "by_ref";
+    name;
     handle =
       (fun (type a)
         (module C : Compiler.S)
@@ -2451,7 +2451,9 @@ let by_ref : core_syntax =
         in
         match kind with
         | Pattern ->
-            C.compile ~state:{ C.state with by_ref = true } Pattern inner
+            C.compile
+              ~state:{ C.state with bind_mode = ByRef { mut } }
+              Pattern inner
         | _ ->
             error span "by_ref must be pattern";
             init_error span C.state kind);
@@ -2546,7 +2548,8 @@ let core =
     impl_cast;
     impl_as_module;
     cast;
-    by_ref;
+    by_ref "by_ref" ~mut:false;
+    by_ref "by_ref_mut" ~mut:true;
     typeof;
   ]
 

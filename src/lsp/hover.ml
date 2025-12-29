@@ -183,7 +183,7 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
       | Pattern ->
           let rename =
             match compiled.shape with
-            | P_Binding { by_ref = _; binding } ->
+            | P_Binding { bind_mode = _; binding } ->
                 Some
                   {
                     span = binding.span;

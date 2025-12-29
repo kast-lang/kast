@@ -478,9 +478,9 @@ module Impl = struct
     | P_Unit, _ -> fail ()
     | P_Ref a, P_Ref b -> unite_pattern ~span a b
     | P_Ref _, _ -> fail ()
-    | ( P_Binding { by_ref = by_ref_a; binding = a },
-        P_Binding { by_ref = by_ref_b; binding = b } )
-      when Bool.equal by_ref_a by_ref_b ->
+    | ( P_Binding { bind_mode = bind_mode_a; binding = a },
+        P_Binding { bind_mode = bind_mode_b; binding = b } )
+      when equal_bind_mode bind_mode_a bind_mode_b ->
         [ (a, b) ]
     | P_Binding _, _ -> fail ()
     | P_Tuple { parts = parts_a }, P_Tuple { parts = parts_b } ->

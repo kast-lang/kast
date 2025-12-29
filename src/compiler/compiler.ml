@@ -108,7 +108,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
                   };
               };
             mut_enabled = false;
-            by_ref = false;
+            bind_mode = Claim;
           }
         in
         let source = Source.read uri in
@@ -187,7 +187,7 @@ let rec inject_pattern_bindings ~(only_compiler : bool) (pattern : pattern)
   | P_Placeholder -> ()
   | P_Unit -> ()
   | P_Ref inner -> state |> inject_pattern_bindings ~only_compiler inner
-  | P_Binding { by_ref = _; binding } ->
+  | P_Binding { bind_mode = _; binding } ->
       state |> inject_binding ~only_compiler binding
   | P_Tuple { parts } ->
       parts
