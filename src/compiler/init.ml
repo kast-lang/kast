@@ -8,9 +8,13 @@ module Inference = Kast_inference
 let init_evaled () : Types.ir_evaled =
   { exprs = []; ty_exprs = []; patterns = []; ty_ascribed = false }
 
-let tuple_ty : 'a. span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty =
- fun (type a) ~span (kind : a compiled_kind) ({ parts } : a Types.tuple_of) ->
-  let result = Ty.new_not_inferred ~span in
+let tuple_ty :
+    'a.
+    scope:VarScope.t -> span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty
+    =
+ fun (type a) ~scope ~span (kind : a compiled_kind)
+     ({ parts } : a Types.tuple_of) ->
+  let result = Ty.new_not_inferred ~scope ~span in
   let should_infer_unpack_parts_based_on_result =
     match kind with
     | Expr -> false
@@ -74,7 +78,7 @@ let tuple_ty : 'a. span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty =
                      (Ty.inferred ~span
                         (T_Tuple
                            {
-                             name = OptionalName.new_not_inferred ~span;
+                             name = OptionalName.new_not_inferred ~scope ~span;
                              tuple = !packed_ty;
                            })))
         | [] -> ()
@@ -114,7 +118,7 @@ let tuple_ty : 'a. span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty =
             Ty.inferred ~span
             <| T_Tuple
                  {
-                   name = OptionalName.new_not_inferred ~span;
+                   name = OptionalName.new_not_inferred ~scope ~span;
                    tuple = !result_tuple;
                  }
           in
@@ -126,7 +130,8 @@ let rec _unused () = ()
 and expr_placeholder : span -> State.t -> expr =
  fun span state ->
   (* TODO maybe have E_Placeholder *)
-  E_Constant (Value.new_not_inferred ~span) |> init_expr span state
+  E_Constant (Value.new_not_inferred ~scope:(State.var_scope state) ~span)
+  |> init_expr span state
 
 and auto_instantiate_generics : span -> State.t -> expr -> expr =
  fun span state expr ->
@@ -138,6 +143,7 @@ and auto_instantiate_generics : span -> State.t -> expr -> expr =
 
 and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span
     (obj_ty : ty) field =
+  let scope = State.var_scope state in
   with_return (fun { return } ->
       let (label, member) : Label.t option * Tuple.member =
         match (field : Types.field_expr) with
@@ -145,9 +151,9 @@ and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span
         | Name label -> (Some label, Name (Label.get_name label))
         | Expr _e ->
             error span "todo expr field access";
-            return <| Ty.new_not_inferred ~span:field_span
+            return <| Ty.new_not_inferred ~scope ~span:field_span
       in
-      let ty = Ty.new_not_inferred ~span in
+      let ty = Ty.new_not_inferred ~scope ~span in
       obj_ty.var
       |> Inference.Var.once_inferred (fun (obj_shape : Ty.Shape.t) ->
           let field_ty =
@@ -164,14 +170,14 @@ and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span
                     ty_field.ty
                 | None ->
                     error span "field %a is not there" Tuple.Member.print member;
-                    Ty.new_not_inferred ~span:field_span)
+                    Ty.new_not_inferred ~scope ~span:field_span)
             | T_Target -> (
                 match member with
                 | Name "name" -> Ty.inferred ~span:field_span T_String
                 | _ ->
                     error span "field %a is not in target" Tuple.Member.print
                       member;
-                    Ty.new_not_inferred ~span:field_span)
+                    Ty.new_not_inferred ~scope ~span:field_span)
             | T_Ty when Option.is_some obj ->
                 let module_ty =
                   cast_as_module_ty ~span state (Option.get obj)
@@ -179,27 +185,24 @@ and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span
                 field_ty ~span ~state ~field_span module_ty field
             | other ->
                 error span "%a doesnt have fields" Ty.Shape.print other;
-                Ty.new_not_inferred ~span:field_span
+                Ty.new_not_inferred ~scope ~span:field_span
           in
           ty |> Inference.Ty.expect_inferred_as ~span field_ty);
       ty)
 
 and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
  fun span state shape ->
+  let scope = State.var_scope state in
   try
-    let inferred_mut mut : Types.is_mutable =
-      { var = Inference.Var.new_inferred ~span mut }
-    in
+    let inferred_mut mut = IsMutable.new_inferred ~span mut in
     let mut, ty =
       match shape with
-      | PE_Error -> (inferred_mut true, Ty.new_not_inferred ~span)
+      | PE_Error -> (inferred_mut true, Ty.new_not_inferred ~scope ~span)
       | PE_Binding binding -> (inferred_mut binding.mut, binding.ty)
       | PE_Temp expr -> (inferred_mut true, expr.data.ty)
       | PE_Deref ref ->
-          let mut : Types.is_mutable =
-            { var = Inference.Var.new_not_inferred ~span }
-          in
-          let value_ty = Ty.new_not_inferred ~span in
+          let mut = IsMutable.new_not_inferred ~scope ~span in
+          let value_ty = Ty.new_not_inferred ~scope ~span in
           ref.data.ty
           |> Inference.Ty.expect_inferred_as ~span
                (Ty.inferred ~span (T_Ref { mut; referenced = value_ty }));
@@ -226,7 +229,8 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
 
 and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
  fun ~span state value ->
-  let ty = Ty.new_not_inferred ~span in
+  let scope = State.var_scope state in
+  let ty = Ty.new_not_inferred ~scope ~span in
   State.Scope.fork (fun () ->
       match Kast_interpreter.eval_place state.interpreter value with
       | RefBlocked _ -> Error.error span "refblocked cast_as_module_ty"
@@ -240,7 +244,8 @@ and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
 
 and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
  fun ~span state value target ->
-  let ty = Ty.new_not_inferred ~span in
+  let scope = State.var_scope state in
+  let ty = Ty.new_not_inferred ~scope ~span in
   State.Scope.fork (fun () ->
       let value = Kast_interpreter.eval state.interpreter value in
       match target |> Value.await_inferred with
@@ -258,6 +263,7 @@ and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
 
 and init_expr : span -> State.t -> Expr.Shape.t -> expr =
  fun span state shape ->
+  let scope = State.var_scope state in
   try
     let overwrite_shape : Expr.Shape.t option ref = ref None in
     let ty =
@@ -271,7 +277,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           Ty.inferred ~span
           <| T_Ref
                {
-                 mut = { var = Inference.Var.new_inferred ~span mut };
+                 mut = IsMutable.new_inferred ~span mut;
                  referenced = place.data.ty;
                }
       | E_Claim place -> place.data.ty
@@ -284,7 +290,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
       | E_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty
       | E_Generic { def = _; ty } -> T_Generic ty |> Ty.inferred ~span
       | E_InstantiateGeneric { generic; arg } ->
-          let ty = Ty.new_not_inferred ~span in
+          let ty = Ty.new_not_inferred ~scope ~span in
           State.Scope.fork (fun () ->
               let inferred_ty =
                 with_return (fun { return } ->
@@ -316,20 +322,30 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                             ~parent:None arg_bindings;
                       }
                     in
+                    Log.trace (fun log ->
+                        log "generic %t (before sub) result ty = %a"
+                          (Span.print_osc8 span String.print "instantiation")
+                          Ty.print result_ty);
                     result_ty
                     |> Kast_interpreter.Substitute_bindings.sub_ty ~span
                          ~state:sub_state)
               in
+              Log.trace (fun log ->
+                  log "generic %t result ty = %a"
+                    (Span.print_osc8 span String.print "instantiation")
+                    Ty.print inferred_ty);
               ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
           ty
-      | E_Tuple tuple -> tuple_ty ~span Expr tuple
+      | E_Tuple tuple -> tuple_ty ~scope ~span Expr tuple
       | E_Variant { label; label_span = _; value } ->
           Ty.inferred ~span
           <| T_Variant
                {
-                 name = OptionalName.new_not_inferred ~span;
+                 name = OptionalName.new_not_inferred ~scope ~span;
                  variants =
-                   Row.inferred ~span
+                   Row.inferred
+                     (module VarScope)
+                     VarScope.of_ty_variant_data ~span
                    <| R_Cons
                         {
                           label;
@@ -340,14 +356,14 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                                 |> Option.map (fun (expr : expr) ->
                                     expr.data.ty);
                             };
-                          rest = Row.new_not_inferred ~span;
+                          rest = Row.new_not_inferred ~scope ~span;
                         };
                }
       | E_Apply { f; arg } ->
           let f = f |> auto_instantiate_generics f.data.span state in
           overwrite_shape := Some (E_Apply { f; arg });
-          let f_arg = Ty.new_not_inferred ~span in
-          let f_result = Ty.new_not_inferred ~span in
+          let f_arg = Ty.new_not_inferred ~scope ~span in
+          let f_result = Ty.new_not_inferred ~scope ~span in
           f.data.ty
           |> Inference.Ty.expect_inferred_as ~span:f.data.span
                (Ty.inferred ~span:f.data.span
@@ -362,7 +378,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           Ty.inferred ~span T_Unit
       | E_Ty _ -> Ty.inferred ~span T_Ty
       | E_Newtype _ -> Ty.inferred ~span T_Ty
-      | E_Native _ -> Ty.new_not_inferred ~span
+      | E_Native _ -> Ty.new_not_inferred ~scope ~span
       | E_Module { def } ->
           def.data.ty
           |> Inference.Ty.expect_inferred_as ~span:def.data.span
@@ -386,7 +402,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           cond.data.ty
           |> Inference.Ty.expect_inferred_as ~span:cond.data.span
                (Ty.inferred ~span:cond.data.span T_Bool);
-          let ty = Ty.new_not_inferred ~span in
+          let ty = Ty.new_not_inferred ~scope ~span in
           then_case.data.ty
           |> Inference.Ty.expect_inferred_as ~span:then_case.data.span ty;
           else_case.data.ty
@@ -401,7 +417,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                (Ty.inferred ~span:rhs.data.span T_Bool);
           T_Bool |> Ty.inferred ~span
       | E_Match { value; branches } ->
-          let result_ty = Ty.new_not_inferred ~span in
+          let result_ty = Ty.new_not_inferred ~scope ~span in
           let value_ty = value.data.ty in
           branches
           |> List.iter (fun (branch : Types.expr_match_branch) ->
@@ -415,8 +431,8 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
       | E_QuoteAst _ ->
           (* TODO assert all children are ast *)
           Ty.inferred ~span T_Ast
-      | E_Loop { body } -> Ty.new_not_inferred ~span
-      | E_Error -> Ty.new_not_inferred ~span
+      | E_Loop { body } -> Ty.new_not_inferred ~scope ~span
+      | E_Error -> Ty.new_not_inferred ~scope ~span
       | E_Unwindable { token; body } ->
           token.data.ty
           |> Inference.Ty.expect_inferred_as ~span:token.data.span
@@ -424,7 +440,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                <| T_UnwindToken { result = body.data.ty });
           body.data.ty
       | E_TargetDependent { branches; interpreter_branch = _ } ->
-          let result = Ty.new_not_inferred ~span in
+          let result = Ty.new_not_inferred ~scope ~span in
           branches
           |> List.iter
                (fun ({ cond; body } : Types.expr_target_dependent_branch) ->
@@ -448,7 +464,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           |> Inference.Ty.expect_inferred_as ~span:token.data.span
                (Ty.inferred ~span:token.data.span
                   (T_UnwindToken { result = value.data.ty }));
-          Ty.never ~span
+          Ty.never ~scope ~span
     in
     {
       shape = !overwrite_shape |> Option.value ~default:shape;
@@ -461,33 +477,29 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           included_file = None;
         };
     }
-  with exc ->
-    Log.error (fun log -> log "while initializing expr at %a" Span.print span);
-    raise exc
+  with
+  | Cancel -> raise Cancel
+  | exc ->
+      Log.error (fun log -> log "while initializing expr at %a" Span.print span);
+      raise exc
 
 let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
  fun span state shape ->
+  let scope = State.var_scope state in
   try
     let ty =
       match shape with
-      | A_Placeholder -> Ty.new_not_inferred ~span
+      | A_Placeholder -> Ty.new_not_inferred ~scope ~span
       | A_Unit -> Ty.inferred ~span T_Unit
-      | A_Tuple tuple -> tuple_ty ~span Assignee tuple
+      | A_Tuple tuple -> tuple_ty ~scope ~span Assignee tuple
       | A_Let pattern -> pattern.data.ty
       | A_Place place ->
           place.mut.var
           |> Inference.Var.once_inferred (fun mut ->
               if not mut then Error.error span "Not mutable");
           place.data.ty
-      | A_Error -> Ty.new_not_inferred ~span
+      | A_Error -> Ty.new_not_inferred ~scope ~span
     in
-    (* ty.var
-    |> Inference.Var.once_inferred (fun shape ->
-        println "Inferred %a = %a" Span.print span Ty.Shape.print shape);
-    State.Scope.fork (fun () ->
-        let shape = Ty.await_inferred ty in
-        println "Inferred via await %a = %a" Span.print span Ty.Shape.print
-          shape); *)
     {
       shape;
       data =
@@ -506,39 +518,42 @@ let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
 
 let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
  fun span state shape ->
+  let scope = State.var_scope state in
   try
     let ty =
       match shape with
-      | P_Placeholder -> Ty.new_not_inferred ~span
+      | P_Placeholder -> Ty.new_not_inferred ~scope ~span
       | P_Unit -> Ty.inferred ~span T_Unit
       | P_Ref inner ->
           Ty.inferred ~span
           <| T_Ref
                {
-                 mut = { var = Inference.Var.new_inferred ~span false };
+                 mut = IsMutable.new_inferred ~span false;
                  referenced = inner.data.ty;
                }
       | P_Binding { by_ref; binding } ->
           if by_ref then (
-            let result = Ty.new_not_inferred ~span in
+            let result = Ty.new_not_inferred ~scope ~span in
             binding.ty
             |> Inference.Ty.expect_inferred_as ~span
                  (Ty.inferred ~span
                     (T_Ref
                        {
-                         mut = { var = Inference.Var.new_inferred ~span false };
+                         mut = IsMutable.new_inferred ~span false;
                          referenced = result;
                        }));
             result)
           else binding.ty
-      | P_Tuple tuple -> tuple_ty ~span Pattern tuple
+      | P_Tuple tuple -> tuple_ty ~scope ~span Pattern tuple
       | P_Variant { label; label_span = _; value } ->
           Ty.inferred ~span
           <| T_Variant
                {
-                 name = OptionalName.new_not_inferred ~span;
+                 name = OptionalName.new_not_inferred ~scope ~span;
                  variants =
-                   Row.inferred ~span
+                   Row.inferred
+                     (module VarScope)
+                     VarScope.of_ty_variant_data ~span
                    <| R_Cons
                         {
                           label;
@@ -549,10 +564,10 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
                                 |> Option.map (fun (pattern : pattern) ->
                                     pattern.data.ty);
                             };
-                          rest = Row.new_not_inferred ~span;
+                          rest = Row.new_not_inferred ~scope ~span;
                         };
                }
-      | P_Error -> Ty.new_not_inferred ~span
+      | P_Error -> Ty.new_not_inferred ~scope ~span
     in
     {
       shape;

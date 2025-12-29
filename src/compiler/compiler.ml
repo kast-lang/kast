@@ -144,17 +144,26 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
             { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty };
         }
   in
+  Log.trace (fun log -> log "imported (maybe cached) %a" Uri.print uri);
   Hashtbl.add_seq C.state.custom_syntax_impls
     (Hashtbl.to_seq result.custom_syntax_impls);
   (* TODO what if its going to be evaluated in a different interpreter? *)
+  result.cast_impls.map
+  |> Types.ValueMap.iter (fun target impls ->
+      impls
+      |> Types.ValueMap.iter (fun value impl ->
+          Log.trace (fun log ->
+              log "Imported impl %a as %a = %a" Value.print value Value.print
+                target Value.print impl)));
   C.state.interpreter.cast_impls.map <-
     Types.ValueMap.union
       (fun target impls_a impls_b ->
         Some
           (Types.ValueMap.union
-             (fun value a _b ->
-               error span "conflicting impls of cast %a as %a" Value.print value
-                 Value.print target;
+             (fun value a b ->
+               error span "conflicting impls of cast %a as %a (%a and %a)"
+                 Value.print value Value.print target Value.print a Value.print
+                 b;
                Some a)
              impls_a impls_b))
       C.state.interpreter.cast_impls.map result.cast_impls.map;

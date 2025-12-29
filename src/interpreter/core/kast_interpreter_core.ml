@@ -80,7 +80,7 @@ let rec pattern_match :
           ( Ty.inferred ~span
               (T_Ref
                  {
-                   mut = { var = Inference.Var.new_inferred ~span mut };
+                   mut = IsMutable.new_inferred ~span mut;
                    referenced = place.ty;
                  }),
             Value.inferred ~span (V_Ref { mut; place }) )
@@ -234,21 +234,22 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
       Log.trace (fun log ->
           log "evaled call (before sub) at %a = %a :: %a" Span.print span
             Value.print result Ty.print result.ty);
+      let sub_state : Types.sub_state = sub_here new_state in
       let result =
         match sub_mode with
         | None -> result
-        | Full -> Substitute_bindings.sub_value ~span ~state:new_state result
+        | Full -> Substitute_bindings.sub_value ~span ~state:sub_state result
         | FnOnly -> (
             match result |> Value.expect_fn with
             | Some f ->
-                Substitute_bindings.sub_value ~span ~state:new_state result
+                Substitute_bindings.sub_value ~span ~state:sub_state result
             | None -> result)
         | TyOnly ->
             Value.inferred ~span
               (V_Ty
                  (match result |> Value.expect_ty with
                  | Some ty ->
-                     Substitute_bindings.sub_ty ~span ~state:new_state ty
+                     Substitute_bindings.sub_ty ~span ~state:sub_state ty
                  | None ->
                      Error.error span "Expected ty, got smth else";
                      Ty.inferred ~span T_Error))
@@ -260,122 +261,141 @@ and call_untyped_fn ~(sub_mode : Substitute_bindings.mode) (span : span)
 
 and instantiate ?(result_ty : ty option) (span : span) (state : state)
     (generic : value) (arg : value) : value =
-  let result =
-    match result_ty with
-    | Some result_ty -> Value.new_not_inferred_of_ty ~span result_ty
-    | None -> Value.new_not_inferred ~span
-  in
-  Log.trace (fun log ->
-      log "%t with arg=%a, result_ty = %a"
-        (Span.print_osc8 span String.print "instantiating")
-        Value.print arg Ty.print result.ty);
-  fork (fun () ->
+  Kast_profiling.record
+    (fun () -> make_string "instantiate at %a" Span.print span)
+    (fun () ->
+      let result =
+        match result_ty with
+        | Some result_ty ->
+            Value.new_not_inferred_of_ty ~scope:state.result_scope ~span
+              result_ty
+        | None -> Value.new_not_inferred ~scope:state.result_scope ~span
+      in
       Log.trace (fun log ->
-          log "Waiting for instantiation name at %a" Span.print span);
-      let name = Value.name result in
-      Log.trace (fun log ->
-          log "Inferred instantiation value at %a name = %a" Span.print span
-            Value.print result);
-      let name = name.var |> Inference.Var.await_inferred ~error_shape:None in
-      (match name with
-      | None -> ()
-      | Some name ->
+          log "%t %a[%a] :: %a"
+            (Span.print_osc8 span String.print "instantiating")
+            Value.print generic Value.print arg Ty.print result.ty);
+      fork (fun () ->
           Log.trace (fun log ->
-              log "Inferred instantiation at %a name = %a" Span.print span
-                Kast_types.Print.print_name_shape name));
-      match name with
-      | Some (Instantiation { generic = ty_generic; arg = ty_arg }) ->
-          generic |> Inference.Value.expect_inferred_as ~span ty_generic;
-          arg |> Inference.Value.expect_inferred_as ~span ty_arg
-      | _ -> ());
-  fork (fun () ->
-      let actual_result =
-        match generic |> Value.await_inferred with
-        | V_Blocked generic ->
-            V_Blocked
-              { shape = BV_Instantiate { generic; arg }; ty = result.ty }
-            |> Value.inferred ~span
-        | V_Generic { id; name; fn; ty = _ } -> (
-            let save new_state =
-              let generic_instantiations =
-                match state.instantiated_generics.map |> Id.Map.find_opt id with
-                | None -> Types.ValueMap.empty
-                | Some instantiations -> instantiations
-              in
-              let generic_instantiations =
-                generic_instantiations |> Types.ValueMap.add arg new_state
-              in
-              state.instantiated_generics.map <-
-                state.instantiated_generics.map
-                |> Id.Map.add id generic_instantiations
-            in
-            let current_state =
-              state.instantiated_generics.map |> Id.Map.find_opt id
-              |> Option.and_then (fun instantiations ->
-                  instantiations |> Types.ValueMap.find_opt arg)
-            in
-            match current_state with
-            | None ->
-                let placeholder = Value.new_not_inferred ~span in
-                save placeholder;
-                Log.trace (fun log ->
-                    log "Instantiating generic with arg=%a at %a placeholder=%a"
-                      Value.print arg Span.print span Value.print placeholder);
-                fork (fun () ->
-                    try
-                      let state =
-                        {
-                          state with
-                          current_name = Instantiation { generic; arg };
-                        }
-                      in
-                      let evaluated_result =
-                        call_untyped_fn ~sub_mode:Full span state fn arg
-                      in
-                      Log.trace (fun log ->
-                          log
-                            "Instantiated generic with arg=%a, result=%a, uniting with=%a"
-                            Value.print arg Value.print evaluated_result
-                            Value.print placeholder);
-                      placeholder
-                      |> Inference.Value.expect_inferred_as ~span
-                           evaluated_result;
-                      Log.trace (fun log ->
-                          log "After uniting result=%a" Value.print placeholder)
-                    with effect Inference.Var.AwaitUpdate var, k ->
-                      Effect.continue k
-                        (Effect.perform <| Inference.Var.AwaitUpdate var));
-                placeholder
-            | Some result ->
-                Log.trace (fun log ->
-                    log
-                      "Using memoized generic instantiation with arg=%a at %a = %a"
-                      Value.print arg Span.print span Value.print result);
-
-                result.var
-                |> Inference.Var.once_inferred (fun shape ->
+              log "Waiting for instantiation name at %a" Span.print span);
+          let name = Value.name result in
+          Log.trace (fun log ->
+              log "Inferred instantiation value at %a name = %a" Span.print span
+                Value.print result);
+          let name =
+            name.var |> Inference.Var.await_inferred ~error_shape:None
+          in
+          (match name with
+          | None -> ()
+          | Some name ->
+              Log.trace (fun log ->
+                  log "Inferred instantiation at %a name = %a" Span.print span
+                    Kast_types.Print.print_name_shape name));
+          match name with
+          | Some (Instantiation { generic = ty_generic; arg = ty_arg }) ->
+              generic |> Inference.Value.expect_inferred_as ~span ty_generic;
+              arg |> Inference.Value.expect_inferred_as ~span ty_arg
+          | _ -> ());
+      fork (fun () ->
+          let actual_result =
+            match generic |> Value.await_inferred with
+            | V_Blocked generic ->
+                V_Blocked
+                  { shape = BV_Instantiate { generic; arg }; ty = result.ty }
+                |> Value.inferred ~span
+            | V_Generic { name = _; fn; ty = _ } -> (
+                (* TODO this mixes different generics? *)
+                let id = fn.id in
+                let save new_state =
+                  let generic_instantiations =
+                    match
+                      state.instantiated_generics.map |> Id.Map.find_opt id
+                    with
+                    | None -> Types.ValueMap.empty
+                    | Some instantiations -> instantiations
+                  in
+                  let generic_instantiations =
+                    generic_instantiations |> Types.ValueMap.add arg new_state
+                  in
+                  state.instantiated_generics.map <-
+                    state.instantiated_generics.map
+                    |> Id.Map.add id generic_instantiations
+                in
+                let current_state =
+                  Kast_profiling.record
+                    (fun () -> "finding generic instantiation")
+                    (fun () ->
+                      state.instantiated_generics.map |> Id.Map.find_opt id
+                      |> Option.and_then (fun instantiations ->
+                          instantiations |> Types.ValueMap.find_opt arg))
+                in
+                match current_state with
+                | None ->
+                    let placeholder =
+                      Value.new_not_inferred ~scope:state.result_scope ~span
+                    in
+                    save placeholder;
                     Log.trace (fun log ->
                         log
-                          "Memoized generic instantiation with arg=%a is inferred=%a"
-                          Value.print arg Value.Shape.print shape);
-                    match shape with
-                    | V_Ty ty ->
-                        ty.var
-                        |> Inference.Var.once_inferred
-                             (fun (ty_shape : Ty.Shape.t) ->
-                               Log.trace (fun log ->
-                                   log
-                                     "Memoized generic instantiation inferred as ty=%a"
-                                     Ty.Shape.print ty_shape))
-                    | _ -> ());
-                result)
-        | V_Error -> V_Error |> Value.inferred ~span
-        | _ ->
-            Error.error span "expected generic";
-            V_Error |> Value.inferred ~span
-      in
-      result |> Inference.Value.expect_inferred_as ~span actual_result);
-  result
+                          "Instantiating generic with arg=%a at %a placeholder=%a"
+                          Value.print arg Span.print span Value.print
+                          placeholder);
+                    fork (fun () ->
+                        try
+                          let state =
+                            {
+                              state with
+                              current_name = Instantiation { generic; arg };
+                            }
+                          in
+                          let evaluated_result =
+                            call_untyped_fn ~sub_mode:Full span state fn arg
+                          in
+                          Log.trace (fun log ->
+                              log
+                                "Instantiated generic with arg=%a, result=%a, uniting with=%a"
+                                Value.print arg Value.print evaluated_result
+                                Value.print placeholder);
+                          placeholder
+                          |> Inference.Value.expect_inferred_as ~span
+                               evaluated_result;
+                          Log.trace (fun log ->
+                              log "After uniting result=%a" Value.print
+                                placeholder)
+                        with effect Inference.Var.AwaitUpdate var, k ->
+                          Effect.continue k
+                            (Effect.perform <| Inference.Var.AwaitUpdate var));
+                    placeholder
+                | Some result ->
+                    Log.trace (fun log ->
+                        log
+                          "Using memoized generic instantiation with arg=%a at %a = %a"
+                          Value.print arg Span.print span Value.print result);
+
+                    result.var
+                    |> Inference.Var.once_inferred (fun shape ->
+                        Log.trace (fun log ->
+                            log
+                              "Memoized generic instantiation with arg=%a is inferred=%a"
+                              Value.print arg Value.Shape.print shape);
+                        match shape with
+                        | V_Ty ty ->
+                            ty.var
+                            |> Inference.Var.once_inferred
+                                 (fun (ty_shape : Ty.Shape.t) ->
+                                   Log.trace (fun log ->
+                                       log
+                                         "Memoized generic instantiation inferred as ty=%a"
+                                         Ty.Shape.print ty_shape))
+                        | _ -> ());
+                    result)
+            | V_Error -> V_Error |> Value.inferred ~span
+            | _ ->
+                Error.error span "expected generic";
+                V_Error |> Value.inferred ~span
+          in
+          result |> Inference.Value.expect_inferred_as ~span actual_result);
+      result)
 
 and call (span : span) (state : state) (f : value) (arg : value) : value =
   match f |> Value.await_inferred with
@@ -487,6 +507,8 @@ and get_field ~span ~state ~(result_ty : ty) ~obj_mut obj member :
       in
       Place (~mut:(Place.is_mutable ~parent_mut:obj_mut place), place))
 
+and sub_here : state -> Types.sub_state = fun state -> state
+
 and eval_place : state -> Types.place_expr -> evaled_place_expr =
  fun state expr ->
   try
@@ -535,14 +557,20 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                       ty =
                         T_Ref
                           {
-                            mut = { var = Inference.Var.new_not_inferred ~span };
+                            mut =
+                              {
+                                var =
+                                  Inference.Var.new_not_inferred
+                                    ~scope:state.result_scope ~span;
+                              };
                             referenced = expr.data.ty;
                           }
                         |> Ty.inferred ~span;
                     }
               | Place (~mut:obj_mut, obj) ->
                   let result_ty =
-                    Substitute_bindings.sub_ty ~span ~state expr.data.ty
+                    Substitute_bindings.sub_ty ~span ~state:(sub_here state)
+                      expr.data.ty
                   in
                   get_field ~state ~result_ty ~span ~obj_mut
                     (obj |> read_place ~span)
@@ -574,7 +602,9 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
   let span = expr.data.span in
   match eval_place state place with
   | RefBlocked blocked ->
-      let ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+      let ty =
+        Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty
+      in
       V_Blocked { shape = BV_ClaimRef blocked; ty } |> Value.inferred ~span
   | Place (~mut:_, place) -> place |> claim ~span
 
@@ -593,22 +623,6 @@ and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
         };
     }
   |> Value.inferred ~span
-
-and normalized_binding_at_idx : int -> binding =
-  let span = Span.fake "<normalized binding>" in
-  let cache =
-    Array.init 100 (fun i : binding ->
-        let name = "_" ^ Int.to_string i in
-        {
-          id = Id.gen ();
-          name = Symbol.create name;
-          span;
-          label = Label.create_reference span name;
-          ty = Ty.new_not_inferred ~span;
-          mut = true;
-        })
-  in
-  fun idx -> Array.get cache idx
 
 and pattern_bindings : pattern -> binding list =
  fun pattern ->
@@ -636,7 +650,6 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   let span = expr.data.span in
   V_Generic
     {
-      id = Id.gen ();
       name = current_name state;
       fn =
         {
@@ -765,7 +778,9 @@ and eval_expr_instantiategeneric :
   let span = expr.data.span in
   let generic = eval state generic in
   let arg = eval state arg in
-  let result_ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+  let result_ty =
+    Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty
+  in
   instantiate ~result_ty expr.data.span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
@@ -777,7 +792,10 @@ and eval_expr_native : state -> expr -> Types.expr_native -> value =
         let span = expr.data.span in
         match StringMap.find_opt native_expr state.natives.by_name with
         | Some f ->
-            let ty = Substitute_bindings.sub_ty ~span ~state expr.data.ty in
+            let ty =
+              Substitute_bindings.sub_ty ~span ~state:(sub_here state)
+                expr.data.ty
+            in
             f ty
         | None ->
             Error.error expr.data.span "no native %S" native_expr;
@@ -914,7 +932,11 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
   let span = expr.data.span in
   let id = Id.gen () in
   let token : Types.value_unwind_token =
-    { id; result_ty = Substitute_bindings.sub_ty ~span ~state body.data.ty }
+    {
+      id;
+      result_ty =
+        Substitute_bindings.sub_ty ~span ~state:(sub_here state) body.data.ty;
+    }
   in
   let token : value =
     V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
@@ -1090,7 +1112,16 @@ and eval : state -> expr -> value =
           match expr.shape with
           | E_Ref place -> eval_expr_ref state expr place
           | E_Claim place -> eval_expr_claim state expr place
-          | E_Constant value -> Substitute_bindings.sub_value ~span ~state value
+          | E_Constant value ->
+              Log.trace (fun log ->
+                  log "const: before sub = %a" Value.print value);
+              let result =
+                Substitute_bindings.sub_value ~span ~state:(sub_here state)
+                  value
+              in
+              Log.trace (fun log ->
+                  log "const: after sub = %a" Value.print result);
+              result
           | E_Fn f -> eval_expr_fn state expr f
           | E_Generic f -> eval_expr_generic state expr f
           | E_Tuple tuple -> eval_expr_tuple state expr tuple
@@ -1103,7 +1134,9 @@ and eval : state -> expr -> value =
           | E_InstantiateGeneric e -> eval_expr_instantiategeneric state expr e
           | E_Ty e -> eval_expr_ty state expr e
           | E_Newtype ty_expr ->
-              let result_ty = Ty.new_not_inferred ~span in
+              let result_ty =
+                Ty.new_not_inferred ~scope:state.result_scope ~span
+              in
               fork (fun () ->
                   let inner_ty = eval_ty state ty_expr in
                   let name =
@@ -1143,6 +1176,10 @@ and eval : state -> expr -> value =
         (* let result = Substitute_bindings.sub_value ~state result in *)
         Log.trace (fun log ->
             log "evaled at %a = %a" Span.print span Value.print result);
+        Log.trace (fun log ->
+            log "scope = %a, result scope = %a" Print.print_var_scope
+              state.result_scope Print.print_var_scope
+              (VarScope.of_value result));
         result
       with
       | Unwind _ as exc -> raise exc
@@ -1205,7 +1242,7 @@ and current_name : state -> Types.name_shape =
 and eval_ty : state -> Expr.ty -> ty =
  fun state expr ->
   let span = expr.data.span in
-  let result = Ty.new_not_inferred ~span in
+  let result = Ty.new_not_inferred ~scope:state.result_scope ~span in
   fork (fun () ->
       try
         Log.trace (fun log -> log "started eval ty expr at %a" Span.print span);
@@ -1276,7 +1313,10 @@ and eval_ty : state -> Expr.ty -> ty =
               <| T_Variant
                    {
                      name = OptionalName.new_inferred ~span None;
-                     variants = Row.of_list ~span variants;
+                     variants =
+                       Row.of_list
+                         (module VarScope)
+                         VarScope.of_ty_variant_data ~span variants;
                    }
           | TE_Variant { variants } ->
               Ty.inferred ~span
@@ -1284,7 +1324,9 @@ and eval_ty : state -> Expr.ty -> ty =
                    {
                      name = OptionalName.new_inferred ~span None;
                      variants =
-                       Row.of_list ~span
+                       Row.of_list
+                         (module VarScope)
+                         VarScope.of_ty_variant_data ~span
                          (variants
                          |> List.map
                               (fun
@@ -1303,7 +1345,11 @@ and eval_ty : state -> Expr.ty -> ty =
         |> Inference.Ty.expect_inferred_as ~span:expr.data.span evaled_result;
         Log.trace (fun log ->
             log "finished eval ty expr at %a = %a" Span.print span Ty.print
-              evaled_result)
+              evaled_result);
+        Log.trace (fun log ->
+            log "scope = %a, result scope = %a" Print.print_var_scope
+              state.result_scope Print.print_var_scope
+              (VarScope.of_ty evaled_result))
       with
       | effect Scope.AwaitUpdate (symbol, scope), k ->
           Effect.continue k (Effect.perform <| Scope.AwaitUpdate (symbol, scope))
@@ -1315,12 +1361,30 @@ and eval_ty : state -> Expr.ty -> ty =
   (* let result = Substitute_bindings.sub_ty ~state result in *)
   result
 
-and enter_scope ~span ~(recursive : bool) (state : state) : state =
+and enter_scope ?(new_result_scope : bool = false) ~span ~(recursive : bool)
+    (state : state) : state =
+  let result_scope : VarScope.t =
+    if new_result_scope then
+      Some
+        {
+          id = Id.gen ();
+          depth = state.scope.depth + 1;
+          span;
+          parent = state.result_scope;
+          locals = Scope.Locals.empty;
+          recursive;
+          closed = false;
+          on_update = [];
+        }
+    else state.result_scope
+  in
   {
     state with
+    result_scope;
     scope =
       {
         id = Id.gen ();
+        depth = state.scope.depth + 1;
         span;
         parent = Some state.scope;
         locals = Scope.Locals.empty;

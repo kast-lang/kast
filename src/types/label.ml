@@ -2,6 +2,16 @@ open Std
 open Kast_util
 module Inference = Kast_inference_base
 
+module NoScope : Inference.Scope = struct
+  type t = unit
+
+  let root () = ()
+  let unite () () = ()
+  let deepest () () = ()
+  let equal () () = true
+  let compare () () = 0
+end
+
 type label_data = {
   id : Id.t;
   name : string;
@@ -9,26 +19,32 @@ type label_data = {
   mutable references : span list;
 }
 
+let label_data_scope : label_data -> NoScope.t = fun _ -> NoScope.root ()
 let equal_label_data a b = Id.equal a.id b.id
 let compare_label_data a b = Id.compare a.id b.id
 
-type label = { var : label_data Inference.var }
+type label = { var : (label_data, NoScope.t) Inference.var }
 type t = label
 
-let equal a b = Inference.equal_var equal_label_data a.var b.var
-let compare a b = Inference.compare_var compare_label_data a.var b.var
+let equal a b =
+  Inference.CompareRecurseCache.with_cache
+    (Inference.CompareRecurseCache.create ()) (fun () ->
+      Inference.equal_var equal_label_data NoScope.equal a.var b.var)
+
+let compare a b =
+  Inference.compare_var compare_label_data NoScope.compare a.var b.var
 
 let create_definition span name =
   {
     var =
-      Inference.Var.new_inferred span
+      Inference.Var.new_inferred label_data_scope ~span
         { id = Id.gen (); name; definition = Some span; references = [] };
   }
 
 let create_reference span name =
   {
     var =
-      Inference.Var.new_inferred span
+      Inference.Var.new_inferred label_data_scope ~span
         { id = Id.gen (); name; definition = None; references = [ span ] };
   }
 
@@ -75,7 +91,8 @@ let unite_data ~span:_ a b =
 
 let unite =
   let span = Span.fake "_" in
-  fun a b -> { var = Inference.Var.unite unite_data ~span a.var b.var }
+  fun a b ->
+    { var = Inference.Var.unite unite_data NoScope.unite ~span a.var b.var }
 
 let add_reference span label =
   let reference = create_reference span (get_name label) in

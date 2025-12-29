@@ -7,6 +7,22 @@ type options = {
   spans : bool;
 }
 
+let rec print_scope_path fmt (scope : interpreter_scope) =
+  (match scope.parent with
+  | None -> ()
+  | Some parent ->
+      print_scope_path fmt parent;
+      fprintf fmt ".");
+  Id.print fmt scope.id
+
+let print_var_scope fmt (scope : var_scope) =
+  match scope with
+  | None -> fprintf fmt "<root>"
+  | Some scope ->
+      Span.print_osc8 scope.span
+        (fun fmt () -> fprintf fmt "<%a>" print_scope_path scope)
+        () fmt
+
 module RecurseCache = RecurseCache.Make (Id)
 
 module Impl = struct
@@ -62,9 +78,9 @@ module Impl = struct
         match data with
         | Some data -> fprintf fmt " %a" print_place_value data
         | None -> ())
-    | V_Generic g ->
-        print_name_shape fmt g.name
-        (* fprintf fmt "@{<italic><generic %a>@}" Id.print g.id *)
+    | V_Generic g -> print_name_shape fmt g.name
+    (* fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
+          print_ty_generic g.ty *)
     | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
     | V_Ast ast -> fprintf fmt "%a" Ast.print ast
     | V_UnwindToken { id; result_ty = _ } ->
@@ -96,7 +112,7 @@ module Impl = struct
   (* TY *)
   and print_ty_tuple : formatter -> ty_tuple -> unit =
    fun fmt { name; tuple } ->
-    print_optionally_named fmt name (fun () ->
+    print_optionally_named fmt name (fun fmt ->
         fprintf fmt "%a"
           (Tuple.print
              ~options:
@@ -106,7 +122,7 @@ module Impl = struct
 
   and print_ty_variant : formatter -> ty_variant -> unit =
    fun fmt { name; variants } ->
-    print_optionally_named fmt name (fun () ->
+    print_optionally_named fmt name (fun fmt ->
         fprintf fmt "%a"
           (Row.print
              ~options:
@@ -121,7 +137,15 @@ module Impl = struct
                match data with
                | Some data -> fprintf fmt " %a" print_ty data
                | None -> ()))
-          variants)
+          variants
+        (* ; fprintf fmt "(row scope=%a)" print_var_scope
+          (Inference.Var.scope variants.var) *))
+
+  and print_ty_generic : formatter -> ty_generic -> unit =
+   fun fmt { arg; result } ->
+    fprintf fmt "[%a] %a"
+      (print_pattern ~options:{ spans = false; types = true })
+      arg print_ty result
 
   and print_ty_shape : formatter -> ty_shape -> unit =
    fun fmt -> function
@@ -139,10 +163,7 @@ module Impl = struct
     | T_Ty -> fprintf fmt "type"
     | T_Fn { arg; result } ->
         fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
-    | T_Generic { arg; result } ->
-        fprintf fmt "[%a] %a"
-          (print_pattern ~options:{ spans = false; types = true })
-          arg print_ty result
+    | T_Generic ty -> print_ty_generic fmt ty
     | T_Ast -> fprintf fmt "ast"
     | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
     | T_Target -> fprintf fmt "target"
@@ -167,8 +188,7 @@ module Impl = struct
     fprintf fmt "%a -> %a" print_ty arg print_ty result
 
   (* VAR *)
-  and print_var :
-      'a. (formatter -> 'a -> unit) -> formatter -> 'a Inference.Var.t -> unit =
+  and print_var : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
    fun print_shape fmt var ->
     let id = var |> Inference.Var.recurse_id in
     let cache = RecurseCache.get () in
@@ -180,6 +200,7 @@ module Impl = struct
       if is_recursive |> RecurseCache.is_visited id then
         fprintf fmt "<id=%a>" Id.print id;
       Inference.Var.print print_shape fmt var;
+      (* fprintf fmt "@{<cyan>%a@}" print_var_scope (Inference.Var.scope var); *)
       cache |> RecurseCache.exit id)
 
   (* EXPR *)
@@ -527,16 +548,18 @@ module Impl = struct
    fun fmt binding ->
     let span = binding.label |> Label.get_span in
     Span.print_osc8 span Symbol.print binding.name fmt
+  (* ; Id.print fmt binding.id *)
 
   and print_target : formatter -> value_target -> unit =
    fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name
 
   and print_optionally_named :
-      formatter -> optional_name -> (unit -> unit) -> unit =
+      formatter -> optional_name -> (formatter -> unit) -> unit =
    fun fmt name f ->
     match name.var |> Inference.Var.inferred_opt with
     | Some (Some name) -> print_name_shape fmt name
-    | Some None | None -> f ()
+    (* ; fprintf fmt "(=%t)" f *)
+    | _ -> f fmt
 
   and print_name : formatter -> name -> unit =
    fun fmt { var } -> print_var print_name_shape fmt var
@@ -624,3 +647,4 @@ let print_name_shape = with_cache Impl.print_name_shape
 let print_name_part = with_cache Impl.print_name_part
 let print_ty_tuple = with_cache Impl.print_ty_tuple
 let print_ty_variant = with_cache Impl.print_ty_variant
+let print_ty_generic = with_cache Impl.print_ty_generic

@@ -2,7 +2,7 @@ use std.prelude.*;
 
 let main = () with io => (
     print "Welcome to the Guessing Number Game :-)";
-    let picked = std.random.gen_range (.min = 1, .max = 10);
+    let picked :: Int32 = std.random.gen_range (.min = 1, .max = 10);
     print "The number has been picked!";
     # print <| int32_to_string picked;
     let mut first = true;

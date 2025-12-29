@@ -13,9 +13,13 @@ end
 
 type locals = Locals.t
 
-let with_values ~span ~recursive ~parent values : scope =
+let with_values ~span ~recursive ~(parent : scope option) values : scope =
   {
     id = Id.gen ();
+    depth =
+      (match parent with
+      | Some parent -> parent.depth + 1
+      | None -> 0);
     span;
     locals = values;
     parent;
@@ -140,5 +144,4 @@ let rec print_all : formatter -> scope -> unit =
 let close : scope -> unit =
  fun scope ->
   scope.closed <- true;
-  (* println "closed %a" print_all scope; *)
   notify_update scope

@@ -336,11 +336,12 @@ let fn : core_syntax =
             error span "fn can't be a ty";
             init_error span C.state kind
         | Expr ->
+            let scope = State.var_scope C.state in
             let ty : Types.ty_fn =
               {
-                arg = Ty.new_not_inferred ~span:arg.span;
+                arg = Ty.new_not_inferred ~scope ~span:arg.span;
                 result =
-                  Ty.new_not_inferred
+                  Ty.new_not_inferred ~scope
                     ~span:
                       (result
                       |> Option.map_or body.span (fun (result : Ast.t) ->
@@ -354,29 +355,53 @@ let fn : core_syntax =
                 let state =
                   C.state |> State.enter_scope ~span ~recursive:false
                 in
+                Log.trace (fun log ->
+                    log "starting to compile fn at %a" Span.print span);
                 let arg = C.compile ~state Pattern arg in
+                Log.trace (fun log ->
+                    log "compiled fn arg = %a at %a"
+                      (Pattern.print ~options:{ types = false; spans = false })
+                      arg Span.print span);
                 ty.arg
                 |> Inference.Ty.expect_inferred_as ~span:arg.data.span
                      arg.data.ty;
                 state
                 |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                 let body = C.compile ~state Expr body in
+                Log.trace (fun log ->
+                    log "compiled fn body (ty = %a) at %a" Ty.print body.data.ty
+                      Span.print body.data.span);
                 let result_expr =
                   result
                   |> Option.map (fun result ->
                       let result, result_expr =
                         Compiler.eval_ty (module C) result
                       in
+                      Log.trace (fun log ->
+                          log "evaled fn expected result ty = %a at %a" Ty.print
+                            result Span.print body.data.span);
+                      Log.trace (fun log ->
+                          log "unifying %a and %a" Ty.print body.data.ty
+                            Ty.print result);
                       body.data.ty
                       |> Inference.Ty.expect_inferred_as ~span:body.data.span
                            result;
+                      Log.trace (fun log ->
+                          log "unified result ty and body ty at %a" Span.print
+                            body.data.span);
+                      Log.trace (fun log ->
+                          log "after unifying %a and %a" Ty.print body.data.ty
+                            Ty.print result);
                       result_expr)
                 in
-                Compiler.finish_compiling def
-                  { arg; body; evaled_result = result_expr };
                 ty.result
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span
-                     body.data.ty);
+                     body.data.ty;
+                Compiler.finish_compiling def
+                  { arg; body; evaled_result = result_expr };
+                Log.trace (fun log ->
+                    log "finished compiling fn at %a, result ty = %a" Span.print
+                      span Ty.print ty.result));
             E_Fn { ty; def } |> init_expr span C.state);
   }
 
@@ -424,21 +449,23 @@ let generic : core_syntax =
             in
             (fun () -> TE_Expr expr) |> init_ty_expr span C.state
         | Expr ->
-            let arg = C.compile Pattern arg in
             let def : Types.maybe_compiled_fn =
               { compiled = None; on_compiled = [] }
             in
+            let inner_state =
+              C.state |> State.enter_scope ~span ~recursive:false
+            in
+            let arg = C.compile ~state:inner_state Pattern arg in
+            inner_state
+            |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
             let ty =
               Interpreter.generic_ty ~span arg
-                (Ty.new_not_inferred ~span:body.span)
+                (Ty.new_not_inferred
+                   ~scope:(State.var_scope inner_state)
+                   ~span:body.span)
             in
             State.Scope.fork (fun () ->
-                let state =
-                  C.state |> State.enter_scope ~span ~recursive:false
-                in
-                state
-                |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
-                let body = C.compile ~state Expr body in
+                let body = C.compile ~state:inner_state Expr body in
                 Compiler.finish_compiling def
                   { arg; body; evaled_result = None };
                 Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
@@ -624,8 +651,9 @@ let type_ascribe : core_syntax =
               Compiler.eval_ty (module C) expected_ty
             in
             Log.trace (fun log ->
-                log "Evaled ascription at %a = %a" Span.print span Ty.print
-                  expected_ty);
+                log "Evaled ascription at %a = %a (scope=%a)" Span.print span
+                  Ty.print expected_ty Print.print_var_scope
+                  (Inference.Var.scope expected_ty.var));
             expr_data.ty
             |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
             let _ : a =
@@ -991,7 +1019,9 @@ let dot : core_syntax =
                         match obj.var |> Inference.Var.inferred_opt with
                         | Some (V_CompilerScope scope) ->
                             let binding =
-                              State.Scope.find_binding ~from:span field scope
+                              State.Scope.find_binding
+                                ~from_scope:(State.var_scope C.state) ~from:span
+                                field scope
                             in
                             PE_Binding binding
                             |> init_place_expr span C.state
@@ -1038,8 +1068,8 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
         | None ->
             let place =
               PE_Binding
-                (State.Scope.find_binding ~from:label_ast.span label
-                   C.state.scope)
+                (State.Scope.find_binding ~from_scope:(State.var_scope C.state)
+                   ~from:label_ast.span label C.state.scope)
               |> init_place_expr span C.state
             in
             E_Claim place |> init_expr span C.state
@@ -1066,8 +1096,8 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
         | None ->
             let place =
               PE_Binding
-                (State.Scope.find_binding ~from:label_ast.span label
-                   C.state.scope)
+                (State.Scope.find_binding ~from_scope:(State.var_scope C.state)
+                   ~from:label_ast.span label C.state.scope)
               |> init_place_expr span C.state
             in
             let expr = E_Claim place |> init_expr span C.state in
@@ -1085,14 +1115,16 @@ let tuple_field (type a) (module C : Compiler.S) (kind : a compiled_kind)
         match value with
         | Some value -> C.compile Pattern value
         | None ->
+            let scope = State.var_scope C.state in
             P_Binding
               {
                 by_ref = false;
                 binding =
                   {
                     id = Id.gen ();
+                    scope;
                     name = Symbol.create label;
-                    ty = Ty.new_not_inferred ~span:label_ast.span;
+                    ty = Ty.new_not_inferred ~scope ~span:label_ast.span;
                     span = label_ast.span;
                     label = Label.create_reference label_ast.span label;
                     mut = false;
@@ -1232,6 +1264,7 @@ let use : core_syntax =
                       binding =
                         {
                           id = Id.gen ();
+                          scope = binding.scope;
                           name = Symbol.create binding.name.name;
                           span = used_expr.data.span;
                           ty = binding.ty;
@@ -1248,6 +1281,7 @@ let use : core_syntax =
                           binding =
                             {
                               id = Id.gen ();
+                              scope = State.var_scope C.state;
                               name = Symbol.create (Label.get_name label);
                               span = field_span;
                               ty = used_expr.data.ty;
@@ -1290,9 +1324,10 @@ let use_dot_star : core_syntax =
         let span = ast.span in
         match kind with
         | Expr ->
+            let scope = State.var_scope C.state in
             let used, used_expr =
               Compiler.eval
-                ~ty:(Ty.new_not_inferred ~span:used.span)
+                ~ty:(Ty.new_not_inferred ~scope ~span:used.span)
                 (module C)
                 used
             in
@@ -1306,6 +1341,7 @@ let use_dot_star : core_syntax =
                       |> Option.map (fun label ->
                           ({
                              id = Id.gen ();
+                             scope;
                              name = Symbol.create name;
                              span = Label.get_span label;
                              ty = field.ty;
@@ -1358,7 +1394,9 @@ let comptime : core_syntax =
         | Expr ->
             let value, value_expr =
               Compiler.eval
-                ~ty:(Ty.new_not_inferred ~span:expr.span)
+                ~ty:
+                  (Ty.new_not_inferred ~scope:(State.var_scope C.state)
+                     ~span:expr.span)
                 (module C)
                 expr
             in
@@ -1443,9 +1481,12 @@ let impl_syntax : core_syntax =
                 let impl_expr =
                   (* TODO maybe reduce copypasta here and compiling fn *)
                   let ty : Types.ty_fn =
+                    let scope = State.var_scope C.state in
                     {
-                      arg = Ty.new_not_inferred ~span:(Span.of_ocaml __POS__);
-                      result = Ty.new_not_inferred ~span:(Span.of_ocaml __POS__);
+                      arg =
+                        Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__);
+                      result =
+                        Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__);
                     }
                   in
                   let def : Types.maybe_compiled_fn =
@@ -1515,7 +1556,8 @@ let impl_syntax : core_syntax =
                   Compiler.eval
                     ~ty:
                       ((* TODO *)
-                       Ty.new_not_inferred ~span:impl.span)
+                       Ty.new_not_inferred ~scope:(State.var_scope C.state)
+                         ~span:impl.span)
                     (module C)
                     impl
                 in
@@ -1742,6 +1784,7 @@ let target_dependent : core_syntax =
                     |> State.Scope.inject_binding
                          ({
                             id = Id.gen ();
+                            scope = None;
                             name = Types.target_symbol;
                             span;
                             ty =
@@ -1933,7 +1976,10 @@ let binding : core_syntax =
           |> Tuple.unwrap_single_unnamed
         in
         let binding, binding_expr =
-          binding |> Compiler.eval ~ty:(Ty.new_not_inferred ~span) (module C)
+          binding
+          |> Compiler.eval
+               ~ty:(Ty.new_not_inferred ~scope:(State.var_scope C.state) ~span)
+               (module C)
         in
         match binding.var |> Inference.Var.inferred_opt with
         | Some (V_Blocked { shape = BV_Binding binding; ty = _ }) -> (
@@ -1989,9 +2035,6 @@ let current_compiler_scope : core_syntax =
         match kind with
         | Expr ->
             let scope = C.state.scope in
-            (* scope.bindings
-            |> StringMap.iter (fun field _binding ->
-                println "@current_scope.%S" field); *)
             E_Constant (V_CompilerScope scope |> Value.inferred ~span)
             |> init_expr span C.state
         | _ ->
@@ -2225,7 +2268,7 @@ let ref_impl ~name ~(mut : bool) : core_syntax =
             (fun () ->
               TE_Ref
                 {
-                  mut = { var = Inference.Var.new_inferred ~span mut };
+                  mut = IsMutable.new_inferred ~span mut;
                   referenced = C.compile TyExpr inner;
                 })
             |> init_ty_expr span C.state
@@ -2288,7 +2331,9 @@ let impl_cast : core_syntax =
         | Expr ->
             let target, target_expr =
               Compiler.eval
-                ~ty:(Ty.new_not_inferred ~span:target.span)
+                ~ty:
+                  (Ty.new_not_inferred ~scope:(State.var_scope C.state)
+                     ~span:target.span)
                 (module C)
                 target
             in
@@ -2325,14 +2370,21 @@ let impl_as_module : core_syntax =
         in
         match kind with
         | Expr ->
+            let scope = State.var_scope C.state in
             let value, value_expr =
-              Compiler.eval ~ty:(Ty.new_not_inferred ~span) (module C) value
+              Compiler.eval
+                ~ty:(Ty.new_not_inferred ~scope ~span)
+                (module C)
+                value
             in
-            let impl_temp = Value.new_not_inferred ~span in
+            let impl_temp = Value.new_not_inferred ~scope ~span in
             Kast_interpreter.impl_cast_as_module ~span C.state.interpreter
               ~value ~impl:impl_temp;
             let impl, impl_expr =
-              Compiler.eval ~ty:(Ty.new_not_inferred ~span) (module C) impl
+              Compiler.eval
+                ~ty:(Ty.new_not_inferred ~scope ~span)
+                (module C)
+                impl
             in
             Inference.Value.expect_inferred_as ~span impl impl_temp;
             E_Constant (V_Unit |> Value.inferred ~span)
@@ -2367,7 +2419,9 @@ let cast : core_syntax =
         | Expr ->
             let target, target_expr =
               Compiler.eval
-                ~ty:(Ty.new_not_inferred ~span:target.span)
+                ~ty:
+                  (Ty.new_not_inferred ~scope:(State.var_scope C.state)
+                     ~span:target.span)
                 (module C)
                 target
             in
