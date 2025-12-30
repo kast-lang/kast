@@ -4,17 +4,42 @@ open Kast_types
 open Types
 module JsAst = Javascript_ast
 
-type ctx = { span : span }
+type ctx = {
+  interpreter : interpreter_state;
+  span : span;
+  target : value_target;
+}
+
 type _ Effect.t += GetCtx : ctx Effect.t
 
 module Impl = struct
   let rec _unused () = ()
+
+  and tuple_field_name : Tuple.member -> string = function
+    | Name name -> name
+    | Index i -> Int.to_string i
+
+  and fn (def : maybe_compiled_fn) : JsAst.expr =
+    let ctx = Effect.perform GetCtx in
+    let compiled = def |> Kast_interpreter.await_compiled ~span:ctx.span in
+    let { arg; body; evaled_result = _ } =
+      compiled |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
+    in
+    let arg_name = JsAst.gen_name "arg" in
+    JsAst.Fn
+      {
+        args = [ arg_name ];
+        body =
+          pattern_match arg (place_of (JsAst.Var arg_name))
+          @ [ JsAst.Return (transpile_expr body) ];
+      }
 
   and transpile_value : value -> JsAst.expr =
    fun value -> value |> Value.await_inferred |> transpile_value_shape
 
   and transpile_value_shape : value_shape -> JsAst.expr =
    fun shape ->
+    let ctx = Effect.perform GetCtx in
     match shape with
     | V_Unit -> JsAst.Null
     | V_Bool x -> JsAst.Bool x
@@ -24,10 +49,19 @@ module Impl = struct
     | V_Char c -> JsAst.String (String.make 1 c)
     | V_String s -> JsAst.String s
     | V_Ref _ -> failwith __LOC__
-    | V_Tuple _ -> failwith __LOC__
+    | V_Tuple { tuple; ty = _ } ->
+        JsAst.Obj
+          (tuple |> Tuple.to_seq
+          |> Seq.map (fun (member, (field : value_tuple_field)) ->
+              let field_name = tuple_field_name member in
+              let value =
+                field.place |> Kast_interpreter.read_place ~span:ctx.span
+              in
+              (field_name, transpile_value value))
+          |> List.of_seq)
     | V_Variant _ -> failwith __LOC__
     | V_Ty _ -> JsAst.Null
-    | V_Fn _ -> failwith __LOC__
+    | V_Fn { ty = _; fn = { def; _ } } -> fn def
     | V_Generic _ -> failwith __LOC__
     | V_NativeFn _ -> failwith __LOC__
     | V_Ast _ -> failwith __LOC__
@@ -130,7 +164,18 @@ module Impl = struct
     | E_Newtype _ -> failwith __LOC__
     | E_Native _ -> failwith __LOC__
     | E_Module _ -> failwith __LOC__
-    | E_UseDotStar _ -> failwith __LOC__
+    | E_UseDotStar { used; bindings } ->
+        let used_var = JsAst.gen_name "used" in
+        [ JsAst.Let { var = used_var; value = transpile_expr used } ]
+        @ (bindings
+          |> List.map (fun binding ->
+              JsAst.Let
+                {
+                  var = binding_name binding;
+                  value =
+                    JsAst.Field
+                      { obj = JsAst.Var used_var; field = binding.name.name };
+                }))
     | E_If _ -> failwith __LOC__
     | E_And _ -> failwith __LOC__
     | E_Or _ -> failwith __LOC__
@@ -167,19 +212,7 @@ module Impl = struct
     | E_Scope { expr } ->
         (* TODO should I actually create js scope? *)
         transpile_expr expr
-    | E_Fn { ty = _; def } ->
-        let compiled = def |> Kast_interpreter.await_compiled ~span:ctx.span in
-        let { arg; body; evaled_result = _ } =
-          compiled |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
-        in
-        let arg_name = JsAst.gen_name "arg" in
-        JsAst.Fn
-          {
-            args = [ arg_name ];
-            body =
-              pattern_match arg (place_of (JsAst.Var arg_name))
-              @ [ JsAst.Return (transpile_expr body) ];
-          }
+    | E_Fn { ty = _; def } -> fn def
     | E_Generic _ -> failwith __LOC__
     | E_Tuple _ -> failwith __LOC__
     | E_Variant _ -> failwith __LOC__
@@ -204,21 +237,33 @@ module Impl = struct
     | E_CurrentContext _ -> failwith __LOC__
     | E_ImplCast _ -> failwith __LOC__
     | E_Cast _ -> failwith __LOC__
-    | E_TargetDependent _ -> failwith __LOC__
+    | E_TargetDependent { branches; _ } ->
+        let branch =
+          Kast_interpreter.find_target_dependent_branch ctx.interpreter branches
+            ctx.target
+        in
+        let branch =
+          branch |> Option.unwrap_or_else (fun () -> fail "no js cfg branch")
+        in
+        transpile_expr branch.body
     | E_Error -> failwith __LOC__
 end
 
 type result = { print : formatter -> unit }
 
-let with_ctx ~span f =
-  let ctx : ctx = { span } in
+let with_ctx ~state ~span f =
+  let ctx : ctx =
+    { interpreter = state; span; target = { name = "javascript" } }
+  in
   try
     let ast = f () in
     { print = (fun fmt -> JsAst.print_expr ~precedence:None fmt ast) }
   with effect GetCtx, k -> Effect.continue k ctx
 
-let transpile_value : span:span -> value -> result =
- fun ~span value -> with_ctx ~span (fun () -> Impl.transpile_value value)
+let transpile_value : state:interpreter_state -> span:span -> value -> result =
+ fun ~state ~span value ->
+  with_ctx ~state ~span (fun () -> Impl.transpile_value value)
 
-let transpile_expr : span:span -> expr -> result =
- fun ~span expr -> with_ctx ~span (fun () -> Impl.transpile_expr expr)
+let transpile_expr : state:interpreter_state -> span:span -> expr -> result =
+ fun ~state ~span expr ->
+  with_ctx ~state ~span (fun () -> Impl.transpile_expr expr)

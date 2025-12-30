@@ -61,6 +61,7 @@ let run : Args.t -> unit =
       | Ir -> println "%a" Expr.print_with_types expr
       | JavaScript ->
           let transpiled : Kast_transpiler_javascript.result =
-            Kast_transpiler_javascript.transpile_expr ~span:ast.span expr
+            Kast_transpiler_javascript.transpile_expr
+              ~state:compiler.interpreter ~span:ast.span expr
           in
           println "%t" transpiled.print)
