@@ -7,3 +7,4 @@
 /data.perf
 /*.ctf
 /*trace.json
+/target/

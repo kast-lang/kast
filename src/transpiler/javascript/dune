@@ -1,0 +1,3 @@
+(library
+ (name kast_transpiler_javascript)
+ (libraries kast_types kast_interpreter))

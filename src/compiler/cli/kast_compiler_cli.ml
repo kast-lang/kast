@@ -12,7 +12,9 @@ module Args = struct
     no_std : bool;
   }
 
-  and output_type = Ir
+  and output_type =
+    | Ir
+    | JavaScript
 
   type t = args
 
@@ -32,6 +34,7 @@ module Args = struct
         let output_type =
           match output_type with
           | "ir" -> Ir
+          | "js" | "javascript" -> JavaScript
           | _ -> fail "Unknown output type %S" output_type
         in
         { (parse rest) with output_type }
@@ -55,4 +58,9 @@ let run : Args.t -> unit =
       in
       let expr : expr = Compiler.compile compiler Expr ast in
       match output_type with
-      | Ir -> println "%a" Expr.print_with_types expr)
+      | Ir -> println "%a" Expr.print_with_types expr
+      | JavaScript ->
+          let transpiled : Kast_transpiler_javascript.result =
+            Kast_transpiler_javascript.transpile_expr ~span:ast.span expr
+          in
+          println "%t" transpiled.print)

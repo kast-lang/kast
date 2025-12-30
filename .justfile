@@ -22,3 +22,8 @@ lsp-stress-test:
 
 test-aoc:
     KAST_STD=$(pwd)/std kast ${AOC:-~/projects/aoc2025/test.ks}
+
+run-js *args:
+    kast compile --output-type javascript {{args}} > target/test.js
+    npx prettier --write target/test.js --ignore-path /dev/null
+    node target/test.js

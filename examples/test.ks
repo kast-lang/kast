@@ -1,5 +1,7 @@
-use std.prelude.*;
+const String = @native "string";
 
-for line in String.lines (std.fs.read_file __FILE__) |> std.iter.map (s => s + s) do (
-    print line;
+let print = (s :: String) -> () => (
+    (@native "console.log") s;
 );
+
+print "Hello, World";
