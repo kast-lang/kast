@@ -23,11 +23,18 @@ type expr =
       args : expr list;
     }
   | Raw of string
-  | Obj of (string * expr) list
+  | Obj of obj_part list
   | Field of {
       obj : expr;
       field : string;
     }
+
+and obj_part =
+  | Field of {
+      name : string;
+      value : expr;
+    }
+  | Unpack of expr
 
 and stmt =
   | Expr of expr
@@ -50,6 +57,7 @@ module Precedence = struct
     | FnArg
     | Stmt
     | Field
+    | Unpack
     | Obj
     | Returned
 end
@@ -84,13 +92,18 @@ let rec print_expr ~(precedence : Precedence.t) fmt expr =
   | Obj fields ->
       fprintf fmt "{";
       fields
-      |> List.iteri (fun i (name, value) ->
+      |> List.iteri (fun i part ->
           if i <> 0 then fprintf fmt ",";
-          fprintf fmt "%S : %a" name (print_expr ~precedence:Field) value);
+          print_obj_part fmt part);
       fprintf fmt "}"
   | Field { obj; field } ->
       fprintf fmt "%a[%S]" (print_expr ~precedence:Obj) obj field);
   if surround_with_parens then fprintf fmt ")"
+
+and print_obj_part fmt = function
+  | Field { name; value } ->
+      fprintf fmt "%S: %a" name (print_expr ~precedence:Field) value
+  | Unpack packed -> fprintf fmt "...%a" (print_expr ~precedence:Unpack) packed
 
 and print_stmt fmt = function
   | Expr e -> print_expr ~precedence:Stmt fmt e

@@ -52,17 +52,18 @@ module Impl = struct
     | V_Tuple { tuple; ty = _ } ->
         JsAst.Obj
           (tuple |> Tuple.to_seq
-          |> Seq.map (fun (member, (field : value_tuple_field)) ->
-              let field_name = tuple_field_name member in
-              let value =
-                field.place |> Kast_interpreter.read_place ~span:ctx.span
-              in
-              (field_name, transpile_value value))
+          |> Seq.map
+               (fun (member, (field : value_tuple_field)) : JsAst.obj_part ->
+                 let field_name = tuple_field_name member in
+                 let value =
+                   field.place |> Kast_interpreter.read_place ~span:ctx.span
+                 in
+                 Field { name = field_name; value = transpile_value value })
           |> List.of_seq)
     | V_Variant _ -> failwith __LOC__
     | V_Ty _ -> JsAst.Null
     | V_Fn { ty = _; fn = { def; _ } } -> fn def
-    | V_Generic _ -> failwith __LOC__
+    | V_Generic { name = _; fn = { def; _ }; ty = _ } -> fn def
     | V_NativeFn _ -> failwith __LOC__
     | V_Ast _ -> failwith __LOC__
     | V_UnwindToken _ -> failwith __LOC__
@@ -81,20 +82,29 @@ module Impl = struct
    fun place ->
     JsAst.Call { f = JsAst.Field { obj = place; field = "get" }; args = [] }
 
+  and read_place : JsAst.expr -> JsAst.expr =
+   fun place ->
+    JsAst.Call { f = JsAst.Field { obj = place; field = "get" }; args = [] }
+
   and pattern_match : pattern -> JsAst.expr -> JsAst.stmt list =
    fun pattern place ->
-    match pattern.shape with
-    | P_Placeholder -> []
-    | P_Ref _ -> failwith __LOC__
-    | P_Unit -> []
-    | P_Binding { bind_mode; binding } -> (
-        match bind_mode with
-        | Claim ->
-            [ JsAst.Let { var = binding_name binding; value = claim place } ]
-        | ByRef { mut } -> failwith __LOC__)
-    | P_Tuple _ -> failwith __LOC__
-    | P_Variant _ -> failwith __LOC__
-    | P_Error -> []
+    try
+      match pattern.shape with
+      | P_Placeholder -> []
+      | P_Ref _ -> failwith __LOC__
+      | P_Unit -> []
+      | P_Binding { bind_mode; binding } -> (
+          match bind_mode with
+          | Claim ->
+              [ JsAst.Let { var = binding_name binding; value = claim place } ]
+          | ByRef { mut } -> failwith __LOC__)
+      | P_Tuple _ -> failwith __LOC__
+      | P_Variant _ -> failwith __LOC__
+      | P_Error -> []
+    with e ->
+      Log.error (fun log ->
+          log "While transpiling %a" Span.print pattern.data.span);
+      raise e
 
   and assign : assignee_expr -> JsAst.expr -> JsAst.stmt list =
    fun assignee place ->
@@ -110,7 +120,11 @@ module Impl = struct
    fun stmts ->
     JsAst.Call { f = JsAst.Fn { args = []; body = stmts }; args = [] }
 
-  and place ~get ~set = JsAst.Obj [ ("get", get); ("set", set) ]
+  and place ~get ~set =
+    JsAst.Obj
+      [
+        Field { name = "get"; value = get }; Field { name = "set"; value = set };
+      ]
 
   and place_of expr =
     place
@@ -129,7 +143,21 @@ module Impl = struct
    fun expr ->
     match expr.shape with
     | PE_Binding binding -> place_of (JsAst.Var (binding_name binding))
-    | PE_Field _ -> failwith __LOC__
+    | PE_Field { obj; field; field_span = _ } ->
+        let field_name =
+          match field with
+          | Index i -> tuple_field_name (Index i)
+          | Name name -> tuple_field_name (Name (Label.get_name name))
+          | Expr _ -> failwith __LOC__
+        in
+        let var = JsAst.gen_name "obj" in
+        scope
+          [
+            JsAst.Let { var; value = eval_place obj |> read_place };
+            JsAst.Return
+              (place_of
+                 (JsAst.Field { obj = JsAst.Var var; field = field_name }));
+          ]
     | PE_Deref _ -> failwith __LOC__
     | PE_Temp expr ->
         let var = JsAst.gen_name "temp" in
@@ -154,7 +182,7 @@ module Impl = struct
     | E_Generic _ -> failwith __LOC__
     | E_Tuple _ -> failwith __LOC__
     | E_Variant _ -> failwith __LOC__
-    | E_Apply _ -> failwith __LOC__
+    | E_Apply _ -> [ Expr (transpile_expr expr) ]
     | E_InstantiateGeneric _ -> failwith __LOC__
     | E_Assign { assignee; value } ->
         let var = JsAst.gen_name "var" in
@@ -213,15 +241,16 @@ module Impl = struct
         (* TODO should I actually create js scope? *)
         transpile_expr expr
     | E_Fn { ty = _; def } -> fn def
-    | E_Generic _ -> failwith __LOC__
-    | E_Tuple _ -> failwith __LOC__
+    | E_Generic { def; ty = _ } -> fn def
+    | E_Tuple { parts } -> JsAst.Obj []
     | E_Variant _ -> failwith __LOC__
     | E_Apply { f; arg } ->
         JsAst.Call { f = transpile_expr f; args = [ transpile_expr arg ] }
-    | E_InstantiateGeneric _ -> failwith __LOC__
+    | E_InstantiateGeneric { generic; arg } ->
+        JsAst.Call { f = transpile_expr generic; args = [ transpile_expr arg ] }
     | E_Assign _ -> transpile_expr_as_stmts expr |> stmts_expr
     | E_Ty _ -> failwith __LOC__
-    | E_Newtype _ -> failwith __LOC__
+    | E_Newtype _ -> JsAst.Null
     | E_Native { id = _; expr } -> JsAst.Raw expr
     | E_Module _ -> failwith __LOC__
     | E_UseDotStar _ -> failwith __LOC__
