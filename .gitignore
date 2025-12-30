@@ -8,3 +8,4 @@
 /*.ctf
 /*trace.json
 /target/
+/node_modules/

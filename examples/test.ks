@@ -16,10 +16,32 @@ const std = (
             | target.name == "javascript" => (@native "(x=>console.log([x]))") x
         );
     );
+    
+    const Option = [T] newtype (
+        | :None
+        | :Some T
+    );
 );
 
 use std.*;
 
-let s = "Hello, World!";
-print s;
-dbg.print s;
+let mut message = "hello";
+let print_message = () => print message;
+print_message ();
+message = "world";
+print_message ();
+let message_ref = &mut message;
+message_ref^ = "!!!";
+print_message ();
+
+let mut opt :: Option[_] = :Some "HAI";
+if opt is :Some message then (
+    print message;
+);
+match opt with (
+    | :Some ref mut value => (
+        value^ = "HACKED";
+    )
+    | :None => ()
+);
+dbg.print opt;
