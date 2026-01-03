@@ -61,7 +61,7 @@ and stmt =
       value : expr;
     }
   | Return of expr
-  | Raise of expr
+  | Throw of expr
   | If of {
       condition : expr;
       then_case : stmt list;
@@ -161,8 +161,8 @@ and print_stmt fmt = function
         assignee
         (print_expr ~precedence:Assigned)
         value
-  | Raise expr ->
-      fprintf fmt "@{<magenta>raise@} %a" (print_expr ~precedence:Raised) expr
+  | Throw expr ->
+      fprintf fmt "@{<magenta>throw@} %a" (print_expr ~precedence:Raised) expr
   | If { condition; then_case; else_case } -> (
       fprintf fmt "@{<magenta>if@} %a {%a}"
         (print_expr ~precedence:IfCondition)

@@ -17,6 +17,21 @@ type _ Effect.t += GetCtx : ctx Effect.t
 module Impl = struct
   let rec _unused () = ()
 
+  and todo_stmt f =
+    Format.ksprintf
+      (fun s ->
+        Log.error (fun log -> log "%s" s);
+        raise_error s)
+      f
+
+  and todo_expr : 'a. ('a, formatter, unit, JsAst.expr) format4 -> 'a =
+   fun f ->
+    Format.kdprintf
+      (fun p ->
+        Log.error (fun log -> log "%t" p);
+        scope [ raise_error (make_string "%t" p) ])
+      f
+
   and tuple_field_name : Tuple.member -> string = function
     | Name name -> name
     | Index i -> Int.to_string i
@@ -358,7 +373,7 @@ module Impl = struct
     | Some name -> name
 
   and raise_error message : JsAst.stmt =
-    Raise (Call { f = Raw "Error"; args = [ String message ] })
+    Throw (Call { f = Raw "Error"; args = [ String message ] })
 
   and transpile_expr : expr -> JsAst.expr =
    fun expr ->
@@ -459,7 +474,7 @@ module Impl = struct
       | E_InjectContext _ -> failwith __LOC__
       | E_CurrentContext _ -> failwith __LOC__
       | E_ImplCast _ -> failwith __LOC__
-      | E_Cast _ -> failwith __LOC__
+      | E_Cast _ -> todo_expr "cast expr not implemented yet"
       | E_TargetDependent target_dependent -> (
           let branch =
             Kast_interpreter.find_target_dependent_branch ctx.interpreter
@@ -467,15 +482,8 @@ module Impl = struct
           in
           match branch with
           | Some branch -> transpile_expr branch.body
-          | None ->
-              Log.error (fun log ->
-                  log "no js cfg branch at %a" Span.print expr.data.span);
-              scope
-                [
-                  raise_error
-                    (make_string "no js cfg branch at %a" Span.print
-                       expr.data.span);
-                ])
+          | None -> todo_expr "no js cfg branch at %a" Span.print expr.data.span
+          )
       | E_Error -> failwith __LOC__
     with e ->
       Log.error (fun log ->
