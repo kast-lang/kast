@@ -368,7 +368,7 @@ module Impl = struct
         fprintf fmt
           "@{<magenta>cast@} (@;<0 2>@[<v>value = %a,@]@;<0 2>@[<v>target = %a@]@ )"
           (print_expr ~options) value print_value target
-    | E_TargetDependent { branches; interpreter_branch = _ } ->
+    | E_TargetDependent { branches; captured = _; interpreter_branch = _ } ->
         fprintf fmt "@{<magenta>target dependent@} (";
         branches
         |> List.iter (fun branch ->

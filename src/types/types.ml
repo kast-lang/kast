@@ -327,6 +327,7 @@ module rec TypesImpl : sig
 
   and expr_target_dependent = {
     branches : expr_target_dependent_branch list;
+    captured : interpreter_scope;
     mutable interpreter_branch : expr_target_dependent_branch option;
   }
 
@@ -950,6 +951,7 @@ end = struct
 
   and expr_target_dependent = {
     branches : expr_target_dependent_branch list;
+    captured : interpreter_scope;
     mutable interpreter_branch : expr_target_dependent_branch option;
   }
 

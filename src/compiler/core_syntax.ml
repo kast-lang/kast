@@ -1816,7 +1816,12 @@ let target_dependent : core_syntax =
         in
         match kind with
         | Expr ->
-            E_TargetDependent { branches; interpreter_branch = None }
+            E_TargetDependent
+              {
+                branches;
+                captured = C.state.interpreter.scope;
+                interpreter_branch = None;
+              }
             |> init_expr span C.state
         | _ ->
             error span "target dependent must be expr";

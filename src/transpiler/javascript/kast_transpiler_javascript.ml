@@ -41,40 +41,45 @@ module Impl = struct
 
   and transpile_value_shape : value_shape -> JsAst.expr =
    fun shape ->
-    let ctx = Effect.perform GetCtx in
-    match shape with
-    | V_Unit -> JsAst.Null
-    | V_Bool x -> JsAst.Bool x
-    | V_Int32 x -> JsAst.Number (Int32.to_float x)
-    | V_Int64 x -> JsAst.Number (Int64.to_float x)
-    | V_Float64 x -> JsAst.Number x
-    | V_Char c -> JsAst.String (String.make 1 c)
-    | V_String s -> JsAst.String s
-    | V_Ref _ -> failwith __LOC__
-    | V_Tuple { tuple; ty = _ } ->
-        JsAst.Obj
-          (tuple |> Tuple.to_seq
-          |> Seq.map
-               (fun (member, (field : value_tuple_field)) : JsAst.obj_part ->
-                 let field_name = tuple_field_name member in
-                 let value =
-                   field.place |> Kast_interpreter.read_place ~span:ctx.span
-                 in
-                 Field { name = field_name; value = transpile_value value })
-          |> List.of_seq)
-    | V_Variant _ -> failwith __LOC__
-    | V_Ty _ -> JsAst.Null
-    | V_Fn { ty = _; fn = { def; _ } } -> fn def
-    | V_Generic { name = _; fn = { def; _ }; ty = _ } -> fn def
-    | V_NativeFn _ -> failwith __LOC__
-    | V_Ast _ -> failwith __LOC__
-    | V_UnwindToken _ -> failwith __LOC__
-    | V_Target _ -> failwith __LOC__
-    | V_ContextTy _ -> failwith __LOC__
-    | V_CompilerScope _ -> failwith __LOC__
-    | V_Opaque _ -> failwith __LOC__
-    | V_Blocked _ -> failwith __LOC__
-    | V_Error -> JsAst.Undefined
+    try
+      let ctx = Effect.perform GetCtx in
+      match shape with
+      | V_Unit -> JsAst.Null
+      | V_Bool x -> JsAst.Bool x
+      | V_Int32 x -> JsAst.Number (Int32.to_float x)
+      | V_Int64 x -> JsAst.Number (Int64.to_float x)
+      | V_Float64 x -> JsAst.Number x
+      | V_Char c -> JsAst.String (String.make 1 c)
+      | V_String s -> JsAst.String s
+      | V_Ref _ -> failwith __LOC__
+      | V_Tuple { tuple; ty = _ } ->
+          JsAst.Obj
+            (tuple |> Tuple.to_seq
+            |> Seq.map
+                 (fun (member, (field : value_tuple_field)) : JsAst.obj_part ->
+                   let field_name = tuple_field_name member in
+                   let value =
+                     field.place |> Kast_interpreter.read_place ~span:ctx.span
+                   in
+                   Field { name = field_name; value = transpile_value value })
+            |> List.of_seq)
+      | V_Variant _ -> failwith __LOC__
+      | V_Ty _ -> JsAst.Null
+      | V_Fn { ty = _; fn = { def; _ } } -> fn def
+      | V_Generic { name = _; fn = { def; _ }; ty = _ } -> fn def
+      | V_NativeFn _ -> failwith __LOC__
+      | V_Ast _ -> failwith __LOC__
+      | V_UnwindToken _ -> failwith __LOC__
+      | V_Target _ -> failwith __LOC__
+      | V_ContextTy _ -> failwith __LOC__
+      | V_CompilerScope _ -> failwith __LOC__
+      | V_Opaque _ -> failwith __LOC__
+      | V_Blocked _ -> failwith __LOC__
+      | V_Error -> JsAst.Undefined
+    with e ->
+      Log.error (fun log ->
+          log "While transpiling value shape %a" Value.Shape.print shape);
+      raise e
 
   and binding_name : binding -> JsAst.name =
    fun binding ->
@@ -193,27 +198,33 @@ module Impl = struct
       | P_Error -> []
     with e ->
       Log.error (fun log ->
-          log "While transpiling %a" Span.print pattern.data.span);
+          log "While transpiling pattern matching %a" Span.print
+            pattern.data.span);
       raise e
 
   and assign : assignee_expr -> JsAst.expr -> JsAst.stmt list =
    fun assignee place ->
-    match assignee.shape with
-    | A_Placeholder -> []
-    | A_Unit -> []
-    | A_Tuple _ -> failwith __LOC__
-    | A_Place assignee_place ->
-        let assignee_place = eval_place assignee_place in
-        [
-          Expr
-            (Call
-               {
-                 f = Field { obj = assignee_place; field = "set" };
-                 args = [ claim place ];
-               });
-        ]
-    | A_Let pattern -> pattern_match pattern place
-    | A_Error -> []
+    try
+      match assignee.shape with
+      | A_Placeholder -> []
+      | A_Unit -> []
+      | A_Tuple _ -> failwith __LOC__
+      | A_Place assignee_place ->
+          let assignee_place = transpile_place assignee_place in
+          [
+            Expr
+              (Call
+                 {
+                   f = Field { obj = assignee_place; field = "set" };
+                   args = [ claim place ];
+                 });
+          ]
+      | A_Let pattern -> pattern_match pattern place
+      | A_Error -> []
+    with e ->
+      Log.error (fun log ->
+          log "While transpiling assign %a" Span.print assignee.data.span);
+      raise e
 
   and stmts_expr : JsAst.stmt list -> JsAst.expr =
    fun stmts ->
@@ -243,83 +254,93 @@ module Impl = struct
     place_of
       (JsAst.Field { obj = read_place place; field = tuple_field_name field })
 
-  and eval_place : place_expr -> JsAst.expr =
+  and transpile_place : place_expr -> JsAst.expr =
    fun expr ->
-    match expr.shape with
-    | PE_Binding binding -> place_of (JsAst.Var (binding_name binding))
-    | PE_Field { obj; field; field_span = _ } ->
-        let var = JsAst.gen_name "obj" in
-        let member =
-          match field with
-          | Index i -> Tuple.Member.Index i
-          | Name name -> Tuple.Member.Name (Label.get_name name)
-          | Expr _ -> failwith __LOC__
-        in
-        scope
-          [
-            JsAst.Let { var; value = eval_place obj };
-            JsAst.Return (field_place (JsAst.Var var) member);
-          ]
-    | PE_Deref expr -> transpile_expr expr
-    | PE_Temp expr ->
-        let var = JsAst.gen_name "temp" in
-        scope
-          [
-            JsAst.Let { var; value = transpile_expr expr };
-            JsAst.Return (place_of (JsAst.Var var));
-          ]
-    | PE_Error -> failwith __LOC__
+    try
+      match expr.shape with
+      | PE_Binding binding -> place_of (JsAst.Var (binding_name binding))
+      | PE_Field { obj; field; field_span = _ } ->
+          let var = JsAst.gen_name "obj" in
+          let member =
+            match field with
+            | Index i -> Tuple.Member.Index i
+            | Name name -> Tuple.Member.Name (Label.get_name name)
+            | Expr _ -> failwith __LOC__
+          in
+          scope
+            [
+              JsAst.Let { var; value = transpile_place obj };
+              JsAst.Return (field_place (JsAst.Var var) member);
+            ]
+      | PE_Deref expr -> transpile_expr expr
+      | PE_Temp expr ->
+          let var = JsAst.gen_name "temp" in
+          scope
+            [
+              JsAst.Let { var; value = transpile_expr expr };
+              JsAst.Return (place_of (JsAst.Var var));
+            ]
+      | PE_Error -> failwith __LOC__
+    with e ->
+      Log.error (fun log ->
+          log "While transpiling place expr %a" Span.print expr.data.span);
+      raise e
 
   and transpile_expr_as_stmts : expr -> JsAst.stmt list =
    fun expr ->
-    let ctx = Effect.perform GetCtx in
-    match expr.shape with
-    | E_Constant _ -> failwith __LOC__
-    | E_Ref _ -> failwith __LOC__
-    | E_Claim _ -> failwith __LOC__
-    | E_Then _ -> failwith __LOC__
-    | E_Stmt _ -> failwith __LOC__
-    | E_Scope _ -> failwith __LOC__
-    | E_Fn _ -> failwith __LOC__
-    | E_Generic _ -> failwith __LOC__
-    | E_Tuple _ -> failwith __LOC__
-    | E_Variant _ -> failwith __LOC__
-    | E_Apply _ -> [ Expr (transpile_expr expr) ]
-    | E_InstantiateGeneric _ -> failwith __LOC__
-    | E_Assign { assignee; value } ->
-        let var = JsAst.gen_name "var" in
-        [ JsAst.Let { var; value = eval_place value } ]
-        @ assign assignee (JsAst.Var var)
-    | E_Ty _ -> failwith __LOC__
-    | E_Newtype _ -> failwith __LOC__
-    | E_Native _ -> failwith __LOC__
-    | E_Module _ -> failwith __LOC__
-    | E_UseDotStar { used; bindings } ->
-        let used_var = JsAst.gen_name "used" in
-        [ JsAst.Let { var = used_var; value = transpile_expr used } ]
-        @ (bindings
-          |> List.map (fun binding ->
-              JsAst.Let
-                {
-                  var = binding_name binding;
-                  value =
-                    JsAst.Field
-                      { obj = JsAst.Var used_var; field = binding.name.name };
-                }))
-    | E_If _ -> failwith __LOC__
-    | E_And _ -> failwith __LOC__
-    | E_Or _ -> failwith __LOC__
-    | E_Match _ -> [ Expr (transpile_expr expr) ]
-    | E_QuoteAst _ -> failwith __LOC__
-    | E_Loop _ -> failwith __LOC__
-    | E_Unwindable _ -> failwith __LOC__
-    | E_Unwind _ -> failwith __LOC__
-    | E_InjectContext _ -> failwith __LOC__
-    | E_CurrentContext _ -> failwith __LOC__
-    | E_ImplCast _ -> failwith __LOC__
-    | E_Cast _ -> failwith __LOC__
-    | E_TargetDependent _ -> failwith __LOC__
-    | E_Error -> failwith __LOC__
+    try
+      let ctx = Effect.perform GetCtx in
+      match expr.shape with
+      | E_Constant _ -> failwith __LOC__
+      | E_Ref _ -> failwith __LOC__
+      | E_Claim _ -> failwith __LOC__
+      | E_Then _ -> failwith __LOC__
+      | E_Stmt _ -> failwith __LOC__
+      | E_Scope _ -> failwith __LOC__
+      | E_Fn _ -> failwith __LOC__
+      | E_Generic _ -> failwith __LOC__
+      | E_Tuple _ -> failwith __LOC__
+      | E_Variant _ -> failwith __LOC__
+      | E_Apply _ -> [ Expr (transpile_expr expr) ]
+      | E_InstantiateGeneric _ -> failwith __LOC__
+      | E_Assign { assignee; value } ->
+          let var = JsAst.gen_name "var" in
+          [ JsAst.Let { var; value = transpile_place value } ]
+          @ assign assignee (JsAst.Var var)
+      | E_Ty _ -> failwith __LOC__
+      | E_Newtype _ -> failwith __LOC__
+      | E_Native _ -> failwith __LOC__
+      | E_Module _ -> failwith __LOC__
+      | E_UseDotStar { used; bindings } ->
+          let used_var = JsAst.gen_name "used" in
+          [ JsAst.Let { var = used_var; value = transpile_expr used } ]
+          @ (bindings
+            |> List.map (fun binding ->
+                JsAst.Let
+                  {
+                    var = binding_name binding;
+                    value =
+                      JsAst.Field
+                        { obj = JsAst.Var used_var; field = binding.name.name };
+                  }))
+      | E_If _ -> failwith __LOC__
+      | E_And _ -> failwith __LOC__
+      | E_Or _ -> failwith __LOC__
+      | E_Match _ -> [ Expr (transpile_expr expr) ]
+      | E_QuoteAst _ -> failwith __LOC__
+      | E_Loop _ -> failwith __LOC__
+      | E_Unwindable _ -> failwith __LOC__
+      | E_Unwind _ -> failwith __LOC__
+      | E_InjectContext _ -> failwith __LOC__
+      | E_CurrentContext _ -> failwith __LOC__
+      | E_ImplCast _ -> failwith __LOC__
+      | E_Cast _ -> failwith __LOC__
+      | E_TargetDependent _ -> failwith __LOC__
+      | E_Error -> failwith __LOC__
+    with e ->
+      Log.error (fun log ->
+          log "While transpiling expr as stmts %a" Span.print expr.data.span);
+      raise e
 
   and prepend stmts =
     let ctx = Effect.perform GetCtx in
@@ -341,110 +362,125 @@ module Impl = struct
 
   and transpile_expr : expr -> JsAst.expr =
    fun expr ->
-    let ctx = Effect.perform GetCtx in
-    match expr.shape with
-    | E_Constant value -> transpile_value value
-    | E_Ref { mut; place } -> eval_place place
-    | E_Claim expr -> eval_place expr |> claim
-    | E_Then { list } ->
-        let body =
-          list
-          |> List.mapi (fun i e ->
-              if i + 1 = List.length list then
-                [ JsAst.Return (transpile_expr e) ]
-              else transpile_expr_as_stmts e)
-          |> List.flatten
-        in
-        JsAst.Call { f = JsAst.Fn { args = []; body }; args = [] }
-    | E_Stmt { expr } -> transpile_expr expr
-    | E_Scope { expr } ->
-        (* TODO should I actually create js scope? *)
-        transpile_expr expr
-    | E_Fn { ty = _; def } -> fn def
-    | E_Generic { def; ty = _ } -> fn def
-    | E_Tuple { parts } ->
-        let idx = ref 0 in
-        JsAst.Obj
-          (parts
-          |> List.map (fun (part : expr tuple_part_of) : JsAst.obj_part ->
-              match part with
-              | Field { label; label_span = _; field = value } ->
-                  let member =
-                    match label with
-                    | None ->
-                        let member = Tuple.Member.Index !idx in
-                        idx := !idx + 1;
-                        member
-                    | Some label -> Name (Label.get_name label)
-                  in
-                  Field
-                    {
-                      name = tuple_field_name member;
-                      value = transpile_expr value;
-                    }
-              | Unpack packed -> failwith __LOC__))
-    | E_Variant { label; label_span = _; value } ->
-        JsAst.Obj
-          [
-            Field { name = "tag"; value = JsAst.Var (symbol_for label) };
-            Field
-              {
-                name = "data";
-                value =
-                  (match value with
-                  | Some value -> transpile_expr value
-                  | None -> JsAst.Undefined);
-              };
-          ]
-    | E_Apply { f; arg } ->
-        JsAst.Call { f = transpile_expr f; args = [ transpile_expr arg ] }
-    | E_InstantiateGeneric { generic; arg } ->
-        JsAst.Call { f = transpile_expr generic; args = [ transpile_expr arg ] }
-    | E_Assign _ -> transpile_expr_as_stmts expr |> stmts_expr
-    | E_Ty _ -> failwith __LOC__
-    | E_Newtype _ -> JsAst.Null
-    | E_Native { id = _; expr } -> JsAst.Raw expr
-    | E_Module _ -> failwith __LOC__
-    | E_UseDotStar _ -> failwith __LOC__
-    | E_If _ -> failwith __LOC__
-    | E_And _ -> failwith __LOC__
-    | E_Or _ -> failwith __LOC__
-    | E_Match { value; branches } ->
-        scope
-          (let var = JsAst.gen_name "matched" in
-           let stmts = ref [ JsAst.Let { var; value = eval_place value } ] in
-           stmts :=
-             !stmts
-             @ (branches
-               |> List.map (fun { pattern; body } ->
-                   JsAst.If
-                     {
-                       condition = does_match pattern (Var var);
-                       then_case =
-                         pattern_match pattern (Var var)
-                         @ [ JsAst.Return (transpile_expr body) ];
-                       else_case = None;
-                     }));
-           stmts := !stmts @ [ raise_error "pattern match non exhaustive" ];
-           !stmts)
-    | E_QuoteAst _ -> failwith __LOC__
-    | E_Loop _ -> failwith __LOC__
-    | E_Unwindable _ -> failwith __LOC__
-    | E_Unwind _ -> failwith __LOC__
-    | E_InjectContext _ -> failwith __LOC__
-    | E_CurrentContext _ -> failwith __LOC__
-    | E_ImplCast _ -> failwith __LOC__
-    | E_Cast _ -> failwith __LOC__
-    | E_TargetDependent { branches; _ } ->
-        let branch =
-          Kast_interpreter.find_target_dependent_branch ctx.interpreter branches
-            ctx.target
-        in
-        let branch =
-          branch |> Option.unwrap_or_else (fun () -> fail "no js cfg branch")
-        in
-        transpile_expr branch.body
-    | E_Error -> failwith __LOC__
+    try
+      let ctx = Effect.perform GetCtx in
+      match expr.shape with
+      | E_Constant value -> transpile_value value
+      | E_Ref { mut; place } -> transpile_place place
+      | E_Claim expr -> transpile_place expr |> claim
+      | E_Then { list } ->
+          let body =
+            list
+            |> List.mapi (fun i e ->
+                if i + 1 = List.length list then
+                  [ JsAst.Return (transpile_expr e) ]
+                else transpile_expr_as_stmts e)
+            |> List.flatten
+          in
+          JsAst.Call { f = JsAst.Fn { args = []; body }; args = [] }
+      | E_Stmt { expr } -> transpile_expr expr
+      | E_Scope { expr } ->
+          (* TODO should I actually create js scope? *)
+          transpile_expr expr
+      | E_Fn { ty = _; def } -> fn def
+      | E_Generic { def; ty = _ } -> fn def
+      | E_Tuple { parts } ->
+          let idx = ref 0 in
+          JsAst.Obj
+            (parts
+            |> List.map (fun (part : expr tuple_part_of) : JsAst.obj_part ->
+                match part with
+                | Field { label; label_span = _; field = value } ->
+                    let member =
+                      match label with
+                      | None ->
+                          let member = Tuple.Member.Index !idx in
+                          idx := !idx + 1;
+                          member
+                      | Some label -> Name (Label.get_name label)
+                    in
+                    Field
+                      {
+                        name = tuple_field_name member;
+                        value = transpile_expr value;
+                      }
+                | Unpack packed -> failwith __LOC__))
+      | E_Variant { label; label_span = _; value } ->
+          JsAst.Obj
+            [
+              Field { name = "tag"; value = JsAst.Var (symbol_for label) };
+              Field
+                {
+                  name = "data";
+                  value =
+                    (match value with
+                    | Some value -> transpile_expr value
+                    | None -> JsAst.Undefined);
+                };
+            ]
+      | E_Apply { f; arg } ->
+          JsAst.Call { f = transpile_expr f; args = [ transpile_expr arg ] }
+      | E_InstantiateGeneric { generic; arg } ->
+          JsAst.Call
+            { f = transpile_expr generic; args = [ transpile_expr arg ] }
+      | E_Assign _ -> transpile_expr_as_stmts expr |> stmts_expr
+      | E_Ty _ -> failwith __LOC__
+      | E_Newtype _ -> JsAst.Null
+      | E_Native { id = _; expr } -> JsAst.Raw expr
+      | E_Module _ -> failwith __LOC__
+      | E_UseDotStar _ -> failwith __LOC__
+      | E_If _ -> failwith __LOC__
+      | E_And _ -> failwith __LOC__
+      | E_Or _ -> failwith __LOC__
+      | E_Match { value; branches } ->
+          scope
+            (let var = JsAst.gen_name "matched" in
+             let stmts =
+               ref [ JsAst.Let { var; value = transpile_place value } ]
+             in
+             stmts :=
+               !stmts
+               @ (branches
+                 |> List.map (fun { pattern; body } ->
+                     JsAst.If
+                       {
+                         condition = does_match pattern (Var var);
+                         then_case =
+                           pattern_match pattern (Var var)
+                           @ [ JsAst.Return (transpile_expr body) ];
+                         else_case = None;
+                       }));
+             stmts := !stmts @ [ raise_error "pattern match non exhaustive" ];
+             !stmts)
+      | E_QuoteAst _ -> failwith __LOC__
+      | E_Loop _ -> failwith __LOC__
+      | E_Unwindable _ -> failwith __LOC__
+      | E_Unwind _ -> failwith __LOC__
+      | E_InjectContext _ -> failwith __LOC__
+      | E_CurrentContext _ -> failwith __LOC__
+      | E_ImplCast _ -> failwith __LOC__
+      | E_Cast _ -> failwith __LOC__
+      | E_TargetDependent target_dependent -> (
+          let branch =
+            Kast_interpreter.find_target_dependent_branch ctx.interpreter
+              target_dependent ctx.target
+          in
+          match branch with
+          | Some branch -> transpile_expr branch.body
+          | None ->
+              Log.error (fun log ->
+                  log "no js cfg branch at %a" Span.print expr.data.span);
+              scope
+                [
+                  raise_error
+                    (make_string "no js cfg branch at %a" Span.print
+                       expr.data.span);
+                ])
+      | E_Error -> failwith __LOC__
+    with e ->
+      Log.error (fun log ->
+          log "While transpiling expr %a" Span.print expr.data.span);
+      raise e
 end
 
 type result = { print : formatter -> unit }

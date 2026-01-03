@@ -521,7 +521,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
               let result =
                 Scope.find_opt binding.name state.scope
                 |> Option.unwrap_or_else (fun () : place ->
-                    Log.trace (fun log ->
+                    Log.info (fun log ->
                         log "all in scope: %a" Scope.print_all state.scope);
                     Error.error expr.data.span "%a not found" Symbol.print
                       binding.name;
@@ -1069,22 +1069,22 @@ and cast_as_module : span:span -> state -> value -> value =
 
 and eval_expr_targetdependent :
     state -> expr -> Types.expr_target_dependent -> value =
- fun state expr ({ branches; interpreter_branch } as target_dep_expr) ->
+ fun state expr target_dependent ->
   let span = expr.data.span in
   with_return (fun { return } ->
       let chosen_branch =
-        match interpreter_branch with
+        match target_dependent.interpreter_branch with
         | Some computed -> computed
         | None ->
             let computed =
-              find_target_dependent_branch state branches
+              find_target_dependent_branch state target_dependent
                 { name = "interpreter" }
               |> Option.unwrap_or_else (fun () ->
                   Error.error expr.data.span
                     "No target dependent branch matched";
                   return (V_Error |> Value.inferred ~span : value))
             in
-            target_dep_expr.interpreter_branch <- Some computed;
+            target_dependent.interpreter_branch <- Some computed;
             computed
       in
       eval state chosen_branch.body)
@@ -1190,15 +1190,16 @@ and eval : state -> expr -> value =
 
 and find_target_dependent_branch :
     state ->
-    Types.expr_target_dependent_branch list ->
+    Types.expr_target_dependent ->
     Types.value_target ->
     Types.expr_target_dependent_branch option =
   let span = Span.of_ocaml __POS__ in
-  fun state branches target ->
-    branches
+  fun state target_dependent target ->
+    target_dependent.branches
     |> List.find_map (fun (branch : Types.expr_target_dependent_branch) ->
         let scope_with_target =
-          Scope.init ~span ~recursive:false ~parent:(Some state.scope)
+          Scope.init ~span ~recursive:false
+            ~parent:(Some target_dependent.captured)
         in
         scope_with_target
         |> Scope.add_local ~mut:false span Types.target_symbol

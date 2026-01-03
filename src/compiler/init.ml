@@ -439,7 +439,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                (Ty.inferred ~span:token.data.span
                <| T_UnwindToken { result = body.data.ty });
           body.data.ty
-      | E_TargetDependent { branches; interpreter_branch = _ } ->
+      | E_TargetDependent { branches; captured = _; interpreter_branch = _ } ->
           let result = Ty.new_not_inferred ~scope ~span in
           branches
           |> List.iter
