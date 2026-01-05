@@ -62,10 +62,21 @@ and stmt =
     }
   | Return of expr
   | Throw of expr
+  | Try of {
+      body : stmt list;
+      catch_var : name;
+      catch_body : stmt list;
+    }
   | If of {
       condition : expr;
       then_case : stmt list;
       else_case : stmt list option;
+    }
+  | For of {
+      init : expr option;
+      cond : expr option;
+      after : expr option;
+      body : stmt list;
     }
 
 module Precedence = struct
@@ -78,6 +89,7 @@ module Precedence = struct
     | Stmt
     | Raised
     | IfCondition
+    | ForArg
     | Field
     | Unpack
     | Obj
@@ -161,6 +173,9 @@ and print_stmt fmt = function
         assignee
         (print_expr ~precedence:Assigned)
         value
+  | Try { body; catch_var; catch_body } ->
+      fprintf fmt "@{<magenta>try@} {%a} catch (%a) {%a}" print_stmts body
+        print_name catch_var print_stmts catch_body
   | Throw expr ->
       fprintf fmt "@{<magenta>throw@} %a" (print_expr ~precedence:Raised) expr
   | If { condition; then_case; else_case } -> (
@@ -171,5 +186,20 @@ and print_stmt fmt = function
       | None -> ()
       | Some else_case ->
           fprintf fmt " @{<magenta>else@} {%a}" print_stmts else_case)
+  | For { init; cond; after; body } ->
+      fprintf fmt "@{<magenta>for@} (%a;%a;%a) {%a}"
+        (maybe_print (print_expr ~precedence:ForArg))
+        init
+        (maybe_print (print_expr ~precedence:ForArg))
+        cond
+        (maybe_print (print_expr ~precedence:ForArg))
+        after print_stmts body
+
+and maybe_print :
+    'a. (formatter -> 'a -> unit) -> formatter -> 'a option -> unit =
+ fun f fmt opt ->
+  match opt with
+  | None -> ()
+  | Some x -> f fmt x
 
 and print_name fmt name = fprintf fmt "%s" name.raw

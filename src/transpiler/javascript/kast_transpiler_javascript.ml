@@ -306,12 +306,12 @@ module Impl = struct
     try
       let ctx = Effect.perform GetCtx in
       match expr.shape with
-      | E_Constant _ -> failwith __LOC__
+      | E_Constant _ -> []
       | E_Ref _ -> failwith __LOC__
       | E_Claim _ -> failwith __LOC__
       | E_Then _ -> failwith __LOC__
-      | E_Stmt _ -> failwith __LOC__
-      | E_Scope _ -> failwith __LOC__
+      | E_Stmt { expr } -> transpile_expr_as_stmts expr
+      | E_Scope _ -> [ Expr (transpile_expr expr) ]
       | E_Fn _ -> failwith __LOC__
       | E_Generic _ -> failwith __LOC__
       | E_Tuple _ -> failwith __LOC__
@@ -338,14 +338,31 @@ module Impl = struct
                       JsAst.Field
                         { obj = JsAst.Var used_var; field = binding.name.name };
                   }))
-      | E_If _ -> failwith __LOC__
+      | E_If _ -> [ Expr (transpile_expr expr) ]
       | E_And _ -> failwith __LOC__
       | E_Or _ -> failwith __LOC__
       | E_Match _ -> [ Expr (transpile_expr expr) ]
       | E_QuoteAst _ -> failwith __LOC__
-      | E_Loop _ -> failwith __LOC__
-      | E_Unwindable _ -> failwith __LOC__
-      | E_Unwind _ -> failwith __LOC__
+      | E_Loop { body } ->
+          [
+            For
+              {
+                init = None;
+                cond = None;
+                after = None;
+                body = transpile_expr_as_stmts body;
+              };
+          ]
+      | E_Unwindable _ -> [ Expr (transpile_expr expr) ]
+      | E_Unwind { token; value } ->
+          [
+            Throw
+              (Obj
+                 [
+                   Field { name = "unwind_token"; value = transpile_expr token };
+                   Field { name = "value"; value = transpile_expr value };
+                 ]);
+          ]
       | E_InjectContext _ -> failwith __LOC__
       | E_CurrentContext _ -> failwith __LOC__
       | E_ImplCast _ -> failwith __LOC__
@@ -444,7 +461,16 @@ module Impl = struct
       | E_Native { id = _; expr } -> JsAst.Raw expr
       | E_Module _ -> failwith __LOC__
       | E_UseDotStar _ -> failwith __LOC__
-      | E_If _ -> failwith __LOC__
+      | E_If { cond; then_case; else_case } ->
+          scope
+            [
+              If
+                {
+                  condition = transpile_expr cond;
+                  then_case = [ Return (transpile_expr then_case) ];
+                  else_case = Some [ Return (transpile_expr else_case) ];
+                };
+            ]
       | E_And _ -> failwith __LOC__
       | E_Or _ -> failwith __LOC__
       | E_Match { value; branches } ->
@@ -468,9 +494,47 @@ module Impl = struct
              stmts := !stmts @ [ raise_error "pattern match non exhaustive" ];
              !stmts)
       | E_QuoteAst _ -> failwith __LOC__
-      | E_Loop _ -> failwith __LOC__
-      | E_Unwindable _ -> failwith __LOC__
-      | E_Unwind _ -> failwith __LOC__
+      | E_Loop _ -> transpile_expr_as_stmts expr |> stmts_expr
+      | E_Unwindable { token; body } ->
+          let token_var = JsAst.gen_name "unwind_token" in
+          let catch_var = JsAst.gen_name "e" in
+          scope
+            [
+              Let { var = token_var; value = Raw "Symbol()" };
+              Try
+                {
+                  body =
+                    pattern_match token (Var token_var)
+                    @ transpile_expr_as_stmts body;
+                  catch_var;
+                  catch_body =
+                    [
+                      If
+                        {
+                          condition =
+                            Compare
+                              {
+                                op = Equal;
+                                lhs =
+                                  Field
+                                    {
+                                      obj = Var catch_var;
+                                      field = "unwind_token";
+                                    };
+                                rhs = Var token_var;
+                              };
+                          then_case =
+                            [
+                              Return
+                                (Field { obj = Var catch_var; field = "value" });
+                            ];
+                          else_case = None;
+                        };
+                      Throw (Var catch_var);
+                    ];
+                };
+            ]
+      | E_Unwind _ -> transpile_expr_as_stmts expr |> stmts_expr
       | E_InjectContext _ -> failwith __LOC__
       | E_CurrentContext _ -> failwith __LOC__
       | E_ImplCast _ -> failwith __LOC__
