@@ -283,7 +283,7 @@ module Impl = struct
     try
       match pattern.shape with
       | P_Placeholder -> []
-      | P_Ref _ -> failwith __LOC__
+      | P_Ref referenced -> pattern_match referenced (read_place place)
       | P_Unit -> []
       | P_Binding { bind_mode; binding } ->
           [

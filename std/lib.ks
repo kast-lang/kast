@@ -34,6 +34,7 @@ const collections = include "./collections/_mod.ks";
 
 const panic = [T] (s :: String) -> T => @cfg (
     | target.name == "interpreter" => (@native "panic") s
+    | target.name == "javascript" => (@native "Kast.panic") s
 );
 const type_of_value = [T] (x :: T) -> type => T;
 

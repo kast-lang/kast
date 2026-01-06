@@ -1,13 +1,15 @@
 module:
 const chdir :: String -> () = path => @cfg (
     | target.name == "interpreter" => (@native "sys.chdir") path
+    | target.name == "javascript" => (@native "Kast.sys.chdir") path
 );
 const argc = () -> Int32 => @cfg (
     | target.name == "interpreter" => (@native "sys.argc") ()
-    # kast program.ks hgdhfgdf
+    | target.name == "javascript" => (@native "Kast.sys.argc") ()
 );
 const argv_at = (idx :: Int32) -> String => @cfg (
     | target.name == "interpreter" => (@native "sys.argv_at") idx
+    | target.name == "javascript" => (@native "Kast.sys.argv_at") idx
 );
 # accepts the command to exec, returns the return-code
 const exec = (cmd :: String) -> Int32 => @cfg (

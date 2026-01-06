@@ -1,6 +1,10 @@
 // @ts-nocheck
 const Kast = (() => {
+  async function call(f, arg) {
+    return await f(arg);
+  }
   const readline = require("node:readline/promises");
+  const fs = require("node:fs");
   let readline_interface = null;
   function ensure_readline_interface() {
     if (readline_interface === null) {
@@ -56,14 +60,30 @@ const Kast = (() => {
     }
     return result;
   }
+  const types = {
+    todo: (s) => {
+      return {
+        todo: s,
+      };
+    },
+    primitive: {
+      Unit: newtype("Unit"),
+      Bool: newtype("Bool"),
+      Char: newtype("Char"),
+      Int32: newtype("Int32"),
+      Int64: newtype("Int64"),
+      Float64: newtype("Float64"),
+      String: newtype("String"),
+    },
+  };
   return {
     Id,
     check_todo,
     cmp: {
       less: async (args) => args["0"] < args["1"],
       less_or_equal: async (args) => args["0"] <= args["1"],
-      equal: async (args) => args["0"] == args["1"],
-      not_equal: async (args) => args["0"] != args["1"],
+      equal: async (args) => args["0"] === args["1"],
+      not_equal: async (args) => args["0"] !== args["1"],
       greater_or_equal: async (args) => args["0"] >= args["1"],
       greater: async (args) => args["0"] > args["1"],
     },
@@ -77,6 +97,11 @@ const Kast = (() => {
       add: async (args) => args["0"] + args["1"],
       sub: async (args) => args["0"] - args["1"],
       mul: async (args) => args["0"] * args["1"],
+      div_temp: async ({ 0: T, 1: lhs, 2: rhs }) => {
+        if (T === types.primitive.Float64) return lhs / rhs;
+        return Math.floor(lhs / rhs);
+      },
+      neg: async (x) => -x,
     },
     io: {
       input: async (args) => {
@@ -84,21 +109,46 @@ const Kast = (() => {
         return await ensure_readline_interface().question(prompt);
       },
     },
-    types: {
-      todo: (s) => {
-        return {
-          todo: s,
-        };
+    String: {
+      substring: async ({ 0: s, 1: start, 2: len }) => {
+        return s.substring(start, start + len);
       },
-      primitive: {
-        Unit: newtype("Unit"),
-        Bool: newtype("Bool"),
-        Char: newtype("Char"),
-        Int32: newtype("Int32"),
-        Int64: newtype("Int64"),
-        Float64: newtype("Float64"),
-        String: newtype("String"),
+      iter: async ({ 0: s, 1: f }) => {
+        for (let c of s) {
+          await call(f, c);
+        }
       },
+      at: async ({ 0: s, 1: i }) => {
+        return s.at(i);
+      },
+      length: async (s) => {
+        return s.length;
+      },
+    },
+    sys: {
+      chdir: async (path) => {
+        process.chdir(path);
+      },
+      argc: async () => {
+        return process.argv.length - 1;
+      },
+      argv_at: async (i) => {
+        return process.argv[i + 1];
+      },
+    },
+    fs: {
+      read_file: async (path) => {
+        return await new Promise((resolve, reject) => {
+          fs.readFile(path, "utf8", (err, data) => {
+            if (err) reject(err);
+            else resolve(data);
+          });
+        });
+      },
+    },
+    types,
+    panic: async (s) => {
+      throw Error(s);
     },
     casts: {
       add_impl: add_cast_impl,

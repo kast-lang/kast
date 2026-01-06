@@ -2,16 +2,22 @@ impl String as module = (
     module:
     const length = (s :: String) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "string.length") s
+        | target.name == "javascript" => (@native "Kast.String.length") s
     );
     const at = (s :: String, idx :: Int32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "string.at") (s, idx)
+        | target.name == "javascript" => (@native "Kast.String.at") (s, idx)
     );
     const substring = (s :: String, start :: Int32, len :: Int32) -> String => @cfg (
         | target.name == "interpreter" => (@native "string.substring") (s, start, len)
+        | target.name == "javascript" => (@native "Kast.String.substring") (s, start, len)
     );
     const iter = (s :: String) -> std.iter.Iterable[Char] => @cfg (
         | target.name == "interpreter" => (
             .iter = f => (@native "string.iter") (s, f)
+        )
+        | target.name == "javascript" => (
+            .iter = f => (@native "Kast.String.iter") (s, f)
         )
     );
     const iteri = (s :: String) -> std.iter.Iterable[type (Int32, Char)] => (

@@ -1,4 +1,3 @@
-const std = std;
 use std.prelude.*;
 
 let main = () with io => (

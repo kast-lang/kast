@@ -1,6 +1,7 @@
 module:
 const neg = [T] (x :: T) -> T => @cfg (
     | target.name == "interpreter" => (@native "unary -") x
+    | target.name == "javascript" => (@native "Kast.op.neg") x
 );
 const pos = [T] (x :: T) -> T => (
     x
@@ -26,11 +27,10 @@ const mul = [T] (a :: T, b :: T) -> T => (
         | target.name == "javascript" => (@native "Kast.op.mul") (a, b)
     )
 );
-const div = [T] (a :: T, b :: T) -> T => (
-    @cfg (
-        | target.name == "interpreter" => (@native "/") (a, b)
-        | target.name == "ocaml" => @native "({a} / {b})"
-    )
+const div = [T] (a :: T, b :: T) -> T => @cfg (
+    | target.name == "interpreter" => (@native "/") (a, b)
+    | target.name == "ocaml" => @native "({a} / {b})"
+    | target.name == "javascript" => (@native "Kast.op.div_temp") (T, a, b)
 );
 const rem = [T] (a :: T, b :: T) -> T => @cfg (
     | target.name == "interpreter" => (@native "%") (a, b)
