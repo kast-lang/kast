@@ -5,6 +5,7 @@ impl Char as module = (
     );
     let code = (c :: Char) -> UInt32 => @cfg (
         | target.name == "interpreter" => (@native "char.code") c
+        | target.name == "javascript" => (@native "Kast.Char.code") c
     );
     let from_code = (code :: UInt32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "char.from_code") code

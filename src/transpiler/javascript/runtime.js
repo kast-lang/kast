@@ -109,6 +109,9 @@ const Kast = (() => {
         return await ensure_readline_interface().question(prompt);
       },
     },
+    Char: {
+      code: async (c) => c.charCodeAt(0),
+    },
     String: {
       substring: async ({ 0: s, 1: start, 2: len }) => {
         return s.substring(start, start + len);
