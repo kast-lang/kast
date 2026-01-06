@@ -154,18 +154,21 @@ impl String as module = (
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse") s
             | target.name == "ocaml" => @native "@natives.todo()"
+            | target.name == "javascript" => (@native "parseInt") s
         )
     );
     impl Int64 as FromString = (
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse") s
             | target.name == "ocaml" => @native "@natives.todo()"
+            | target.name == "javascript" => (@native "parseInt") s
         )
     );
     impl Float64 as FromString = (
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse") s
             | target.name == "ocaml" => @native "@natives.todo()"
+            | target.name == "javascript" => (@native "parseFloat") s
         )
     );
     impl Bool as FromString = (

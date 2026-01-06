@@ -17,5 +17,6 @@ const input = (prompt :: String) -> String => (
     @cfg (
         | target.name == "interpreter" => (@native "io.input") prompt
         | target.name == "ocaml" => (@native "@natives.input") prompt
+        | target.name == "javascript" => (@native "Kast.io.input") prompt
     )
 )

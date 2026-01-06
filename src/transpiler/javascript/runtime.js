@@ -1,5 +1,21 @@
 // @ts-nocheck
 const Kast = (() => {
+  const readline = require("node:readline/promises");
+  let readline_interface = null;
+  function ensure_readline_interface() {
+    if (readline_interface === null) {
+      readline_interface = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+    }
+    return readline_interface;
+  }
+  function cleanup_readline_interface() {
+    if (readline_interface !== null) {
+      readline_interface.close();
+    }
+  }
   let next_id = 0;
   const Id = {
     gen: () => {
@@ -43,10 +59,30 @@ const Kast = (() => {
   return {
     Id,
     check_todo,
+    cmp: {
+      less: async (args) => args["0"] < args["1"],
+      less_or_equal: async (args) => args["0"] <= args["1"],
+      equal: async (args) => args["0"] == args["1"],
+      not_equal: async (args) => args["0"] != args["1"],
+      greater_or_equal: async (args) => args["0"] >= args["1"],
+      greater: async (args) => args["0"] > args["1"],
+    },
+    dbg: {
+      print: async (args) => {
+        const value = args;
+        console.debug(value);
+      },
+    },
     op: {
-      add: (args) => args["0"] + args["1"],
-      sub: (args) => args["0"] - args["1"],
-      mul: (args) => args["0"] * args["1"],
+      add: async (args) => args["0"] + args["1"],
+      sub: async (args) => args["0"] - args["1"],
+      mul: async (args) => args["0"] * args["1"],
+    },
+    io: {
+      input: async (args) => {
+        const prompt = args;
+        return await ensure_readline_interface().question(prompt);
+      },
     },
     types: {
       todo: (s) => {
@@ -67,6 +103,9 @@ const Kast = (() => {
     casts: {
       add_impl: add_cast_impl,
       get_impl: get_cast_impl,
+    },
+    cleanup: () => {
+      cleanup_readline_interface();
     },
   };
 })();

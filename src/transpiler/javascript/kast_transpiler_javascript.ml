@@ -58,6 +58,7 @@ module Impl = struct
     try
       JsAst.Fn
         {
+          async = true;
           args = [ arg_name ];
           body =
             pattern_match arg (place_of (JsAst.Var arg_name))
@@ -66,7 +67,12 @@ module Impl = struct
     with effect GetCtx, k -> Effect.continue k ctx
 
   and transpile_ty : ty -> JsAst.expr =
-   fun ty -> ty |> Ty.await_inferred |> transpile_ty_shape
+   fun ty ->
+    match ty.var |> Inference.Var.inferred_opt with
+    | None ->
+        Log.error (fun log -> log "transpiling not inferred var");
+        JsAst.Undefined
+    | Some shape -> shape |> transpile_ty_shape
 
   and transpile_ty_shape : ty_shape -> JsAst.expr =
    fun shape ->
@@ -110,10 +116,13 @@ module Impl = struct
   and transpile_value : value -> JsAst.expr =
    fun value ->
     let ctx = Effect.perform GetCtx in
-    let value_shape = value |> Value.await_inferred in
+    let value_shape = value.var |> Inference.Var.inferred_opt in
     match value_shape with
-    | V_Blocked value -> value |> transpile_blocked
-    | _ ->
+    | None ->
+        Log.error (fun log -> log "transpiling not inferred var");
+        JsAst.Undefined
+    | Some (V_Blocked value) -> value |> transpile_blocked
+    | Some value_shape ->
         let value_name = ref None in
         let do_prepend = ref false in
         ctx.mut.values <-
@@ -131,7 +140,7 @@ module Impl = struct
               Some name);
         let value_name = !value_name |> Option.get in
         if !do_prepend then (
-          Log.info (fun log -> log "prepend %a" Value.print value);
+          Log.trace (fun log -> log "prepend %a" Value.print value);
           prepend
             [
               JsAst.Let
@@ -192,11 +201,21 @@ module Impl = struct
 
   and claim : JsAst.expr -> JsAst.expr =
    fun place ->
-    JsAst.Call { f = JsAst.Field { obj = place; field = "get" }; args = [] }
+    JsAst.Call
+      {
+        async = false;
+        f = JsAst.Field { obj = place; field = "get" };
+        args = [];
+      }
 
   and read_place : JsAst.expr -> JsAst.expr =
    fun place ->
-    JsAst.Call { f = JsAst.Field { obj = place; field = "get" }; args = [] }
+    JsAst.Call
+      {
+        async = false;
+        f = JsAst.Field { obj = place; field = "get" };
+        args = [];
+      }
 
   and does_match (pattern : pattern) (place : JsAst.expr) : JsAst.expr =
     match pattern.shape with
@@ -320,6 +339,7 @@ module Impl = struct
             Expr
               (Call
                  {
+                   async = false;
                    f = Field { obj = assignee_place; field = "set" };
                    args = [ claim place ];
                  });
@@ -333,7 +353,12 @@ module Impl = struct
 
   and stmts_expr : JsAst.stmt list -> JsAst.expr =
    fun stmts ->
-    JsAst.Call { f = JsAst.Fn { args = []; body = stmts }; args = [] }
+    JsAst.Call
+      {
+        async = true;
+        f = JsAst.Fn { async = true; args = []; body = stmts };
+        args = [];
+      }
 
   and place ~get ~set =
     JsAst.Obj
@@ -343,17 +368,23 @@ module Impl = struct
 
   and place_of expr =
     place
-      ~get:(JsAst.Fn { args = []; body = [ JsAst.Return expr ] })
+      ~get:(JsAst.Fn { async = false; args = []; body = [ JsAst.Return expr ] })
       ~set:
         (let var = JsAst.gen_name "value" in
          JsAst.Fn
            {
+             async = false;
              args = [ var ];
              body = [ JsAst.Assign { assignee = expr; value = JsAst.Var var } ];
            })
 
   and scope (body : JsAst.stmt list) : JsAst.expr =
-    JsAst.Call { f = JsAst.Fn { args = []; body }; args = [] }
+    JsAst.Call
+      {
+        async = true;
+        f = JsAst.Fn { async = true; args = []; body };
+        args = [];
+      }
 
   and field_place (place : JsAst.expr) (field : Tuple.member) : JsAst.expr =
     place_of
@@ -483,6 +514,7 @@ module Impl = struct
       Expr
         (Call
            {
+             async = false;
              f = Raw "Kast.casts.add_impl";
              args =
                [
@@ -496,6 +528,27 @@ module Impl = struct
            });
     ]
 
+  and impl_as_module ~value ~impl ~ty : JsAst.stmt list =
+    let ty =
+      ty |> Ty.await_inferred |> Ty.Shape.expect_tuple
+      |> Option.unwrap_or_else (fun () -> fail "impl as module not tuple??")
+    in
+    let value_var = JsAst.gen_name "value" in
+    let impl_var = JsAst.gen_name "impl" in
+    [
+      JsAst.Let { var = value_var; value };
+      JsAst.Let { var = impl_var; value = impl };
+    ]
+    @ (ty.tuple |> Tuple.to_seq
+      |> Seq.map (fun (member, _) ->
+          let field = tuple_field_name member in
+          JsAst.Assign
+            {
+              assignee = Field { obj = Var value_var; field };
+              value = Field { obj = Var impl_var; field };
+            })
+      |> List.of_seq)
+
   and symbol_for (label : Label.t) : JsAst.name =
     let id = (Label.get_data label).id in
     let ctx = Effect.perform GetCtx in
@@ -508,7 +561,7 @@ module Impl = struct
     | Some name -> name
 
   and raise_error message : JsAst.stmt =
-    Throw (Call { f = Raw "Error"; args = [ String message ] })
+    Throw (Call { async = false; f = Raw "Error"; args = [ String message ] })
 
   and transpile_expr : expr -> JsAst.expr =
    fun expr ->
@@ -527,7 +580,12 @@ module Impl = struct
                 else transpile_expr_as_stmts e)
             |> List.flatten
           in
-          JsAst.Call { f = JsAst.Fn { args = []; body }; args = [] }
+          JsAst.Call
+            {
+              async = true;
+              f = JsAst.Fn { async = true; args = []; body };
+              args = [];
+            }
       | E_Stmt { expr } -> transpile_expr expr
       | E_Scope { expr } ->
           (* TODO should I actually create js scope? *)
@@ -569,10 +627,19 @@ module Impl = struct
                 };
             ]
       | E_Apply { f; arg } ->
-          JsAst.Call { f = transpile_expr f; args = [ transpile_expr arg ] }
+          JsAst.Call
+            {
+              async = true;
+              f = transpile_expr f;
+              args = [ transpile_expr arg ];
+            }
       | E_InstantiateGeneric { generic; arg } ->
           JsAst.Call
-            { f = transpile_expr generic; args = [ transpile_expr arg ] }
+            {
+              async = true;
+              f = transpile_expr generic;
+              args = [ transpile_expr arg ];
+            }
       | E_Assign _ -> transpile_expr_as_stmts expr |> stmts_expr
       | E_Ty _ -> JsAst.Null
       | E_Newtype _ -> JsAst.Null
@@ -600,8 +667,10 @@ module Impl = struct
                   else_case = Some [ Return (transpile_expr else_case) ];
                 };
             ]
-      | E_And _ -> failwith __LOC__
-      | E_Or _ -> failwith __LOC__
+      | E_And { lhs; rhs } ->
+          BinOp { op = And; lhs = transpile_expr lhs; rhs = transpile_expr rhs }
+      | E_Or { lhs; rhs } ->
+          BinOp { op = Or; lhs = transpile_expr lhs; rhs = transpile_expr rhs }
       | E_Match { value; branches } ->
           scope
             (let var = JsAst.gen_name "matched" in
@@ -672,6 +741,7 @@ module Impl = struct
           let target = transpile_value target in
           JsAst.Call
             {
+              async = false;
               f = JsAst.Raw "Kast.casts.get_impl";
               args =
                 [
@@ -721,13 +791,31 @@ let with_ctx ~state ~span f =
                    ~value:(Impl.transpile_value value)
                    ~target:(Impl.transpile_value target)
                    ~impl:(Impl.transpile_value impl)));
+      ctx.interpreter.cast_impls.as_module
+      |> ValueMap.iter (fun value impl ->
+          Impl.prepend
+          <| Impl.impl_as_module
+               ~value:(Impl.transpile_value value)
+               ~impl:(Impl.transpile_value impl)
+               ~ty:impl.ty);
       f ()
     with effect GetCtx, k -> Effect.continue k ctx
   in
-  let ast =
+  let result_var = JsAst.gen_name "result" in
+  let ast : JsAst.expr =
     Impl.scope
       ([ JsAst.Raw [%blob "./runtime.js"] ]
-      @ ctx.mut.prepend @ [ Return result ])
+      @ ctx.mut.prepend
+      @ [
+          Let { var = result_var; value = result };
+          Raw "Kast.cleanup()";
+          Return (Var result_var);
+        ])
+  in
+  let ast : JsAst.expr =
+    match ast with
+    | Call { async = true; f; args } -> Call { async = false; f; args }
+    | _ -> failwith __LOC__
   in
   { print = (fun fmt -> JsAst.print_expr ~precedence:None fmt ast) }
 

@@ -15,10 +15,12 @@ type expr =
   | String of string
   | Var of name
   | Fn of {
+      async : bool;
       args : name list;
       body : stmt list;
     }
   | Call of {
+      async : bool;
       f : expr;
       args : expr list;
     }
@@ -34,6 +36,15 @@ type expr =
       lhs : expr;
       rhs : expr;
     }
+  | BinOp of {
+      op : bin_op;
+      lhs : expr;
+      rhs : expr;
+    }
+
+and bin_op =
+  | And
+  | Or
 
 and compare_op =
   | Less
@@ -96,6 +107,7 @@ module Precedence = struct
     | Obj
     | Returned
     | CmpArg
+    | BinOpArg
     | Not
 end
 
@@ -109,6 +121,12 @@ let print_cmp_op fmt op =
     | GreaterOrEqual -> ">="
     | Greater -> ">")
 
+let print_bin_op fmt op =
+  fprintf fmt "%s"
+    (match op with
+    | And -> "&&"
+    | Or -> "||")
+
 let rec print_expr ~(precedence : Precedence.t) fmt expr =
   let surround_with_parens = true in
   if surround_with_parens then fprintf fmt "(";
@@ -120,14 +138,16 @@ let rec print_expr ~(precedence : Precedence.t) fmt expr =
   | Number x -> fprintf fmt "@{<italic>%g@}" x
   | String s -> fprintf fmt "@{<green>%S@}" s
   | Var name -> print_name fmt name
-  | Fn { args; body } ->
+  | Fn { async; args; body } ->
+      if async then fprintf fmt "@{<magenta>async@} ";
       fprintf fmt "(";
       args
       |> List.iteri (fun i name ->
           if i <> 0 then fprintf fmt ",";
           print_name fmt name);
       fprintf fmt ") => {%a}" print_stmts body
-  | Call { f; args } ->
+  | Call { async; f; args } ->
+      if async then fprintf fmt "@{<magenta>await@} ";
       fprintf fmt "%a(" (print_expr ~precedence:CalledFn) f;
       args
       |> List.iteri (fun i arg ->
@@ -149,6 +169,12 @@ let rec print_expr ~(precedence : Precedence.t) fmt expr =
         (print_expr ~precedence:CmpArg)
         lhs print_cmp_op op
         (print_expr ~precedence:CmpArg)
+        rhs
+  | BinOp { op; lhs; rhs } ->
+      fprintf fmt "%a %a %a"
+        (print_expr ~precedence:BinOpArg)
+        lhs print_bin_op op
+        (print_expr ~precedence:BinOpArg)
         rhs);
   if surround_with_parens then fprintf fmt ")"
 
