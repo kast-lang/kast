@@ -23,6 +23,23 @@ type _ Effect.t += GetCtx : ctx Effect.t
 module Impl = struct
   let rec _unused () = ()
 
+  and not_inferred : 'a 'scope. ('a, 'scope) Inference.Var.t -> JsAst.expr =
+   fun var ->
+    Log.error (fun log -> log "transpiling not inferred var");
+    JsAst.Obj
+      [
+        Field { name = "type"; value = String "not inferred" };
+        Field
+          {
+            name = "spans";
+            value =
+              List
+                (Inference.Var.spans var |> SpanSet.to_list
+                |> List.map (fun span ->
+                    JsAst.String (make_string "%a" Span.print span)));
+          };
+      ]
+
   and todo_stmt f =
     Format.ksprintf
       (fun s ->
@@ -68,10 +85,9 @@ module Impl = struct
 
   and transpile_ty : ty -> JsAst.expr =
    fun ty ->
+    Inference.Var.setup_default_if_needed ty.var;
     match ty.var |> Inference.Var.inferred_opt with
-    | None ->
-        Log.error (fun log -> log "transpiling not inferred var");
-        JsAst.Undefined
+    | None -> not_inferred ty.var
     | Some shape -> shape |> transpile_ty_shape
 
   and transpile_ty_shape : ty_shape -> JsAst.expr =
@@ -116,11 +132,10 @@ module Impl = struct
   and transpile_value : value -> JsAst.expr =
    fun value ->
     let ctx = Effect.perform GetCtx in
+    Inference.Var.setup_default_if_needed value.var;
     let value_shape = value.var |> Inference.Var.inferred_opt in
     match value_shape with
-    | None ->
-        Log.error (fun log -> log "transpiling not inferred var");
-        JsAst.Undefined
+    | None -> not_inferred value.var
     | Some (V_Blocked value) -> value |> transpile_blocked
     | Some value_shape ->
         let value_name = ref None in

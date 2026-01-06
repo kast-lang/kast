@@ -13,6 +13,7 @@ type expr =
   | Bool of bool
   | Number of float
   | String of string
+  | List of expr list
   | Var of name
   | Fn of {
       async : bool;
@@ -137,6 +138,13 @@ let rec print_expr ~(precedence : Precedence.t) fmt expr =
   | Bool b -> fprintf fmt "@{<magenta>%b@}" b
   | Number x -> fprintf fmt "@{<italic>%g@}" x
   | String s -> fprintf fmt "@{<green>%S@}" s
+  | List a ->
+      fprintf fmt "[";
+      a
+      |> List.iteri (fun i x ->
+          if i <> 0 then fprintf fmt ",";
+          print_expr ~precedence:FnArg fmt x);
+      fprintf fmt "]"
   | Var name -> print_name fmt name
   | Fn { async; args; body } ->
       if async then fprintf fmt "@{<magenta>async@} ";

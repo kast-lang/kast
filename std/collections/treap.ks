@@ -21,7 +21,7 @@ const singleton = [T] (value :: T) -> Treap.t[T] => (
         .priority = std.random.gen_range (.min = 0, .max = 1000000000),
     )
 );
-const length = [T_length] (v :: &Treap.t[T_length]) -> Int32 => (
+const length = [T] (v :: &Treap.t[T]) -> Int32 => (
     match v^ with (
         | :Empty => 0
         | :Node v => v.count
