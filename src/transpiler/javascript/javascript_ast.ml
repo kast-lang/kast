@@ -78,6 +78,7 @@ and stmt =
       after : expr option;
       body : stmt list;
     }
+  | Raw of string
 
 module Precedence = struct
   type t =
@@ -194,6 +195,7 @@ and print_stmt fmt = function
         cond
         (maybe_print (print_expr ~precedence:ForArg))
         after print_stmts body
+  | Raw s -> fprintf fmt "%s" s
 
 and maybe_print :
     'a. (formatter -> 'a -> unit) -> formatter -> 'a option -> unit =

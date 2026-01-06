@@ -929,6 +929,9 @@ let module' : core_syntax =
         in
         let state = C.state |> State.enter_scope ~span ~recursive:true in
         let def = C.compile ~state Expr def in
+        let bindings =
+          state.scope.bindings |> StringMap.to_list |> List.map snd
+        in
         Kast_profiling.record
           (fun () -> "closing module compiler scope")
           (fun () -> state.scope |> State.Scope.close);
@@ -937,7 +940,7 @@ let module' : core_syntax =
           (fun () -> "closing module interpreter scope")
           (fun () -> state.interpreter.scope |> Interpreter.Scope.close);
         match kind with
-        | Expr -> E_Module { def } |> init_expr span state
+        | Expr -> E_Module { def; bindings } |> init_expr span state
         | PlaceExpr ->
             error span "module must be expr, not place expr";
             init_error span state kind

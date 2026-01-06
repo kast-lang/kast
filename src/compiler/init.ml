@@ -379,7 +379,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
       | E_Ty _ -> Ty.inferred ~span T_Ty
       | E_Newtype _ -> Ty.inferred ~span T_Ty
       | E_Native _ -> Ty.new_not_inferred ~scope ~span
-      | E_Module { def } ->
+      | E_Module { def; bindings = _ } ->
           def.data.ty
           |> Inference.Ty.expect_inferred_as ~span:def.data.span
                (Ty.inferred ~span T_Unit);

@@ -93,7 +93,7 @@ let inner_compiled_with_handler :
       | E_Ty expr -> handler.handle TyExpr expr
       | E_Newtype expr -> handler.handle TyExpr expr
       | E_Native _ -> ()
-      | E_Module { def } -> handler.handle Expr def
+      | E_Module { def; bindings = _ } -> handler.handle Expr def
       | E_UseDotStar { used; bindings = _ } -> handler.handle Expr used
       | E_If { cond; then_case; else_case } ->
           handler.handle Expr cond;

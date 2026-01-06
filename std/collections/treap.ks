@@ -73,7 +73,7 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> (t[T], t[T]) => (
         | :Empty => (:Empty, :Empty)
         | :Node node => match f &node with (
             | :RightSubtree => (
-                let left_left, left_right = split (node.left, f);
+                let left_left, left_right = split[T] (node.left, f);
                 let node = update_data (
                     node,
                     .left = left_right,
@@ -82,7 +82,7 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> (t[T], t[T]) => (
                 left_left, node
             )
             | :LeftSubtree => (
-                let right_left, right_right = split (node.right, f);
+                let right_left, right_right = split[T] (node.right, f);
                 let node = update_data (
                     node,
                     .left = node.left,
@@ -120,9 +120,9 @@ const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
             if idx == length &v.left then (
                 &v.value
             ) else if idx < length &v.left then (
-                at (&v.left, idx)
+                at[T] (&v.left, idx)
             ) else (
-                at (&v.right, idx - length &v.left - 1)
+                at[T] (&v.right, idx - length &v.left - 1)
             )
         )
     )
@@ -135,9 +135,9 @@ const at_mut = [T] (v :: &mut Treap.t[T], idx :: Int32) -> &mut T => (
             if idx == length &v.left then (
                 &mut v.value
             ) else if idx < length &v.left then (
-                at_mut (&mut v.left, idx)
+                at_mut[T] (&mut v.left, idx)
             ) else (
-                at_mut (&mut v.right, idx - length &v.left - 1)
+                at_mut[T] (&mut v.right, idx - length &v.left - 1)
             )
         )
     )

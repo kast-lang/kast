@@ -311,7 +311,7 @@ module Impl = struct
           (Tuple.make [ e ] [])
     | E_Native { id = _; expr } ->
         fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
-    | E_Module { def } ->
+    | E_Module { def; bindings = _ } ->
         fprintf fmt "@{<magenta>module@} %a" (print_expr ~options) def
     | E_UseDotStar { used; bindings = _ } ->
         fprintf fmt "@{<magenta>use .*@} (@;<0 2>@[<v>used = %a,@]@ )"

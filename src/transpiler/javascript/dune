@@ -1,3 +1,7 @@
 (library
  (name kast_transpiler_javascript)
- (libraries kast_types kast_interpreter))
+ (libraries kast_types kast_interpreter)
+ (preprocessor_deps
+  (file runtime.js))
+ (preprocess
+  (pps ppx_blob)))

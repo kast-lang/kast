@@ -4,10 +4,16 @@ open Kast_types
 open Types
 module JsAst = Javascript_ast
 
-type ctx = {
-  interpreter : interpreter_state;
+type mutable_ctx = {
+  mutable values : JsAst.name ValueMap.t;
   mutable symbols : JsAst.name Id.Map.t;
   mutable prepend : JsAst.stmt list;
+}
+
+type ctx = {
+  interpreter : interpreter_state;
+  mut : mutable_ctx;
+  captured : interpreter_scope;
   span : span;
   target : value_target;
 }
@@ -36,23 +42,105 @@ module Impl = struct
     | Name name -> name
     | Index i -> Int.to_string i
 
-  and fn (def : maybe_compiled_fn) : JsAst.expr =
+  and fn ~(captured : interpreter_scope option) (def : maybe_compiled_fn) :
+      JsAst.expr =
     let ctx = Effect.perform GetCtx in
     let compiled = def |> Kast_interpreter.await_compiled ~span:ctx.span in
     let { arg; body; evaled_result = _ } =
       compiled |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
     in
+    let ctx =
+      match captured with
+      | None -> ctx
+      | Some captured -> { ctx with captured }
+    in
     let arg_name = JsAst.gen_name "arg" in
-    JsAst.Fn
-      {
-        args = [ arg_name ];
-        body =
-          pattern_match arg (place_of (JsAst.Var arg_name))
-          @ [ JsAst.Return (transpile_expr body) ];
-      }
+    try
+      JsAst.Fn
+        {
+          args = [ arg_name ];
+          body =
+            pattern_match arg (place_of (JsAst.Var arg_name))
+            @ [ JsAst.Return (transpile_expr body) ];
+        }
+    with effect GetCtx, k -> Effect.continue k ctx
+
+  and transpile_ty : ty -> JsAst.expr =
+   fun ty -> ty |> Ty.await_inferred |> transpile_ty_shape
+
+  and transpile_ty_shape : ty_shape -> JsAst.expr =
+   fun shape ->
+    let todo_ty s : JsAst.expr =
+      JsAst.Raw (make_string "Kast.types.todo(%S)" s)
+    in
+    let primitive s : JsAst.expr =
+      JsAst.Raw (make_string "Kast.types.primitive[%S]" s)
+    in
+    match shape with
+    | T_Unit -> primitive "Unit"
+    | T_Bool -> primitive "Bool"
+    | T_Int32 -> primitive "Int32"
+    | T_Int64 -> primitive "Int64"
+    | T_Float64 -> primitive "Float64"
+    | T_String -> primitive "String"
+    | T_Char -> primitive "Char"
+    | T_Ref _ -> todo_ty __LOC__
+    | T_Variant _ -> todo_ty __LOC__
+    | T_Tuple _ -> todo_ty __LOC__
+    | T_Ty -> todo_ty __LOC__
+    | T_Fn _ -> todo_ty __LOC__
+    | T_Generic _ -> todo_ty __LOC__
+    | T_Ast -> todo_ty __LOC__
+    | T_UnwindToken _ -> todo_ty __LOC__
+    | T_Target -> todo_ty __LOC__
+    | T_ContextTy -> todo_ty __LOC__
+    | T_CompilerScope -> todo_ty __LOC__
+    | T_Opaque _ -> todo_ty __LOC__
+    | T_Blocked _ -> todo_ty __LOC__
+    | T_Error -> JsAst.Null
+
+  and transpile_blocked : blocked_value -> JsAst.expr =
+   fun value ->
+    match value.shape with
+    | BV_Binding binding -> Var (binding_name binding)
+    | BV_Instantiate _ -> failwith __LOC__
+    | BV_ClaimRef _ -> failwith __LOC__
+    | BV_FieldRef _ -> failwith __LOC__
 
   and transpile_value : value -> JsAst.expr =
-   fun value -> value |> Value.await_inferred |> transpile_value_shape
+   fun value ->
+    let ctx = Effect.perform GetCtx in
+    let value_shape = value |> Value.await_inferred in
+    match value_shape with
+    | V_Blocked value -> value |> transpile_blocked
+    | _ ->
+        let value_name = ref None in
+        let do_prepend = ref false in
+        ctx.mut.values <-
+          ctx.mut.values
+          |> ValueMap.update value (fun name ->
+              let name =
+                match name with
+                | Some name -> name
+                | None ->
+                    let name = JsAst.gen_name "value" in
+                    do_prepend := true;
+                    name
+              in
+              value_name := Some name;
+              Some name);
+        let value_name = !value_name |> Option.get in
+        if !do_prepend then (
+          Log.info (fun log -> log "prepend %a" Value.print value);
+          prepend
+            [
+              JsAst.Let
+                {
+                  var = value_name;
+                  value = value_shape |> transpile_value_shape;
+                };
+            ]);
+        Var value_name
 
   and transpile_value_shape : value_shape -> JsAst.expr =
    fun shape ->
@@ -79,15 +167,17 @@ module Impl = struct
                    Field { name = field_name; value = transpile_value value })
             |> List.of_seq)
       | V_Variant _ -> failwith __LOC__
-      | V_Ty _ -> JsAst.Null
-      | V_Fn { ty = _; fn = { def; _ } } -> fn def
-      | V_Generic { name = _; fn = { def; _ }; ty = _ } -> fn def
+      | V_Ty ty -> transpile_ty ty
+      | V_Fn { ty = _; fn = { def; captured; _ } } ->
+          fn ~captured:(Some captured) def
+      | V_Generic { name = _; fn = { def; captured; _ }; ty = _ } ->
+          fn ~captured:(Some captured) def
       | V_NativeFn _ -> failwith __LOC__
       | V_Ast _ -> failwith __LOC__
       | V_UnwindToken _ -> failwith __LOC__
       | V_Target _ -> failwith __LOC__
-      | V_ContextTy _ -> failwith __LOC__
-      | V_CompilerScope _ -> failwith __LOC__
+      | V_ContextTy _ -> JsAst.Null
+      | V_CompilerScope _ -> JsAst.Undefined
       | V_Opaque _ -> failwith __LOC__
       | V_Blocked _ -> failwith __LOC__
       | V_Error -> JsAst.Undefined
@@ -272,8 +362,17 @@ module Impl = struct
   and transpile_place : place_expr -> JsAst.expr =
    fun expr ->
     try
+      let ctx = Effect.perform GetCtx in
       match expr.shape with
-      | PE_Binding binding -> place_of (JsAst.Var (binding_name binding))
+      | PE_Binding binding -> (
+          match
+            ctx.captured |> Kast_interpreter.Scope.find_opt binding.name
+          with
+          | Some place ->
+              place_of
+                (transpile_value
+                   (Kast_interpreter.read_place ~span:ctx.span place))
+          | None -> place_of (JsAst.Var (binding_name binding)))
       | PE_Field { obj; field; field_span = _ } ->
           let var = JsAst.gen_name "obj" in
           let member =
@@ -309,7 +408,8 @@ module Impl = struct
       | E_Constant _ -> []
       | E_Ref _ -> failwith __LOC__
       | E_Claim _ -> failwith __LOC__
-      | E_Then _ -> failwith __LOC__
+      | E_Then { list } ->
+          list |> List.map transpile_expr_as_stmts |> List.flatten
       | E_Stmt { expr } -> transpile_expr_as_stmts expr
       | E_Scope _ -> [ Expr (transpile_expr expr) ]
       | E_Fn _ -> failwith __LOC__
@@ -376,16 +476,34 @@ module Impl = struct
 
   and prepend stmts =
     let ctx = Effect.perform GetCtx in
-    ctx.prepend <- ctx.prepend @ stmts
+    ctx.mut.prepend <- ctx.mut.prepend @ stmts
+
+  and impl_cast ~value ~target ~impl : JsAst.stmt list =
+    [
+      Expr
+        (Call
+           {
+             f = Raw "Kast.casts.add_impl";
+             args =
+               [
+                 Obj
+                   [
+                     Field { name = "value"; value };
+                     Field { name = "target"; value = target };
+                     Field { name = "impl"; value = impl };
+                   ];
+               ];
+           });
+    ]
 
   and symbol_for (label : Label.t) : JsAst.name =
     let id = (Label.get_data label).id in
     let ctx = Effect.perform GetCtx in
-    match ctx.symbols |> Id.Map.find_opt id with
+    match ctx.mut.symbols |> Id.Map.find_opt id with
     | None ->
         let name = JsAst.gen_name "symbol" in
         prepend [ Let { var = name; value = Raw "Symbol()" } ];
-        ctx.symbols <- ctx.symbols |> Id.Map.add id name;
+        ctx.mut.symbols <- ctx.mut.symbols |> Id.Map.add id name;
         name
     | Some name -> name
 
@@ -414,8 +532,8 @@ module Impl = struct
       | E_Scope { expr } ->
           (* TODO should I actually create js scope? *)
           transpile_expr expr
-      | E_Fn { ty = _; def } -> fn def
-      | E_Generic { def; ty = _ } -> fn def
+      | E_Fn { ty = _; def } -> fn ~captured:None def
+      | E_Generic { def; ty = _ } -> fn ~captured:None def
       | E_Tuple { parts } ->
           let idx = ref 0 in
           JsAst.Obj
@@ -456,10 +574,21 @@ module Impl = struct
           JsAst.Call
             { f = transpile_expr generic; args = [ transpile_expr arg ] }
       | E_Assign _ -> transpile_expr_as_stmts expr |> stmts_expr
-      | E_Ty _ -> failwith __LOC__
+      | E_Ty _ -> JsAst.Null
       | E_Newtype _ -> JsAst.Null
       | E_Native { id = _; expr } -> JsAst.Raw expr
-      | E_Module _ -> failwith __LOC__
+      | E_Module { def; bindings } ->
+          let module_value =
+            JsAst.Obj
+              (bindings
+              |> List.map (fun binding ->
+                  JsAst.Field
+                    {
+                      name = binding.name.name;
+                      value = Var (binding_name binding);
+                    }))
+          in
+          scope (transpile_expr_as_stmts def @ [ Return module_value ])
       | E_UseDotStar _ -> failwith __LOC__
       | E_If { cond; then_case; else_case } ->
           scope
@@ -504,7 +633,7 @@ module Impl = struct
               Try
                 {
                   body =
-                    pattern_match token (Var token_var)
+                    pattern_match token (place_of (Var token_var))
                     @ transpile_expr_as_stmts body;
                   catch_var;
                   catch_body =
@@ -538,7 +667,21 @@ module Impl = struct
       | E_InjectContext _ -> failwith __LOC__
       | E_CurrentContext _ -> failwith __LOC__
       | E_ImplCast _ -> failwith __LOC__
-      | E_Cast _ -> todo_expr "cast expr not implemented yet"
+      | E_Cast { value; target } ->
+          let value = transpile_expr value in
+          let target = transpile_value target in
+          JsAst.Call
+            {
+              f = JsAst.Raw "Kast.casts.get_impl";
+              args =
+                [
+                  Obj
+                    [
+                      Field { name = "value"; value };
+                      Field { name = "target"; value = target };
+                    ];
+                ];
+            }
       | E_TargetDependent target_dependent -> (
           let branch =
             Kast_interpreter.find_target_dependent_branch ctx.interpreter
@@ -561,14 +704,31 @@ let with_ctx ~state ~span f =
   let ctx : ctx =
     {
       interpreter = state;
-      symbols = Id.Map.empty;
-      prepend = [];
+      captured = state.scope;
+      mut = { values = ValueMap.empty; symbols = Id.Map.empty; prepend = [] };
       span;
       target = { name = "javascript" };
     }
   in
-  let result = try f () with effect GetCtx, k -> Effect.continue k ctx in
-  let ast = Impl.scope (ctx.prepend @ [ Return result ]) in
+  let result =
+    try
+      ctx.interpreter.cast_impls.map
+      |> ValueMap.iter (fun target impls ->
+          impls
+          |> ValueMap.iter (fun value impl ->
+              Impl.prepend
+              <| Impl.impl_cast
+                   ~value:(Impl.transpile_value value)
+                   ~target:(Impl.transpile_value target)
+                   ~impl:(Impl.transpile_value impl)));
+      f ()
+    with effect GetCtx, k -> Effect.continue k ctx
+  in
+  let ast =
+    Impl.scope
+      ([ JsAst.Raw [%blob "./runtime.js"] ]
+      @ ctx.mut.prepend @ [ Return result ])
+  in
   { print = (fun fmt -> JsAst.print_expr ~precedence:None fmt ast) }
 
 let transpile_value : state:interpreter_state -> span:span -> value -> result =

@@ -9,18 +9,21 @@ const add = [T] (a :: T, b :: T) -> T => (
     @cfg (
         | target.name == "interpreter" => (@native "+") (a, b)
         | target.name == "ocaml" => @native "({a} + {b})"
+        | target.name == "javascript" => (@native "Kast.op.add") (a, b)
     )
 );
 const sub = [T] (a :: T, b :: T) -> T => (
     @cfg (
         | target.name == "interpreter" => (@native "-") (a, b)
         | target.name == "ocaml" => @native "({a} - {b})"
+        | target.name == "javascript" => (@native "Kast.op.sub") (a, b)
     )
 );
 const mul = [T] (a :: T, b :: T) -> T => (
     @cfg (
         | target.name == "interpreter" => (@native "*") (a, b)
         | target.name == "ocaml" => @native "({a} * {b})"
+        | target.name == "javascript" => (@native "Kast.op.mul") (a, b)
     )
 );
 const div = [T] (a :: T, b :: T) -> T => (

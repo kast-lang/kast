@@ -804,7 +804,7 @@ and eval_expr_native : state -> expr -> Types.expr_native -> value =
       value
 
 and eval_expr_module : state -> expr -> Types.expr_module -> value =
- fun state expr { def } ->
+ fun state expr { def; bindings = _ } ->
   let span = expr.data.span in
   let module_scope =
     Scope.init ~span:def.data.span ~recursive:true ~parent:(Some state.scope)

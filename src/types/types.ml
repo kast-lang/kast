@@ -276,7 +276,10 @@ module rec TypesImpl : sig
     expr : string;
   }
 
-  and expr_module = { def : expr }
+  and expr_module = {
+    def : expr;
+    bindings : binding list;
+  }
 
   and expr_use_dot_star = {
     used : expr;
@@ -900,7 +903,10 @@ end = struct
     expr : string;
   }
 
-  and expr_module = { def : expr }
+  and expr_module = {
+    def : expr;
+    bindings : binding list;
+  }
 
   and expr_use_dot_star = {
     used : expr;
