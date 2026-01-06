@@ -124,6 +124,9 @@ const Kast = (() => {
       length: async (s) => {
         return s.length;
       },
+      to_string: async (x) => {
+        return x.toString();
+      },
     },
     sys: {
       chdir: async (path) => {

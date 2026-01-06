@@ -195,18 +195,21 @@ impl String as module = (
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string") num
             | target.name == "ocaml" => @native "@natives.todo()"
+            | target.name == "javascript" => (@native "Kast.String.to_string") num
         )
     );
     impl Int64 as ToString = (
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string") num
             | target.name == "ocaml" => @native "@natives.todo()"
+            | target.name == "javascript" => (@native "Kast.String.to_string") num
         )
     );
     impl Float64 as ToString = (
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string") num
             | target.name == "ocaml" => @native "@natives.todo()"
+            | target.name == "javascript" => (@native "Kast.String.to_string") num
         )
     );
     impl Bool as ToString = (
