@@ -305,12 +305,16 @@ module Var = struct
     else
       let cache = CompareRecurseCache.get () in
       let ids = (a.recurse_id, b.recurse_id) in
-      if cache |> CompareRecurseCache.is_visited ids then true
+      if cache |> CompareRecurseCache.depth ids > 0 then true
       else (
         cache |> CompareRecurseCache.enter ids;
-        match (a.inferred, b.inferred) with
-        | Some a, Some b -> equal_inferred a b
-        | Some _, None | None, Some _ | None, None -> false)
+        let result =
+          match (a.inferred, b.inferred) with
+          | Some a, Some b -> equal_inferred a b
+          | Some _, None | None, Some _ | None, None -> false
+        in
+        cache |> CompareRecurseCache.exit ids;
+        result)
 
   let recurse_id var =
     let data = find_root var in
