@@ -65,6 +65,12 @@ let () =
 let ( <| ) = ( @@ )
 let fail f = Format.kdprintf (fun f -> raise <| FailFormat f) f
 
+let rec create_dir_all path =
+  if path = "" || path = "." then ()
+  else (
+    create_dir_all (Filename.dirname path);
+    try Unix.mkdir path 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ())
+
 let read_from_filesystem path =
   let ch = In_channel.open_text path in
   Fun.protect

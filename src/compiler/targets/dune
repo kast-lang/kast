@@ -1,9 +1,8 @@
 (library
- (name kast_interpreter_cli)
+ (name kast_compiler_targets)
  (libraries
   std
   kast_parser
-  kast_interpreter
   kast_compiler
   kast_default_syntax
-  kast_compiler_targets))
+  kast_transpiler_javascript))

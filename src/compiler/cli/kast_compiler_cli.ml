@@ -4,45 +4,32 @@ module Parser = Kast_parser
 module Compiler = Kast_compiler
 module Interpreter = Kast_interpreter
 open Kast_types
+module Target = Kast_compiler_targets.Target
 
 module Args = struct
   type args = {
     path : Uri.t;
-    output_type : output_type;
+    target : Target.t;
     no_std : bool;
   }
 
-  and output_type =
-    | Ir
-    | JavaScript
-
   type t = args
 
-  let default_output_type = Ir
+  let default_target = Target.Ir
 
   let rec parse : string list -> args = function
-    | [] ->
-        { path = Uri.stdin; output_type = default_output_type; no_std = false }
+    | [] -> { path = Uri.stdin; target = default_target; no_std = false }
     | [ path ] ->
-        {
-          path = Uri.file path;
-          output_type = default_output_type;
-          no_std = false;
-        }
+        { path = Uri.file path; target = default_target; no_std = false }
     | "--no-std" :: rest -> { (parse rest) with no_std = true }
-    | "--output-type" :: output_type :: rest ->
-        let output_type =
-          match output_type with
-          | "ir" -> Ir
-          | "js" | "javascript" -> JavaScript
-          | _ -> fail "Unknown output type %S" output_type
-        in
-        { (parse rest) with output_type }
+    | "--target" :: target :: rest ->
+        let target = Target.parse target in
+        { (parse rest) with target }
     | first :: _rest -> fail "Unexpected arg %S" first
 end
 
 let run : Args.t -> unit =
- fun { path; output_type; no_std } ->
+ fun { path; target; no_std } ->
   let source = Source.read path in
   let parsed = Parser.parse source Kast_default_syntax.ruleset in
   match parsed.ast with
@@ -57,7 +44,7 @@ let run : Args.t -> unit =
         else Compiler.default (Uri source.uri) ()
       in
       let expr : expr = Compiler.compile compiler Expr ast in
-      match output_type with
+      match target with
       | Ir -> println "%a" Expr.print_with_types expr
       | JavaScript ->
           let transpiled : Kast_transpiler_javascript.result =
