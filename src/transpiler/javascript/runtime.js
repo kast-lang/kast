@@ -3,6 +3,7 @@ const Kast = (() => {
   async function call(f, arg) {
     return await f(arg);
   }
+  const util = require("node:util");
   const readline = require("node:readline/promises");
   const fs = require("node:fs");
   let readline_interface = null;
@@ -88,9 +89,8 @@ const Kast = (() => {
       greater: async (args) => args["0"] > args["1"],
     },
     dbg: {
-      print: async (args) => {
-        const value = args;
-        console.debug(value);
+      print: async (value) => {
+        console.log(util.inspect(value, { depth: null, colors: true }));
       },
     },
     op: {

@@ -164,6 +164,7 @@ module Impl = struct
                   value = value_shape |> transpile_value_shape;
                 };
             ]);
+        (* TODO copy? *)
         Var value_name
 
   and transpile_value_shape : value_shape -> JsAst.expr =
@@ -570,7 +571,14 @@ module Impl = struct
     match ctx.mut.symbols |> Id.Map.find_opt id with
     | None ->
         let name = JsAst.gen_name "symbol" in
-        prepend [ Let { var = name; value = Raw "Symbol()" } ];
+        prepend
+          [
+            Let
+              {
+                var = name;
+                value = Raw (make_string "Symbol(%S)" (Label.get_name label));
+              };
+          ];
         ctx.mut.symbols <- ctx.mut.symbols |> Id.Map.add id name;
         name
     | Some name -> name

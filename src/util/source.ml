@@ -115,6 +115,8 @@ module Span = struct
 
   type span = t
 
+  let length span = span.finish.index - span.start.index
+
   let compare a b =
     let c = Position.compare a.start b.start in
     if c <> 0 then c

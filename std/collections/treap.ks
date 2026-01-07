@@ -130,14 +130,13 @@ const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
 const at_mut = [T] (v :: &mut Treap.t[T], idx :: Int32) -> &mut T => (
     match v^ with (
         | :Empty => panic "oob"
-        # TODO ref mut
-        | :Node mut v => (
-            if idx == length &v.left then (
-                &mut v.value
-            ) else if idx < length &v.left then (
-                at_mut[T] (&mut v.left, idx)
+        | :Node ref mut v => (
+            if idx == length &v^.left then (
+                &mut v^.value
+            ) else if idx < length &v^.left then (
+                at_mut[T] (&mut v^.left, idx)
             ) else (
-                at_mut[T] (&mut v.right, idx - length &v.left - 1)
+                at_mut[T] (&mut v^.right, idx - length &v^.left - 1)
             )
         )
     )
