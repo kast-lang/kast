@@ -1,13 +1,15 @@
 open Std
 open Kast_util
 
+(* let a = 2 *)
+
 type name = { raw : string }
 
 let gen_name prefix : name =
   let id = Id.gen () in
   { raw = make_string "%s_%d" prefix id.value }
 
-type expr =
+type expr_shape =
   | Undefined
   | Null
   | Bool of bool
@@ -43,6 +45,11 @@ type expr =
       rhs : expr;
     }
 
+and expr = {
+  shape : expr_shape;
+  span : span option;
+}
+
 and bin_op =
   | And
   | Or
@@ -62,7 +69,7 @@ and obj_part =
     }
   | Unpack of expr
 
-and stmt =
+and stmt_shape =
   | Expr of expr
   | Let of {
       var : name;
@@ -92,6 +99,11 @@ and stmt =
     }
   | Raw of string
 
+and stmt = {
+  shape : stmt_shape;
+  span : span option;
+}
+
 module Precedence = struct
   type t =
     | None
@@ -112,130 +124,174 @@ module Precedence = struct
     | Not
 end
 
-let print_cmp_op fmt op =
-  fprintf fmt "%s"
-    (match op with
-    | Less -> "<"
-    | LessOrEqual -> "<="
-    | Equal -> "==="
-    | NotEqual -> "!=="
-    | GreaterOrEqual -> ">="
-    | Greater -> ">")
+let write = Writer.write_string
+let write_spanned = Writer.write_spanned
 
-let print_bin_op fmt op =
-  fprintf fmt "%s"
-    (match op with
-    | And -> "&&"
-    | Or -> "||")
+let write_maybe_spanned span f writer =
+  match span with
+  | None -> f ()
+  | Some span -> write_spanned span f writer
 
-let rec print_expr ~(precedence : Precedence.t) fmt expr =
-  let surround_with_parens = true in
-  if surround_with_parens then fprintf fmt "(";
-  (match expr with
-  | Raw s -> fprintf fmt "@{<cyan>%s@}" s
-  | Undefined -> fprintf fmt "@{<magenta>undefined@}"
-  | Null -> fprintf fmt "@{<magenta>null@}"
-  | Bool b -> fprintf fmt "@{<magenta>%b@}" b
-  | Number x -> fprintf fmt "@{<italic>%g@}" x
-  | String s -> fprintf fmt "@{<green>%S@}" s
-  | List a ->
-      fprintf fmt "[";
-      a
-      |> List.iteri (fun i x ->
-          if i <> 0 then fprintf fmt ",";
-          print_expr ~precedence:FnArg fmt x);
-      fprintf fmt "]"
-  | Var name -> print_name fmt name
-  | Fn { async; args; body } ->
-      if async then fprintf fmt "@{<magenta>async@} ";
-      fprintf fmt "(";
-      args
-      |> List.iteri (fun i name ->
-          if i <> 0 then fprintf fmt ",";
-          print_name fmt name);
-      fprintf fmt ") => {%a}" print_stmts body
-  | Call { async; f; args } ->
-      if async then fprintf fmt "@{<magenta>await@} ";
-      fprintf fmt "%a(" (print_expr ~precedence:CalledFn) f;
-      args
-      |> List.iteri (fun i arg ->
-          if i <> 0 then fprintf fmt ",";
-          print_expr ~precedence:FnArg fmt arg);
-      fprintf fmt ")"
-  | Obj fields ->
-      fprintf fmt "{";
-      fields
-      |> List.iteri (fun i part ->
-          if i <> 0 then fprintf fmt ",";
-          print_obj_part fmt part);
-      fprintf fmt "}"
-  | Field { obj; field } ->
-      fprintf fmt "%a[%S]" (print_expr ~precedence:Obj) obj field
-  | Not expr -> fprintf fmt "!%a" (print_expr ~precedence:Not) expr
-  | Compare { op; lhs; rhs } ->
-      fprintf fmt "%a %a %a"
-        (print_expr ~precedence:CmpArg)
-        lhs print_cmp_op op
-        (print_expr ~precedence:CmpArg)
-        rhs
-  | BinOp { op; lhs; rhs } ->
-      fprintf fmt "%a %a %a"
-        (print_expr ~precedence:BinOpArg)
-        lhs print_bin_op op
-        (print_expr ~precedence:BinOpArg)
-        rhs);
-  if surround_with_parens then fprintf fmt ")"
+let print_cmp_op writer op =
+  writer
+  |> write
+       (match op with
+       | Less -> "<"
+       | LessOrEqual -> "<="
+       | Equal -> "==="
+       | NotEqual -> "!=="
+       | GreaterOrEqual -> ">="
+       | Greater -> ">")
 
-and print_obj_part fmt = function
+let print_bin_op writer op =
+  writer
+  |> write
+       (match op with
+       | And -> "&&"
+       | Or -> "||")
+
+let rec print_expr ~(precedence : Precedence.t) (writer : Writer.t)
+    (expr : expr) =
+  writer
+  |> write_maybe_spanned expr.span (fun () ->
+      let surround_with_parens = true in
+      if surround_with_parens then writer |> write "(";
+      (match expr.shape with
+      | Raw s -> writer |> write s
+      | Undefined -> writer |> write "undefined"
+      | Null -> writer |> write "null"
+      | Bool b ->
+          writer
+          |> write
+               (match b with
+               | true -> "true"
+               | false -> "false")
+      | Number x -> writer |> write (make_string "%g" x)
+      | String s -> writer |> write (make_string "%S" s)
+      | List a ->
+          writer |> write "[";
+          a
+          |> List.iteri (fun i x ->
+              if i <> 0 then writer |> write ",";
+              print_expr ~precedence:FnArg writer x);
+          writer |> write "]"
+      | Var name -> print_name writer name
+      | Fn { async; args; body } ->
+          if async then writer |> write "async ";
+          writer |> write "(";
+          args
+          |> List.iteri (fun i name ->
+              if i <> 0 then writer |> write ",";
+              print_name writer name);
+          writer |> write ") => {";
+          print_stmts writer body;
+          writer |> write "}"
+      | Call { async; f; args } ->
+          if async then writer |> write "await ";
+          print_expr ~precedence:CalledFn writer f;
+          writer |> write "(";
+          args
+          |> List.iteri (fun i arg ->
+              if i <> 0 then writer |> write ",";
+              print_expr ~precedence:FnArg writer arg);
+          writer |> write ")"
+      | Obj fields ->
+          writer |> write "{";
+          fields
+          |> List.iteri (fun i part ->
+              if i <> 0 then writer |> write ",";
+              print_obj_part writer part);
+          writer |> write "}"
+      | Field { obj; field } ->
+          print_expr ~precedence:Obj writer obj;
+          writer |> write "[";
+          writer |> write (make_string "%S" field);
+          writer |> write "]"
+      | Not expr ->
+          writer |> write "!";
+          print_expr ~precedence:Not writer expr
+      | Compare { op; lhs; rhs } ->
+          print_expr ~precedence:CmpArg writer lhs;
+          print_cmp_op writer op;
+          print_expr ~precedence:CmpArg writer rhs
+      | BinOp { op; lhs; rhs } ->
+          print_expr ~precedence:BinOpArg writer lhs;
+          print_bin_op writer op;
+          print_expr ~precedence:BinOpArg writer rhs);
+      if surround_with_parens then writer |> write ")")
+
+and print_obj_part writer = function
   | Field { name; value } ->
-      fprintf fmt "%S: %a" name (print_expr ~precedence:Field) value
-  | Unpack packed -> fprintf fmt "...%a" (print_expr ~precedence:Unpack) packed
+      writer |> write (make_string "%S" name);
+      writer |> write ":";
+      print_expr ~precedence:Field writer value
+  | Unpack packed ->
+      writer |> write "...";
+      print_expr ~precedence:Unpack writer packed
 
-and print_stmts fmt stmts =
-  stmts |> List.iter (fun stmt -> fprintf fmt "%a;" print_stmt stmt)
+and print_stmts writer (stmts : stmt list) =
+  stmts
+  |> List.iter (fun stmt ->
+      print_stmt writer stmt;
+      writer |> write ";")
 
-and print_stmt fmt = function
-  | Expr e -> print_expr ~precedence:Stmt fmt e
-  | Return e ->
-      fprintf fmt "@{<magenta>return@} %a" (print_expr ~precedence:Returned) e
-  | Let { var; value } ->
-      fprintf fmt "@{<magenta>let@} %a = %a" print_name var
-        (print_expr ~precedence:Assigned)
-        value
-  | Assign { assignee; value } ->
-      fprintf fmt "%a = %a"
-        (print_expr ~precedence:Assignee)
-        assignee
-        (print_expr ~precedence:Assigned)
-        value
-  | Try { body; catch_var; catch_body } ->
-      fprintf fmt "@{<magenta>try@} {%a} catch (%a) {%a}" print_stmts body
-        print_name catch_var print_stmts catch_body
-  | Throw expr ->
-      fprintf fmt "@{<magenta>throw@} %a" (print_expr ~precedence:Raised) expr
-  | If { condition; then_case; else_case } -> (
-      fprintf fmt "@{<magenta>if@} %a {%a}"
-        (print_expr ~precedence:IfCondition)
-        condition print_stmts then_case;
-      match else_case with
-      | None -> ()
-      | Some else_case ->
-          fprintf fmt " @{<magenta>else@} {%a}" print_stmts else_case)
-  | For { init; cond; after; body } ->
-      fprintf fmt "@{<magenta>for@} (%a;%a;%a) {%a}"
-        (maybe_print (print_expr ~precedence:ForArg))
-        init
-        (maybe_print (print_expr ~precedence:ForArg))
-        cond
-        (maybe_print (print_expr ~precedence:ForArg))
-        after print_stmts body
-  | Raw s -> fprintf fmt "%s" s
+and print_stmt writer (stmt : stmt) =
+  writer
+  |> write_maybe_spanned stmt.span (fun () ->
+      match stmt.shape with
+      | Expr e -> print_expr ~precedence:Stmt writer e
+      | Return e ->
+          writer |> write "return ";
+          print_expr ~precedence:Returned writer e
+      | Let { var; value } ->
+          writer |> write "let ";
+          print_name writer var;
+          writer |> write " = ";
+          print_expr ~precedence:Assigned writer value
+      | Assign { assignee; value } ->
+          print_expr ~precedence:Assignee writer assignee;
+          writer |> write " = ";
+          print_expr ~precedence:Assigned writer value
+      | Try { body; catch_var; catch_body } ->
+          writer |> write "try {";
+          print_stmts writer body;
+          writer |> write "} catch (";
+          print_name writer catch_var;
+          writer |> write ") {";
+          print_stmts writer catch_body;
+          writer |> write "}"
+      | Throw expr ->
+          writer |> write "throw ";
+          print_expr ~precedence:Raised writer expr
+      | If { condition; then_case; else_case } -> (
+          writer |> write "if (";
+          print_expr ~precedence:IfCondition writer condition;
+          writer |> write ") {";
+          print_stmts writer then_case;
+          writer |> write "}";
+          match else_case with
+          | None -> ()
+          | Some else_case ->
+              writer |> write " else {";
+              print_stmts writer else_case;
+              writer |> write "}")
+      | For { init; cond; after; body } ->
+          writer |> write "for (";
+          maybe_print (print_expr ~precedence:ForArg) writer init;
+          writer |> write ";";
+          maybe_print (print_expr ~precedence:ForArg) writer cond;
+          writer |> write ";";
+          maybe_print (print_expr ~precedence:ForArg) writer after;
+          writer |> write ") {";
+          print_stmts writer body;
+          writer |> write "}"
+      | Raw s -> writer |> write s)
 
-and maybe_print :
-    'a. (formatter -> 'a -> unit) -> formatter -> 'a option -> unit =
- fun f fmt opt ->
+and maybe_print : 'a. (Writer.t -> 'a -> unit) -> Writer.t -> 'a option -> unit
+    =
+ fun f writer opt ->
   match opt with
   | None -> ()
-  | Some x -> f fmt x
+  | Some x -> f writer x
 
-and print_name fmt name = fprintf fmt "%s" name.raw
+and print_name writer name = writer |> write name.raw

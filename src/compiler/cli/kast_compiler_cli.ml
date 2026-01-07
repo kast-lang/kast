@@ -96,6 +96,15 @@ let run : Args.t -> unit =
             Kast_transpiler_javascript.transpile_expr
               ~state:compiler.interpreter ~span:ast.span expr
           in
-          fprintf fmt "%t" transpiled.print));
+          let source_map_path =
+            match output with
+            | None -> "target/source.map"
+            | Some path -> path ^ ".map"
+          in
+          let writer =
+            Kast_transpiler_javascript.Writer.init fmt source_map_path
+          in
+          transpiled.print writer;
+          writer |> Kast_transpiler_javascript.Writer.finish));
   close_out out;
   run_formatter_if_needed args
