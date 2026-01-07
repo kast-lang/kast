@@ -8,24 +8,17 @@ module Target = Kast_compiler_targets.Target
 
 module Args = struct
   type args = {
-    path : Uri.t option;
-    no_std : bool;
-    target : Target.t;
+    compiler : Kast_compiler_cli.Args.t;
+    argv : string list;
   }
 
   type t = args
 
-  let default_target = Target.Ir
-
-  let rec parse : string list -> args = function
-    | [] -> { path = None; no_std = false; target = default_target }
-    | "--no-std" :: rest -> { (parse rest) with no_std = true }
-    | "--target" :: target :: rest ->
-        let target = Target.parse target in
-        { (parse rest) with target }
-    | path :: _rest as argv ->
-        Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
-        { path = Some (Uri.file path); no_std = false; target = default_target }
+  let parse : string list -> args =
+   fun args ->
+    let compiler, ~rest = Kast_compiler_cli.Args.parse args in
+    let argv = rest in
+    { compiler; argv }
 end
 
 type evaled = {
@@ -50,14 +43,12 @@ let init_compiler_interpreter ~no_std name_part =
     (compiler, interpreter)
 
 let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
- fun f { path; no_std; target } ->
+ fun f
+     { compiler = { path; no_std; target; output = _; formatter = _ }; argv } ->
+  Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
   if target <> Ir then fail "Unsupported evaluation target";
-  let name_part : Types.name_part =
-    match path with
-    | Some path -> Uri path
-    | None -> Str "<stdin>"
-  in
-  let source = Source.read (path |> Option.value ~default:Uri.stdin) in
+  let name_part : Types.name_part = Uri path in
+  let source = Source.read path in
   let parsed = Parser.parse source Kast_default_syntax.ruleset in
   match parsed.ast with
   | None -> f None
@@ -72,45 +63,33 @@ let eval =
     | Some { value; _ } -> println "%a" Value.print value
     | None -> println "<none>")
 
-let run ({ path; no_std; target } as args : Args.t) =
-  match target with
+let run ({ compiler; argv } as args : Args.t) =
+  match compiler.target with
   | Ir -> eval_and ignore args
   | JavaScript ->
-      let name_part : Types.name_part =
-        match path with
-        | Some path -> Uri path
-        | None -> Str "<stdin>"
+      let path =
+        match compiler.output with
+        | Some path -> path
+        | None -> "target/compiled.js"
       in
-      let source = Source.read (path |> Option.value ~default:Uri.stdin) in
-      let parsed = Parser.parse source Kast_default_syntax.ruleset in
-      let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
-      let js =
-        match parsed.ast with
-        | None -> ""
-        | Some ast ->
-            let expr : expr = Compiler.compile compiler Expr ast in
-            let transpiled =
-              Kast_transpiler_javascript.transpile_expr ~state:interpreter
-                ~span:expr.data.span expr
-            in
-            make_string "%t" transpiled.print
-      in
-      let path = "target/compiled.js" in
-      create_dir_all (Filename.dirname path);
-      let oc = open_out path in
-      output_string oc js;
-      close_out oc;
-      let exit_code = Sys.command ("node " ^ path) in
-      if exit_code <> 0 then (
-        eprintln "@{<red>exit code %d@}" exit_code;
-        exit exit_code)
+      Kast_compiler_cli.run { args.compiler with output = Some path };
+      let node_args = path :: argv in
+      Log.info (fun log ->
+          log "Launching node with args %a"
+            (List.print String.print_maybe_escaped)
+            node_args);
+      Unix.execvp "node" (Array.of_list ("node" :: node_args))
 
-let repl ({ path; no_std; target = _ } as args : Args.t) =
+let repl
+    ({
+       compiler = { path; no_std; target = _; output = _; formatter = _ };
+       argv;
+     } as args :
+      Args.t) =
   let evaled =
-    match path with
-    | Some _ -> args |> eval_and (fun result -> result)
-    | None -> None
+    if path = Uri.stdin then None else args |> eval_and (fun result -> result)
   in
+  Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
   let compiler, interpreter =
     match evaled with
     | Some { compiler; interpreter; value = _ } -> (compiler, interpreter)

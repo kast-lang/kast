@@ -112,6 +112,7 @@
             rlwrap
             memtrace_viewer
             valgrind
+            prettier
           ]);
           shellHook = ''
             echo 'Hello from Kast devshell'

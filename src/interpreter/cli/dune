@@ -6,4 +6,5 @@
   kast_interpreter
   kast_compiler
   kast_default_syntax
-  kast_compiler_targets))
+  kast_compiler_targets
+  kast_compiler_cli))

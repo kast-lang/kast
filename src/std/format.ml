@@ -99,7 +99,6 @@ module Format = struct
     | "white_bg" -> ("47", "49")
     | "gray_bg" -> ("100", "49")
     | name -> invalid_arg @@ "ansi_escape " ^ name
-  ;;
 
   let tag_functions ~tty : formatter_stag_functions =
     if tty then
@@ -127,13 +126,15 @@ module Format = struct
         print_open_stag = ignore;
         print_close_stag = ignore;
       }
-  in
-  pp_set_formatter_stag_functions std_formatter
-    (tag_functions ~tty:(Unix.isatty @@ Unix.descr_of_out_channel stdout));
-  pp_set_formatter_stag_functions err_formatter
-    (tag_functions ~tty:(Unix.isatty @@ Unix.descr_of_out_channel stderr));
-  pp_set_tags std_formatter true;
-  pp_set_tags err_formatter true
+
+  let setup_tty_if_needed fmt out =
+    pp_set_formatter_stag_functions fmt
+      (tag_functions ~tty:(Unix.isatty @@ Unix.descr_of_out_channel out));
+    pp_set_tags fmt true
+
+  let () =
+    setup_tty_if_needed std_formatter stdout;
+    setup_tty_if_needed err_formatter stderr
 end
 
 type formatter = Format.formatter

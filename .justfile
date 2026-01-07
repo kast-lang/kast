@@ -24,6 +24,4 @@ test-aoc:
     KAST_STD=$(pwd)/std kast ${AOC:-~/projects/aoc2025/test.ks}
 
 run-js path *args:
-    kast compile --target javascript {{path}} > target/test.js
-    npx prettier --write target/test.js --ignore-path /dev/null
-    node target/test.js {{args}}
+    kast run --format prettier --target javascript {{path}} {{args}}
