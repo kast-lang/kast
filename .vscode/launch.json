@@ -4,10 +4,11 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Debug Kast Output",
+            "name": "Debug Kast (JavaScript)",
+            "preLaunchTask": "Compile to JavaScript",
             "program": "${workspaceFolder}/target/compiled.js",
             "sourceMaps": true,
-            // "console": "integratedTerminal"
+            "console": "integratedTerminal"
         }
     ]
 }

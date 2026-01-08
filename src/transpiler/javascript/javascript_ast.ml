@@ -3,11 +3,19 @@ open Kast_util
 
 (* let a = 2 *)
 
-type name = { raw : string }
+type original_name = {
+  raw : string;
+  span : span;
+}
 
-let gen_name prefix : name =
+type name = {
+  raw : string;
+  original : original_name option;
+}
+
+let gen_name ~original prefix : name =
   let id = Id.gen () in
-  { raw = make_string "%s_%d" prefix id.value }
+  { raw = make_string "%s_%d" prefix id.value; original }
 
 type expr_shape =
   | Undefined
@@ -294,4 +302,10 @@ and maybe_print : 'a. (Writer.t -> 'a -> unit) -> Writer.t -> 'a option -> unit
   | None -> ()
   | Some x -> f writer x
 
-and print_name writer name = writer |> write name.raw
+and print_name writer name =
+  match name.original with
+  | Some original ->
+      writer
+      |> Writer.write_name ~original_name:original.raw ~span:original.span
+           name.raw
+  | None -> writer |> Writer.write_string name.raw

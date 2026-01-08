@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compile to JavaScript",
+            "type": "shell",
+            "command": "direnv exec . kast compile --target javascript --output target/compiled.js ${file}",
+            "group": "build"
+        }
+    ]
+}
