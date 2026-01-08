@@ -117,6 +117,15 @@ let finish (writer : t) : unit =
         fprintf fmt "%S" (Uri.to_string source));
     fprintf fmt "]"
   in
+  let print_sources_content fmt =
+    fprintf fmt "[";
+    writer.sources
+    |> List.iteri (fun i source ->
+        if i <> 0 then fprintf fmt ",";
+        let source = Source.read source in
+        fprintf fmt "%S" source.contents);
+    fprintf fmt "]"
+  in
   let print_names fmt =
     fprintf fmt "[";
     writer.names
@@ -125,8 +134,9 @@ let finish (writer : t) : unit =
         fprintf fmt "%S" name);
     fprintf fmt "]"
   in
-  fprintf fmt "{\"version\":3,\"sources\":%t,\"names\":%t,\"mappings\":%S}"
-    print_sources print_names mappings;
+  fprintf fmt
+    "{\"version\":3,\"sources\":%t,\"sourcesContent\":%t,\"names\":%t,\"mappings\":%S}"
+    print_sources print_sources_content print_names mappings;
   Format.pp_print_flush fmt ();
   close_out out;
   fprintf writer.fmt "\n//# sourceMappingURL=%s\n//"
