@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"module": "esnext",
+		"moduleResolution": "node",
+		"target": "ES2022",
+		"lib": [
+			"ES2022",
+			"DOM"
+		],
+		"sourceMap": false,
+		"rootDir": ".",
+		"strict": true,
+		"noFallthroughCasesInSwitch": true,
+	},
+}

@@ -5,3 +5,9 @@
   (file runtime.js))
  (preprocess
   (pps ppx_blob)))
+
+(rule
+ (targets runtime.js)
+ (deps tsconfig.json runtime.ts)
+ (action
+  (run tsc)))

@@ -1260,14 +1260,10 @@ let with_ctx ~state ~span f =
   let result_var = JsAst.gen_name ~original:None "result" in
   let ast : JsAst.expr =
     Impl.scope
-      ([
-         ({ shape = JsAst.Raw [%blob "./runtime.js"]; span = None }
-           : JsAst.stmt);
-       ]
-      @ ctx.mut.prepend
+      (ctx.mut.prepend
       @ [
           { shape = Let { var = result_var; value = result }; span = None };
-          { shape = Raw "Kast.cleanup()"; span = None };
+          { shape = Raw "await Kast.cleanup()"; span = None };
           {
             shape = Return { shape = Var result_var; span = None };
             span = None;
@@ -1280,7 +1276,12 @@ let with_ctx ~state ~span f =
         { shape = Call { async = false; f; args }; span = ast.span }
     | _ -> failwith __LOC__
   in
-  { print = (fun writer -> JsAst.print_expr ~precedence:None writer ast) }
+  {
+    print =
+      (fun writer ->
+        writer |> Writer.write_string [%blob "./runtime.js"];
+        JsAst.print_expr ~precedence:None writer ast);
+  }
 
 let transpile_value : state:interpreter_state -> span:span -> value -> result =
  fun ~state ~span value ->

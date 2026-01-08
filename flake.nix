@@ -95,7 +95,7 @@
             # '')
             (pkgs.writeShellScriptBin "kast" ''
               systemd-run --user --scope -p MemoryMax=10G \
-                rlwrap dune exec kast -- "$@"
+                dune exec kast -- "$@"
             '')
             # (pkgs.writeShellScriptBin "kast" ''
             #   dune build
@@ -113,6 +113,8 @@
             memtrace_viewer
             valgrind
             prettier
+            typescript
+            esbuild
           ]);
           shellHook = ''
             echo 'Hello from Kast devshell'

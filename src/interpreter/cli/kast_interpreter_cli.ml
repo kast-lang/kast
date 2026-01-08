@@ -70,7 +70,7 @@ let run ({ compiler; argv } as args : Args.t) =
       let path =
         match compiler.output with
         | Some path -> path
-        | None -> "target/compiled.js"
+        | None -> "target/compiled.mjs"
       in
       Kast_compiler_cli.run { args.compiler with output = Some path };
       let node_args = path :: argv in
