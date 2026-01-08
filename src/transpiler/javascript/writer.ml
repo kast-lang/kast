@@ -18,7 +18,7 @@ type t = {
 
 let add_to_source_map (start : position) (_finish : position) (span : span)
     (writer : t) : unit =
-  Log.info (fun log ->
+  Log.trace (fun log ->
       log "ADD TO SOURCE MAP %a %a" Position.print start Span.print span);
   let uri = span.uri in
   let source_idx =
