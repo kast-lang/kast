@@ -30,7 +30,9 @@ const Kast = await (async () => {
     if (isBrowser) {
       return {
         dbg: {
-          async print(value: Value) {},
+          async print(value: Value) {
+            console.debug(value);
+          },
         },
         io: {
           async input(p: string) {
