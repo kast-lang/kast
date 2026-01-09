@@ -205,6 +205,7 @@ const Kast = await (async () => {
       add: async (args: { 0: Value; 1: Value }) => args["0"] + args["1"],
       sub: async (args: { 0: Value; 1: Value }) => args["0"] - args["1"],
       mul: async (args: { 0: Value; 1: Value }) => args["0"] * args["1"],
+      rem: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs % rhs,
       div_temp: async ({
         0: T,
         1: lhs,
@@ -218,6 +219,14 @@ const Kast = await (async () => {
         return Math.floor(lhs / rhs);
       },
       neg: async (x: Value) => -x,
+      bit_and: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs & rhs,
+      bit_or: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs | rhs,
+      bit_xor: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs ^ rhs,
+      bit_not: async (x: Value) => ~x,
+      bit_shift_left: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) =>
+        lhs << rhs,
+      bit_shift_right: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) =>
+        lhs >> rhs,
     },
     Char: {
       code: async (c: string) => c.charCodeAt(0),
