@@ -7,9 +7,11 @@ module Base64_vlq = Base64_vlq
 module Writer = Writer
 
 type mutable_ctx = {
-  mutable values : JsAst.name ValueMap.t;
+  mutable captured_values : JsAst.name ValueMap.t;
+  mutable captured_places : JsAst.name Id.Map.t;
   mutable symbols : JsAst.name Id.Map.t;
   mutable prepend : JsAst.stmt list;
+  mutable prepend_late : JsAst.stmt list;
 }
 
 type ctx = {
@@ -162,15 +164,13 @@ module Impl = struct
    fun value ->
     let ctx = Effect.perform GetCtx in
     Inference.Var.setup_default_if_needed value.var;
-    let value_shape = value.var |> Inference.Var.inferred_opt in
-    match value_shape with
-    | None -> not_inferred value.var
+    match value.var |> Inference.Var.inferred_opt with
     | Some (V_Blocked value) -> value |> transpile_blocked
-    | Some value_shape ->
+    | _ ->
         let value_name = ref None in
         let do_prepend = ref false in
-        ctx.mut.values <-
-          ctx.mut.values
+        ctx.mut.captured_values <-
+          ctx.mut.captured_values
           |> ValueMap.update value (fun name ->
               let name =
                 match name with
@@ -192,7 +192,11 @@ module Impl = struct
                   JsAst.Let
                     {
                       var = value_name;
-                      value = value_shape |> transpile_value_shape;
+                      value =
+                        (match value.var |> Inference.Var.inferred_opt with
+                        | None -> not_inferred value.var
+                        | Some value_shape ->
+                            value_shape |> transpile_value_shape);
                     };
                 span = None;
               };
@@ -481,7 +485,7 @@ module Impl = struct
       | A_Unit -> []
       | A_Tuple _ -> failwith __LOC__
       | A_Place assignee_place ->
-          let assignee_place = transpile_place assignee_place in
+          let assignee_place = transpile_place_expr assignee_place in
           [
             {
               shape =
@@ -600,7 +604,40 @@ module Impl = struct
         span = None;
       }
 
-  and transpile_place : place_expr -> JsAst.expr =
+  and transpile_place : place -> JsAst.expr =
+   fun captured_place ->
+    let ctx = Effect.perform GetCtx in
+    let value = Kast_interpreter.read_place ~span:ctx.span captured_place in
+    match value.var |> Inference.Var.inferred_opt with
+    | Some (V_Blocked blocked) -> place_of (transpile_blocked blocked)
+    | _ ->
+        let var =
+          match
+            ctx.mut.captured_places |> Id.Map.find_opt captured_place.id
+          with
+          | Some name -> name
+          | None ->
+              let value_name = JsAst.gen_name ~original:None "place_value" in
+              let place_name = JsAst.gen_name ~original:None "place" in
+              ctx.mut.captured_places <-
+                ctx.mut.captured_places
+                |> Id.Map.add captured_place.id place_name;
+              let place = place_of { shape = Var value_name; span = None } in
+              prepend
+                [
+                  {
+                    shape = Let { var = place_name; value = place };
+                    span = None;
+                  };
+                ];
+              let value = transpile_value value in
+              prepend_late
+                [ { shape = Let { var = value_name; value }; span = None } ];
+              place_name
+        in
+        { shape = Var var; span = None }
+
+  and transpile_place_expr : place_expr -> JsAst.expr =
    fun expr ->
     let span = Some expr.data.span in
     try
@@ -610,10 +647,7 @@ module Impl = struct
           match
             ctx.captured |> Kast_interpreter.Scope.find_opt binding.name
           with
-          | Some place ->
-              place_of
-                (transpile_value
-                   (Kast_interpreter.read_place ~span:ctx.span place))
+          | Some place -> transpile_place place
           | None ->
               place_of
                 {
@@ -630,7 +664,10 @@ module Impl = struct
           in
           scope
             [
-              { shape = JsAst.Let { var; value = transpile_place obj }; span };
+              {
+                shape = JsAst.Let { var; value = transpile_place_expr obj };
+                span;
+              };
               {
                 shape =
                   JsAst.Return
@@ -677,7 +714,10 @@ module Impl = struct
       | E_Assign { assignee; value } ->
           let var = JsAst.gen_name ~original:None "var" in
           [
-            ({ shape = JsAst.Let { var; value = transpile_place value }; span }
+            ({
+               shape = JsAst.Let { var; value = transpile_place_expr value };
+               span;
+             }
               : JsAst.stmt);
           ]
           @ assign assignee { shape = JsAst.Var var; span }
@@ -769,6 +809,10 @@ module Impl = struct
   and prepend (stmts : JsAst.stmt list) : unit =
     let ctx = Effect.perform GetCtx in
     ctx.mut.prepend <- ctx.mut.prepend @ stmts
+
+  and prepend_late (stmts : JsAst.stmt list) : unit =
+    let ctx = Effect.perform GetCtx in
+    ctx.mut.prepend_late <- ctx.mut.prepend_late @ stmts
 
   and impl_cast ~value ~target ~impl : JsAst.stmt list =
     [
@@ -893,8 +937,8 @@ module Impl = struct
       let ctx = Effect.perform GetCtx in
       match expr.shape with
       | E_Constant value -> transpile_value value
-      | E_Ref { mut; place } -> transpile_place place
-      | E_Claim expr -> transpile_place expr |> claim
+      | E_Ref { mut; place } -> transpile_place_expr place
+      | E_Claim expr -> transpile_place_expr expr |> claim
       | E_Then { list } ->
           let body =
             list
@@ -1060,7 +1104,8 @@ module Impl = struct
                ref
                  [
                    ({
-                      shape = JsAst.Let { var; value = transpile_place value };
+                      shape =
+                        JsAst.Let { var; value = transpile_place_expr value };
                       span;
                     }
                      : JsAst.stmt);
@@ -1231,7 +1276,14 @@ let with_ctx ~state ~span f =
     {
       interpreter = state;
       captured = state.scope;
-      mut = { values = ValueMap.empty; symbols = Id.Map.empty; prepend = [] };
+      mut =
+        {
+          captured_values = ValueMap.empty;
+          captured_places = Id.Map.empty;
+          symbols = Id.Map.empty;
+          prepend = [];
+          prepend_late = [];
+        };
       span;
       target = { name = "javascript" };
     }
@@ -1260,7 +1312,7 @@ let with_ctx ~state ~span f =
   let result_var = JsAst.gen_name ~original:None "result" in
   let ast : JsAst.expr =
     Impl.scope
-      (ctx.mut.prepend
+      (ctx.mut.prepend @ ctx.mut.prepend_late
       @ [
           { shape = Let { var = result_var; value = result }; span = None };
           { shape = Raw "await Kast.cleanup()"; span = None };
