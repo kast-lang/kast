@@ -1,10 +1,10 @@
 module:
 
-const KV = [K, V] type (
+const KV = [K, V] newtype (
     .key :: K,
     .value :: V,
 );
-const t = [K, V] type (
+const t = [K, V] newtype (
     .inner :: Treap.t[KV[K, V]],
 );
 const create = [K, V] () -> Map.t[K, V] => (
