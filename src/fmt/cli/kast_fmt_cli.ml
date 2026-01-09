@@ -4,10 +4,10 @@ open Kast_highlight
 module Parser = Kast_parser
 
 module Args = struct
-  type args = {
-    path : Uri.t;
-    hl_output : Kast_highlight.output option;
-  }
+  type args =
+    { path : Uri.t
+    ; hl_output : Kast_highlight.output option
+    }
 
   type t = args
 
@@ -20,29 +20,30 @@ module Args = struct
     | [ "--highlight"; "none" ] -> { path = Uri.stdin; hl_output = None }
     | [ "--highlight"; "html" ] -> { path = Uri.stdin; hl_output = Some Html }
     | [ "--highlight"; ("term" | "terminal") ] ->
-        { path = Uri.stdin; hl_output = Some Term }
+      { path = Uri.stdin; hl_output = Some Term }
     | [ "--highlight"; output ] ->
-        fail
-          "Unexpected highlight output '%S', only 'html', 'term' or 'none' are allowed"
-          output
+      fail
+        "Unexpected highlight output '%S', only 'html', 'term' or 'none' are allowed"
+        output
     (* file, --highlight specified *)
     | [ "--highlight"; "none"; path ] | [ path; "--highlight"; "none" ] ->
-        { path = Uri.file path; hl_output = None }
+      { path = Uri.file path; hl_output = None }
     | [ "--highlight"; "html"; path ] | [ path; "--highlight"; "html" ] ->
-        { path = Uri.file path; hl_output = Some Html }
+      { path = Uri.file path; hl_output = Some Html }
     | [ "--highlight"; ("term" | "terminal"); path ]
     | [ path; "--highlight"; ("term" | "terminal") ] ->
-        { path = Uri.file path; hl_output = Some Term }
+      { path = Uri.file path; hl_output = Some Term }
     | [ "--highlight"; output; _ ] ->
-        fail
-          "Unexpected highlight output '%S', only 'html', 'term' or 'none' are allowed"
-          output
+      fail
+        "Unexpected highlight output '%S', only 'html', 'term' or 'none' are allowed"
+        output
     | first :: _rest ->
-        fail "Unexpected arg %S, expecting filename or option --highlight" first
+      fail "Unexpected arg %S, expecting filename or option --highlight" first
+  ;;
 end
 
 let run : Args.t -> unit =
- fun { path; hl_output } ->
+  fun { path; hl_output } ->
   let source = Source.read path in
   let ruleset = Kast_default_syntax.ruleset in
   let parsed = Parser.parse source ruleset in
@@ -50,15 +51,14 @@ let run : Args.t -> unit =
   let formatted = Format.flush_str_formatter () in
   match hl_output with
   | Some output ->
-      let parsed =
-        Parser.parse
-          { contents = formatted; uri = Uri.of_string "ocaml:formatted" }
-          ruleset
-      in
-      let highlight_print =
-        match output with
-        | Term -> (module Term : Output)
-        | Html -> (module Html : Output)
-      in
-      Kast_highlight.print highlight_print Format.std_formatter parsed
+    let parsed =
+      Parser.parse { contents = formatted; uri = Uri.of_string "ocaml:formatted" } ruleset
+    in
+    let highlight_print =
+      match output with
+      | Term -> (module Term : Output)
+      | Html -> (module Html : Output)
+    in
+    Kast_highlight.print highlight_print Format.std_formatter parsed
   | None -> Format.printf "%s" formatted
+;;

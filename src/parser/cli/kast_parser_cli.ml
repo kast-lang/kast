@@ -11,10 +11,11 @@ module Args = struct
     | [] -> { path = Uri.stdin }
     | [ path ] -> { path = Uri.file path }
     | first :: _rest -> fail "Unexpected arg %S" first
+  ;;
 end
 
 let run : Args.t -> unit =
- fun { path } ->
+  fun { path } ->
   let source = Source.read path in
   let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse source Kast_default_syntax.ruleset
@@ -22,3 +23,4 @@ let run : Args.t -> unit =
   match ast with
   | Some ast -> println "%a" Ast.print ast
   | None -> println "@{<dim;italic><nothing>@}"
+;;

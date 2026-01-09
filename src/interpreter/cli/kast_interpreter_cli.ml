@@ -7,51 +7,51 @@ open Kast_types
 module Target = Kast_compiler_targets.Target
 
 module Args = struct
-  type args = {
-    compiler : Kast_compiler_cli.Args.t;
-    argv_except_program : string list;
-  }
+  type args =
+    { compiler : Kast_compiler_cli.Args.t
+    ; argv_except_program : string list
+    }
 
   type t = args
 
   let parse : string list -> args =
-   fun args ->
+    fun args ->
     let compiler, ~rest = Kast_compiler_cli.Args.parse args in
     { compiler; argv_except_program = rest }
+  ;;
 end
 
-type evaled = {
-  value : value;
-  compiler : Compiler.state;
-  interpreter : Interpreter.state;
-}
+type evaled =
+  { value : value
+  ; compiler : Compiler.state
+  ; interpreter : Interpreter.state
+  }
 
 let init_compiler_interpreter ~no_std name_part =
-  if no_std then
+  if no_std
+  then (
     let interpreter = Interpreter.default name_part in
     let compiler =
-      Compiler.init
-        ~import_cache:(Compiler.init_import_cache ())
-        ~compile_for:interpreter
+      Compiler.init ~import_cache:(Compiler.init_import_cache ()) ~compile_for:interpreter
     in
-    (compiler, interpreter)
-  else
+    compiler, interpreter)
+  else (
     let compiler = Compiler.default name_part () in
     (* TODO *)
     let interpreter = compiler.interpreter in
-    (compiler, interpreter)
+    compiler, interpreter)
+;;
 
 let setup_interpreter_argv (args : Args.t) =
-  Kast_interpreter.Natives.Sys.argv :=
-    Uri.to_string args.compiler.path :: args.argv_except_program
-    |> Array.of_list
+  Kast_interpreter.Natives.Sys.argv
+  := Uri.to_string args.compiler.path :: args.argv_except_program |> Array.of_list
+;;
 
 let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
- fun f
-     ({
-        compiler = { path; no_std; target; output = _; formatter = _ };
-        argv_except_program = _;
-      } as args) ->
+  fun f
+    ({ compiler = { path; no_std; target; output = _; formatter = _ }
+     ; argv_except_program = _
+     } as args) ->
   setup_interpreter_argv args;
   if target <> Ir then fail "Unsupported evaluation target";
   let name_part : Types.name_part = Uri path in
@@ -60,46 +60,47 @@ let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
   match parsed.ast with
   | None -> f None
   | Some ast ->
-      let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
-      let expr : expr = Compiler.compile compiler Expr ast in
-      let value : value = Interpreter.eval interpreter expr in
-      f (Some { compiler; interpreter; value })
+    let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
+    let expr : expr = Compiler.compile compiler Expr ast in
+    let value : value = Interpreter.eval interpreter expr in
+    f (Some { compiler; interpreter; value })
+;;
 
 let eval =
   eval_and (function
     | Some { value; _ } -> println "%a" Value.print value
     | None -> println "<none>")
+;;
 
 let run ({ compiler; argv_except_program } as args : Args.t) =
   match compiler.target with
   | Ir -> eval_and ignore args
   | JavaScript ->
-      let path =
-        match compiler.output with
-        | Some path -> path
-        | None -> "target/compiled.mjs"
-      in
-      Kast_compiler_cli.run { args.compiler with output = Some path };
-      let node_args = "--enable-source-maps" :: path :: argv_except_program in
-      Log.info (fun log ->
-          log "Launching node with args %a"
-            (List.print String.print_maybe_escaped)
-            node_args);
-      Unix.execvp "node" (Array.of_list ("node" :: node_args))
+    let path =
+      match compiler.output with
+      | Some path -> path
+      | None -> "target/compiled.mjs"
+    in
+    Kast_compiler_cli.run { args.compiler with output = Some path };
+    let node_args = "--enable-source-maps" :: path :: argv_except_program in
+    Log.info (fun log ->
+      log "Launching node with args %a" (List.print String.print_maybe_escaped) node_args);
+    Unix.execvp "node" (Array.of_list ("node" :: node_args))
+;;
 
 let repl
-    ({
-       compiler = { path; no_std; target = _; output = _; formatter = _ };
-       argv_except_program;
-     } as args :
-      Args.t) =
+      ({ compiler = { path; no_std; target = _; output = _; formatter = _ }
+       ; argv_except_program
+       } as args :
+        Args.t)
+  =
   let evaled =
     if path = Uri.stdin then None else args |> eval_and (fun result -> result)
   in
   setup_interpreter_argv args;
   let compiler, interpreter =
     match evaled with
-    | Some { compiler; interpreter; value = _ } -> (compiler, interpreter)
+    | Some { compiler; interpreter; value = _ } -> compiler, interpreter
     | None -> init_compiler_interpreter ~no_std (Str "<repl>")
   in
   let rec loop () =
@@ -109,15 +110,17 @@ let repl
     let source : source = { contents = line; uri = Uri.stdin } in
     let parsed = Parser.parse source Kast_default_syntax.ruleset in
     (match parsed.ast with
-    | None -> ()
-    | Some ast -> (
-        let expr : expr = Compiler.compile compiler Expr ast in
-        try
+     | None -> ()
+     | Some ast ->
+       let expr : expr = Compiler.compile compiler Expr ast in
+       (try
           let value : value = Interpreter.eval interpreter expr in
           match value.var |> Kast_inference.Var.inferred_opt with
           | Some V_Unit -> ()
           | _ -> println "%a" Value.print value
-        with Interpreter.Natives.Panic s -> eprintln "@{<red>panic: %s@}" s));
+        with
+        | Interpreter.Natives.Panic s -> eprintln "@{<red>panic: %s@}" s));
     loop ()
   in
   loop ()
+;;

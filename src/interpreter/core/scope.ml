@@ -14,134 +14,156 @@ end
 type locals = Locals.t
 
 let with_values ~span ~recursive ~(parent : scope option) values : scope =
-  {
-    id = Id.gen ();
-    depth =
+  { id = Id.gen ()
+  ; depth =
       (match parent with
-      | Some parent -> parent.depth + 1
-      | None -> 0);
-    span;
-    locals = values;
-    parent;
-    recursive;
-    on_update = [];
-    closed = false;
+       | Some parent -> parent.depth + 1
+       | None -> 0)
+  ; span
+  ; locals = values
+  ; parent
+  ; recursive
+  ; on_update = []
+  ; closed = false
   }
+;;
 
 let init ~recursive ~parent = with_values ~recursive ~parent Locals.empty
 
 type _ Effect.t += AwaitUpdate : (symbol * scope) -> bool Effect.t
 
-let rec find_local_opt (name : symbol) (scope : scope) :
-    Types.interpreter_local option =
+let rec find_local_opt (name : symbol) (scope : scope) : Types.interpreter_local option =
   match SymbolMap.find_opt name scope.locals.by_symbol with
   | Some value -> Some value
   | None ->
-      let find_in_parent () =
-        scope.parent |> Option.and_then (find_local_opt name)
+    let find_in_parent () = scope.parent |> Option.and_then (find_local_opt name) in
+    if scope.recursive && not scope.closed
+    then (
+      Log.trace (fun log -> log "awaiting scope update for %a" Symbol.print name);
+      let await_result =
+        Kast_profiling.record
+          (fun () -> make_string "awaiting scope update for %a" Symbol.print name)
+          (fun () -> Effect.perform (AwaitUpdate (name, scope)))
       in
-      if scope.recursive && not scope.closed then (
-        Log.trace (fun log ->
-            log "awaiting scope update for %a" Symbol.print name);
-        let await_result =
-          Kast_profiling.record
-            (fun () ->
-              make_string "awaiting scope update for %a" Symbol.print name)
-            (fun () -> Effect.perform (AwaitUpdate (name, scope)))
-        in
-        Log.trace (fun log ->
-            log "awaited scope update for %a" Symbol.print name);
-        if await_result then find_local_opt name scope else find_in_parent ())
-      else find_in_parent ()
+      Log.trace (fun log -> log "awaited scope update for %a" Symbol.print name);
+      if await_result then find_local_opt name scope else find_in_parent ())
+    else find_in_parent ()
+;;
 
 let find_opt (name : symbol) (scope : scope) : place option =
   find_local_opt name scope
   |> Option.map (fun (local : Types.interpreter_local) -> local.place)
+;;
 
 let notify_update (scope : scope) : unit =
   let fs = scope.on_update in
   scope.on_update <- [];
   Kast_profiling.record
     (fun () ->
-      make_string "Interpreter.Scope.notify_update %a %a" Span.print scope.span
-        (List.print Symbol.print)
-        (fs |> List.map fst))
+       make_string
+         "Interpreter.Scope.notify_update %a %a"
+         Span.print
+         scope.span
+         (List.print Symbol.print)
+         (fs |> List.map fst))
     (fun () -> fs |> List.map snd |> List.iter (fun f -> f ()))
+;;
 
 (* TODO should be removed? *)
 let add_locals (new_locals : locals) (scope : scope) : unit =
   Log.trace (fun log ->
-      new_locals.by_symbol
-      |> SymbolMap.iter (fun symbol (local : Types.interpreter_local) ->
-          log "Added %a=%a in scope %a" Symbol.print symbol Place.print_value
-            local.place Id.print scope.id));
-  scope.locals <-
-    {
-      by_symbol =
-        SymbolMap.union
-          (fun _name _old_value new_value -> Some new_value)
-          scope.locals.by_symbol new_locals.by_symbol;
-    };
+    new_locals.by_symbol
+    |> SymbolMap.iter (fun symbol (local : Types.interpreter_local) ->
+      log
+        "Added %a=%a in scope %a"
+        Symbol.print
+        symbol
+        Place.print_value
+        local.place
+        Id.print
+        scope.id));
+  scope.locals
+  <- { by_symbol =
+         SymbolMap.union
+           (fun _name _old_value new_value -> Some new_value)
+           scope.locals.by_symbol
+           new_locals.by_symbol
+     };
   notify_update scope
+;;
 
-let add_local_existing_place (span : span) (symbol : symbol) (place : place)
-    (scope : scope) : unit =
+let add_local_existing_place
+      (span : span)
+      (symbol : symbol)
+      (place : place)
+      (scope : scope)
+  : unit
+  =
   scope
   |> add_locals
-       {
-         by_symbol =
-           SymbolMap.singleton symbol
-             ({
-                place;
-                ty_field =
-                  {
-                    ty = place.ty;
-                    label = Some (Label.create_reference span symbol.name);
-                  };
+       { by_symbol =
+           SymbolMap.singleton
+             symbol
+             ({ place
+              ; ty_field =
+                  { ty = place.ty
+                  ; label = Some (Label.create_reference span symbol.name)
+                  }
               }
-               : Types.interpreter_local);
+              : Types.interpreter_local)
        }
+;;
 
-let add_local (span : span) ~(mut : bool) (symbol : symbol) (value : value)
-    (scope : scope) : unit =
+let add_local
+      (span : span)
+      ~(mut : bool)
+      (symbol : symbol)
+      (value : value)
+      (scope : scope)
+  : unit
+  =
   Log.trace (fun log ->
-      log "Added %a=%a in scope %a" Symbol.print symbol Value.print value
-        Id.print scope.id);
+    log "Added %a=%a in scope %a" Symbol.print symbol Value.print value Id.print scope.id);
   let mut = Place.Mut.bool mut in
-  scope.locals <-
-    {
-      by_symbol =
-        scope.locals.by_symbol
-        |> SymbolMap.add symbol
-             ({
-                place = Place.init ~mut value;
-                ty_field =
-                  {
-                    ty = Value.ty_of value;
-                    label = Some (Label.create_definition span symbol.name);
-                  };
-              }
-               : Types.interpreter_local);
-    };
+  scope.locals
+  <- { by_symbol =
+         scope.locals.by_symbol
+         |> SymbolMap.add
+              symbol
+              ({ place = Place.init ~mut value
+               ; ty_field =
+                   { ty = Value.ty_of value
+                   ; label = Some (Label.create_definition span symbol.name)
+                   }
+               }
+               : Types.interpreter_local)
+     };
   notify_update scope
+;;
 
 let inject_binding (binding : binding) (scope : scope) : unit =
   scope
-  |> add_local ~mut:false binding.span binding.name
+  |> add_local
+       ~mut:false
+       binding.span
+       binding.name
        (Value.binding ~span:binding.span binding)
+;;
 
 let rec print_all : formatter -> scope -> unit =
- fun fmt scope ->
+  fun fmt scope ->
   fprintf fmt "(rec=%b,closed=%b)" scope.recursive scope.closed;
   scope.locals.by_symbol
   |> SymbolMap.iter (fun symbol _value -> fprintf fmt "%a," Symbol.print symbol);
   match scope.parent with
   | None -> ()
   | Some parent ->
-      fprintf fmt "^";
-      print_all fmt parent
+    fprintf fmt "^";
+    print_all fmt parent
+;;
 
 let close : scope -> unit =
- fun scope ->
+  fun scope ->
   scope.closed <- true;
   notify_update scope
+;;

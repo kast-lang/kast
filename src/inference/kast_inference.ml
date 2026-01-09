@@ -14,4 +14,5 @@ end
 module Value = struct
   let expect_inferred_as ~span expected value =
     expect ~span Inference_impl.unite_value expected value
+  ;;
 end

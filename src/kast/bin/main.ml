@@ -12,8 +12,8 @@ let run (args : Cli.args) =
   | Cli.Command.Run args -> Kast_interpreter_cli.run args
   | Cli.Command.Compile args -> Kast_compiler_cli.run args
   | Cli.Command.Repl args -> Kast_interpreter_cli.repl args
-  | Cli.Command.Help ->
-      println "Hello, I am Kast :)\nhelp is not implemented yet"
+  | Cli.Command.Help -> println "Hello, I am Kast :)\nhelp is not implemented yet"
+;;
 
 let main () =
   Memtrace.trace_if_requested ();
@@ -21,8 +21,8 @@ let main () =
   (* Log.set_max_level Trace; *)
   let args = Cli.parse () in
   (match args.profile with
-  | None -> ()
-  | Some path -> Kast_profiling.init path);
+   | None -> ()
+   | Some path -> Kast_profiling.init path);
   let stop_on_error =
     match args.command with
     | Cli.Command.Repl _ -> false
@@ -30,5 +30,9 @@ let main () =
   in
   Kast.handle_effects ~stop_on_error (fun () -> run args);
   Kast_profiling.deinit ()
+;;
 
-let () = try main () with Cancel -> ()
+let () =
+  try main () with
+  | Cancel -> ()
+;;

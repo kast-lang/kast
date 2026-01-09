@@ -3,10 +3,10 @@ open Source
 open Id
 
 module Symbol = struct
-  type t = {
-    id : id;
-    name : string;
-  }
+  type t =
+    { id : id
+    ; name : string
+    }
 
   type symbol = t
 
@@ -16,7 +16,8 @@ module Symbol = struct
   let hash symbol = Id.hash symbol.id
 
   let print : formatter -> symbol -> unit =
-   fun fmt symbol -> fprintf fmt "%a" String.print_maybe_escaped symbol.name
+    fun fmt symbol -> fprintf fmt "%a" String.print_maybe_escaped symbol.name
+  ;;
 end
 
 module SymbolMap = Map.Make (Symbol)

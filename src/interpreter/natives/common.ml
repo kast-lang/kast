@@ -7,16 +7,15 @@ module Inference = Kast_inference
 let span = Span.of_ocaml __POS__
 
 let native_fn name impl : string * (ty -> value) =
-  ( name,
-    fun ty ->
+  ( name
+  , fun ty ->
       let scope = VarScope.of_ty ty in
       let fn_ty : Types.ty_fn =
-        {
-          arg = Ty.new_not_inferred ~scope ~span;
-          result = Ty.new_not_inferred ~scope ~span;
+        { arg = Ty.new_not_inferred ~scope ~span
+        ; result = Ty.new_not_inferred ~scope ~span
         }
       in
-      ty
-      |> Inference.Ty.expect_inferred_as ~span (T_Fn fn_ty |> Ty.inferred ~span);
+      ty |> Inference.Ty.expect_inferred_as ~span (T_Fn fn_ty |> Ty.inferred ~span);
       V_NativeFn { id = Id.gen (); ty = fn_ty; name; impl = impl fn_ty }
       |> Value.inferred ~span )
+;;

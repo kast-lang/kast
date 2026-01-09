@@ -5,4 +5,5 @@ module Bool = struct
     match x with
     | true -> Some value
     | false -> None
+  ;;
 end

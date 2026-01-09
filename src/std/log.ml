@@ -15,8 +15,8 @@ module Log = struct
   type 'a log_fn = (('a, formatter, unit) format -> 'a) -> unit
 
   let with_level : 'a. level -> 'a log_fn -> unit =
-   fun level f ->
-    if level <= !max_level then f (fun fmt -> eprintln fmt) else ()
+    fun level f -> if level <= !max_level then f (fun fmt -> eprintln fmt) else ()
+  ;;
 
   let error : 'a. 'a log_fn -> unit = fun f -> with_level Error f
   let warn : 'a. 'a log_fn -> unit = fun f -> with_level Warn f

@@ -11,12 +11,12 @@ module rec TypesImpl : sig
   and var_scope = interpreter_scope option
 
   (* PLACE *)
-  and place = {
-    id : Id.t;
-    mutable state : place_state;
-    ty : ty;
-    mut : place_mut;
-  }
+  and place =
+    { id : Id.t
+    ; mutable state : place_state
+    ; ty : ty
+    ; mut : place_mut
+    }
 
   and place_mut =
     | Immutable
@@ -29,10 +29,10 @@ module rec TypesImpl : sig
     | MovedOut
 
   (* blocked_value *)
-  and blocked_value = {
-    shape : blocked_value_shape;
-    ty : ty;
-  }
+  and blocked_value =
+    { shape : blocked_value_shape
+    ; ty : ty
+    }
 
   and blocked_value_shape =
     | BV_Binding of binding
@@ -40,15 +40,15 @@ module rec TypesImpl : sig
     | BV_ClaimRef of blocked_value
     | BV_FieldRef of blocked_value_field_ref
 
-  and blocked_value_field_ref = {
-    obj_ref : blocked_value;
-    member : Tuple.Member.t;
-  }
+  and blocked_value_field_ref =
+    { obj_ref : blocked_value
+    ; member : Tuple.Member.t
+    }
 
-  and blocked_value_instantiate = {
-    generic : blocked_value;
-    arg : value;
-  }
+  and blocked_value_instantiate =
+    { generic : blocked_value
+    ; arg : value
+    }
 
   (* VALUE *)
   and value_shape =
@@ -75,113 +75,113 @@ module rec TypesImpl : sig
     | V_Blocked of blocked_value
     | V_Error
 
-  and value_ref = {
-    mut : bool;
-    place : place;
-  }
+  and value_ref =
+    { mut : bool
+    ; place : place
+    }
 
-  and value = {
-    var : value_shape var;
-    ty : ty;
-  }
+  and value =
+    { var : value_shape var
+    ; ty : ty
+    }
 
-  and value_opaque = {
-    ty : ty_opaque;
-    value : Obj.t; [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and value_opaque =
+    { ty : ty_opaque
+    ; value : Obj.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
   and value_target = { name : string }
 
-  and value_context_ty = {
-    id : Id.t;
-    ty : ty;
-  }
+  and value_context_ty =
+    { id : Id.t
+    ; ty : ty
+    }
 
-  and value_unwind_token = {
-    id : Id.t;
-    result_ty : ty;
-  }
+  and value_unwind_token =
+    { id : Id.t
+    ; result_ty : ty
+    }
 
-  and value_fn = {
-    ty : ty_fn;
-    fn : value_untyped_fn;
-  }
+  and value_fn =
+    { ty : ty_fn
+    ; fn : value_untyped_fn
+    }
 
-  and value_untyped_fn = {
-    id : Id.t;
-    def : maybe_compiled_fn;
-    calculated_natives : (id, value) Hashtbl.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    captured : interpreter_scope;
-  }
+  and value_untyped_fn =
+    { id : Id.t
+    ; def : maybe_compiled_fn
+    ; calculated_natives : (id, value) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; captured : interpreter_scope
+    }
 
-  and value_generic = {
-    name : name_shape;
-    fn : value_untyped_fn;
-    ty : ty_generic;
-  }
+  and value_generic =
+    { name : name_shape
+    ; fn : value_untyped_fn
+    ; ty : ty_generic
+    }
 
-  and value_tuple_field = {
-    place : place;
-    span : Span.t;
-    ty_field : ty_tuple_field;
-  }
+  and value_tuple_field =
+    { place : place
+    ; span : Span.t
+    ; ty_field : ty_tuple_field
+    }
 
-  and value_tuple = {
-    ty : ty_tuple;
-    tuple : value_tuple_field Tuple.t;
-  }
+  and value_tuple =
+    { ty : ty_tuple
+    ; tuple : value_tuple_field Tuple.t
+    }
 
-  and value_variant = {
-    label : Label.t;
-    data : place option;
-    ty : ty_variant;
-  }
+  and value_variant =
+    { label : Label.t
+    ; data : place option
+    ; ty : ty_variant
+    }
 
-  and value_native_fn = {
-    id : Id.t;
-    name : string;
-    ty : ty_fn;
-    impl : caller:span -> state:interpreter_state -> value -> value;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and value_native_fn =
+    { id : Id.t
+    ; name : string
+    ; ty : ty_fn
+    ; impl : caller:span -> state:interpreter_state -> value -> value
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
   (* TY *)
-  and ty_tuple_field = {
-    ty : ty;
-    label : Label.t option;
-  }
+  and ty_tuple_field =
+    { ty : ty
+    ; label : Label.t option
+    }
 
-  and ty_tuple = {
-    name : optional_name;
-    tuple : ty_tuple_field Tuple.t;
-  }
+  and ty_tuple =
+    { name : optional_name
+    ; tuple : ty_tuple_field Tuple.t
+    }
 
-  and ty_fn = {
-    arg : ty;
-    result : ty;
-  }
+  and ty_fn =
+    { arg : ty
+    ; result : ty
+    }
 
-  and ty_generic = {
-    arg : pattern;
-    result : ty;
-  }
+  and ty_generic =
+    { arg : pattern
+    ; result : ty
+    }
 
   and ty_unwind_token = { result : ty }
   and ty_variant_data = { data : ty option }
 
-  and ty_variant = {
-    name : optional_name;
-    variants : (ty_variant_data, var_scope) Row.t;
-  }
+  and ty_variant =
+    { name : optional_name
+    ; variants : (ty_variant_data, var_scope) Row.t
+    }
 
   and ty_opaque = { name : name }
   and is_mutable = { var : (bool, var_scope) Inference.var }
 
-  and ty_ref = {
-    mut : is_mutable;
-    referenced : ty;
-  }
+  and ty_ref =
+    { mut : is_mutable
+    ; referenced : ty
+    }
 
   and ty_shape =
     | T_Unit
@@ -209,35 +209,35 @@ module rec TypesImpl : sig
   and ty = { var : ty_shape var }
 
   (* EXPR *)
-  and compiled_fn = {
-    arg : pattern;
-    body : expr;
-    evaled_result : ty_expr option;
-  }
+  and compiled_fn =
+    { arg : pattern
+    ; body : expr
+    ; evaled_result : ty_expr option
+    }
 
-  and maybe_compiled_fn = {
-    mutable compiled : compiled_fn option;
-    mutable on_compiled : (unit -> unit) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and maybe_compiled_fn =
+    { mutable compiled : compiled_fn option
+    ; mutable on_compiled : (unit -> unit) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
-  and expr_fn = {
-    ty : ty_fn;
-    def : maybe_compiled_fn;
-  }
+  and expr_fn =
+    { ty : ty_fn
+    ; def : maybe_compiled_fn
+    }
 
-  and expr_generic = {
-    def : maybe_compiled_fn;
-    ty : ty_generic;
-  }
+  and expr_generic =
+    { def : maybe_compiled_fn
+    ; ty : ty_generic
+    }
 
   and expr_then = { list : expr list }
 
-  and 'a tuple_field_of = {
-    label_span : Span.t;
-    label : Label.t option;
-    field : 'a;
-  }
+  and 'a tuple_field_of =
+    { label_span : Span.t
+    ; label : Label.t option
+    ; field : 'a
+    }
 
   and expr_stmt = { expr : expr }
 
@@ -248,129 +248,129 @@ module rec TypesImpl : sig
   and 'a tuple_of = { parts : 'a tuple_part_of list }
   and expr_tuple = expr tuple_of
 
-  and expr_variant = {
-    label : Label.t;
-    label_span : Span.t;
-    value : expr option;
-  }
+  and expr_variant =
+    { label : Label.t
+    ; label_span : Span.t
+    ; value : expr option
+    }
 
-  and expr_apply = {
-    f : expr;
-    arg : expr;
-  }
+  and expr_apply =
+    { f : expr
+    ; arg : expr
+    }
 
-  and expr_instantiate_generic = {
-    generic : expr;
-    arg : expr;
-  }
+  and expr_instantiate_generic =
+    { generic : expr
+    ; arg : expr
+    }
 
   and expr_scope = { expr : expr }
 
-  and expr_assign = {
-    assignee : assignee_expr;
-    value : place_expr;
-  }
+  and expr_assign =
+    { assignee : assignee_expr
+    ; value : place_expr
+    }
 
-  and expr_native = {
-    id : Id.t;
-    expr : string;
-  }
+  and expr_native =
+    { id : Id.t
+    ; expr : string
+    }
 
-  and expr_module = {
-    def : expr;
-    bindings : binding list;
-  }
+  and expr_module =
+    { def : expr
+    ; bindings : binding list
+    }
 
-  and expr_use_dot_star = {
-    used : expr;
-    bindings : binding list;
-  }
+  and expr_use_dot_star =
+    { used : expr
+    ; bindings : binding list
+    }
 
-  and expr_if = {
-    cond : expr;
-    then_case : expr;
-    else_case : expr;
-  }
+  and expr_if =
+    { cond : expr
+    ; then_case : expr
+    ; else_case : expr
+    }
 
-  and expr_match_branch = {
-    pattern : pattern;
-    body : expr;
-  }
+  and expr_match_branch =
+    { pattern : pattern
+    ; body : expr
+    }
 
-  and expr_match = {
-    value : place_expr;
-    branches : expr_match_branch list;
-  }
+  and expr_match =
+    { value : place_expr
+    ; branches : expr_match_branch list
+    }
 
   and expr_quote_ast_child =
     | Group of expr_quote_ast_group
     | Ast of expr
 
-  and expr_quote_ast_group = {
-    rule : Syntax.Rule.group option;
-    children : expr_quote_ast_child Tuple.t;
-  }
+  and expr_quote_ast_group =
+    { rule : Syntax.Rule.group option
+    ; children : expr_quote_ast_child Tuple.t
+    }
 
-  and expr_quote_ast = {
-    rule : Syntax.Rule.t;
-    root : expr_quote_ast_group;
-  }
+  and expr_quote_ast =
+    { rule : Syntax.Rule.t
+    ; root : expr_quote_ast_group
+    }
 
   and expr_loop = { body : expr }
 
-  and expr_unwindable = {
-    token : pattern;
-    body : expr;
-  }
+  and expr_unwindable =
+    { token : pattern
+    ; body : expr
+    }
 
-  and expr_unwind = {
-    token : expr;
-    value : expr;
-  }
+  and expr_unwind =
+    { token : expr
+    ; value : expr
+    }
 
-  and expr_target_dependent = {
-    branches : expr_target_dependent_branch list;
-    captured : interpreter_scope;
-    mutable interpreter_branch : expr_target_dependent_branch option;
-  }
+  and expr_target_dependent =
+    { branches : expr_target_dependent_branch list
+    ; captured : interpreter_scope
+    ; mutable interpreter_branch : expr_target_dependent_branch option
+    }
 
-  and expr_target_dependent_branch = {
-    cond : expr;
-    body : expr;
-  }
+  and expr_target_dependent_branch =
+    { cond : expr
+    ; body : expr
+    }
 
-  and expr_inject_context = {
-    context_ty : value_context_ty;
-    value : expr;
-  }
+  and expr_inject_context =
+    { context_ty : value_context_ty
+    ; value : expr
+    }
 
   and expr_current_context = { context_ty : value_context_ty }
 
-  and expr_and = {
-    lhs : expr;
-    rhs : expr;
-  }
+  and expr_and =
+    { lhs : expr
+    ; rhs : expr
+    }
 
-  and expr_or = {
-    lhs : expr;
-    rhs : expr;
-  }
+  and expr_or =
+    { lhs : expr
+    ; rhs : expr
+    }
 
-  and expr_impl_cast = {
-    value : expr;
-    target : value;
-    impl : expr;
-  }
+  and expr_impl_cast =
+    { value : expr
+    ; target : value
+    ; impl : expr
+    }
 
-  and expr_cast = {
-    value : expr;
-    target : value;
-  }
+  and expr_cast =
+    { value : expr
+    ; target : value
+    }
 
-  and expr_ref = {
-    mut : bool;
-    place : place_expr;
-  }
+  and expr_ref =
+    { mut : bool
+    ; place : place_expr
+    }
 
   and expr_shape =
     | E_Constant of value
@@ -406,10 +406,10 @@ module rec TypesImpl : sig
     | E_TargetDependent of expr_target_dependent
     | E_Error
 
-  and expr = {
-    shape : expr_shape;
-    data : ir_data;
-  }
+  and expr =
+    { shape : expr_shape
+    ; data : ir_data
+    }
 
   (* PLACE EXPR *)
   and field_expr =
@@ -417,11 +417,11 @@ module rec TypesImpl : sig
     | Name of Label.t
     | Expr of expr
 
-  and place_expr_field = {
-    obj : place_expr;
-    field : field_expr;
-    field_span : Span.t;
-  }
+  and place_expr_field =
+    { obj : place_expr
+    ; field : field_expr
+    ; field_span : Span.t
+    }
 
   and place_expr_shape =
     | PE_Binding of binding
@@ -430,11 +430,11 @@ module rec TypesImpl : sig
     | PE_Temp of expr
     | PE_Error
 
-  and place_expr = {
-    shape : place_expr_shape;
-    mut : is_mutable;
-    data : ir_data;
-  }
+  and place_expr =
+    { shape : place_expr_shape
+    ; mut : is_mutable
+    ; data : ir_data
+    }
 
   (* ASSIGNEE EXPR *)
   and assignee_expr_shape =
@@ -447,32 +447,32 @@ module rec TypesImpl : sig
 
   and assignee_expr_tuple = assignee_expr tuple_of
 
-  and assignee_expr = {
-    shape : assignee_expr_shape;
-    data : ir_data;
-  }
+  and assignee_expr =
+    { shape : assignee_expr_shape
+    ; data : ir_data
+    }
 
   (* TYPE EXPR *)
-  and ty_expr_fn = {
-    arg : ty_expr;
-    result : ty_expr;
-  }
+  and ty_expr_fn =
+    { arg : ty_expr
+    ; result : ty_expr
+    }
 
   and ty_expr_tuple = ty_expr tuple_of
   and ty_expr_union = { elements : ty_expr list }
 
-  and ty_expr_variant_variant = {
-    label_span : Span.t;
-    label : Label.t;
-    value : ty_expr option;
-  }
+  and ty_expr_variant_variant =
+    { label_span : Span.t
+    ; label : Label.t
+    ; value : ty_expr option
+    }
 
   and ty_expr_variant = { variants : ty_expr_variant_variant list }
 
-  and ty_expr_ref = {
-    mut : is_mutable;
-    referenced : ty_expr;
-  }
+  and ty_expr_ref =
+    { mut : is_mutable
+    ; referenced : ty_expr
+    }
 
   and ty_expr_shape =
     | TE_Unit
@@ -484,31 +484,31 @@ module rec TypesImpl : sig
     | TE_Union of ty_expr_union
     | TE_Error
 
-  and ty_expr = {
-    mutable compiled_shape : ty_expr_shape option;
-    mutable on_compiled : (unit -> unit) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    (* TODO technically only need span for this? *)
-    data : ir_data;
-  }
+  and ty_expr =
+    { mutable compiled_shape : ty_expr_shape option
+    ; mutable on_compiled : (unit -> unit) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; (* TODO technically only need span for this? *)
+      data : ir_data
+    }
 
   (* PATTERN *)
   and pattern_tuple = pattern tuple_of
 
-  and pattern_variant = {
-    label : Label.t;
-    label_span : Span.t;
-    value : pattern option;
-  }
+  and pattern_variant =
+    { label : Label.t
+    ; label_span : Span.t
+    ; value : pattern option
+    }
 
   and bind_mode =
     | Claim
     | ByRef of { mut : bool }
 
-  and pattern_binding = {
-    bind_mode : bind_mode;
-    binding : binding;
-  }
+  and pattern_binding =
+    { bind_mode : bind_mode
+    ; binding : binding
+    }
 
   and pattern_shape =
     | P_Placeholder
@@ -519,91 +519,90 @@ module rec TypesImpl : sig
     | P_Variant of pattern_variant
     | P_Error
 
-  and pattern = {
-    shape : pattern_shape;
-    data : ir_data;
-  }
+  and pattern =
+    { shape : pattern_shape
+    ; data : ir_data
+    }
 
   (* SCOPE *)
-  and interpreter_local = {
-    place : place;
-    ty_field : ty_tuple_field;
-  }
+  and interpreter_local =
+    { place : place
+    ; ty_field : ty_tuple_field
+    }
 
   and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }
 
-  and interpreter_scope = {
-    id : Id.t;
-    depth : int;
-    span : Span.t;
-    mutable locals : interpreter_locals;
-    parent : interpreter_scope option;
-    recursive : bool;
-    mutable closed : bool;
-    mutable on_update : (symbol * (unit -> unit)) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and interpreter_scope =
+    { id : Id.t
+    ; depth : int
+    ; span : Span.t
+    ; mutable locals : interpreter_locals
+    ; parent : interpreter_scope option
+    ; recursive : bool
+    ; mutable closed : bool
+    ; mutable on_update : (symbol * (unit -> unit)) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
-  and compiler_scope = {
-    id : Id.t;
-    parent : compiler_scope option;
-    recursive : bool;
-    mutable bindings : binding StringMap.t;
-    mutable closed : bool;
-    mutable on_update : (unit -> unit) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and compiler_scope =
+    { id : Id.t
+    ; parent : compiler_scope option
+    ; recursive : bool
+    ; mutable bindings : binding StringMap.t
+    ; mutable closed : bool
+    ; mutable on_update : (unit -> unit) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
   (* interpreter *)
-  and natives = {
-    by_name : (ty -> value) StringMap.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and natives =
+    { by_name : (ty -> value) StringMap.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
 
-  and cast_impls = {
-    mutable map : value ValueMap.t ValueMap.t;
-    mutable as_module : value ValueMap.t;
-  }
+  and cast_impls =
+    { mutable map : value ValueMap.t ValueMap.t
+    ; mutable as_module : value ValueMap.t
+    }
 
-  and interpreter_state = {
-    natives : natives;
-    scope : interpreter_scope;
-    result_scope : var_scope;
-    current_fn_natives : (id, value) Hashtbl.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    mutable contexts : value Id.Map.t;
-    instantiated_generics : instantiated_generics;
-    cast_impls : cast_impls;
-    current_name : name_shape;
-  }
+  and interpreter_state =
+    { natives : natives
+    ; scope : interpreter_scope
+    ; result_scope : var_scope
+    ; current_fn_natives : (id, value) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; mutable contexts : value Id.Map.t
+    ; instantiated_generics : instantiated_generics
+    ; cast_impls : cast_impls
+    ; current_name : name_shape
+    }
 
   (* OTHER *)
-  and binding = {
-    id : Id.t;
-    scope : var_scope;
-    name : Symbol.t;
-    span : Span.t;
-    ty : ty;
-    label : Label.t;
-    mut : bool;
-  }
+  and binding =
+    { id : Id.t
+    ; scope : var_scope
+    ; name : Symbol.t
+    ; span : Span.t
+    ; ty : ty
+    ; label : Label.t
+    ; mut : bool
+    }
 
-  and ir_data = {
-    span : Span.t;
-    ty : ty;
-    compiler_scope : compiler_scope;
-    evaled : ir_evaled;
-    included_file : Uri.t option;
-  }
+  and ir_data =
+    { span : Span.t
+    ; ty : ty
+    ; compiler_scope : compiler_scope
+    ; evaled : ir_evaled
+    ; included_file : Uri.t option
+    }
 
-  and ir_evaled = {
-    mutable patterns : pattern list;
-    mutable exprs : expr list;
-    mutable ty_exprs : ty_expr list;
-    mutable ty_ascribed : bool;
-  }
+  and ir_evaled =
+    { mutable patterns : pattern list
+    ; mutable exprs : expr list
+    ; mutable ty_exprs : ty_expr list
+    ; mutable ty_ascribed : bool
+    }
 
   and name = { var : name_shape var }
   and optional_name = { var : name_shape option var }
@@ -613,10 +612,10 @@ module rec TypesImpl : sig
     | Concat of name_shape * name_part
     | Instantiation of name_instantiation
 
-  and name_instantiation = {
-    generic : value;
-    arg : value;
-  }
+  and name_instantiation =
+    { generic : value
+    ; arg : value
+    }
 
   and name_part =
     | Uri of Uri.t
@@ -638,12 +637,12 @@ end = struct
   and var_scope = interpreter_scope option
 
   (* PLACE *)
-  and place = {
-    id : Id.t;
-    mutable state : place_state;
-    ty : ty;
-    mut : place_mut;
-  }
+  and place =
+    { id : Id.t
+    ; mutable state : place_state
+    ; ty : ty
+    ; mut : place_mut
+    }
 
   and place_mut =
     | Immutable
@@ -656,10 +655,10 @@ end = struct
     | MovedOut
 
   (* blocked_value *)
-  and blocked_value = {
-    shape : blocked_value_shape;
-    ty : ty;
-  }
+  and blocked_value =
+    { shape : blocked_value_shape
+    ; ty : ty
+    }
 
   and blocked_value_shape =
     | BV_Binding of binding
@@ -667,15 +666,15 @@ end = struct
     | BV_ClaimRef of blocked_value
     | BV_FieldRef of blocked_value_field_ref
 
-  and blocked_value_field_ref = {
-    obj_ref : blocked_value;
-    member : Tuple.Member.t;
-  }
+  and blocked_value_field_ref =
+    { obj_ref : blocked_value
+    ; member : Tuple.Member.t
+    }
 
-  and blocked_value_instantiate = {
-    generic : blocked_value;
-    arg : value;
-  }
+  and blocked_value_instantiate =
+    { generic : blocked_value
+    ; arg : value
+    }
 
   (* VALUE *)
   and value_shape =
@@ -702,113 +701,113 @@ end = struct
     | V_Blocked of blocked_value
     | V_Error
 
-  and value_ref = {
-    mut : bool;
-    place : place;
-  }
+  and value_ref =
+    { mut : bool
+    ; place : place
+    }
 
-  and value = {
-    var : value_shape var;
-    ty : ty;
-  }
+  and value =
+    { var : value_shape var
+    ; ty : ty
+    }
 
-  and value_opaque = {
-    ty : ty_opaque;
-    value : Obj.t; [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and value_opaque =
+    { ty : ty_opaque
+    ; value : Obj.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
   and value_target = { name : string }
 
-  and value_context_ty = {
-    id : Id.t;
-    ty : ty;
-  }
+  and value_context_ty =
+    { id : Id.t
+    ; ty : ty
+    }
 
-  and value_unwind_token = {
-    id : Id.t;
-    result_ty : ty;
-  }
+  and value_unwind_token =
+    { id : Id.t
+    ; result_ty : ty
+    }
 
-  and value_fn = {
-    ty : ty_fn;
-    fn : value_untyped_fn;
-  }
+  and value_fn =
+    { ty : ty_fn
+    ; fn : value_untyped_fn
+    }
 
-  and value_untyped_fn = {
-    id : Id.t;
-    def : maybe_compiled_fn;
-    calculated_natives : (id, value) Hashtbl.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    captured : interpreter_scope;
-  }
+  and value_untyped_fn =
+    { id : Id.t
+    ; def : maybe_compiled_fn
+    ; calculated_natives : (id, value) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; captured : interpreter_scope
+    }
 
-  and value_generic = {
-    name : name_shape;
-    fn : value_untyped_fn;
-    ty : ty_generic;
-  }
+  and value_generic =
+    { name : name_shape
+    ; fn : value_untyped_fn
+    ; ty : ty_generic
+    }
 
-  and value_tuple_field = {
-    place : place;
-    span : Span.t;
-    ty_field : ty_tuple_field;
-  }
+  and value_tuple_field =
+    { place : place
+    ; span : Span.t
+    ; ty_field : ty_tuple_field
+    }
 
-  and value_tuple = {
-    ty : ty_tuple;
-    tuple : value_tuple_field Tuple.t;
-  }
+  and value_tuple =
+    { ty : ty_tuple
+    ; tuple : value_tuple_field Tuple.t
+    }
 
-  and value_variant = {
-    label : Label.t;
-    data : place option;
-    ty : ty_variant;
-  }
+  and value_variant =
+    { label : Label.t
+    ; data : place option
+    ; ty : ty_variant
+    }
 
-  and value_native_fn = {
-    id : Id.t;
-    name : string;
-    ty : ty_fn;
-    impl : caller:span -> state:interpreter_state -> value -> value;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and value_native_fn =
+    { id : Id.t
+    ; name : string
+    ; ty : ty_fn
+    ; impl : caller:span -> state:interpreter_state -> value -> value
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
   (* TY *)
-  and ty_tuple_field = {
-    ty : ty;
-    label : Label.t option;
-  }
+  and ty_tuple_field =
+    { ty : ty
+    ; label : Label.t option
+    }
 
-  and ty_tuple = {
-    name : optional_name;
-    tuple : ty_tuple_field Tuple.t;
-  }
+  and ty_tuple =
+    { name : optional_name
+    ; tuple : ty_tuple_field Tuple.t
+    }
 
-  and ty_fn = {
-    arg : ty;
-    result : ty;
-  }
+  and ty_fn =
+    { arg : ty
+    ; result : ty
+    }
 
-  and ty_generic = {
-    arg : pattern;
-    result : ty;
-  }
+  and ty_generic =
+    { arg : pattern
+    ; result : ty
+    }
 
   and ty_unwind_token = { result : ty }
   and ty_variant_data = { data : ty option }
 
-  and ty_variant = {
-    name : optional_name;
-    variants : (ty_variant_data, var_scope) Row.t;
-  }
+  and ty_variant =
+    { name : optional_name
+    ; variants : (ty_variant_data, var_scope) Row.t
+    }
 
   and ty_opaque = { name : name }
   and is_mutable = { var : (bool, var_scope) Inference.var }
 
-  and ty_ref = {
-    mut : is_mutable;
-    referenced : ty;
-  }
+  and ty_ref =
+    { mut : is_mutable
+    ; referenced : ty
+    }
 
   and ty_shape =
     | T_Unit
@@ -836,35 +835,35 @@ end = struct
   and ty = { var : ty_shape var }
 
   (* EXPR *)
-  and compiled_fn = {
-    arg : pattern;
-    body : expr;
-    evaled_result : ty_expr option;
-  }
+  and compiled_fn =
+    { arg : pattern
+    ; body : expr
+    ; evaled_result : ty_expr option
+    }
 
-  and maybe_compiled_fn = {
-    mutable compiled : compiled_fn option;
-    mutable on_compiled : (unit -> unit) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and maybe_compiled_fn =
+    { mutable compiled : compiled_fn option
+    ; mutable on_compiled : (unit -> unit) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
-  and expr_fn = {
-    ty : ty_fn;
-    def : maybe_compiled_fn;
-  }
+  and expr_fn =
+    { ty : ty_fn
+    ; def : maybe_compiled_fn
+    }
 
-  and expr_generic = {
-    def : maybe_compiled_fn;
-    ty : ty_generic;
-  }
+  and expr_generic =
+    { def : maybe_compiled_fn
+    ; ty : ty_generic
+    }
 
   and expr_then = { list : expr list }
 
-  and 'a tuple_field_of = {
-    label_span : Span.t;
-    label : Label.t option;
-    field : 'a;
-  }
+  and 'a tuple_field_of =
+    { label_span : Span.t
+    ; label : Label.t option
+    ; field : 'a
+    }
 
   and expr_stmt = { expr : expr }
 
@@ -875,129 +874,129 @@ end = struct
   and 'a tuple_of = { parts : 'a tuple_part_of list }
   and expr_tuple = expr tuple_of
 
-  and expr_variant = {
-    label : Label.t;
-    label_span : Span.t;
-    value : expr option;
-  }
+  and expr_variant =
+    { label : Label.t
+    ; label_span : Span.t
+    ; value : expr option
+    }
 
-  and expr_apply = {
-    f : expr;
-    arg : expr;
-  }
+  and expr_apply =
+    { f : expr
+    ; arg : expr
+    }
 
-  and expr_instantiate_generic = {
-    generic : expr;
-    arg : expr;
-  }
+  and expr_instantiate_generic =
+    { generic : expr
+    ; arg : expr
+    }
 
   and expr_scope = { expr : expr }
 
-  and expr_assign = {
-    assignee : assignee_expr;
-    value : place_expr;
-  }
+  and expr_assign =
+    { assignee : assignee_expr
+    ; value : place_expr
+    }
 
-  and expr_native = {
-    id : Id.t;
-    expr : string;
-  }
+  and expr_native =
+    { id : Id.t
+    ; expr : string
+    }
 
-  and expr_module = {
-    def : expr;
-    bindings : binding list;
-  }
+  and expr_module =
+    { def : expr
+    ; bindings : binding list
+    }
 
-  and expr_use_dot_star = {
-    used : expr;
-    bindings : binding list;
-  }
+  and expr_use_dot_star =
+    { used : expr
+    ; bindings : binding list
+    }
 
-  and expr_if = {
-    cond : expr;
-    then_case : expr;
-    else_case : expr;
-  }
+  and expr_if =
+    { cond : expr
+    ; then_case : expr
+    ; else_case : expr
+    }
 
-  and expr_match_branch = {
-    pattern : pattern;
-    body : expr;
-  }
+  and expr_match_branch =
+    { pattern : pattern
+    ; body : expr
+    }
 
-  and expr_match = {
-    value : place_expr;
-    branches : expr_match_branch list;
-  }
+  and expr_match =
+    { value : place_expr
+    ; branches : expr_match_branch list
+    }
 
   and expr_quote_ast_child =
     | Group of expr_quote_ast_group
     | Ast of expr
 
-  and expr_quote_ast_group = {
-    rule : Syntax.Rule.group option;
-    children : expr_quote_ast_child Tuple.t;
-  }
+  and expr_quote_ast_group =
+    { rule : Syntax.Rule.group option
+    ; children : expr_quote_ast_child Tuple.t
+    }
 
-  and expr_quote_ast = {
-    rule : Syntax.Rule.t;
-    root : expr_quote_ast_group;
-  }
+  and expr_quote_ast =
+    { rule : Syntax.Rule.t
+    ; root : expr_quote_ast_group
+    }
 
   and expr_loop = { body : expr }
 
-  and expr_unwindable = {
-    token : pattern;
-    body : expr;
-  }
+  and expr_unwindable =
+    { token : pattern
+    ; body : expr
+    }
 
-  and expr_unwind = {
-    token : expr;
-    value : expr;
-  }
+  and expr_unwind =
+    { token : expr
+    ; value : expr
+    }
 
-  and expr_target_dependent = {
-    branches : expr_target_dependent_branch list;
-    captured : interpreter_scope;
-    mutable interpreter_branch : expr_target_dependent_branch option;
-  }
+  and expr_target_dependent =
+    { branches : expr_target_dependent_branch list
+    ; captured : interpreter_scope
+    ; mutable interpreter_branch : expr_target_dependent_branch option
+    }
 
-  and expr_target_dependent_branch = {
-    cond : expr;
-    body : expr;
-  }
+  and expr_target_dependent_branch =
+    { cond : expr
+    ; body : expr
+    }
 
-  and expr_inject_context = {
-    context_ty : value_context_ty;
-    value : expr;
-  }
+  and expr_inject_context =
+    { context_ty : value_context_ty
+    ; value : expr
+    }
 
   and expr_current_context = { context_ty : value_context_ty }
 
-  and expr_and = {
-    lhs : expr;
-    rhs : expr;
-  }
+  and expr_and =
+    { lhs : expr
+    ; rhs : expr
+    }
 
-  and expr_or = {
-    lhs : expr;
-    rhs : expr;
-  }
+  and expr_or =
+    { lhs : expr
+    ; rhs : expr
+    }
 
-  and expr_impl_cast = {
-    value : expr;
-    target : value;
-    impl : expr;
-  }
+  and expr_impl_cast =
+    { value : expr
+    ; target : value
+    ; impl : expr
+    }
 
-  and expr_cast = {
-    value : expr;
-    target : value;
-  }
+  and expr_cast =
+    { value : expr
+    ; target : value
+    }
 
-  and expr_ref = {
-    mut : bool;
-    place : place_expr;
-  }
+  and expr_ref =
+    { mut : bool
+    ; place : place_expr
+    }
 
   and expr_shape =
     | E_Constant of value
@@ -1033,10 +1032,10 @@ end = struct
     | E_TargetDependent of expr_target_dependent
     | E_Error
 
-  and expr = {
-    shape : expr_shape;
-    data : ir_data;
-  }
+  and expr =
+    { shape : expr_shape
+    ; data : ir_data
+    }
 
   (* PLACE EXPR *)
   and field_expr =
@@ -1044,11 +1043,11 @@ end = struct
     | Name of Label.t
     | Expr of expr
 
-  and place_expr_field = {
-    obj : place_expr;
-    field : field_expr;
-    field_span : Span.t;
-  }
+  and place_expr_field =
+    { obj : place_expr
+    ; field : field_expr
+    ; field_span : Span.t
+    }
 
   and place_expr_shape =
     | PE_Binding of binding
@@ -1057,11 +1056,11 @@ end = struct
     | PE_Temp of expr
     | PE_Error
 
-  and place_expr = {
-    shape : place_expr_shape;
-    mut : is_mutable;
-    data : ir_data;
-  }
+  and place_expr =
+    { shape : place_expr_shape
+    ; mut : is_mutable
+    ; data : ir_data
+    }
 
   (* ASSIGNEE EXPR *)
   and assignee_expr_shape =
@@ -1074,32 +1073,32 @@ end = struct
 
   and assignee_expr_tuple = assignee_expr tuple_of
 
-  and assignee_expr = {
-    shape : assignee_expr_shape;
-    data : ir_data;
-  }
+  and assignee_expr =
+    { shape : assignee_expr_shape
+    ; data : ir_data
+    }
 
   (* TYPE EXPR *)
-  and ty_expr_fn = {
-    arg : ty_expr;
-    result : ty_expr;
-  }
+  and ty_expr_fn =
+    { arg : ty_expr
+    ; result : ty_expr
+    }
 
   and ty_expr_tuple = ty_expr tuple_of
   and ty_expr_union = { elements : ty_expr list }
 
-  and ty_expr_variant_variant = {
-    label_span : Span.t;
-    label : Label.t;
-    value : ty_expr option;
-  }
+  and ty_expr_variant_variant =
+    { label_span : Span.t
+    ; label : Label.t
+    ; value : ty_expr option
+    }
 
   and ty_expr_variant = { variants : ty_expr_variant_variant list }
 
-  and ty_expr_ref = {
-    mut : is_mutable;
-    referenced : ty_expr;
-  }
+  and ty_expr_ref =
+    { mut : is_mutable
+    ; referenced : ty_expr
+    }
 
   and ty_expr_shape =
     | TE_Unit
@@ -1111,31 +1110,31 @@ end = struct
     | TE_Union of ty_expr_union
     | TE_Error
 
-  and ty_expr = {
-    mutable compiled_shape : ty_expr_shape option;
-    mutable on_compiled : (unit -> unit) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    (* TODO technically only need span for this? *)
-    data : ir_data;
-  }
+  and ty_expr =
+    { mutable compiled_shape : ty_expr_shape option
+    ; mutable on_compiled : (unit -> unit) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; (* TODO technically only need span for this? *)
+      data : ir_data
+    }
 
   (* PATTERN *)
   and pattern_tuple = pattern tuple_of
 
-  and pattern_variant = {
-    label : Label.t;
-    label_span : Span.t;
-    value : pattern option;
-  }
+  and pattern_variant =
+    { label : Label.t
+    ; label_span : Span.t
+    ; value : pattern option
+    }
 
   and bind_mode =
     | Claim
     | ByRef of { mut : bool }
 
-  and pattern_binding = {
-    bind_mode : bind_mode;
-    binding : binding;
-  }
+  and pattern_binding =
+    { bind_mode : bind_mode
+    ; binding : binding
+    }
 
   and pattern_shape =
     | P_Placeholder
@@ -1146,96 +1145,95 @@ end = struct
     | P_Variant of pattern_variant
     | P_Error
 
-  and pattern = {
-    shape : pattern_shape;
-    data : ir_data;
-  }
+  and pattern =
+    { shape : pattern_shape
+    ; data : ir_data
+    }
 
   (* SCOPE *)
-  and interpreter_local = {
-    place : place;
-    ty_field : ty_tuple_field;
-  }
+  and interpreter_local =
+    { place : place
+    ; ty_field : ty_tuple_field
+    }
 
   and interpreter_locals = { by_symbol : interpreter_local SymbolMap.t }
 
-  and interpreter_scope = {
-    id : Id.t;
-    depth : int;
-    span : Span.t;
-    mutable locals : interpreter_locals;
-    parent : interpreter_scope option;
-    recursive : bool;
-    mutable closed : bool;
-    mutable on_update : (symbol * (unit -> unit)) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and interpreter_scope =
+    { id : Id.t
+    ; depth : int
+    ; span : Span.t
+    ; mutable locals : interpreter_locals
+    ; parent : interpreter_scope option
+    ; recursive : bool
+    ; mutable closed : bool
+    ; mutable on_update : (symbol * (unit -> unit)) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
-  and compiler_scope = {
-    id : Id.t;
-    parent : compiler_scope option;
-    recursive : bool;
-    mutable bindings : binding StringMap.t;
-    mutable closed : bool;
-    mutable on_update : (unit -> unit) list;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and compiler_scope =
+    { id : Id.t
+    ; parent : compiler_scope option
+    ; recursive : bool
+    ; mutable bindings : binding StringMap.t
+    ; mutable closed : bool
+    ; mutable on_update : (unit -> unit) list
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
   (* interpreter *)
-  and natives = {
-    by_name : (ty -> value) StringMap.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and natives =
+    { by_name : (ty -> value) StringMap.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
-  and instantiated_generics = {
-    mutable map : value ValueMap.t Id.Map.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and instantiated_generics =
+    { mutable map : value ValueMap.t Id.Map.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
-  and cast_impls = {
-    mutable map : value ValueMap.t ValueMap.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    mutable as_module : value ValueMap.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-  }
+  and cast_impls =
+    { mutable map : value ValueMap.t ValueMap.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; mutable as_module : value ValueMap.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    }
 
-  and interpreter_state = {
-    natives : natives;
-    scope : interpreter_scope;
-    result_scope : var_scope;
-    current_fn_natives : (id, value) Hashtbl.t;
-        [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    mutable contexts : value Id.Map.t;
-    instantiated_generics : instantiated_generics;
-    cast_impls : cast_impls;
-    current_name : name_shape;
-  }
+  and interpreter_state =
+    { natives : natives
+    ; scope : interpreter_scope
+    ; result_scope : var_scope
+    ; current_fn_natives : (id, value) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; mutable contexts : value Id.Map.t
+    ; instantiated_generics : instantiated_generics
+    ; cast_impls : cast_impls
+    ; current_name : name_shape
+    }
 
   (* OTHER *)
-  and binding = {
-    id : Id.t;
-    scope : var_scope;
-    name : Symbol.t;
-    span : Span.t;
-    ty : ty;
-    label : Label.t;
-    mut : bool;
-  }
+  and binding =
+    { id : Id.t
+    ; scope : var_scope
+    ; name : Symbol.t
+    ; span : Span.t
+    ; ty : ty
+    ; label : Label.t
+    ; mut : bool
+    }
 
-  and ir_data = {
-    span : Span.t;
-    ty : ty;
-    compiler_scope : compiler_scope;
-    evaled : ir_evaled;
-    included_file : Uri.t option;
-  }
+  and ir_data =
+    { span : Span.t
+    ; ty : ty
+    ; compiler_scope : compiler_scope
+    ; evaled : ir_evaled
+    ; included_file : Uri.t option
+    }
 
-  and ir_evaled = {
-    mutable patterns : pattern list;
-    mutable exprs : expr list;
-    mutable ty_exprs : ty_expr list;
-    mutable ty_ascribed : bool;
-  }
+  and ir_evaled =
+    { mutable patterns : pattern list
+    ; mutable exprs : expr list
+    ; mutable ty_exprs : ty_expr list
+    ; mutable ty_ascribed : bool
+    }
 
   and name = { var : name_shape var }
   and optional_name = { var : name_shape option var }
@@ -1245,10 +1243,10 @@ end = struct
     | Concat of name_shape * name_part
     | Instantiation of name_instantiation
 
-  and name_instantiation = {
-    generic : value;
-    arg : value;
-  }
+  and name_instantiation =
+    { generic : value
+    ; arg : value
+    }
 
   and name_part =
     | Uri of Uri.t
@@ -1277,12 +1275,13 @@ end = struct
   module RecurseCache = Inference.CompareRecurseCache
 
   let equal a b =
-    RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
-        TypesImpl.equal_value a b)
+    RecurseCache.with_cache (RecurseCache.create ()) (fun () -> TypesImpl.equal_value a b)
+  ;;
 
   let compare a b =
     RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
-        TypesImpl.compare_value a b)
+      TypesImpl.compare_value a b)
+  ;;
 end
 
 and ValueMap : sig
@@ -1305,24 +1304,28 @@ end = struct
   let find_opt key map =
     map.entries
     |> List.find_map (fun (map_key, value) ->
-        if ValueImpl.equal key map_key then Some value else None)
+      if ValueImpl.equal key map_key then Some value else None)
+  ;;
 
   let update (key : key) (f : 'a option -> 'a option) (map : 'a t) : 'a t =
     let existed = ref false in
     let updated_if_existed =
       map.entries
       |> List.filter_map (fun (map_key, current_value) ->
-          (if ValueImpl.equal key map_key then (
-             existed := true;
-             f (Some current_value))
-           else Some current_value)
-          |> Option.map (fun new_value -> (map_key, new_value)))
+        (if ValueImpl.equal key map_key
+         then (
+           existed := true;
+           f (Some current_value))
+         else Some current_value)
+        |> Option.map (fun new_value -> map_key, new_value))
     in
-    if !existed then { entries = updated_if_existed }
-    else
+    if !existed
+    then { entries = updated_if_existed }
+    else (
       match f None with
       | None -> map
-      | Some value -> { entries = (key, value) :: map.entries }
+      | Some value -> { entries = (key, value) :: map.entries })
+  ;;
 
   let add key value map = update key (fun _current -> Some value) map
   let iter f map = map.entries |> List.iter (fun (key, value) -> f key value)
@@ -1331,13 +1334,14 @@ end = struct
     let result = ref a in
     b
     |> iter (fun key value ->
-        result :=
-          !result
-          |> update key (fun current_value ->
-              match current_value with
-              | None -> Some value
-              | Some current_value -> f key value current_value));
+      result
+      := !result
+         |> update key (fun current_value ->
+           match current_value with
+           | None -> Some value
+           | Some current_value -> f key value current_value));
     !result
+  ;;
 
   let size map = map.entries |> List.length
 end

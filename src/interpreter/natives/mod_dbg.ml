@@ -1,9 +1,9 @@
 open Common
 
 let init () =
-  [
-    (* TODO dbg should be polymorphic *)
+  [ (* TODO dbg should be polymorphic *)
     native_fn "dbg.print" (fun _ty ~caller:_ ~state:_ arg : value ->
-        eprintln "%a" Value.print arg;
-        V_Unit |> Value.inferred ~span);
+      eprintln "%a" Value.print arg;
+      V_Unit |> Value.inferred ~span)
   ]
+;;

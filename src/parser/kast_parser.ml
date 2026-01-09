@@ -14,32 +14,31 @@ let error = Error.error
 
 type ruleset = Ruleset.t
 
-type result = {
-  ast : Ast.t option;
-  trailing_comments : Token.comment list;
-  eof : position;
-}
+type result =
+  { ast : Ast.t option
+  ; trailing_comments : Token.comment list
+  ; eof : position
+  }
 
 let parse_with_lexer : Lexer.t -> ruleset -> result =
- fun lexer ruleset ->
+  fun lexer ruleset ->
   let unused_comments_rev = ref [] in
   let result =
     Impl.parse_value
-      {
-        continuation_keywords = StringSet.empty;
-        filter = Any;
-        lexer;
-        ruleset;
-        unused_comments_rev;
+      { continuation_keywords = StringSet.empty
+      ; filter = Any
+      ; lexer
+      ; ruleset
+      ; unused_comments_rev
       }
   in
   Impl.expect_eof lexer;
-  {
-    ast = result;
-    trailing_comments = !unused_comments_rev |> List.rev;
-    eof = Lexer.position lexer;
+  { ast = result
+  ; trailing_comments = !unused_comments_rev |> List.rev
+  ; eof = Lexer.position lexer
   }
+;;
 
 let parse : source -> ruleset -> result =
- fun source ruleset ->
-  parse_with_lexer (Lexer.init Lexer.default_rules source) ruleset
+  fun source ruleset -> parse_with_lexer (Lexer.init Lexer.default_rules source) ruleset
+;;

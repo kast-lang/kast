@@ -11,4 +11,5 @@ module Target = struct
     | "ir" -> Ir
     | "js" | "javascript" -> JavaScript
     | _ -> fail "Unknown output type %S" target
+  ;;
 end

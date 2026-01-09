@@ -17,24 +17,25 @@ module Name = struct
 
   let new_inferred ~span value : name =
     { var = Inference.Var.new_inferred VarScope.of_name_shape ~span value }
+  ;;
 
   let new_not_inferred ~scope ~span : name =
     { var = Inference.Var.new_not_inferred ~scope ~span }
+  ;;
 end
 
 module OptionalName = struct
   type t = optional_name
 
   let new_inferred ~span value : optional_name =
-    {
-      var =
-        Inference.Var.new_inferred
-          (VarScope.of_option VarScope.of_name_shape)
-          ~span value;
+    { var =
+        Inference.Var.new_inferred (VarScope.of_option VarScope.of_name_shape) ~span value
     }
+  ;;
 
   let new_not_inferred ~scope ~span : optional_name =
     { var = Inference.Var.new_not_inferred ~scope ~span }
+  ;;
 end
 
 module Ty = struct
@@ -46,7 +47,8 @@ module Ty = struct
   let inferred = Inference_impl.inferred_ty
 
   let await_inferred : ty -> ty_shape =
-   fun ty -> ty.var |> Inference.Var.await_inferred ~error_shape:T_Error
+    fun ty -> ty.var |> Inference.Var.await_inferred ~error_shape:T_Error
+  ;;
 
   module Shape = struct
     type t = ty_shape
@@ -56,20 +58,22 @@ module Ty = struct
     let expect_tuple : t -> ty_tuple option = function
       | T_Tuple t -> Some t
       | _ -> None
+    ;;
 
     let expect_variant : t -> ty_variant option = function
       | T_Variant t -> Some t
       | _ -> None
+    ;;
 
     let name : t -> optional_name =
       let span = Span.fake "<Ty.Shape.name>" in
       function
-      | T_Unit | T_Bool | T_Int32 | T_Int64 | T_Float64 | T_String | T_Char
-      | T_Ref _ | T_Ty | T_Fn _ | T_Generic _ | T_Ast | T_UnwindToken _
-      | T_Target | T_ContextTy | T_CompilerScope | T_Opaque _ | T_Blocked _
-      | T_Error ->
-          None |> OptionalName.new_inferred ~span
+      | T_Unit | T_Bool | T_Int32 | T_Int64 | T_Float64 | T_String | T_Char | T_Ref _
+      | T_Ty | T_Fn _ | T_Generic _ | T_Ast | T_UnwindToken _ | T_Target | T_ContextTy
+      | T_CompilerScope | T_Opaque _ | T_Blocked _ | T_Error ->
+        None |> OptionalName.new_inferred ~span
       | T_Variant { name; _ } | T_Tuple { name; _ } -> name
+    ;;
   end
 
   let name ty = await_inferred ty |> Shape.name
@@ -89,17 +93,16 @@ module Value = struct
     let name : value_shape -> optional_name =
       let span = Span.fake "<Value.Shape.name>" in
       function
-      | V_Unit | V_Bool _ | V_Int32 _ | V_Int64 _ | V_Float64 _ | V_Char _
-      | V_Ref _ | V_String _ | V_Tuple _ | V_Variant _ | V_Ast _
-      | V_UnwindToken _ | V_Target _ | V_ContextTy _ | V_CompilerScope _
-      | V_Opaque _ | V_Blocked _ | V_Error ->
-          None |> OptionalName.new_inferred ~span
+      | V_Unit | V_Bool _ | V_Int32 _ | V_Int64 _ | V_Float64 _ | V_Char _ | V_Ref _
+      | V_String _ | V_Tuple _ | V_Variant _ | V_Ast _ | V_UnwindToken _ | V_Target _
+      | V_ContextTy _ | V_CompilerScope _ | V_Opaque _ | V_Blocked _ | V_Error ->
+        None |> OptionalName.new_inferred ~span
       | V_Fn _ | V_NativeFn _ ->
-          (* TODO *)
-          None |> OptionalName.new_inferred ~span
-      | V_Generic generic ->
-          Some generic.name |> OptionalName.new_inferred ~span
+        (* TODO *)
+        None |> OptionalName.new_inferred ~span
+      | V_Generic generic -> Some generic.name |> OptionalName.new_inferred ~span
       | V_Ty ty -> ty |> Ty.name
+    ;;
   end
 
   let new_not_inferred = Inference_impl.new_not_inferred_value
@@ -109,65 +112,76 @@ module Value = struct
 
   let binding ~span binding =
     V_Blocked { shape = BV_Binding binding; ty = binding.ty } |> inferred ~span
+  ;;
 
   let await_inferred : value -> value_shape =
-   fun value -> value.var |> Inference.Var.await_inferred ~error_shape:V_Error
+    fun value -> value.var |> Inference.Var.await_inferred ~error_shape:V_Error
+  ;;
 
   let name value = await_inferred value |> Shape.name
 
   let expect_unit : value -> unit option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Unit -> Some ()
     | _ -> None
+  ;;
 
   let expect_ref : value -> value_ref option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Ref ref -> Some ref
     | _ -> None
+  ;;
 
   let expect_opaque : 'a. value -> 'a option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Opaque { ty = _; value } -> Some (Obj.obj value)
     | _ -> None
+  ;;
 
   let expect_unwind_token : value -> Types.value_unwind_token option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_UnwindToken token -> Some token
     | _ -> None
+  ;;
 
   let expect_bool : value -> bool option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Bool value -> Some value
     | _ -> None
+  ;;
 
   let expect_char : value -> char option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Char value -> Some value
     | _ -> None
+  ;;
 
   let expect_int32 : value -> int32 option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Int32 value -> Some value
     | _ -> None
+  ;;
 
   let expect_int64 : value -> int64 option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Int64 value -> Some value
     | _ -> None
+  ;;
 
   let expect_float64 : value -> float option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Float64 value -> Some value
     | _ -> None
+  ;;
 
   let expect_ty : value -> ty option =
     let span = Span.fake "<expect_ty>" in
@@ -175,28 +189,32 @@ module Value = struct
       let inferred = value |> await_inferred in
       match inferred with
       | V_Blocked blocked ->
-          let ty = Ty.inferred ~span (T_Blocked blocked) in
-          Some ty
+        let ty = Ty.inferred ~span (T_Blocked blocked) in
+        Some ty
       | V_Ty ty -> Some ty
       | _ -> None
+  ;;
 
   let expect_string : value -> string option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_String s -> Some s
     | _ -> None
+  ;;
 
   let expect_fn : value -> value_fn option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Fn f -> Some f
     | _ -> None
+  ;;
 
   let expect_tuple : value -> value_tuple option =
-   fun value ->
+    fun value ->
     match value |> await_inferred with
     | V_Tuple value -> Some value
     | _ -> None
+  ;;
 
   let print = print_value
 
@@ -313,11 +331,13 @@ module Place = struct
     | Immutable -> false
     | Mutable -> parent_mut
     | Inherit -> parent_mut
+  ;;
 
   let assign (value : value) (place : place) ~(parent_mut : bool) =
-    if (not (is_mutable ~parent_mut place)) && place.state <> Uninitialized then
-      fail "Mutated non-mut place";
+    if (not (is_mutable ~parent_mut place)) && place.state <> Uninitialized
+    then fail "Mutated non-mut place";
     place.state <- Occupied value
+  ;;
 
   let print_value = print_place_value
   let print_ref = print_place_ref
@@ -328,11 +348,13 @@ module Place = struct
     let bool : bool -> t = function
       | true -> Mutable
       | false -> Immutable
+    ;;
 
     let to_bool : t -> bool = function
       | Mutable -> true
       | Immutable -> false
       | Inherit -> fail "Place.Mut.to_bool with Inherit"
+    ;;
   end
 end
 
@@ -344,7 +366,9 @@ module IsMutable = struct
 
   let new_inferred ~span inferred : t =
     { var = Inference.Var.new_inferred VarScope.of_bool ~span inferred }
+  ;;
 
   let new_not_inferred ~scope ~span : t =
     { var = Inference.Var.new_not_inferred ~scope ~span }
+  ;;
 end

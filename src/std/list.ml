@@ -6,16 +6,17 @@ module List = struct
   let zip : 'a. 'a list -> 'b list -> ('a * 'b) list = combine
 
   let format_options : Format.Iter.options =
-    {
-      before = { fits = ("[", 1, ""); breaks = ("[", 2, "") };
-      sep = { fits = (",", 1, ""); breaks = (",", 2, "") };
-      after = { fits = ("", 1, "]"); breaks = (",", 0, "]") };
+    { before = { fits = "[", 1, ""; breaks = "[", 2, "" }
+    ; sep = { fits = ",", 1, ""; breaks = ",", 2, "" }
+    ; after = { fits = "", 1, "]"; breaks = ",", 0, "]" }
     }
+  ;;
 
   let print : 'a. (formatter -> 'a -> unit) -> formatter -> 'a list -> unit =
-   fun print_value fmt list ->
+    fun print_value fmt list ->
     let print_value fmt value = fprintf fmt "@[<v>%a@]" print_value value in
     Format.Iter.print format_options iter print_value fmt list
+  ;;
 
   let tail = Stdlib.List.tl
   let head = Stdlib.List.hd
@@ -24,11 +25,14 @@ module List = struct
   let head_opt = function
     | head :: _ -> Some head
     | [] -> None
+  ;;
 
   let last_opt = function
     | [] -> None
     | a -> Some (last a)
+  ;;
 
   let sort_by_key compare_key get_key =
     sort (fun a b -> compare_key (get_key a) (get_key b))
+  ;;
 end

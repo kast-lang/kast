@@ -11,8 +11,8 @@ type t =
 type parsed_part = t
 
 let print : formatter -> parsed_part -> unit =
- fun fmt -> function
-  | Comment comment ->
-      fprintf fmt "comment %a" Token.Shape.print (Comment comment.shape)
+  fun fmt -> function
+  | Comment comment -> fprintf fmt "comment %a" Token.Shape.print (Comment comment.shape)
   | Keyword token -> Token.print fmt token
   | Value ast -> Ast.print fmt ast
+;;

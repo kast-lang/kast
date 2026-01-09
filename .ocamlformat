@@ -1,4 +1,5 @@
 ocaml-version = 5.3
+profile=janestreet
 break-string-literals=never
 break-cases=toplevel
 type-decl=sparse

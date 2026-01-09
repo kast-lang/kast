@@ -22,6 +22,7 @@ module Linol_eio = struct
       Eio.Mutex.lock out_mutex;
       Eio.Flow.copy_string str out_ch;
       Eio.Mutex.unlock out_mutex
+    ;;
   end
 
   module Jsonrpc2 = Linol.Jsonrpc2.Make (IO_eio)
@@ -34,6 +35,7 @@ module Args = struct
   let parse : string list -> args = function
     | [] -> { dummy = () }
     | arg :: _rest -> fail "Unexpected arg %S" arg
+  ;;
 end
 
 class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
@@ -52,102 +54,106 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
       updates |> Latest_state.get_latest_result |> ignore;
       Processing.file_state (self#get_state ()) uri
 
-    method! on_req_initialize ~notify_back (i : Lsp.Types.InitializeParams.t) :
-        Lsp.Types.InitializeResult.t =
+    method! on_req_initialize
+      ~notify_back
+      (i : Lsp.Types.InitializeParams.t)
+      : Lsp.Types.InitializeResult.t =
       let workspace_folders =
-        i.workspaceFolders |> Option.to_seq |> Seq.flat_map Option.to_seq
-        |> Seq.flat_map List.to_seq |> List.of_seq
+        i.workspaceFolders
+        |> Option.to_seq
+        |> Seq.flat_map Option.to_seq
+        |> Seq.flat_map List.to_seq
+        |> List.of_seq
       in
       workspace_folders_saved := workspace_folders;
-      state :=
-        Some
-          (Processing.init
-             (workspace_folders
-             |> List.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
+      state
+      := Some
+           (Processing.init
+              (workspace_folders
+               |> List.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
                  workspace.uri)));
       self#send_diagnostics ~notify_back ();
       super#on_req_initialize ~notify_back i
 
-    method! config_modify_capabilities (c : Lsp.Types.ServerCapabilities.t) :
-        Lsp.Types.ServerCapabilities.t =
-      {
-        c with
+    method! config_modify_capabilities
+      (c : Lsp.Types.ServerCapabilities.t)
+      : Lsp.Types.ServerCapabilities.t =
+      { c with
         documentFormattingProvider =
-          Some (`DocumentFormattingOptions Kast_lsp.Formatting.options);
-        semanticTokensProvider =
+          Some (`DocumentFormattingOptions Kast_lsp.Formatting.options)
+      ; semanticTokensProvider =
+          Some (`SemanticTokensRegistrationOptions Kast_lsp.Semantic_tokens.options)
+      ; selectionRangeProvider =
+          Some (`SelectionRangeRegistrationOptions Kast_lsp.Selection_range.options)
+      ; inlayHintProvider =
+          Some (`InlayHintRegistrationOptions Kast_lsp.Inlay_hints.options)
+      ; hoverProvider = Some (`HoverOptions Kast_lsp.Hover.options)
+      ; referencesProvider = Some (`ReferenceOptions Kast_lsp.Hover.references_options)
+      ; definitionProvider = Some (`DefinitionOptions Kast_lsp.Hover.definition_options)
+      ; renameProvider = Some (`RenameOptions Kast_lsp.Hover.rename_options)
+      ; completionProvider =
           Some
-            (`SemanticTokensRegistrationOptions Kast_lsp.Semantic_tokens.options);
-        selectionRangeProvider =
-          Some
-            (`SelectionRangeRegistrationOptions Kast_lsp.Selection_range.options);
-        inlayHintProvider =
-          Some (`InlayHintRegistrationOptions Kast_lsp.Inlay_hints.options);
-        hoverProvider = Some (`HoverOptions Kast_lsp.Hover.options);
-        referencesProvider =
-          Some (`ReferenceOptions Kast_lsp.Hover.references_options);
-        definitionProvider =
-          Some (`DefinitionOptions Kast_lsp.Hover.definition_options);
-        renameProvider = Some (`RenameOptions Kast_lsp.Hover.rename_options);
-        completionProvider =
-          Some
-            {
-              allCommitCharacters = None;
-              completionItem = None;
-              resolveProvider = None;
-              triggerCharacters = None;
-              workDoneProgress = None;
-            };
+            { allCommitCharacters = None
+            ; completionItem = None
+            ; resolveProvider = None
+            ; triggerCharacters = None
+            ; workDoneProgress = None
+            }
       }
 
     method spawn_query_handler f = Eio.Fiber.fork ~sw f
 
     method private send_diagnostics ~notify_back () =
       Eio.Fiber.fork ~sw (fun () ->
-          updates |> Latest_state.get_latest_result |> ignore;
-          let state = self#get_state () in
-          let diags = Kast_lsp.Diagnostics.get state in
+        updates |> Latest_state.get_latest_result |> ignore;
+        let state = self#get_state () in
+        let diags = Kast_lsp.Diagnostics.get state in
+        Log.trace (fun log -> log "send diags actually (size=%d)" (List.length diags));
+        diags
+        |> List.iter (fun (uri, diags) ->
           Log.trace (fun log ->
-              log "send diags actually (size=%d)" (List.length diags));
-          diags
-          |> List.iter (fun (uri, diags) ->
-              Log.trace (fun log ->
-                  let print_diag fmt diag =
-                    fprintf fmt "%s"
-                      (diag |> Lsp.Types.Diagnostic.yojson_of_t
-                     |> Yojson.Safe.to_string)
-                  in
-                  log "sending diags for %a %a" Uri.print
-                    (Kast_lsp.Common.uri_from_lsp uri)
-                    (List.print print_diag) diags);
-              let notification =
-                Lsp.Server_notification.PublishDiagnostics
-                  (Lsp.Types.PublishDiagnosticsParams.create ~uri
-                     ~diagnostics:diags ())
-              in
-              notify_back#send_notification notification))
+            let print_diag fmt diag =
+              fprintf
+                fmt
+                "%s"
+                (diag |> Lsp.Types.Diagnostic.yojson_of_t |> Yojson.Safe.to_string)
+            in
+            log
+              "sending diags for %a %a"
+              Uri.print
+              (Kast_lsp.Common.uri_from_lsp uri)
+              (List.print print_diag)
+              diags);
+          let notification =
+            Lsp.Server_notification.PublishDiagnostics
+              (Lsp.Types.PublishDiagnosticsParams.create ~uri ~diagnostics:diags ())
+          in
+          notify_back#send_notification notification))
 
     (* We define here a helper method that will:
        - process a document
        - store the state resulting from the processing
        - return the diagnostics from the new state
     *)
-    method private _on_doc ~(changed : bool)
-        ~(notify_back : Linol_eio.Jsonrpc2.notify_back)
-        (uri : Lsp.Types.DocumentUri.t) (contents : string) =
+    method
+      private _on_doc
+      ~(changed : bool)
+      ~(notify_back : Linol_eio.Jsonrpc2.notify_back)
+      (uri : Lsp.Types.DocumentUri.t)
+      (contents : string) =
       Log.info (fun log -> log "_on_doc %S" (Lsp.Uri0.to_path uri));
-
-      if changed then (
+      if changed
+      then (
         Processing.update_file (self#get_state ()) uri contents;
         updates
         |> Latest_state.spawn ~domain_mgr (fun () ->
-            (* state :=
+          (* state :=
               Some
                 (Processing.init
                    (!workspace_folders_saved
                    |> List.map (fun (workspace : Lsp.Types.WorkspaceFolder.t) ->
                        workspace.uri))) *)
-            !state |> Option.get |> Processing.recalculate));
-
+          !state |> Option.get |> Processing.recalculate));
       self#send_diagnostics ~notify_back ()
 
     (* We now override the [on_notify_doc_did_open] method that will be called
@@ -157,78 +163,106 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
 
     (* Similarly, we also override the [on_notify_doc_did_change] method that will be called
        by the server each time a new document is opened. *)
-    method on_notif_doc_did_change ~notify_back d _c ~old_content:_old
-        ~new_content =
+    method on_notif_doc_did_change ~notify_back d _c ~old_content:_old ~new_content =
       self#_on_doc ~changed:true ~notify_back d.uri new_content
 
     (* On document closes, we remove the state associated to the file from the global
        hashtable state, to avoid leaking memory. *)
     method on_notif_doc_did_close ~notify_back:_ _ : unit = ()
 
-    method! on_req_completion ~notify_back:_ ~id:_ ~uri ~pos ~ctx:_
-        ~workDoneToken:_ ~partialResultToken:_ (_ : Linol_eio.doc_state) :
-        [ `CompletionList of Lsp.Types.CompletionList.t
+    method! on_req_completion
+      ~notify_back:_
+      ~id:_
+      ~uri
+      ~pos
+      ~ctx:_
+      ~workDoneToken:_
+      ~partialResultToken:_
+      (_ : Linol_eio.doc_state)
+      : [ `CompletionList of Lsp.Types.CompletionList.t
         | `List of Lsp.Types.CompletionItem.t list
         ]
-        option =
+          option =
       Log.trace (fun log -> log "Got completion request");
       let* file_state = self#file_state uri in
       Some (`List (file_state |> Kast_lsp.Completion.completions pos))
 
-    method! on_req_inlay_hint ~notify_back:_ ~id:_ ~uri
-        ~(range : Lsp.Types.Range.t) () : Lsp.Types.InlayHint.t list option =
+    method! on_req_inlay_hint
+      ~notify_back:_
+      ~id:_
+      ~uri
+      ~(range : Lsp.Types.Range.t)
+      ()
+      : Lsp.Types.InlayHint.t list option =
       let _ = range in
       let* file_state = self#file_state uri in
       file_state |> Kast_lsp.Inlay_hints.get
 
-    method! on_req_hover ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
-        (_ : Linol_eio.doc_state) : Lsp.Types.Hover.t option =
+    method! on_req_hover
+      ~notify_back:_
+      ~id:_
+      ~uri
+      ~pos
+      ~workDoneToken:_
+      (_ : Linol_eio.doc_state)
+      : Lsp.Types.Hover.t option =
       let* file_state = self#file_state uri in
       file_state |> Kast_lsp.Hover.hover pos
 
-    method! on_req_definition ~notify_back:_ ~id:_ ~uri ~pos ~workDoneToken:_
-        ~partialResultToken:_ (_ : Linol_eio.doc_state) :
-        Lsp.Types.Locations.t option =
+    method! on_req_definition
+      ~notify_back:_
+      ~id:_
+      ~uri
+      ~pos
+      ~workDoneToken:_
+      ~partialResultToken:_
+      (_ : Linol_eio.doc_state)
+      : Lsp.Types.Locations.t option =
       let* file_state = self#file_state uri in
       file_state |> Kast_lsp.Hover.find_definition pos
 
-    method private on_req_selection_range :
-        notify_back:Linol_eio.Jsonrpc2.notify_back ->
-        Lsp.Types.SelectionRangeParams.t ->
-        Lsp.Types.SelectionRange.t list =
+    method
+      private on_req_selection_range
+      :  notify_back:Linol_eio.Jsonrpc2.notify_back
+      -> Lsp.Types.SelectionRangeParams.t
+      -> Lsp.Types.SelectionRange.t list =
       fun ~notify_back:_ params ->
         match self#file_state params.textDocument.uri with
         | Some file_state -> file_state |> Kast_lsp.Selection_range.get params
         | None -> []
 
-    method private on_req_format :
-        notify_back:Linol_eio.Jsonrpc2.notify_back ->
-        Lsp.Types.DocumentFormattingParams.t ->
-        Lsp.Types.TextEdit.t list option =
+    method
+      private on_req_format
+      :  notify_back:Linol_eio.Jsonrpc2.notify_back
+      -> Lsp.Types.DocumentFormattingParams.t
+      -> Lsp.Types.TextEdit.t list option =
       fun ~notify_back:_ params ->
         let* file_state = self#file_state params.textDocument.uri in
         file_state |> Kast_lsp.Formatting.run (self#get_state ())
 
-    method private on_semantic_tokens :
-        notify_back:Linol_eio.Jsonrpc2.notify_back ->
-        Lsp.Types.SemanticTokensParams.t ->
-        Lsp.Types.SemanticTokens.t option =
+    method
+      private on_semantic_tokens
+      :  notify_back:Linol_eio.Jsonrpc2.notify_back
+      -> Lsp.Types.SemanticTokensParams.t
+      -> Lsp.Types.SemanticTokens.t option =
       fun ~notify_back:_ params ->
         let* file_state = self#file_state params.textDocument.uri in
         file_state |> Kast_lsp.Semantic_tokens.run
 
-    method private on_req_references :
-        notify_back:Linol_eio.Jsonrpc2.notify_back ->
-        Lsp.Types.ReferenceParams.t ->
-        Lsp.Types.Location.t list option =
+    method
+      private on_req_references
+      :  notify_back:Linol_eio.Jsonrpc2.notify_back
+      -> Lsp.Types.ReferenceParams.t
+      -> Lsp.Types.Location.t list option =
       fun ~notify_back:_ params ->
         let* file_state = self#file_state params.textDocument.uri in
         file_state |> Kast_lsp.Hover.find_references params
 
-    method private on_req_rename :
-        notify_back:Linol_eio.Jsonrpc2.notify_back ->
-        Lsp.Types.RenameParams.t ->
-        Lsp.Types.WorkspaceEdit.t =
+    method
+      private on_req_rename
+      :  notify_back:Linol_eio.Jsonrpc2.notify_back
+      -> Lsp.Types.RenameParams.t
+      -> Lsp.Types.WorkspaceEdit.t =
       fun ~notify_back:_ params ->
         let result =
           let* file_state = self#file_state params.textDocument.uri in
@@ -237,44 +271,37 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
         let edit =
           match result with
           | Some edit -> edit
-          | None ->
-              {
-                documentChanges = None;
-                changes = None;
-                changeAnnotations = None;
-              }
+          | None -> { documentChanges = None; changes = None; changeAnnotations = None }
         in
         let json = Lsp.Types.WorkspaceEdit.yojson_of_t edit in
         Log.trace (fun log ->
-            log "Rename reply: %a" (Yojson.Safe.pretty_print ~std:true) json);
+          log "Rename reply: %a" (Yojson.Safe.pretty_print ~std:true) json);
         edit
 
-    method private on_req_prepare_rename :
-        notify_back:Linol_eio.Jsonrpc2.notify_back ->
-        Lsp.Types.PrepareRenameParams.t ->
-        Lsp.Types.Range.t option =
+    method
+      private on_req_prepare_rename
+      :  notify_back:Linol_eio.Jsonrpc2.notify_back
+      -> Lsp.Types.PrepareRenameParams.t
+      -> Lsp.Types.Range.t option =
       fun ~notify_back:_ params ->
         let* file_state = self#file_state params.textDocument.uri in
         file_state |> Kast_lsp.Hover.prepare_rename params.position
 
-    method! on_request_unhandled : type r.
-        notify_back:Linol_eio.Jsonrpc2.notify_back ->
-        id:Linol.Server.Req_id.t ->
-        r Lsp.Client_request.t ->
-        r =
+    method! on_request_unhandled
+      : type r.
+        notify_back:Linol_eio.Jsonrpc2.notify_back
+        -> id:Linol.Server.Req_id.t
+        -> r Lsp.Client_request.t
+        -> r =
       fun ~notify_back ~id:_ request ->
         match request with
-        | SelectionRange params ->
-            self#on_req_selection_range ~notify_back params
-        | TextDocumentFormatting params ->
-            self#on_req_format ~notify_back params
-        | TextDocumentReferences params ->
-            self#on_req_references ~notify_back params
-        | SemanticTokensFull params ->
-            self#on_semantic_tokens ~notify_back params
+        | SelectionRange params -> self#on_req_selection_range ~notify_back params
+        | TextDocumentFormatting params -> self#on_req_format ~notify_back params
+        | TextDocumentReferences params -> self#on_req_references ~notify_back params
+        | SemanticTokensFull params -> self#on_semantic_tokens ~notify_back params
         | TextDocumentRename params -> self#on_req_rename ~notify_back params
         | TextDocumentPrepareRename params ->
-            self#on_req_prepare_rename ~notify_back params
+          self#on_req_prepare_rename ~notify_back params
         | _ -> failwith "TODO handle this request"
 
     method! on_request ~notify_back ~server_request ~id request =
@@ -283,28 +310,27 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
       let s = Yojson.Safe.to_string json in
       let s = "<hidden>" in
       Log.info (fun log ->
-          log "Got request %s: %s"
-            (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
-            s);
-      let response =
-        super#on_request ~notify_back ~server_request ~id request
-      in
+        log
+          "Got request %s: %s"
+          (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
+          s);
+      let response = super#on_request ~notify_back ~server_request ~id request in
       (match response with
-      | Ok response ->
-          let json = Lsp.Client_request.yojson_of_result request response in
-          let s = Yojson.Safe.to_string json in
-          let s = "<hidden>" in
-          Log.info (fun log ->
-              log "Respond %s: %s"
-                (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t
-               |> Yojson.Safe.to_string)
-                s)
-      | Error s ->
-          Log.info (fun log ->
-              log "Request %s errored: %s"
-                (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t
-               |> Yojson.Safe.to_string)
-                s));
+       | Ok response ->
+         let json = Lsp.Client_request.yojson_of_result request response in
+         let s = Yojson.Safe.to_string json in
+         let s = "<hidden>" in
+         Log.info (fun log ->
+           log
+             "Respond %s: %s"
+             (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
+             s)
+       | Error s ->
+         Log.info (fun log ->
+           log
+             "Request %s errored: %s"
+             (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
+             s));
       response
 
     method! on_notification ~notify_back ~server_request n =
@@ -318,19 +344,21 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
 
 let run ({ dummy = () } : Args.t) =
   Eio_main.run (fun env ->
-      Eio.Switch.run (fun sw ->
-          Log.info (fun log -> log "Starting Kast LSP");
-          let s = new lsp_server ~sw ~domain_mgr:(Eio.Stdenv.domain_mgr env) in
-          let server = Linol_eio.Jsonrpc2.create_stdio ~env s in
-          let task () =
-            try
-              let shutdown () = s#get_status = `ReceivedExit in
-              Linol_eio.Jsonrpc2.run ~shutdown server
-            with Cancel -> ()
-          in
-          match task () with
-          | () -> Log.info (fun log -> log "Exiting Kast LSP")
-          | exception e ->
-              let e = Printexc.to_string e in
-              eprintln "Unhandled exception: %s\n%!" e;
-              exit 1))
+    Eio.Switch.run (fun sw ->
+      Log.info (fun log -> log "Starting Kast LSP");
+      let s = new lsp_server ~sw ~domain_mgr:(Eio.Stdenv.domain_mgr env) in
+      let server = Linol_eio.Jsonrpc2.create_stdio ~env s in
+      let task () =
+        try
+          let shutdown () = s#get_status = `ReceivedExit in
+          Linol_eio.Jsonrpc2.run ~shutdown server
+        with
+        | Cancel -> ()
+      in
+      match task () with
+      | () -> Log.info (fun log -> log "Exiting Kast LSP")
+      | exception e ->
+        let e = Printexc.to_string e in
+        eprintln "Unhandled exception: %s\n%!" e;
+        exit 1))
+;;
