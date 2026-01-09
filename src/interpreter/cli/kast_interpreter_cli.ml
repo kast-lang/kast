@@ -10,6 +10,7 @@ module Args = struct
   type args =
     { compiler : Kast_compiler_cli.Args.t
     ; argv_except_program : string list
+    ; enable_source_maps : bool
     }
 
   type t = args
@@ -17,7 +18,13 @@ module Args = struct
   let parse : string list -> args =
     fun args ->
     let compiler, ~rest = Kast_compiler_cli.Args.parse args in
-    { compiler; argv_except_program = rest }
+    let rec parse_rest args =
+      match args with
+      | "--enable-source-maps" :: rest ->
+        { (parse_rest rest) with enable_source_maps = true }
+      | rest -> { compiler; argv_except_program = rest; enable_source_maps = false }
+    in
+    parse_rest rest
   ;;
 end
 
@@ -51,6 +58,7 @@ let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
   fun f
     ({ compiler = { path; no_std; target; output = _; formatter = _ }
      ; argv_except_program = _
+     ; enable_source_maps = _
      } as args) ->
   setup_interpreter_argv args;
   if target <> Ir then fail "Unsupported evaluation target";
@@ -72,7 +80,7 @@ let eval =
     | None -> println "<none>")
 ;;
 
-let run ({ compiler; argv_except_program } as args : Args.t) =
+let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t) =
   match compiler.target with
   | Ir -> eval_and ignore args
   | JavaScript ->
@@ -82,7 +90,8 @@ let run ({ compiler; argv_except_program } as args : Args.t) =
       | None -> "target/compiled.mjs"
     in
     Kast_compiler_cli.run { args.compiler with output = Some path };
-    let node_args = "--enable-source-maps" :: path :: argv_except_program in
+    let node_args = if enable_source_maps then [ "--enable-source-maps" ] else [] in
+    let node_args = node_args @ (path :: argv_except_program) in
     Log.info (fun log ->
       log "Launching node with args %a" (List.print String.print_maybe_escaped) node_args);
     Unix.execvp "node" (Array.of_list ("node" :: node_args))
@@ -90,7 +99,8 @@ let run ({ compiler; argv_except_program } as args : Args.t) =
 
 let repl
       ({ compiler = { path; no_std; target = _; output = _; formatter = _ }
-       ; argv_except_program
+       ; argv_except_program = _
+       ; enable_source_maps = _
        } as args :
         Args.t)
   =

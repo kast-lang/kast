@@ -6,9 +6,20 @@ module JsAst = Javascript_ast
 module Base64_vlq = Base64_vlq
 module Writer = Writer
 
+type no_effect_expr = NoEffect of JsAst.expr
+
+let async_get_set = false
+
+type transpiled_place =
+  | OCaml of
+      { get : unit -> no_effect_expr
+      ; set : JsAst.expr -> JsAst.stmt list
+      }
+  | Js of no_effect_expr
+
 type mutable_ctx =
   { mutable captured_values : JsAst.name ValueMap.t
-  ; mutable captured_places : JsAst.name Id.Map.t
+  ; mutable captured_places : transpiled_place Id.Map.t
   ; mutable symbols : JsAst.name Id.Map.t
   ; mutable prepend : JsAst.stmt list
   ; mutable prepend_late : JsAst.stmt list
@@ -24,6 +35,70 @@ type ctx =
   }
 
 type _ Effect.t += GetCtx : ctx Effect.t
+
+let place_to_js (place : transpiled_place) : no_effect_expr =
+  match place with
+  | Js place -> place
+  | OCaml place ->
+    NoEffect
+      { shape =
+          Obj
+            [ Field
+                { name = "get"
+                ; value =
+                    { shape =
+                        JsAst.Fn
+                          { async = async_get_set
+                          ; args = []
+                          ; body =
+                              [ { shape =
+                                    JsAst.Return
+                                      (let (NoEffect get) = place.get () in
+                                       get)
+                                ; span = None
+                                }
+                              ]
+                          }
+                    ; span = None
+                    }
+                }
+            ; Field
+                { name = "set"
+                ; value =
+                    (let var = JsAst.gen_name ~original:None "value" in
+                     { shape =
+                         JsAst.Fn
+                           { async = async_get_set
+                           ; args = [ var ]
+                           ; body = place.set { shape = Var var; span = None }
+                           }
+                     ; span = None
+                     })
+                }
+            ]
+      ; span = None
+      }
+;;
+
+let place_from_js (place : no_effect_expr) : transpiled_place = Js place
+let place_from_js_var name = place_from_js (NoEffect { shape = Var name; span = None })
+
+let place_of (expr : no_effect_expr) : transpiled_place =
+  OCaml
+    { get = (fun () -> expr)
+    ; set =
+        (let (NoEffect expr) = expr in
+         fun value -> [ { shape = Assign { assignee = expr; value }; span = None } ])
+    }
+;;
+
+let place_of_var name = place_of (NoEffect { shape = Var name; span = None })
+
+let place_of_var_field name field =
+  place_of
+    (NoEffect
+       { shape = Field { obj = { shape = Var name; span = None }; field }; span = None })
+;;
 
 module Impl = struct
   let rec _unused () = ()
@@ -90,7 +165,7 @@ module Impl = struct
             { async = true
             ; args = [ arg_name ]
             ; body =
-                pattern_match arg (place_of { shape = JsAst.Var arg_name; span = None })
+                pattern_match arg (place_of_var arg_name)
                 @ [ { shape = JsAst.Return (transpile_expr body); span = None } ]
             }
       ; span = None
@@ -136,24 +211,20 @@ module Impl = struct
     | T_Blocked _ -> todo_ty __LOC__
     | T_Error -> { shape = JsAst.Null; span = None }
 
-  and transpile_binding : span:span option -> binding -> JsAst.expr =
+  and transpile_binding : span:span option -> binding -> transpiled_place =
     fun ~span binding ->
     let ctx = Effect.perform GetCtx in
     match ctx.mut.module_of_binding |> Id.Map.find_opt binding.id with
-    | Some module_var ->
-      { shape =
-          Field { obj = { shape = Var module_var; span }; field = binding.name.name }
-      ; span
-      }
+    | Some module_var -> place_of_var_field module_var binding.name.name
     | None ->
       let binding_span =
         match span with
         | Some span -> span
         | None -> binding.span
       in
-      { shape = Var (binding_name ~span:binding_span binding); span }
+      place_of_var (binding_name ~span:binding_span binding)
 
-  and transpile_blocked : blocked_value -> JsAst.expr =
+  and transpile_blocked : blocked_value -> transpiled_place =
     fun value ->
     let ctx = Effect.perform GetCtx in
     match value.shape with
@@ -167,7 +238,7 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     Inference.Var.setup_default_if_needed value.var;
     match value.var |> Inference.Var.inferred_opt with
-    | Some (V_Blocked value) -> value |> transpile_blocked
+    | Some (V_Blocked value) -> value |> transpile_blocked |> claim
     | _ ->
       let value_name = ref None in
       let do_prepend = ref false in
@@ -264,33 +335,53 @@ module Impl = struct
     ; original = Some { raw = binding.name.name; span }
     }
 
-  and claim : JsAst.expr -> JsAst.expr =
-    fun place ->
-    { shape =
-        JsAst.Call
-          { async = false
-          ; f = { shape = JsAst.Field { obj = place; field = "get" }; span = None }
-          ; args = []
-          }
-    ; span = None
-    }
+  and assign_to_place : transpiled_place -> JsAst.expr -> JsAst.stmt list =
+    fun place value ->
+    match place with
+    | OCaml place -> place.set value
+    | Js place ->
+      let (NoEffect place) = place in
+      [ { shape =
+            Expr
+              { shape =
+                  Call
+                    { async = async_get_set
+                    ; f = { shape = Field { obj = place; field = "set" }; span = None }
+                    ; args = [ value ]
+                    }
+              ; span = None
+              }
+        ; span = None
+        }
+      ]
 
-  and read_place : JsAst.expr -> JsAst.expr =
+  and claim : transpiled_place -> JsAst.expr =
     fun place ->
-    { shape =
-        JsAst.Call
-          { async = false
-          ; f = { shape = JsAst.Field { obj = place; field = "get" }; span = None }
-          ; args = []
-          }
-    ; span = None
-    }
+    let (NoEffect result) = read_place place in
+    result
 
-  and does_match (pattern : pattern) (place : JsAst.expr) : JsAst.expr =
+  and read_place : transpiled_place -> no_effect_expr =
+    fun place ->
+    match place with
+    | OCaml place -> place.get ()
+    | Js place ->
+      let (NoEffect place) = place in
+      NoEffect
+        { shape =
+            Call
+              { async = async_get_set
+              ; f = { shape = Field { obj = place; field = "get" }; span = None }
+              ; args = []
+              }
+        ; span = None
+        }
+
+  and does_match (pattern : pattern) (place : transpiled_place) : JsAst.expr =
     let span = Some pattern.data.span in
     match pattern.shape with
     | P_Placeholder -> { shape = Bool true; span }
-    | P_Ref referenced_pattern -> does_match referenced_pattern (read_place place)
+    | P_Ref referenced_pattern ->
+      does_match referenced_pattern (place_from_js (read_place place))
     | P_Unit -> { shape = Bool true; span }
     | P_Binding _ -> { shape = Bool true; span }
     | P_Tuple { parts } ->
@@ -326,7 +417,15 @@ module Impl = struct
     | P_Variant { label; label_span = _; value = value_pattern } ->
       let var = JsAst.gen_name ~original:None "variant" in
       scope
-        [ { shape = Let { var; value = read_place place }; span }
+        [ { shape =
+              Let
+                { var
+                ; value =
+                    (let (NoEffect result) = read_place place in
+                     result)
+                }
+          ; span
+          }
         ; { shape =
               If
                 { condition =
@@ -351,13 +450,14 @@ module Impl = struct
                                (does_match
                                   value_pattern
                                   (place_of
-                                     { shape =
-                                         Field
-                                           { obj = { shape = Var var; span }
-                                           ; field = "data"
-                                           }
-                                     ; span = None
-                                     }))
+                                     (NoEffect
+                                        { shape =
+                                            Field
+                                              { obj = { shape = Var var; span }
+                                              ; field = "data"
+                                              }
+                                        ; span = None
+                                        })))
                          ; span
                          }
                        ])
@@ -369,21 +469,23 @@ module Impl = struct
         ]
     | P_Error -> { shape = Bool true; span }
 
-  and pattern_match : pattern -> JsAst.expr -> JsAst.stmt list =
+  and pattern_match : pattern -> transpiled_place -> JsAst.stmt list =
     fun pattern place ->
     let ctx = Effect.perform GetCtx in
     let span = Some pattern.data.span in
     try
       match pattern.shape with
       | P_Placeholder -> []
-      | P_Ref referenced -> pattern_match referenced (read_place place)
+      | P_Ref referenced -> pattern_match referenced (place_from_js (read_place place))
       | P_Unit -> []
       | P_Binding { bind_mode; binding } ->
         [ { shape =
               (let value =
                  match bind_mode with
                  | Claim -> claim place
-                 | ByRef { mut } -> place
+                 | ByRef { mut } ->
+                   let (NoEffect value) = place_to_js place in
+                   value
                in
                match ctx.mut.module_of_binding |> Id.Map.find_opt binding.id with
                | Some module_var ->
@@ -424,10 +526,7 @@ module Impl = struct
         (match value_pattern with
          | None -> []
          | Some value_pattern ->
-           pattern_match
-             value_pattern
-             (place_of
-                { shape = Field { obj = read_place place; field = "data" }; span = None }))
+           pattern_match value_pattern (field_place place (Name "data")))
       | P_Error -> []
     with
     | e ->
@@ -435,7 +534,7 @@ module Impl = struct
         log "While transpiling pattern matching %a" Span.print pattern.data.span);
       raise e
 
-  and assign : assignee_expr -> JsAst.expr -> JsAst.stmt list =
+  and assign : assignee_expr -> transpiled_place -> JsAst.stmt list =
     fun assignee place ->
     let span = Some assignee.data.span in
     try
@@ -460,21 +559,8 @@ module Impl = struct
           | Unpack packed -> failwith __LOC__)
         |> List.flatten
       | A_Place assignee_place ->
-        let assignee_place = transpile_place_expr assignee_place in
-        [ { shape =
-              Expr
-                { shape =
-                    Call
-                      { async = false
-                      ; f =
-                          { shape = Field { obj = assignee_place; field = "set" }; span }
-                      ; args = [ claim place ]
-                      }
-                ; span
-                }
-          ; span
-          }
-        ]
+        let ~stmts, assignee_place = transpile_place_expr assignee_place in
+        stmts @ assign_to_place assignee_place (claim place)
       | A_Let pattern -> pattern_match pattern place
       | A_Error -> []
     with
@@ -482,55 +568,6 @@ module Impl = struct
       Log.error (fun log ->
         log "While transpiling assign %a" Span.print assignee.data.span);
       raise e
-
-  and stmts_expr : JsAst.stmt list -> JsAst.expr =
-    fun stmts ->
-    { shape =
-        JsAst.Call
-          { async = true
-          ; f =
-              { shape = JsAst.Fn { async = true; args = []; body = stmts }; span = None }
-          ; args = []
-          }
-    ; span = None
-    }
-
-  and place ~get ~set : JsAst.expr =
-    { shape =
-        JsAst.Obj
-          [ Field { name = "get"; value = get }; Field { name = "set"; value = set } ]
-    ; span = None
-    }
-
-  and place_of (expr : JsAst.expr) : JsAst.expr =
-    place
-      ~get:
-        { shape =
-            JsAst.Fn
-              { async = false
-              ; args = []
-              ; body = [ { shape = JsAst.Return expr; span = None } ]
-              }
-        ; span = None
-        }
-      ~set:
-        (let var = JsAst.gen_name ~original:None "value" in
-         { shape =
-             JsAst.Fn
-               { async = false
-               ; args = [ var ]
-               ; body =
-                   [ { shape =
-                         JsAst.Assign
-                           { assignee = expr
-                           ; value = { shape = JsAst.Var var; span = None }
-                           }
-                     ; span = None
-                     }
-                   ]
-               }
-         ; span = None
-         })
 
   and scope (body : JsAst.stmt list) : JsAst.expr =
     { shape =
@@ -542,36 +579,38 @@ module Impl = struct
     ; span = None
     }
 
-  and field_place (place : JsAst.expr) (field : Tuple.member) : JsAst.expr =
+  and field_place (place : transpiled_place) (field : Tuple.member) : transpiled_place =
     place_of
-      { shape = JsAst.Field { obj = read_place place; field = tuple_field_name field }
-      ; span = None
-      }
+      (NoEffect
+         { shape =
+             JsAst.Field
+               { obj =
+                   (let (NoEffect obj) = read_place place in
+                    obj)
+               ; field = tuple_field_name field
+               }
+         ; span = None
+         })
 
-  and transpile_place : place -> JsAst.expr =
+  and transpile_place : place -> transpiled_place =
     fun captured_place ->
     let ctx = Effect.perform GetCtx in
     let value = Kast_interpreter.read_place ~span:ctx.span captured_place in
     match value.var |> Inference.Var.inferred_opt with
-    | Some (V_Blocked blocked) -> place_of (transpile_blocked blocked)
+    | Some (V_Blocked blocked) -> transpile_blocked blocked
     | _ ->
-      let var =
-        match ctx.mut.captured_places |> Id.Map.find_opt captured_place.id with
-        | Some name -> name
-        | None ->
-          let value_name = JsAst.gen_name ~original:None "place_value" in
-          let place_name = JsAst.gen_name ~original:None "place" in
-          ctx.mut.captured_places
-          <- ctx.mut.captured_places |> Id.Map.add captured_place.id place_name;
-          let place = place_of { shape = Var value_name; span = None } in
-          prepend [ { shape = Let { var = place_name; value = place }; span = None } ];
-          let value = transpile_value value in
-          prepend_late [ { shape = Let { var = value_name; value }; span = None } ];
-          place_name
-      in
-      { shape = Var var; span = None }
+      (match ctx.mut.captured_places |> Id.Map.find_opt captured_place.id with
+       | Some place -> place
+       | None ->
+         let value_name = JsAst.gen_name ~original:None "place_value" in
+         let place = place_of_var value_name in
+         ctx.mut.captured_places
+         <- ctx.mut.captured_places |> Id.Map.add captured_place.id place;
+         let value = transpile_value value in
+         prepend_late [ { shape = Let { var = value_name; value }; span = None } ];
+         place)
 
-  and transpile_place_expr : place_expr -> JsAst.expr =
+  and transpile_place_expr : place_expr -> (stmts:JsAst.stmt list * transpiled_place) =
     fun expr ->
     let span = Some expr.data.span in
     try
@@ -579,8 +618,8 @@ module Impl = struct
       match expr.shape with
       | PE_Binding binding ->
         (match ctx.captured |> Kast_interpreter.Scope.find_opt binding.name with
-         | Some place -> transpile_place place
-         | None -> place_of (transpile_binding ~span binding))
+         | Some place -> ~stmts:[], transpile_place place
+         | None -> ~stmts:[], transpile_binding ~span binding)
       | PE_Field { obj; field; field_span = _ } ->
         let var = JsAst.gen_name ~original:None "obj" in
         let member =
@@ -589,19 +628,20 @@ module Impl = struct
           | Name name -> Tuple.Member.Name (Label.get_name name)
           | Expr _ -> failwith __LOC__
         in
-        scope
-          [ { shape = JsAst.Let { var; value = transpile_place_expr obj }; span }
-          ; { shape = JsAst.Return (field_place { shape = JsAst.Var var; span } member)
-            ; span
-            }
-          ]
-      | PE_Deref expr -> transpile_expr expr
+        let ~stmts, obj = transpile_place_expr obj in
+        ~stmts, field_place obj member
+      | PE_Deref expr ->
+        let var = JsAst.gen_name ~original:None "ref" in
+        let stmts : JsAst.stmt list =
+          [ { shape = Let { var; value = transpile_expr expr }; span } ]
+        in
+        ~stmts, place_from_js_var var
       | PE_Temp expr ->
         let var = JsAst.gen_name ~original:None "temp" in
-        scope
-          [ { shape = JsAst.Let { var; value = transpile_expr expr }; span }
-          ; { shape = JsAst.Return (place_of { shape = JsAst.Var var; span }); span }
-          ]
+        let stmts : JsAst.stmt list =
+          [ { shape = Let { var; value = transpile_expr expr }; span } ]
+        in
+        ~stmts, place_of_var var
       | PE_Error -> failwith __LOC__
     with
     | e ->
@@ -628,11 +668,8 @@ module Impl = struct
       | E_Apply _ -> [ { shape = Expr (transpile_expr expr); span } ]
       | E_InstantiateGeneric _ -> failwith __LOC__
       | E_Assign { assignee; value } ->
-        let var = JsAst.gen_name ~original:None "var" in
-        [ ({ shape = JsAst.Let { var; value = transpile_place_expr value }; span }
-           : JsAst.stmt)
-        ]
-        @ assign assignee { shape = JsAst.Var var; span }
+        let ~stmts, place = transpile_place_expr value in
+        stmts @ assign assignee place
       | E_Ty _ -> failwith __LOC__
       | E_Newtype _ -> failwith __LOC__
       | E_Native _ -> failwith __LOC__
@@ -810,25 +847,21 @@ module Impl = struct
       let ctx = Effect.perform GetCtx in
       match expr.shape with
       | E_Constant value -> transpile_value value
-      | E_Ref { mut; place } -> transpile_place_expr place
-      | E_Claim expr -> transpile_place_expr expr |> claim
+      | E_Ref { mut; place } ->
+        let ~stmts, place = transpile_place_expr place in
+        let (NoEffect place) = place_to_js place in
+        scope (stmts @ [ { shape = Return place; span } ])
+      | E_Claim place ->
+        let ~stmts, place = transpile_place_expr place in
+        scope (stmts @ [ { shape = Return (claim place); span } ])
       | E_Then { list } ->
-        let body =
-          list
-          |> List.mapi (fun i e ->
-            if i + 1 = List.length list
-            then [ ({ shape = JsAst.Return (transpile_expr e); span } : JsAst.stmt) ]
-            else transpile_expr_as_stmts e)
-          |> List.flatten
-        in
-        { shape =
-            JsAst.Call
-              { async = true
-              ; f = { shape = JsAst.Fn { async = true; args = []; body }; span }
-              ; args = []
-              }
-        ; span
-        }
+        list
+        |> List.mapi (fun i e ->
+          if i + 1 = List.length list
+          then [ ({ shape = JsAst.Return (transpile_expr e); span } : JsAst.stmt) ]
+          else transpile_expr_as_stmts e)
+        |> List.flatten
+        |> scope
       | E_Stmt { expr } -> transpile_expr expr
       | E_Scope { expr } ->
         (* TODO should I actually create js scope? *)
@@ -882,7 +915,7 @@ module Impl = struct
               { async = true; f = transpile_expr generic; args = [ transpile_expr arg ] }
         ; span
         }
-      | E_Assign _ -> transpile_expr_as_stmts expr |> stmts_expr
+      | E_Assign _ -> transpile_expr_as_stmts expr |> scope
       | E_Ty _ -> { shape = JsAst.Null; span }
       | E_Newtype _ -> { shape = JsAst.Null; span }
       | E_Native { id = _; expr } -> { shape = JsAst.Raw expr; span }
@@ -924,31 +957,66 @@ module Impl = struct
         }
       | E_Match { value; branches } ->
         scope
-          (let var = JsAst.gen_name ~original:None "matched" in
-           let stmts : JsAst.stmt list ref =
-             ref
-               [ ({ shape = JsAst.Let { var; value = transpile_place_expr value }; span }
+          (let ~stmts, matched_place = transpile_place_expr value in
+           let var = JsAst.gen_name ~original:None "matched" in
+           let stmts =
+             stmts
+             @ [ ({ shape =
+                      JsAst.Let
+                        { var
+                        ; value =
+                            (let (NoEffect place) = place_to_js matched_place in
+                             place)
+                        }
+                  ; span
+                  }
                   : JsAst.stmt)
                ]
            in
-           stmts
-           := !stmts
-              @ (branches
-                 |> List.map (fun { pattern; body } : JsAst.stmt ->
-                   { shape =
-                       JsAst.If
-                         { condition = does_match pattern { shape = Var var; span }
-                         ; then_case =
-                             pattern_match pattern { shape = Var var; span }
-                             @ [ { shape = JsAst.Return (transpile_expr body); span } ]
-                         ; else_case = None
-                         }
-                   ; span
-                   }));
-           stmts := !stmts @ [ raise_error "pattern match non exhaustive" ];
-           !stmts)
+           let matched : transpiled_place = place_from_js_var var in
+           let stmts =
+             stmts
+             @ (branches
+                |> List.map (fun { pattern; body } : JsAst.stmt ->
+                  { shape =
+                      JsAst.If
+                        { condition = does_match pattern matched
+                        ; then_case =
+                            pattern_match pattern matched
+                            @ [ { shape = JsAst.Return (transpile_expr body); span } ]
+                        ; else_case = None
+                        }
+                  ; span
+                  }))
+           in
+           let stmts =
+             stmts
+             @ [ { shape =
+                     Expr
+                       { shape =
+                           Call
+                             { async = false
+                             ; f = { shape = Raw "console.error"; span = None }
+                             ; args =
+                                 [ { shape = String "unmatched value:"; span = None }
+                                 ; (let (NoEffect value) = read_place matched in
+                                    value)
+                                 ]
+                             }
+                       ; span = None
+                       }
+                 ; span = None
+                 }
+               ; raise_error
+                   (make_string
+                      "pattern match non exhaustive at %a"
+                      Span.print
+                      expr.data.span)
+               ]
+           in
+           stmts)
       | E_QuoteAst _ -> failwith __LOC__
-      | E_Loop _ -> transpile_expr_as_stmts expr |> stmts_expr
+      | E_Loop _ -> transpile_expr_as_stmts expr |> scope
       | E_Unwindable { token; body } ->
         let token_var = JsAst.gen_name ~original:None "unwind_token" in
         let catch_var = JsAst.gen_name ~original:None "e" in
@@ -959,7 +1027,7 @@ module Impl = struct
           ; { shape =
                 Try
                   { body =
-                      pattern_match token (place_of { shape = Var token_var; span })
+                      pattern_match token (place_of_var token_var)
                       @ [ { shape = Return (transpile_expr body); span } ]
                   ; catch_var
                   ; catch_body =
@@ -1004,7 +1072,7 @@ module Impl = struct
             ; span
             }
           ]
-      | E_Unwind _ -> transpile_expr_as_stmts expr |> stmts_expr
+      | E_Unwind _ -> transpile_expr_as_stmts expr |> scope
       | E_InjectContext _ -> failwith __LOC__
       | E_CurrentContext _ -> failwith __LOC__
       | E_ImplCast _ -> failwith __LOC__
