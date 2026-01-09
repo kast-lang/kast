@@ -9,7 +9,7 @@ module Target = Kast_compiler_targets.Target
 module Args = struct
   type args = {
     compiler : Kast_compiler_cli.Args.t;
-    argv : string list;
+    argv_except_program : string list;
   }
 
   type t = args
@@ -17,8 +17,7 @@ module Args = struct
   let parse : string list -> args =
    fun args ->
     let compiler, ~rest = Kast_compiler_cli.Args.parse args in
-    let argv = rest in
-    { compiler; argv }
+    { compiler; argv_except_program = rest }
 end
 
 type evaled = {
@@ -42,10 +41,18 @@ let init_compiler_interpreter ~no_std name_part =
     let interpreter = compiler.interpreter in
     (compiler, interpreter)
 
+let setup_interpreter_argv (args : Args.t) =
+  Kast_interpreter.Natives.Sys.argv :=
+    Uri.to_string args.compiler.path :: args.argv_except_program
+    |> Array.of_list
+
 let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
  fun f
-     { compiler = { path; no_std; target; output = _; formatter = _ }; argv } ->
-  Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
+     ({
+        compiler = { path; no_std; target; output = _; formatter = _ };
+        argv_except_program = _;
+      } as args) ->
+  setup_interpreter_argv args;
   if target <> Ir then fail "Unsupported evaluation target";
   let name_part : Types.name_part = Uri path in
   let source = Source.read path in
@@ -63,7 +70,7 @@ let eval =
     | Some { value; _ } -> println "%a" Value.print value
     | None -> println "<none>")
 
-let run ({ compiler; argv } as args : Args.t) =
+let run ({ compiler; argv_except_program } as args : Args.t) =
   match compiler.target with
   | Ir -> eval_and ignore args
   | JavaScript ->
@@ -73,7 +80,7 @@ let run ({ compiler; argv } as args : Args.t) =
         | None -> "target/compiled.mjs"
       in
       Kast_compiler_cli.run { args.compiler with output = Some path };
-      let node_args = path :: argv in
+      let node_args = "--enable-source-maps" :: path :: argv_except_program in
       Log.info (fun log ->
           log "Launching node with args %a"
             (List.print String.print_maybe_escaped)
@@ -83,13 +90,13 @@ let run ({ compiler; argv } as args : Args.t) =
 let repl
     ({
        compiler = { path; no_std; target = _; output = _; formatter = _ };
-       argv;
+       argv_except_program;
      } as args :
       Args.t) =
   let evaled =
     if path = Uri.stdin then None else args |> eval_and (fun result -> result)
   in
-  Kast_interpreter.Natives.Sys.argv := argv |> Array.of_list;
+  setup_interpreter_argv args;
   let compiler, interpreter =
     match evaled with
     | Some { compiler; interpreter; value = _ } -> (compiler, interpreter)
