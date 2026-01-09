@@ -1,11 +1,5 @@
-const Int32 = @native "int32";
-const zero :: Int32 = 0;
-const Foo = (
-    let mut x = zero;
-    () => (
-        x = 1;
-        x
-    )
+use std.prelude.*;
+
+for i in 0..std.sys.argc () do (
+    dbg.print (std.sys.argv_at i);
 );
-Foo ();
-(@native "console.log") zero

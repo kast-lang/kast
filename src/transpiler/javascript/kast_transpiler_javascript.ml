@@ -12,6 +12,7 @@ type mutable_ctx = {
   mutable symbols : JsAst.name Id.Map.t;
   mutable prepend : JsAst.stmt list;
   mutable prepend_late : JsAst.stmt list;
+  mutable module_of_binding : JsAst.name Id.Map.t;
 }
 
 type ctx = {
@@ -151,11 +152,33 @@ module Impl = struct
     | T_Blocked _ -> todo_ty __LOC__
     | T_Error -> { shape = JsAst.Null; span = None }
 
+  and transpile_binding : span:span option -> binding -> JsAst.expr =
+   fun ~span binding ->
+    let ctx = Effect.perform GetCtx in
+    match ctx.mut.module_of_binding |> Id.Map.find_opt binding.id with
+    | Some module_var ->
+        {
+          shape =
+            Field
+              {
+                obj = { shape = Var module_var; span };
+                field = binding.name.name;
+              };
+          span;
+        }
+    | None ->
+        let binding_span =
+          match span with
+          | Some span -> span
+          | None -> binding.span
+        in
+        { shape = Var (binding_name ~span:binding_span binding); span }
+
   and transpile_blocked : blocked_value -> JsAst.expr =
    fun value ->
+    let ctx = Effect.perform GetCtx in
     match value.shape with
-    | BV_Binding binding ->
-        { shape = Var (binding_name ~span:binding.span binding); span = None }
+    | BV_Binding binding -> transpile_binding ~span:None binding
     | BV_Instantiate _ -> failwith __LOC__
     | BV_ClaimRef _ -> failwith __LOC__
     | BV_FieldRef _ -> failwith __LOC__
@@ -422,6 +445,8 @@ module Impl = struct
 
   and pattern_match : pattern -> JsAst.expr -> JsAst.stmt list =
    fun pattern place ->
+    let ctx = Effect.perform GetCtx in
+    let span = Some pattern.data.span in
     try
       match pattern.shape with
       | P_Placeholder -> []
@@ -431,15 +456,36 @@ module Impl = struct
           [
             {
               shape =
-                JsAst.Let
-                  {
-                    var = binding_name ~span:pattern.data.span binding;
-                    value =
-                      (match bind_mode with
-                      | Claim -> claim place
-                      | ByRef { mut } -> place);
-                  };
-              span = Some pattern.data.span;
+                (let value =
+                   match bind_mode with
+                   | Claim -> claim place
+                   | ByRef { mut } -> place
+                 in
+                 match
+                   ctx.mut.module_of_binding |> Id.Map.find_opt binding.id
+                 with
+                 | Some module_var ->
+                     JsAst.Assign
+                       {
+                         assignee =
+                           {
+                             shape =
+                               Field
+                                 {
+                                   obj = { shape = Var module_var; span };
+                                   field = binding.name.name;
+                                 };
+                             span;
+                           };
+                         value;
+                       }
+                 | None ->
+                     JsAst.Let
+                       {
+                         var = binding_name ~span:pattern.data.span binding;
+                         value;
+                       });
+              span;
             };
           ]
       | P_Tuple { parts } ->
@@ -483,7 +529,23 @@ module Impl = struct
       match assignee.shape with
       | A_Placeholder -> []
       | A_Unit -> []
-      | A_Tuple _ -> failwith __LOC__
+      | A_Tuple { parts } ->
+          let index = ref 0 in
+          parts
+          |> List.map (fun (part : assignee_expr tuple_part_of) ->
+              match part with
+              | Field { label; label_span = _; field = field_assignee } ->
+                  let member =
+                    match label with
+                    | None ->
+                        let member = Tuple.Member.Index !index in
+                        index := !index + 1;
+                        member
+                    | Some name -> Tuple.Member.Name (Label.get_name name)
+                  in
+                  assign field_assignee (field_place place member)
+              | Unpack packed -> failwith __LOC__)
+          |> List.flatten
       | A_Place assignee_place ->
           let assignee_place = transpile_place_expr assignee_place in
           [
@@ -648,12 +710,7 @@ module Impl = struct
             ctx.captured |> Kast_interpreter.Scope.find_opt binding.name
           with
           | Some place -> transpile_place place
-          | None ->
-              place_of
-                {
-                  shape = JsAst.Var (binding_name ~span:expr.data.span binding);
-                  span;
-                })
+          | None -> place_of (transpile_binding ~span binding))
       | PE_Field { obj; field; field_span = _ } ->
           let var = JsAst.gen_name ~original:None "obj" in
           let member =
@@ -797,7 +854,9 @@ module Impl = struct
           ]
       | E_InjectContext _ -> failwith __LOC__
       | E_CurrentContext _ -> failwith __LOC__
-      | E_ImplCast _ -> failwith __LOC__
+      | E_ImplCast { value; target; impl } ->
+          impl_cast ~value:(transpile_expr value)
+            ~target:(transpile_value target) ~impl:(transpile_expr impl)
       | E_Cast _ -> failwith __LOC__
       | E_TargetDependent _ -> failwith __LOC__
       | E_Error -> failwith __LOC__
@@ -1041,28 +1100,22 @@ module Impl = struct
       | E_Newtype _ -> { shape = JsAst.Null; span }
       | E_Native { id = _; expr } -> { shape = JsAst.Raw expr; span }
       | E_Module { def; bindings } ->
-          let module_value : JsAst.expr =
+          let module_var = JsAst.gen_name ~original:None "module" in
+          bindings
+          |> List.iter (fun binding ->
+              ctx.mut.module_of_binding <-
+                ctx.mut.module_of_binding |> Id.Map.add binding.id module_var);
+          let introduce_module : JsAst.stmt =
             {
               shape =
-                JsAst.Obj
-                  (bindings
-                  |> List.map (fun binding ->
-                      JsAst.Field
-                        {
-                          name = binding.name.name;
-                          value =
-                            {
-                              shape =
-                                Var (binding_name ~span:binding.span binding);
-                              span;
-                            };
-                        }));
+                JsAst.Let { var = module_var; value = { shape = Obj []; span } };
               span;
             }
           in
           scope
-            (transpile_expr_as_stmts def
-            @ [ { shape = Return module_value; span } ])
+            ([ introduce_module ]
+            @ transpile_expr_as_stmts def
+            @ [ { shape = Return { shape = Var module_var; span }; span } ])
       | E_UseDotStar _ -> failwith __LOC__
       | E_If { cond; then_case; else_case } ->
           scope
@@ -1158,7 +1211,7 @@ module Impl = struct
                       body =
                         pattern_match token
                           (place_of { shape = Var token_var; span })
-                        @ transpile_expr_as_stmts body;
+                        @ [ { shape = Return (transpile_expr body); span } ];
                       catch_var;
                       catch_body =
                         [
@@ -1283,6 +1336,7 @@ let with_ctx ~state ~span f =
           symbols = Id.Map.empty;
           prepend = [];
           prepend_late = [];
+          module_of_binding = Id.Map.empty;
         };
       span;
       target = { name = "javascript" };
