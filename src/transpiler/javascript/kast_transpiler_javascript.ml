@@ -1169,6 +1169,7 @@ let with_ctx ~state ~span f =
       { shape = Call { async = false; f; args }; span = ast.span }
     | _ -> failwith __LOC__
   in
+  let ast = ast |> Optimizer.optimize_expr in
   { print =
       (fun writer ->
         writer |> Writer.write_string [%blob "./runtime.js"];
