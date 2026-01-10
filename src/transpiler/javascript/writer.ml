@@ -30,8 +30,6 @@ let add_to_source_map
   =
   Log.trace (fun log ->
     log "ADD TO SOURCE MAP %a %a" Position.print gen_pos Position.print orig_pos);
-  if orig_uri |> Uri.path |> String.ends_with ~suffix:"guess-a-number.ks"
-  then println "%a:%a" Uri.print orig_uri Position.print orig_pos;
   let source_idx =
     match writer.source_idx |> UriMap.find_opt orig_uri with
     | Some idx -> idx
