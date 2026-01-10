@@ -9,6 +9,7 @@ module Writer = Writer
 type no_effect_expr = NoEffect of JsAst.expr
 
 let async_get_set = false
+let async_fns = true
 
 type transpiled_place =
   | OCaml of
@@ -164,7 +165,7 @@ module Impl = struct
       calculate
         { shape =
             JsAst.Fn
-              { async = true
+              { async = async_fns
               ; args = [ arg_name ]
               ; body =
                   scope (fun () ->
@@ -854,12 +855,12 @@ module Impl = struct
       | E_Apply { f; arg } ->
         let f = pure <| transpile_expr f in
         let arg = pure <| transpile_expr arg in
-        calculate { shape = JsAst.Call { async = true; f; args = [ arg ] }; span }
+        calculate { shape = JsAst.Call { async = async_fns; f; args = [ arg ] }; span }
       | E_InstantiateGeneric { generic; arg } ->
         let generic = pure <| transpile_expr generic in
         let arg = pure <| transpile_expr arg in
         calculate
-          { shape = JsAst.Call { async = true; f = generic; args = [ arg ] }; span }
+          { shape = JsAst.Call { async = async_fns; f = generic; args = [ arg ] }; span }
       | E_Assign { assignee; value } ->
         let place = transpile_place_expr value in
         assign assignee place;
