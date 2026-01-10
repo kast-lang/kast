@@ -61,6 +61,15 @@ and optimize_stmts : stmt list -> stmt list =
 and optimize_stmt : stmt -> stmt list =
   fun ({ shape; span } as original) ->
   match shape with
+  | Labelled { label; stmt } ->
+    let stmt =
+      match optimize_stmt stmt with
+      | [ stmt ] -> stmt
+      | stmts -> { shape = Block stmts; span }
+    in
+    [ { shape = Labelled { label; stmt }; span } ]
+  | Block stmts -> [ { shape = Block (optimize_stmts stmts); span } ]
+  | LabelledBreak _label -> [ original ]
   | Expr expr -> optimize_expr_as_stmts ~span expr
   | Let { var; value } -> [ { shape = Let { var; value = optimize_expr value }; span } ]
   | Assign { assignee; value } ->
