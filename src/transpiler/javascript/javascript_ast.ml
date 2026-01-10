@@ -79,6 +79,11 @@ and obj_part =
   | Unpack of expr
 
 and stmt_shape =
+  | Block of stmt list
+  | Labelled of
+      { label : name
+      ; stmt : stmt
+      }
   | Expr of expr
   | Let of
       { var : name
@@ -88,6 +93,7 @@ and stmt_shape =
       { assignee : expr
       ; value : expr
       }
+  | LabelledBreak of name
   | Return of expr
   | Throw of expr
   | Try of
@@ -250,6 +256,17 @@ and print_stmt writer (stmt : stmt) =
   writer
   |> write_maybe_spanned stmt.span (fun () ->
     match stmt.shape with
+    | Labelled { label; stmt } ->
+      print_name writer label;
+      writer |> write ":";
+      print_stmt writer stmt
+    | Block stmts ->
+      writer |> write "{";
+      print_stmts writer stmts;
+      writer |> write "}"
+    | LabelledBreak label ->
+      writer |> write "break ";
+      print_name writer label
     | Expr e -> print_expr ~precedence:Stmt writer e
     | Return e ->
       writer |> write "return ";
