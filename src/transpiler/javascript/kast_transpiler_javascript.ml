@@ -590,16 +590,6 @@ module Impl = struct
         log "While transpiling assign %a" Span.print assignee.data.span);
       raise e
 
-  and scope2 (body : JsAst.stmt list) : JsAst.expr =
-    { shape =
-        JsAst.Call
-          { async = true
-          ; f = { shape = JsAst.Fn { async = true; args = []; body }; span = None }
-          ; args = []
-          }
-    ; span = None
-    }
-
   and field_place (place : transpiled_place) (field : Tuple.member) : transpiled_place =
     place_of
       (NoEffect

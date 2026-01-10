@@ -1,5 +1,3 @@
 use std.prelude.*;
 
-unwindable block (
-    unwind block ();
-);
+for i in 0..10000000 do ()
