@@ -140,6 +140,7 @@ module Precedence = struct
 end
 
 let write = Writer.write_string
+let write_newline = Writer.write_newline
 let write_spanned = Writer.write_spanned
 
 let write_maybe_spanned span f writer =
@@ -200,9 +201,8 @@ let rec print_expr ~(precedence : Precedence.t) (writer : Writer.t) (expr : expr
        |> List.iteri (fun i name ->
          if i <> 0 then writer |> write ",";
          print_name writer name);
-       writer |> write ") => {";
-       print_stmts writer body;
-       writer |> write "}"
+       writer |> write ") => ";
+       print_block writer body
      | Call { async; f; args } ->
        if async then writer |> write "await ";
        print_expr ~precedence:CalledFn writer f;
@@ -246,11 +246,26 @@ and print_obj_part writer = function
     writer |> write "...";
     print_expr ~precedence:Unpack writer packed
 
-and print_stmts writer (stmts : stmt list) =
+and print_block writer (stmts : stmt list) =
+  let old_prefix = writer.line_prefix in
+  writer.line_prefix <- old_prefix ^ "  ";
+  writer |> write "{";
+  writer |> write_newline;
+  stmts
+  |> List.iteri (fun i stmt ->
+    if i <> 0 then writer |> write_newline;
+    print_stmt writer stmt;
+    writer |> write ";");
+  writer.line_prefix <- old_prefix;
+  writer |> write_newline;
+  writer |> write "}"
+
+and print_toplevel_stmts writer (stmts : stmt list) =
   stmts
   |> List.iter (fun stmt ->
     print_stmt writer stmt;
-    writer |> write ";")
+    writer |> write ";";
+    writer |> write_newline)
 
 and print_stmt writer (stmt : stmt) =
   writer
@@ -260,10 +275,7 @@ and print_stmt writer (stmt : stmt) =
       print_name writer label;
       writer |> write ":";
       print_stmt writer stmt
-    | Block stmts ->
-      writer |> write "{";
-      print_stmts writer stmts;
-      writer |> write "}"
+    | Block stmts -> print_block writer stmts
     | LabelledBreak label ->
       writer |> write "break ";
       print_name writer label
@@ -281,28 +293,25 @@ and print_stmt writer (stmt : stmt) =
       writer |> write " = ";
       print_expr ~precedence:Assigned writer value
     | Try { body; catch_var; catch_body } ->
-      writer |> write "try {";
-      print_stmts writer body;
-      writer |> write "} catch (";
+      writer |> write "try ";
+      print_block writer body;
+      writer |> write " catch (";
       print_name writer catch_var;
-      writer |> write ") {";
-      print_stmts writer catch_body;
-      writer |> write "}"
+      writer |> write ") ";
+      print_block writer catch_body
     | Throw expr ->
       writer |> write "throw ";
       print_expr ~precedence:Raised writer expr
     | If { condition; then_case; else_case } ->
       writer |> write "if (";
       print_expr ~precedence:IfCondition writer condition;
-      writer |> write ") {";
-      print_stmts writer then_case;
-      writer |> write "}";
+      writer |> write ") ";
+      print_block writer then_case;
       (match else_case with
        | None -> ()
        | Some else_case ->
-         writer |> write " else {";
-         print_stmts writer else_case;
-         writer |> write "}")
+         writer |> write " else ";
+         print_block writer else_case)
     | For { init; cond; after; body } ->
       writer |> write "for (";
       maybe_print (print_expr ~precedence:ForArg) writer init;
@@ -310,9 +319,8 @@ and print_stmt writer (stmt : stmt) =
       maybe_print (print_expr ~precedence:ForArg) writer cond;
       writer |> write ";";
       maybe_print (print_expr ~precedence:ForArg) writer after;
-      writer |> write ") {";
-      print_stmts writer body;
-      writer |> write "}"
+      writer |> write ") ";
+      print_block writer body
     | Raw s -> writer |> write s)
 
 and maybe_print : 'a. (Writer.t -> 'a -> unit) -> Writer.t -> 'a option -> unit =

@@ -17,6 +17,7 @@ type t =
   ; mutable prev_source_line : int option
   ; mutable prev_source_column : int option
   ; mutable prev_name_idx : int option
+  ; mutable line_prefix : string
   }
 
 let add_to_source_map
@@ -102,6 +103,7 @@ let init fmt source_map_path =
   ; prev_source_line = None
   ; prev_source_column = None
   ; prev_name_idx = None
+  ; line_prefix = ""
   }
 ;;
 
@@ -159,6 +161,11 @@ let write_string (s : string) (writer : t) : unit =
     then (
       fprintf writer.mappings_fmt ";";
       writer.prev_mapping_column <- None))
+;;
+
+let write_newline (writer : t) : unit =
+  writer |> write_string "\n";
+  writer |> write_string writer.line_prefix
 ;;
 
 let open_span (_span : span) (writer : t) : unit = writer.span_start <- Some writer.pos

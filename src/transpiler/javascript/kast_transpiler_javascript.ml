@@ -1156,7 +1156,7 @@ let with_ctx ~state ~span f =
   { print =
       (fun writer ->
         writer |> Writer.write_string [%blob "./runtime.js"];
-        JsAst.print_stmts writer ast)
+        JsAst.print_toplevel_stmts writer ast)
   }
 ;;
 
