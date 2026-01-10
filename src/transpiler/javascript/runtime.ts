@@ -2,58 +2,77 @@ import type * as readline from "node:readline/promises";
 import type * as fs from "node:fs";
 import type * as util from "node:util";
 
+type Fn<A, R> = (arg: A) => Promise<R>;
+
+interface Ref<T> {
+  get: () => T;
+}
+
+interface RefMut<T> extends Ref<T> {
+  set: (value: T) => void;
+}
+
+type Id = number;
+interface Type {
+  id: Id;
+  name: string;
+}
+type Value = any;
+
+namespace Backend {
+  export type TcpStream<isNode> = isNode extends true
+    ? {
+        socket: import("node:net").Socket;
+        error?: Error;
+        buffer: string;
+      }
+    : undefined;
+}
+
+interface Backend<isNode> {
+  dbg: {
+    print: (value: Value) => Promise<void>;
+  };
+  io: {
+    input: (prompt: string) => Promise<string>;
+  };
+  fs:
+    | undefined
+    | {
+        read_file: (path: string) => Promise<string>;
+      };
+  net:
+    | undefined
+    | {
+        tcp: {
+          connect: (addr: string) => Promise<Backend.TcpStream<isNode>>;
+          stream: {
+            read_line: (
+              stream: RefMut<Backend.TcpStream<isNode>>
+            ) => Promise<string>;
+            write: (args: {
+              0: RefMut<Backend.TcpStream<isNode>>;
+              1: Ref<string>;
+            }) => Promise<void>;
+            close: (stream: Backend.TcpStream<isNode>) => Promise<void>;
+          };
+        };
+      };
+  cleanup(): Promise<void>;
+}
+
 const Kast = await (async () => {
-  // Node.js
-  const isNode =
+  const isNode: true | false =
     typeof process !== "undefined" &&
     process.versions != null &&
     process.versions.node != null;
 
-  // Browser
-  const isBrowser =
-    typeof window !== "undefined" && typeof window.document !== "undefined";
-
-  interface Backend {
-    dbg: {
-      print: (value: Value) => Promise<void>;
-    };
-    io: {
-      input: (prompt: string) => Promise<string>;
-    };
-    fs: {
-      read_file: (path: string) => Promise<string>;
-    };
-    cleanup(): Promise<void>;
-  }
-
-  const backend: Backend = await (async () => {
-    if (isBrowser) {
-      return {
-        dbg: {
-          async print(value: Value) {
-            console.debug(value);
-          },
-        },
-        io: {
-          async input(p: string) {
-            const result = prompt(p);
-            if (result === null) {
-              throw Error("No input was provided");
-            }
-            return result;
-          },
-        },
-        fs: {
-          async read_file(path) {
-            throw Error("No fs in browser");
-          },
-        },
-        async cleanup() {},
-      };
-    } else if (isNode) {
+  const backend: Backend<true> | Backend<false> = await (async () => {
+    if (isNode) {
       const util = await import("node:util");
       const readline = await import("node:readline/promises");
       const fs = await import("node:fs");
+      const net = await import("node:net");
 
       let readline_interface: readline.Interface | null = null;
       function ensure_readline_interface() {
@@ -70,6 +89,34 @@ const Kast = await (async () => {
           readline_interface.close();
         }
       }
+
+      type TcpStream = Backend.TcpStream<typeof isNode>;
+
+      function waitForEvent<E extends keyof import("node:net").SocketEventMap>(
+        stream: TcpStream,
+        event: E
+      ): Promise<import("node:net").SocketEventMap[E]> {
+        return new Promise((resolve, reject) => {
+          if (stream.error !== undefined) {
+            reject(stream.error);
+          } else {
+            const on_error = (e: Error) => {
+              reject(e);
+            };
+            const on_close = (hadError: boolean) => {
+              reject(new Error("connection was closed"));
+            };
+            stream.socket.once(event, (...result) => {
+              stream.socket.removeListener("error", on_error);
+              stream.socket.removeListener("close", on_close);
+              resolve(result);
+            });
+            stream.socket.once("error", on_error);
+            stream.socket.once("close", on_close);
+          }
+        });
+      }
+
       return {
         dbg: {
           async print(value: Value) {
@@ -91,36 +138,106 @@ const Kast = await (async () => {
             });
           },
         },
+        net: {
+          tcp: {
+            async connect(addr: string): Promise<TcpStream> {
+              const colon_idx = addr.lastIndexOf(":");
+              if (colon_idx < 0) {
+                throw Error("no : in tcp.connect");
+              }
+              const host = addr.substring(0, colon_idx);
+              const port = parseInt(addr.substring(colon_idx + 1));
+              const socket = net.connect({ host, port });
+              const stream: TcpStream = { socket, buffer: "" };
+              socket.setEncoding("utf8");
+              socket.addListener("data", (data) => {
+                stream.buffer += data;
+              });
+              socket.addListener("error", (e) => {
+                stream.error = e;
+              });
+              await waitForEvent(stream, "connect");
+              return stream;
+            },
+            stream: {
+              async read_line(stream_ref: RefMut<TcpStream>): Promise<string> {
+                const stream = stream_ref.get();
+                while (true) {
+                  let newline_idx = stream.buffer.indexOf("\n");
+                  if (newline_idx < 0) {
+                    await waitForEvent(stream, "data");
+                  } else {
+                    const line = stream.buffer.substring(0, newline_idx);
+                    stream.buffer = stream.buffer.substring(newline_idx + 1);
+                    return line;
+                  }
+                }
+              },
+              async write({
+                0: stream_ref,
+                1: data_ref,
+              }: {
+                0: RefMut<TcpStream>;
+                1: Ref<string>;
+              }): Promise<void> {
+                const stream = stream_ref.get();
+                const data = data_ref.get();
+                return new Promise((resolve, reject) => {
+                  stream.socket.write(data, (err) => {
+                    if (err) {
+                      reject(err);
+                    } else {
+                      resolve();
+                    }
+                  });
+                });
+              },
+              async close(stream: TcpStream): Promise<void> {
+                stream.socket.destroy();
+              },
+            },
+          },
+        },
         async cleanup() {
           cleanup_readline_interface();
         },
       };
     } else {
-      throw Error("Not browser and not nodejs???");
+      return {
+        dbg: {
+          async print(value: Value) {
+            console.debug(value);
+          },
+        },
+        io: {
+          async input(p: string) {
+            const result = prompt(p);
+            if (result === null) {
+              throw Error("No input was provided");
+            }
+            return result;
+          },
+        },
+        fs: undefined,
+        net: undefined,
+        async cleanup() {},
+      };
     }
   })();
 
-  type Fn<A, R> = (arg: A) => Promise<R>;
   async function call<A, R>(f: Fn<A, R>, arg: A): Promise<R> {
     return await f(arg);
   }
 
-  type Id = number;
   let next_id = 0;
   const Id = {
     gen: () => {
       return next_id++;
     },
   };
-  interface Type {
-    id: Id;
-    name: string;
-  }
   function newtype(name: string): Type {
     return { id: Id.gen(), name };
   }
-
-  type Value = any;
 
   function check_todo(value: Value) {
     if (value.todo) {

@@ -9,18 +9,22 @@ const tcp = (
         module:
         const connect = (addr :: String) -> Stream => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.connect") addr
+            | target.name == "javascript" => (@native "Kast.net.tcp.connect") addr
         );
         
         const read_line = (stream :: &mut Stream) -> String => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.read_line") stream
+            | target.name == "javascript" => (@native "Kast.net.tcp.stream.read_line") stream
         );
         
         const write = (stream :: &mut Stream, data :: &String) -> () => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.write") (stream, data)
+            | target.name == "javascript" => (@native "Kast.net.tcp.stream.write") (stream, data)
         );
         
         const close = (stream :: Stream) -> () => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.stream.close") stream
+            | target.name == "javascript" => (@native "Kast.net.tcp.stream.close") stream
         );
     );
     
