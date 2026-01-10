@@ -77,12 +77,19 @@
         }).memtrace_viewer;
       in {
         legacyPackages = scope';
-        packages.default = main.overrideAttrs {
-          buildInputs = [ pkgs.makeWrapper ];
+        packages.default = let
+          nodeDependencies = (pkgs.callPackage ./node.nix { }).nodeDependencies;
+        in main.overrideAttrs (oa: {
+          nativeBuildInputs = [ pkgs.typescript pkgs.makeWrapper ];
+          buildPhase = ''
+            ln -s ${nodeDependencies}/lib/node_modules ./node_modules
+            ls -la ./node_modules
+            ${oa.buildPhase}
+          '';
           postFixup = ''
             wrapProgram $out/bin/kast --set KAST_STD ${./std}
           '';
-        };
+        });
         devShells.default = pkgs.mkShell {
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
