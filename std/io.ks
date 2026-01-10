@@ -11,6 +11,7 @@ const eprint = (line :: String) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.eprint") line
         | target.name == "ocaml" => (@native "@natives.eprint") line
+        | target.name == "javascript" => (@native "console.error") line
     )
 );
 const input = (prompt :: String) -> String => (

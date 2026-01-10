@@ -19,6 +19,13 @@ interface Type {
 }
 type Value = any;
 
+type Option<T> =
+  | {
+      tag: "Some";
+      data: T;
+    }
+  | { tag: "None" };
+
 namespace Backend {
   export type TcpStream<isNode> = isNode extends true
     ? {
@@ -36,14 +43,23 @@ interface Backend<isNode> {
   io: {
     input: (prompt: string) => Promise<string>;
   };
-  fs:
-    | undefined
-    | {
+  fs: isNode extends true
+    ? {
         read_file: (path: string) => Promise<string>;
-      };
-  net:
-    | undefined
-    | {
+      }
+    : undefined;
+  sys: isNode extends true
+    ? {
+        chdir: (path: string) => Promise<void>;
+        argc: () => Promise<number>;
+        argv_at: (i: number) => Promise<string>;
+        exec: (cmd: string) => Promise<number>;
+        get_env: (name: string) => Promise<Option<string>>;
+        exit: (code: number) => never;
+      }
+    : undefined;
+  net: isNode extends true
+    ? {
         tcp: {
           connect: (addr: string) => Promise<Backend.TcpStream<isNode>>;
           stream: {
@@ -57,7 +73,8 @@ interface Backend<isNode> {
             close: (stream: Backend.TcpStream<isNode>) => Promise<void>;
           };
         };
-      };
+      }
+    : undefined;
   cleanup(): Promise<void>;
 }
 
@@ -73,6 +90,7 @@ const Kast = await (async () => {
       const readline = await import("node:readline/promises");
       const fs = await import("node:fs");
       const net = await import("node:net");
+      const child_process = await import("node:child_process");
 
       let readline_interface: readline.Interface | null = null;
       function ensure_readline_interface() {
@@ -198,6 +216,43 @@ const Kast = await (async () => {
             },
           },
         },
+        sys: {
+          async chdir(path: string): Promise<void> {
+            process.chdir(path);
+          },
+          async argc(): Promise<number> {
+            return process.argv.length - 1;
+          },
+          async argv_at(i: number): Promise<string> {
+            return process.argv[i + 1];
+          },
+          async exec(cmd: string): Promise<number> {
+            return new Promise((resolve, reject) => {
+              const child = child_process.spawn("/bin/sh", ["-c", cmd], {
+                stdio: "inherit",
+              });
+              child.on("exit", (code, signal) => {
+                if (code !== null) {
+                  resolve(code);
+                } else {
+                  reject(new Error(`Process exited with signal ${signal}`));
+                }
+              });
+              child.on("error", reject);
+            });
+          },
+          async get_env(name: string): Promise<Option<string>> {
+            const value = process.env[name];
+            if (value === undefined) {
+              return { tag: "None" };
+            } else {
+              return { tag: "Some", data: value };
+            }
+          },
+          exit(code: number): never {
+            process.exit(code);
+          },
+        },
         async cleanup() {
           cleanup_readline_interface();
         },
@@ -220,6 +275,7 @@ const Kast = await (async () => {
         },
         fs: undefined,
         net: undefined,
+        sys: undefined,
         async cleanup() {},
       };
     }
@@ -373,17 +429,6 @@ const Kast = await (async () => {
       },
       to_string: async (x: Value) => {
         return x.toString();
-      },
-    },
-    sys: {
-      chdir: async (path: string) => {
-        process.chdir(path);
-      },
-      argc: async () => {
-        return process.argv.length - 1;
-      },
-      argv_at: async (i: number) => {
-        return process.argv[i + 1];
       },
     },
     types,
