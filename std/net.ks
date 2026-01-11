@@ -35,10 +35,12 @@ const tcp = (
         
         const bind = (addr :: String) -> Listener => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.bind") addr
+            | target.name == "javascript" => (@native "Kast.net.tcp.bind") addr
         );
         
         const listen = (listener :: &mut Listener, max_pending :: Int32) -> () => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.listen") (listener, max_pending)
+            | target.name == "javascript" => (@native "Kast.net.tcp.listener.listen") (listener, max_pending)
         );
         
         const accept = (listener :: &mut Listener, .close_on_exec :: Bool) -> (
@@ -46,10 +48,12 @@ const tcp = (
             .addr :: String
         ) => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.accept") (listener, close_on_exec)
+            | target.name == "javascript" => (@native "Kast.net.tcp.listener.accept") (listener, close_on_exec)
         );
         
         const close = (listener :: Listener) -> () => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.listener.close") listener
+            | target.name == "javascript" => (@native "Kast.net.tcp.listener.close") listener
         );
     );
 )

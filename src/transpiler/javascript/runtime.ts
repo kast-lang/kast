@@ -27,13 +27,15 @@ type Option<T> =
   | { tag: "None" };
 
 namespace Backend {
-  export type TcpStream<isNode> = isNode extends true
-    ? {
-        socket: import("node:net").Socket;
-        error?: Error;
-        buffer: string;
-      }
-    : undefined;
+  export type TcpStream = {
+    socket: import("node:net").Socket;
+    error?: Error;
+    buffer: string;
+  };
+  export type TcpListener = {
+    server: import("node:net").Server;
+    error?: Error;
+  };
 }
 
 interface Backend<isNode> {
@@ -61,16 +63,26 @@ interface Backend<isNode> {
   net: isNode extends true
     ? {
         tcp: {
-          connect: (addr: string) => Promise<Backend.TcpStream<isNode>>;
+          connect: (addr: string) => Promise<Backend.TcpStream>;
           stream: {
-            read_line: (
-              stream: RefMut<Backend.TcpStream<isNode>>
-            ) => Promise<string>;
+            read_line: (stream: RefMut<Backend.TcpStream>) => Promise<string>;
             write: (args: {
-              0: RefMut<Backend.TcpStream<isNode>>;
+              0: RefMut<Backend.TcpStream>;
               1: Ref<string>;
             }) => Promise<void>;
-            close: (stream: Backend.TcpStream<isNode>) => Promise<void>;
+            close: (stream: Backend.TcpStream) => Promise<void>;
+          };
+          bind: (addr: string) => Promise<Backend.TcpListener>;
+          listener: {
+            listen: (args: {
+              0: RefMut<Backend.TcpListener>;
+              1: number;
+            }) => Promise<void>;
+            accept: (args: {
+              0: RefMut<Backend.TcpListener>;
+              close_on_exec: boolean;
+            }) => Promise<{ stream: Backend.TcpStream; addr: string }>;
+            close: (listener: Backend.TcpListener) => Promise<void>;
           };
         };
       }
@@ -108,9 +120,24 @@ const Kast = await (async () => {
         }
       }
 
-      type TcpStream = Backend.TcpStream<typeof isNode>;
+      type TcpStream = Backend.TcpStream;
+      type TcpListener = Backend.TcpListener;
 
-      function waitForEvent<E extends keyof import("node:net").SocketEventMap>(
+      function setup_tcp_stream(socket: import("node:net").Socket): TcpStream {
+        const stream: TcpStream = { socket, buffer: "" };
+        socket.setEncoding("utf8");
+        socket.addListener("data", (data) => {
+          stream.buffer += data;
+        });
+        socket.addListener("error", (e) => {
+          stream.error = e;
+        });
+        return stream;
+      }
+
+      function waitForSocketEvent<
+        E extends keyof import("node:net").SocketEventMap,
+      >(
         stream: TcpStream,
         event: E
       ): Promise<import("node:net").SocketEventMap[E]> {
@@ -131,6 +158,28 @@ const Kast = await (async () => {
             });
             stream.socket.once("error", on_error);
             stream.socket.once("close", on_close);
+          }
+        });
+      }
+
+      function waitForServerEvent<
+        E extends keyof import("node:net").ServerEventMap,
+      >(
+        listener: TcpListener,
+        event: E
+      ): Promise<import("node:net").ServerEventMap[E]> {
+        return new Promise((resolve, reject) => {
+          if (listener.error !== undefined) {
+            reject(listener.error);
+          } else {
+            const on_error = (e: Error) => {
+              reject(e);
+            };
+            listener.server.once(event, (...result) => {
+              listener.server.removeListener("error", on_error);
+              resolve(result);
+            });
+            listener.server.once("error", on_error);
           }
         });
       }
@@ -166,15 +215,8 @@ const Kast = await (async () => {
               const host = addr.substring(0, colon_idx);
               const port = parseInt(addr.substring(colon_idx + 1));
               const socket = net.connect({ host, port });
-              const stream: TcpStream = { socket, buffer: "" };
-              socket.setEncoding("utf8");
-              socket.addListener("data", (data) => {
-                stream.buffer += data;
-              });
-              socket.addListener("error", (e) => {
-                stream.error = e;
-              });
-              await waitForEvent(stream, "connect");
+              const stream = setup_tcp_stream(socket);
+              await waitForSocketEvent(stream, "connect");
               return stream;
             },
             stream: {
@@ -183,7 +225,7 @@ const Kast = await (async () => {
                 while (true) {
                   let newline_idx = stream.buffer.indexOf("\n");
                   if (newline_idx < 0) {
-                    await waitForEvent(stream, "data");
+                    await waitForSocketEvent(stream, "data");
                   } else {
                     const line = stream.buffer.substring(0, newline_idx);
                     stream.buffer = stream.buffer.substring(newline_idx + 1);
@@ -212,6 +254,56 @@ const Kast = await (async () => {
               },
               async close(stream: TcpStream): Promise<void> {
                 stream.socket.destroy();
+              },
+            },
+            async bind(addr: string): Promise<TcpListener> {
+              const colon_idx = addr.lastIndexOf(":");
+              if (colon_idx < 0) {
+                throw Error("no : in tcp.bind");
+              }
+              const host = addr.substring(0, colon_idx);
+              const port = parseInt(addr.substring(colon_idx + 1));
+
+              const server = new net.Server();
+              server.listen(port, host);
+              const listener: TcpListener = { server };
+              await waitForServerEvent(listener, "listening");
+              return listener;
+            },
+            listener: {
+              async listen(args: {
+                0: RefMut<TcpListener>;
+                1: number;
+              }): Promise<void> {
+                const listener = args[0].get();
+                const max_pending = args[1];
+                // Don't need to do anything?
+              },
+              async accept(args: {
+                0: RefMut<TcpListener>;
+                close_on_exec: boolean;
+              }): Promise<{ stream: TcpStream; addr: string }> {
+                const listener = args[0].get();
+                args.close_on_exec;
+                const [socket] = await waitForServerEvent(
+                  listener,
+                  "connection"
+                );
+                return {
+                  stream: setup_tcp_stream(socket),
+                  addr: JSON.stringify(socket.address()),
+                };
+              },
+              async close(listener: TcpListener): Promise<void> {
+                return new Promise((resolve, reject) => {
+                  listener.server.close((err) => {
+                    if (err) {
+                      reject(err);
+                    } else {
+                      resolve();
+                    }
+                  });
+                });
               },
             },
           },
