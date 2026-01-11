@@ -273,9 +273,8 @@ let default name_part ?(import_cache : import_cache option) () : state =
       (Stdlib.Effect.perform Effect.FindStd)
       (Uri.of_string "./lib.ks")
   in
-  let std =
-    Compiler.import ~span:(Span.fake "std-bootstrap") (make_compiler bootstrap) std_uri
-  in
+  let bootstrap_span = Span.fake "std-bootstrap" in
+  let std = Compiler.import ~span:bootstrap_span (make_compiler bootstrap) std_uri in
   let std_symbol = Symbol.create "std" in
   let std_label = Label.create_definition (Span.beginning_of std_uri) std_symbol.name in
   let interpreter_with_std =
@@ -294,6 +293,12 @@ let default name_part ?(import_cache : import_cache option) () : state =
              : Types.interpreter_local)
       }
   in
+  let prelude =
+    let std = std |> Value.expect_tuple |> Option.get in
+    let prelude = std.tuple |> Tuple.get_named "prelude" in
+    prelude.place |> Interpreter.read_place ~span:bootstrap_span
+  in
+  Interpreter.usedotstar ~span:bootstrap_span interpreter_with_std prelude;
   (* TODO hack??? *)
   interpreter_with_std.cast_impls.map <- interpreter_without_std.cast_impls.map;
   interpreter_with_std.cast_impls.as_module
