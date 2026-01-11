@@ -1,4 +1,4 @@
-name: Build and test
+name: CI
 on: [push, pull_request]
 jobs:
   build:
@@ -46,11 +46,45 @@ jobs:
       - name: Collect artifacts
         run: |
           mkdir -p dist
-          cp _build/default/src/kast/js/kast_js.bc.js dist
+
+          # js
+          mkdir -p dist/kast-js
+          cp _build/default/src/kast/js/kast_js.bc.js dist/kast-js
+
+          # linux
+          mkdir -p dist/linux
+          mkdir -p dist/linux/bin
+          mkdir -p dist/linux/lib
+          cp _build/default/src/kast/bin/main.exe dist/linux/bin/kast
+          cp -r std dist/linux/lib/std
+          tar -czf dist/kast-linux.tar.gz -C dist/linux .
+          rm -rf dist/linux
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist
+
+  release:
+    needs:
+      - build
+    name: Release
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.repository_owner == 'kast-lang'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Prerelease
+          prerelease: true
+          files: dist/kast-linux.tar.gz
       
   pages:
     needs:
@@ -69,4 +103,4 @@ jobs:
           path: dist
       - uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: dist
+          folder: dist/kast-js
