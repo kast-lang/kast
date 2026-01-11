@@ -90,7 +90,7 @@ let tuple_ty
         | Field { label; label_span = _; field = (field_expr : a) } ->
           let name = label |> Option.map Label.get_name in
           let ty_field : Types.ty_tuple_field =
-            { ty = (get_data kind field_expr).ty; label }
+            { ty = (get_data kind field_expr).ty; label; symbol = None }
           in
           result_tuple := !result_tuple |> Tuple.add name ty_field
         | Unpack packed ->
@@ -377,7 +377,10 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                     |> StringMap.to_list
                     |> List.map (fun (name, (binding : binding)) ->
                       ( name
-                      , ({ ty = binding.ty; label = Some binding.label }
+                      , ({ ty = binding.ty
+                         ; label = Some binding.label
+                         ; symbol = Some binding.name
+                         }
                          : Types.ty_tuple_field) )))
              })
       | E_UseDotStar { used = _; bindings = _ } -> Ty.inferred ~span T_Unit

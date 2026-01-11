@@ -398,10 +398,10 @@ module Impl = struct
     Log.trace (fun log -> log "subbed generic = %a" Print.print_ty_generic generic);
     generic
 
-  and sub_ty_tuple_field ~(state : sub_state) ({ label; ty } : ty_tuple_field)
+  and sub_ty_tuple_field ~(state : sub_state) ({ label; symbol; ty } : ty_tuple_field)
     : ty_tuple_field
     =
-    { label; ty = sub_ty ~state ty }
+    { label; symbol; ty = sub_ty ~state ty }
 
   and sub_ty_fn ~state ({ arg; result } : ty_fn) : ty_fn =
     { arg = arg |> sub_ty ~state; result = result |> sub_ty ~state }

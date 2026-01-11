@@ -149,6 +149,7 @@ module rec TypesImpl : sig
   (* TY *)
   and ty_tuple_field =
     { ty : ty
+    ; symbol : Symbol.t option
     ; label : Label.t option
     }
 
@@ -775,6 +776,7 @@ end = struct
   (* TY *)
   and ty_tuple_field =
     { ty : ty
+    ; symbol : Symbol.t option
     ; label : Label.t option
     }
 

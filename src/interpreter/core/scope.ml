@@ -107,6 +107,7 @@ let add_local_existing_place
              ({ place
               ; ty_field =
                   { ty = place.ty
+                  ; symbol = Some symbol
                   ; label = Some (Label.create_reference span symbol.name)
                   }
               }
@@ -133,6 +134,7 @@ let add_local
               ({ place = Place.init ~mut value
                ; ty_field =
                    { ty = Value.ty_of value
+                   ; symbol = Some symbol
                    ; label = Some (Label.create_definition span symbol.name)
                    }
                }

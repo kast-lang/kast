@@ -188,6 +188,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                              (match member with
                               | Index _ -> None
                               | Name name -> Some (Label.create_reference ast.span name))
+                         ; symbol = None
                          }
                      ; span =
                          ast.span
@@ -284,7 +285,11 @@ let default name_part ?(import_cache : import_cache option) () : state =
           SymbolMap.singleton
             std_symbol
             ({ place = Place.init ~mut:Immutable std
-             ; ty_field = { ty = Value.ty_of std; label = Some std_label }
+             ; ty_field =
+                 { ty = Value.ty_of std
+                 ; label = Some std_label
+                 ; symbol = Some std_symbol
+                 }
              }
              : Types.interpreter_local)
       }
@@ -293,26 +298,8 @@ let default name_part ?(import_cache : import_cache option) () : state =
   interpreter_with_std.cast_impls.map <- interpreter_without_std.cast_impls.map;
   interpreter_with_std.cast_impls.as_module
   <- interpreter_without_std.cast_impls.as_module;
-  let scope = State.Scope.init ~recursive:false in
-  let scope =
-    scope
-    |> State.Scope.inject_binding
-         { id = Id.gen ()
-         ; scope = None
-         ; name = std_symbol
-         ; ty = Value.ty_of std
-         ; span = Span.beginning_of std_uri
-         ; label = std_label
-         ; mut = false
-         }
-  in
-  { scope
-  ; currently_compiled_file = None
-  ; interpreter = interpreter_with_std
-  ; import_cache
-  ; custom_syntax_impls = bootstrap.custom_syntax_impls
-  ; mut_enabled = false
-  ; bind_mode = Claim
+  { (init ~import_cache ~compile_for:interpreter_with_std) with
+    custom_syntax_impls = bootstrap.custom_syntax_impls
   }
 ;;
 

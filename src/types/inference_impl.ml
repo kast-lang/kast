@@ -128,7 +128,8 @@ module VarScope = struct
          (fun acc (_member, field) -> deepest acc (of_ty_tuple_field field))
          (of_optional_name name)
 
-  and of_ty_tuple_field : ty_tuple_field -> var_scope = fun { ty; label = _ } -> of_ty ty
+  and of_ty_tuple_field : ty_tuple_field -> var_scope =
+    fun { ty; symbol = _; label = _ } -> of_ty ty
 
   and of_ty_ref : ty_ref -> var_scope =
     fun { mut; referenced } -> deepest (of_is_mutable mut) (of_ty referenced)
@@ -390,7 +391,9 @@ module Impl = struct
                   in
                   let binding = init_place ~mut:Inherit binding in
                   let binding : Types.interpreter_local =
-                    { place = binding; ty_field = { ty = binding.ty; label = None } }
+                    { place = binding
+                    ; ty_field = { ty = binding.ty; symbol = None; label = None }
+                    }
                   in
                   a.name, binding)
                 |> SymbolMap.of_list
@@ -593,6 +596,7 @@ module Impl = struct
       (b : Types.ty_tuple_field)
       : Types.ty_tuple_field ->
     { ty = unite_ty ~span a.ty b.ty
+    ; symbol = a.symbol (* TODO what if != b *)
     ; label = unite_option (fun ~span:_ -> Label.unite) ~span a.label b.label
     }
 

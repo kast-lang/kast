@@ -88,7 +88,7 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
           SymbolMap.singleton
             binding.name
             ({ place = Place.init ~mut:(Place.Mut.bool binding.mut) value
-             ; ty_field = { ty; label = Some binding.label }
+             ; ty_field = { ty; symbol = Some binding.name; label = Some binding.label }
              }
              : Types.interpreter_local)
       } )
@@ -691,7 +691,7 @@ and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
         ; ty_field =
             (match ty.tuple |> Tuple.get_opt member with
              | Some ty_field -> ty_field
-             | None -> { label; ty = Value.ty_of field_value })
+             | None -> { label; symbol = None; ty = Value.ty_of field_value })
         }
       in
       result := !result |> Tuple.add name field
@@ -832,20 +832,25 @@ and eval_expr_module : state -> expr -> Types.expr_module -> value =
   in
   V_Tuple { tuple = fields |> Tuple.of_list; ty } |> Value.inferred ~span
 
-and eval_expr_usedotstar : state -> expr -> Types.expr_use_dot_star -> value =
-  fun state expr { used; bindings } ->
-  let span = expr.data.span in
-  let used = eval state used in
+and usedotstar : span:span -> state -> value -> unit =
+  fun ~span state used ->
   match used |> Value.await_inferred with
   | V_Tuple { ty = _; tuple } ->
-    bindings
-    |> List.iter (fun (binding : binding) ->
-      let field = tuple |> Tuple.get_named binding.name.name in
-      state.scope |> Scope.add_local_existing_place field.span binding.name field.place);
-    V_Unit |> Value.inferred ~span
-  | _ ->
-    Error.error expr.data.span "can't use .* %a" Value.print used;
-    V_Error |> Value.inferred ~span
+    tuple
+    |> Tuple.iter (fun member (field : Types.value_tuple_field) ->
+      match field.ty_field.symbol with
+      | Some symbol ->
+        state.scope |> Scope.add_local_existing_place field.span symbol field.place
+      | None ->
+        Error.error span "no symbol for used value field %a" Tuple.Member.print member)
+  | _ -> Error.error span "can't use .* %a" Value.print used
+
+and eval_expr_usedotstar : state -> expr -> Types.expr_use_dot_star -> value =
+  fun state expr { used; bindings = _ } ->
+  let span = expr.data.span in
+  let used = eval state used in
+  usedotstar ~span state used;
+  V_Unit |> Value.inferred ~span
 
 and eval_expr_if : state -> expr -> Types.expr_if -> value =
   fun state expr { cond = cond_expr; then_case; else_case } ->
@@ -1268,7 +1273,7 @@ and eval_ty : state -> Expr.ty -> ty =
             | Field { label; label_span = _; field = field_expr } ->
               let name = label |> Option.map Label.get_name in
               let ty = field_expr |> eval_ty state in
-              let ty_field : Types.ty_tuple_field = { ty; label } in
+              let ty_field : Types.ty_tuple_field = { ty; label; symbol = None } in
               tuple := !tuple |> Tuple.add name ty_field
             | Unpack packed ->
               let packed = eval_ty state packed in

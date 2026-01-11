@@ -1199,7 +1199,10 @@ let use_dot_star : core_syntax =
                 |> Option.map (fun label ->
                   ({ id = Id.gen ()
                    ; scope
-                   ; name = Symbol.create name
+                   ; name =
+                       (match field.symbol with
+                        | Some symbol -> symbol
+                        | None -> Symbol.create name)
                    ; span = Label.get_span label
                    ; ty = field.ty
                    ; label
