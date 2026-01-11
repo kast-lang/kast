@@ -39,6 +39,8 @@ jobs:
         shell: bash
         run: |
           dune build
+        env:
+          KAST_STD: "../lib/std"
       - name: Run tests
         shell: bash
         run: |
