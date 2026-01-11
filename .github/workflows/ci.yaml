@@ -25,6 +25,8 @@ jobs:
         with:
           ocaml-compiler: 5.4
           dune-cache: true
+      - run: |
+          opam install dune
       - name: Resolve dependencies
         shell: bash
         run: |
