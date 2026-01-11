@@ -10,8 +10,8 @@ jobs:
             name: linux
           - runs-on: macos-latest
             name: macos
-          # - runs-on: windows-latest
-          #   name: windows
+          - runs-on: windows-latest
+            name: windows
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout code
@@ -20,24 +20,11 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - name: Install and setup dune
-        shell: bash
-        run: |
-          curl -fsSL https://get.dune.build/install | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          echo "DUNE_CACHE_ROOT=$HOME/.cache/dune" >> "$GITHUB_ENV"
-      - name: Cache dune’s cache
-        uses: actions/cache@v4
-        id: dune-cache
+      - name: Set-up OCaml
+        uses: ocaml/setup-ocaml@v3
         with:
-          path: |
-            ${{ env.DUNE_CACHE_ROOT }}
-          key: dune-cache-${{ runner.os }}-${{ runner.arch }}
-      - name: Cache Dune _build
-        uses: actions/cache@v3
-        with:
-          path: _build
-          key: dune-build-${{ runner.os }}-${{ runner.arch }}
+          ocaml-compiler: 5.4
+          dune-cache: true
       - name: Resolve dependencies
         shell: bash
         run: |
@@ -59,11 +46,15 @@ jobs:
           mkdir -p artifacts/kast-js
           cp _build/default/src/kast/js/kast_js.bc.js artifacts/kast_js.bc.js
       - run: |
-          PLATFORM=${{ matrix.platform.name }}
+          PLATFORM="${{ matrix.platform.name }}"
+          BIN_NAME=kast
+          if [ "$PLATFORM" == "windows"]; then
+            BIN_NAME=kast.exe
+          fi
           mkdir -p artifacts/$PLATFORM
           mkdir -p artifacts/$PLATFORM/bin
           mkdir -p artifacts/$PLATFORM/lib
-          cp _build/default/src/kast/bin/main.exe artifacts/$PLATFORM/bin/kast
+          cp _build/default/src/kast/bin/main.exe artifacts/$PLATFORM/bin/$BIN_NAME
           cp -r std artifacts/$PLATFORM/lib/std
           tar -czf artifacts/kast-$PLATFORM.tar.gz -C artifacts/$PLATFORM .
           rm -rf artifacts/$PLATFORM
