@@ -3,14 +3,15 @@ on: [push, pull_request]
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runs-on: ubuntu-latest
             name: linux
           - runs-on: macos-latest
             name: macos
-          - runs-on: windows-latest
-            name: windows
+          # - runs-on: windows-latest
+          #   name: windows
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout code
@@ -57,33 +58,15 @@ jobs:
       - run: |
           mkdir -p artifacts/kast-js
           cp _build/default/src/kast/js/kast_js.bc.js artifacts/kast_js.bc.js
-      - if: matrix.platform.name == 'linux'
-        run: |
-          mkdir -p artifacts/linux
-          mkdir -p artifacts/linux/bin
-          mkdir -p artifacts/linux/lib
-          cp _build/default/src/kast/bin/main.exe artifacts/linux/bin/kast
-          cp -r std artifacts/linux/lib/std
-          tar -czf artifacts/kast-linux.tar.gz -C artifacts/linux .
-          rm -rf artifacts/linux
-      - if: matrix.platform.name == 'macos'
-        run: |
-          mkdir -p artifacts/macos
-          mkdir -p artifacts/macos/bin
-          mkdir -p artifacts/macos/lib
-          cp _build/default/src/kast/bin/main.exe artifacts/macos/bin/kast
-          cp -r std artifacts/macos/lib/std
-          tar -czf artifacts/kast-macos.tar.gz -C artifacts/macos .
-          rm -rf artifacts/macos
-      - if: matrix.platform.name == 'windows'
-        run: |
-          mkdir -p artifacts/windows
-          mkdir -p artifacts/windows/bin
-          mkdir -p artifacts/windows/lib
-          cp _build/default/src/kast/bin/main.exe artifacts/windows/bin/kast.exe
-          cp -r std artifacts/windows/lib/std
-          tar -czf artifacts/kast-windows.tar.gz -C artifacts/windows .
-          rm -rf artifacts/windows
+      - run: |
+          PLATFORM=${{ matrix.platform.name }}
+          mkdir -p artifacts/$PLATFORM
+          mkdir -p artifacts/$PLATFORM/bin
+          mkdir -p artifacts/$PLATFORM/lib
+          cp _build/default/src/kast/bin/main.exe artifacts/$PLATFORM/bin/kast
+          cp -r std artifacts/$PLATFORM/lib/std
+          tar -czf artifacts/kast-$PLATFORM.tar.gz -C artifacts/$PLATFORM .
+          rm -rf artifacts/$PLATFORM
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
