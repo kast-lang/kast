@@ -35,10 +35,6 @@ jobs:
         shell: bash
         run: |
           dune pkg lock
-      - name: Create fake generated ocaml
-        shell: bash
-        run: |
-          touch generated-ocaml/generated_ocaml.ml
       - name: Build project
         shell: bash
         run: |
