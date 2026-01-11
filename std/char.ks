@@ -9,6 +9,7 @@ impl Char as module = (
     );
     let from_code = (code :: UInt32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "char.from_code") code
+        | target.name == "javascript" => (@native "Kast.Char.from_code") code
     );
     
     let code_0 = code '0';

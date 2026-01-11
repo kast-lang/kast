@@ -494,7 +494,12 @@ const Kast = await (async () => {
         lhs >> rhs,
     },
     Char: {
-      code: async (c: string) => c.charCodeAt(0),
+      async code(c: string): Promise<number> {
+        return c.charCodeAt(0);
+      },
+      async from_code(code: number): Promise<string> {
+        return String.fromCharCode(code);
+      },
     },
     String: {
       substring: async ({
