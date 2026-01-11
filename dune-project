@@ -10,6 +10,7 @@
   ocaml
   ppx_deriving
   ppx_blob
+  ppx_getenv
   linol
   linol-eio
   eio_main

@@ -37,12 +37,18 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
   | effect Kast_compiler.Effect.FileImported _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FileStartedProcessing _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->
-    let stdlib_path =
+    let stdlib_uri =
       match Sys.getenv_opt "KAST_STD" with
-      | Some path -> path
-      | None -> Sys.getcwd () ^ "/std"
+      | Some path -> Uri.file path
+      | None ->
+        (match [%getenv "KAST_STD"] with
+         | "" -> Uri.file "std"
+         | path ->
+           let path = Uri.of_string path in
+           let bin_path = Array.get Sys.argv 0 in
+           Uri.resolve "" (Uri.file bin_path) path)
     in
-    Effect.Deep.continue k (Uri.file stdlib_path)
+    Effect.Deep.continue k stdlib_uri
   | effect Source.Read uri, k ->
     Effect.continue_with k (fun () ->
       match Uri.scheme uri with

@@ -97,14 +97,16 @@
             nodejs = pkgs.nodejs;
           };
         in main.overrideAttrs (oa: {
-          nativeBuildInputs = [ pkgs.typescript pkgs.makeWrapper ];
+          nativeBuildInputs = [ pkgs.typescript ];
           buildPhase = ''
             ln -s ${npmDeps}/node_modules ./node_modules
             ls -la ./node_modules
+            export KAST_STD="../lib/std"
             ${oa.buildPhase}
           '';
           postFixup = ''
-            wrapProgram $out/bin/kast --set KAST_STD ${./std}
+            rm -rf $out/lib/ocaml
+            cp -r std $out/lib/std
           '';
         });
         devShells.default = pkgs.mkShell {

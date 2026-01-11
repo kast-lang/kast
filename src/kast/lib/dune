@@ -7,4 +7,8 @@
   kast_fmt
   kast_highlight
   kast_interpreter
-  kast_compiler))
+  kast_compiler)
+ (preprocessor_deps
+  (env_var KAST_STD))
+ (preprocess
+  (pps ppx_getenv)))
