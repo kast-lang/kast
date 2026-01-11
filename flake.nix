@@ -10,10 +10,13 @@
       nixpkgs.follows = "nixpkgs";
       opam-repository.follows = "opam-repository";
     };
+    nix-filter.url = "github:numtide/nix-filter";
     flake-utils.url = "github:numtide/flake-utils";
   };
   outputs = inputs:
-    let package = "kast";
+    let
+      package = "kast";
+      filter = inputs.nix-filter.lib;
     in inputs.flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import inputs.nixpkgs { inherit system; };
@@ -78,11 +81,17 @@
       in {
         legacyPackages = scope';
         packages.default = let
-          nodeDependencies = (pkgs.callPackage ./node.nix { }).nodeDependencies;
+          npmDeps = pkgs.importNpmLock.buildNodeModules {
+            npmRoot = filter {
+              root = ./.;
+              include = [ "package.json" "package-lock.json" ];
+            };
+            nodejs = pkgs.nodejs;
+          };
         in main.overrideAttrs (oa: {
           nativeBuildInputs = [ pkgs.typescript pkgs.makeWrapper ];
           buildPhase = ''
-            ln -s ${nodeDependencies}/lib/node_modules ./node_modules
+            ln -s ${npmDeps}/node_modules ./node_modules
             ls -la ./node_modules
             ${oa.buildPhase}
           '';
