@@ -151,6 +151,7 @@
             export OCAML_BACKTRACE=1
             export OCAMLRUNPARAM="b,d=10"
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
+            export KAST_STD=$(pwd)/std
           '';
         };
         formatter = pkgs.nixfmt-classic;
