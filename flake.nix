@@ -88,27 +88,30 @@
           ocaml-base-compiler = "*";
         }).memtrace_viewer;
       in {
-        packages.default = let
-          npmDeps = pkgs.importNpmLock.buildNodeModules {
-            npmRoot = filter {
-              root = ./.;
-              include = [ "package.json" "package-lock.json" ];
+        packages = rec {
+          default = let
+            npmDeps = pkgs.importNpmLock.buildNodeModules {
+              npmRoot = filter {
+                root = ./.;
+                include = [ "package.json" "package-lock.json" ];
+              };
+              nodejs = pkgs.nodejs;
             };
-            nodejs = pkgs.nodejs;
-          };
-        in main.overrideAttrs (oa: {
-          nativeBuildInputs = [ pkgs.typescript ];
-          buildPhase = ''
-            ln -s ${npmDeps}/node_modules ./node_modules
-            ls -la ./node_modules
-            export KAST_STD="../lib/std"
-            ${oa.buildPhase}
-          '';
-          postFixup = ''
-            rm -rf $out/lib/ocaml
-            cp -r std $out/lib/std
-          '';
-        });
+          in main.overrideAttrs (oa: {
+            nativeBuildInputs = [ pkgs.typescript ];
+            buildPhase = ''
+              ln -s ${npmDeps}/node_modules ./node_modules
+              ls -la ./node_modules
+              export KAST_STD="../lib/std"
+              ${oa.buildPhase}
+            '';
+            postFixup = ''
+              rm -rf $out/lib/ocaml
+              cp -r std $out/lib/std
+            '';
+          });
+          kast = default;
+        };
         devShells.default = pkgs.mkShell {
           inputsFrom = [ main ];
           buildInputs = devPackages ++ (with pkgs; [
