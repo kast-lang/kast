@@ -40,7 +40,6 @@
           ## - or force ocamlfind to be a certain version:
           # ocamlfind = "1.9.2";
         };
-        scope = opam-nix.buildDuneProject { } package ./. query;
         overlay = final: prev: {
           # You can add overrides here
           ${package} = prev.${package}.overrideAttrs (_: {
@@ -64,12 +63,22 @@
             ocaml-base-compiler = "*";
           }).ppxlib;
         };
-        scope' = scope.overrideScope overlay;
+        createScope = src:
+          (opam-nix.buildDuneProject { } package src query).overrideScope
+          overlay;
+        devScope = createScope (filter {
+          root = ./.;
+          include = [ "dune-workspace" "dune-project" ];
+        });
         # The main package containing the executable
-        main = scope'.${package};
+        mainScope = createScope (filter {
+          root = ./.;
+          include = [ "dune-workspace" "dune-project" "std" "src" ];
+        });
+        main = mainScope.${package};
         # Packages from devPackagesQuery
         devPackages = builtins.attrValues
-          (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) scope');
+          (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) devScope);
         memtrace_viewer = let
           src = builtins.fetchGit {
             url = "https://github.com/kuviman/memtrace_viewer";
@@ -79,7 +88,6 @@
           ocaml-base-compiler = "*";
         }).memtrace_viewer;
       in {
-        legacyPackages = scope';
         packages.default = let
           npmDeps = pkgs.importNpmLock.buildNodeModules {
             npmRoot = filter {
