@@ -47,62 +47,36 @@ jobs:
           dune runtest
       - name: Collect artifacts
         run: |
-          mkdir -p dist
+          mkdir -p pages
 
           # js
-          mkdir -p dist/kast-js
-          cp _build/default/src/kast/js/kast_js.bc.js dist/kast-js
+          mkdir -p pages/kast-js
+          cp _build/default/src/kast/js/kast_js.bc.js pages/kast_js.bc.js
 
           # linux
-          mkdir -p dist/linux
-          mkdir -p dist/linux/bin
-          mkdir -p dist/linux/lib
-          cp _build/default/src/kast/bin/main.exe dist/linux/bin/kast
-          cp -r std dist/linux/lib/std
-          tar -czf dist/kast-linux.tar.gz -C dist/linux .
-          rm -rf dist/linux
-      - uses: actions/upload-artifact@v4
+          mkdir -p pages/linux
+          mkdir -p pages/linux/bin
+          mkdir -p pages/linux/lib
+          cp _build/default/src/kast/bin/main.exe pages/linux/bin/kast
+          cp -r std pages/linux/lib/std
+          tar -czf pages/kast-linux.tar.gz -C pages/linux .
+          rm -rf pages/linux
+      - name: Upload pages artifacts
+        id: pages_deployment
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: dist
-          path: dist
+          path: pages/
 
-  release:
-    needs:
-      - build
-    name: Release
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.repository_owner == 'kast-lang'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-      - uses: softprops/action-gh-release@v2
-        with:
-          name: Prerelease
-          prerelease: true
-          files: dist/kast-linux.tar.gz
-      
   pages:
-    needs:
-      - build
-    name: Pages
+    needs: build
     permissions:
-      contents: write
-    if: github.ref == 'refs/heads/main' && github.repository_owner == 'kast-lang'
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages_deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
-      - uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          folder: dist/kast-js
+      - name: Deploy to GitHub Pages
+        id: pages_deployment
+        uses: actions/deploy-pages@v4
