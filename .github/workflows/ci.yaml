@@ -25,22 +25,20 @@ jobs:
         with:
           ocaml-compiler: 5.4
           dune-cache: true
-      - run: |
-          opam install dune
       - name: Resolve dependencies
         shell: bash
         run: |
-          dune pkg lock
+          opam exec -- dune pkg lock
       - name: Build project
         shell: bash
         run: |
-          dune build
+          opam exec -- dune build
         env:
           KAST_STD: "../lib/std"
       - name: Run tests
         shell: bash
         run: |
-          dune runtest
+          opam exec -- dune runtest
       - name: Collect artifacts
         run: |
           mkdir -p artifacts
