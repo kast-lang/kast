@@ -4,8 +4,14 @@ jobs:
   build:
     strategy:
       matrix:
-        runs-on: [ubuntu-latest]
-    runs-on: ${{ matrix.runs-on }}
+        platform:
+          - runs-on: ubuntu-latest
+            name: linux
+          - runs-on: macos-latest
+            name: macos
+          - runs-on: windows-latest
+            name: windows
+    runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,36 +53,59 @@ jobs:
           dune runtest
       - name: Collect artifacts
         run: |
-          mkdir -p pages
-
-          # js
-          mkdir -p pages/kast-js
-          cp _build/default/src/kast/js/kast_js.bc.js pages/kast_js.bc.js
-
-          # linux
-          mkdir -p pages/linux
-          mkdir -p pages/linux/bin
-          mkdir -p pages/linux/lib
-          cp _build/default/src/kast/bin/main.exe pages/linux/bin/kast
-          cp -r std pages/linux/lib/std
-          tar -czf pages/kast-linux.tar.gz -C pages/linux .
-          rm -rf pages/linux
-      - name: Upload pages artifacts
-        id: pages_deployment
-        uses: actions/upload-pages-artifact@v3
+          mkdir -p artifacts
+      - run: |
+          mkdir -p artifacts/kast-js
+          cp _build/default/src/kast/js/kast_js.bc.js artifacts/kast_js.bc.js
+      - if: matrix.platform.name == 'linux'
+        run: |
+          mkdir -p artifacts/linux
+          mkdir -p artifacts/linux/bin
+          mkdir -p artifacts/linux/lib
+          cp _build/default/src/kast/bin/main.exe artifacts/linux/bin/kast
+          cp -r std artifacts/linux/lib/std
+          tar -czf artifacts/kast-linux.tar.gz -C artifacts/linux .
+          rm -rf artifacts/linux
+      - if: matrix.platform.name == 'macos'
+        run: |
+          mkdir -p artifacts/macos
+          mkdir -p artifacts/macos/bin
+          mkdir -p artifacts/macos/lib
+          cp _build/default/src/kast/bin/main.exe artifacts/macos/bin/kast
+          cp -r std artifacts/macos/lib/std
+          tar -czf artifacts/kast-macos.tar.gz -C artifacts/macos .
+          rm -rf artifacts/macos
+      - if: matrix.platform.name == 'windows'
+        run: |
+          mkdir -p artifacts/windows
+          mkdir -p artifacts/windows/bin
+          mkdir -p artifacts/windows/lib
+          cp _build/default/src/kast/bin/main.exe artifacts/windows/bin/kast.exe
+          cp -r std artifacts/windows/lib/std
+          tar -czf artifacts/kast-windows.tar.gz -C artifacts/windows .
+          rm -rf artifacts/windows
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          path: pages/
+          name: artifacts-${{ matrix.platform.name }}
+          path: artifacts/
 
-  pages:
+  deploy-pages:
+    if: github.ref == 'refs/heads/main' && github.repository_owner == 'kast-lang'
     needs: build
     permissions:
       pages: write
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.pages_deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/download-artifact@v5
+      - name: Upload pages artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts/
       - name: Deploy to GitHub Pages
-        id: pages_deployment
+        id: deployment
         uses: actions/deploy-pages@v4
