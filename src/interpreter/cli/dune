@@ -7,4 +7,5 @@
   kast_compiler
   kast_default_syntax
   kast_compiler_targets
+  kast_inference_completion
   kast_compiler_cli))

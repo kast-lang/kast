@@ -21,6 +21,9 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
   | Kast_interpreter.Natives.Panic s ->
     Log.error (fun log -> log "panic: %s" s);
     exit (-1)
+  | effect Kast_inference_completion.Error.Error error, k ->
+    Log.error (fun log -> log "%a" Kast_inference_completion.Error.print error);
+    handle_error k
   | effect Kast_interpreter.Error.Error error, k ->
     Log.error (fun log -> log "%a" Kast_interpreter.Error.print error);
     handle_error k

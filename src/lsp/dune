@@ -6,4 +6,5 @@
   kast_default_syntax
   kast_fmt
   kast_compiler
+  kast_inference_completion
   linol.lsp))

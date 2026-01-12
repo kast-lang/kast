@@ -33,16 +33,24 @@ end
 type args =
   { profile : string option
   ; stop_on_error : bool
+  ; inference_completion : bool
   ; command : Command.t
   }
 
 let parse () : args =
   let args = Sys.argv |> Array.to_list |> List.tail in
   let stop_on_error = ref true in
+  let inference_completion = ref false in
   let profile = ref None in
   let rec parse_flags = function
     | "--stop-on-error=false" :: args | "--stop-on-error" :: "false" :: args ->
       stop_on_error := false;
+      parse_flags args
+    | "--inference-completion" :: "true" :: args ->
+      inference_completion := true;
+      parse_flags args
+    | "--inference-completion" :: "false" :: args ->
+      inference_completion := false;
       parse_flags args
     | "--profile" :: path :: args ->
       profile := Some path;
@@ -51,5 +59,9 @@ let parse () : args =
     | first :: rest -> first :: parse_flags rest
   in
   let args = parse_flags args in
-  { stop_on_error = !stop_on_error; profile = !profile; command = Command.parse args }
+  { inference_completion = !inference_completion
+  ; stop_on_error = !stop_on_error
+  ; profile = !profile
+  ; command = Command.parse args
+  }
 ;;

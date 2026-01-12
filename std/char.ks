@@ -27,14 +27,14 @@ impl Char as module = (
             panic "char is not digit"
         );
         if radix < 2 or digit >= radix then (
-            panic "digit >= radix";
+            panic "digit >= radix"
         );
         digit
     );
     let to_digit = c => to_digit_radix (c, 10);
     let from_digit_radix = (digit :: UInt32, radix :: UInt32) -> Char => (
         if radix < 2 or digit >= radix then (
-            panic "digit >= radix";
+            panic "digit >= radix"
         );
         if digit < 10 then (
             from_code (digit + code_0)

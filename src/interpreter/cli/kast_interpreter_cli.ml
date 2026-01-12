@@ -125,9 +125,11 @@ let repl
        let expr : expr = Compiler.compile compiler Expr ast in
        (try
           let value : value = Interpreter.eval interpreter expr in
+          value.var |> Kast_inference_base.Var.setup_default_if_needed;
+          value |> Kast_inference_completion.complete_value;
           match value.var |> Kast_inference.Var.inferred_opt with
           | Some V_Unit -> ()
-          | _ -> println "%a" Value.print value
+          | _ -> println "%a @{<italic>:: %a@}" Value.print value Ty.print value.ty
         with
         | Interpreter.Natives.Panic s -> eprintln "@{<red>panic: %s@}" s));
     loop ()

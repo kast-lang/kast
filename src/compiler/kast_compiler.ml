@@ -313,6 +313,9 @@ let compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   Fun.protect
     (fun () ->
        state.currently_compiled_file <- Some ast.span.uri;
-       compile state kind ast)
+       let result = compile state kind ast in
+       Log.trace (fun log -> log "Completing inference");
+       Kast_inference_completion.complete_compiled kind result;
+       result)
     ~finally:(fun () -> state.currently_compiled_file <- None)
 ;;

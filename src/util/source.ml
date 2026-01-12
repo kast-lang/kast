@@ -136,6 +136,7 @@ module Span = struct
   let beginning_of uri = { start = Position.beginning; finish = Position.beginning; uri }
   let single_char pos uri = { start = pos; finish = pos; uri }
   let fake desc = beginning_of <| Uri.of_string ("fake:" ^ desc)
+  let is_fake span = span.uri |> Uri.scheme = Some "fake"
 
   let of_ocaml : string * int * int * int -> span =
     fun (file, line, col, _enum) ->

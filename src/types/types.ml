@@ -217,7 +217,8 @@ module rec TypesImpl : sig
     }
 
   and maybe_compiled_fn =
-    { mutable compiled : compiled_fn option
+    { span : Span.t
+    ; mutable compiled : compiled_fn option
     ; mutable on_compiled : (unit -> unit) list
           [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
@@ -844,7 +845,8 @@ end = struct
     }
 
   and maybe_compiled_fn =
-    { mutable compiled : compiled_fn option
+    { span : Span.t
+    ; mutable compiled : compiled_fn option
     ; mutable on_compiled : (unit -> unit) list
           [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }

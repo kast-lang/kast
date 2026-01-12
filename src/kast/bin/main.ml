@@ -23,6 +23,7 @@ let main () =
   (match args.profile with
    | None -> ()
    | Some path -> Kast_profiling.init path);
+  Kast_inference_completion.enable := args.inference_completion;
   let stop_on_error =
     match args.command with
     | Cli.Command.Repl _ -> false

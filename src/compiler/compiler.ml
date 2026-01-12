@@ -138,6 +138,24 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
         ; cast_impls = state.interpreter.cast_impls
         }
       in
+      (let { value; custom_syntax_impls; cast_impls } : State.imported = imported in
+       Kast_inference_completion.complete_value value;
+       custom_syntax_impls
+       |> Hashtbl.iter (fun _id impl -> Kast_inference_completion.complete_value impl);
+       let { map = cast_impls; as_module = cast_as_module } : Types.cast_impls =
+         cast_impls
+       in
+       cast_impls
+       |> Types.ValueMap.iter (fun target impls ->
+         Kast_inference_completion.complete_value target;
+         impls
+         |> Types.ValueMap.iter (fun value impl ->
+           Kast_inference_completion.complete_value value;
+           Kast_inference_completion.complete_value impl));
+       cast_as_module
+       |> Types.ValueMap.iter (fun value impl ->
+         Kast_inference_completion.complete_value value;
+         Kast_inference_completion.complete_value impl));
       import_cache.by_uri
       <- UriMap.add uri (Imported imported : State.import) import_cache.by_uri;
       Log.trace (fun log -> log "Imported %a" Uri.print uri);

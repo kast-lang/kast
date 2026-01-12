@@ -27,7 +27,11 @@ const length = [T] (v :: &Treap.t[T]) -> Int32 => (
         | :Node v => v.count
     )
 );
-const update_data = [T] (root :: data[T], .left :: Treap.t[T], .right :: Treap.t[T]) => (
+const update_data = [T] (
+    root :: data[T],
+    .left :: Treap.t[T],
+    .right :: Treap.t[T]
+) -> Treap.t[T] => (
     :Node (
         .value = root.value,
         .priority = root.priority,

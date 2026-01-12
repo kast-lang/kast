@@ -78,6 +78,21 @@ let process_file (global : global_state) (source : source) : file_state =
         in
         Some (Compiler.compile compiler Expr ast)
       with
+      | effect Kast_inference_completion.Error.Error error, k ->
+        log_error (fun log -> log "%a" Kast_inference_completion.Error.print error);
+        add_diagnostic
+          error.span.uri
+          { range = error.span |> Common.span_to_range
+          ; severity = Some Error
+          ; code = None
+          ; codeDescription = None
+          ; source = None
+          ; message = `String (make_string "%t" error.msg)
+          ; tags = None
+          ; relatedInformation = None
+          ; data = None
+          };
+        Effect.continue k ()
       | effect Kast_interpreter.Error.Error error, k ->
         log_error (fun log -> log "%a" Kast_interpreter.Error.print error);
         add_diagnostic

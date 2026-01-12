@@ -287,7 +287,7 @@ module Impl = struct
         "@{<magenta>scope@} %a"
         (Tuple.print (print_expr ~options))
         (Tuple.make [ expr ] [])
-    | E_Fn { def = { compiled; on_compiled = _ }; _ } ->
+    | E_Fn { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
        | Some { arg; body; evaled_result = _ } ->
          fprintf
@@ -298,7 +298,7 @@ module Impl = struct
            (print_expr ~options)
            body
        | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
-    | E_Generic { def = { compiled; on_compiled = _ }; _ } ->
+    | E_Generic { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
        | Some { arg; body; evaled_result = _ } ->
          fprintf

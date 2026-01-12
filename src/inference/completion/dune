@@ -1,0 +1,3 @@
+(library
+ (name kast_inference_completion)
+ (libraries kast_types))

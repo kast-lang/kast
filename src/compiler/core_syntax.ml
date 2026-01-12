@@ -307,7 +307,9 @@ let fn : core_syntax =
                      |> Option.map_or body.span (fun (result : Ast.t) -> result.span))
             }
           in
-          let def : Types.maybe_compiled_fn = { compiled = None; on_compiled = [] } in
+          let def : Types.maybe_compiled_fn =
+            { span; compiled = None; on_compiled = [] }
+          in
           State.Scope.fork (fun () ->
             let state = C.state |> State.enter_scope ~span ~recursive:false in
             Log.trace (fun log -> log "starting to compile fn at %a" Span.print span);
@@ -404,7 +406,9 @@ let generic : core_syntax =
           in
           (fun () -> TE_Expr expr) |> init_ty_expr span C.state
         | Expr ->
-          let def : Types.maybe_compiled_fn = { compiled = None; on_compiled = [] } in
+          let def : Types.maybe_compiled_fn =
+            { span; compiled = None; on_compiled = [] }
+          in
           let inner_state = C.state |> State.enter_scope ~span ~recursive:false in
           let arg = C.compile ~state:inner_state Pattern arg in
           inner_state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
@@ -1335,7 +1339,7 @@ let impl_syntax : core_syntax =
                  }
                in
                let def : Types.maybe_compiled_fn =
-                 { compiled = None; on_compiled = [] }
+                 { span = impl.span; compiled = None; on_compiled = [] }
                in
                State.Scope.fork (fun () ->
                  let state = State.enter_scope C.state ~span ~recursive:false in
