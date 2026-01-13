@@ -6,8 +6,8 @@ module Syntax = Kast_syntax
 
 module Args = struct
   type rewrite =
-    { from : string
-    ; into : string
+    { from : Uri.t
+    ; into : Uri.t
     }
 
   type args =
@@ -24,7 +24,9 @@ module Args = struct
     | "--inplace" :: rest -> { (parse rest) with inplace = true }
     | "--rewrite" :: from :: into :: rest ->
       let rest = parse rest in
-      { rest with rewrite = { from; into } :: rest.rewrite }
+      { rest with
+        rewrite = { from = Uri.file from; into = Uri.file into } :: rest.rewrite
+      }
     | "--highlight" :: highlight :: rest ->
       let hl_output =
         match highlight with
@@ -43,23 +45,19 @@ module Args = struct
   ;;
 end
 
-let rewrite_one ({ from; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
-  let rule_into : Syntax.Rule.t =
-    Kast_default_syntax.ruleset |> Parser.Ruleset.find_rule into
-  in
-  let rewritten_map = Hashtbl.create 0 in
+let parse_ruleset uri = Parser.Ruleset.parse_lines (Source.read uri).contents
+
+let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
+  let into = parse_ruleset into in
   let rec rewrite_ast (ast : Ast.t) : Ast.t =
-    match Hashtbl.find_opt rewritten_map ast with
-    | Some result -> result
-    | None ->
-      Log.trace (fun log -> log "rewriting %a" Ast.print ast);
-      let result =
-        match ast.shape with
-        | Ast.Empty -> ast
-        | Ast.Simple _ -> ast
-        | Ast.Complex { rule; root } ->
-          if String.equal rule.name from
-          then
+    Log.trace (fun log -> log "rewriting %a" Ast.print ast);
+    match ast.shape with
+    | Ast.Empty -> ast
+    | Ast.Simple _ -> ast
+    | Ast.Complex { rule; root } ->
+      (match into |> Parser.Ruleset.find_rule_opt rule.name with
+       | Some rule_into ->
+         (try
             { shape =
                 Ast.Complex
                   { rule = rule_into
@@ -67,22 +65,25 @@ let rewrite_one ({ from; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
                   }
             ; span = ast.span
             }
-          else
-            { shape = Ast.Complex { rule; root = rewrite_group root }; span = ast.span }
-        | Ast.Syntax node ->
-          { shape =
-              Ast.Syntax
-                { node with value_after = node.value_after |> Option.map rewrite_ast }
-          ; span = ast.span
-          }
-        | Ast.Error _ -> ast
-      in
-      Hashtbl.add rewritten_map ast result;
-      result
-  and rewrite_group ({ rule; parts; children } : Ast.group) : Ast.group =
+          with
+          | e ->
+            Log.error (fun log ->
+              log "while rewriting %S at %a" rule.name Span.print ast.span);
+            raise e)
+       | None ->
+         { shape = Ast.Complex { rule; root = rewrite_group root }; span = ast.span })
+    | Ast.Syntax node ->
+      { shape =
+          Ast.Syntax
+            { node with value_after = node.value_after |> Option.map rewrite_ast }
+      ; span = ast.span
+      }
+    | Ast.Error _ -> ast
+  and rewrite_group ({ rule; parts; children; span } : Ast.group) : Ast.group =
     { rule
     ; parts = parts |> List.map rewrite_part
     ; children = children |> Tuple.map rewrite_child
+    ; span
     }
   and rewrite_child (child : Ast.child) : Ast.child =
     match (child : Ast.child) with
@@ -95,16 +96,20 @@ let rewrite_one ({ from; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
     | Keyword _ -> part
     | Group group -> Group (rewrite_group group)
   and rewrite_group_matched_rule
-        ({ rule = _; parts; children } : Ast.group)
+        ({ rule = _; parts; children; span } : Ast.group)
         (group_rule_parts : Syntax.Rule.part list)
         (into_group_rule : Syntax.Rule.group option)
     : Ast.group
     =
+    let children = children |> Tuple.map rewrite_child in
     { rule = into_group_rule
-    ; parts = rewrite_parts_matched_rule parts group_rule_parts
-    ; children = children |> Tuple.map rewrite_child
+    ; parts = rewrite_parts_matched_rule 0 children parts group_rule_parts
+    ; children
+    ; span
     }
   and rewrite_parts_matched_rule
+        (unnamed_child_idx : int)
+        (children : Ast.child tuple)
         (parts : Ast.part list)
         (rule_parts : Syntax.Rule.part list)
     : Ast.part list
@@ -116,34 +121,68 @@ let rewrite_one ({ from; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
         parts
         (List.print Syntax.Rule.Part.print)
         rule_parts);
+    let unnamed_child_idx = ref unnamed_child_idx in
+    let get_member : string option -> Tuple.member =
+      fun name ->
+      match name with
+      | Some name -> Name name
+      | None ->
+        let member = Tuple.Member.Index !unnamed_child_idx in
+        unnamed_child_idx := !unnamed_child_idx + 1;
+        member
+    in
     match parts, rule_parts with
     | [], [] -> []
-    | Value value :: rest_parts, Value _binding :: rest_rule_parts ->
-      Value (rewrite_ast value) :: rewrite_parts_matched_rule rest_parts rest_rule_parts
-    | Group group :: rest_parts, Group rule_group :: rest_rule_parts ->
-      Group (rewrite_group_matched_rule group rule_group.parts (Some rule_group))
-      :: rewrite_parts_matched_rule rest_parts rest_rule_parts
-    | Keyword _ :: rest_parts, _ -> rewrite_parts_matched_rule rest_parts rule_parts
     | Comment c :: rest_parts, _ ->
-      Comment c :: rewrite_parts_matched_rule rest_parts rule_parts
-    | _, [] -> fail "value/group not present in target syntax rule"
-    | _, first :: rest_rule_parts ->
-      let keyword =
-        match first with
-        | Whitespace _ -> []
-        | Keyword k ->
-          let token_shape =
-            match
-              Lexer.read_all Lexer.default_rules { contents = k; uri = Uri.empty }
-            with
-            | [ token; { shape = Token.Shape.Eof; span = _ } ] -> token.shape
-            | tokens ->
-              fail "keyword is multiple tokens??? %a" (List.print Token.print) tokens
-          in
-          [ Ast.Keyword { shape = token_shape; span = Span.beginning_of Uri.empty } ]
-        | Value _ | Group _ -> fail "unmatched value/group in target syntax rule"
+      Comment c
+      :: rewrite_parts_matched_rule !unnamed_child_idx children rest_parts rule_parts
+    | _, Value binding :: rest_rule_parts ->
+      let member = get_member binding.name in
+      let value =
+        children
+        |> Tuple.get_opt member
+        |> Option.unwrap_or_else (fun () -> fail "%a not found" Tuple.Member.print member)
+        |> Ast.Child.expect_ast
       in
-      keyword @ rewrite_parts_matched_rule parts rest_rule_parts
+      Value value
+      :: rewrite_parts_matched_rule !unnamed_child_idx children parts rest_rule_parts
+    | _, Group rule_group :: rest_rule_parts ->
+      (match rule_group.nested with
+       | Flat -> fail "fl"
+       | Nested { name } ->
+         let member = get_member name in
+         let expanded : Ast.part list =
+           match rule_group.quantifier with
+           | Some Optional ->
+             (match children |> Tuple.get_opt member with
+              | Some child ->
+                let group = child |> Ast.Child.expect_group in
+                [ Group
+                    (rewrite_group_matched_rule group rule_group.parts (Some rule_group))
+                ]
+              | None -> [])
+           | None ->
+             let group = children |> Tuple.get member |> Ast.Child.expect_group in
+             [ Group (rewrite_group_matched_rule group rule_group.parts (Some rule_group))
+             ]
+         in
+         expanded
+         @ rewrite_parts_matched_rule !unnamed_child_idx children parts rest_rule_parts)
+    | Keyword _ :: rest_parts, _ ->
+      rewrite_parts_matched_rule !unnamed_child_idx children rest_parts rule_parts
+    | Value _ :: rest_parts, _ | Group _ :: rest_parts, _ ->
+      rewrite_parts_matched_rule !unnamed_child_idx children rest_parts rule_parts
+    | _, Whitespace _ :: rest_rule_parts ->
+      rewrite_parts_matched_rule !unnamed_child_idx children parts rest_rule_parts
+    | _, Keyword k :: rest_rule_parts ->
+      let token_shape =
+        match Lexer.read_all Lexer.default_rules { contents = k; uri = Uri.empty } with
+        | [ token; { shape = Token.Shape.Eof; span = _ } ] -> token.shape
+        | tokens ->
+          fail "keyword is multiple tokens??? %a" (List.print Token.print) tokens
+      in
+      Ast.Keyword { shape = token_shape; span = Span.beginning_of Uri.empty }
+      :: rewrite_parts_matched_rule !unnamed_child_idx children parts rest_rule_parts
   in
   rewrite_ast ast
 ;;
@@ -164,7 +203,11 @@ let run : Args.t -> unit =
   paths
   |> List.iter (fun path ->
     let source = Source.read path in
-    let ruleset = Kast_default_syntax.ruleset in
+    let ruleset =
+      match rewrite with
+      | first :: _ -> parse_ruleset first.from
+      | _ -> Kast_default_syntax.ruleset
+    in
     let parsed = Parser.parse source ruleset in
     let rewritten =
       { parsed with

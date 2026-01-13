@@ -5,6 +5,22 @@ module Lexer = Kast_lexer
 module Syntax = Kast_syntax
 module Ast = Kast_ast
 
+let parse_wrap_mode : Lexer.t -> Syntax.Rule.wrap_mode option =
+  fun lexer ->
+  if lexer |> Lexer.peek |> Token.is_raw "@wrap"
+  then (
+    lexer |> Lexer.advance;
+    let token = Lexer.next lexer in
+    Some
+      (match token.shape with
+       | Ident { raw = "if_any"; _ } -> Syntax.Rule.WrapMode.IfAnyNonAssociative
+       | Ident { raw = "if_any_assoc"; _ } -> Syntax.Rule.WrapMode.IfAnyAssociative
+       | Ident { raw = "always"; _ } -> Syntax.Rule.WrapMode.Always
+       | Ident { raw = "never"; _ } -> Syntax.Rule.WrapMode.Never
+       | _ -> fail "Expected wrap mode, got %a" Token.print token))
+  else None
+;;
+
 let parse : Lexer.t -> Syntax.rule =
   fun lexer ->
   let start = (Lexer.peek lexer).span.start in
@@ -28,15 +44,9 @@ let parse : Lexer.t -> Syntax.rule =
     | Invalid_argument _ -> fail "Expected rule priority, got %a" Token.print token
   in
   let wrap_mode =
-    let token = Lexer.next lexer in
-    if token |> Token.is_raw "wrap" |> not
-    then fail "Expected \"wrap\", got %a" Token.print token;
-    let token = Lexer.next lexer in
-    match token.shape with
-    | Ident { raw = "if_any"; _ } -> Syntax.Rule.WrapMode.IfAny
-    | Ident { raw = "always"; _ } -> Syntax.Rule.WrapMode.Always
-    | Ident { raw = "never"; _ } -> Syntax.Rule.WrapMode.Never
-    | _ -> fail "Expected wrap mode, got %a" Token.print token
+    parse_wrap_mode lexer
+    |> Option.unwrap_or_else (fun () ->
+      fail "expected wrap mode, got %a" Token.print (Lexer.peek lexer))
   in
   (let token = Lexer.next lexer in
    if token |> Token.is_raw "=" |> not
@@ -67,26 +77,17 @@ let parse : Lexer.t -> Syntax.rule =
         else (
           Lexer.advance lexer;
           Some (Keyword contents))
+      | Punct { raw = "("; _ } ->
+        fail "flat groups are broken";
+        Some (group_part Syntax.Rule.Flat)
       | Ident { raw; _ } ->
         Lexer.advance lexer;
         let name = if raw = "_" then None else Some raw in
         let peek = Lexer.peek lexer in
         if peek |> Token.is_raw "="
         then (
-          (* group *)
-          Lexer.advance lexer;
-          Lexer.expect_next lexer "(";
-          let parts = collect_parts () in
-          Lexer.expect_next lexer ")";
-          let peek = Lexer.peek lexer in
-          let quantifier =
-            match peek |> Token.raw with
-            | Some "?" ->
-              Lexer.advance lexer;
-              Some Syntax.Rule.Optional
-            | _ -> None
-          in
-          Some (Group { id = Id.gen (); name; parts; quantifier }))
+          (* group *) Lexer.advance lexer;
+          Some (group_part (Syntax.Rule.Nested { name })))
         else (* Not group *)
           (
           let priority =
@@ -115,6 +116,20 @@ let parse : Lexer.t -> Syntax.rule =
         if left_assoc
         then Error.error token.span "Expected value name, got %a" Token.print token;
         None
+    and group_part nested =
+      Lexer.expect_next lexer "(";
+      let wrap_mode = parse_wrap_mode lexer in
+      let parts = collect_parts () in
+      Lexer.expect_next lexer ")";
+      let peek = Lexer.peek lexer in
+      let quantifier =
+        match peek |> Token.raw with
+        | Some "?" ->
+          Lexer.advance lexer;
+          Some Syntax.Rule.Optional
+        | _ -> None
+      in
+      Group { id = Id.gen (); wrap_mode; nested; parts; quantifier }
     in
     match part () with
     | Some part -> part :: collect_parts ()
@@ -135,23 +150,18 @@ type collect_result =
   { parsed : Ast.part list
   ; children : (string option * Ast.child) list
   ; remaining : Parsed_part.t list
+  ; span : span option
   }
+
+let merge_spans (a : span) (b : span option) : span option =
+  Some
+    (match b with
+     | None -> a
+     | Some b -> { uri = a.uri; start = a.start; finish = b.finish })
+;;
 
 let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
   fun parts rule ->
-  let span : span =
-    let spans =
-      parts
-      |> List.filter_map (function
-        | Parsed_part.Keyword spanned -> Some spanned.span
-        | Parsed_part.Value ast -> Some ast.span
-        | Parsed_part.Comment _ -> None)
-    in
-    { start = (spans |> List.head |> fun span -> span.start)
-    ; finish = (spans |> List.last |> fun span -> span.finish)
-    ; uri = (List.head spans).uri
-    }
-  in
   Log.trace (fun log -> log "Collecting %d parts into %s" (List.length parts) rule.name);
   Log.trace (fun log -> log "parts = %a" (List.print Parsed_part.print) parts);
   let rec collect_children
@@ -161,10 +171,14 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
     =
     match parsed_parts, rule_parts with
     | Comment comment :: parsed_parts_tail, _ ->
-      let { parsed; children; remaining } =
+      let { parsed; children; remaining; span = parsed_span } =
         collect_children parsed_parts_tail rule_parts
       in
-      { parsed = Comment comment :: parsed; children; remaining }
+      { parsed = Comment comment :: parsed
+      ; children
+      ; remaining
+      ; span = merge_spans comment.span parsed_span
+      }
     | _, Whitespace _ :: rule_parts_tail -> collect_children parsed_parts rule_parts_tail
     | ( Keyword parsed_keyword :: parsed_parts_tail
       , Keyword expected_keyword :: rule_parts_tail ) ->
@@ -175,19 +189,24 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
           expected_keyword
           Token.print
           parsed_keyword;
-      let { parsed; children; remaining } =
+      let { parsed; children; remaining; span = parsed_span } =
         collect_children parsed_parts_tail rule_parts_tail
       in
-      { parsed = Keyword parsed_keyword :: parsed; children; remaining }
+      { parsed = Keyword parsed_keyword :: parsed
+      ; children
+      ; remaining
+      ; span = merge_spans parsed_keyword.span parsed_span
+      }
     | Value _ :: _, Keyword _ :: _ -> unreachable "matched value & keyword %s" __LOC__
     | Keyword _ :: _, Value _ :: _ -> unreachable "matched keyword & value %s" __LOC__
     | Value value :: parsed_parts_tail, Value binding :: rule_parts_tail ->
-      let { parsed; children; remaining } =
+      let { parsed; children; remaining; span } =
         collect_children parsed_parts_tail rule_parts_tail
       in
       { parsed = Value value :: parsed
       ; children = (binding.name, Ast value) :: children
       ; remaining
+      ; span = merge_spans value.span span
       }
     | _, Group group_rule :: rule_parts_tail ->
       let go_in =
@@ -209,31 +228,44 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
       (match go_in with
        | false -> collect_children parsed_parts rule_parts_tail
        | true ->
-         let { parsed = group_parsed; children = group_children; remaining } =
+         let { parsed = group_parsed
+             ; children = group_children
+             ; span = group_span
+             ; remaining
+             }
+           =
            collect_children parsed_parts group_rule.parts
          in
-         let { parsed; children; remaining } =
+         let group_span = group_span |> Option.get in
+         let { parsed; children; remaining; span = parsed_span } =
            collect_children remaining rule_parts_tail
          in
          let group : Ast.group =
            { rule = Some group_rule
            ; parts = group_parsed
            ; children = group_children |> Tuple.of_list
+           ; span = group_span
            }
          in
          { parsed = Group group :: parsed
-         ; children = (group_rule.name, Group group) :: children
+         ; children =
+             (match group_rule.nested with
+              | Flat -> group_children @ children
+              | Nested { name } -> (name, Group group) :: children)
          ; remaining
+         ; span = merge_spans group_span parsed_span
          })
-    | _, [] -> { parsed = []; children = []; remaining = parsed_parts }
+    | _, [] -> { parsed = []; children = []; remaining = parsed_parts; span = None }
     | [], _ -> failwith "not enough values supplied"
   in
-  let { parsed; children; remaining } = collect_children parts rule.parts in
+  let { parsed; children; remaining; span } = collect_children parts rule.parts in
+  let span = span |> Option.get in
   if remaining |> List.length <> 0 then fail "too many values supplied";
   { shape =
       Ast.Complex
         { rule
-        ; root = { rule = None; parts = parsed; children = children |> Tuple.of_list }
+        ; root =
+            { rule = None; parts = parsed; children = children |> Tuple.of_list; span }
         }
   ; span
   }

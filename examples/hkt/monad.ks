@@ -32,9 +32,15 @@ const join = [M :: [_ :: type] type] (
 );
 
 (
-    let t :: Treap.t[Treap.t[Int32]] = Treap.join(Treap.singleton(Treap.join(Treap.singleton(1),
-    Treap.singleton(2),)),
-    Treap.singleton(Treap.singleton(3)),);
+    let t :: Treap.t[Treap.t[Int32]] = Treap.join(
+        Treap.singleton(
+            Treap.join(
+                Treap.singleton(1),
+                Treap.singleton(2),
+            )
+        ),
+        Treap.singleton(Treap.singleton(3)),
+    );
     let a = join[Treap.t][_](t);
     print <| Treap.to_string(&a, &x => x |> to_string);
 );
@@ -43,24 +49,24 @@ const compose = [M :: [type] -> type] [A, B] (a :: M[A], b :: M[B]) -> M[B] => (
     (M as Monad).flat_map(a, _ => b)
 );
 
-@syntax ">>=" 6.5 wrap if_any = a " "/"\n" ">>=" " " b ->;
+@syntax ">>=" 6.5 @wrap if_any = a " "/"\n" ">>=" " " b ->;
 impl syntax (a >>= b) = `(
     (_ as Monad).flat_map($a, $b)
     # TODO (_ as Monad).flat_map ($a, $b)
 );
 
-@syntax ">>" 6.5 wrap if_any = a " "/"\n" ">>" " " b ->;
+@syntax ">>" 6.5 @wrap if_any = a " "/"\n" ">>" " " b ->;
 impl syntax (a >> b) = `(
     compose($a, $b)
 );
 
-@syntax "do" 6.5 wrap if_any = "do" " "/"\n\t" body:any " "/"\\\n" "done";
+@syntax "do" 6.5 @wrap if_any = "do" " "/"\n\t" body:any " "/"\\\n" "done";
 impl syntax (do body done) = `($body);
 
-@syntax "and_then" 0 wrap if_any = a ";" ";" " "/"\n" b ->;
+@syntax "and_then" 0 @wrap if_any = a ";" ";" " "/"\n" b ->;
 impl syntax (a;; b) = `(compose($a, $b));
 
-@syntax "bind_and_then" 0 wrap if_any = var " " "<-" " " expr ";" ";" " "/"\n" b ->;
+@syntax "bind_and_then" 0 @wrap if_any = var " " "<-" " " expr ";" ";" " "/"\n" b ->;
 impl syntax (var <- expr;; b) = `($expr >>= ($var => $b));
 
 let opt :: Option.t[Int32] = :Some(1);

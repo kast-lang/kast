@@ -15,8 +15,10 @@ let client_msg = tcp.Stream.read_line(&mut client.stream);
 std.io.print <| "Client said:\n" + client_msg;
 
 # write to stream
-tcp.Stream.write(&mut client.stream,
-&"Hello from server\n");
+tcp.Stream.write(
+    &mut client.stream,
+    &"Hello from server\n"
+);
 
 # close client connection
 client.stream |> tcp.Stream.close;

@@ -106,10 +106,12 @@ impl syntax (while cond do body) = `(
 impl syntax (for pattern in iterable do body) = `(
     unwindable loop_block (
         @comptime with std.LoopBlock = loop_block;
-        $iterable.iter($pattern => unwindable loop_body (
-            @comptime with std.LoopBody = loop_body;
-            $body;
-        ));
+        $iterable.iter(
+            $pattern => unwindable loop_body (
+                @comptime with std.LoopBody = loop_body;
+                $body;
+            )
+        );
     );
 );
 impl syntax (with_return body) = `(

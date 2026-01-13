@@ -303,7 +303,7 @@ module Impl = struct
         complete_pattern pattern;
         complete_expr body)
     | E_QuoteAst { rule = _; root } ->
-      let rec complete_group ({ rule = _; children } : expr_quote_ast_group) =
+      let rec complete_group ({ rule = _; children; span = _ } : expr_quote_ast_group) =
         children
         |> complete_tuple (fun (child : expr_quote_ast_child) ->
           match child with

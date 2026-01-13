@@ -109,7 +109,8 @@ let add : Syntax.rule -> ruleset -> ruleset =
            ; next_keywords = node.next_keywords
            })
       | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
-      | Group { id = _; name = _; parts = group_parts; quantifier } :: rest ->
+      | Group { id = _; wrap_mode = _; nested = _; parts = group_parts; quantifier }
+        :: rest ->
         (match quantifier with
          | None -> insert ~prev_prev ~prev (group_parts @ rest) node
          | Some Optional ->

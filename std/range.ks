@@ -21,6 +21,5 @@ const range = (start :: Int32, end :: Int32) -> std.iter.ReversibleIterable[Int3
             .iter = forward,
             .rev = () => construct(.forward = backward, .backward = forward),
         );
-    )
-        .construct(.forward, .backward)
+    ).construct(.forward, .backward)
 )

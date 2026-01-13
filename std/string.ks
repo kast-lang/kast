@@ -111,9 +111,11 @@ impl String as module = (
             s
         ) else (
             # `old` found in `s`, replace with `new` and continue searching in remaining portion of `s`
-            let rest = substring(s,
-            start + length(old),
-            length(s) - start - length(old));
+            let rest = substring(
+                s,
+                start + length(old),
+                length(s) - start - length(old)
+            );
             let replaced_rest = replace_all_owned(rest, .old, .new);
             
             substring(s, 0, start)

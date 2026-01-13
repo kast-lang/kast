@@ -43,14 +43,18 @@ const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
         | (other, :Empty) => other
         | (:Node(left_data :: data[T]), :Node(right_data :: data[T])) => (
             if left_data.priority > right_data.priority then (
-                update_data(left_data,
-                .left = left_data.left,
-                .right = join[T](left_data.right, right),)
+                update_data(
+                    left_data,
+                    .left = left_data.left,
+                    .right = join[T](left_data.right, right),
+                )
             
             ) else (
-                update_data(right_data,
-                .left = join[T](left, right_data.left),
-                .right = right_data.right,)
+                update_data(
+                    right_data,
+                    .left = join[T](left, right_data.left),
+                    .right = right_data.right,
+                )
             
             )
         )
@@ -72,16 +76,20 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> (t[T], t[T]) => (
         | :Node(node) => match f(&node) with (
             | :RightSubtree => (
                 let left_left, left_right = split[T](node.left, f);
-                let node = update_data(node,
-                .left = left_right,
-                .right = node.right,);
+                let node = update_data(
+                    node,
+                    .left = left_right,
+                    .right = node.right,
+                );
                 left_left, node
             )
             | :LeftSubtree => (
                 let right_left, right_right = split[T](node.right, f);
-                let node = update_data(node,
-                .left = node.left,
-                .right = right_left,);
+                let node = update_data(
+                    node,
+                    .left = node.left,
+                    .right = right_left,
+                );
                 node, right_right
             )
             | :Node(left, right) => (
@@ -94,16 +102,18 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> (t[T], t[T]) => (
 );
 
 const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> (Treap.t[T], Treap.t[T]) => (
-    split(v,
-    node => (
-        let this_node_idx = length(&node^.left);
-        if this_node_idx < idx then (
-            idx -= this_node_idx + 1;
-            :LeftSubtree
-        ) else (
-            :RightSubtree
+    split(
+        v,
+        node => (
+            let this_node_idx = length(&node^.left);
+            if this_node_idx < idx then (
+                idx -= this_node_idx + 1;
+                :LeftSubtree
+            ) else (
+                :RightSubtree
+            )
         )
-    ))
+    )
 
 );
 const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (

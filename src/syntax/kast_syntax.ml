@@ -51,6 +51,16 @@ module Rule = struct
   end
 
   type priority = Priority.t
+
+  module WrapMode = struct
+    type t =
+      | Never
+      | Always
+      | IfAnyAssociative
+      | IfAnyNonAssociative
+  end
+
+  type wrap_mode = WrapMode.t
   type quantifier = Optional
 
   type binding =
@@ -69,22 +79,18 @@ module Rule = struct
 
   and group =
     { id : Id.t
-    ; name : string option
+    ; nested : group_nested
+    ; wrap_mode : wrap_mode option
     ; parts : part list
     ; quantifier : quantifier option
     }
 
+  and group_nested =
+    | Flat
+    | Nested of { name : string option }
+
   let equal_group a b = a.id = b.id
   let compare_group a b = Id.compare a.id b.id
-
-  module WrapMode = struct
-    type t =
-      | Never
-      | Always
-      | IfAny
-  end
-
-  type wrap_mode = WrapMode.t
 
   type t =
     { id : Id.t
@@ -120,7 +126,10 @@ module Rule = struct
       | Keyword keyword -> fprintf fmt "keyword %S" keyword
       | Value binding ->
         fprintf fmt "value %a" (Option.print String.print_dbg) binding.name
-      | Group group -> fprintf fmt "group %a" (Option.print String.print_dbg) group.name
+      | Group group ->
+        (match group.nested with
+         | Flat -> fprintf fmt "group <flat>"
+         | Nested { name } -> fprintf fmt "group %a" (Option.print String.print_dbg) name)
     ;;
   end
 end

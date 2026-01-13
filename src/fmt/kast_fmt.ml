@@ -31,18 +31,28 @@ let format : formatter -> Parser.result -> unit =
     fprintf fmt format
   in
   let prev_span : span ref = ref <| Span.beginning_of Uri.empty in
-  let prev_was_comment : bool ref = ref false in
-  let print ?(is_comment = false) (span : span) f value =
+  let prev_was_comment : Token.Shape.comment_ty option ref = ref None in
+  let print ?(is_comment : Token.Shape.comment_ty option) (span : span) f value =
     (* We create spans with Uri.empty in rewriter and we want to skip them *)
     let span = if Uri.equal span.uri Uri.empty then !prev_span else span in
     if span.start.line > !prev_span.finish.line + 1 then print_newline ();
-    if is_comment || !prev_was_comment
-    then
-      if
-        !prev_span.finish.line = span.start.line
-        && !prev_span.finish <> Position.beginning
-      then printf " "
-      else print_newline_if_not_yet ();
+    (match !prev_was_comment with
+     | None ->
+       (match is_comment with
+        | None -> ()
+        | Some _ ->
+          if
+            !prev_span.finish.line = span.start.line
+            && !prev_span.finish <> Position.beginning
+          then printf " "
+          else print_newline_if_not_yet ())
+     | Some Line -> print_newline_if_not_yet ()
+     | Some Block ->
+       if
+         !prev_span.finish.line = span.start.line
+         && !prev_span.finish <> Position.beginning
+       then printf " "
+       else print_newline_if_not_yet ());
     f fmt value;
     printed_newline := false;
     prev_span := span;
@@ -67,13 +77,15 @@ let format : formatter -> Parser.result -> unit =
       | Simple { comments_before; token } ->
         comments_before
         |> List.iter (fun (comment : Token.comment) ->
-          print ~is_comment:true comment.span String.print comment.shape.raw);
+          print ~is_comment:comment.shape.ty comment.span String.print comment.shape.raw);
         print token.span String.print (Token.raw token |> Option.get)
       | Complex { rule; root } ->
         let wrapped =
           match parent with
           | Some { wrapped; rule = parent_rule } ->
-            wrapped && rule.priority = parent_rule.priority
+            wrapped
+            && rule.wrap_mode = IfAnyAssociative
+            && rule.priority = parent_rule.priority
           | None -> false
         in
         let wrapped = wrapped || ast.span.start.line <> ast.span.finish.line in
@@ -84,7 +96,7 @@ let format : formatter -> Parser.result -> unit =
             root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
           in
           print_ast ~filter:Any ~parent:(Some { wrapped; rule }) child)
-        else print_group rule root.rule wrapped root
+        else print_group rule root.rule wrapped rule.wrap_mode root
       | Syntax { tokens; value_after; _ } ->
         let pos = ref (List.head tokens).span.start in
         tokens
@@ -100,46 +112,57 @@ let format : formatter -> Parser.result -> unit =
     and print_group
           rule
           (group_rule : Syntax.Rule.group option)
-          wrapped
-          ({ parts; _ } : Ast.group)
+          (wrapped : bool)
+          (wrap_mode : Syntax.Rule.wrap_mode)
+          ({ parts; span; _ } : Ast.group)
       =
+      let wrapped, wrap_mode =
+        match group_rule with
+        | Some { wrap_mode = Some override_wrap_mode; _ } ->
+          let group_wrapped = span.start.line <> span.finish.line in
+          group_wrapped, override_wrap_mode
+        | _ -> wrapped, wrap_mode
+      in
       print_parts
         rule
         wrapped
+        wrap_mode
         (match group_rule with
          | None -> rule.parts
          | Some group -> group.parts)
         parts
     and print_parts
           rule
-          wrapped
+          (wrapped : bool)
+          (wrap_mode : Syntax.Rule.wrap_mode)
           (rule_parts : Syntax.Rule.part list)
           (parts : Ast.part list)
       =
       match rule_parts, parts with
       | _, Comment comment :: rest_parts ->
-        print ~is_comment:true comment.span String.print comment.shape.raw;
-        print_parts rule wrapped rule_parts rest_parts
+        print ~is_comment:comment.shape.ty comment.span String.print comment.shape.raw;
+        print_parts rule wrapped wrap_mode rule_parts rest_parts
       | [], [] -> ()
       | Whitespace { nowrap; wrap } :: rest_rule_parts, _ ->
-        (match rule.wrap_mode with
+        (match wrap_mode with
          | Never -> print_whitespace nowrap
          | Always -> print_whitespace wrap
-         | IfAny -> if wrapped then print_whitespace wrap else print_whitespace nowrap);
-        print_parts rule wrapped rest_rule_parts parts
+         | IfAnyAssociative | IfAnyNonAssociative ->
+           if wrapped then print_whitespace wrap else print_whitespace nowrap);
+        print_parts rule wrapped wrap_mode rest_rule_parts parts
       | Keyword keyword :: rest_rule_parts, Keyword keyword_token :: rest_parts ->
         print keyword_token.span String.print keyword;
-        print_parts rule wrapped rest_rule_parts rest_parts
+        print_parts rule wrapped wrap_mode rest_rule_parts rest_parts
       | Value binding :: rest_rule_parts, Value value :: rest_parts ->
         print_ast ~filter:binding.priority ~parent:(Some { rule; wrapped }) value;
-        print_parts rule wrapped rest_rule_parts rest_parts
+        print_parts rule wrapped wrap_mode rest_rule_parts rest_parts
       | Group rule_group :: rest_rule_parts, Group group :: rest_parts
         when Some rule_group = group.rule ->
-        print_group rule group.rule wrapped group;
-        print_parts rule wrapped rest_rule_parts rest_parts
+        print_group rule group.rule wrapped wrap_mode group;
+        print_parts rule wrapped wrap_mode rest_rule_parts rest_parts
       | Group _ :: rest_rule_parts, _ ->
         (* Group was skipped *)
-        print_parts rule wrapped rest_rule_parts parts
+        print_parts rule wrapped wrap_mode rest_rule_parts parts
       | _ ->
         unreachable
           "print_parts %a %a"
@@ -153,6 +176,6 @@ let format : formatter -> Parser.result -> unit =
   print_ast ast;
   trailing_comments
   |> List.iter (fun (comment : Token.comment) ->
-    print ~is_comment:true comment.span String.print comment.shape.raw);
+    print ~is_comment:comment.shape.ty comment.span String.print comment.shape.raw);
   print_newline ()
 ;;

@@ -1225,6 +1225,7 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
                match child |> Value.await_inferred with
                | V_Ast ast -> ast
                | _ -> fail "child must be ast"))
+    ; span = group.span
     }
   in
   { shape = Complex { rule = expr.rule; root = quote_group expr.root }; span }

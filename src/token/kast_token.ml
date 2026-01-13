@@ -16,7 +16,15 @@ module Shape = struct
     }
 
   and number = { raw : string }
-  and comment = { raw : string }
+
+  and comment =
+    { raw : string
+    ; ty : comment_ty
+    }
+
+  and comment_ty =
+    | Line
+    | Block
 
   and shape =
     | Punct of punct

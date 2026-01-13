@@ -5,8 +5,10 @@ use std.String;
 let mut stream = tcp.Stream.connect("127.0.0.1:1234");
 
 # write to stream
-tcp.Stream.write(&mut stream,
-&"Hello from client\n");
+tcp.Stream.write(
+    &mut stream,
+    &"Hello from client\n"
+);
 std.io.print("Waiting for reply from server");
 
 # read from stream

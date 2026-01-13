@@ -260,7 +260,7 @@ module DefaultRules = struct
     let* c = Reader.peek reader in
     let* () = if c = '#' then Some () else None in
     let raw = reader |> Reader.read_while (fun c -> c <> '\n') in
-    Some (Token.Shape.Comment { raw })
+    Some (Token.Shape.Comment { raw; ty = Line })
   ;;
 
   let read_block_comment reader =
@@ -292,7 +292,7 @@ module DefaultRules = struct
           reader.position
       else Reader.advance reader
     done;
-    Some (Token.Shape.Comment { raw = Reader.finish_rec raw })
+    Some (Token.Shape.Comment { raw = Reader.finish_rec raw; ty = Block })
   ;;
 
   let read_raw_ident reader =

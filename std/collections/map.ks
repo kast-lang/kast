@@ -16,22 +16,26 @@ const add = [K, V] (map :: &mut Map.t[K, V], key :: K, value :: V) => (
 );
 
 const get = [K, V] (map :: &Map.t[K, V], key :: K) -> Option.t[type (&V)] => (
-    let less, greater_or_equal = Treap.split(map^.inner,
-    data => (
-        if data^.value.key < key then (
-            :LeftSubtree
-        ) else (
-            :RightSubtree
-        )
-    ),);
-    let equal, greater = Treap.split(greater_or_equal,
-    data => (
-        if data^.value.key <= key then (
-            :LeftSubtree
-        ) else (
-            :RightSubtree
-        )
-    ),);
+    let less, greater_or_equal = Treap.split(
+        map^.inner,
+        data => (
+            if data^.value.key < key then (
+                :LeftSubtree
+            ) else (
+                :RightSubtree
+            )
+        ),
+    );
+    let equal, greater = Treap.split(
+        greater_or_equal,
+        data => (
+            if data^.value.key <= key then (
+                :LeftSubtree
+            ) else (
+                :RightSubtree
+            )
+        ),
+    );
     if Treap.length(&equal) == 0 then (
         :None
     ) else (
@@ -44,22 +48,26 @@ const get_or_init = [K, V] (
     key :: K,
     init :: () -> V,
 ) -> &mut V => (
-    let less, greater_or_equal = Treap.split(map^.inner,
-    data => (
-        if data^.value.key < key then (
-            :LeftSubtree
-        ) else (
-            :RightSubtree
-        )
-    ),);
-    let mut equal, greater = Treap.split(greater_or_equal,
-    data => (
-        if data^.value.key <= key then (
-            :LeftSubtree
-        ) else (
-            :RightSubtree
-        )
-    ),);
+    let less, greater_or_equal = Treap.split(
+        map^.inner,
+        data => (
+            if data^.value.key < key then (
+                :LeftSubtree
+            ) else (
+                :RightSubtree
+            )
+        ),
+    );
+    let mut equal, greater = Treap.split(
+        greater_or_equal,
+        data => (
+            if data^.value.key <= key then (
+                :LeftSubtree
+            ) else (
+                :RightSubtree
+            )
+        ),
+    );
     if Treap.length(&equal) == 0 then (
         equal = Treap.singleton(.key, .value = init());
     );

@@ -32,5 +32,7 @@ List.push_back(&mut list, 2);
 List.push_back(&mut list, 3);
 
 let list_incremented = increment_all(list);
-dbg.print(.list = List.to_string(&list, &x => to_string(x)),
-.list_incremented = List.to_string(&list_incremented, &x => to_string(x)));
+dbg.print(
+    .list = List.to_string(&list, &x => to_string(x)),
+    .list_incremented = List.to_string(&list_incremented, &x => to_string(x))
+);

@@ -18,9 +18,9 @@
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 
 @syntax "core:leading union" 4.99 @wrap never = "|" " " _;
-@syntax "core:union" 5 @wrap if_any_assoc = <- _ " "/"\n" "|" " " _;
+@syntax "core:union" 5 @wrap if_any = <- _ " "/"\n" "|" " " _;
 
-@syntax "core:comma" 5 @wrap if_any_assoc = <- _ "," " "/"\n" _;
+@syntax "core:comma" 5 @wrap if_any = <- _ "," " "/"\n" _;
 @syntax "core:trailing comma" 5 @wrap never = <- _ ",";
 
 @syntax "core:unpack" 5.5 @wrap never = "..." _;
@@ -53,8 +53,8 @@
 @syntax "core:native" 9 @wrap never = "@native" " " _;
 @syntax "core:inject_context" 9.5 @wrap never = "with" " " context_type " " "=" " " value;
 @syntax "core:current_context" 9.5 @wrap never = "@current" " " context_type;
-@syntax "core:or" 10 @wrap if_any_assoc = <- _ " "/"\n" "or" " " _;
-@syntax "core:and" 11 @wrap if_any_assoc = <- _ " "/"\n" "and" " " _;
+@syntax "core:or" 10 @wrap if_any = <- _ " "/"\n" "or" " " _;
+@syntax "core:and" 11 @wrap if_any = <- _ " "/"\n" "and" " " _;
 @syntax "not" 12 @wrap never = "not" " " _;
 @syntax "<" 14 @wrap never = _ " " "<" " " _;
 @syntax "<=" 14 @wrap never = _ " " "<=" " " _;
@@ -63,31 +63,31 @@
 @syntax ">=" 14 @wrap never = _ " " ">=" " " _;
 @syntax ">" 14 @wrap never = _ " " ">" " " _;
 
-@syntax "|>" 14.5 @wrap if_any_assoc = <- arg " "/"\n\t" "|>" " " f ""/"\\";
-@syntax "<|" 14.5 @wrap if_any_assoc = <- f " "/"\n\t" "<|" " " arg ""/"\\";
+@syntax "|>" 14.5 @wrap if_any = <- arg " "/"\n\t" "|>" " " f ""/"\\";
+@syntax "<|" 14.5 @wrap if_any = <- f " "/"\n\t" "<|" " " arg ""/"\\";
 
-@syntax "+" 15 @wrap if_any_assoc = <- _ " "/"\n" "+" " " _;
-@syntax "-" 15 @wrap if_any_assoc = <- _ " "/"\n" "-" " " _;
-@syntax "*" 17 @wrap if_any_assoc = <- _ " "/"\n" "*" " " _;
-@syntax "/" 17 @wrap if_any_assoc = <- _ " "/"\n" "/" " " _;
-@syntax "%" 17 @wrap if_any_assoc = <- _ " "/"\n" "%" " " _;
+@syntax "+" 15 @wrap if_any = <- _ " "/"\n" "+" " " _;
+@syntax "-" 15 @wrap if_any = <- _ " "/"\n" "-" " " _;
+@syntax "*" 17 @wrap if_any = <- _ " "/"\n" "*" " " _;
+@syntax "/" 17 @wrap if_any = <- _ " "/"\n" "/" " " _;
+@syntax "%" 17 @wrap if_any = <- _ " "/"\n" "%" " " _;
 
 @syntax "return_without_value" 40 @wrap never = "return";
 @syntax "return_with_value" 40 @wrap never = "return" " " value;
 @syntax "unary -" 45 @wrap never = "-" _;
 @syntax "unary +" 45 @wrap never = "+" _;
+@syntax "core:apply" 50 @wrap never = <- f " " _=(arg);
+@syntax "core:unwind" 60 @wrap never = "unwind" " " token " " value;
 @syntax "with_return" 60 @wrap never = "with_return" " " body;
+@syntax "core:unwindable" 60 @wrap never = "unwindable" " " token " " body;
 @syntax "core:cast" 60.5 @wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 @wrap never = "&" _ ->;
 @syntax "core:ref_mut" 61 @wrap never = "&" "mut" " " _ ->;
-@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\\\n" "]");
-@syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
+@syntax "core:variant_without_value" 62 @wrap never = ":" label;
+@syntax "core:variant" 62 @wrap never = ":" label " " value;
+@syntax "core:instantiate_generic" 70 @wrap never = <- generic "[" ""/"\n\t" _=(arg:any) ""/"\\\n" "]";
+@syntax "core:." 70 @wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
-@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" arg:any ""/"\\\n" ")");
-@syntax "core:unwindable" 80 @wrap never = "unwindable" " " token " " body;
-@syntax "core:unwind" 80 @wrap never = "unwind" " " token " " value;
-@syntax "core:variant_without_value" 90 @wrap never = ":" label;
-@syntax "core:variant" 90 @wrap never = ":" label "(" value:any ")";
 @syntax "core:mut" 500 @wrap never = "mut" " " _;
 @syntax "core:type expr" 500 @wrap never = "type" " " _;
 @syntax "core:newtype" 500 @wrap never = "newtype" " " _;

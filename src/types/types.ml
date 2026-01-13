@@ -311,6 +311,7 @@ module rec TypesImpl : sig
   and expr_quote_ast_group =
     { rule : Syntax.Rule.group option
     ; children : expr_quote_ast_child Tuple.t
+    ; span : Span.t
     }
 
   and expr_quote_ast =
@@ -939,6 +940,7 @@ end = struct
   and expr_quote_ast_group =
     { rule : Syntax.Rule.group option
     ; children : expr_quote_ast_child Tuple.t
+    ; span : Span.t
     }
 
   and expr_quote_ast =

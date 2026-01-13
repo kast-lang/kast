@@ -43,16 +43,6 @@ let dont_leak_please : ('a, 'b) continuation -> ('a, 'b) unleakable_continuation
   uk
 ;;
 
-let unreachable format =
-  Format.fprintf Format.str_formatter "unreachable reached: ";
-  Format.kfprintf
-    (fun _fmt ->
-       let msg = Format.flush_str_formatter () in
-       failwith msg)
-    Format.str_formatter
-    format
-;;
-
 module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
 
@@ -68,6 +58,10 @@ let () =
 
 let ( <| ) = ( @@ )
 let fail f = Format.kdprintf (fun f -> raise <| FailFormat f) f
+
+let unreachable format =
+  Format.kdprintf (fun p -> fail "unreachable reached: %t" p) format
+;;
 
 let rec create_dir_all path =
   if path = "" || path = "."

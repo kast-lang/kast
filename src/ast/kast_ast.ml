@@ -40,6 +40,7 @@ and group =
     rule : Syntax.Rule.group option
   ; parts : part list
   ; children : child Tuple.t
+  ; span : Span.t
   }
 
 and child =
@@ -86,7 +87,8 @@ and print_child : formatter -> child -> unit =
   | Group group -> print_group fmt group
 
 and print_group : formatter -> group -> unit =
-  fun fmt { rule = _; parts = _; children } -> Tuple.print print_child fmt children
+  fun fmt { rule = _; parts = _; span = _; children } ->
+  Tuple.print print_child fmt children
 
 and print_shape : formatter -> shape -> unit =
   fun fmt -> function
