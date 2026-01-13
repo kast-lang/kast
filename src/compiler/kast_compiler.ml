@@ -189,7 +189,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                  (* TODO *)
                  let args =
                    root.children
-                   |> Tuple.map Ast.Child.expect_ast
+                   |> Core_syntax.flatten_children
                    |> Tuple.mapi (fun member (ast : Ast.t) : Types.value_tuple_field ->
                      { place =
                          Place.init

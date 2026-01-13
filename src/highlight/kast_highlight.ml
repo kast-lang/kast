@@ -224,3 +224,12 @@ let print
   Output.move_to_eof printer eof;
   Output.finalize printer
 ;;
+
+let print_ast (fmt : formatter) (ast : Ast.t) : unit =
+  let module Output = Term in
+  let printer = { fmt; position = Position.beginning } in
+  Output.initialize printer;
+  let module Print = Common (Output) in
+  Print.print_ast printer ast;
+  Output.finalize printer
+;;

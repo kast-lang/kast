@@ -47,6 +47,7 @@
 
 @syntax "core:import" 9 @wrap never = "import" " " path;
 @syntax "core:include" 9 @wrap never = "include" " " path;
+@syntax "core:include_ast" 9 @wrap never = "include_ast" " " _;
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;
 @syntax "core:comptime" 9 @wrap never = "@comptime" " " _;
 @syntax "core:binding" 9 @wrap never = "@binding" " " _;
@@ -84,6 +85,7 @@
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
 @syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" arg:any ""/"\\\n" ")");
+@syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\\\n" ")");
 @syntax "core:unwindable" 80 @wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 80 @wrap never = "unwind" " " token " " value;
 @syntax "core:variant_without_value" 90 @wrap never = ":" label;

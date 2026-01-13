@@ -16,8 +16,8 @@ let init () =
   in
   [ cmp_fn "<" ( < )
   ; cmp_fn "<=" ( <= )
-  ; cmp_fn "==" ( = )
-  ; cmp_fn "!=" ( <> )
+  ; cmp_fn "==" Types.equal_value_shape
+  ; cmp_fn "!=" (fun a b -> not (Types.equal_value_shape a b))
   ; cmp_fn ">=" ( >= )
   ; cmp_fn ">" ( > )
   ]

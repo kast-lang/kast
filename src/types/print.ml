@@ -88,7 +88,9 @@ module Impl = struct
     (* fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
           print_ty_generic g.ty *)
     | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
-    | V_Ast ast -> fprintf fmt "%a" Ast.print ast
+    | V_Ast ast ->
+      Ast.print fmt ast
+      (* TODO fprintf fmt "@{<magenta>ast@}<%a>" Kast_highlight.print_ast ast *)
     | V_UnwindToken { id; result_ty = _ } -> fprintf fmt "<unwind %a>" Id.print id
     | V_ContextTy ty -> print_context_type fmt ty
     | V_Error -> fprintf fmt "@{<red><error>@}"

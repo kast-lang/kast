@@ -2190,6 +2190,24 @@ let typeof : core_syntax =
   }
 ;;
 
+let include_ast : core_syntax =
+  { name = "include_ast"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.span in
+        let ast = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let value, expr = Compiler.eval ~ty:(T_Ast |> Ty.inferred ~span) (module C) ast in
+        match value |> Value.expect_ast with
+        | Some ast -> C.compile kind ast |> Compiler.data_add Expr expr kind
+        | None -> init_error span C.state kind)
+  }
+;;
+
 let core =
   [ apply
   ; instantiate_generic
@@ -2250,6 +2268,7 @@ let core =
   ; by_ref "by_ref" ~mut:false
   ; by_ref "by_ref_mut" ~mut:true
   ; typeof
+  ; include_ast
   ]
 ;;
 

@@ -144,6 +144,13 @@ module Value = struct
     | _ -> None
   ;;
 
+  let expect_ast : value -> Ast.t option =
+    fun value ->
+    match value |> await_inferred with
+    | V_Ast ast -> Some ast
+    | _ -> None
+  ;;
+
   let expect_opaque : 'a. value -> 'a option =
     fun value ->
     match value |> await_inferred with
