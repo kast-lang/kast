@@ -77,6 +77,8 @@
 @syntax "unary -" 45 wrap never = "-" _;
 @syntax "unary +" 45 wrap never = "+" _;
 @syntax "core:apply" 50 wrap never = <- f " " arg;
+@syntax @no_parse "apply" 50 wrap never = <- f "(" arg:any ")";
+@syntax @no_parse "apply_with_no_arg" 50 wrap never = <- f "(" ")";
 @syntax "core:unwind" 60 wrap never = "unwind" " " token " " value;
 @syntax "with_return" 60 wrap never = "with_return" " " body;
 @syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;

@@ -1,3 +1,3 @@
 use std.prelude.*;
 
-for i in 0..10000000 do ()
+print ("hello" + to_string "world")

@@ -92,6 +92,7 @@ module Rule = struct
     ; name : string
     ; priority : float
     ; parts : part list
+    ; do_parse : bool
     ; wrap_mode : wrap_mode
     }
 

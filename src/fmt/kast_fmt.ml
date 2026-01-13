@@ -33,6 +33,8 @@ let format : formatter -> Parser.result -> unit =
   let prev_span : span ref = ref <| Span.beginning_of Uri.empty in
   let prev_was_comment : bool ref = ref false in
   let print ?(is_comment = false) (span : span) f value =
+    (* We create spans with Uri.empty in rewriter and we want to skip them *)
+    let span = if Uri.equal span.uri Uri.empty then !prev_span else span in
     if span.start.line > !prev_span.finish.line + 1 then print_newline ();
     if is_comment || !prev_was_comment
     then

@@ -1,7 +1,7 @@
 module:
 const std = @current_scope;
 include "./syntax.ks";
-const UnwindUnit = (@native "unwind_token") type ();
+const UnwindUnit = (@native "unwind_token") (type ());
 const LoopBlock = @context UnwindUnit;
 const LoopBody = @context UnwindUnit;
 

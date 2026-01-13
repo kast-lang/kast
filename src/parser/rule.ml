@@ -8,6 +8,13 @@ module Ast = Kast_ast
 let parse : Lexer.t -> Syntax.rule =
   fun lexer ->
   let start = (Lexer.peek lexer).span.start in
+  let do_parse =
+    if lexer |> Lexer.peek |> Token.is_raw "@no_parse"
+    then (
+      lexer |> Lexer.advance;
+      false)
+    else true
+  in
   let get_name (token : Token.t) =
     match token.shape with
     | Ident { raw; _ } -> raw
@@ -119,6 +126,7 @@ let parse : Lexer.t -> Syntax.rule =
   ; name
   ; priority
   ; parts = collect_parts ()
+  ; do_parse
   ; wrap_mode
   }
 ;;

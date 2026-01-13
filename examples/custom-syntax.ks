@@ -5,4 +5,4 @@ impl syntax (for_once x in a do e) = `(
     $e
 );
 # impl syntax "for" = (.elem = x, .iterator = a, .body = e) => `(same thing);
-for_once x in "123" do std.io.print x
+for_once x in "123" do std.io.print (x)

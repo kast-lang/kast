@@ -65,84 +65,88 @@ let update_value_filter
 
 let add : Syntax.rule -> ruleset -> ruleset =
   fun rule ruleset ->
-  let rec insert
-            ~(prev_prev : Syntax.Rule.part option)
-            ~(prev : Syntax.Rule.part option)
-            (parts : Syntax.Rule.part list)
-            (node : node)
-    : node
-    =
-    let updated_value_filter = update_value_filter rule prev node.value_filter in
-    let updated_prev_value_filter =
-      update_value_filter rule prev_prev node.prev_value_filter
-    in
-    let updated_priority_range =
-      Some
-        (let point = Range.Inclusive.point rule.priority in
-         Option.map_or
-           point
-           (Range.Inclusive.unite Syntax.Rule.Priority.compare point)
-           node.priority_range)
-    in
-    match parts with
-    | [] ->
-      (match node.terminal with
-       | Some existing ->
-         Error.error
-           rule.span
-           "Duplicate rule: %a and %a"
-           Syntax.Rule.print
-           existing
-           Syntax.Rule.print
-           rule;
-         node
-       | None ->
-         { terminal = Some rule
-         ; value_filter = updated_value_filter
-         ; prev_value_filter = updated_prev_value_filter
-         ; priority_range = updated_priority_range
-         ; next = node.next
-         ; next_keywords = node.next_keywords
-         })
-    | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
-    | Group { id = _; name = _; parts = group_parts; quantifier } :: rest ->
-      (match quantifier with
-       | None -> insert ~prev_prev ~prev (group_parts @ rest) node
-       | Some Optional ->
-         let inserted_without_group = insert ~prev_prev ~prev rest node in
-         insert ~prev_prev ~prev (group_parts @ rest) inserted_without_group)
-    | first :: rest ->
-      let edge : Edge.t =
-        match first with
-        | Keyword keyword -> Keyword keyword
-        | Value _ -> Value
-        | Group _ | Whitespace _ -> unreachable ":)"
+  let updated_rules = StringMap.add rule.name rule ruleset.rules in
+  match rule.do_parse with
+  | false -> { ruleset with rules = updated_rules }
+  | true ->
+    let rec insert
+              ~(prev_prev : Syntax.Rule.part option)
+              ~(prev : Syntax.Rule.part option)
+              (parts : Syntax.Rule.part list)
+              (node : node)
+      : node
+      =
+      let updated_value_filter = update_value_filter rule prev node.value_filter in
+      let updated_prev_value_filter =
+        update_value_filter rule prev_prev node.prev_value_filter
       in
-      let merge_next : node option -> node option =
-        fun current ->
-        let next =
-          match current with
-          | None -> Node.empty
-          | Some existing -> existing
+      let updated_priority_range =
+        Some
+          (let point = Range.Inclusive.point rule.priority in
+           Option.map_or
+             point
+             (Range.Inclusive.unite Syntax.Rule.Priority.compare point)
+             node.priority_range)
+      in
+      match parts with
+      | [] ->
+        (match node.terminal with
+         | Some existing ->
+           Error.error
+             rule.span
+             "Duplicate rule: %a and %a"
+             Syntax.Rule.print
+             existing
+             Syntax.Rule.print
+             rule;
+           node
+         | None ->
+           { terminal = Some rule
+           ; value_filter = updated_value_filter
+           ; prev_value_filter = updated_prev_value_filter
+           ; priority_range = updated_priority_range
+           ; next = node.next
+           ; next_keywords = node.next_keywords
+           })
+      | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
+      | Group { id = _; name = _; parts = group_parts; quantifier } :: rest ->
+        (match quantifier with
+         | None -> insert ~prev_prev ~prev (group_parts @ rest) node
+         | Some Optional ->
+           let inserted_without_group = insert ~prev_prev ~prev rest node in
+           insert ~prev_prev ~prev (group_parts @ rest) inserted_without_group)
+      | first :: rest ->
+        let edge : Edge.t =
+          match first with
+          | Keyword keyword -> Keyword keyword
+          | Value _ -> Value
+          | Group _ | Whitespace _ -> unreachable ":)"
         in
-        Some (insert ~prev_prev:prev ~prev:(Some first) rest next)
-      in
-      { terminal = node.terminal
-      ; value_filter = updated_value_filter
-      ; prev_value_filter = updated_prev_value_filter
-      ; priority_range = updated_priority_range
-      ; next = EdgeMap.update edge merge_next node.next
-      ; next_keywords =
-          (match first with
-           | Value _ -> node.next_keywords
-           | Keyword keyword -> StringSet.add keyword node.next_keywords
-           | Group _ | Whitespace _ -> unreachable ":)")
-      }
-  in
-  { rules = StringMap.add rule.name rule ruleset.rules
-  ; keywords = StringSet.add_seq (Syntax.Rule.keywords rule) ruleset.keywords
-  ; root = insert ~prev_prev:None ~prev:None rule.parts ruleset.root
-  }
+        let merge_next : node option -> node option =
+          fun current ->
+          let next =
+            match current with
+            | None -> Node.empty
+            | Some existing -> existing
+          in
+          Some (insert ~prev_prev:prev ~prev:(Some first) rest next)
+        in
+        { terminal = node.terminal
+        ; value_filter = updated_value_filter
+        ; prev_value_filter = updated_prev_value_filter
+        ; priority_range = updated_priority_range
+        ; next = EdgeMap.update edge merge_next node.next
+        ; next_keywords =
+            (match first with
+             | Value _ -> node.next_keywords
+             | Keyword keyword -> StringSet.add keyword node.next_keywords
+             | Group _ | Whitespace _ -> unreachable ":)")
+        }
+    in
+    { rules = updated_rules
+    ; keywords = StringSet.add_seq (Syntax.Rule.keywords rule) ruleset.keywords
+    ; root = insert ~prev_prev:None ~prev:None rule.parts ruleset.root
+    }
 ;;
 
 let is_keyword : string -> ruleset -> bool =
