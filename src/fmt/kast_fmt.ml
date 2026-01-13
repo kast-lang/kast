@@ -60,7 +60,7 @@ let format : formatter -> Parser.result -> unit =
         | '\\' -> current_indent := !current_indent - 1
         | c -> printf "%c" c)
     in
-    let rec print_ast ~parent (ast : Ast.t) =
+    let rec print_ast ~filter ~parent (ast : Ast.t) =
       match ast.shape with
       | Error _ -> fail "Can't format code with errors"
       | Empty -> ()
@@ -69,7 +69,7 @@ let format : formatter -> Parser.result -> unit =
         |> List.iter (fun (comment : Token.comment) ->
           print ~is_comment:true comment.span String.print comment.shape.raw);
         print token.span String.print (Token.raw token |> Option.get)
-      | Complex { rule; root; _ } ->
+      | Complex { rule; root } ->
         let wrapped =
           match parent with
           | Some { wrapped; rule = parent_rule } ->
@@ -77,7 +77,14 @@ let format : formatter -> Parser.result -> unit =
           | None -> false
         in
         let wrapped = wrapped || ast.span.start.line <> ast.span.finish.line in
-        print_group rule root.rule wrapped root
+        (* detect duplicate parens *)
+        if String.equal rule.name "core:scope" && filter = Syntax.Rule.Priority.Any
+        then (
+          let child =
+            root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+          in
+          print_ast ~filter:Any ~parent:(Some { wrapped; rule }) child)
+        else print_group rule root.rule wrapped root
       | Syntax { tokens; value_after; _ } ->
         let pos = ref (List.head tokens).span.start in
         tokens
@@ -89,7 +96,7 @@ let format : formatter -> Parser.result -> unit =
          | None -> ()
          | Some value ->
            print_newline ();
-           print_ast ~parent:None value)
+           print_ast ~filter ~parent:None value)
     and print_group
           rule
           (group_rule : Syntax.Rule.group option)
@@ -123,8 +130,8 @@ let format : formatter -> Parser.result -> unit =
       | Keyword keyword :: rest_rule_parts, Keyword keyword_token :: rest_parts ->
         print keyword_token.span String.print keyword;
         print_parts rule wrapped rest_rule_parts rest_parts
-      | Value _ :: rest_rule_parts, Value value :: rest_parts ->
-        print_ast ~parent:(Some { rule; wrapped }) value;
+      | Value binding :: rest_rule_parts, Value value :: rest_parts ->
+        print_ast ~filter:binding.priority ~parent:(Some { rule; wrapped }) value;
         print_parts rule wrapped rest_rule_parts rest_parts
       | Group rule_group :: rest_rule_parts, Group group :: rest_parts
         when Some rule_group = group.rule ->
@@ -141,7 +148,7 @@ let format : formatter -> Parser.result -> unit =
           (Option.print Ast.Part.print)
           (List.head_opt parts)
     in
-    print_ast ~parent:None ast
+    print_ast ~filter:Any ~parent:None ast
   in
   print_ast ast;
   trailing_comments
