@@ -14,12 +14,14 @@ module Args = struct
     { paths : Uri.t list
     ; hl_output : Kast_highlight.output option
     ; rewrite : rewrite list
+    ; inplace : bool
     }
 
   type t = args
 
   let rec parse : string list -> args = function
-    | [] -> { paths = []; hl_output = Some Term; rewrite = [] }
+    | [] -> { paths = []; hl_output = Some Term; rewrite = []; inplace = false }
+    | "--inplace" :: rest -> { (parse rest) with inplace = true }
     | "--rewrite" :: from :: into :: rest ->
       let rest = parse rest in
       { rest with rewrite = { from; into } :: rest.rewrite }
@@ -152,7 +154,7 @@ let rec rewrite_all rewrite ast =
 ;;
 
 let run : Args.t -> unit =
-  fun { paths; hl_output; rewrite } ->
+  fun { paths; hl_output; rewrite; inplace } ->
   let paths =
     match paths with
     | [] -> [ Uri.stdin ]
@@ -176,18 +178,24 @@ let run : Args.t -> unit =
     in
     rewritten |> Kast_fmt.format Format.str_formatter;
     let formatted = Format.flush_str_formatter () in
-    match hl_output with
-    | Some output ->
-      let parsed =
-        Parser.parse
-          { contents = formatted; uri = Uri.of_string "ocaml:formatted" }
-          ruleset
-      in
-      let highlight_print =
-        match output with
-        | Term -> (module Term : Output)
-        | Html -> (module Html : Output)
-      in
-      Kast_highlight.print highlight_print Format.std_formatter parsed
-    | None -> Format.printf "%s" formatted)
+    if inplace
+    then (
+      let out = open_out (path |> Uri.path) in
+      output_string out formatted;
+      close_out out)
+    else (
+      match hl_output with
+      | Some output ->
+        let parsed =
+          Parser.parse
+            { contents = formatted; uri = Uri.of_string "ocaml:formatted" }
+            ruleset
+        in
+        let highlight_print =
+          match output with
+          | Term -> (module Term : Output)
+          | Html -> (module Html : Output)
+        in
+        Kast_highlight.print highlight_print Format.std_formatter parsed
+      | None -> Format.printf "%s" formatted))
 ;;
