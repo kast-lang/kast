@@ -1,52 +1,52 @@
 impl syntax (arg |> f) = `(
     let _arg = $arg;
     let _f = $f;
-    _f _arg
+    _f(_arg)
 );
 impl syntax (f <| arg) = `(
-    $f $arg
+    $f($arg)
 );
 impl syntax (a < b) = `(
-    std.cmp.less[_] ($a, $b)
+    std.cmp.less[_]($a, $b)
 );
 impl syntax (a <= b) = `(
-    std.cmp.less_or_equal[_] ($a, $b)
+    std.cmp.less_or_equal[_]($a, $b)
 );
 impl syntax (a == b) = `(
-    std.cmp.equal[_] ($a, $b)
+    std.cmp.equal[_]($a, $b)
 );
 impl syntax (a != b) = `(
-    std.cmp.not_equal[_] ($a, $b)
+    std.cmp.not_equal[_]($a, $b)
 );
 impl syntax (a >= b) = `(
-    std.cmp.greater_or_equal[_] ($a, $b)
+    std.cmp.greater_or_equal[_]($a, $b)
 );
 impl syntax (a > b) = `(
-    std.cmp.greater[_] ($a, $b)
+    std.cmp.greater[_]($a, $b)
 );
 impl syntax (not x) = `(
     if $x then false else true
 );
 impl syntax (a + b) = `(
-    std.op.add ($a, $b)
+    std.op.add($a, $b)
 );
 impl syntax (a - b) = `(
-    std.op.sub ($a, $b)
+    std.op.sub($a, $b)
 );
 impl syntax (a * b) = `(
-    std.op.mul ($a, $b)
+    std.op.mul($a, $b)
 );
 impl syntax (a / b) = `(
-    std.op.div ($a, $b)
+    std.op.div($a, $b)
 );
 impl syntax (a % b) = `(
-    std.op.rem ($a, $b)
+    std.op.rem($a, $b)
 );
 impl syntax (-x) = `(
-    std.op.neg $x
+    std.op.neg($x)
 );
 impl syntax (+x) = `(
-    std.op.pos $x
+    std.op.pos($x)
 );
 impl syntax (a += b) = `(
     let _ref = &mut $a;
@@ -69,7 +69,7 @@ impl syntax (a %= b) = `(
     _ref^ = _ref^ % $b
 );
 impl syntax (@context ty) = `(
-    (@native "create_context_type") $ty
+    (@native "create_context_type")($ty)
 );
 impl syntax (loop ( body )) = `(
     unwindable loop_block (
@@ -106,12 +106,10 @@ impl syntax (while cond do body) = `(
 impl syntax (for pattern in iterable do body) = `(
     unwindable loop_block (
         @comptime with std.LoopBlock = loop_block;
-        $iterable.iter (
-            $pattern => unwindable loop_body (
-                @comptime with std.LoopBody = loop_body;
-                $body;
-            )
-        );
+        $iterable.iter($pattern => unwindable loop_body (
+            @comptime with std.LoopBody = loop_body;
+            $body;
+        ));
     );
 );
 impl syntax (with_return body) = `(
@@ -126,7 +124,7 @@ impl syntax (return value) = `(
     unwind _returnable $value
 );
 impl syntax (@opaque_type) = `(
-    (@native "new_opaque_type") ()
+    (@native "new_opaque_type")()
 );
 
 impl syntax ([arg] -> body) = `(
@@ -134,7 +132,7 @@ impl syntax ([arg] -> body) = `(
 );
 
 impl syntax (start..end) = `(
-    std.range.range ($start, $end)
+    std.range.range($start, $end)
 );
 
 impl syntax (if value is pattern then body) = `(

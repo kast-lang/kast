@@ -4,9 +4,9 @@ const f = (arg :: T) => @comptime (
     module:
     let s = "Hello, World!";
 );
-const foo = f ();
+const foo = f();
 use foo.*;
-std.io.print s;
+std.io.print(s);
 let x = 123;
 @syntax inline_fn 100 wrap always = "fn" " " name "(" arg:any ")" " " "(" "\n\t" body:any ""/"\\\n" ")";
 impl syntax (
@@ -20,10 +20,10 @@ impl syntax (
 #   let \name = \arg => \body
 # );
 fn f(x, .a, .b) (
-    print x;
-    print a;
-    print (to_string b);
+    print(x);
+    print(a);
+    print(to_string(b));
 );
-f ("hi", .a = "a", .b = 5);
+f("hi", .a = "a", .b = 5);
 let ast = `(2 + 2);
 `(2 + $ast)

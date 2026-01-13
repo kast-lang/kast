@@ -4,7 +4,7 @@ const range = (start :: Int32, end :: Int32) -> std.iter.ReversibleIterable[Int3
     let forward = consumer => (
         let mut i = start;
         while i < end do (
-            consumer (i);
+            consumer(i);
             i += 1;
         );
     );
@@ -12,15 +12,15 @@ const range = (start :: Int32, end :: Int32) -> std.iter.ReversibleIterable[Int3
         let mut i = end;
         while i > start do (
             i -= 1;
-            consumer (i);
+            consumer(i);
         );
     );
     (
         module:
         let construct = (.forward, .backward) => (
             .iter = forward,
-            .rev = () => construct (.forward = backward, .backward = forward),
+            .rev = () => construct(.forward = backward, .backward = forward),
         );
     )
-        .construct (.forward, .backward)
+        .construct(.forward, .backward)
 )

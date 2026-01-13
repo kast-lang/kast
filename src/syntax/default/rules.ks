@@ -76,20 +76,18 @@
 @syntax "return_with_value" 40 wrap never = "return" " " value;
 @syntax "unary -" 45 wrap never = "-" _;
 @syntax "unary +" 45 wrap never = "+" _;
-@syntax "core:apply" 50 wrap never = <- f " " arg;
-@syntax @no_parse "apply" 50 wrap never = <- f "(" arg:any ")";
-@syntax @no_parse "apply_with_no_arg" 50 wrap never = <- f "(" ")";
-@syntax "core:unwind" 60 wrap never = "unwind" " " token " " value;
 @syntax "with_return" 60 wrap never = "with_return" " " body;
-@syntax "core:unwindable" 60 wrap never = "unwindable" " " token " " body;
 @syntax "core:cast" 60.5 wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 wrap never = "&" _ ->;
 @syntax "core:ref_mut" 61 wrap never = "&" "mut" " " _ ->;
-@syntax "core:variant_without_value" 62 wrap never = ":" label;
-@syntax "core:variant" 62 wrap never = ":" label " " value;
 @syntax "core:instantiate_generic" 70 wrap never = <- generic "[" ""/"\n\t" arg:any ""/"\\\n" "]";
 @syntax "core:." 70 wrap if_any = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:deref" 70 wrap never = <- _ "^";
+@syntax "core:apply" 70 wrap never = <- f "(" arg:any ")";
+@syntax "core:unwindable" 80 wrap never = "unwindable" " " token " " body;
+@syntax "core:unwind" 80 wrap never = "unwind" " " token " " value;
+@syntax "core:variant_without_value" 90 wrap never = ":" label;
+@syntax "core:variant" 90 wrap never = ":" label "(" value:any ")";
 @syntax "core:mut" 500 wrap never = "mut" " " _;
 @syntax "core:type expr" 500 wrap never = "type" " " _;
 @syntax "core:newtype" 500 wrap never = "newtype" " " _;
@@ -106,8 +104,9 @@
 @syntax "core:loop" 500 wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:scope" 1000 wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:placeholder" 1000 wrap never = "_";
-@syntax "core:quote" 1000 wrap if_any = "`" "(" ""/"\n\t"  _:any ""/"\\\n" ")";
+@syntax "core:quote" 1000 wrap if_any = "`" "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:unquote" 1000 wrap never = "$" _ ->;
 @syntax "core:target_dependent" 1000 wrap always = "@cfg" " " "(" ""/"\n\t" branches:any ""/"\\\n" ")";
 @syntax "core:__FILE__" 1000 wrap never = "__FILE__";
 @syntax "core:current_compiler_scope" 1000 wrap never = "@current_scope";
+

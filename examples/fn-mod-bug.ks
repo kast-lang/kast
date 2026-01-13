@@ -3,4 +3,4 @@
         module:
         let x = y;
     )
-) ()
+)()

@@ -6,9 +6,9 @@ const Monad = [M :: [_ :: type] type] newtype (
 );
 
 impl Option.t as Monad = (
-    .ret = [T] (x :: T) => :Some x,
+    .ret = [T] (x :: T) => :Some(x),
     .flat_map = [A, B] (opt, f) => match opt with (
-        | :Some x => f x
+        | :Some(x) => f(x)
         | :None => :None
     ),
 );
@@ -17,9 +17,9 @@ use std.collections.Treap;
 impl Treap.t as Monad = (
     .ret = Treap.singleton,
     .flat_map = [A, B] (a, f) => (
-        let mut result = Treap.create ();
-        for &x in Treap.iter &a do (
-            result = Treap.join (result, f x);
+        let mut result = Treap.create();
+        for &x in Treap.iter(&a) do (
+            result = Treap.join(result, f(x));
         );
         result
     ),
@@ -27,56 +27,50 @@ impl Treap.t as Monad = (
 
 const join = [M :: [_ :: type] type] (
     [T] (a :: M[M[T]]) -> M[T] => (
-        (M as Monad).flat_map (a, x => x)
+        (M as Monad).flat_map(a, x => x)
     )
 );
 
 (
-    let t :: Treap.t[Treap.t[Int32]] = Treap.join (
-        Treap.singleton (
-            Treap.join (
-                Treap.singleton 1,
-                Treap.singleton 2,
-            )
-        ),
-        Treap.singleton (Treap.singleton 3),
-    );
-    let a = join[Treap.t][_] (t);
-    print <| Treap.to_string (&a, &x => x |> to_string);
+    let t :: Treap.t[Treap.t[Int32]] = Treap.join(Treap.singleton(Treap.join(Treap.singleton(1),
+    Treap.singleton(2),)),
+    Treap.singleton(Treap.singleton(3)),);
+    let a = join[Treap.t][_](t);
+    print <| Treap.to_string(&a, &x => x |> to_string);
 );
 
 const compose = [M :: [type] -> type] [A, B] (a :: M[A], b :: M[B]) -> M[B] => (
-    (M as Monad).flat_map (a, _ => b)
+    (M as Monad).flat_map(a, _ => b)
 );
 
 @syntax ">>=" 6.5 wrap if_any = a " "/"\n" ">>=" " " b ->;
 impl syntax (a >>= b) = `(
-    (_ as Monad).flat_map ($a, $b)
+    (_ as Monad).flat_map($a, $b)
     # TODO (_ as Monad).flat_map ($a, $b)
 );
 
 @syntax ">>" 6.5 wrap if_any = a " "/"\n" ">>" " " b ->;
 impl syntax (a >> b) = `(
-    compose ($a, $b)
+    compose($a, $b)
 );
 
 @syntax "do" 6.5 wrap if_any = "do" " "/"\n\t" body:any " "/"\\\n" "done";
 impl syntax (do body done) = `($body);
 
 @syntax "and_then" 0 wrap if_any = a ";" ";" " "/"\n" b ->;
-impl syntax (a;; b) = `(compose ($a, $b));
+impl syntax (a;; b) = `(compose($a, $b));
 
 @syntax "bind_and_then" 0 wrap if_any = var " " "<-" " " expr ";" ";" " "/"\n" b ->;
 impl syntax (var <- expr;; b) = `($expr >>= ($var => $b));
 
-let opt :: Option.t[Int32] = :Some 1;
+let opt :: Option.t[Int32] = :Some(1);
 
-(_ as Monad).flat_map (opt, x => :Some x);
+(_ as Monad).flat_map(opt, x => :Some(x));
 
 let result = do
     x <- opt;;
-    y <- :Some 2;;
-    :Some (x + y)
+    y <- :Some(2);;
+    :Some(x + y)
 done;
 
-dbg.print result;
+dbg.print(result);

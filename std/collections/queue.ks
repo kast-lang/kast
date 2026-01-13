@@ -4,19 +4,19 @@ const t = [T] newtype (
 );
 
 const create = [T] () -> Queue.t[T] => (
-    .inner = Treap.create ()
+    .inner = Treap.create()
 );
 const push = [T] (q :: &mut Queue.t[T], value :: T) => (
-    q^.inner = Treap.join (q^.inner, Treap.singleton value);
+    q^.inner = Treap.join(q^.inner, Treap.singleton(value));
 );
 const pop = [T] (q :: &mut Queue.t[T]) -> T => (
-    let first, rest = Treap.split_at (q^.inner, 1);
+    let first, rest = Treap.split_at(q^.inner, 1);
     q^.inner = rest;
-    (Treap.at (&first, 0))^
+    (Treap.at(&first, 0))^
 );
 const front = [T] (q :: &Queue.t[T]) -> &T => (
-    Treap.at (&q^.inner, 0)
+    Treap.at(&q^.inner, 0)
 );
 const length = [T] (q :: &Queue.t[T]) -> Int32 => (
-    Treap.length &q^.inner
+    Treap.length(&q^.inner)
 );

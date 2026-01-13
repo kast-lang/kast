@@ -3,13 +3,13 @@ use std.prelude.*;
     module:
     let mut depth = 0;
     let f = () => (
-        print "inside f";
+        print("inside f");
         depth = depth + 1;
-        if depth < 5 then g () else ()
+        if depth < 5 then g() else ()
     );
     let g = () => (
-        print "inside g";
-        f ()
+        print("inside g");
+        f()
     );
-    f ();
+    f();
 )
