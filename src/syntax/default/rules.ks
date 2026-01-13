@@ -11,8 +11,8 @@
 @syntax "core:const" 2 @wrap never = "const" " " pattern " " "=" " " value;
 @syntax "add_assign" 2 @wrap never = _ " " "+=" " " _;
 @syntax "sub_assign" 2 @wrap never = _ " " "-=" " " _;
-@syntax "add_assign" 2 @wrap never = _ " " "*=" " " _;
-@syntax "add_assign" 2 @wrap never = _ " " "/=" " " _;
+@syntax "mul_assign" 2 @wrap never = _ " " "*=" " " _;
+@syntax "div_assign" 2 @wrap never = _ " " "/=" " " _;
 @syntax "rem_assign" 2 @wrap never = _ " " "%=" " " _;
 @syntax "core:let" 3 @wrap never = "let" " " pattern;
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;

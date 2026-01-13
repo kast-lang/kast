@@ -65,6 +65,8 @@ let update_value_filter
 
 let add : Syntax.rule -> ruleset -> ruleset =
   fun rule ruleset ->
+  if ruleset.rules |> StringMap.find_opt rule.name |> Option.is_some
+  then fail "Already have rule %S" rule.name;
   let updated_rules = StringMap.add rule.name rule ruleset.rules in
   match rule.do_parse with
   | false -> { ruleset with rules = updated_rules }
