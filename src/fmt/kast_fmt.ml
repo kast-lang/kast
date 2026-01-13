@@ -63,6 +63,7 @@ let format : formatter -> Parser.result -> unit =
     let rec print_ast ~parent (ast : Ast.t) =
       match ast.shape with
       | Error _ -> fail "Can't format code with errors"
+      | Empty -> ()
       | Simple { comments_before; token } ->
         comments_before
         |> List.iter (fun (comment : Token.comment) ->

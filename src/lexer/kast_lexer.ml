@@ -50,8 +50,11 @@ let init : rule list -> source -> lexer =
   }
 ;;
 
-(* TODO maybe not correct? maybe should be position of peeked token *)
-let position lexer = lexer.reader.position
+let position lexer =
+  match lexer.peeked with
+  | None -> lexer.reader.position
+  | Some token -> token.span.start
+;;
 
 let peek : lexer -> Token.t =
   fun ({ reader; _ } as lexer) ->

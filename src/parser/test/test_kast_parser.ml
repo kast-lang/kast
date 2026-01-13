@@ -30,6 +30,7 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
       | Invalid_argument _ -> false)
   | Complex _, _ -> false
   | Syntax _, _ -> false
+  | Empty, _ -> false
 ;;
 
 let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit =

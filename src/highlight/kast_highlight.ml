@@ -196,6 +196,7 @@ module Common (Output : Output) = struct
         | Ast.Group group -> print_parts group.parts)
     in
     match ast.shape with
+    | Empty -> ()
     | Error { parts } -> print_parts parts
     | Simple { comments_before; token } ->
       comments_before |> List.iter (Output.print_comment printer);

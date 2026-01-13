@@ -76,6 +76,7 @@ and is_trying_to_extend_incorrect_priority
     in
     let rec priority (value : Ast.t) : Syntax.Rule.priority option =
       match value.shape with
+      | Ast.Empty -> None
       | Ast.Error _ -> None
       | Ast.Simple _ -> None
       | Ast.Complex { rule; _ } -> Some rule.priority
@@ -345,5 +346,16 @@ and parse_value (context : context) : Ast.t option =
       loop ~already_parsed:(Some ast)
     | NoProgress -> already_parsed
   in
-  loop ~already_parsed:None
+  let result = loop ~already_parsed:None in
+  if context.filter = Any && result |> Option.is_none
+  then
+    Some
+      { shape = Ast.Empty
+      ; span =
+          { start = context.lexer |> Lexer.position
+          ; finish = context.lexer |> Lexer.position
+          ; uri = (context.lexer |> Lexer.source).uri
+          }
+      }
+  else result
 ;;

@@ -55,6 +55,7 @@ let rewrite_one ({ from; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
       Log.trace (fun log -> log "rewriting %a" Ast.print ast);
       let result =
         match ast.shape with
+        | Ast.Empty -> ast
         | Ast.Simple _ -> ast
         | Ast.Complex { rule; root } ->
           if String.equal rule.name from

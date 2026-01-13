@@ -54,6 +54,19 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
     (fun () ->
        try
          match ast.shape with
+         | Ast.Empty ->
+           let expr () =
+             E_Constant (V_Unit |> Value.inferred ~span) |> init_expr span state
+           in
+           let result : a =
+             match kind with
+             | Assignee -> A_Unit |> init_assignee span state
+             | Expr -> expr ()
+             | PlaceExpr -> PE_Temp (expr ()) |> init_place_expr span state
+             | TyExpr -> (fun () -> TE_Unit) |> init_ty_expr span state
+             | Pattern -> P_Unit |> init_pattern span state
+           in
+           result
          | Ast.Error _ ->
            Error.error span "Trying to compile error node";
            init_error span state kind

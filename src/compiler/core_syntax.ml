@@ -1448,7 +1448,7 @@ let quote : core_syntax =
         | Expr ->
           let rec construct (ast : Ast.t) : expr =
             match ast.shape with
-            | Ast.Error _ | Ast.Simple _ ->
+            | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
               E_Constant (V_Ast ast |> Value.inferred ~span:ast.span)
               |> init_expr ast.span C.state
             | Ast.Complex { rule; root } when rule.name = "core:unquote" ->

@@ -36,6 +36,7 @@ let rec collect_parts (parts : Ast.part list) : token Seq.t =
 and collect : Ast.t -> token Seq.t =
   fun { shape; span = _ } ->
   match shape with
+  | Ast.Empty -> Seq.empty
   | Ast.Error { parts } -> collect_parts parts
   | Ast.Simple { comments_before; token } ->
     Seq.append

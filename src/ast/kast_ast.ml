@@ -56,6 +56,7 @@ and syntax =
 and error = { parts : part list }
 
 and shape =
+  | Empty
   | Simple of simple
   | Complex of complex
   | Syntax of syntax
@@ -89,6 +90,7 @@ and print_group : formatter -> group -> unit =
 
 and print_shape : formatter -> shape -> unit =
   fun fmt -> function
+  | Empty -> fprintf fmt "@{<magenta><empty>@}"
   | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
   | Complex { rule; root } ->
     fprintf fmt "@{<magenta>%a@} %a" String.print_maybe_escaped rule.name print_group root
@@ -101,6 +103,7 @@ and print_shape : formatter -> shape -> unit =
 
 and print_shape_short : formatter -> shape -> unit =
   fun fmt -> function
+  | Empty -> fprintf fmt "@{<magenta><empty>@}"
   | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
   | Complex { rule; root = _ } ->
     fprintf fmt "@{<magenta>%a@}" String.print_maybe_escaped rule.name
