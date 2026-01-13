@@ -169,12 +169,10 @@ let run : Args.t -> unit =
     let rewritten =
       { parsed with
         ast =
-          parsed.ast
-          |> Option.map (fun ast ->
-            let rewritten = rewrite_all rewrite ast in
-            Log.trace (fun log -> log "original  ast: %a" Ast.print ast);
-            Log.trace (fun log -> log "rewritten ast: %a" Ast.print rewritten);
-            rewritten)
+          (let rewritten = rewrite_all rewrite parsed.ast in
+           Log.trace (fun log -> log "original  ast: %a" Ast.print parsed.ast);
+           Log.trace (fun log -> log "rewritten ast: %a" Ast.print rewritten);
+           rewritten)
       }
     in
     rewritten |> Kast_fmt.format Format.str_formatter;

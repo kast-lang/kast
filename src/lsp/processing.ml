@@ -69,7 +69,7 @@ let process_file (global : global_state) (source : source) : file_state =
     (* TODO msg about crash? *)
     | _ -> None
   in
-  let ast = Option.bind parsed (fun ({ ast; _ } : Parser.result) -> ast) in
+  let ast = parsed |> Option.map (fun ({ ast; _ } : Parser.result) -> ast) in
   let compiled =
     Option.bind ast (fun ast ->
       try

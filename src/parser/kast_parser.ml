@@ -15,7 +15,7 @@ let error = Error.error
 type ruleset = Ruleset.t
 
 type result =
-  { ast : Ast.t option
+  { ast : Ast.t
   ; trailing_comments : Token.comment list
   ; eof : position
   }
@@ -31,6 +31,7 @@ let parse_with_lexer : Lexer.t -> ruleset -> result =
       ; ruleset
       ; unused_comments_rev
       }
+    |> Option.get
   in
   Impl.expect_eof lexer;
   { ast = result

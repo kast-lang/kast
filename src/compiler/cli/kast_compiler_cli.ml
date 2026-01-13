@@ -74,36 +74,31 @@ let run : Args.t -> unit =
   in
   let fmt = Format.formatter_of_out_channel out in
   Format.setup_tty_if_needed fmt out;
-  (match parsed.ast with
-   | None -> fprintf fmt "<none>"
-   | Some ast ->
-     let compiler =
-       if no_std
-       then (
-         let interpreter = Interpreter.default (Uri path) in
-         Compiler.init
-           ~import_cache:(Compiler.init_import_cache ())
-           ~compile_for:interpreter)
-       else Compiler.default (Uri source.uri) ()
+  let compiler =
+    if no_std
+    then (
+      let interpreter = Interpreter.default (Uri path) in
+      Compiler.init ~import_cache:(Compiler.init_import_cache ()) ~compile_for:interpreter)
+    else Compiler.default (Uri source.uri) ()
+  in
+  let expr : expr = Compiler.compile compiler Expr parsed.ast in
+  (match target with
+   | Ir -> fprintf fmt "%a" Expr.print_with_types expr
+   | JavaScript ->
+     let transpiled : Kast_transpiler_javascript.result =
+       Kast_transpiler_javascript.transpile_expr
+         ~state:compiler.interpreter
+         ~span:parsed.ast.span
+         expr
      in
-     let expr : expr = Compiler.compile compiler Expr ast in
-     (match target with
-      | Ir -> fprintf fmt "%a" Expr.print_with_types expr
-      | JavaScript ->
-        let transpiled : Kast_transpiler_javascript.result =
-          Kast_transpiler_javascript.transpile_expr
-            ~state:compiler.interpreter
-            ~span:ast.span
-            expr
-        in
-        let source_map_path =
-          match output with
-          | None -> "target/source.map"
-          | Some path -> path ^ ".map"
-        in
-        let writer = Kast_transpiler_javascript.Writer.init fmt source_map_path in
-        transpiled.print writer;
-        writer |> Kast_transpiler_javascript.Writer.finish));
+     let source_map_path =
+       match output with
+       | None -> "target/source.map"
+       | Some path -> path ^ ".map"
+     in
+     let writer = Kast_transpiler_javascript.Writer.init fmt source_map_path in
+     transpiled.print writer;
+     writer |> Kast_transpiler_javascript.Writer.finish);
   close_out out;
   run_formatter_if_needed args
 ;;

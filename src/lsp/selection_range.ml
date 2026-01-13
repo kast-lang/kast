@@ -44,7 +44,7 @@ let get
   =
   Log.info (fun log -> log "got selection range request");
   match parsed with
-  | Some { ast = Some ast; eof; _ } ->
+  | Some { ast; eof; _ } ->
     params.positions
     |> List.map (fun (pos : Lsp.Types.Position.t) ->
       let pos = Common.lsp_to_kast_pos pos in
@@ -64,5 +64,5 @@ let get
                  : Lsp.Types.SelectionRange.t))
            None
       |> Option.get)
-  | Some { ast = None; _ } | None -> []
+  | None -> []
 ;;

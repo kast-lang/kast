@@ -123,13 +123,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
       in
       let source = Source.read uri in
       let parsed = Kast_parser.parse source Kast_default_syntax.ruleset in
-      let expr =
-        match parsed.ast with
-        | Some ast -> C.compile ~state Expr ast
-        | None ->
-          E_Constant (V_Unit |> Value.inferred ~span)
-          |> Init.init_expr (Span.beginning_of source.uri) state
-      in
+      let expr = C.compile ~state Expr parsed.ast in
       let value : value = Kast_interpreter.eval state.interpreter expr in
       Effect.perform (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
       let imported : State.imported =

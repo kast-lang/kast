@@ -40,7 +40,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
         { contents = source; uri = Uri.of_string "ocaml:test" }
         (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
     in
-    Log.error (fun log -> log "Parsed: %a" (Option.print Ast.print) ast);
+    Log.error (fun log -> log "Parsed: %a" Ast.print ast);
     failwith "Parse was supposed to fail"
   with
   | effect Parser.Error.Error { msg; span = _ }, _k ->
@@ -53,21 +53,17 @@ let test ~(source : string) ~(expected : string) ?(ruleset : Parser.ruleset opti
   =
   let expected =
     Kast_simple_syntax.parse { contents = expected; uri = Uri.of_string "ocaml:test" }
-    |> Option.get
   in
   let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse
       { contents = source; uri = Uri.of_string "ocaml:test" }
       (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
   in
-  match ast with
-  | Some ast ->
-    if not (matches ast expected)
-    then (
-      Log.error (fun log -> log "Parsed: %a" Ast.print ast);
-      Log.error (fun log -> log "Expected %a" Kast_simple_syntax.print expected);
-      failwith "Test failed")
-  | None -> failwith "nothing was parsed"
+  if not (matches ast expected)
+  then (
+    Log.error (fun log -> log "Parsed: %a" Ast.print ast);
+    Log.error (fun log -> log "Expected %a" Kast_simple_syntax.print expected);
+    failwith "Test failed")
 ;;
 
 Printexc.record_backtrace true;

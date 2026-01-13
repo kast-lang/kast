@@ -20,7 +20,5 @@ let run : Args.t -> unit =
   let { ast; trailing_comments = _; eof = _ } : Parser.result =
     Parser.parse source Kast_default_syntax.ruleset
   in
-  match ast with
-  | Some ast -> println "%a" Ast.print ast
-  | None -> println "@{<dim;italic><nothing>@}"
+  println "%a" Ast.print ast
 ;;

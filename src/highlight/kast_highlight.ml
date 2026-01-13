@@ -218,11 +218,8 @@ let print
   =
   let printer = { fmt; position = Position.beginning } in
   Output.initialize printer;
-  (match ast with
-   | Some ast ->
-     let module Print = Common (Output) in
-     Print.print_ast printer ast
-   | None -> ());
+  let module Print = Common (Output) in
+  Print.print_ast printer ast;
   trailing_comments |> List.iter (fun comment -> Output.print_comment printer comment);
   Output.move_to_eof printer eof;
   Output.finalize printer

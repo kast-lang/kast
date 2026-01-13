@@ -65,13 +65,10 @@ let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
   let name_part : Types.name_part = Uri path in
   let source = Source.read path in
   let parsed = Parser.parse source Kast_default_syntax.ruleset in
-  match parsed.ast with
-  | None -> f None
-  | Some ast ->
-    let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
-    let expr : expr = Compiler.compile compiler Expr ast in
-    let value : value = Interpreter.eval interpreter expr in
-    f (Some { compiler; interpreter; value })
+  let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
+  let expr : expr = Compiler.compile compiler Expr parsed.ast in
+  let value : value = Interpreter.eval interpreter expr in
+  f (Some { compiler; interpreter; value })
 ;;
 
 let eval =
@@ -119,19 +116,16 @@ let repl
     let line = input_line stdin in
     let source : source = { contents = line; uri = Uri.stdin } in
     let parsed = Parser.parse source Kast_default_syntax.ruleset in
-    (match parsed.ast with
-     | None -> ()
-     | Some ast ->
-       let expr : expr = Compiler.compile compiler Expr ast in
-       (try
-          let value : value = Interpreter.eval interpreter expr in
-          value.var |> Kast_inference_base.Var.setup_default_if_needed;
-          value |> Kast_inference_completion.complete_value;
-          match value.var |> Kast_inference.Var.inferred_opt with
-          | Some V_Unit -> ()
-          | _ -> println "%a @{<italic>:: %a@}" Value.print value Ty.print value.ty
-        with
-        | Interpreter.Natives.Panic s -> eprintln "@{<red>panic: %s@}" s));
+    let expr : expr = Compiler.compile compiler Expr parsed.ast in
+    (try
+       let value : value = Interpreter.eval interpreter expr in
+       value.var |> Kast_inference_base.Var.setup_default_if_needed;
+       value |> Kast_inference_completion.complete_value;
+       match value.var |> Kast_inference.Var.inferred_opt with
+       | Some V_Unit -> ()
+       | _ -> println "%a @{<italic>:: %a@}" Value.print value Ty.print value.ty
+     with
+     | Interpreter.Natives.Panic s -> eprintln "@{<red>panic: %s@}" s);
     loop ()
   in
   loop ()

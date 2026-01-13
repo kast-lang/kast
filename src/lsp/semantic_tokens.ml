@@ -109,7 +109,7 @@ let run ({ parsed; _ } : Processing.file_state) : Lsp.Types.SemanticTokens.t opt
       let prev_pos = ref Position.beginning in
       let tokens =
         Seq.append
-          (ast |> Option.to_seq |> Seq.flat_map (fun ast -> ast |> collect))
+          (collect ast)
           (trailing_comments
            |> List.to_seq
            |> Seq.map (fun (comment : Token.comment) : token ->

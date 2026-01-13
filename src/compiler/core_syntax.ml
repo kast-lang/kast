@@ -672,13 +672,7 @@ let include' : core_syntax =
           let parsed : Kast_parser.result =
             Kast_parser.parse source Kast_default_syntax.ruleset
           in
-          let ast =
-            parsed.ast
-            |> Option.unwrap_or_else (fun () : Ast.t ->
-              error span "included file is empty";
-              { shape = Ast.Error { parts = [] }; span })
-          in
-          let compiled = C.compile kind ast in
+          let compiled = C.compile kind parsed.ast in
           Effect.perform
             (CompilerEffect.FileIncluded
                { root = C.state.currently_compiled_file |> Option.get

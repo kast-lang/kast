@@ -143,9 +143,7 @@ let format : formatter -> Parser.result -> unit =
     in
     print_ast ~parent:None ast
   in
-  (match ast with
-   | Some ast -> print_ast ast
-   | None -> ());
+  print_ast ast;
   trailing_comments
   |> List.iter (fun (comment : Token.comment) ->
     print ~is_comment:true comment.span String.print comment.shape.raw);

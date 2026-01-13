@@ -142,15 +142,12 @@ let () =
             { contents = source; uri = Uri.of_string "ocaml:source" }
           in
           let parsed = Parser.parse source Kast_default_syntax.ruleset in
-          match parsed.ast with
-          | None -> ()
-          | Some ast ->
-            let compiler = Compiler.default (Str "<js>") () in
-            (* TODO *)
-            let interpreter = compiler.interpreter in
-            let expr : expr = Compiler.compile compiler Expr ast in
-            let value : value = Interpreter.eval interpreter expr in
-            ignore value)
+          let compiler = Compiler.default (Str "<js>") () in
+          (* TODO *)
+          let interpreter = compiler.interpreter in
+          let expr : expr = Compiler.compile compiler Expr parsed.ast in
+          let value : value = Interpreter.eval interpreter expr in
+          ignore value)
 
       method setOutput (f : js_string -> unit) =
         let f = fun s -> f (to_js_string s) in
