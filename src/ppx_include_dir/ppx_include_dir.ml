@@ -103,31 +103,72 @@ and include_dir ~loc path =
   Ast_builder.Default.pexp_constraint ~loc expr ty
 ;;
 
-let rec to_project_root ~loc from : string =
-  if not (Sys.file_exists from) then location_errorf ~loc "could not find project root";
-  if Sys.file_exists (Filename.concat from "src")
-  then from
-  else to_project_root ~loc (Filename.concat from "..")
+type found_root =
+  { root : string
+  ; path : string
+  }
+
+let rec to_project_root ~loc path : found_root =
+  if path |> Filename.dirname |> Filename.dirname |> Filename.basename = ".sandbox"
+  then { root = path; path }
+  else if Sys.file_exists (Filename.concat path "_build")
+  then (
+    let root = Filename.concat (Filename.concat path "_build") "default" in
+    { root; path = root })
+  else (
+    let parent = Filename.dirname path in
+    if parent = path then location_errorf ~loc "could not find project root";
+    let found = to_project_root ~loc parent in
+    { root = found.root; path = Filename.concat found.path (Filename.basename path) })
 ;;
 
 (* dune build runs ppx from project root, but ocamllsp does it from near the specific dune file *)
 let normalize_path_for_ppx ~loc path : string =
-  Filename.concat (to_project_root ~loc ".") path
+  let root = (to_project_root ~loc (Unix.realpath ".")).root in
+  let project_root_prefix = "%{project_root}/" in
+  if path |> String.starts_with ~prefix:project_root_prefix
+  then (
+    let i = String.length project_root_prefix in
+    let relative_to_root = String.sub path i (String.length path - i) in
+    Filename.concat root relative_to_root)
+  else (
+    let dir = Unix.realpath <| Filename.dirname loc.loc_start.pos_fname in
+    let dir = (to_project_root ~loc dir).path in
+    Filename.concat dir path)
 ;;
 
-let expand ~ctxt path =
+let expand_include_dir ~ctxt path =
   let loc = Expansion_context.Extension.extension_point_loc ctxt in
   let path = normalize_path_for_ppx ~loc path in
   include_dir ~loc path
 ;;
 
-let extension =
+let expand_include_file ~ctxt path =
+  let loc = Expansion_context.Extension.extension_point_loc ctxt in
+  let path = normalize_path_for_ppx ~loc path in
+  Ast_builder.Default.estring ~loc (get_blob ~loc path)
+;;
+
+let include_dir =
   Extension.V3.declare
     "include_dir"
     Extension.Context.expression
     Ast_pattern.(single_expr_payload (estring __))
-    expand
+    expand_include_dir
+  |> Ppxlib.Context_free.Rule.extension
 ;;
 
-let rule = Ppxlib.Context_free.Rule.extension extension
-let () = Ppxlib.Driver.register_transformation ~rules:[ rule ] "ppx_include_dir"
+let include_file =
+  Extension.V3.declare
+    "include_file"
+    Extension.Context.expression
+    Ast_pattern.(single_expr_payload (estring __))
+    expand_include_file
+  |> Ppxlib.Context_free.Rule.extension
+;;
+
+let () =
+  Ppxlib.Driver.register_transformation
+    ~rules:[ include_dir; include_file ]
+    "ppx_include_dir"
+;;

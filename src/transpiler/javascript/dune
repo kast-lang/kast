@@ -4,7 +4,7 @@
  (preprocessor_deps
   (file runtime.js))
  (preprocess
-  (pps ppx_blob)))
+  (pps ppx_include_dir)))
 
 (rule
  (targets runtime.js)

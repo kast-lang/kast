@@ -1,7 +1,7 @@
 open Std
 open Kast_util
 
-let std : Included_dir.included_dir = [%include_dir "std"]
+let std : Included_dir.included_dir = [%include_dir "%{project_root}/std"]
 
 let rec find_in : Included_dir.included_dir -> string -> string =
   fun dir path ->
