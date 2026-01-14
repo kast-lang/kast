@@ -12,10 +12,10 @@ module rec TypesImpl : sig
 
   (* PLACE *)
   and place =
-    { id : Id.t
+    { id : Id.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; mutable state : place_state
-    ; ty : ty
-    ; mut : place_mut
+    ; ty : ty [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; mut : place_mut [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and place_mut =
@@ -641,10 +641,10 @@ end = struct
 
   (* PLACE *)
   and place =
-    { id : Id.t
+    { id : Id.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; mutable state : place_state
-    ; ty : ty
-    ; mut : place_mut
+    ; ty : ty [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; mut : place_mut [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and place_mut =

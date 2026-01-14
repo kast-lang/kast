@@ -1,4 +1,5 @@
 open Common
+module RecurseCache = Kast_inference_base.CompareRecurseCache
 
 let init () =
   let cmp_fn name op =
@@ -14,10 +15,14 @@ let init () =
         Error.error caller "cmp op %S expected a tuple as arg" name;
         V_Error |> Value.inferred ~span)
   in
+  let equal_value_shape a b =
+    RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
+      Types.equal_value_shape a b)
+  in
   [ cmp_fn "<" ( < )
   ; cmp_fn "<=" ( <= )
-  ; cmp_fn "==" Types.equal_value_shape
-  ; cmp_fn "!=" (fun a b -> not (Types.equal_value_shape a b))
+  ; cmp_fn "==" equal_value_shape
+  ; cmp_fn "!=" (fun a b -> not (equal_value_shape a b))
   ; cmp_fn ">=" ( >= )
   ; cmp_fn ">" ( > )
   ]
