@@ -2,7 +2,8 @@ import type * as readline from "node:readline/promises";
 import type * as fs from "node:fs";
 import type * as util from "node:util";
 
-type Fn<A, R> = (arg: A) => Promise<R>;
+type Context = unknown;
+type Fn<A, R> = (arg: A, ctx: Context) => Promise<R>;
 
 interface Ref<T> {
   get: () => T;
@@ -26,63 +27,70 @@ type Option<T> =
     }
   | { tag: "None" };
 
-namespace Backend {
-  export type TcpStream = {
-    socket: import("node:net").Socket;
-    error?: Error;
-    buffer: string;
-  };
-  export type TcpListener = {
-    server: import("node:net").Server;
-    error?: Error;
-  };
-}
+export type TcpStream = {
+  socket: import("node:net").Socket;
+  error?: Error;
+  buffer: string;
+};
+export type TcpListener = {
+  server: import("node:net").Server;
+  error?: Error;
+};
 
 interface Backend<isNode> {
   dbg: {
-    print: (value: Value) => Promise<void>;
+    print: Fn<Value, void>;
   };
   io: {
-    input: (prompt: string) => Promise<string>;
+    input: Fn<string, string>;
   };
   fs: isNode extends true
     ? {
-        read_file: (path: string) => Promise<string>;
+        read_file: Fn<string, string>;
       }
     : undefined;
   sys: isNode extends true
     ? {
-        chdir: (path: string) => Promise<void>;
-        argc: () => Promise<number>;
-        argv_at: (i: number) => Promise<string>;
-        exec: (cmd: string) => Promise<number>;
-        get_env: (name: string) => Promise<Option<string>>;
-        exit: (code: number) => never;
+        chdir: Fn<string, void>;
+        argc: Fn<undefined, number>;
+        argv_at: Fn<number, string>;
+        exec: Fn<string, number>;
+        get_env: Fn<string, Option<string>>;
+        exit: Fn<number, never>;
       }
     : undefined;
   net: isNode extends true
     ? {
         tcp: {
-          connect: (addr: string) => Promise<Backend.TcpStream>;
+          connect: Fn<string, TcpStream>;
           stream: {
-            read_line: (stream: RefMut<Backend.TcpStream>) => Promise<string>;
-            write: (args: {
-              0: RefMut<Backend.TcpStream>;
-              1: Ref<string>;
-            }) => Promise<void>;
-            close: (stream: Backend.TcpStream) => Promise<void>;
+            read_line: Fn<RefMut<TcpStream>, string>;
+            write: Fn<
+              {
+                0: RefMut<TcpStream>;
+                1: Ref<string>;
+              },
+              void
+            >;
+            close: Fn<TcpStream, void>;
           };
-          bind: (addr: string) => Promise<Backend.TcpListener>;
+          bind: Fn<string, TcpListener>;
           listener: {
-            listen: (args: {
-              0: RefMut<Backend.TcpListener>;
-              1: number;
-            }) => Promise<void>;
-            accept: (args: {
-              0: RefMut<Backend.TcpListener>;
-              close_on_exec: boolean;
-            }) => Promise<{ stream: Backend.TcpStream; addr: string }>;
-            close: (listener: Backend.TcpListener) => Promise<void>;
+            listen: Fn<
+              {
+                0: RefMut<TcpListener>;
+                1: number;
+              },
+              void
+            >;
+            accept: Fn<
+              {
+                0: RefMut<TcpListener>;
+                close_on_exec: boolean;
+              },
+              { stream: TcpStream; addr: string }
+            >;
+            close: Fn<TcpListener, void>;
           };
         };
       }
@@ -119,9 +127,6 @@ const Kast = await (async () => {
           readline_interface.close();
         }
       }
-
-      type TcpStream = Backend.TcpStream;
-      type TcpListener = Backend.TcpListener;
 
       function setup_tcp_stream(socket: import("node:net").Socket): TcpStream {
         const stream: TcpStream = { socket, buffer: "" };
@@ -373,8 +378,8 @@ const Kast = await (async () => {
     }
   })();
 
-  async function call<A, R>(f: Fn<A, R>, arg: A): Promise<R> {
-    return await f(arg);
+  async function call<A, R>(f: Fn<A, R>, arg: A, ctx: Context): Promise<R> {
+    return await f(arg, ctx);
   }
 
   let next_id = 0;
@@ -446,6 +451,15 @@ const Kast = await (async () => {
     ...backend,
     Id,
     check_todo,
+    io: {
+      ...backend.io,
+      async print(s: string, ctx: Context) {
+        console.log(s);
+      },
+      async eprint(s: string, ctx: Context) {
+        console.error(s);
+      },
+    },
     cmp: {
       async less(args: { 0: Value; 1: Value }) {
         return args["0"] < args["1"];
@@ -513,9 +527,12 @@ const Kast = await (async () => {
       }) => {
         return s.substring(start, start + len);
       },
-      iter: async ({ 0: s, 1: f }: { 0: string; 1: Fn<string, void> }) => {
+      iter: async (
+        { 0: s, 1: f }: { 0: string; 1: Fn<string, void> },
+        ctx: Context
+      ) => {
         for (let c of s) {
-          await call(f, c);
+          await call(f, c, ctx);
         }
       },
       at: async ({ 0: s, 1: i }: { 0: string; 1: number }) => {

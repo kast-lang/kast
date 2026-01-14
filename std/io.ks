@@ -3,7 +3,7 @@ const print = (line :: String) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.print")(line)
         | target.name == "ocaml" => (@native "@natives.print")(line)
-        | target.name == "javascript" => (@native "console.log")(line)
+        | target.name == "javascript" => (@native "Kast.io.print")(line)
     )
 );
 # similar to print, but print to stderr
@@ -11,7 +11,7 @@ const eprint = (line :: String) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.eprint")(line)
         | target.name == "ocaml" => (@native "@natives.eprint")(line)
-        | target.name == "javascript" => (@native "console.error")(line)
+        | target.name == "javascript" => (@native "Kast.io.eprint")(line)
     )
 );
 const input = (prompt :: String) -> String => (

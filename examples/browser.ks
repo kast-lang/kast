@@ -9,39 +9,39 @@ impl CanvasRenderingContext as module = (
     module:
     
     const strokeRect = (x, y, width, height) => (
-        ctx => (
-            (@native "async ({ctx,x,y,width,height}) => {ctx.strokeRect(x,y,width,height)}")(.ctx = ctx.raw, .x, .y, .width, .height)
+        context => (
+            (@native "async ({context,x,y,width,height},ctx) => {context.strokeRect(x,y,width,height)}")(.context = context.raw, .x, .y, .width, .height)
         
         )
     );
     const fillRect = (x, y, width, height) => (
-        ctx => (
-            (@native "async ({ctx,x,y,width,height}) => {ctx.fillRect(x,y,width,height)}")(.ctx = ctx.raw, .x, .y, .width, .height)
+        context => (
+            (@native "async ({context,x,y,width,height},ctx) => {context.fillRect(x,y,width,height)}")(.context = context.raw, .x, .y, .width, .height)
         
         )
     );
-    const beginPath = (ctx) => (
-        (@native "async ({ctx}) => {ctx.beginPath()}")(.ctx = ctx.raw)
+    const beginPath = (context) => (
+        (@native "async ({context},ctx) => {context.beginPath()}")(.context = context.raw)
     
     );
-    const closePath = (ctx) => (
-        (@native "async ({ctx}) => {ctx.closePath()}")(.ctx = ctx.raw)
+    const closePath = (context) => (
+        (@native "async ({context},ctx) => {context.closePath()}")(.context = context.raw)
     
     );
     const moveTo = (x, y) => (
-        (ctx) => (
-            (@native "async ({ctx,x,y}) => {ctx.moveTo(x,y)}")(.ctx = ctx.raw, .x, .y)
+        (context) => (
+            (@native "async ({context,x,y},ctx) => {context.moveTo(x,y)}")(.context = context.raw, .x, .y)
         
         )
     );
     const lineTo = (x, y) => (
-        (ctx) => (
-            (@native "async ({ctx,x,y}) => {ctx.lineTo(x,y)}")(.ctx = ctx.raw, .x, .y)
+        (context) => (
+            (@native "async ({context,x,y},ctx) => {context.lineTo(x,y)}")(.context = context.raw, .x, .y)
         
         )
     );
-    const stroke = (ctx) => (
-        (@native "async ({ctx}) => {ctx.stroke()}")(.ctx = ctx.raw)
+    const stroke = (context) => (
+        (@native "async ({context},ctx) => {context.stroke()}")(.context = context.raw)
     
     );
 );
@@ -78,11 +78,11 @@ print_html("<p>Hello, <i>World</i></p>");
 dbg.print(@native "document.createElement('canvas')");
 
 const createElement = (document, t) => (
-    (@native "async ({document, t}) => document.createElement(t)")(.document, .t)
+    (@native "async ({document, t},ctx) => document.createElement(t)")(.document, .t)
 
 );
 const appendChild = (element, child) => (
-    (@native "async ({element, child}) => element.appendChild(child)")(.element, .child)
+    (@native "async ({element, child},ctx) => element.appendChild(child)")(.element, .child)
 
 );
 
@@ -91,18 +91,18 @@ canvas.width = 400;
 canvas.height = 300;
 appendChild(document.body, canvas);
 
-const Ctx = CanvasRenderingContext;
+const Context = CanvasRenderingContext;
 const getContext = (canvas, t) -> CanvasRenderingContext => (
-    .raw = (@native "async ({canvas, t}) => canvas.getContext(t)")(.canvas, .t),
+    .raw = (@native "async ({canvas, t},ctx) => canvas.getContext(t)")(.canvas, .t),
 );
 
-let mut ctx = getContext(canvas, "2d");
+let mut context = getContext(canvas, "2d");
 
-ctx |> Ctx.strokeRect(75, 140, 150, 110);
-ctx |> Ctx.fillRect(130, 190, 40, 60);
-ctx |> Ctx.beginPath;
-ctx |> Ctx.moveTo(50, 140);
-ctx |> Ctx.lineTo(150, 60);
-ctx |> Ctx.lineTo(250, 140);
-ctx |> Ctx.closePath;
-ctx |> Ctx.stroke;
+context |> Context.strokeRect(75, 140, 150, 110);
+context |> Context.fillRect(130, 190, 40, 60);
+context |> Context.beginPath;
+context |> Context.moveTo(50, 140);
+context |> Context.lineTo(150, 60);
+context |> Context.lineTo(250, 140);
+context |> Context.closePath;
+context |> Context.stroke;

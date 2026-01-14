@@ -35,6 +35,8 @@ type ctx =
   ; target : value_target
   }
 
+let ctx_var : JsAst.name = { raw = "ctx"; original = None }
+
 type scope = { mutable stmts : JsAst.stmt list }
 type _ Effect.t += GetScope : scope Effect.t
 
@@ -166,7 +168,7 @@ module Impl = struct
         { shape =
             JsAst.Fn
               { async = async_fns
-              ; args = [ arg_name ]
+              ; args = [ arg_name; ctx_var ]
               ; body =
                   scope (fun () ->
                     pattern_match arg (place_of_var arg_name);
@@ -310,7 +312,10 @@ module Impl = struct
                  |> List.of_seq)
           ; span = None
           }
-      | V_Variant _ -> failwith __LOC__
+      | V_Variant { label; data; ty = _ } ->
+        create_variant
+          label
+          (data |> Option.map (fun place -> place |> transpile_place |> read_place))
       | V_Ty ty -> transpile_ty ty
       | V_Fn { ty = _; fn = { def; captured; _ } } -> fn ~captured:(Some captured) def
       | V_Generic { name = _; fn = { def; captured; _ }; ty = _ } ->
@@ -776,6 +781,28 @@ module Impl = struct
       ; span = None
       }
 
+  and context_ty_field : value_context_ty -> string =
+    fun { id; ty = _ } -> id.value |> Int.to_string
+
+  and create_variant (label : Label.t) (value : no_effect_expr option) : no_effect_expr =
+    calculate
+      { shape =
+          JsAst.Obj
+            [ Field
+                { name = "tag"
+                ; value = { shape = JsAst.Var (symbol_for label); span = None }
+                }
+            ; Field
+                { name = "data"
+                ; value =
+                    (match value with
+                     | Some value -> pure value
+                     | None -> { shape = JsAst.Undefined; span = None })
+                }
+            ]
+      ; span = None
+      }
+
   and transpile_expr : expr -> no_effect_expr =
     fun expr ->
     try
@@ -835,32 +862,31 @@ module Impl = struct
           ; span
           }
       | E_Variant { label; label_span = _; value } ->
-        calculate
-          { shape =
-              JsAst.Obj
-                [ Field
-                    { name = "tag"
-                    ; value = { shape = JsAst.Var (symbol_for label); span }
-                    }
-                ; Field
-                    { name = "data"
-                    ; value =
-                        (match value with
-                         | Some value -> pure <| transpile_expr value
-                         | None -> { shape = JsAst.Undefined; span })
-                    }
-                ]
-          ; span
-          }
+        create_variant label (value |> Option.map transpile_expr)
       | E_Apply { f; arg } ->
         let f = pure <| transpile_expr f in
         let arg = pure <| transpile_expr arg in
-        calculate { shape = JsAst.Call { async = async_fns; f; args = [ arg ] }; span }
+        calculate
+          { shape =
+              JsAst.Call
+                { async = async_fns
+                ; f
+                ; args = [ arg; { shape = Var ctx_var; span = None } ]
+                }
+          ; span
+          }
       | E_InstantiateGeneric { generic; arg } ->
         let generic = pure <| transpile_expr generic in
         let arg = pure <| transpile_expr arg in
         calculate
-          { shape = JsAst.Call { async = async_fns; f = generic; args = [ arg ] }; span }
+          { shape =
+              JsAst.Call
+                { async = async_fns
+                ; f = generic
+                ; args = [ arg; { shape = Var ctx_var; span = None } ]
+                }
+          ; span
+          }
       | E_Assign { assignee; value } ->
         let place = transpile_place_expr value in
         assign assignee place;
@@ -1050,8 +1076,33 @@ module Impl = struct
           ; span
           };
         undefined ()
-      | E_InjectContext _ -> failwith __LOC__
-      | E_CurrentContext _ -> failwith __LOC__
+      | E_InjectContext { context_ty; value } ->
+        let value = transpile_expr value in
+        execute
+          { shape =
+              Assign
+                { assignee =
+                    { shape =
+                        Field
+                          { obj = { shape = Var ctx_var; span = None }
+                          ; field = context_ty_field context_ty
+                          }
+                    ; span = None
+                    }
+                ; value = pure value
+                }
+          ; span
+          };
+        undefined ()
+      | E_CurrentContext { context_ty } ->
+        calculate
+          { shape =
+              Field
+                { obj = { shape = Var ctx_var; span = None }
+                ; field = context_ty_field context_ty
+                }
+          ; span
+          }
       | E_ImplCast { value; target; impl } ->
         let value = transpile_expr value in
         let target = transpile_value target in
@@ -1138,7 +1189,12 @@ let with_ctx ~state ~span f =
     | effect GetCtx, k -> Effect.continue k ctx
   in
   let ast : JsAst.stmt list =
-    ctx.mut.prepend
+    [ ({ shape = Let { var = ctx_var; value = { shape = Obj []; span = None } }
+       ; span = None
+       }
+       : JsAst.stmt)
+    ]
+    @ ctx.mut.prepend
     @ ctx.mut.prepend_late
     @ user_code
     @ [ { shape = Raw "await Kast.cleanup()"; span = None } ]

@@ -191,6 +191,12 @@ impl String as module = (
         .to_string :: Self -> String
     );
     
+    impl Char as ToString = (
+        .to_string = c => @cfg (
+            | target.name == "interpreter" => (@native "to_string")(c)
+            | target.name == "javascript" => (@native "Kast.String.to_string")(c)
+        )
+    );
     impl Int32 as ToString = (
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string")(num)
