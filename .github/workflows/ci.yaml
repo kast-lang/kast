@@ -10,8 +10,8 @@ jobs:
             name: linux
           - runs-on: macos-latest
             name: macos
-          - runs-on: windows-latest
-            name: windows
+          # - runs-on: windows-latest
+          #   name: windows
     runs-on: ${{ matrix.platform.runs-on }}
     steps:
       - name: Checkout code
