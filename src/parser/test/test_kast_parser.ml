@@ -14,8 +14,7 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
   | Simple _, _ -> false
   | Complex { rule; root }, Complex { name = expected_name; children = expected_children }
     ->
-    (* TODO make tests work with groups *)
-    let children = root.children |> Tuple.map Ast.Child.expect_ast in
+    let children = root.children |> Ast.flatten_children in
     let rule_name =
       rule.name |> String.strip_prefix ~prefix:"core:" |> Option.value ~default:rule.name
     in
@@ -69,8 +68,8 @@ let test ~(source : string) ~(expected : string) ?(ruleset : Parser.ruleset opti
 Printexc.record_backtrace true;
 Log.set_max_level Debug;
 try
-  (let then_rule p = make_string "then %d wrap never = _ \";\" _" p in
-   let eq_rule p = make_string "eq %d wrap never = _ \"=\" _ " p in
+  (let then_rule p = make_string "then %d @wrap never = _ \";\" _" p in
+   let eq_rule p = make_string "eq %d @wrap never = _ \"=\" _ " p in
    test
      ~ruleset:(Parser.Ruleset.parse_list [ then_rule 0; eq_rule 1 ])
      ~source:"a=1;b=2"
@@ -81,10 +80,10 @@ try
      "a=1;b=2");
   test
     ~source:"Some(Some(String))"
-    ~expected:"apply(f = Some, arg = scope( apply( f = Some, arg = scope( String ) ) ) )"
+    ~expected:"apply(f = Some, arg = apply( f = Some, arg = String ) )"
     ();
   test
-    ~source:"if f x then a else b"
+    ~source:"if f(x) then a else b"
     ~expected:"if( cond = apply( f = f, arg = x ), then_case = a, else_case = b )"
     ();
   test_should_fail "f if cond then a else b"

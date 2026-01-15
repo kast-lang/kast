@@ -14,21 +14,6 @@ type core_syntax =
   ; handle : 'a. 'a handle
   }
 
-let rec flatten_children (children : Ast.child tuple) : Ast.t tuple =
-  let result = ref Tuple.empty in
-  children
-  |> Tuple.iter (fun member child ->
-    let member =
-      match member with
-      | Index _ -> None
-      | Name name -> Some name
-    in
-    match (child : Ast.child) with
-    | Ast ast -> result := !result |> Tuple.add member ast
-    | Group group -> result := Tuple.merge !result (group.children |> flatten_children));
-  !result
-;;
-
 let apply : core_syntax =
   { name = "apply"
   ; handle =
@@ -40,7 +25,9 @@ let apply : core_syntax =
         : a ->
         let span = ast.span in
         let f, arg =
-          children |> flatten_children |> Tuple.unwrap2 ~unnamed:0 ~named:[ "f"; "arg" ]
+          children
+          |> Ast.flatten_children
+          |> Tuple.unwrap2 ~unnamed:0 ~named:[ "f"; "arg" ]
         in
         match kind with
         | Expr ->
@@ -67,7 +54,7 @@ let instantiate_generic : core_syntax =
         let span = ast.span in
         let generic, arg =
           children
-          |> flatten_children
+          |> Ast.flatten_children
           |> Tuple.unwrap2 ~unnamed:0 ~named:[ "generic"; "arg" ]
         in
         match kind with
@@ -119,7 +106,7 @@ let stmt : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.span in
-        let expr = children |> flatten_children |> Tuple.unwrap_single_unnamed in
+        let expr = children |> Ast.flatten_children |> Tuple.unwrap_single_unnamed in
         match kind with
         | Expr ->
           let expr = Compiler.compile Expr expr in
@@ -140,7 +127,7 @@ let scope : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.span in
-        let expr = children |> flatten_children |> Tuple.unwrap_single_unnamed in
+        let expr = children |> Ast.flatten_children |> Tuple.unwrap_single_unnamed in
         let state = C.state |> State.enter_scope ~span:expr.span ~recursive:false in
         match kind with
         | Expr ->
@@ -164,7 +151,7 @@ let assign : core_syntax =
         : a ->
         let span = ast.span in
         let assignee, value =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "assignee"; "value" ]
+          children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "assignee"; "value" ]
         in
         match kind with
         | Expr ->
@@ -189,7 +176,7 @@ let let' : core_syntax =
         : a ->
         let span = ast.span in
         let pattern =
-          children |> flatten_children |> Tuple.unwrap_single_named "pattern"
+          children |> Ast.flatten_children |> Tuple.unwrap_single_named "pattern"
         in
         match kind with
         | Assignee ->
@@ -574,7 +561,7 @@ let type_ascribe : core_syntax =
         : a ->
         let span = ast.span in
         let expr, expected_ty =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "expr"; "type" ]
+          children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "expr"; "type" ]
         in
         let expr = C.compile kind expr in
         let expr_data = Compiler.get_data kind expr in
@@ -734,7 +721,7 @@ let const : core_syntax =
         : a ->
         let span = ast.span in
         let pattern, value =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "pattern"; "value" ]
+          children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "pattern"; "value" ]
         in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -866,7 +853,7 @@ let dot : core_syntax =
             E_Claim place |> init_expr span C.state
           | PlaceExpr ->
             let obj, field_ast =
-              children |> flatten_children |> Tuple.unwrap_named2 [ "obj"; "field" ]
+              children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "obj"; "field" ]
             in
             let obj = C.compile PlaceExpr obj in
             let field : Types.field_expr =
@@ -1271,7 +1258,7 @@ let if' : core_syntax =
         let span = ast.span in
         let cond, then_case, else_case =
           children
-          |> flatten_children
+          |> Ast.flatten_children
           |> Tuple.unwrap_named3 [ "cond"; "then_case"; "else_case" ]
         in
         match kind with
@@ -1307,7 +1294,7 @@ let impl_syntax : core_syntax =
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
           let name, impl =
-            children |> flatten_children |> Tuple.unwrap_named2 [ "name"; "impl" ]
+            children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "name"; "impl" ]
           in
           (match name.shape with
            | Complex { rule = { name = "core:scope"; _ }; root = { children; _ } } ->
@@ -1320,7 +1307,7 @@ let impl_syntax : core_syntax =
                | _ -> failwith __LOC__
              in
              let rule = inner.rule in
-             let fields = inner.root.children |> flatten_children in
+             let fields = inner.root.children |> Ast.flatten_children in
              let impl_expr =
                (* TODO maybe reduce copypasta here and compiling fn *)
                let ty : Types.ty_fn =
@@ -1507,7 +1494,7 @@ let unwindable : core_syntax =
         : a ->
         let span = ast.span in
         let token, body =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "token"; "body" ]
+          children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "token"; "body" ]
         in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -1534,7 +1521,7 @@ let unwind : core_syntax =
         : a ->
         let span = ast.span in
         let token, value =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "token"; "value" ]
+          children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "token"; "value" ]
         in
         match kind with
         | Expr ->
@@ -1557,7 +1544,7 @@ let target_dependent : core_syntax =
         : a ->
         let span = ast.span in
         let branches =
-          children |> flatten_children |> Tuple.unwrap_single_named "branches"
+          children |> Ast.flatten_children |> Tuple.unwrap_single_named "branches"
         in
         let branches =
           Ast.collect_list
@@ -1626,7 +1613,9 @@ let match_ : core_syntax =
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
           let value, branches =
-            children |> flatten_children |> Tuple.unwrap_named2 [ "value"; "branches" ]
+            children
+            |> Ast.flatten_children
+            |> Tuple.unwrap_named2 [ "value"; "branches" ]
           in
           let value = C.compile PlaceExpr value in
           (* TODO reduce copypasta of this & target dependent *)
@@ -1676,7 +1665,9 @@ let inject_context : core_syntax =
         : a ->
         let span = ast.span in
         let context_type, value =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "context_type"; "value" ]
+          children
+          |> Ast.flatten_children
+          |> Tuple.unwrap_named2 [ "context_type"; "value" ]
         in
         match kind with
         | Expr ->
@@ -1710,7 +1701,7 @@ let current_context : core_syntax =
         : a ->
         let span = ast.span in
         let context_type =
-          children |> flatten_children |> Tuple.unwrap_single_named "context_type"
+          children |> Ast.flatten_children |> Tuple.unwrap_single_named "context_type"
         in
         match kind with
         | Expr ->
@@ -1742,7 +1733,7 @@ let binding : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.span in
-        let binding = children |> flatten_children |> Tuple.unwrap_single_unnamed in
+        let binding = children |> Ast.flatten_children |> Tuple.unwrap_single_unnamed in
         let binding, binding_expr =
           binding
           |> Compiler.eval
@@ -1935,7 +1926,7 @@ let and_ : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.span in
-        let lhs, rhs = children |> flatten_children |> Tuple.unwrap_unnamed2 in
+        let lhs, rhs = children |> Ast.flatten_children |> Tuple.unwrap_unnamed2 in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
@@ -1957,7 +1948,7 @@ let or_ : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.span in
-        let lhs, rhs = children |> flatten_children |> Tuple.unwrap_unnamed2 in
+        let lhs, rhs = children |> Ast.flatten_children |> Tuple.unwrap_unnamed2 in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
@@ -2053,7 +2044,7 @@ let impl_cast : core_syntax =
         let span = ast.span in
         let value, target, impl =
           children
-          |> flatten_children
+          |> Ast.flatten_children
           |> Tuple.unwrap_named3 [ "value"; "target"; "impl" ]
         in
         match kind with
@@ -2084,7 +2075,7 @@ let impl_as_module : core_syntax =
         : a ->
         let span = ast.span in
         let value, impl =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "value"; "impl" ]
+          children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "value"; "impl" ]
         in
         match kind with
         | Expr ->
@@ -2123,7 +2114,7 @@ let cast : core_syntax =
         : a ->
         let span = ast.span in
         let value, target =
-          children |> flatten_children |> Tuple.unwrap_named2 [ "value"; "target" ]
+          children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "value"; "target" ]
         in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast

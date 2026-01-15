@@ -161,3 +161,18 @@ let rec collect_list
     a @ b
   | _ -> [ ast ]
 ;;
+
+let rec flatten_children (children : child tuple) : ast tuple =
+  let result = ref Tuple.empty in
+  children
+  |> Tuple.iter (fun member child ->
+    let member =
+      match member with
+      | Index _ -> None
+      | Name name -> Some name
+    in
+    match (child : child) with
+    | Ast ast -> result := !result |> Tuple.add member ast
+    | Group group -> result := Tuple.merge !result (group.children |> flatten_children));
+  !result
+;;
