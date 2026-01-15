@@ -40,9 +40,24 @@ module Uri = struct
   let stdin = of_string "stdin:"
 
   let file path =
-    let cwd = make ~scheme:"file" ~host:"" ~path:(Sys.getcwd () ^ "/") () in
+    let no_backslashes = String.map (fun c -> if c = '\\' then '/' else c) in
+    let path = path |> no_backslashes in
+    let cwd = Sys.getcwd () ^ "/" |> no_backslashes in
+    let cwd = make ~scheme:"file" ~host:"" ~path:cwd () in
     let path = Uri.of_string path in
     Uri.resolve "" cwd path
+  ;;
+
+  let file_path (uri : Uri.t) : string =
+    let path = Uri.path uri in
+    (* On Windows, remove leading slash if it's a drive letter *)
+    if Sys.win32
+    then
+      (* "/C:/..." -> "C:/..." *)
+      if String.length path >= 3 && path.[0] = Some '/' && path.[2] = Some ':'
+      then String.sub path 1 (String.length path - 1)
+      else path
+    else path
   ;;
 
   let print_full : formatter -> Uri.t -> unit =

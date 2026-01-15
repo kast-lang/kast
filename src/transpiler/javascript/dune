@@ -10,4 +10,4 @@
  (targets runtime.js)
  (deps tsconfig.json runtime.ts)
  (action
-  (run tsc)))
+  (system "npm exec tsc")))

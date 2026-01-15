@@ -64,7 +64,7 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
     Effect.continue_with k (fun () ->
       match Uri.scheme uri with
       | Some "file" ->
-        let path = Uri.path uri in
+        let path = Uri.file_path uri in
         read_from_filesystem path
       | Some "stdin" -> In_channel.input_all stdin
       | scheme -> fail "unsupported uri scheme %a" (Option.print String.print_dbg) scheme)
