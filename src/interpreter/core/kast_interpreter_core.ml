@@ -246,19 +246,6 @@ and call_untyped_fn
       match sub_mode with
       | None -> result
       | Full -> Substitute_bindings.sub_value ~span ~state:sub_state result
-      | FnOnly ->
-        (match result |> Value.expect_fn with
-         | Some f -> Substitute_bindings.sub_value ~span ~state:sub_state result
-         | None -> result)
-      | TyOnly ->
-        Value.inferred
-          ~span
-          (V_Ty
-             (match result |> Value.expect_ty with
-              | Some ty -> Substitute_bindings.sub_ty ~span ~state:sub_state ty
-              | None ->
-                Error.error span "Expected ty, got smth else";
-                Ty.inferred ~span T_Error))
     in
     Log.trace (fun log ->
       log

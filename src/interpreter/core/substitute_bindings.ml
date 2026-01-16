@@ -630,6 +630,4 @@ let () = Kast_types.Inference_impl.sub_ty := Some sub_ty
 
 type mode =
   | None
-  | TyOnly
-  | FnOnly
   | Full
