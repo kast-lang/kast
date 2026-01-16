@@ -159,6 +159,30 @@ impl String as module = (
         :None
     );
     
+    const to_lowercase = (s :: String) -> String => (
+        let next_alphabet = find_match(s, Char.is_uppercase);
+        match next_alphabet with (
+            | :Some(i, c) => (
+                substring(s, 0, i)
+                + to_string(Char.to_lowercase(c))
+                + to_lowercase(substring(s, i + 1, length(s) - i - 1))
+            )
+            | :None => s
+        )
+    );
+    
+    const to_uppercase = (s :: String) -> String => (
+        let next_alphabet = find_match(s, Char.is_lowercase);
+        match next_alphabet with (
+            | :Some(i, c) => (
+                substring(s, 0, i)
+                + to_string(Char.to_uppercase(c))
+                + to_uppercase(substring(s, i + 1, length(s) - i - 1))
+            )
+            | :None => s
+        )
+    );
+    
     const FromString = [Self] newtype (
         .from_string :: String -> Self
     );
