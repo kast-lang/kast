@@ -98,7 +98,7 @@
               nodejs = pkgs.nodejs;
             };
           in main.overrideAttrs (oa: {
-            nativeBuildInputs = [ pkgs.typescript ];
+            nativeBuildInputs = [ pkgs.nodejs ];
             buildPhase = ''
               ln -s ${npmDeps}/node_modules ./node_modules
               ls -la ./node_modules
@@ -142,8 +142,6 @@
             memtrace_viewer
             valgrind
             prettier
-            typescript
-            esbuild
           ]);
           shellHook = ''
             echo 'Hello from Kast devshell'
