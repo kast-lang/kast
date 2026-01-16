@@ -3,6 +3,28 @@ impl Char as module = (
     let is_whitespace = (c :: Char) -> Bool => (
         c == ' ' or c == '\n' or c == '\t'
     );
+    let is_uppercase = (c :: Char) -> Bool => (
+        code(c) >= 65 and code(c) <= 90
+    );
+    let is_lowercase = (c :: Char) -> Bool => (
+        code(c) >= 97 and code(c) <= 122
+    );
+    let to_uppercase = (c :: Char) -> Char => (
+        let code = code(c);
+        if code >= 97 and code <= 122 then (
+            from_code(code - 32)
+        ) else (
+            c
+        )
+    );
+    let to_lowercase = (c :: Char) -> Char => (
+        let code = code(c);
+        if code >= 65 and code <= 90 then (
+            from_code(code + 32)
+        ) else (
+            c
+        )
+    );
     let code = (c :: Char) -> UInt32 => @cfg (
         | target.name == "interpreter" => (@native "char.code")(c)
         | target.name == "javascript" => (@native "Kast.Char.code")(c)
