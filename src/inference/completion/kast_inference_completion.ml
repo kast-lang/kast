@@ -120,7 +120,7 @@ module Impl = struct
     complete_ty ty
 
   and complete_untyped_fn
-        ({ id : id = _; def; calculated_natives = _; captured = _ } : value_untyped_fn)
+        ({ id : id = _; def; state = _; captured = _ } : value_untyped_fn)
     =
     complete_maybe_compiled_fn def
 
@@ -255,7 +255,7 @@ module Impl = struct
 
   and complete_expr_shape (shape : expr_shape) =
     match shape with
-    | E_Constant value -> complete_value value
+    | E_Constant { id = _; value } -> complete_value value
     | E_Ref { mut : bool = _; place } -> complete_place_expr place
     | E_Claim place -> complete_place_expr place
     | E_Then { list } -> list |> List.iter complete_expr
@@ -408,7 +408,8 @@ module Impl = struct
     | TE_Error -> ()
 
   and complete_ir_data
-        ({ span = _; ty; compiler_scope = _; evaled = _; included_file = _ } : ir_data)
+        ({ span = _; ty; compiler_scope = _; evaled = _; included_file = _; id = _ } :
+          ir_data)
     =
     complete_ty ty
 

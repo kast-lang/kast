@@ -490,6 +490,7 @@ module Impl = struct
     ; span = data.span
     ; included_file = None
     ; ty = sub_ty ~state data.ty
+    ; id = data.id
     }
 
   and sub_row

@@ -415,7 +415,7 @@ module Impl = struct
           ; result_scope = target_scope
           ; (* TODO only scope is needed, change Substitute_bindings *)
             natives = { by_name = StringMap.empty }
-          ; current_fn_natives = Hashtbl.create 0
+          ; current_fn_state = init_fn_state ()
           ; contexts = Id.Map.empty
           ; instantiated_generics = { map = Id.Map.empty }
           ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }

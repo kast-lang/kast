@@ -12,6 +12,7 @@ module Scope = State.Scope
 type state = State.t
 type import_cache = State.import_cache
 
+let const_shape = Types.const_shape
 let init_import_cache = State.init_import_cache
 
 (* TODO compile_for - figure out *)
@@ -56,7 +57,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
          match ast.shape with
          | Ast.Empty ->
            let expr () =
-             E_Constant (V_Unit |> Value.inferred ~span) |> init_expr span state
+             const_shape (V_Unit |> Value.inferred ~span) |> init_expr span state
            in
            let result : a =
              match kind with
@@ -101,7 +102,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      Error.error ast.span "Unexpected delimeter %S" s.delimeter;
                      V_Error
                  in
-                 E_Constant (value |> Value.inferred ~span) |> init_expr span state
+                 const_shape (value |> Value.inferred ~span) |> init_expr span state
                | Token.Shape.Number { raw; _ } ->
                  let default : Ty.Shape.t =
                    if String.contains raw '.' then T_Float64 else T_Int32
@@ -139,7 +140,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    |> Inference.Value.expect_inferred_as
                         ~span
                         (actual_const |> Value.inferred ~span));
-                 E_Constant const |> init_expr span state
+                 const_shape const |> init_expr span state
                | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
                  unreachable "!")
             | TyExpr ->
@@ -226,8 +227,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                  in
                  let expr =
                    E_Apply
-                     { f = E_Constant impl |> init_expr span state
-                     ; arg = E_Constant arg |> init_expr span state
+                     { f = const_shape impl |> init_expr span state
+                     ; arg = const_shape arg |> init_expr span state
                      }
                    |> init_expr span state
                  in
@@ -246,7 +247,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | None ->
               (match kind with
                | Expr ->
-                 E_Constant (V_Unit |> Value.inferred ~span) |> init_expr span state
+                 const_shape (V_Unit |> Value.inferred ~span) |> init_expr span state
                | _ ->
                  Error.error span "expected a value after syntax";
                  init_error span state kind))

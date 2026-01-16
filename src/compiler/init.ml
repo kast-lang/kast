@@ -123,7 +123,10 @@ let rec _unused () = ()
 and expr_placeholder : span -> State.t -> expr =
   fun span state ->
   (* TODO maybe have E_Placeholder *)
-  E_Constant (Value.new_not_inferred ~scope:(State.var_scope state) ~span)
+  E_Constant
+    { id = Id.gen ()
+    ; value = Value.new_not_inferred ~scope:(State.var_scope state) ~span
+    }
   |> init_expr span state
 
 and auto_instantiate_generics : span -> State.t -> expr -> expr =
@@ -211,6 +214,7 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
         ; evaled = init_evaled ()
         ; compiler_scope = state.scope
         ; included_file = None
+        ; id = Id.gen ()
         }
     }
   with
@@ -260,7 +264,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
     let overwrite_shape : Expr.Shape.t option ref = ref None in
     let ty =
       match shape with
-      | E_Constant value -> Value.ty_of value
+      | E_Constant { id = _; value } -> Value.ty_of value
       | E_Ref { mut; place } ->
         if mut
         then
@@ -457,6 +461,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         ; evaled = init_evaled ()
         ; compiler_scope = state.scope
         ; included_file = None
+        ; id = Id.gen ()
         }
     }
   with
@@ -490,6 +495,7 @@ let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
         ; evaled = init_evaled ()
         ; compiler_scope = state.scope
         ; included_file = None
+        ; id = Id.gen ()
         }
     }
   with
@@ -547,6 +553,7 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
         ; evaled = init_evaled ()
         ; compiler_scope = state.scope
         ; included_file = None
+        ; id = Id.gen ()
         }
     }
   with
@@ -568,6 +575,7 @@ let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
           ; evaled = init_evaled ()
           ; compiler_scope = state.scope
           ; included_file = None
+          ; id = Id.gen ()
           }
       }
     in

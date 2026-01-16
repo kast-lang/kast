@@ -228,7 +228,7 @@ and call_untyped_fn
             ~recursive:false
             ~parent:(Some fn.captured)
             arg_bindings
-      ; current_fn_natives = fn.calculated_natives
+      ; current_fn_state = fn.state
       }
     in
     let result = eval new_state def.body in
@@ -245,7 +245,15 @@ and call_untyped_fn
     let result =
       match sub_mode with
       | None -> result
-      | Full -> Substitute_bindings.sub_value ~span ~state:sub_state result
+      | Full ->
+        Log.trace (fun log ->
+          log
+            "sub %a: %a"
+            Print.print_var_scope
+            (VarScope.of_value result)
+            Value.print
+            result);
+        Substitute_bindings.sub_value ~span ~state:sub_state result
     in
     Log.trace (fun log ->
       log
@@ -571,9 +579,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                    |> Ty.inferred ~span
                }
            | Place (~mut:obj_mut, obj) ->
-             let result_ty =
-               Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty
-             in
+             let result_ty = monomorphized_ir_data_ty ~state expr.data in
              get_field ~state ~result_ty ~span ~obj_mut (obj |> read_place ~span) member))
     in
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
@@ -584,6 +590,23 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
     Log.error (fun log ->
       log "While evaluating place expr at %a" Span.print expr.data.span);
     raise exc
+
+and monomorphized_value ~span ~(state : state) id value : value =
+  match Hashtbl.find_opt state.current_fn_state.monomorphized_value id with
+  | Some ty -> ty
+  | None ->
+    let result = Substitute_bindings.sub_value ~span ~state:(sub_here state) value in
+    Hashtbl.add state.current_fn_state.monomorphized_value id result;
+    result
+
+and monomorphized_ir_data_ty ~state (data : ir_data) : ty =
+  match Hashtbl.find_opt state.current_fn_state.monomorphized_ty data.id with
+  | Some ty -> ty
+  | None ->
+    let span = data.span in
+    let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) data.ty in
+    Hashtbl.add state.current_fn_state.monomorphized_ty data.id ty;
+    ty
 
 and eval_expr_ref : state -> expr -> Types.expr_ref -> value =
   fun state expr { mut; place } ->
@@ -602,7 +625,7 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
   let span = expr.data.span in
   match eval_place state place with
   | RefBlocked blocked ->
-    let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty in
+    let ty = monomorphized_ir_data_ty ~state expr.data in
     V_Blocked { shape = BV_ClaimRef blocked; ty } |> Value.inferred ~span
   | Place (~mut:_, place) -> place |> claim ~span
 
@@ -611,12 +634,7 @@ and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
   let span = expr.data.span in
   V_Fn
     { ty
-    ; fn =
-        { id = Id.gen ()
-        ; def
-        ; captured = state.scope
-        ; calculated_natives = Hashtbl.create 0
-        }
+    ; fn = { id = Id.gen (); def; captured = state.scope; state = Types.init_fn_state () }
     }
   |> Value.inferred ~span
 
@@ -646,12 +664,7 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   let span = expr.data.span in
   V_Generic
     { name = current_name state
-    ; fn =
-        { id = Id.gen ()
-        ; def
-        ; captured = state.scope
-        ; calculated_natives = Hashtbl.create 0
-        }
+    ; fn = { id = Id.gen (); def; captured = state.scope; state = Types.init_fn_state () }
     ; ty
     }
   |> Value.inferred ~span
@@ -769,25 +782,25 @@ and eval_expr_instantiategeneric
   let span = expr.data.span in
   let generic = eval state generic in
   let arg = eval state arg in
-  let result_ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty in
+  let result_ty = monomorphized_ir_data_ty ~state expr.data in
   instantiate ~result_ty expr.data.span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
   fun state expr { id; expr = native_expr } ->
-  match Hashtbl.find_opt state.current_fn_natives id with
+  match Hashtbl.find_opt state.current_fn_state.natives id with
   | Some value -> value
   | None ->
     let value =
       let span = expr.data.span in
       match StringMap.find_opt native_expr state.natives.by_name with
       | Some f ->
-        let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) expr.data.ty in
+        let ty = monomorphized_ir_data_ty ~state expr.data in
         f ty
       | None ->
         Error.error expr.data.span "no native %S" native_expr;
         V_Error |> Value.inferred ~span
     in
-    Hashtbl.add state.current_fn_natives id value;
+    Hashtbl.add state.current_fn_state.natives id value;
     value
 
 and eval_expr_module : state -> expr -> Types.expr_module -> value =
@@ -924,9 +937,7 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
   let span = expr.data.span in
   let id = Id.gen () in
   let token : Types.value_unwind_token =
-    { id
-    ; result_ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) body.data.ty
-    }
+    { id; result_ty = monomorphized_ir_data_ty ~state body.data }
   in
   let token : value =
     V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
@@ -1097,11 +1108,9 @@ and eval : state -> expr -> value =
            match expr.shape with
            | E_Ref place -> eval_expr_ref state expr place
            | E_Claim place -> eval_expr_claim state expr place
-           | E_Constant value ->
+           | E_Constant { id; value } ->
              Log.trace (fun log -> log "const: before sub = %a" Value.print value);
-             let result =
-               Substitute_bindings.sub_value ~span ~state:(sub_here state) value
-             in
+             let result = monomorphized_value ~span ~state id value in
              Log.trace (fun log -> log "const: after sub = %a" Value.print result);
              result
            | E_Fn f -> eval_expr_fn state expr f

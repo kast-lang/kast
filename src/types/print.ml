@@ -270,7 +270,8 @@ module Impl = struct
         "@{<magenta>read_place@} (@;<0 2>@[<v>place = %a,@]@ )"
         (print_place_expr ~options)
         place
-    | E_Constant value -> fprintf fmt "@{<magenta>const@} %a" print_value value
+    | E_Constant { id = _; value } ->
+      fprintf fmt "@{<magenta>const@} %a" print_value value
     | E_Then { list } ->
       fprintf
         fmt

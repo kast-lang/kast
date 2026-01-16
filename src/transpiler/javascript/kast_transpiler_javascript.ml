@@ -809,7 +809,7 @@ module Impl = struct
       let span = Some expr.data.span in
       let ctx = Effect.perform GetCtx in
       match expr.shape with
-      | E_Constant value -> transpile_value value
+      | E_Constant { id = _; value } -> transpile_value value
       | E_Ref { mut; place } ->
         let place = transpile_place_expr place in
         place_to_js place
@@ -897,7 +897,7 @@ module Impl = struct
       | E_Module { def; bindings } ->
         let module_var = JsAst.gen_name ~original:None "module" in
         bindings
-        |> List.iter (fun binding ->
+        |> List.iter (fun (binding : binding) ->
           ctx.mut.module_of_binding
           <- ctx.mut.module_of_binding |> Id.Map.add binding.id module_var);
         execute

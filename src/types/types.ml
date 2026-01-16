@@ -110,9 +110,16 @@ module rec TypesImpl : sig
   and value_untyped_fn =
     { id : Id.t
     ; def : maybe_compiled_fn
-    ; calculated_natives : (id, value) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; state : fn_state
     ; captured : interpreter_scope
+    }
+
+  and fn_state =
+    { natives : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; monomorphized_ty : (id, ty) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; monomorphized_value : (id, value) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_generic =
@@ -375,8 +382,13 @@ module rec TypesImpl : sig
     ; place : place_expr
     }
 
+  and expr_constant =
+    { id : Id.t
+    ; value : value
+    }
+
   and expr_shape =
-    | E_Constant of value
+    | E_Constant of expr_constant
     | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_Then of expr_then
@@ -573,8 +585,7 @@ module rec TypesImpl : sig
     { natives : natives
     ; scope : interpreter_scope
     ; result_scope : var_scope
-    ; current_fn_natives : (id, value) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; current_fn_state : fn_state
     ; mutable contexts : value Id.Map.t
     ; instantiated_generics : instantiated_generics
     ; cast_impls : cast_impls
@@ -598,6 +609,7 @@ module rec TypesImpl : sig
     ; compiler_scope : compiler_scope
     ; evaled : ir_evaled
     ; included_file : Uri.t option
+    ; id : Id.t
     }
 
   and ir_evaled =
@@ -739,9 +751,16 @@ end = struct
   and value_untyped_fn =
     { id : Id.t
     ; def : maybe_compiled_fn
-    ; calculated_natives : (id, value) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; state : fn_state
     ; captured : interpreter_scope
+    }
+
+  and fn_state =
+    { natives : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; monomorphized_ty : (id, ty) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; monomorphized_value : (id, value) Hashtbl.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_generic =
@@ -1004,8 +1023,13 @@ end = struct
     ; place : place_expr
     }
 
+  and expr_constant =
+    { id : Id.t
+    ; value : value
+    }
+
   and expr_shape =
-    | E_Constant of value
+    | E_Constant of expr_constant
     | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_Then of expr_then
@@ -1207,8 +1231,7 @@ end = struct
     { natives : natives
     ; scope : interpreter_scope
     ; result_scope : var_scope
-    ; current_fn_natives : (id, value) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; current_fn_state : fn_state [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; mutable contexts : value Id.Map.t
     ; instantiated_generics : instantiated_generics
     ; cast_impls : cast_impls
@@ -1232,6 +1255,7 @@ end = struct
     ; compiler_scope : compiler_scope
     ; evaled : ir_evaled
     ; included_file : Uri.t option
+    ; id : Id.t
     }
 
   and ir_evaled =
@@ -1357,3 +1381,12 @@ let target_symbol : symbol = Symbol.create "target"
 include TypesImpl
 
 type sub_state = interpreter_state
+
+let init_fn_state () : fn_state =
+  { natives = Hashtbl.create 0
+  ; monomorphized_ty = Hashtbl.create 0
+  ; monomorphized_value = Hashtbl.create 0
+  }
+;;
+
+let const_shape value : expr_shape = E_Constant { id = Id.gen (); value }
