@@ -123,7 +123,8 @@ let repl
        value |> Kast_inference_completion.complete_value;
        match value.var |> Kast_inference.Var.inferred_opt with
        | Some V_Unit -> ()
-       | _ -> println "%a @{<italic>:: %a@}" Value.print value Ty.print value.ty
+       | _ ->
+         println "%a @{<italic>:: %a@}" Value.print value Ty.print (Value.ty_of value)
      with
      | Interpreter.Natives.Panic s -> eprintln "@{<red>panic: %s@}" s);
     loop ()

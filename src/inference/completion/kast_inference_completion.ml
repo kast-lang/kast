@@ -55,7 +55,9 @@ module Impl = struct
 
   and complete_value ({ var; ty } : value) =
     var |> complete_var ~name:"value" complete_value_shape;
-    complete_ty ty
+    match ty with
+    | Some ty -> complete_ty ty
+    | None -> ()
 
   and complete_value_shape (shape : value_shape) =
     Error.error_context

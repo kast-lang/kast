@@ -118,7 +118,7 @@ module Value = struct
   let new_not_inferred = Inference_impl.new_not_inferred_value
   let new_not_inferred_of_ty = Inference_impl.new_not_inferred_value_of_ty
   let inferred = Inference_impl.inferred_value
-  let ty_of : value -> ty = fun { var = _; ty } -> ty
+  let ty_of : value -> ty = Inference_impl.ty_of_value
 
   let binding ~span binding =
     V_Blocked { shape = BV_Binding binding; ty = binding.ty } |> inferred ~span

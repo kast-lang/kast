@@ -240,7 +240,7 @@ and call_untyped_fn
         Value.print
         result
         Ty.print
-        result.ty);
+        (Value.ty_of result));
     let sub_state : Types.sub_state = sub_here new_state in
     let result =
       match sub_mode with
@@ -268,7 +268,7 @@ and call_untyped_fn
         Value.print
         result
         Ty.print
-        result.ty);
+        (Value.ty_of result));
     result)
 
 and instantiate
@@ -297,7 +297,7 @@ and instantiate
            Value.print
            arg
            Ty.print
-           result.ty);
+           (Value.ty_of result));
        fork (fun () ->
          Log.trace (fun log -> log "Waiting for instantiation name at %a" Span.print span);
          let name = Value.name result in
@@ -328,7 +328,8 @@ and instantiate
          let actual_result =
            match generic |> Value.await_inferred with
            | V_Blocked generic ->
-             V_Blocked { shape = BV_Instantiate { generic; arg }; ty = result.ty }
+             V_Blocked
+               { shape = BV_Instantiate { generic; arg }; ty = Value.ty_of result }
              |> Value.inferred ~span
            | V_Generic { name = _; fn; ty = _ } ->
              (* TODO this mixes different generics? *)

@@ -85,6 +85,7 @@ module Impl = struct
 
   and sub_value ~(state : sub_state) (value : value) : value =
     sub_var
+      ~name:"value"
       ~unite_shape:Inference_impl.unite_value_shape
       ~sub_shape:sub_value_shape
       ~new_not_inferred:Value.new_not_inferred
@@ -132,7 +133,7 @@ module Impl = struct
       | V_Fn { ty; fn } ->
         let result = V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped in
         Log.trace (fun log ->
-          log "Subbed fn into %a :: %a" Value.print result Ty.print result.ty);
+          log "Subbed fn into %a :: %a" Value.print result Ty.print (Value.ty_of result));
         result
       | V_Generic { name; fn; ty } ->
         V_Generic { name = sub_name_shape ~state name; fn; ty = sub_ty_generic ~state ty }
@@ -209,6 +210,7 @@ module Impl = struct
   and sub_name ~state (name : name) : name =
     let ctx = Effect.perform GetCtx in
     sub_var
+      ~name:"name"
       ~unite_shape:Inference_impl.unite_name_shape
       ~sub_shape:(fun ~state (_original : name) shape ->
         sub_name_shape ~state shape |> Name.new_inferred ~span:ctx.span)
@@ -219,6 +221,7 @@ module Impl = struct
 
   and sub_optional_name ~state (name : optional_name) : optional_name =
     sub_var
+      ~name:"optional_name"
       ~unite_shape:(Inference_impl.unite_option Inference_impl.unite_name_shape)
       ~sub_shape:
         (sub_option ~new_inferred:OptionalName.new_inferred ~sub_value:sub_name_shape)
@@ -278,6 +281,7 @@ module Impl = struct
 
   and sub_ty ~state ty =
     sub_var
+      ~name:"ty"
       ~unite_shape:Inference_impl.unite_ty_shape
       ~sub_shape:sub_ty_shape
       ~new_not_inferred:Ty.new_not_inferred
@@ -499,6 +503,7 @@ module Impl = struct
     =
     fun ~unite_value ~scope_of_value ~sub_value ~state row ->
     sub_var
+      ~name:"row"
       ~unite_shape:
         (Row.unite_shape (module Inference_impl.VarScope) scope_of_value unite_value)
       ~sub_shape:(sub_row_shape ~scope_of_value ~unite_value ~sub_value)
@@ -540,7 +545,8 @@ module Impl = struct
 
   and sub_var
     :  'value 'shape.
-       unite_shape:'shape Inference.unite
+       name:string
+    -> unite_shape:'shape Inference.unite
     -> sub_shape:(state:sub_state -> 'value -> 'shape -> 'value)
     -> new_not_inferred:(scope:var_scope -> span:span -> 'value)
     -> get_var:('value -> 'shape var)
@@ -548,11 +554,12 @@ module Impl = struct
     -> 'value
     -> 'value
     =
-    fun ~unite_shape ~sub_shape ~new_not_inferred ~get_var ~state original_value ->
+    fun ~name ~unite_shape ~sub_shape ~new_not_inferred ~get_var ~state original_value ->
     let ctx = Effect.perform GetCtx in
     let span = ctx.span in
     let var = get_var original_value in
     let var_scope = var |> Inference.Var.scope in
+    Log.trace (fun log -> log "subbing %s: %a" name Print.print_var_scope var_scope);
     if var_scope |> VarScope.contains state.result_scope
     then (
       Log.trace (fun log ->

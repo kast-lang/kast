@@ -170,7 +170,10 @@ module VarScope = struct
     fun { obj_ref; member : Tuple.member = _ } -> of_blocked_value obj_ref
 
   and of_value : value -> var_scope =
-    fun { var; ty } -> deepest (Inference.Var.scope var) (of_ty ty)
+    fun { var; ty } ->
+    match ty with
+    | Some ty -> deepest (Inference.Var.scope var) (of_ty ty)
+    | None -> Inference.Var.scope var
 
   and of_value_shape : value_shape -> var_scope = function
     | V_Unit -> root ()
@@ -736,7 +739,10 @@ module Impl = struct
   and unite_value : value Inference.unite =
     fun ~span { var = a; ty = ty_a } { var = b; ty = ty_b } ->
     { var = Inference.Var.unite unite_value_shape VarScopeImpl.unite ~span a b
-    ; ty = unite_ty ~span ty_a ty_b
+    ; ty =
+        (match ty_a, ty_b with
+         | Some ty_a, Some ty_b -> Some (unite_ty ~span ty_a ty_b)
+         | _ -> None)
     }
 
   and unite_optional_name : optional_name Inference.unite =
@@ -821,9 +827,7 @@ module Impl = struct
     { var = Inference.Var.new_inferred VarScope.of_ty_shape ~span shape }
 
   and inferred_value ~span shape : value =
-    { var = Inference.Var.new_inferred VarScope.of_value_shape ~span shape
-    ; ty = ty_of_value_shape shape
-    }
+    { var = Inference.Var.new_inferred VarScope.of_value_shape ~span shape; ty = None }
 
   and infer_value_shape : scope:var_scope -> span:span -> ty_shape -> value_shape option =
     fun ~scope ~span ty_shape ->
@@ -869,8 +873,10 @@ module Impl = struct
   and new_not_inferred_value ~scope ~span : value =
     let var = Inference.Var.new_not_inferred ~scope ~span in
     let ty = new_not_inferred_ty ~scope ~span in
+    let value : value = { var; ty = Some ty } in
     var
     |> Inference.Var.once_inferred (fun value_shape ->
+      value.ty <- None;
       let _ : ty = unite_with_ctx unite_ty ~span (ty_of_value_shape value_shape) ty in
       ());
     ty.var
@@ -886,12 +892,25 @@ module Impl = struct
                ~span
                shape
         | None -> ()));
-    { var; ty }
+    value
 
   and new_not_inferred_value_of_ty ~scope ~span ty : value =
     let value = new_not_inferred_value ~scope ~span in
-    let _ : ty = unite_ty ~span value.ty ty in
+    (match value.ty with
+     | Some value_ty ->
+       let _ : ty = unite_ty ~span value_ty ty in
+       ()
+     | None -> ());
     value
+
+  and ty_of_value : value -> ty =
+    fun { var; ty } ->
+    match ty with
+    | Some ty -> ty
+    | None ->
+      (match var |> Inference.Var.inferred_opt with
+       | Some shape -> ty_of_value_shape shape
+       | None -> fail "no ty in not inferred value???")
 
   and ty_of_value_shape : value_shape -> ty =
     let span = Span.fake "<ty_of_shape>" in
@@ -928,7 +947,7 @@ module Impl = struct
       | V_Error -> inferred_ty ~span T_Error
 
   and init_place ~mut value : place =
-    { id = Id.gen (); state = Occupied value; ty = value.ty; mut }
+    { id = Id.gen (); state = Occupied value; ty = ty_of_value value; mut }
 
   and ty_of_blocked : blocked_value -> ty = fun value -> value.ty
 end
@@ -977,5 +996,6 @@ let new_not_inferred_value_of_ty ~scope ~span ty : value =
 ;;
 
 let ty_of_value_shape = Impl.ty_of_value_shape
+let ty_of_value = Impl.ty_of_value
 let init_place = Impl.init_place
 let ty_of_blocked = Impl.ty_of_blocked
