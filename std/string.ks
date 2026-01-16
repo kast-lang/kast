@@ -152,6 +152,13 @@ impl String as module = (
         start != end
     );
     
+    const find_match = (
+        s :: String, f :: Char -> Bool
+    ) -> std.Option.t[type (Int32, Char)] => with_return (
+        iteri(s).iter((idx, c) => if f(c) then return (:Some(idx, c)));
+        :None
+    );
+    
     const FromString = [Self] newtype (
         .from_string :: String -> Self
     );
