@@ -1,5 +1,7 @@
-let id = [T] (x :: T) -> T => (
-    x
+const f = [T] (x :: T) => (
+    (() => dbg.print[_](x))();
 );
 
-id[Int32](123);
+for _ in 0..100 do (
+    f(1 :: Int32);
+);

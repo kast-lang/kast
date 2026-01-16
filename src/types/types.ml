@@ -110,16 +110,14 @@ module rec TypesImpl : sig
   and value_untyped_fn =
     { id : Id.t
     ; def : maybe_compiled_fn
-    ; state : fn_state
     ; captured : interpreter_scope
+    ; monomorphization_state : monomorphization_state
     }
 
-  and fn_state =
-    { natives : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    ; monomorphized_ty : (id, ty) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    ; monomorphized_value : (id, value) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+  and monomorphization_state =
+    { native : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; ty : (id, ty) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; value : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_generic =
@@ -585,7 +583,7 @@ module rec TypesImpl : sig
     { natives : natives
     ; scope : interpreter_scope
     ; result_scope : var_scope
-    ; current_fn_state : fn_state
+    ; monomorphization_state : monomorphization_state
     ; mutable contexts : value Id.Map.t
     ; instantiated_generics : instantiated_generics
     ; cast_impls : cast_impls
@@ -751,16 +749,14 @@ end = struct
   and value_untyped_fn =
     { id : Id.t
     ; def : maybe_compiled_fn
-    ; state : fn_state
     ; captured : interpreter_scope
+    ; monomorphization_state : monomorphization_state
     }
 
-  and fn_state =
-    { natives : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    ; monomorphized_ty : (id, ty) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    ; monomorphized_value : (id, value) Hashtbl.t
-          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+  and monomorphization_state =
+    { native : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; ty : (id, ty) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; value : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_generic =
@@ -1231,7 +1227,8 @@ end = struct
     { natives : natives
     ; scope : interpreter_scope
     ; result_scope : var_scope
-    ; current_fn_state : fn_state [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; monomorphization_state : monomorphization_state
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; mutable contexts : value Id.Map.t
     ; instantiated_generics : instantiated_generics
     ; cast_impls : cast_impls
@@ -1382,11 +1379,8 @@ include TypesImpl
 
 type sub_state = interpreter_state
 
-let init_fn_state () : fn_state =
-  { natives = Hashtbl.create 0
-  ; monomorphized_ty = Hashtbl.create 0
-  ; monomorphized_value = Hashtbl.create 0
-  }
+let init_monomorphization_state () : monomorphization_state =
+  { native = Hashtbl.create 0; ty = Hashtbl.create 0; value = Hashtbl.create 0 }
 ;;
 
 let const_shape value : expr_shape = E_Constant { id = Id.gen (); value }

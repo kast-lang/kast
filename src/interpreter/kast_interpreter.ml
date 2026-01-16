@@ -9,7 +9,7 @@ let init : Types.name_part -> Scope.locals -> state =
   { scope =
       Scope.with_values ~span:(Span.fake "<root>") ~recursive:false ~parent:None values
   ; result_scope = None
-  ; current_fn_state = Types.init_fn_state ()
+  ; monomorphization_state = Types.init_monomorphization_state ()
   ; natives = Natives.init_natives ()
   ; contexts = Id.Map.empty
   ; instantiated_generics = { map = Id.Map.empty }

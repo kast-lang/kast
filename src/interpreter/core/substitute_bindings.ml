@@ -131,12 +131,18 @@ module Impl = struct
         |> shaped
       | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
       | V_Fn { ty; fn } ->
-        let result = V_Fn { ty = sub_ty_fn ~state ty; fn } |> shaped in
+        let result =
+          V_Fn { ty = sub_ty_fn ~state ty; fn = sub_untyped_fn ~state fn } |> shaped
+        in
         Log.trace (fun log ->
           log "Subbed fn into %a :: %a" Value.print result Ty.print (Value.ty_of result));
         result
       | V_Generic { name; fn; ty } ->
-        V_Generic { name = sub_name_shape ~state name; fn; ty = sub_ty_generic ~state ty }
+        V_Generic
+          { name = sub_name_shape ~state name
+          ; fn = sub_untyped_fn ~state fn
+          ; ty = sub_ty_generic ~state ty
+          }
         |> shaped
       | V_NativeFn { id; name; ty; impl } ->
         V_NativeFn { id; name; ty = sub_ty_fn ~state ty; impl } |> shaped
@@ -151,6 +157,61 @@ module Impl = struct
     Log.trace (fun log ->
       log "subbed value shape = %a into %a" Value.Shape.print shape Value.print result);
     result
+
+  and sub_untyped_fn ~state (f : value_untyped_fn) : value_untyped_fn = f
+
+  and sub_maybe_compiled_fn
+        ~state
+        ({ span; compiled = _; on_compiled = _ } as f : maybe_compiled_fn)
+    : maybe_compiled_fn
+    =
+    let result : maybe_compiled_fn = { span; compiled = None; on_compiled = [] } in
+    let once_compiled () =
+      result.compiled <- Some (f.compiled |> Option.get |> sub_compiled_fn ~state)
+    in
+    (match f.compiled with
+     | Some _ -> once_compiled ()
+     | None -> f.on_compiled <- once_compiled :: f.on_compiled);
+    result
+
+  and sub_compiled_fn ~(state : sub_state) (f : compiled_fn) : compiled_fn =
+    let span = f.body.data.span in
+    let inner_state : sub_state =
+      { state with
+        scope =
+          { id = Id.gen ()
+          ; depth = state.scope.depth + 1
+          ; span
+          ; parent = Some state.scope
+          ; locals = Scope.Locals.empty
+          ; recursive = false
+          ; closed = false
+          ; on_update = []
+          }
+      ; result_scope = state.result_scope |> VarScope.enter ~span
+      }
+    in
+    let state = inner_state in
+    { arg = sub_pattern_and_inject_replacements ~state f.arg
+    ; body = sub_expr ~state f.body
+    ; evaled_result = None
+    }
+
+  and sub_place_expr ~state (expr : place_expr) : place_expr =
+    { shape = sub_place_expr_shape ~state expr.shape
+    ; data = sub_ir_data ~state expr.data
+    ; mut = sub_is_mutable ~state expr.mut
+    }
+
+  and sub_is_mutable ~state (mut : is_mutable) : is_mutable = mut
+
+  and sub_place_expr_shape ~state (shape : place_expr_shape) : place_expr_shape =
+    failwith __LOC__
+
+  and sub_expr ~state (expr : expr) : expr =
+    { shape = sub_expr_shape ~state expr.shape; data = sub_ir_data ~state expr.data }
+
+  and sub_expr_shape ~state (shape : expr_shape) : expr_shape = failwith __LOC__
 
   and sub_blocked ~original_value ~state (blocked : blocked_value) : value =
     let ctx = Effect.perform GetCtx in

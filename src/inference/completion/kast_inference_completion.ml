@@ -120,7 +120,8 @@ module Impl = struct
     complete_ty ty
 
   and complete_untyped_fn
-        ({ id : id = _; def; state = _; captured = _ } : value_untyped_fn)
+        ({ id : id = _; def; captured = _; monomorphization_state = _ } :
+          value_untyped_fn)
     =
     complete_maybe_compiled_fn def
 

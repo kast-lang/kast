@@ -228,7 +228,10 @@ and call_untyped_fn
             ~recursive:false
             ~parent:(Some fn.captured)
             arg_bindings
-      ; current_fn_state = fn.state
+      ; monomorphization_state =
+          (match sub_mode with
+           | Full -> Types.init_monomorphization_state ()
+           | None -> fn.monomorphization_state)
       }
     in
     let result = eval new_state def.body in
@@ -539,7 +542,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
           let result =
             Scope.find_opt binding.name state.scope
             |> Option.unwrap_or_else (fun () : place ->
-              Log.info (fun log -> log "all in scope: %a" Scope.print_all state.scope);
+              Log.trace (fun log -> log "all in scope: %a" Scope.print_all state.scope);
               Error.error expr.data.span "%a not found" Symbol.print binding.name;
               error_place expr.data.ty)
           in
@@ -579,7 +582,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                    |> Ty.inferred ~span
                }
            | Place (~mut:obj_mut, obj) ->
-             let result_ty = monomorphized_ir_data_ty ~state expr.data in
+             let result_ty = monomorphized_ty ~state expr.data in
              get_field ~state ~result_ty ~span ~obj_mut (obj |> read_place ~span) member))
     in
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
@@ -592,20 +595,21 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
     raise exc
 
 and monomorphized_value ~span ~(state : state) id value : value =
-  match Hashtbl.find_opt state.current_fn_state.monomorphized_value id with
+  match Hashtbl.find_opt state.monomorphization_state.value id with
   | Some ty -> ty
   | None ->
     let result = Substitute_bindings.sub_value ~span ~state:(sub_here state) value in
-    Hashtbl.add state.current_fn_state.monomorphized_value id result;
+    Hashtbl.add state.monomorphization_state.value id result;
     result
 
-and monomorphized_ir_data_ty ~state (data : ir_data) : ty =
-  match Hashtbl.find_opt state.current_fn_state.monomorphized_ty data.id with
+and monomorphized_ty ~state (data : ir_data) : ty =
+  match Hashtbl.find_opt state.monomorphization_state.ty data.id with
   | Some ty -> ty
   | None ->
     let span = data.span in
     let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) data.ty in
-    Hashtbl.add state.current_fn_state.monomorphized_ty data.id ty;
+    Log.trace (fun log -> log "monomorphized ty at %a = %a" Span.print span Ty.print ty);
+    Hashtbl.add state.monomorphization_state.ty data.id ty;
     ty
 
 and eval_expr_ref : state -> expr -> Types.expr_ref -> value =
@@ -625,7 +629,7 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
   let span = expr.data.span in
   match eval_place state place with
   | RefBlocked blocked ->
-    let ty = monomorphized_ir_data_ty ~state expr.data in
+    let ty = monomorphized_ty ~state expr.data in
     V_Blocked { shape = BV_ClaimRef blocked; ty } |> Value.inferred ~span
   | Place (~mut:_, place) -> place |> claim ~span
 
@@ -634,7 +638,12 @@ and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
   let span = expr.data.span in
   V_Fn
     { ty
-    ; fn = { id = Id.gen (); def; captured = state.scope; state = Types.init_fn_state () }
+    ; fn =
+        { id = Id.gen ()
+        ; def
+        ; captured = state.scope
+        ; monomorphization_state = state.monomorphization_state
+        }
     }
   |> Value.inferred ~span
 
@@ -664,7 +673,12 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   let span = expr.data.span in
   V_Generic
     { name = current_name state
-    ; fn = { id = Id.gen (); def; captured = state.scope; state = Types.init_fn_state () }
+    ; fn =
+        { id = Id.gen ()
+        ; def
+        ; captured = state.scope
+        ; monomorphization_state = Types.init_monomorphization_state ()
+        }
     ; ty
     }
   |> Value.inferred ~span
@@ -782,25 +796,25 @@ and eval_expr_instantiategeneric
   let span = expr.data.span in
   let generic = eval state generic in
   let arg = eval state arg in
-  let result_ty = monomorphized_ir_data_ty ~state expr.data in
+  let result_ty = monomorphized_ty ~state expr.data in
   instantiate ~result_ty expr.data.span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
   fun state expr { id; expr = native_expr } ->
-  match Hashtbl.find_opt state.current_fn_state.natives id with
+  match Hashtbl.find_opt state.monomorphization_state.native id with
   | Some value -> value
   | None ->
     let value =
       let span = expr.data.span in
       match StringMap.find_opt native_expr state.natives.by_name with
       | Some f ->
-        let ty = monomorphized_ir_data_ty ~state expr.data in
+        let ty = monomorphized_ty ~state expr.data in
         f ty
       | None ->
         Error.error expr.data.span "no native %S" native_expr;
         V_Error |> Value.inferred ~span
     in
-    Hashtbl.add state.current_fn_state.natives id value;
+    Hashtbl.add state.monomorphization_state.native id value;
     value
 
 and eval_expr_module : state -> expr -> Types.expr_module -> value =
@@ -937,7 +951,7 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
   let span = expr.data.span in
   let id = Id.gen () in
   let token : Types.value_unwind_token =
-    { id; result_ty = monomorphized_ir_data_ty ~state body.data }
+    { id; result_ty = monomorphized_ty ~state body.data }
   in
   let token : value =
     V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
