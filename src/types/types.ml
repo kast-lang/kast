@@ -218,7 +218,6 @@ module rec TypesImpl : sig
   and compiled_fn =
     { arg : pattern
     ; body : expr
-    ; evaled_result : ty_expr option
     }
 
   and maybe_compiled_fn =
@@ -857,7 +856,6 @@ end = struct
   and compiled_fn =
     { arg : pattern
     ; body : expr
-    ; evaled_result : ty_expr option
     }
 
   and maybe_compiled_fn =

@@ -49,7 +49,7 @@
 @syntax "core:include" 9 @wrap never = "include" " " path;
 @syntax "core:include_ast" 9 @wrap never = "include_ast" " " _;
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;
-@syntax "core:comptime" 9 @wrap never = "@comptime" " " _;
+@syntax "core:comptime" 9 @wrap never = "@eval" " " _;
 @syntax "core:binding" 9 @wrap never = "@binding" " " _;
 @syntax "core:native" 9 @wrap never = "@native" " " _;
 @syntax "core:inject_context" 9.5 @wrap never = "with" " " context_type " " "=" " " value;

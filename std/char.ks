@@ -4,14 +4,14 @@ impl Char as module = (
         c == ' ' or c == '\n' or c == '\t'
     );
     const is_uppercase = (c :: Char) -> Bool => (
-        code(c) >= (@comptime code('A')) and code(c) <= (@comptime code('Z'))
+        code(c) >= (@eval code('A')) and code(c) <= (@eval code('Z'))
     );
     const is_lowercase = (c :: Char) -> Bool => (
-        code(c) >= (@comptime code('a')) and code(c) <= (@comptime code('z'))
+        code(c) >= (@eval code('a')) and code(c) <= (@eval code('z'))
     );
     const to_uppercase = (c :: Char) -> Char => (
         if is_lowercase(c) then (
-            code(c) - (@comptime (Char.code('a') - Char.code('A')))
+            code(c) - (@eval (Char.code('a') - Char.code('A')))
                 |> from_code
         ) else (
             c
@@ -19,7 +19,7 @@ impl Char as module = (
     );
     const to_lowercase = (c :: Char) -> Char => (
         if is_uppercase(c) then (
-            code(c) + (@comptime (Char.code('a') - Char.code('A')))
+            code(c) + (@eval (Char.code('a') - Char.code('A')))
                 |> from_code
         ) else (
             c
@@ -36,11 +36,11 @@ impl Char as module = (
     const to_digit_radix = (c :: Char, radix :: UInt32) -> UInt32 => (
         let code = code(c);
         let digit = if '0' <= c and c <= '9' then (
-            code - (@comptime Char.code('0'))
+            code - (@eval Char.code('0'))
         ) else if 'a' <= c and c <= 'z' then (
-            code - (@comptime Char.code('a')) + 10
+            code - (@eval Char.code('a')) + 10
         ) else if 'A' <= c and c <= 'Z' then (
-            code - (@comptime Char.code('A')) + 10
+            code - (@eval Char.code('A')) + 10
         ) else (
             panic("char is not digit")
         );
@@ -55,9 +55,9 @@ impl Char as module = (
             panic("digit >= radix")
         );
         if digit < 10 then (
-            from_code(digit + (@comptime Char.code('0')))
+            from_code(digit + (@eval Char.code('0')))
         ) else (
-            from_code(digit - 10 + (@comptime Char.code('a')))
+            from_code(digit - 10 + (@eval Char.code('a')))
         )
     );
     const from_digit = digit => from_digit_radix(digit, 10);

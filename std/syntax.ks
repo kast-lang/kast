@@ -73,10 +73,10 @@ impl syntax (@context ty) = `(
 );
 impl syntax (loop ( body )) = `(
     unwindable loop_block (
-        @comptime with std.LoopBlock = loop_block;
+        @eval with std.LoopBlock = loop_block;
         @loop (
             unwindable loop_body (
-                @comptime with std.LoopBody = loop_body;
+                @eval with std.LoopBody = loop_body;
                 $body
             );
         );
@@ -105,10 +105,10 @@ impl syntax (while cond do body) = `(
 );
 impl syntax (for pattern in iterable do body) = `(
     unwindable loop_block (
-        @comptime with std.LoopBlock = loop_block;
+        @eval with std.LoopBlock = loop_block;
         $iterable.iter(
             $pattern => unwindable loop_body (
-                @comptime with std.LoopBody = loop_body;
+                @eval with std.LoopBody = loop_body;
                 $body;
             )
         );

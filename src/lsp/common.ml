@@ -75,12 +75,9 @@ let inner_compiled_with_handler
       | E_Fn { def; ty = _ } | E_Generic { def; ty = _ } ->
         (match def.compiled with
          | None -> ()
-         | Some { arg; body; evaled_result } ->
+         | Some { arg; body } ->
            handler.handle Pattern arg;
-           handler.handle Expr body;
-           (match evaled_result with
-            | Some expr -> handler.handle TyExpr expr
-            | None -> ()))
+           handler.handle Expr body)
       | E_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler
       | E_Variant { label = _; label_span = _; value } ->
         value |> Option.iter (handler.handle Expr)

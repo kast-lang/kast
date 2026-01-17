@@ -50,6 +50,23 @@ let update_data : 'a. 'a compiled_kind -> 'a -> (ir_data -> ir_data) -> 'a =
   | PlaceExpr -> { compiled with data = f compiled.data }
 ;;
 
+let data_append
+      (type a)
+      (added_kind : a compiled_kind)
+      (added : a)
+      (type b)
+      (kind : b compiled_kind)
+      (compiled : b)
+  : unit
+  =
+  let evaled = (get_data kind compiled).evaled in
+  match added_kind with
+  | TyExpr -> evaled.ty_exprs <- added :: evaled.ty_exprs
+  | Expr -> evaled.exprs <- added :: evaled.exprs
+  | Pattern -> evaled.patterns <- added :: evaled.patterns
+  | _ -> failwith __LOC__
+;;
+
 let data_add
       (type a)
       (added_kind : a compiled_kind)
@@ -59,12 +76,7 @@ let data_add
       (compiled : b)
   : b
   =
-  let evaled = (get_data kind compiled).evaled in
-  (match added_kind with
-   | TyExpr -> evaled.ty_exprs <- added :: evaled.ty_exprs
-   | Expr -> evaled.exprs <- added :: evaled.exprs
-   | Pattern -> evaled.patterns <- added :: evaled.patterns
-   | _ -> failwith __LOC__);
+  data_append added_kind added kind compiled;
   compiled
 ;;
 

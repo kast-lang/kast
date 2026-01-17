@@ -270,7 +270,7 @@ let fn : core_syntax =
             let group = child |> Ast.Child.expect_group in
             group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
         in
-        let result =
+        let result_ty =
           children
           |> Tuple.get_named_opt "result"
           |> Option.map (fun (child : Ast.child) ->
@@ -297,13 +297,14 @@ let fn : core_syntax =
                 Ty.new_not_inferred
                   ~scope
                   ~span:
-                    (result
+                    (result_ty
                      |> Option.map_or body.span (fun (result : Ast.t) -> result.span))
             }
           in
           let def : Types.maybe_compiled_fn =
             { span; compiled = None; on_compiled = [] }
           in
+          let result_fn_expr = E_Fn { ty; def } |> init_expr span C.state in
           State.Scope.fork (fun () ->
             let state = C.state |> State.enter_scope ~span ~recursive:false in
             Log.trace (fun log -> log "starting to compile fn at %a" Span.print span);
@@ -325,8 +326,8 @@ let fn : core_syntax =
                 body.data.ty
                 Span.print
                 body.data.span);
-            let result_expr =
-              result
+            let result_ty_expr =
+              result_ty
               |> Option.map (fun result ->
                 let result, result_expr = Compiler.eval_ty (module C) result in
                 Log.trace (fun log ->
@@ -346,8 +347,12 @@ let fn : core_syntax =
                   log "after unifying %a and %a" Ty.print body.data.ty Ty.print result);
                 result_expr)
             in
+            (match result_ty_expr with
+             | None -> ()
+             | Some result_ty_expr ->
+               result_fn_expr |> Compiler.data_append TyExpr result_ty_expr Expr);
             ty.result |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty;
-            Compiler.finish_compiling def { arg; body; evaled_result = result_expr };
+            Compiler.finish_compiling def { arg; body };
             Log.trace (fun log ->
               log
                 "finished compiling fn at %a, result ty = %a"
@@ -355,7 +360,7 @@ let fn : core_syntax =
                 span
                 Ty.print
                 ty.result));
-          E_Fn { ty; def } |> init_expr span C.state)
+          result_fn_expr)
   }
 ;;
 
@@ -414,7 +419,7 @@ let generic : core_syntax =
           in
           State.Scope.fork (fun () ->
             let body = C.compile ~state:inner_state Expr body in
-            Compiler.finish_compiling def { arg; body; evaled_result = None };
+            Compiler.finish_compiling def { arg; body };
             Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
             Log.trace (fun log -> log "body.data.ty = %a" Ty.print body.data.ty);
             ty.result |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty);
@@ -1361,7 +1366,7 @@ let impl_syntax : core_syntax =
                  in
                  state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                  let body = C.compile ~state Expr impl in
-                 Compiler.finish_compiling def { arg; body; evaled_result = None };
+                 Compiler.finish_compiling def { arg; body };
                  ty.arg |> Inference.Ty.expect_inferred_as ~span:arg.data.span arg.data.ty;
                  ty.result
                  |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty);

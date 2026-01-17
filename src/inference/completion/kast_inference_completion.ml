@@ -129,7 +129,7 @@ module Impl = struct
     =
     match compiled with
     | None -> error span "Function could not be compiled"
-    | Some { arg; body; evaled_result = _ } ->
+    | Some { arg; body } ->
       complete_pattern arg;
       complete_expr body
 

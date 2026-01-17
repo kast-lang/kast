@@ -194,7 +194,6 @@ module Impl = struct
     let state = inner_state in
     { arg = sub_pattern_and_inject_replacements ~state f.arg
     ; body = sub_expr ~state f.body
-    ; evaled_result = None
     }
 
   and sub_place_expr ~state (expr : place_expr) : place_expr =
