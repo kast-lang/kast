@@ -4,23 +4,21 @@ impl Char as module = (
         c == ' ' or c == '\n' or c == '\t'
     );
     let is_uppercase = (c :: Char) -> Bool => (
-        code(c) >= 65 and code(c) <= 90
+        code(c) >= code('A') and code(c) <= code('Z')
     );
     let is_lowercase = (c :: Char) -> Bool => (
-        code(c) >= 97 and code(c) <= 122
+        code(c) >= code('a') and code(c) <= code('z')
     );
     let to_uppercase = (c :: Char) -> Char => (
-        let code = code(c);
-        if code >= 97 and code <= 122 then (
-            from_code(code - 32)
+        if is_lowercase(c) then (
+            code(c) - 32 |> from_code
         ) else (
             c
         )
     );
     let to_lowercase = (c :: Char) -> Char => (
-        let code = code(c);
-        if code >= 65 and code <= 90 then (
-            from_code(code + 32)
+        if is_uppercase(c) then (
+            code(c) + 32 |> from_code
         ) else (
             c
         )
