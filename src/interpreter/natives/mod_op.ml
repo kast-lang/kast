@@ -14,11 +14,18 @@ let init () =
            match value |> Value.await_inferred with
            | V_Tuple { ty = _; tuple } ->
              let a, b = tuple |> Tuple.unwrap_unnamed2 in
+             let a = a.place |> claim ~span:caller in
+             let b = b.place |> claim ~span:caller in
+             Log.trace (fun log ->
+               log
+                 "evaluating native bin_op %s: a=%a, b=%a"
+                 name
+                 Value.print
+                 a
+                 Value.print
+                 b);
              let result : Value.shape =
-               match
-                 ( a.place |> claim ~span:caller |> await_fully_inferred
-                 , b.place |> claim ~span:caller |> await_fully_inferred )
-               with
+               match a |> await_fully_inferred, b |> await_fully_inferred with
                | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
                | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
                | V_Float64 a, V_Float64 b ->

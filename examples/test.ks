@@ -1,7 +1,8 @@
-const f = [T] (x :: T) => (
-    (() => dbg.print[_](x))();
+const m = (
+    module:
+    let plus_one = (n :: UInt32) -> UInt32 => (
+        n + (@comptime (std.op.add(1, 0)))
+    );
 );
 
-for _ in 0..100 do (
-    f(1 :: Int32);
-);
+dbg.print(m.plus_one(123));

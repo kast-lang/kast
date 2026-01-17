@@ -728,10 +728,13 @@ module Impl = struct
            V_UnwindToken { result_ty = unite_ty ~span ty_a ty_b; id = id_a }
          | V_UnwindToken _, _ -> fail ()
          | V_Target _, _ -> fail ()
+         | V_ContextTy a, V_ContextTy b when Id.equal a.id b.id -> V_ContextTy a
          | V_ContextTy _, _ -> fail ()
          | V_Opaque _, _ -> fail ()
          | V_Blocked a, V_Blocked b -> V_Blocked (unite_blocked_value ~span a b)
          | V_Blocked _, _ -> fail ()
+         | V_CompilerScope a, V_CompilerScope b when Repr.phys_equal a b ->
+           V_CompilerScope a
          | V_CompilerScope _, _ -> fail ())
       (fun fmt ->
          fprintf fmt "value_shape %a != %a" print_value_shape a print_value_shape b)

@@ -677,6 +677,20 @@ let include' : core_syntax =
   }
 ;;
 
+let eval_const ~async (state : State.t) (expr : expr) : value =
+  let result =
+    Value.new_not_inferred_of_ty
+      ~scope:(State.var_scope state)
+      ~span:expr.data.span
+      expr.data.ty
+  in
+  let invoke = if async then State.Scope.fork else fun f -> f () in
+  invoke (fun () ->
+    let value = Kast_interpreter.eval state.interpreter expr in
+    result |> Inference.Value.expect_inferred_as ~span:expr.data.span value);
+  result
+;;
+
 let const_let
       (span : span)
       (pattern : pattern)
@@ -693,7 +707,10 @@ let const_let
       }
     | _ -> C.state.interpreter
   in
-  let value = Interpreter.eval interpreter_state value_expr in
+  (* TODO async true *)
+  let value =
+    eval_const ~async:false { C.state with interpreter = interpreter_state } value_expr
+  in
   let let_expr =
     E_Assign
       { assignee = A_Let pattern |> init_assignee pattern.data.span C.state
@@ -1233,15 +1250,9 @@ let comptime : core_syntax =
         let span = ast.span in
         match kind with
         | Expr ->
-          let value, value_expr =
-            Compiler.eval
-              ~ty:(Ty.new_not_inferred ~scope:(State.var_scope C.state) ~span:expr.span)
-              (module C)
-              expr
-          in
-          const_shape value
-          |> init_expr span C.state
-          |> Compiler.data_add Expr value_expr kind
+          let expr = C.compile Expr expr in
+          let value = eval_const ~async:true C.state expr in
+          const_shape value |> init_expr span C.state |> Compiler.data_add Expr expr kind
         | _ ->
           error span "comptime must be expr";
           init_error span C.state kind)
@@ -2085,6 +2096,8 @@ let impl_as_module : core_syntax =
           let value, value_expr =
             Compiler.eval ~ty:(Ty.new_not_inferred ~scope ~span) (module C) value
           in
+          Log.trace (fun log ->
+            log "impl %a as_module at %a" Value.print value Span.print span);
           let impl_temp = Value.new_not_inferred ~scope ~span in
           Kast_interpreter.impl_cast_as_module
             ~span

@@ -73,6 +73,8 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
     flush stdout;
     let line = read_line () in
     Effect.continue k line
+  | effect Interpreter.AwaitCompiled _, k ->
+    Effect.continue_with k (fun () -> fail "Can't await fn to be compiled")
   | effect Compiler.Scope.AwaitUpdate _, k -> Effect.continue k false
   | effect Interpreter.Scope.AwaitUpdate (_name, _scope), k -> Effect.continue k false
   | effect Inference.Var.AwaitUpdate var, k ->
