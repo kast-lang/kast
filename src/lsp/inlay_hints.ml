@@ -25,7 +25,7 @@ let rec inlay_hints
   in
   let rest =
     Common.inner_compiled kind compiled
-    |> Seq.flat_map (fun (Types.Compiled (kind, compiled)) ->
+    |> Seq.flat_map (fun (Types.Compiled (kind, compiled), ~evaled:_) ->
       inlay_hints ~uri kind compiled)
   in
   let data = Compiler.get_data kind compiled in
@@ -52,12 +52,16 @@ let rec inlay_hints
         })
   in
   let evaled =
-    let { exprs; ty_exprs; patterns; ty_ascribed = _ } : Types.ir_evaled = data.evaled in
+    let { exprs; ty_exprs; patterns; ty_ascribed = _; value = _ } : Types.ir_evaled =
+      data.evaled
+    in
     let exprs =
-      exprs |> List.to_seq |> Seq.map (fun expr -> Types.Compiled (Expr, expr))
+      exprs |> List.to_seq |> Seq.map (fun (expr, _value) -> Types.Compiled (Expr, expr))
     in
     let ty_exprs =
-      ty_exprs |> List.to_seq |> Seq.map (fun ty_expr -> Types.Compiled (TyExpr, ty_expr))
+      ty_exprs
+      |> List.to_seq
+      |> Seq.map (fun (ty_expr, _ty) -> Types.Compiled (TyExpr, ty_expr))
     in
     let patterns =
       patterns

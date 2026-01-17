@@ -611,9 +611,10 @@ module rec TypesImpl : sig
 
   and ir_evaled =
     { mutable patterns : pattern list
-    ; mutable exprs : expr list
-    ; mutable ty_exprs : ty_expr list
+    ; mutable exprs : (expr * value) list
+    ; mutable ty_exprs : (ty_expr * ty) list
     ; mutable ty_ascribed : bool
+    ; mutable value : value option
     }
 
   and name = { var : name_shape var }
@@ -1255,9 +1256,10 @@ end = struct
 
   and ir_evaled =
     { mutable patterns : pattern list
-    ; mutable exprs : expr list
-    ; mutable ty_exprs : ty_expr list
+    ; mutable exprs : (expr * value) list
+    ; mutable ty_exprs : (ty_expr * ty) list
     ; mutable ty_ascribed : bool
+    ; mutable value : value option
     }
 
   and name = { var : name_shape var }

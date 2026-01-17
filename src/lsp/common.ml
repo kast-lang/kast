@@ -28,7 +28,8 @@ let span_location (span : span) : Lsp.Types.Location.t option =
 let uri_to_lsp (uri : Uri.t) : Lsp.Uri0.t = Lsp.Uri0.of_string (Uri.to_string uri)
 let uri_from_lsp (uri : Lsp.Uri0.t) : Uri.t = Uri.of_string (Lsp.Uri0.to_string uri)
 
-type inner_compiled_handler = { handle : 'a. 'a compiled_kind -> 'a -> unit }
+type inner_compiled_handler =
+  { handle : 'a. 'a compiled_kind -> ?evaled:value -> 'a -> unit }
 
 let inner_tuple_compiled_with_handler =
   fun (type a)
@@ -177,24 +178,34 @@ let inner_compiled_with_handler
                    -> variant_data |> Option.iter (handler.handle TyExpr))
          | TE_Error -> ())));
   let data = Compiler.get_data kind compiled in
-  let { exprs; patterns; ty_exprs; ty_ascribed = _ } : Types.ir_evaled = data.evaled in
-  exprs |> List.iter (handler.handle Expr);
-  ty_exprs |> List.iter (handler.handle TyExpr);
+  let { exprs; patterns; ty_exprs; ty_ascribed = _; value = _ } : Types.ir_evaled =
+    data.evaled
+  in
+  exprs |> List.iter (fun (expr, value) -> handler.handle Expr ~evaled:value expr);
+  ty_exprs |> List.iter (fun (expr, ty) -> handler.handle TyExpr expr);
   patterns |> List.iter (handler.handle Pattern)
 ;;
 
-type _ Effect.t += Yield : compiled -> unit Effect.t
+type _ Effect.t += Yield : (compiled * evaled:value option) -> unit Effect.t
 
 let inner_compiled =
-  fun (type a) (kind : a compiled_kind) (compiled : a) : compiled Seq.t ->
-  let next : (compiled * (unit, unit) continuation) option ref = ref None in
+  fun (type a)
+    (kind : a compiled_kind)
+    (compiled : a)
+    : (compiled * evaled:value option) Seq.t ->
+  let next : ((compiled * evaled:value option) * (unit, unit) continuation) option ref =
+    ref None
+  in
   (try
      inner_compiled_with_handler
        kind
        compiled
        { handle =
-           (fun (type b) (kind : b compiled_kind) (compiled : b) ->
-             Effect.perform (Yield (Compiled (kind, compiled))))
+           (fun (type b)
+             (kind : b compiled_kind)
+             ?(evaled : value option)
+             (compiled : b) ->
+             Effect.perform (Yield (Compiled (kind, compiled), ~evaled)))
        }
    with
    | effect Yield compiled, k -> next := Some (compiled, k));

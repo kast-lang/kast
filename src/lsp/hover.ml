@@ -36,6 +36,7 @@ let label_definition (label : Label.t) : definition =
 
 type hover_info_ty =
   { ty : ty
+  ; evaled : value option
   ; span : span
   }
 
@@ -64,7 +65,14 @@ let combine_hover_info a b : hover_info =
 
 let hover_text info =
   match info.ty with
-  | Some ty -> make_string "```kast@\n@[<v>%a@]\n```" Ty.print ty.ty
+  | Some ty ->
+    make_string "%t" (fun fmt ->
+      fprintf fmt "```kast@\n";
+      fprintf fmt "@[<v>:: %a@]\n" Ty.print ty.ty;
+      (match ty.evaled with
+       | None -> ()
+       | Some value -> fprintf fmt "@[<v>= %a@]\n" Value.print value);
+      fprintf fmt "```")
   | None -> ""
 ;;
 
@@ -109,7 +117,7 @@ let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
       then (
         let data = Compiler.get_data kind field in
         Some
-          { ty = Some { span = label_span; ty = data.ty }
+          { ty = Some { span = label_span; ty = data.ty; evaled = None }
           ; rename =
               label
               |> Option.map (fun label ->
@@ -124,9 +132,18 @@ let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
       else None)
 ;;
 
-let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
-  fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) : hover_info ->
-  let included_file = (Compiler.get_data kind compiled).included_file in
+let hover_specifically
+  : 'a. 'a compiled_kind -> 'a -> evaled:value option -> span -> hover_info
+  =
+  fun (type a)
+    (kind : a compiled_kind)
+    (compiled : a)
+    ~evaled:_
+    (hover_span : span)
+    : hover_info ->
+  let data = Compiler.get_data kind compiled in
+  let evaled = data.evaled.value in
+  let included_file = data.included_file in
   match hover_tuple kind compiled hover_span with
   | Some result -> result
   | None ->
@@ -150,7 +167,7 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                 })
          | _ -> None
        in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span }
+       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
        ; rename
        ; file = included_file
        }
@@ -164,12 +181,12 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
              }
          | _ -> None
        in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span }
+       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
        ; rename
        ; file = included_file
        }
      | Assignee ->
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span }
+       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
        ; rename = None
        ; file = included_file
        }
@@ -191,7 +208,7 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
            else None
          | _ -> None
        in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span }
+       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
        ; rename
        ; file = included_file
        }
@@ -211,25 +228,30 @@ let hover_specifially : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
                    else None)
          | _ -> None
        in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span }
+       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
        ; rename
        ; file = included_file
        })
 ;;
 
-let rec hover : 'a. 'a compiled_kind -> 'a -> span -> hover_info =
-  fun (type a) (kind : a compiled_kind) (compiled : a) (hover_span : span) : hover_info ->
+let rec hover : 'a. 'a compiled_kind -> 'a -> evaled:value option -> span -> hover_info =
+  fun (type a)
+    (kind : a compiled_kind)
+    (compiled : a)
+    ~(evaled : value option)
+    (hover_span : span)
+    : hover_info ->
   let data = Compiler.get_data kind compiled in
   let span = data.span in
   let inner =
     Common.inner_compiled kind compiled
     |> Seq.fold_left
-         (fun acc (Types.Compiled (kind, inner)) ->
-            combine_hover_info acc (hover kind inner hover_span))
+         (fun acc (Types.Compiled (kind, inner), ~evaled) ->
+            combine_hover_info acc (hover kind inner ~evaled hover_span))
          hover_info_none
   in
   if span |> Span.contains_span hover_span
-  then combine_hover_info inner (hover_specifially kind compiled hover_span)
+  then combine_hover_info inner (hover_specifically kind compiled ~evaled hover_span)
   else inner
 ;;
 
@@ -240,7 +262,7 @@ let find_definition
   =
   let pos : position = Common.lsp_to_kast_pos pos in
   let* (Compiled (kind, compiled)) = compiled in
-  let hover_info = hover kind compiled (Span.single_char pos uri) in
+  let hover_info = hover kind compiled ~evaled:None (Span.single_char pos uri) in
   match hover_info.file with
   | Some file ->
     let location : Lsp.Types.Location.t =
@@ -270,7 +292,7 @@ let find_references
   =
   let pos : position = Common.lsp_to_kast_pos params.position in
   let* (Compiled (kind, compiled)) = compiled in
-  let hover_info = hover kind compiled (Span.single_char pos uri) in
+  let hover_info = hover kind compiled ~evaled:None (Span.single_char pos uri) in
   let* definition =
     match hover_info.rename with
     | Some { definition_mode = DefinedHere definition | DefinedNotHere definition; _ } ->
@@ -293,7 +315,7 @@ let prepare_rename
   =
   let pos : position = Common.lsp_to_kast_pos pos in
   let* (Compiled (kind, compiled)) = compiled in
-  let hover_info = hover kind compiled (Span.single_char pos uri) in
+  let hover_info = hover kind compiled ~evaled:None (Span.single_char pos uri) in
   let* rename = hover_info.rename in
   Some (rename.span |> Common.span_to_range)
 ;;
@@ -310,7 +332,7 @@ let rename
     let newText = Kast_lexer.maybe_convert_to_raw_ident newName in
     let pos : position = Common.lsp_to_kast_pos position in
     let* (Compiled (kind, compiled)) = compiled in
-    let hover_info = hover kind compiled (Span.single_char pos uri) in
+    let hover_info = hover kind compiled ~evaled:None (Span.single_char pos uri) in
     let* rename = hover_info.rename in
     let definition =
       match rename.definition_mode with
@@ -359,7 +381,7 @@ let hover (pos : Lsp.Types.Position.t) ({ uri; compiled; _ } : Processing.file_s
   let pos = Common.lsp_to_kast_pos pos in
   Log.trace (fun log -> log "Hovering %a" Position.print pos);
   let* (Compiled (kind, compiled)) = compiled in
-  let hover_info = hover kind compiled (Span.single_char pos uri) in
+  let hover_info = hover kind compiled ~evaled:None (Span.single_char pos uri) in
   let hover_text = hover_text hover_info in
   Log.trace (fun log -> log "Hover result: %S" hover_text);
   let* ty = hover_info.ty in

@@ -49,7 +49,7 @@ let rec find_expr : 'a. 'a compiled_kind -> 'a -> position -> compiled option =
   then (
     let inner =
       Common.inner_compiled kind compiled
-      |> Seq.filter_map (fun (Types.Compiled (kind, compiled)) ->
+      |> Seq.filter_map (fun (Types.Compiled (kind, compiled), ~evaled:_) ->
         find_expr kind compiled pos)
       |> Seq.fold_left
            (fun acc (Types.Compiled (kind, compiled) as b) ->
