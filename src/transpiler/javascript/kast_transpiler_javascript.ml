@@ -292,7 +292,7 @@ module Impl = struct
       | V_Unit -> NoEffect { shape = JsAst.Null; span = None }
       | V_Bool x -> NoEffect { shape = JsAst.Bool x; span = None }
       | V_Int32 x -> NoEffect { shape = JsAst.Number (Int32.to_float x); span = None }
-      | V_Int64 x -> NoEffect { shape = JsAst.Number (Int64.to_float x); span = None }
+      | V_Int64 x -> NoEffect { shape = JsAst.Bigint (Int64.to_string x); span = None }
       | V_Float64 x -> NoEffect { shape = JsAst.Number x; span = None }
       | V_Char c -> NoEffect { shape = JsAst.String (String.make 1 c); span = None }
       | V_String s -> calculate { shape = JsAst.String s; span = None }

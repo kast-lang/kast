@@ -23,6 +23,7 @@ type expr_shape =
   | Null
   | Bool of bool
   | Number of float
+  | Bigint of string
   | String of string
   | List of expr list
   | Var of name
@@ -184,7 +185,10 @@ let rec print_expr ~(precedence : Precedence.t) (writer : Writer.t) (expr : expr
             (match b with
              | true -> "true"
              | false -> "false")
-     | Number x -> writer |> write (make_string "%g" x)
+     | Number x -> writer |> write (make_string "%.20g" x)
+     | Bigint x ->
+       writer |> write x;
+       writer |> write "n"
      | String s -> writer |> write (make_string "%S" s)
      | List a ->
        writer |> write "[";

@@ -9,6 +9,7 @@ let rec optimize_expr : expr -> expr =
   | Null -> original
   | Bool _ -> original
   | Number _ -> original
+  | Bigint _ -> original
   | String _ -> original
   | List list -> { shape = List (list |> List.map optimize_expr); span }
   | Var _ -> original

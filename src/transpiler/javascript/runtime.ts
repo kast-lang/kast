@@ -144,7 +144,7 @@ const Kast = await (async () => {
         E extends keyof import("node:net").SocketEventMap,
       >(
         stream: TcpStream,
-        event: E
+        event: E,
       ): Promise<import("node:net").SocketEventMap[E]> {
         return new Promise((resolve, reject) => {
           if (stream.error !== undefined) {
@@ -171,7 +171,7 @@ const Kast = await (async () => {
         E extends keyof import("node:net").ServerEventMap,
       >(
         listener: TcpListener,
-        event: E
+        event: E,
       ): Promise<import("node:net").ServerEventMap[E]> {
         return new Promise((resolve, reject) => {
           if (listener.error !== undefined) {
@@ -292,7 +292,7 @@ const Kast = await (async () => {
                 args.close_on_exec;
                 const [socket] = await waitForServerEvent(
                   listener,
-                  "connection"
+                  "connection",
                 );
                 return {
                   stream: setup_tcp_stream(socket),
@@ -495,6 +495,7 @@ const Kast = await (async () => {
         2: Value;
       }) => {
         if (T === types.primitive.Float64) return lhs / rhs;
+        if (T === types.primitive.Int64) return lhs / rhs;
         return Math.floor(lhs / rhs);
       },
       neg: async (x: Value) => -x,
@@ -529,7 +530,7 @@ const Kast = await (async () => {
       },
       iter: async (
         { 0: s, 1: f }: { 0: string; 1: Fn<string, void> },
-        ctx: Context
+        ctx: Context,
       ) => {
         for (let c of s) {
           await call(f, c, ctx);
