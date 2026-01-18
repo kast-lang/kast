@@ -7,6 +7,7 @@ use Float64;
 use Char;
 use String;
 use String.to_string;
+use String.parse;
 use io.print;
 use io.eprint;
 use io.input;
