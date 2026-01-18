@@ -481,9 +481,9 @@ const Kast = await (async () => {
       },
     },
     op: {
-      add: async (args: { 0: Value; 1: Value }) => args["0"] + args["1"],
-      sub: async (args: { 0: Value; 1: Value }) => args["0"] - args["1"],
-      mul: async (args: { 0: Value; 1: Value }) => args["0"] * args["1"],
+      add: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs + rhs,
+      sub: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs - rhs,
+      mul: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs * rhs,
       rem: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs % rhs,
       div_temp: async ({
         0: T,

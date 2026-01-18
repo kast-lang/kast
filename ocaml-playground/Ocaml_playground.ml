@@ -1,9 +1,5 @@
-open Std
-open Kast_transpiler_javascript.Base64_vlq
-
-(*
-  000001
-  -0
-*)
-
-let () = println "%a" print_base64_vlq 2147483647
+let () =
+  let rec pow acc x n = if n = 0 then 1 else acc * x * pow 1 x (n - 1) in
+  let x = pow 1 10 60 in
+  print_int x
+;;
