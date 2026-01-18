@@ -3,7 +3,7 @@ open Kast_util
 module Token = Kast_token
 module Lexer = Kast_lexer
 module Syntax = Kast_syntax
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 module Error = Error
 module Parsed_part = Parsed_part
 module Ruleset = Ruleset

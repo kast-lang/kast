@@ -1,7 +1,7 @@
 open Std
 open Kast_util
 module Token = Kast_token
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 module Lexer = Kast_lexer
 module Parser = Kast_parser
 

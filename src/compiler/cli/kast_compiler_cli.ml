@@ -81,14 +81,15 @@ let run : Args.t -> unit =
       Compiler.init ~import_cache:(Compiler.init_import_cache ()) ~compile_for:interpreter)
     else Compiler.default (Uri source.uri) ()
   in
-  let expr : expr = Compiler.compile compiler Expr parsed.ast in
+  let ast = parsed.ast |> Compiler.init_ast in
+  let expr : expr = Compiler.compile compiler Expr ast in
   (match target with
    | Ir -> fprintf fmt "%a" Expr.print_with_types expr
    | JavaScript ->
      let transpiled : Kast_transpiler_javascript.result =
        Kast_transpiler_javascript.transpile_expr
          ~state:compiler.interpreter
-         ~span:parsed.ast.span
+         ~span:ast.data.span
          expr
      in
      let source_map_path =

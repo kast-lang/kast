@@ -1,6 +1,5 @@
 open Std
 open Kast_util
-module Ast = Kast_ast
 module Syntax = Kast_syntax
 module Inference = Kast_inference_base
 module Label = Label
@@ -634,7 +633,8 @@ module rec TypesImpl : sig
     | Uri of Uri.t
     | Str of string
     | Symbol of Symbol.t
-  [@@deriving eq, ord]
+
+  and ast_data = { span : Span.t } [@@deriving eq, ord]
 
   type _ compiled_kind =
     | Assignee : assignee_expr compiled_kind
@@ -1279,7 +1279,8 @@ end = struct
     | Uri of Uri.t
     | Str of string
     | Symbol of Symbol.t
-  [@@deriving eq, ord]
+
+  and ast_data = { span : Span.t } [@@deriving eq, ord]
 
   type _ compiled_kind =
     | Assignee : assignee_expr compiled_kind
@@ -1371,6 +1372,14 @@ end = struct
   ;;
 
   let size map = map.entries |> List.length
+end
+
+and Ast : (Kast_ast.S with type Data.t = TypesImpl.ast_data) = Kast_ast.Make (AstData)
+
+and AstData : (Kast_ast.DataS with type t = TypesImpl.ast_data) = struct
+  type t = TypesImpl.ast_data [@@deriving eq, ord]
+
+  let span ({ span; _ } : t) = span
 end
 
 let target_symbol : symbol = Symbol.create "target"

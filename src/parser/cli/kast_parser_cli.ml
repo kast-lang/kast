@@ -1,7 +1,7 @@
 open Std
 open Kast_util
 module Parser = Kast_parser
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 
 module Args = struct
   type args = { path : Uri.t }

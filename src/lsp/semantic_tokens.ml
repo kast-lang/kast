@@ -2,7 +2,7 @@ open Std
 open Kast_util
 module Lsp = Linol_lsp
 module Token = Kast_token
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 
 type linecol =
   { line : int
@@ -34,7 +34,7 @@ let rec collect_parts (parts : Ast.part list) : token Seq.t =
     | Ast.Group group -> collect_parts group.parts)
 
 and collect : Ast.t -> token Seq.t =
-  fun { shape; span = _ } ->
+  fun { shape; data = _ } ->
   match shape with
   | Ast.Empty -> Seq.empty
   | Ast.Error { parts } -> collect_parts parts

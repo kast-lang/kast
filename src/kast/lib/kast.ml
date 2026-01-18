@@ -1,7 +1,6 @@
 open Std
 include Kast_util
 module Lexer = Kast_lexer
-module Ast = Kast_ast
 module Parser = Kast_parser
 module Highlight = Kast_highlight
 module Interpreter = Kast_interpreter

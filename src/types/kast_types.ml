@@ -12,6 +12,8 @@ module VarScope = Inference_impl.VarScope
 type 'a compiled_kind = 'a Types.compiled_kind
 type compiled = Types.compiled
 
+module Ast = Ast
+
 module Name = struct
   type t = name
 

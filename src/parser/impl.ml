@@ -2,7 +2,7 @@ open Std
 open Kast_util
 module Token = Kast_token
 module Lexer = Kast_lexer
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 module Syntax = Kast_syntax
 
 let expect_eof : Lexer.t -> unit =
@@ -199,7 +199,7 @@ and terminate (state : parse_one_state) (context : context) : parse_result =
       parts
       |> List.map (function
         | Parsed_part.Comment comment -> comment.span
-        | Parsed_part.Value value -> value.span
+        | Parsed_part.Value value -> value.data
         | Parsed_part.Keyword keyword -> keyword.span)
     in
     let parts =
@@ -215,7 +215,7 @@ and terminate (state : parse_one_state) (context : context) : parse_result =
       ; uri = token.span.uri
       }
     in
-    MadeProgress { shape = Error { parts }; span })
+    MadeProgress { shape = Error { parts }; data = span })
 
 (* TODO improve this logic? *)
 and try_skipping_token_because_error (state : parse_one_state) (context : context)
@@ -276,7 +276,7 @@ and parse_simple (context : context) : Ast.t option =
     in
     Log.trace (fun log -> log "Parsed simple %a" Ast.Shape.print shape);
     context.lexer |> Lexer.advance;
-    Some ({ shape; span = { peek.span with start } } : Ast.t))
+    Some ({ shape; data = { peek.span with start } } : Ast.t))
 
 and parse_minimal (context : context) : parse_result =
   match parse_simple context with
@@ -334,9 +334,9 @@ and parse_syntax_extension (context : context) : Ast.t =
   let span =
     match value_after with
     | None -> span
-    | Some value -> { span with finish = value.span.finish }
+    | Some value -> { span with finish = value.data.finish }
   in
-  { shape; span }
+  { shape; data = span }
 
 and parse_value (context : context) : Ast.t option =
   let rec loop ~(already_parsed : Ast.t option) : Ast.t option =
@@ -351,7 +351,7 @@ and parse_value (context : context) : Ast.t option =
   then
     Some
       { shape = Ast.Empty
-      ; span =
+      ; data =
           { start = context.lexer |> Lexer.position
           ; finish = context.lexer |> Lexer.position
           ; uri = (context.lexer |> Lexer.source).uri

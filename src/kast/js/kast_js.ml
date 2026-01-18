@@ -142,10 +142,11 @@ let () =
             { contents = source; uri = Uri.of_string "ocaml:source" }
           in
           let parsed = Parser.parse source Kast_default_syntax.ruleset in
+          let ast = parsed.ast |> Compiler.init_ast in
           let compiler = Compiler.default (Str "<js>") () in
           (* TODO *)
           let interpreter = compiler.interpreter in
-          let expr : expr = Compiler.compile compiler Expr parsed.ast in
+          let expr : expr = Compiler.compile compiler Expr ast in
           let value : value = Interpreter.eval interpreter expr in
           ignore value)
 

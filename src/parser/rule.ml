@@ -3,7 +3,7 @@ open Kast_util
 module Token = Kast_token
 module Lexer = Kast_lexer
 module Syntax = Kast_syntax
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 
 let parse_wrap_mode : Lexer.t -> Syntax.Rule.wrap_mode option =
   fun lexer ->
@@ -206,7 +206,7 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
       { parsed = Value value :: parsed
       ; children = (binding.name, Ast value) :: children
       ; remaining
-      ; span = merge_spans value.span span
+      ; span = merge_spans value.data span
       }
     | _, Group group_rule :: rule_parts_tail ->
       let go_in =
@@ -267,6 +267,6 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
         ; root =
             { rule = None; parts = parsed; children = children |> Tuple.of_list; span }
         }
-  ; span
+  ; data = span
   }
 ;;

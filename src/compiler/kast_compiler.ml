@@ -4,7 +4,6 @@ module Effect = Compiler_types.CompilerEffect
 open Kast_types
 module Token = Kast_token
 module Interpreter = Kast_interpreter
-module Ast = Kast_ast
 open Init
 module Error = Error
 module Scope = State.Scope
@@ -12,6 +11,7 @@ module Scope = State.Scope
 type state = State.t
 type import_cache = State.import_cache
 
+let init_ast = Compiler.init_ast
 let const_shape = Types.const_shape
 let init_import_cache = State.init_import_cache
 
@@ -49,9 +49,9 @@ let get_data = Compiler.get_data
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   fun (type a) (state : state) (kind : a compiled_kind) (ast : Ast.t) : a ->
-  let { shape = _; span } : Ast.t = ast in
+  let { shape = _; data = { span } } : Ast.t = ast in
   Kast_profiling.record
-    (fun () -> make_string "Compiling %a" Span.print ast.span)
+    (fun () -> make_string "Compiling %a" Span.print span)
     (fun () ->
        try
          match ast.shape with
@@ -79,7 +79,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                  PE_Binding
                    (State.Scope.find_binding
                       ~from_scope:(State.var_scope state)
-                      ~from:ast.span
+                      ~from:span
                       ident.name
                       state.scope)
                  |> init_place_expr span state
@@ -96,10 +96,10 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      if s.contents |> String.length = 1
                      then V_Char (String.get s.contents 0 |> Option.get)
                      else (
-                       Error.error ast.span "Char literals must have a single char";
+                       Error.error span "Char literals must have a single char";
                        V_Error)
                    | _ ->
-                     Error.error ast.span "Unexpected delimeter %S" s.delimeter;
+                     Error.error span "Unexpected delimeter %S" s.delimeter;
                      V_Error
                  in
                  const_shape (value |> Value.inferred ~span) |> init_expr span state
@@ -166,8 +166,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    ; scope
                    ; name = Symbol.create ident.name
                    ; ty = Ty.new_not_inferred ~scope ~span:token.span
-                   ; span = ast.span
-                   ; label = Label.create_definition ast.span ident.name
+                   ; span
+                   ; label = Label.create_definition span ident.name
                    ; mut = state.mut_enabled
                    }
                  in
@@ -193,20 +193,17 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    |> Ast.flatten_children
                    |> Tuple.mapi (fun member (ast : Ast.t) : Types.value_tuple_field ->
                      { place =
-                         Place.init
-                           ~mut:Immutable
-                           (V_Ast ast |> Value.inferred ~span:ast.span)
+                         Place.init ~mut:Immutable (V_Ast ast |> Value.inferred ~span)
                      ; ty_field =
-                         { ty = Ty.inferred ~span:ast.span T_Ast
+                         { ty = Ty.inferred ~span T_Ast
                          ; label =
                              (match member with
                               | Index _ -> None
-                              | Name name -> Some (Label.create_reference ast.span name))
+                              | Name name -> Some (Label.create_reference span name))
                          ; symbol = None
                          }
-                     ; span =
-                         ast.span
-                         (* TODO not sure if this is correct span, but there is no span? *)
+                     ; span
+                       (* TODO not sure if this is correct span, but there is no span? *)
                      })
                  in
                  let arg : value =
@@ -263,7 +260,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
              Ast.Shape.print_short
              ast.shape
              Span.print
-             ast.span);
+             span);
          raise exc)
 
 and make_compiler (original_state : state) : (module Compiler.S) =
@@ -326,7 +323,7 @@ let compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   fun state kind ast ->
   Fun.protect
     (fun () ->
-       state.currently_compiled_file <- Some ast.span.uri;
+       state.currently_compiled_file <- Some ast.data.span.uri;
        let result = compile state kind ast in
        Log.trace (fun log -> log "Completing inference");
        Kast_inference_completion.complete_compiled kind result;

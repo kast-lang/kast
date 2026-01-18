@@ -2,7 +2,6 @@ open Std
 open Kast_util
 open Kast_types
 open Common
-module Ast = Kast_ast
 module Error = Error
 module Inference = Kast_inference
 module Scope = Scope
@@ -1239,7 +1238,7 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
     ; span = group.span
     }
   in
-  { shape = Complex { rule = expr.rule; root = quote_group expr.root }; span }
+  { shape = Complex { rule = expr.rule; root = quote_group expr.root }; data = { span } }
 
 and current_name : state -> Types.name_shape =
   fun state ->

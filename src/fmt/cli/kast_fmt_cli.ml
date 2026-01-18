@@ -63,20 +63,20 @@ let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
                   { rule = rule_into
                   ; root = rewrite_group_matched_rule root rule_into.parts None
                   }
-            ; span = ast.span
+            ; data = ast.data
             }
           with
           | e ->
             Log.error (fun log ->
-              log "while rewriting %S at %a" rule.name Span.print ast.span);
+              log "while rewriting %S at %a" rule.name Span.print ast.data);
             raise e)
        | None ->
-         { shape = Ast.Complex { rule; root = rewrite_group root }; span = ast.span })
+         { shape = Ast.Complex { rule; root = rewrite_group root }; data = ast.data })
     | Ast.Syntax node ->
       { shape =
           Ast.Syntax
             { node with value_after = node.value_after |> Option.map rewrite_ast }
-      ; span = ast.span
+      ; data = ast.data
       }
     | Ast.Error _ -> ast
   and rewrite_group ({ rule; parts; children; span } : Ast.group) : Ast.group =

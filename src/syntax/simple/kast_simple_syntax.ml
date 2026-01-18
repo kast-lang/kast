@@ -2,7 +2,7 @@ open Std
 open Kast_util
 module Token = Kast_token
 module Syntax = Kast_syntax
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 module Lexer = Kast_lexer
 module Parser = Kast_parser
 
@@ -45,7 +45,7 @@ and collect_children ast : ast tuple =
   | Complex { rule = { name = "comma"; _ }; root } ->
     let children = root.children |> Tuple.map Ast.Child.expect_ast in
     if Array.length children.unnamed <> 2 || not (StringMap.is_empty children.named)
-    then Parser.error ast.span "comma is incorrect structure: %a" Ast.print ast;
+    then Parser.error ast.data "comma is incorrect structure: %a" Ast.print ast;
     let a = Tuple.get_unnamed 0 children |> collect_children in
     let b = Tuple.get_unnamed 1 children |> collect_children in
     Tuple.merge a b

@@ -2,7 +2,7 @@ open Std
 open Kast_util
 module Token = Kast_token
 module Parser = Kast_parser
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 module Lexer = Kast_lexer
 module Syntax = Kast_syntax
 
@@ -88,7 +88,7 @@ let format : formatter -> Parser.result -> unit =
             && rule.priority = parent_rule.priority
           | None -> false
         in
-        let wrapped = wrapped || ast.span.start.line <> ast.span.finish.line in
+        let wrapped = wrapped || ast.data.start.line <> ast.data.finish.line in
         (* detect duplicate parens *)
         if String.equal rule.name "core:scope" && filter = Syntax.Rule.Priority.Any
         then (

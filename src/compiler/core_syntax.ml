@@ -2,7 +2,6 @@ open Std
 open Kast_util
 open Compiler_types
 open Kast_types
-module Ast = Kast_ast
 open Init
 open Error
 module Interpreter = Kast_interpreter
@@ -25,7 +24,7 @@ let apply : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let f, arg =
           children
           |> Ast.flatten_children
@@ -53,7 +52,7 @@ let instantiate_generic : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let generic, arg =
           children
           |> Ast.flatten_children
@@ -82,7 +81,7 @@ let then' : core_syntax =
         (ast : Ast.t)
         (_ : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | Expr ->
           let list =
@@ -107,7 +106,7 @@ let stmt : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let expr = children |> Ast.flatten_children |> Tuple.unwrap_single_unnamed in
         match kind with
         | Expr ->
@@ -128,9 +127,9 @@ let scope : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let expr = children |> Ast.flatten_children |> Tuple.unwrap_single_unnamed in
-        let state = C.state |> State.enter_scope ~span:expr.span ~recursive:false in
+        let state = C.state |> State.enter_scope ~span:expr.data.span ~recursive:false in
         match kind with
         | Expr ->
           let expr = C.compile ~state Expr expr in
@@ -151,7 +150,7 @@ let assign : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let assignee, value =
           children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "assignee"; "value" ]
         in
@@ -176,7 +175,7 @@ let let' : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let pattern =
           children |> Ast.flatten_children |> Tuple.unwrap_single_named "pattern"
         in
@@ -199,7 +198,7 @@ let placeholder : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         Tuple.assert_empty children;
         match kind with
         | Assignee -> A_Placeholder |> init_assignee span C.state
@@ -219,7 +218,7 @@ let fn_type : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
         let context =
           children
@@ -261,7 +260,7 @@ let fn : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
         let context =
           children
@@ -292,13 +291,14 @@ let fn : core_syntax =
         | Expr ->
           let scope = State.var_scope C.state in
           let ty : Types.ty_fn =
-            { arg = Ty.new_not_inferred ~scope ~span:arg.span
+            { arg = Ty.new_not_inferred ~scope ~span:arg.data.span
             ; result =
                 Ty.new_not_inferred
                   ~scope
                   ~span:
                     (result_ty
-                     |> Option.map_or body.span (fun (result : Ast.t) -> result.span))
+                     |> Option.map_or body.data.span (fun (result : Ast.t) ->
+                       result.data.span))
             }
           in
           let def : Types.maybe_compiled_fn =
@@ -373,7 +373,7 @@ let generic : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
         let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
         match kind with
@@ -415,7 +415,9 @@ let generic : core_syntax =
             Interpreter.generic_ty
               ~span
               arg
-              (Ty.new_not_inferred ~scope:(State.var_scope inner_state) ~span:body.span)
+              (Ty.new_not_inferred
+                 ~scope:(State.var_scope inner_state)
+                 ~span:body.data.span)
           in
           State.Scope.fork (fun () ->
             let body = C.compile ~state:inner_state Expr body in
@@ -437,7 +439,7 @@ let unit : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         Tuple.assert_empty children;
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -457,7 +459,7 @@ let type' : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         Tuple.assert_empty children;
         let const () =
           const_shape (V_Ty (Ty.inferred ~span T_Ty) |> Value.inferred ~span)
@@ -485,7 +487,7 @@ let bool_impl name value : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         Tuple.assert_empty children;
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -515,7 +517,7 @@ let type_expr : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let expr () = C.compile TyExpr expr in
         match kind with
@@ -540,7 +542,7 @@ let newtype : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -566,7 +568,7 @@ let type_ascribe : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let expr, expected_ty =
           children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "expr"; "type" ]
         in
@@ -603,7 +605,7 @@ let import : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         with_return (fun { return } : a ->
-          let span = ast.span in
+          let span = ast.data.span in
           let path =
             children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
           in
@@ -611,7 +613,10 @@ let import : core_syntax =
           | PlaceExpr -> Compiler.temp_expr (module C) ast
           | Expr ->
             let path_value, path_expr =
-              Compiler.eval ~ty:(Ty.inferred ~span:path.span T_String) (module C) path
+              Compiler.eval
+                ~ty:(Ty.inferred ~span:path.data.span T_String)
+                (module C)
+                path
             in
             let path =
               path_value
@@ -649,12 +654,12 @@ let include' : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         with_return (fun { return } ->
-          let span = ast.span in
+          let span = ast.data.span in
           let path =
             children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
           in
           let path_value, path_expr =
-            Compiler.eval ~ty:(Ty.inferred ~span:path.span T_String) (module C) path
+            Compiler.eval ~ty:(Ty.inferred ~span:path.data.span T_String) (module C) path
           in
           let path =
             path_value
@@ -671,7 +676,7 @@ let include' : core_syntax =
           let parsed : Kast_parser.result =
             Kast_parser.parse source Kast_default_syntax.ruleset
           in
-          let compiled = C.compile kind parsed.ast in
+          let compiled = C.compile kind (parsed.ast |> Compiler.init_ast) in
           Effect.perform
             (CompilerEffect.FileIncluded
                { root = C.state.currently_compiled_file |> Option.get
@@ -751,7 +756,7 @@ let const : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let pattern, value =
           children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "pattern"; "value" ]
         in
@@ -795,10 +800,10 @@ let native : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         with_return (fun { return } ->
-          let span = ast.span in
+          let span = ast.data.span in
           let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
           let expr_value, expr =
-            Compiler.eval ~ty:(Ty.inferred ~span:expr.span T_String) (module C) expr
+            Compiler.eval ~ty:(Ty.inferred ~span:expr.data.span T_String) (module C) expr
           in
           let expr_string : string =
             expr_value
@@ -834,7 +839,7 @@ let module' : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let def = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let state = C.state |> State.enter_scope ~span ~recursive:true in
         let def = C.compile ~state Expr def in
@@ -872,7 +877,7 @@ let dot : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         with_return (fun { return } : a ->
-          let span = ast.span in
+          let span = ast.data.span in
           match kind with
           | Assignee -> A_Place (C.compile PlaceExpr ast) |> init_assignee span C.state
           | Pattern ->
@@ -891,7 +896,7 @@ let dot : core_syntax =
             let field : Types.field_expr =
               match field_ast.shape with
               | Simple { token = { shape = Ident ident; _ }; _ } ->
-                Name (Label.create_reference field_ast.span ident.name)
+                Name (Label.create_reference field_ast.data.span ident.name)
               | Simple { token = { shape = Number { raw; _ }; _ }; _ } ->
                 (match raw |> int_of_string_opt with
                  | Some i -> Index i
@@ -931,7 +936,7 @@ let dot : core_syntax =
                      error span "expected obj to be compiler scope";
                      return <| init_error span C.state kind))
              | _ ->
-               PE_Field { obj; field; field_span = field_ast.span }
+               PE_Field { obj; field; field_span = field_ast.data.span }
                |> init_place_expr span C.state)))
   }
 ;;
@@ -944,13 +949,13 @@ let tuple_field
       ({ children; _ } : Ast.group)
   : string * field_span:span * field_label:Label.t option * a
   =
-  let span = ast.span in
+  let span = ast.data.span in
   let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
   let label =
     match label_ast.shape with
     | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
     | _ ->
-      Error.error label_ast.span "field label must be ident";
+      Error.error label_ast.data.span "field label must be ident";
       invalid_arg "tuple field"
   in
   let ty =
@@ -978,7 +983,7 @@ let tuple_field
           PE_Binding
             (State.Scope.find_binding
                ~from_scope:(State.var_scope C.state)
-               ~from:label_ast.span
+               ~from:label_ast.data.span
                label
                C.state.scope)
           |> init_place_expr span C.state
@@ -988,14 +993,14 @@ let tuple_field
     (match ty |> Option.map (Compiler.eval_ty (module C)) with
      | None ->
        ( label
-       , ~field_span:label_ast.span
-       , ~field_label:(Some (Label.create_reference label_ast.span label))
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value )
      | Some (ty, ty_expr) ->
        value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
        ( label
-       , ~field_span:label_ast.span
-       , ~field_label:(Some (Label.create_reference label_ast.span label))
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
   | TyExpr ->
     (match value with
@@ -1009,7 +1014,7 @@ let tuple_field
           PE_Binding
             (State.Scope.find_binding
                ~from_scope:(State.var_scope C.state)
-               ~from:label_ast.span
+               ~from:label_ast.data.span
                label
                C.state.scope)
           |> init_place_expr span C.state
@@ -1018,8 +1023,8 @@ let tuple_field
         (fun () -> TE_Expr expr) |> init_ty_expr span C.state
     in
     ( label
-    , ~field_span:label_ast.span
-    , ~field_label:(Some (Label.create_definition label_ast.span label))
+    , ~field_span:label_ast.data.span
+    , ~field_label:(Some (Label.create_definition label_ast.data.span label))
     , value )
   | Assignee ->
     error span "todo %s" __LOC__;
@@ -1036,9 +1041,9 @@ let tuple_field
               { id = Id.gen ()
               ; scope
               ; name = Symbol.create label
-              ; ty = Ty.new_not_inferred ~scope ~span:label_ast.span
-              ; span = label_ast.span
-              ; label = Label.create_reference label_ast.span label
+              ; ty = Ty.new_not_inferred ~scope ~span:label_ast.data.span
+              ; span = label_ast.data.span
+              ; label = Label.create_reference label_ast.data.span label
               ; mut = false
               }
           }
@@ -1047,14 +1052,14 @@ let tuple_field
     (match ty |> Option.map (Compiler.eval_ty (module C)) with
      | None ->
        ( label
-       , ~field_span:label_ast.span
-       , ~field_label:(Some (Label.create_reference label_ast.span label))
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value )
      | Some (ty, ty_expr) ->
        value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
        ( label
-       , ~field_span:label_ast.span
-       , ~field_label:(Some (Label.create_reference label_ast.span label))
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
 ;;
 
@@ -1063,7 +1068,7 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind) (ast : 
   match kind with
   | PlaceExpr -> Compiler.temp_expr (module C) ast
   | _ ->
-    let span = ast.span in
+    let span = ast.data.span in
     let children = ast |> Ast.collect_list ~binary_rule_name:"core:comma" in
     let parts_rev : a Types.tuple_part_of list ref = ref [] in
     let unnamed_idx = ref 0 in
@@ -1087,7 +1092,8 @@ let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind) (ast : 
       | _ ->
         unnamed_idx := !unnamed_idx + 1;
         let part : a Types.tuple_part_of =
-          Field { label_span = child.span; label = None; field = C.compile kind child }
+          Field
+            { label_span = child.data.span; label = None; field = C.compile kind child }
         in
         parts_rev := part :: !parts_rev);
     (match kind with
@@ -1137,7 +1143,7 @@ let use : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let used = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | Expr ->
           let used_expr = C.compile PlaceExpr used in
@@ -1197,12 +1203,15 @@ let use_dot_star : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let used = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | Expr ->
           let scope = State.var_scope C.state in
           let used, used_expr =
-            Compiler.eval ~ty:(Ty.new_not_inferred ~scope ~span:used.span) (module C) used
+            Compiler.eval
+              ~ty:(Ty.new_not_inferred ~scope ~span:used.data.span)
+              (module C)
+              used
           in
           let bindings =
             match Value.ty_of used |> Ty.await_inferred with
@@ -1260,7 +1269,7 @@ let comptime : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | Expr ->
           let expr = C.compile Expr expr in
@@ -1284,7 +1293,7 @@ let if' : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let cond, then_case, else_case =
           children
           |> Ast.flatten_children
@@ -1318,7 +1327,7 @@ let impl_syntax : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
@@ -1346,7 +1355,7 @@ let impl_syntax : core_syntax =
                  }
                in
                let def : Types.maybe_compiled_fn =
-                 { span = impl.span; compiled = None; on_compiled = [] }
+                 { span = impl.data.span; compiled = None; on_compiled = [] }
                in
                State.Scope.fork (fun () ->
                  let state = State.enter_scope C.state ~span ~recursive:false in
@@ -1361,19 +1370,20 @@ let impl_syntax : core_syntax =
                                    : pattern Types.tuple_part_of
                                  ->
                                  let field : pattern Types.tuple_field_of =
-                                   { label_span = field.span
+                                   { label_span = field.data.span
                                    ; label =
                                        (match member with
                                         | Index _ -> None
                                         | Name name ->
-                                          Some (Label.create_definition field.span name))
+                                          Some
+                                            (Label.create_definition field.data.span name))
                                    ; field = C.compile ~state Pattern field
                                    }
                                  in
                                  Field field)
                          |> List.of_seq
                      }
-                   |> init_pattern name.span C.state
+                   |> init_pattern name.data.span C.state
                  in
                  state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
                  let body = C.compile ~state Expr impl in
@@ -1390,7 +1400,10 @@ let impl_syntax : core_syntax =
              |> Compiler.data_add Expr (impl_expr, impl) kind
            | _ ->
              let name_value, name_expr =
-               Compiler.eval ~ty:(Ty.inferred ~span:name.span T_String) (module C) name
+               Compiler.eval
+                 ~ty:(Ty.inferred ~span:name.data.span T_String)
+                 (module C)
+                 name
              in
              let name = name_value |> Value.expect_string in
              let impl, impl_expr =
@@ -1399,7 +1412,7 @@ let impl_syntax : core_syntax =
                    ((* TODO *)
                     Ty.new_not_inferred
                       ~scope:(State.var_scope C.state)
-                      ~span:impl.span)
+                      ~span:impl.data.span)
                  (module C)
                  impl
              in
@@ -1448,7 +1461,7 @@ let quote : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let body = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -1456,8 +1469,8 @@ let quote : core_syntax =
           let rec construct (ast : Ast.t) : expr =
             match ast.shape with
             | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
-              const_shape (V_Ast ast |> Value.inferred ~span:ast.span)
-              |> init_expr ast.span C.state
+              const_shape (V_Ast ast |> Value.inferred ~span:ast.data.span)
+              |> init_expr ast.data.span C.state
             | Ast.Complex { rule; root } when rule.name = "core:unquote" ->
               let unquote =
                 root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
@@ -1465,7 +1478,7 @@ let quote : core_syntax =
               C.compile kind unquote
             | Ast.Complex { rule; root } ->
               E_QuoteAst { rule; root = construct_group root }
-              |> init_expr ast.span C.state
+              |> init_expr ast.data.span C.state
             | Ast.Syntax _ -> fail "TODO"
           and construct_group (group : Ast.group) : Expr.Shape.quote_ast_group =
             { rule = group.rule
@@ -1494,7 +1507,7 @@ let loop : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let body = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
         | Expr ->
@@ -1521,7 +1534,7 @@ let unwindable : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let token, body =
           children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "token"; "body" ]
         in
@@ -1548,7 +1561,7 @@ let unwind : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let token, value =
           children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "token"; "value" ]
         in
@@ -1571,7 +1584,7 @@ let target_dependent : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let branches =
           children |> Ast.flatten_children |> Tuple.unwrap_single_named "branches"
         in
@@ -1614,7 +1627,7 @@ let target_dependent : core_syntax =
                  }
                  : Types.expr_target_dependent_branch)
             | _ ->
-              error branch.span "target dependent branch must use fn syntax";
+              error branch.data.span "target dependent branch must use fn syntax";
               None)
         in
         match kind with
@@ -1637,7 +1650,7 @@ let match_ : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
@@ -1667,13 +1680,13 @@ let match_ : core_syntax =
                   root.children |> Tuple.get_named "body" |> Ast.Child.expect_ast
                 in
                 let branch_state =
-                  C.state |> State.enter_scope ~span:body.span ~recursive:false
+                  C.state |> State.enter_scope ~span:body.data.span ~recursive:false
                 in
                 Compiler.inject_pattern_bindings ~only_compiler:false pattern branch_state;
                 let body = C.compile ~state:branch_state Expr body in
                 Some ({ pattern; body } : Types.expr_match_branch)
               | _ ->
-                error branch.span "match branch must use fn syntax";
+                error branch.data.span "match branch must use fn syntax";
                 None)
           in
           E_Match { value; branches } |> init_expr span C.state
@@ -1692,7 +1705,7 @@ let inject_context : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let context_type, value =
           children
           |> Ast.flatten_children
@@ -1703,7 +1716,7 @@ let inject_context : core_syntax =
           let context_ty_value, context_ty_expr =
             context_type
             |> Compiler.eval
-                 ~ty:(Ty.inferred ~span:context_type.span T_ContextTy)
+                 ~ty:(Ty.inferred ~span:context_type.data.span T_ContextTy)
                  (module C)
           in
           (match context_ty_value |> Value.await_inferred with
@@ -1728,7 +1741,7 @@ let current_context : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let context_type =
           children |> Ast.flatten_children |> Tuple.unwrap_single_named "context_type"
         in
@@ -1737,7 +1750,7 @@ let current_context : core_syntax =
           let context_ty_value, context_ty_expr =
             context_type
             |> Compiler.eval
-                 ~ty:(Ty.inferred ~span:context_type.span T_ContextTy)
+                 ~ty:(Ty.inferred ~span:context_type.data.span T_ContextTy)
                  (module C)
           in
           (match context_ty_value |> Value.await_inferred with
@@ -1761,7 +1774,7 @@ let binding : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let binding = children |> Ast.flatten_children |> Tuple.unwrap_single_unnamed in
         let binding_value, binding_expr =
           binding
@@ -1795,7 +1808,7 @@ let __file__ : core_syntax =
         (ast : Ast.t)
         (_ : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | Expr ->
           const_shape (V_String (span.uri |> Uri.path) |> Value.inferred ~span)
@@ -1815,7 +1828,7 @@ let current_compiler_scope : core_syntax =
         (ast : Ast.t)
         (_ : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         match kind with
         | Expr ->
           let scope = C.state.scope in
@@ -1835,34 +1848,34 @@ let variant_impl =
     ({ children; _ } : Ast.group)
     : a ->
   let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
-  let label_span = label_ast.span in
+  let label_span = label_ast.data.span in
   let label =
     match label_ast.shape with
     | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
     | _ ->
-      Error.error label_ast.span "field label must be ident";
+      Error.error label_ast.data.span "field label must be ident";
       invalid_arg "tuple field"
   in
   let value_ast =
     children |> Tuple.get_named_opt "value" |> Option.map Ast.Child.expect_ast
   in
-  let span = ast.span in
+  let span = ast.data.span in
   match kind with
   | PlaceExpr -> Compiler.temp_expr (module C) ast
   | Expr ->
-    let label = Label.create_reference label_ast.span label in
+    let label = Label.create_reference label_ast.data.span label in
     E_Variant { label; label_span; value = value_ast |> Option.map (C.compile Expr) }
     |> init_expr span C.state
   | TyExpr ->
     (fun () ->
-      let label = Label.create_definition label_ast.span label in
+      let label = Label.create_definition label_ast.data.span label in
       TE_Variant
         { variants =
             [ { label_span; label; value = value_ast |> Option.map (C.compile TyExpr) } ]
         })
     |> init_ty_expr span C.state
   | Pattern ->
-    let label = Label.create_reference label_ast.span label in
+    let label = Label.create_reference label_ast.data.span label in
     P_Variant { label_span; label; value = value_ast |> Option.map (C.compile Pattern) }
     |> init_pattern span C.state
   | Assignee ->
@@ -1890,7 +1903,7 @@ let union_impl
       (_ : Ast.group)
   : a
   =
-  let span = ast.span in
+  let span = ast.data.span in
   let elements =
     Ast.collect_list
       ~binary_rule_name:"core:union"
@@ -1954,7 +1967,7 @@ let and_ : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let lhs, rhs = children |> Ast.flatten_children |> Tuple.unwrap_unnamed2 in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -1976,7 +1989,7 @@ let or_ : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let lhs, rhs = children |> Ast.flatten_children |> Tuple.unwrap_unnamed2 in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -1998,7 +2011,7 @@ let mut : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let inner = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
         | Pattern -> C.compile ~state:{ C.state with mut_enabled = true } Pattern inner
@@ -2017,7 +2030,7 @@ let ref_impl ~name ~(mut : bool) : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let inner = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -2049,7 +2062,7 @@ let deref : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let ref = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
         | PlaceExpr -> PE_Deref (C.compile Expr ref) |> init_place_expr span C.state
@@ -2070,7 +2083,7 @@ let impl_cast : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let value, target, impl =
           children
           |> Ast.flatten_children
@@ -2080,7 +2093,10 @@ let impl_cast : core_syntax =
         | Expr ->
           let target, target_expr =
             Compiler.eval
-              ~ty:(Ty.new_not_inferred ~scope:(State.var_scope C.state) ~span:target.span)
+              ~ty:
+                (Ty.new_not_inferred
+                   ~scope:(State.var_scope C.state)
+                   ~span:target.data.span)
               (module C)
               target
           in
@@ -2102,7 +2118,7 @@ let impl_as_module : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let value, impl =
           children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "value"; "impl" ]
         in
@@ -2143,7 +2159,7 @@ let cast : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let value, target =
           children |> Ast.flatten_children |> Tuple.unwrap_named2 [ "value"; "target" ]
         in
@@ -2152,7 +2168,10 @@ let cast : core_syntax =
         | Expr ->
           let target, target_expr =
             Compiler.eval
-              ~ty:(Ty.new_not_inferred ~scope:(State.var_scope C.state) ~span:target.span)
+              ~ty:
+                (Ty.new_not_inferred
+                   ~scope:(State.var_scope C.state)
+                   ~span:target.data.span)
               (module C)
               target
           in
@@ -2174,7 +2193,7 @@ let by_ref name ~mut : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let inner = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
         | Pattern ->
@@ -2194,7 +2213,7 @@ let typeof : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let expr () =
           let expr = C.compile Expr expr in
@@ -2222,7 +2241,7 @@ let include_ast : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.span in
+        let span = ast.data.span in
         let ast = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let value, expr = Compiler.eval ~ty:(T_Ast |> Ty.inferred ~span) (module C) ast in
         match value |> Value.expect_ast with
@@ -2302,7 +2321,7 @@ let all : core_syntax StringMap.t =
 let handle name (module C : Compiler.S) kind (ast : Ast.t) root =
   match all |> StringMap.find_opt name with
   | None ->
-    error ast.span "there is no core syntax %S" name;
-    init_error ast.span C.state kind
+    error ast.data.span "there is no core syntax %S" name;
+    init_error ast.data.span C.state kind
   | Some core_syntax -> core_syntax.handle (module C) kind ast root
 ;;

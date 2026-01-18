@@ -1,16 +1,17 @@
 open Std
 open Kast_util
 module Lsp = Linol_lsp
-module Ast = Kast_ast
+module Ast = Kast_ast.T
 
 let options : Lsp.Types.SelectionRangeRegistrationOptions.t =
   { workDoneProgress = None; id = None; documentSelector = None }
 ;;
 
 let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
-  if Span.contains_position pos ast.span
+  let span = ast.data in
+  if Span.contains_position pos span
   then
-    ast.span
+    span
     ::
     (match ast.shape with
      | Empty -> []

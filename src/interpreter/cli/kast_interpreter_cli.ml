@@ -66,7 +66,8 @@ let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
   let source = Source.read path in
   let parsed = Parser.parse source Kast_default_syntax.ruleset in
   let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
-  let expr : expr = Compiler.compile compiler Expr parsed.ast in
+  let ast = parsed.ast |> Compiler.init_ast in
+  let expr : expr = Compiler.compile compiler Expr ast in
   let value : value = Interpreter.eval interpreter expr in
   f (Some { compiler; interpreter; value })
 ;;
@@ -116,7 +117,8 @@ let repl
     let line = input_line stdin in
     let source : source = { contents = line; uri = Uri.stdin } in
     let parsed = Parser.parse source Kast_default_syntax.ruleset in
-    let expr : expr = Compiler.compile compiler Expr parsed.ast in
+    let ast = parsed.ast |> Compiler.init_ast in
+    let expr : expr = Compiler.compile compiler Expr ast in
     (try
        let value : value = Interpreter.eval interpreter expr in
        value.var |> Kast_inference_base.Var.setup_default_if_needed;

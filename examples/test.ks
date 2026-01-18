@@ -1,5 +1,7 @@
-let mut x = 1;
-for _ in 0..64 do (
-    x *= 10;
+const double = (ast) => `(
+    let x = 123;
+    $ast + $ast
 );
-dbg.print(x);
+
+let x = 2;
+dbg.print(double!(x));
