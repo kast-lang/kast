@@ -694,7 +694,13 @@ let eval_const ~async (state : State.t) (expr : expr) : value =
   let invoke = if async then State.Scope.fork else fun f -> f () in
   invoke (fun () ->
     let value = Kast_interpreter.eval state.interpreter expr in
-    result |> Inference.Value.expect_inferred_as ~span:expr.data.span value);
+    Log.trace (fun log ->
+      log "evaled const at %a = %a" Span.print expr.data.span Value.print value);
+    Log.trace (fun log ->
+      log "const at %a temp result = %a" Span.print expr.data.span Value.print result);
+    result |> Inference.Value.expect_inferred_as ~span:expr.data.span value;
+    Log.trace (fun log ->
+      log "const at %a is unified with temp result" Span.print expr.data.span));
   result
 ;;
 

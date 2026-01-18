@@ -686,28 +686,10 @@ module Impl = struct
          | V_String _, _ -> fail ()
          | V_Ref a, V_Ref b when Repr.equal a b -> V_Ref a
          | V_Ref _, _ -> fail ()
-         | V_Tuple { ty = ty_a; tuple = a }, V_Tuple { ty = ty_b; tuple = b } ->
-           V_Tuple
-             { ty = unite_ty_tuple ~span ty_a ty_b
-             ; tuple =
-                 Tuple.zip_order_a a b
-                 |> Tuple.mapi
-                      (fun
-                          member
-                           ((a, b) : Types.value_tuple_field * Types.value_tuple_field)
-                           : Types.value_tuple_field
-                         ->
-                         error_context
-                           (fun () ->
-                              { place = unite_place ~span a.place b.place
-                              ; span = a.span
-                              ; ty_field =
-                                  unite_ty_tuple_field ~span a.ty_field b.ty_field
-                              })
-                           (fun fmt -> fprintf fmt "field %a" Tuple.Member.print member))
-             }
+         | V_Tuple a, V_Tuple b -> V_Tuple (unite_value_tuple ~span a b)
          | V_Tuple _, _ -> fail ()
-         | V_Variant _, _ -> fail () (* TODO *)
+         | V_Variant a, V_Variant b -> V_Variant (unite_value_variant ~span a b)
+         | V_Variant _, _ -> fail ()
          | V_Ty a, V_Ty b -> V_Ty (unite_ty ~span a b)
          | V_Ty _, _ -> fail ()
          | V_Fn a, V_Fn b when a.fn.id = b.fn.id ->
@@ -738,6 +720,35 @@ module Impl = struct
          | V_CompilerScope _, _ -> fail ())
       (fun fmt ->
          fprintf fmt "value_shape %a != %a" print_value_shape a print_value_shape b)
+
+  and unite_value_tuple : value_tuple Inference.unite =
+    fun ~span { ty = ty_a; tuple = a } { ty = ty_b; tuple = b } ->
+    { ty = unite_ty_tuple ~span ty_a ty_b
+    ; tuple =
+        Tuple.zip_order_a a b
+        |> Tuple.mapi
+             (fun
+                 member
+                  ((a, b) : Types.value_tuple_field * Types.value_tuple_field)
+                  : Types.value_tuple_field
+                ->
+                error_context
+                  (fun () ->
+                     { place = unite_place ~span a.place b.place
+                     ; span = a.span
+                     ; ty_field = unite_ty_tuple_field ~span a.ty_field b.ty_field
+                     })
+                  (fun fmt -> fprintf fmt "field %a" Tuple.Member.print member))
+    }
+
+  and unite_value_variant : value_variant Inference.unite =
+    fun ~span
+      { label = label_a; data = data_a; ty = ty_a }
+      { label = label_b; data = data_b; ty = ty_b } ->
+    { label = Label.unite label_a label_b
+    ; data = unite_option unite_place ~span data_a data_b
+    ; ty = unite_ty_variant ~span ty_a ty_b
+    }
 
   and unite_value : value Inference.unite =
     fun ~span { var = a; ty = ty_a } { var = b; ty = ty_b } ->

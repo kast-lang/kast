@@ -648,7 +648,7 @@ module Impl = struct
   and print_optionally_named : formatter -> optional_name -> (formatter -> unit) -> unit =
     fun fmt name f ->
     match name.var |> Inference.Var.inferred_opt with
-    | Some (Some name) -> print_name_shape fmt name
+    | Some (Some name) when false -> print_name_shape fmt name
     (* ; fprintf fmt "(=%t)" f *)
     | _ -> f fmt
 
