@@ -20,6 +20,7 @@ let init_natives () =
     ; "char", T_Char
     ; "type", T_Ty
     ; "bool", T_Bool
+    ; "ast", T_Ast
     ]
   in
   let generic_types : (string * (Ty.Shape.t -> Ty.Shape.t)) list =

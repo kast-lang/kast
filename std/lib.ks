@@ -12,6 +12,7 @@ const Int64 :: type = @native "int64";
 const Float64 :: type = @native "float64";
 const Char :: type = @native "char";
 const String :: type = @native "string";
+const Ast :: type = @native "ast";
 
 const cmp = include "./cmp.ks";
 const op = include "./op.ks";
