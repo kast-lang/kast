@@ -3,7 +3,6 @@ open Kast_util
 open Kast_types
 module Token = Kast_token
 module Interpreter = Kast_interpreter
-module Ast = Kast_ast
 open Error
 
 module Scope = struct
@@ -331,3 +330,13 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
 ;;
 
 let var_scope : t -> VarScope.t = fun state -> state.interpreter.result_scope
+
+let enter_ast_def_site (ast : Ast.t) (state : t) =
+  match ast.data.hygiene with
+  | CallSite -> () (* TODO maybe somthing *)
+  | DefSite ->
+    (match ast.data.def_site with
+     | None -> state.scopes <- { state.scopes with def_site = None }
+     | Some def_site ->
+       state.scopes <- state.scopes |> Scopes.enter_def_site ~span:ast.data.span def_site)
+;;

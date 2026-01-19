@@ -60,13 +60,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
     (fun () -> make_string "Compiling %a" Span.print span)
     (fun () ->
        try
-         (match hygiene with
-          | CallSite -> () (* TODO maybe somthing *)
-          | DefSite ->
-            (match def_site with
-             | None -> state.scopes <- { state.scopes with def_site = None }
-             | Some def_site ->
-               state.scopes <- state.scopes |> State.Scopes.enter_def_site ~span def_site));
+         state |> State.enter_ast_def_site ast;
          Log.trace (fun log ->
            log
              "compiling with def_scope=%a at %a"

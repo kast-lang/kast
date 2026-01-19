@@ -999,6 +999,7 @@ let tuple_field
       match value with
       | Some value -> C.compile Expr value
       | None ->
+        C.state |> State.enter_ast_def_site label_ast;
         State.Scopes.find
           ~hygiene:label_ast.data.hygiene
           ~from_scope:(State.var_scope C.state)
@@ -1027,6 +1028,7 @@ let tuple_field
       match ty with
       | Some value -> C.compile TyExpr value
       | None ->
+        C.state |> State.enter_ast_def_site label_ast;
         let expr =
           State.Scopes.find
             ~hygiene:label_ast.data.hygiene
@@ -1205,6 +1207,7 @@ let use : core_syntax =
             | _ ->
               (match used_ast.shape with
                | Simple { token = { shape = Ident ident; _ }; _ } ->
+                 C.state |> State.enter_ast_def_site used_ast;
                  let local =
                    C.state.scopes
                    |> State.Scopes.find

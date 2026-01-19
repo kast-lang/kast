@@ -27,8 +27,8 @@ impl syntax (@field(obj, field)) = `(
             | :Int32 => 0
             | :Tuple(fields) => (
                 let mut result = mem.unintialized(T);
-                for field in fields do (
-                    @field(result, field.name) = default_value(field.ty);
+                for field in List.iter(&fields) do (
+                    @field(result, field.name) = default_value(field^.ty);
                 );
                 result
             )
