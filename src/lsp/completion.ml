@@ -13,8 +13,9 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope)
     | Some parent -> complete_from_compiler_scope parent
   in
   let locals =
-    scope.bindings
-    |> StringMap.map (fun (binding : binding) ->
+    scope.locals
+    |> StringMap.map (fun local ->
+      let binding = local |> Compiler.Scope.Local.binding in
       let label = binding.name.name in
       let detail = make_string "@[<v>%a@]" Ty.print binding.ty in
       let kind : Lsp.Types.CompletionItemKind.t =

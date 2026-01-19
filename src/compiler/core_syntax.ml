@@ -86,7 +86,16 @@ let then' : core_syntax =
         | Expr ->
           let list =
             Ast.collect_list ~binary_rule_name:"core:then" ast
-            |> List.map (C.compile Expr)
+            |> List.map (fun ast ->
+              let result = C.compile Expr ast in
+              Log.trace (fun log ->
+                log
+                  "After compiling %a def_site=%a"
+                  Ast.print
+                  ast
+                  Id.print
+                  (C.state.scopes |> State.Scopes.def_site).id);
+              result)
           in
           E_Then { list } |> init_expr span C.state
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -743,7 +752,19 @@ let const_let
     |> init_expr span C.state
   in
   C.state |> Compiler.inject_pattern_bindings ~only_compiler:true pattern;
-  ignore @@ Interpreter.eval C.state.interpreter let_expr;
+  let _ : value = Interpreter.eval C.state.interpreter let_expr in
+  Interpreter.pattern_bindings pattern
+  |> List.iter (fun (binding : binding) ->
+    C.state
+    |> Compiler.add_local
+         ~only_compiler:true
+         (Const
+            { place =
+                C.state.interpreter.scope
+                |> Interpreter.Scope.find_opt binding.name
+                |> Option.get
+            ; binding
+            }));
   let_expr
 ;;
 
@@ -922,15 +943,14 @@ let dot : core_syntax =
                   in
                   (match obj.var |> Inference.Var.inferred_opt with
                    | Some (V_CompilerScope scope) ->
-                     let binding =
-                       State.Scope.find_binding
+                     let local =
+                       State.Scope.find
                          ~from_scope:(State.var_scope C.state)
                          ~from:span
                          field
                          scope
                      in
-                     PE_Binding binding
-                     |> init_place_expr span C.state
+                     Compiler.local_place_expr span C.state local
                      |> Compiler.data_add Expr (obj_expr, obj) kind
                    | _ ->
                      error span "expected obj to be compiler scope";
@@ -979,17 +999,13 @@ let tuple_field
       match value with
       | Some value -> C.compile Expr value
       | None ->
-        let place =
-          PE_Binding
-            (State.Scopes.find_binding
-               ~hygiene:label_ast.data.hygiene
-               ~from_scope:(State.var_scope C.state)
-               ~from:label_ast.data.span
-               label
-               C.state.scopes)
-          |> init_place_expr span C.state
-        in
-        E_Claim place |> init_expr span C.state
+        State.Scopes.find
+          ~hygiene:label_ast.data.hygiene
+          ~from_scope:(State.var_scope C.state)
+          ~from:label_ast.data.span
+          label
+          C.state.scopes
+        |> Compiler.local_expr span C.state
     in
     (match ty |> Option.map (Compiler.eval_ty (module C)) with
      | None ->
@@ -1011,17 +1027,15 @@ let tuple_field
       match ty with
       | Some value -> C.compile TyExpr value
       | None ->
-        let place =
-          PE_Binding
-            (State.Scopes.find_binding
-               ~hygiene:label_ast.data.hygiene
-               ~from_scope:(State.var_scope C.state)
-               ~from:label_ast.data.span
-               label
-               C.state.scopes)
-          |> init_place_expr span C.state
+        let expr =
+          State.Scopes.find
+            ~hygiene:label_ast.data.hygiene
+            ~from_scope:(State.var_scope C.state)
+            ~from:label_ast.data.span
+            label
+            C.state.scopes
+          |> Compiler.local_expr span C.state
         in
-        let expr = E_Claim place |> init_expr span C.state in
         (fun () -> TE_Expr expr) |> init_ty_expr span C.state
     in
     ( label
@@ -1048,7 +1062,7 @@ let tuple_field
               ; label = Label.create_reference label_ast.data.span label
               ; mut = false
               ; hygiene = label_ast.data.hygiene
-              ; def_site = None
+              ; def_site = label_ast.data.def_site
               }
           }
         |> init_pattern span C.state
@@ -1146,11 +1160,11 @@ let use : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let used = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let used_ast = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let span = ast.data.span in
         match kind with
         | Expr ->
-          let used_expr = C.compile PlaceExpr used in
+          let used_expr = C.compile PlaceExpr used_ast in
           let pattern : Pattern.Shape.t =
             match used_expr.shape with
             | PE_Binding binding ->
@@ -1189,8 +1203,21 @@ let use : core_syntax =
                  error span "must use named field";
                  P_Placeholder)
             | _ ->
-              error span "Can't use this";
-              P_Placeholder
+              (match used_ast.shape with
+               | Simple { token = { shape = Ident ident; _ }; _ } ->
+                 let local =
+                   C.state.scopes
+                   |> State.Scopes.find
+                        ~hygiene:used_ast.data.hygiene
+                        ~from_scope:(State.var_scope C.state)
+                        ~from:used_ast.data.span
+                        ident.name
+                 in
+                 P_Binding
+                   { bind_mode = Claim; binding = local |> State.Scope.Local.binding }
+               | _ ->
+                 error span "Can't use this";
+                 P_Placeholder)
           in
           let used_expr = E_Claim used_expr |> init_expr used_expr.data.span C.state in
           let pattern = pattern |> init_pattern used_expr.data.span C.state in
@@ -1221,48 +1248,39 @@ let use_dot_star : core_syntax =
               (module C)
               used_ast
           in
-          let bindings =
-            match Value.ty_of used |> Ty.await_inferred with
-            | T_Tuple { name = _; tuple } ->
-              tuple.named
-              |> StringMap.to_list
-              |> List.filter_map (fun (name, field) ->
-                let field : Types.ty_tuple_field = field in
-                field.label
-                |> Option.map (fun label ->
-                  ({ id = Id.gen ()
+          (match used |> Value.await_inferred with
+           | V_Tuple { tuple; ty = _ } ->
+             tuple
+             |> Tuple.iter (fun member (field : Types.value_tuple_field) ->
+               let name =
+                 match member with
+                 | Index i -> Int.to_string i
+                 | Name name -> name
+               in
+               match field.ty_field.label with
+               | None -> ()
+               | Some label ->
+                 let binding : binding =
+                   { id = Id.gen ()
                    ; scope
                    ; name =
-                       (match field.symbol with
+                       (match field.ty_field.symbol with
                         | Some symbol -> symbol
                         | None -> Symbol.create name)
                    ; span = Label.get_span label
-                   ; ty = field.ty
+                   ; ty = field.ty_field.ty
                    ; label
                    ; mut = false
                    ; hygiene = DefSite
                    ; def_site = None
                    }
-                   : binding)))
-            | other ->
-              error span "can't use .* %a" Ty.Shape.print other;
-              []
-          in
-          bindings
-          |> List.iter (fun binding ->
-            C.state |> Compiler.inject_binding ~only_compiler:false binding);
-          let result =
-            E_UseDotStar
-              { used =
-                  const_shape used
-                  |> init_expr used_expr.data.span C.state
-                  |> Compiler.data_add Expr (used_expr, used) kind
-              ; bindings
-              }
-            |> init_expr span C.state
-          in
-          ignore @@ Interpreter.eval C.state.interpreter result;
-          result
+                 in
+                 let local : State.Scope.local = Const { place = field.place; binding } in
+                 C.state |> Compiler.add_local ~only_compiler:true local)
+           | _ -> error span "can't use .* %a" Value.print used);
+          const_shape (V_Unit |> Value.inferred ~span)
+          |> init_expr span C.state
+          |> Compiler.data_add Expr (used_expr, used) Expr
         | _ ->
           error span "use .* must be expr";
           init_error span C.state kind)
@@ -1478,7 +1496,9 @@ let quote : core_syntax =
         | Expr ->
           let rec construct ~root (ast : Ast.t) : expr =
             let def_site =
-              if root then Some (C.state.scopes |> State.Scopes.call_site) else None
+              if true || root
+              then Some (C.state.scopes |> State.Scopes.call_site)
+              else None
             in
             match ast.shape with
             | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
@@ -1624,18 +1644,19 @@ let target_dependent : core_syntax =
               in
               let scopes_with_target =
                 C.state.scopes
-                |> State.Scopes.inject_binding
-                     ({ id = Id.gen ()
-                      ; scope = None
-                      ; name = Types.target_symbol
-                      ; span
-                      ; ty = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Target
-                      ; label = Label.create_definition span Types.target_symbol.name
-                      ; mut = false
-                      ; hygiene = DefSite
-                      ; def_site = None
-                      }
-                      : binding)
+                |> State.Scopes.add
+                     (Binding
+                        { id = Id.gen ()
+                        ; scope = None
+                        ; name = Types.target_symbol
+                        ; span
+                        ; ty = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Target
+                        ; label = Label.create_definition span Types.target_symbol.name
+                        ; mut = false
+                        ; hygiene = DefSite
+                        ; def_site = None
+                        }
+                      : State.Scope.local)
               in
               let state_with_target = { C.state with scopes = scopes_with_target } in
               Some

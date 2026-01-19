@@ -9,11 +9,19 @@ open Error
 module Scope = struct
   type scope = Types.compiler_scope
   type t = scope
+  type local = Types.compiler_local
+
+  module Local = struct
+    let binding (local : local) : binding =
+      match local with
+      | Const { binding; place = _ } | Binding binding -> binding
+    ;;
+  end
 
   let init ~recursive : scope =
     { id = Id.gen ()
     ; parent = None
-    ; bindings = StringMap.empty
+    ; locals = StringMap.empty
     ; recursive
     ; closed = false
     ; on_update = []
@@ -25,7 +33,7 @@ module Scope = struct
     Log.trace (fun log -> log "Entered scope %a -> %a" Id.print parent.id Id.print id);
     { id
     ; parent = Some parent
-    ; bindings = StringMap.empty
+    ; locals = StringMap.empty
     ; recursive
     ; closed = false
     ; on_update = []
@@ -34,17 +42,16 @@ module Scope = struct
 
   type _ Effect.t += AwaitUpdate : scope -> bool Effect.t
 
-  let rec find_binding_opt : from:span -> string -> scope -> binding option =
+  let rec find_opt : from:span -> string -> scope -> local option =
     fun ~from ident scope ->
     (* Log.trace (fun log -> log "Looking for %S in %a" ident Id.print scope.id); *)
-    match StringMap.find_opt ident scope.bindings with
-    | Some binding ->
+    match StringMap.find_opt ident scope.locals with
+    | Some local ->
+      let binding = Local.binding local in
       Label.add_reference from binding.label;
-      Some binding
+      Some local
     | None ->
-      let find_in_parent () =
-        scope.parent |> Option.and_then (find_binding_opt ~from ident)
-      in
+      let find_in_parent () = scope.parent |> Option.and_then (find_opt ~from ident) in
       if scope.recursive && not scope.closed
       then
         if
@@ -56,7 +63,7 @@ module Scope = struct
           (* Log.trace (fun log ->
                 log "Waited for %S symbol in recursive scope %a" ident Id.print
                   scope.id); *)
-          find_binding_opt ~from ident scope
+          find_opt ~from ident scope
         else find_in_parent ()
       else find_in_parent ()
   ;;
@@ -75,22 +82,23 @@ module Scope = struct
     fs |> List.iter (fun f -> f ())
   ;;
 
-  let find_binding : from_scope:VarScope.t -> from:span -> string -> scope -> binding =
+  let find : from_scope:VarScope.t -> from:span -> string -> scope -> local =
     fun ~from_scope ~from ident scope ->
     scope
-    |> find_binding_opt ~from ident
-    |> Option.unwrap_or_else (fun () : binding ->
+    |> find_opt ~from ident
+    |> Option.unwrap_or_else (fun () : local ->
       error from "Could not find %S in scope" ident;
-      { id = Id.gen ()
-      ; scope = from_scope
-      ; name = Symbol.create ident
-      ; span = from
-      ; ty = Ty.new_not_inferred ~scope:from_scope ~span:from
-      ; label = Label.create_definition from ident
-      ; mut = false
-      ; hygiene = CallSite
-      ; def_site = None
-      })
+      Binding
+        { id = Id.gen ()
+        ; scope = from_scope
+        ; name = Symbol.create ident
+        ; span = from
+        ; ty = Ty.new_not_inferred ~scope:from_scope ~span:from
+        ; label = Label.create_definition from ident
+        ; mut = false
+        ; hygiene = CallSite
+        ; def_site = None
+        })
   ;;
 
   let close : scope -> unit =
@@ -99,11 +107,12 @@ module Scope = struct
     notify_update scope
   ;;
 
-  let inject_binding : binding -> scope -> scope =
-    fun binding scope ->
+  let add : local -> scope -> scope =
+    fun local scope ->
+    let name = (Local.binding local).name.name in
     if scope.recursive
     then (
-      scope.bindings <- scope.bindings |> StringMap.add binding.name.name binding;
+      scope.locals <- scope.locals |> StringMap.add name local;
       notify_update scope;
       scope)
     else (
@@ -111,16 +120,17 @@ module Scope = struct
       let id = Id.gen () in
       Log.trace (fun log ->
         log
-          "Injected %a into %a (parent=%a)"
-          Binding.print
-          binding
+          "Injected %S into %a (parent=%a) (original scope=%a)"
+          name
           Id.print
           id
           (Option.print Id.print)
-          (scope.parent |> Option.map (fun (scope : scope) -> scope.id)));
+          (scope.parent |> Option.map (fun (scope : scope) -> scope.id))
+          Id.print
+          scope.id);
       { id
       ; parent = scope.parent
-      ; bindings = scope.bindings |> StringMap.add binding.name.name binding
+      ; locals = scope.locals |> StringMap.add name local
       ; recursive = false
       ; closed = false
       ; on_update = []
@@ -154,7 +164,17 @@ module Scopes = struct
         |> Id.Map.update def_site.id (fun current ->
           Some
             (match current with
-             | Some current -> current
+             | Some (result : Scope.t) ->
+               Log.trace (fun log ->
+                 log
+                   "Entered (already) def site %a = %a at %a"
+                   Id.print
+                   def_site.id
+                   Id.print
+                   result.id
+                   Span.print
+                   span);
+               result
              | None ->
                let result = def_site |> Scope.enter ~recursive:false in
                Log.trace (fun log ->
@@ -171,8 +191,9 @@ module Scopes = struct
     }
   ;;
 
-  let inject_binding (binding : binding) scopes =
+  let add (local : Scope.local) scopes =
     let old_def_site = scopes.def_site in
+    let binding = Scope.Local.binding local in
     let def_site =
       match binding.hygiene with
       | CallSite -> None
@@ -195,7 +216,7 @@ module Scopes = struct
     in
     match def_site with
     | None ->
-      { call_site = scopes.call_site |> Scope.inject_binding binding
+      { call_site = scopes.call_site |> Scope.add local
       ; def_sites = scopes.def_sites
       ; def_site = old_def_site
       }
@@ -204,7 +225,7 @@ module Scopes = struct
       ; def_sites =
           scopes.def_sites
           |> Id.Map.update def_site.id (fun scope ->
-            Some (scope |> Option.get |> Scope.inject_binding binding))
+            Some (scope |> Option.get |> Scope.add local))
       ; def_site = old_def_site
       }
   ;;
@@ -217,7 +238,10 @@ module Scopes = struct
     |> ignore
   ;;
 
-  let bindings scopes = scopes.call_site.bindings |> StringMap.to_list
+  let bindings scopes =
+    scopes.call_site.locals |> StringMap.map Scope.Local.binding |> StringMap.to_list
+  ;;
+
   (* TODO maybe def sites too? *)
 
   let call_site scopes = scopes.call_site
@@ -228,7 +252,7 @@ module Scopes = struct
     | None -> scopes.call_site
   ;;
 
-  let find_binding ~(hygiene : Types.ast_hygiene) ~from_scope ~from label scopes =
+  let find ~(hygiene : Types.ast_hygiene) ~from_scope ~from label scopes =
     let scope =
       match hygiene with
       | CallSite -> scopes.call_site
@@ -242,7 +266,7 @@ module Scopes = struct
         def_site scopes
     in
     Log.trace (fun log -> log "Finding %S in scope %a" label Id.print scope.id);
-    scope |> Scope.find_binding ~from_scope ~from label
+    scope |> Scope.find ~from_scope ~from label
   ;;
 end
 

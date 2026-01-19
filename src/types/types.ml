@@ -556,11 +556,20 @@ module rec TypesImpl : sig
           [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
+  and compiler_const =
+    { place : place
+    ; binding : binding
+    }
+
+  and compiler_local =
+    | Const of compiler_const
+    | Binding of binding
+
   and compiler_scope =
     { id : Id.t
     ; parent : compiler_scope option
     ; recursive : bool
-    ; mutable bindings : binding StringMap.t
+    ; mutable locals : compiler_local StringMap.t
     ; mutable closed : bool
     ; mutable on_update : (unit -> unit) list
           [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
@@ -1032,7 +1041,7 @@ end = struct
     }
 
   and expr_constant =
-    { id : Id.t
+    { id : Id.t (* TODO remove?? *)
     ; value : value
     }
 
@@ -1208,11 +1217,20 @@ end = struct
           [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
+  and compiler_const =
+    { place : place
+    ; binding : binding
+    }
+
+  and compiler_local =
+    | Const of compiler_const
+    | Binding of binding
+
   and compiler_scope =
     { id : Id.t
     ; parent : compiler_scope option
     ; recursive : bool
-    ; mutable bindings : binding StringMap.t
+    ; mutable locals : compiler_local StringMap.t
     ; mutable closed : bool
     ; mutable on_update : (unit -> unit) list
           [@equal fun _ _ -> true] [@compare fun _ _ -> 0]

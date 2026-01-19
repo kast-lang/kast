@@ -23,17 +23,21 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
     SymbolMap.fold
       (fun name (local : Types.interpreter_local) scope ->
          scope
-         |> State.Scope.inject_binding
-              { id = Id.gen ()
-              ; scope = Some compile_for.scope
-              ; name
-              ; ty = local.place.ty
-              ; span = Span.fake "<interpreter>"
-              ; label = local.ty_field.label |> Option.get
-              ; mut = Place.Mut.to_bool local.place.mut
-              ; hygiene = CallSite
-              ; def_site = None
-              })
+         |> State.Scope.add
+              (Const
+                 { place = local.place
+                 ; binding =
+                     { id = Id.gen ()
+                     ; scope = Some compile_for.scope
+                     ; name
+                     ; ty = local.place.ty
+                     ; span = Span.fake "<interpreter>"
+                     ; label = local.ty_field.label |> Option.get
+                     ; mut = Place.Mut.to_bool local.place.mut
+                     ; hygiene = CallSite
+                     ; def_site = None
+                     }
+                 }))
       compile_for.scope.locals.by_symbol
       scope
   in
@@ -56,17 +60,20 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
     (fun () -> make_string "Compiling %a" Span.print span)
     (fun () ->
        try
-         let state =
-           match hygiene with
-           | CallSite -> state (* TODO maybe somthing *)
-           | DefSite ->
-             (match def_site with
-              | None -> state
-              | Some def_site ->
-                { state with
-                  scopes = state.scopes |> State.Scopes.enter_def_site ~span def_site
-                })
-         in
+         (match hygiene with
+          | CallSite -> () (* TODO maybe somthing *)
+          | DefSite ->
+            (match def_site with
+             | None -> state.scopes <- { state.scopes with def_site = None }
+             | Some def_site ->
+               state.scopes <- state.scopes |> State.Scopes.enter_def_site ~span def_site));
+         Log.trace (fun log ->
+           log
+             "compiling with def_scope=%a at %a"
+             Id.print
+             (state.scopes |> State.Scopes.def_site).id
+             Span.print
+             span);
          match ast.shape with
          | Ast.Empty ->
            let expr () =
@@ -89,19 +96,28 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | PlaceExpr ->
               (match token.shape with
                | Token.Shape.Ident ident ->
-                 PE_Binding
-                   (State.Scopes.find_binding
-                      ~hygiene
-                      ~from_scope:(State.var_scope state)
-                      ~from:span
-                      ident.name
-                      state.scopes)
-                 |> init_place_expr span state
+                 let local =
+                   State.Scopes.find
+                     ~hygiene
+                     ~from_scope:(State.var_scope state)
+                     ~from:span
+                     ident.name
+                     state.scopes
+                 in
+                 local |> Compiler.local_place_expr span state
                | _ -> PE_Temp (compile state Expr ast) |> init_place_expr span state)
             | Expr ->
               (match token.shape with
-               | Token.Shape.Ident _ ->
-                 E_Claim (compile state PlaceExpr ast) |> init_expr span state
+               | Token.Shape.Ident ident ->
+                 let local =
+                   State.Scopes.find
+                     ~hygiene
+                     ~from_scope:(State.var_scope state)
+                     ~from:span
+                     ident.name
+                     state.scopes
+                 in
+                 local |> Compiler.local_expr span state
                | Token.Shape.String s ->
                  let value : Value.shape =
                    match s.delimeter with
@@ -209,6 +225,11 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    |> Ast.flatten_children
                    |> Tuple.mapi (fun member (ast : Ast.t) : Types.value_tuple_field ->
                      let ast =
+                       Compiler.init_ast_def_site_delete
+                         (state.scopes |> State.Scopes.def_site)
+                         ast
+                     in
+                     (* let ast =
                        { ast with
                          data =
                            { ast.data with
@@ -218,7 +239,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                                     (Some (state.scopes |> State.Scopes.def_site))
                            }
                        }
-                     in
+                     in *)
                      { place =
                          Place.init ~mut:Immutable (V_Ast ast |> Value.inferred ~span)
                      ; ty_field =

@@ -59,7 +59,14 @@ module Tuple = struct
           name, (StringMap.find name a.named, StringMap.find name b.named))
         |> StringMap.of_list
       with
-      | Not_found -> invalid_arg "Tuple.zip (named)"
+      | Not_found ->
+        invalid_arg
+          (make_string
+             "Tuple.zip (named): %a vs %a"
+             (List.print String.print_maybe_escaped)
+             a.named_order_rev
+             (List.print String.print_maybe_escaped)
+             b.named_order_rev)
     in
     { unnamed; named; named_order_rev }
   ;;

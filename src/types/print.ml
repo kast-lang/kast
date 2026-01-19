@@ -71,13 +71,7 @@ module Impl = struct
       fprintf fmt "&";
       if mut then fprintf fmt "mut ";
       print_place_ref fmt place
-    | V_Tuple { ty = _; tuple } ->
-      fprintf
-        fmt
-        "%a"
-        (Tuple.print (fun fmt (field : value_tuple_field) ->
-           print_place_value fmt field.place))
-        tuple
+    | V_Tuple tuple -> print_value_tuple fmt tuple
     | V_Fn { ty; fn = _ } -> fprintf fmt "@{<italic><fn %a>@}" print_ty_fn ty
     | V_Variant { label; data; ty = _ } ->
       fprintf fmt ":%a" Label.print label;
@@ -98,6 +92,15 @@ module Impl = struct
     | V_Opaque { ty = _; value = _ } -> fprintf fmt "@{<italic><opaque>@}"
     | V_Blocked blocked -> print_blocked_value fmt blocked
     | V_Target target -> print_target fmt target
+
+  and print_value_tuple : formatter -> value_tuple -> unit =
+    fun fmt { ty = _; tuple } ->
+    fprintf
+      fmt
+      "%a"
+      (Tuple.print (fun fmt (field : value_tuple_field) ->
+         print_place_value fmt field.place))
+      tuple
 
   and print_value : formatter -> value -> unit =
     fun fmt { var; ty = _ } -> print_var print_value_shape fmt var
@@ -690,6 +693,7 @@ let print_blocked_value = with_cache Impl.print_blocked_value
 let print_blocked_value_shape = with_cache Impl.print_blocked_value_shape
 let print_value = with_cache Impl.print_value
 let print_value_shape = with_cache Impl.print_value_shape
+let print_value_tuple = with_cache Impl.print_value_tuple
 
 let print_expr_with_spans =
   with_cache (Impl.print_expr ~options:{ spans = true; types = false })

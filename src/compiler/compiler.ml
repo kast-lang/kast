@@ -357,10 +357,13 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
   result.value
 ;;
 
-let inject_binding ~(only_compiler : bool) (binding : binding) (state : State.t) : unit =
-  state.scopes <- state.scopes |> State.Scopes.inject_binding binding;
+let add_local ~(only_compiler : bool) (local : State.Scope.local) (state : State.t) : unit
+  =
+  state.scopes <- state.scopes |> State.Scopes.add local;
   if not only_compiler
-  then state.interpreter.scope |> Kast_interpreter.Scope.inject_binding binding
+  then
+    state.interpreter.scope
+    |> Kast_interpreter.Scope.inject_binding (State.Scope.Local.binding local)
 ;;
 
 let rec inject_pattern_bindings
@@ -373,7 +376,8 @@ let rec inject_pattern_bindings
   | P_Placeholder -> ()
   | P_Unit -> ()
   | P_Ref inner -> state |> inject_pattern_bindings ~only_compiler inner
-  | P_Binding { bind_mode = _; binding } -> state |> inject_binding ~only_compiler binding
+  | P_Binding { bind_mode = _; binding } ->
+    state |> add_local ~only_compiler (Binding binding)
   | P_Tuple { parts } ->
     parts
     |> List.iter (fun (part : _ Types.tuple_part_of) ->
@@ -416,4 +420,17 @@ let finish_compiling (def : Types.maybe_compiled_fn) (compiled : Types.compiled_
   let fs = def.on_compiled in
   def.on_compiled <- [];
   fs |> List.iter (fun f -> f ())
+;;
+
+let rec local_place_expr span state (local : State.Scope.local) =
+  match local with
+  | Const _ -> PE_Temp (local_expr span state local) |> Init.init_place_expr span state
+  | Binding binding -> PE_Binding binding |> Init.init_place_expr span state
+
+and local_expr span state (local : State.Scope.local) =
+  match local with
+  | Const { place; binding = _ } ->
+    let value = Kast_interpreter.read_place place ~span in
+    E_Constant { id = Id.gen (); value } |> Init.init_expr span state
+  | Binding _ -> E_Claim (local_place_expr span state local) |> Init.init_expr span state
 ;;

@@ -723,24 +723,37 @@ module Impl = struct
          fprintf fmt "value_shape %a != %a" print_value_shape a print_value_shape b)
 
   and unite_value_tuple : value_tuple Inference.unite =
-    fun ~span { ty = ty_a; tuple = a } { ty = ty_b; tuple = b } ->
-    { ty = unite_ty_tuple ~span ty_a ty_b
-    ; tuple =
-        Tuple.zip_order_a a b
-        |> Tuple.mapi
-             (fun
-                 member
-                  ((a, b) : Types.value_tuple_field * Types.value_tuple_field)
-                  : Types.value_tuple_field
-                ->
-                error_context
-                  (fun () ->
-                     { place = unite_place ~span a.place b.place
-                     ; span = a.span
-                     ; ty_field = unite_ty_tuple_field ~span a.ty_field b.ty_field
-                     })
-                  (fun fmt -> fprintf fmt "field %a" Tuple.Member.print member))
-    }
+    fun ~span
+      ({ ty = ty_a; tuple = a } as value_a)
+      ({ ty = ty_b; tuple = b } as value_b) ->
+    try
+      { ty = unite_ty_tuple ~span ty_a ty_b
+      ; tuple =
+          Tuple.zip_order_a a b
+          |> Tuple.mapi
+               (fun
+                   member
+                    ((a, b) : Types.value_tuple_field * Types.value_tuple_field)
+                    : Types.value_tuple_field
+                  ->
+                  error_context
+                    (fun () ->
+                       { place = unite_place ~span a.place b.place
+                       ; span = a.span
+                       ; ty_field = unite_ty_tuple_field ~span a.ty_field b.ty_field
+                       })
+                    (fun fmt -> fprintf fmt "field %a" Tuple.Member.print member))
+      }
+    with
+    | Invalid_argument _ ->
+      error
+        span
+        "value_tuple %a != %a"
+        print_value_tuple
+        value_a
+        print_value_tuple
+        value_b;
+      value_a
 
   and unite_value_variant : value_variant Inference.unite =
     fun ~span
