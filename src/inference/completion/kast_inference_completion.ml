@@ -114,7 +114,16 @@ module Impl = struct
     | BV_FieldRef { obj_ref; member : Tuple.member = _ } -> complete_blocked_value obj_ref
 
   and complete_binding
-        ({ id : id = _; scope = _; name = _; span = _; ty; label = _; mut : bool = _ } :
+        ({ id : id = _
+         ; scope = _
+         ; name = _
+         ; span = _
+         ; ty
+         ; label = _
+         ; mut : bool = _
+         ; hygiene = _
+         ; def_site = _
+         } :
           binding)
     =
     complete_ty ty
@@ -305,7 +314,7 @@ module Impl = struct
       |> List.iter (fun { pattern; body } ->
         complete_pattern pattern;
         complete_expr body)
-    | E_QuoteAst { rule = _; root } ->
+    | E_QuoteAst { rule = _; root; def_site = _ } ->
       let rec complete_group ({ rule = _; children; span = _ } : expr_quote_ast_group) =
         children
         |> complete_tuple (fun (child : expr_quote_ast_child) ->
@@ -409,7 +418,7 @@ module Impl = struct
     | TE_Error -> ()
 
   and complete_ir_data
-        ({ span = _; ty; compiler_scope = _; evaled = _; included_file = _; id = _ } :
+        ({ span = _; ty; evaled = _; included_file = _; id = _; compiler_scope = _ } :
           ir_data)
     =
     complete_ty ty

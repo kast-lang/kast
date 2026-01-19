@@ -703,6 +703,7 @@ module Impl = struct
              }
          | V_Generic _, _ -> fail ()
          | V_NativeFn _, _ -> fail () (* TODO *)
+         | V_Ast a, V_Ast b when Repr.phys_equal a b -> V_Ast a
          | V_Ast _, _ -> fail ()
          | ( V_UnwindToken { result_ty = ty_a; id = id_a }
            , V_UnwindToken { result_ty = ty_b; id = id_b } )

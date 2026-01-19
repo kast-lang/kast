@@ -1238,7 +1238,9 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
     ; span = group.span
     }
   in
-  { shape = Complex { rule = expr.rule; root = quote_group expr.root }; data = { span } }
+  { shape = Complex { rule = expr.rule; root = quote_group expr.root }
+  ; data = { span; hygiene = DefSite; def_site = expr.def_site }
+  }
 
 and current_name : state -> Types.name_shape =
   fun state ->

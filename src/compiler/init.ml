@@ -212,9 +212,9 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
         { span
         ; ty
         ; evaled = init_evaled ()
-        ; compiler_scope = state.scope
         ; included_file = None
         ; id = Id.gen ()
+        ; compiler_scope = state.scopes |> State.Scopes.call_site
         }
     }
   with
@@ -377,8 +377,8 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
              ; tuple =
                  Tuple.make
                    []
-                   (state.scope.bindings
-                    |> StringMap.to_list
+                   (state.scopes
+                    |> State.Scopes.bindings
                     |> List.map (fun (name, (binding : binding)) ->
                       ( name
                       , ({ ty = binding.ty
@@ -459,9 +459,9 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         { span
         ; ty
         ; evaled = init_evaled ()
-        ; compiler_scope = state.scope
         ; included_file = None
         ; id = Id.gen ()
+        ; compiler_scope = state.scopes |> State.Scopes.call_site
         }
     }
   with
@@ -493,9 +493,9 @@ let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
         { span
         ; ty
         ; evaled = init_evaled ()
-        ; compiler_scope = state.scope
         ; included_file = None
         ; id = Id.gen ()
+        ; compiler_scope = state.scopes |> State.Scopes.call_site
         }
     }
   with
@@ -551,9 +551,9 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
         { span
         ; ty
         ; evaled = init_evaled ()
-        ; compiler_scope = state.scope
         ; included_file = None
         ; id = Id.gen ()
+        ; compiler_scope = state.scopes |> State.Scopes.call_site
         }
     }
   with
@@ -573,9 +573,9 @@ let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
           { span
           ; ty = type_ty
           ; evaled = init_evaled ()
-          ; compiler_scope = state.scope
           ; included_file = None
           ; id = Id.gen ()
+          ; compiler_scope = state.scopes |> State.Scopes.call_site
           }
       }
     in

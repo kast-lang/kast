@@ -1,10 +1,14 @@
 module:
 const std = @current_scope;
 include "./syntax.ks";
-const UnwindUnit = (@native "unwind_token")(type ());
+const UnwindToken = [T :: type] (@native "unwind_token")(T);
+const UnwindUnit = UnwindToken[type ()];
 const LoopBlock = @context UnwindUnit;
 const LoopBody = @context UnwindUnit;
-
+# const ReturnBlock = @context newtype (
+#     .T :: type,
+#     .token :: Any,
+# );
 const Bool :: type = @native "bool";
 const Int32 :: type = @native "int32";
 const UInt32 = Int32;

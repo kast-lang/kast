@@ -320,6 +320,7 @@ module rec TypesImpl : sig
   and expr_quote_ast =
     { rule : Syntax.Rule.t
     ; root : expr_quote_ast_group
+    ; def_site : compiler_scope option
     }
 
   and expr_loop = { body : expr }
@@ -594,6 +595,8 @@ module rec TypesImpl : sig
     ; scope : var_scope
     ; name : Symbol.t
     ; span : Span.t
+    ; hygiene : ast_hygiene
+    ; def_site : compiler_scope option
     ; ty : ty
     ; label : Label.t
     ; mut : bool
@@ -602,8 +605,8 @@ module rec TypesImpl : sig
   and ir_data =
     { span : Span.t
     ; ty : ty
-    ; compiler_scope : compiler_scope
     ; evaled : ir_evaled
+    ; compiler_scope : compiler_scope
     ; included_file : Uri.t option
     ; id : Id.t
     }
@@ -634,7 +637,16 @@ module rec TypesImpl : sig
     | Str of string
     | Symbol of Symbol.t
 
-  and ast_data = { span : Span.t } [@@deriving eq, ord]
+  and ast_data =
+    { span : Span.t
+    ; hygiene : ast_hygiene
+    ; def_site : compiler_scope option
+    }
+
+  and ast_hygiene =
+    | CallSite
+    | DefSite
+  [@@deriving eq, ord]
 
   type _ compiled_kind =
     | Assignee : assignee_expr compiled_kind
@@ -960,6 +972,7 @@ end = struct
   and expr_quote_ast =
     { rule : Syntax.Rule.t
     ; root : expr_quote_ast_group
+    ; def_site : compiler_scope option
     }
 
   and expr_loop = { body : expr }
@@ -1240,6 +1253,8 @@ end = struct
     ; scope : var_scope
     ; name : Symbol.t
     ; span : Span.t
+    ; hygiene : ast_hygiene
+    ; def_site : compiler_scope option
     ; ty : ty
     ; label : Label.t
     ; mut : bool
@@ -1248,8 +1263,8 @@ end = struct
   and ir_data =
     { span : Span.t
     ; ty : ty
-    ; compiler_scope : compiler_scope
     ; evaled : ir_evaled
+    ; compiler_scope : compiler_scope
     ; included_file : Uri.t option
     ; id : Id.t
     }
@@ -1280,7 +1295,16 @@ end = struct
     | Str of string
     | Symbol of Symbol.t
 
-  and ast_data = { span : Span.t } [@@deriving eq, ord]
+  and ast_data =
+    { span : Span.t
+    ; hygiene : ast_hygiene
+    ; def_site : compiler_scope option
+    }
+
+  and ast_hygiene =
+    | CallSite
+    | DefSite
+  [@@deriving eq, ord]
 
   type _ compiled_kind =
     | Assignee : assignee_expr compiled_kind

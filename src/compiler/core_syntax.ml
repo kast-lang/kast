@@ -843,10 +843,10 @@ let module' : core_syntax =
         let def = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let state = C.state |> State.enter_scope ~span ~recursive:true in
         let def = C.compile ~state Expr def in
-        let bindings = state.scope.bindings |> StringMap.to_list |> List.map snd in
+        let bindings = state.scopes |> State.Scopes.bindings |> List.map snd in
         Kast_profiling.record
           (fun () -> "closing module compiler scope")
-          (fun () -> state.scope |> State.Scope.close);
+          (fun () -> state.scopes |> State.Scopes.close);
         Kast_profiling.record
           (fun () -> "closing module interpreter scope")
           (fun () -> state.interpreter.scope |> Interpreter.Scope.close);
@@ -981,11 +981,12 @@ let tuple_field
       | None ->
         let place =
           PE_Binding
-            (State.Scope.find_binding
+            (State.Scopes.find_binding
+               ~hygiene:label_ast.data.hygiene
                ~from_scope:(State.var_scope C.state)
                ~from:label_ast.data.span
                label
-               C.state.scope)
+               C.state.scopes)
           |> init_place_expr span C.state
         in
         E_Claim place |> init_expr span C.state
@@ -1012,11 +1013,12 @@ let tuple_field
       | None ->
         let place =
           PE_Binding
-            (State.Scope.find_binding
+            (State.Scopes.find_binding
+               ~hygiene:label_ast.data.hygiene
                ~from_scope:(State.var_scope C.state)
                ~from:label_ast.data.span
                label
-               C.state.scope)
+               C.state.scopes)
           |> init_place_expr span C.state
         in
         let expr = E_Claim place |> init_expr span C.state in
@@ -1045,6 +1047,8 @@ let tuple_field
               ; span = label_ast.data.span
               ; label = Label.create_reference label_ast.data.span label
               ; mut = false
+              ; hygiene = label_ast.data.hygiene
+              ; def_site = None
               }
           }
         |> init_pattern span C.state
@@ -1160,6 +1164,8 @@ let use : core_syntax =
                     ; ty = binding.ty
                     ; label = binding.label
                     ; mut = false
+                    ; hygiene = DefSite
+                    ; def_site = None
                     }
                 }
             | PE_Field { obj = _; field; field_span } ->
@@ -1175,6 +1181,8 @@ let use : core_syntax =
                        ; ty = used_expr.data.ty
                        ; label
                        ; mut = false
+                       ; hygiene = DefSite
+                       ; def_site = None
                        }
                    }
                | Index _ | Expr _ ->
@@ -1202,16 +1210,16 @@ let use_dot_star : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let used = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let used_ast = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let span = ast.data.span in
         match kind with
         | Expr ->
           let scope = State.var_scope C.state in
           let used, used_expr =
             Compiler.eval
-              ~ty:(Ty.new_not_inferred ~scope ~span:used.data.span)
+              ~ty:(Ty.new_not_inferred ~scope ~span:used_ast.data.span)
               (module C)
-              used
+              used_ast
           in
           let bindings =
             match Value.ty_of used |> Ty.await_inferred with
@@ -1232,6 +1240,8 @@ let use_dot_star : core_syntax =
                    ; ty = field.ty
                    ; label
                    ; mut = false
+                   ; hygiene = DefSite
+                   ; def_site = None
                    }
                    : binding)))
             | other ->
@@ -1466,9 +1476,18 @@ let quote : core_syntax =
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
-          let rec construct (ast : Ast.t) : expr =
+          let rec construct ~root (ast : Ast.t) : expr =
+            let def_site =
+              if root then Some (C.state.scopes |> State.Scopes.call_site) else None
+            in
             match ast.shape with
             | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
+              let ast =
+                { ast with
+                  data =
+                    { ast.data with def_site = ast.data.def_site |> Option.or_ def_site }
+                }
+              in
               const_shape (V_Ast ast |> Value.inferred ~span:ast.data.span)
               |> init_expr ast.data.span C.state
             | Ast.Complex { rule; root } when rule.name = "core:unquote" ->
@@ -1477,7 +1496,7 @@ let quote : core_syntax =
               in
               C.compile kind unquote
             | Ast.Complex { rule; root } ->
-              E_QuoteAst { rule; root = construct_group root }
+              E_QuoteAst { rule; root = construct_group root; def_site }
               |> init_expr ast.data.span C.state
             | Ast.Syntax _ -> fail "TODO"
           and construct_group (group : Ast.group) : Expr.Shape.quote_ast_group =
@@ -1487,11 +1506,11 @@ let quote : core_syntax =
                 |> Tuple.map (fun (child : Ast.child) : Expr.Shape.quote_ast_child ->
                   match child with
                   | Group child_group -> Group (construct_group child_group)
-                  | Ast child -> Ast (construct child))
+                  | Ast child -> Ast (construct ~root:false child))
             ; span = group.span
             }
           in
-          construct body
+          construct ~root:true body
         | _ ->
           error span "quote must be expr";
           init_error span C.state kind)
@@ -1603,9 +1622,9 @@ let target_dependent : core_syntax =
               let body =
                 root.children |> Tuple.get_named "body" |> Ast.Child.expect_ast
               in
-              let scope_with_target =
-                C.state.scope
-                |> State.Scope.inject_binding
+              let scopes_with_target =
+                C.state.scopes
+                |> State.Scopes.inject_binding
                      ({ id = Id.gen ()
                       ; scope = None
                       ; name = Types.target_symbol
@@ -1613,10 +1632,12 @@ let target_dependent : core_syntax =
                       ; ty = Ty.inferred ~span:(Span.of_ocaml __POS__) T_Target
                       ; label = Label.create_definition span Types.target_symbol.name
                       ; mut = false
+                      ; hygiene = DefSite
+                      ; def_site = None
                       }
                       : binding)
               in
-              let state_with_target = { C.state with scope = scope_with_target } in
+              let state_with_target = { C.state with scopes = scopes_with_target } in
               Some
                 ({ cond = C.compile ~state:state_with_target Expr cond
                  ; body =
@@ -1831,7 +1852,7 @@ let current_compiler_scope : core_syntax =
         let span = ast.data.span in
         match kind with
         | Expr ->
-          let scope = C.state.scope in
+          let scope = C.state.scopes |> State.Scopes.call_site in
           const_shape (V_CompilerScope scope |> Value.inferred ~span)
           |> init_expr span C.state
         | _ ->
@@ -2250,6 +2271,22 @@ let include_ast : core_syntax =
   }
 ;;
 
+let no_hygiene : core_syntax =
+  { name = "no_hygiene"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        let ast = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let ast = { ast with data = { ast.data with hygiene = CallSite } } in
+        C.compile kind ast)
+  }
+;;
+
 let core =
   [ apply
   ; instantiate_generic
@@ -2311,6 +2348,7 @@ let core =
   ; by_ref "by_ref_mut" ~mut:true
   ; typeof
   ; include_ast
+  ; no_hygiene
   ]
 ;;
 

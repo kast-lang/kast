@@ -1,7 +1,3 @@
-const double = (ast) => `(
-    let x = 123;
-    $ast + $ast
+for x in 0..10 do (
+    dbg.print(x);
 );
-
-let x = 2;
-dbg.print(double!(x));

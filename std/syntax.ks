@@ -115,15 +115,16 @@ impl syntax (for pattern in iterable do body) = `(
     );
 );
 impl syntax (with_return body) = `(
-    unwindable _returnable (
+    unwindable (@no_hygiene _returnable) (
+        # @eval with std.ReturnBlock = returnable;
         $body
     )
 );
 impl syntax (return) = `(
-    unwind _returnable ()
+    unwind (@no_hygiene _returnable) ()
 );
 impl syntax (return value) = `(
-    unwind _returnable $value
+    unwind (@no_hygiene _returnable) $value
 );
 impl syntax (@opaque_type) = `(
     (@native "new_opaque_type")()

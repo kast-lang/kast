@@ -31,11 +31,13 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
               ; span = Span.fake "<interpreter>"
               ; label = local.ty_field.label |> Option.get
               ; mut = Place.Mut.to_bool local.place.mut
+              ; hygiene = CallSite
+              ; def_site = None
               })
       compile_for.scope.locals.by_symbol
       scope
   in
-  { scope
+  { scopes = State.Scopes.only scope
   ; currently_compiled_file = None
   ; interpreter = compile_for
   ; import_cache
@@ -49,11 +51,22 @@ let get_data = Compiler.get_data
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   fun (type a) (state : state) (kind : a compiled_kind) (ast : Ast.t) : a ->
-  let { shape = _; data = { span } } : Ast.t = ast in
+  let { shape = _; data = { span; hygiene; def_site } } : Ast.t = ast in
   Kast_profiling.record
     (fun () -> make_string "Compiling %a" Span.print span)
     (fun () ->
        try
+         let state =
+           match hygiene with
+           | CallSite -> state (* TODO maybe somthing *)
+           | DefSite ->
+             (match def_site with
+              | None -> state
+              | Some def_site ->
+                { state with
+                  scopes = state.scopes |> State.Scopes.enter_def_site ~span def_site
+                })
+         in
          match ast.shape with
          | Ast.Empty ->
            let expr () =
@@ -77,11 +90,12 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
               (match token.shape with
                | Token.Shape.Ident ident ->
                  PE_Binding
-                   (State.Scope.find_binding
+                   (State.Scopes.find_binding
+                      ~hygiene
                       ~from_scope:(State.var_scope state)
                       ~from:span
                       ident.name
-                      state.scope)
+                      state.scopes)
                  |> init_place_expr span state
                | _ -> PE_Temp (compile state Expr ast) |> init_place_expr span state)
             | Expr ->
@@ -169,6 +183,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    ; span
                    ; label = Label.create_definition span ident.name
                    ; mut = state.mut_enabled
+                   ; hygiene
+                   ; def_site = state.scopes.def_site
                    }
                  in
                  P_Binding { bind_mode = state.bind_mode; binding }
@@ -192,6 +208,17 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    root.children
                    |> Ast.flatten_children
                    |> Tuple.mapi (fun member (ast : Ast.t) : Types.value_tuple_field ->
+                     let ast =
+                       { ast with
+                         data =
+                           { ast.data with
+                             def_site =
+                               ast.data.def_site
+                               |> Option.or_
+                                    (Some (state.scopes |> State.Scopes.def_site))
+                           }
+                       }
+                     in
                      { place =
                          Place.init ~mut:Immutable (V_Ast ast |> Value.inferred ~span)
                      ; ty_field =

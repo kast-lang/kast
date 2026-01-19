@@ -493,6 +493,8 @@ module Impl = struct
         ; ty = sub_ty ~state old_binding.ty
         ; mut : bool = old_binding.mut
         ; label = old_binding.label
+        ; hygiene = old_binding.hygiene
+        ; def_site = old_binding.def_site
         }
       in
       Log.trace (fun log ->
@@ -547,11 +549,11 @@ module Impl = struct
     fun ~state data ->
     { evaled =
         { patterns = []; ty_exprs = []; exprs = []; ty_ascribed = false; value = None }
-    ; compiler_scope = data.compiler_scope
     ; span = data.span
     ; included_file = None
     ; ty = sub_ty ~state data.ty
     ; id = data.id
+    ; compiler_scope = data.compiler_scope
     }
 
   and sub_row
