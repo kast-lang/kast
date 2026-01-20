@@ -29,6 +29,10 @@ end
 module OptionalName = struct
   type t = optional_name
 
+  let await_inferred (value : optional_name) =
+    value.var |> Inference.Var.await_inferred ~error_shape:None
+  ;;
+
   let new_inferred ~span value : optional_name =
     { var =
         Inference.Var.new_inferred (VarScope.of_option VarScope.of_name_shape) ~span value

@@ -388,8 +388,12 @@ const Kast = await (async () => {
       return next_id++;
     },
   };
+
+  const named_types: { [name: string]: Type } = {};
   function newtype(name: string): Type {
-    return { id: Id.gen(), name };
+    const type = { id: Id.gen(), name };
+    named_types[name] = type;
+    return type;
   }
 
   function check_todo(value: Value) {
@@ -436,6 +440,14 @@ const Kast = await (async () => {
       return {
         todo: s,
       };
+    },
+    create_or_find(name: string) {
+      const existing = named_types[name];
+      if (existing === undefined) {
+        return newtype(name);
+      } else {
+        return existing;
+      }
     },
     primitive: {
       Unit: newtype("Unit"),

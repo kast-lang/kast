@@ -180,6 +180,27 @@ module Impl = struct
     with
     | effect GetCtx, k -> Effect.continue k ctx
 
+  and type_named : name_shape -> no_effect_expr =
+    fun name ->
+    let check_simple_part (part : name_part) =
+      match part with
+      | Uri _ -> true
+      | Str _ -> true
+      | Symbol _ -> true
+    in
+    let rec check_simple_name (name : name_shape) =
+      match name with
+      | Simple part -> check_simple_part part
+      | Concat (a, b) -> check_simple_name a && check_simple_part b
+      | Instantiation _ -> false
+    in
+    if check_simple_name name
+    then (
+      let name = make_string "%a" Print.print_name_shape name in
+      let expr = make_string "Kast.types.create_or_find(%S)" name in
+      calculate { shape = JsAst.Raw expr; span = None })
+    else raise (Invalid_argument "only simple names pls")
+
   and transpile_ty : ty -> no_effect_expr =
     fun ty ->
     Inference.Var.setup_default_if_needed ty.var;
@@ -205,8 +226,18 @@ module Impl = struct
     | T_String -> primitive "String"
     | T_Char -> primitive "Char"
     | T_Ref _ -> todo_ty __LOC__
-    | T_Variant _ -> todo_ty __LOC__
-    | T_Tuple _ -> todo_ty __LOC__
+    | T_Variant { name; variants = _ } ->
+      (match name |> OptionalName.await_inferred with
+       | Some name ->
+         (try type_named name with
+          | Invalid_argument _ -> todo_ty __LOC__)
+       | None -> todo_ty __LOC__)
+    | T_Tuple { name; tuple = _ } ->
+      (match name |> OptionalName.await_inferred with
+       | Some name ->
+         (try type_named name with
+          | Invalid_argument _ -> todo_ty __LOC__)
+       | None -> todo_ty __LOC__)
     | T_Ty -> todo_ty __LOC__
     | T_Fn _ -> todo_ty __LOC__
     | T_Generic _ -> todo_ty __LOC__
