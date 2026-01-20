@@ -211,6 +211,19 @@ module DefaultRules = struct
     else None
   ;;
 
+  let read_hex reader =
+    let* c = Reader.peek reader in
+    let* () = if c = '0' then Some () else None in
+    let* x = Reader.peek2 reader in
+    let* () = if x = 'x' then Some () else None in
+    let recording = Reader.start_rec reader in
+    Reader.advance reader;
+    Reader.advance reader;
+    let _ : string = reader |> Reader.read_while Char.is_digit in
+    let raw = Reader.finish_rec recording in
+    Some (Token.Shape.Number { raw })
+  ;;
+
   let read_number reader =
     let* c = Reader.peek reader in
     let* () = if Char.is_digit c then Some () else None in
@@ -320,6 +333,7 @@ module DefaultRules = struct
     ; read_raw_ident
     ; read_raw_keyword
     ; read_ident
+    ; read_hex
     ; read_number
     ; read_string
     ; read_line_comment
