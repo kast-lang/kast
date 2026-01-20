@@ -3,6 +3,11 @@ impl syntax (arg |> f) = `(
     let _f = $f;
     _f(_arg)
 );
+impl syntax (first |> f(args)) = `(
+    let first = $first;
+    let f = $f;
+    f(first, $args)
+);
 impl syntax (f <| arg) = `(
     $f($arg)
 );

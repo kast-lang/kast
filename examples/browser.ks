@@ -8,17 +8,11 @@ const CanvasRenderingContext = newtype (
 impl CanvasRenderingContext as module = (
     module:
     
-    const strokeRect = (x, y, width, height) => (
-        context => (
-            (@native "async ({context,x,y,width,height},ctx) => {context.strokeRect(x,y,width,height)}")(.context = context.raw, .x, .y, .width, .height)
-        
-        )
+    const strokeRect = (context, x, y, width, height) => (
+        (@native "async ({context,x,y,width,height},ctx) => {context.strokeRect(x,y,width,height)}")(.context = context.raw, .x, .y, .width, .height)
     );
-    const fillRect = (x, y, width, height) => (
-        context => (
-            (@native "async ({context,x,y,width,height},ctx) => {context.fillRect(x,y,width,height)}")(.context = context.raw, .x, .y, .width, .height)
-        
-        )
+    const fillRect = (context, x, y, width, height) => (
+        (@native "async ({context,x,y,width,height},ctx) => {context.fillRect(x,y,width,height)}")(.context = context.raw, .x, .y, .width, .height)
     );
     const beginPath = (context) => (
         (@native "async ({context},ctx) => {context.beginPath()}")(.context = context.raw)
@@ -28,17 +22,11 @@ impl CanvasRenderingContext as module = (
         (@native "async ({context},ctx) => {context.closePath()}")(.context = context.raw)
     
     );
-    const moveTo = (x, y) => (
-        (context) => (
-            (@native "async ({context,x,y},ctx) => {context.moveTo(x,y)}")(.context = context.raw, .x, .y)
-        
-        )
+    const moveTo = (context, x, y) => (
+        (@native "async ({context,x,y},ctx) => {context.moveTo(x,y)}")(.context = context.raw, .x, .y)
     );
-    const lineTo = (x, y) => (
-        (context) => (
-            (@native "async ({context,x,y},ctx) => {context.lineTo(x,y)}")(.context = context.raw, .x, .y)
-        
-        )
+    const lineTo = (context, x, y) => (
+        (@native "async ({context,x,y},ctx) => {context.lineTo(x,y)}")(.context = context.raw, .x, .y)
     );
     const stroke = (context) => (
         (@native "async ({context},ctx) => {context.stroke()}")(.context = context.raw)

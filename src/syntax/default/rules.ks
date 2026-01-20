@@ -66,6 +66,7 @@
 @syntax ">" 14 @wrap never = _ " " ">" " " _;
 
 @syntax "|>" 14.5 @wrap if_any_assoc = <- arg " "/"\n\t" "|>" " " f ""/"\\";
+@syntax "|>()" 14.5 @wrap if_any_assoc = <- first_arg " "/"\n\t" "|>" " " f _=(@wrap if_any "(" ""/"\n\t" args:any ""/"\\\n" ")") ""/"\\";
 @syntax "<|" 14.5 @wrap if_any_assoc = <- f " "/"\n\t" "<|" " " arg ""/"\\";
 
 @syntax "+" 15 @wrap if_any_assoc = <- _ " "/"\n" "+" " " _;
