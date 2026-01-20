@@ -219,7 +219,7 @@ module DefaultRules = struct
     let recording = Reader.start_rec reader in
     Reader.advance reader;
     Reader.advance reader;
-    let _ : string = reader |> Reader.read_while Char.is_digit in
+    let _ : string = reader |> Reader.read_while Char.is_hex_digit in
     let raw = Reader.finish_rec recording in
     Some (Token.Shape.Number { raw })
   ;;

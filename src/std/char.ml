@@ -14,6 +14,13 @@ module Char = struct
     | _ -> false
   ;;
 
+  let is_hex_digit : char -> bool = function
+    | '0' .. '9' -> true
+    | 'a' .. 'f' -> true
+    | 'A' .. 'F' -> true
+    | _ -> false
+  ;;
+
   let is_alphanumeric : char -> bool = fun c -> is_alpha c || is_digit c
   let is_whitespace : char -> bool = fun c -> c = ' ' || c = '\t' || c = '\r' || c = '\n'
   let print : formatter -> char -> unit = fun fmt c -> fprintf fmt "%c" c
