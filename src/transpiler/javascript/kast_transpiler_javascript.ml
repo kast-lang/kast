@@ -889,7 +889,15 @@ module Impl = struct
                        { name = tuple_field_name member
                        ; value = pure <| transpile_expr value
                        }
-                   | Unpack packed -> failwith __LOC__))
+                   | Unpack packed ->
+                     (match
+                        packed.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple
+                      with
+                      | Some { name = _; tuple } ->
+                        if tuple.unnamed |> Array.length <> 0
+                        then fail "todo unpack unnamed";
+                        Unpack (pure <| transpile_expr packed)
+                      | None -> fail "packed ty not a tuple???")))
           ; span
           }
       | E_Variant { label; label_span = _; value } ->
