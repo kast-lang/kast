@@ -144,94 +144,107 @@ let hover_specifically
   let data = Compiler.get_data kind compiled in
   let evaled = data.evaled.value in
   let included_file = data.included_file in
-  match hover_tuple kind compiled hover_span with
-  | Some result -> result
+  match data.evaled.binding with
+  | Some binding ->
+    { ty = Some { ty = data.ty; span = data.span; evaled }
+    ; rename =
+        Some
+          { span = binding.span
+          ; definition_mode = DefinedNotHere (binding_definition binding)
+          }
+    ; file = included_file
+    }
   | None ->
-    (match kind with
-     | PlaceExpr ->
-       let rename : hover_info_rename option =
-         match compiled.shape with
-         | PE_Binding binding ->
-           Some
-             { span = binding.span
-             ; definition_mode = DefinedNotHere (binding_definition binding)
-             }
-         | PE_Field { obj = _; field; field_span } ->
-           (match field with
-            | Index _ -> None
-            | Expr _ -> None
-            | Name label ->
+    (match hover_tuple kind compiled hover_span with
+     | Some result -> result
+     | None ->
+       (match kind with
+        | PlaceExpr ->
+          let rename : hover_info_rename option =
+            match compiled.shape with
+            | PE_Binding binding ->
               Some
-                { span = field_span
+                { span = binding.span
+                ; definition_mode = DefinedNotHere (binding_definition binding)
+                }
+            | PE_Field { obj = _; field; field_span } ->
+              (match field with
+               | Index _ -> None
+               | Expr _ -> None
+               | Name label ->
+                 Some
+                   { span = field_span
+                   ; definition_mode = DefinedNotHere (label_definition label)
+                   })
+            | _ -> None
+          in
+          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          ; rename
+          ; file = included_file
+          }
+        | Expr ->
+          let rename : hover_info_rename option =
+            match compiled.shape with
+            | E_Variant { label; label_span; value = _ } ->
+              Some
+                { span = label_span
                 ; definition_mode = DefinedNotHere (label_definition label)
-                })
-         | _ -> None
-       in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
-       ; rename
-       ; file = included_file
-       }
-     | Expr ->
-       let rename : hover_info_rename option =
-         match compiled.shape with
-         | E_Variant { label; label_span; value = _ } ->
-           Some
-             { span = label_span
-             ; definition_mode = DefinedNotHere (label_definition label)
-             }
-         | _ -> None
-       in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
-       ; rename
-       ; file = included_file
-       }
-     | Assignee ->
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
-       ; rename = None
-       ; file = included_file
-       }
-     | Pattern ->
-       let rename =
-         match compiled.shape with
-         | P_Binding { bind_mode = _; binding } ->
-           Some
-             { span = binding.span
-             ; definition_mode = DefinedHere (binding_definition binding)
-             }
-         | P_Variant { label; label_span; value = _ } ->
-           if label_span |> Span.contains_span hover_span
-           then
-             Some
-               { span = label_span
-               ; definition_mode = DefinedNotHere (label_definition label)
-               }
-           else None
-         | _ -> None
-       in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
-       ; rename
-       ; file = included_file
-       }
-     | TyExpr ->
-       let rename =
-         match compiled.compiled_shape with
-         | Some (TE_Variant { variants }) ->
-           variants
-           |> List.find_map
-                (fun ({ label_span; label; value = _ } : Types.ty_expr_variant_variant) ->
-                   if label_span |> Span.contains_span hover_span
-                   then
-                     Some
-                       { span = label_span
-                       ; definition_mode = DefinedHere (label_definition label)
-                       }
-                   else None)
-         | _ -> None
-       in
-       { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
-       ; rename
-       ; file = included_file
-       })
+                }
+            | _ -> None
+          in
+          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          ; rename
+          ; file = included_file
+          }
+        | Assignee ->
+          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          ; rename = None
+          ; file = included_file
+          }
+        | Pattern ->
+          let rename =
+            match compiled.shape with
+            | P_Binding { bind_mode = _; binding } ->
+              Some
+                { span = binding.span
+                ; definition_mode = DefinedHere (binding_definition binding)
+                }
+            | P_Variant { label; label_span; value = _ } ->
+              if label_span |> Span.contains_span hover_span
+              then
+                Some
+                  { span = label_span
+                  ; definition_mode = DefinedNotHere (label_definition label)
+                  }
+              else None
+            | _ -> None
+          in
+          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          ; rename
+          ; file = included_file
+          }
+        | TyExpr ->
+          let rename =
+            match compiled.compiled_shape with
+            | Some (TE_Variant { variants }) ->
+              variants
+              |> List.find_map
+                   (fun
+                       ({ label_span; label; value = _ } : Types.ty_expr_variant_variant)
+                      ->
+                      if label_span |> Span.contains_span hover_span
+                      then
+                        Some
+                          { span = label_span
+                          ; definition_mode = DefinedHere (label_definition label)
+                          }
+                      else None)
+            | _ -> None
+          in
+          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          ; rename
+          ; file = included_file
+          }))
 ;;
 
 let rec hover : 'a. 'a compiled_kind -> 'a -> evaled:value option -> span -> hover_info =

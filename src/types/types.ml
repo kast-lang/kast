@@ -626,6 +626,7 @@ module rec TypesImpl : sig
     ; mutable ty_exprs : (ty_expr * ty) list
     ; mutable ty_ascribed : bool
     ; mutable value : value option
+    ; mutable binding : binding option
     }
 
   and name = { var : name_shape var }
@@ -1293,6 +1294,7 @@ end = struct
     ; mutable ty_exprs : (ty_expr * ty) list
     ; mutable ty_ascribed : bool
     ; mutable value : value option
+    ; mutable binding : binding option
     }
 
   and name = { var : name_shape var }

@@ -178,7 +178,9 @@ let inner_compiled_with_handler
                    -> variant_data |> Option.iter (handler.handle TyExpr))
          | TE_Error -> ())));
   let data = Compiler.get_data kind compiled in
-  let { exprs; patterns; ty_exprs; ty_ascribed = _; value = _ } : Types.ir_evaled =
+  let { exprs; patterns; ty_exprs; ty_ascribed = _; value = _; binding = _ }
+    : Types.ir_evaled
+    =
     data.evaled
   in
   exprs |> List.iter (fun (expr, value) -> handler.handle Expr ~evaled:value expr);

@@ -548,7 +548,13 @@ module Impl = struct
   and sub_ir_data : state:sub_state -> ir_data -> ir_data =
     fun ~state data ->
     { evaled =
-        { patterns = []; ty_exprs = []; exprs = []; ty_ascribed = false; value = None }
+        { patterns = []
+        ; ty_exprs = []
+        ; exprs = []
+        ; ty_ascribed = false
+        ; value = None
+        ; binding = None
+        }
     ; span = data.span
     ; included_file = None
     ; ty = sub_ty ~state data.ty

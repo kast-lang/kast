@@ -52,7 +52,9 @@ let rec inlay_hints
         })
   in
   let evaled =
-    let { exprs; ty_exprs; patterns; ty_ascribed = _; value = _ } : Types.ir_evaled =
+    let { exprs; ty_exprs; patterns; ty_ascribed = _; value = _; binding = _ }
+      : Types.ir_evaled
+      =
       data.evaled
     in
     let exprs =

@@ -6,7 +6,13 @@ open Error
 module Inference = Kast_inference
 
 let init_evaled () : Types.ir_evaled =
-  { exprs = []; ty_exprs = []; patterns = []; ty_ascribed = false; value = None }
+  { exprs = []
+  ; ty_exprs = []
+  ; patterns = []
+  ; ty_ascribed = false
+  ; value = None
+  ; binding = None
+  }
 ;;
 
 let tuple_ty

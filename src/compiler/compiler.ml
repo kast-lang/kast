@@ -429,8 +429,10 @@ let rec local_place_expr span state (local : State.Scope.local) =
 
 and local_expr span state (local : State.Scope.local) =
   match local with
-  | Const { place; binding = _ } ->
+  | Const { place; binding } ->
     let value = Kast_interpreter.read_place place ~span in
-    E_Constant { id = Id.gen (); value } |> Init.init_expr span state
+    let expr = E_Constant { id = Id.gen (); value } |> Init.init_expr span state in
+    expr.data.evaled.binding <- Some binding;
+    expr
   | Binding _ -> E_Claim (local_place_expr span state local) |> Init.init_expr span state
 ;;
