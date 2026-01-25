@@ -17,8 +17,8 @@
 @syntax "core:let" 3 @wrap never = "let" " " pattern;
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 
-@syntax "core:leading union" 4.99 @wrap never = "|" " " _;
-@syntax "core:union" 5 @wrap if_any_assoc = <- _ " "/"\n" "|" " " _;
+@syntax "core:leading union" 3.99 @wrap never = "|" " " _;
+@syntax "core:union" 4 @wrap if_any_assoc = <- _ " "/"\n" "|" " " _;
 
 @syntax "core:comma" 5 @wrap if_any_assoc = <- _ "," " "/"\n" _;
 @syntax "core:trailing comma" 5 @wrap never = <- _ ",";
@@ -107,6 +107,7 @@
 @syntax "opaque_type" 500 @wrap never = "@opaque_type";
 @syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
+@syntax "core:record" 1000 @wrap if_any = "{" ""/"\n\t" _:any ""/"\\\n" "}";
 @syntax "core:placeholder" 1000 @wrap never = "_";
 @syntax "core:quote" 1000 @wrap if_any = "`" "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:unquote" 1000 @wrap never = "$" _ ->;

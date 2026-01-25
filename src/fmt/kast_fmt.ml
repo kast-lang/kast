@@ -70,7 +70,7 @@ let format : formatter -> Parser.result -> unit =
         | '\\' -> current_indent := !current_indent - 1
         | c -> printf "%c" c)
     in
-    let rec print_ast ~filter ~parent (ast : Ast.t) =
+    let rec print_ast ~(filter : Syntax.Rule.Priority.filter_kind) ~parent (ast : Ast.t) =
       match ast.shape with
       | Error _ -> fail "Can't format code with errors"
       | Empty -> ()
@@ -90,12 +90,12 @@ let format : formatter -> Parser.result -> unit =
         in
         let wrapped = wrapped || ast.data.start.line <> ast.data.finish.line in
         (* detect duplicate parens *)
-        if String.equal rule.name "core:scope" && filter = Syntax.Rule.Priority.Any
+        if String.equal rule.name "core:scope" && filter = Syntax.Rule.Priority.Filter Any
         then (
           let child =
             root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
           in
-          print_ast ~filter:Any ~parent:(Some { wrapped; rule }) child)
+          print_ast ~filter:(Filter Any) ~parent:(Some { wrapped; rule }) child)
         else print_group rule root.rule wrapped rule.wrap_mode root
       | Syntax { tokens; value_after; _ } ->
         let pos = ref (List.head tokens).span.start in
@@ -171,7 +171,7 @@ let format : formatter -> Parser.result -> unit =
           (Option.print Ast.Part.print)
           (List.head_opt parts)
     in
-    print_ast ~filter:Any ~parent:None ast
+    print_ast ~filter:(Filter Any) ~parent:None ast
   in
   print_ast ast;
   trailing_comments

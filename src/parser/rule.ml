@@ -101,10 +101,43 @@ let parse : Lexer.t -> Syntax.rule =
               | Some ":" ->
                 Lexer.advance lexer;
                 let peek = Lexer.peek lexer in
-                if peek |> Token.is_raw "any" |> not
-                then Error.error peek.span "Expected \"any\", got %a" Token.print peek;
-                Lexer.advance lexer;
-                Syntax.Rule.Priority.Any
+                if peek |> Token.is_raw "any"
+                then (
+                  Lexer.advance lexer;
+                  Syntax.Rule.Priority.Filter Any)
+                else if peek |> Token.is_raw ">=" || peek |> Token.is_raw ">"
+                then (
+                  let f =
+                    match peek |> Token.raw with
+                    | Some ">=" ->
+                      (fun f : Syntax.Rule.Priority.filter -> GreaterOrEqual f)
+                    | Some ">" -> (fun f : Syntax.Rule.Priority.filter -> Greater f)
+                    | _ -> unreachable "???"
+                  in
+                  Lexer.advance lexer;
+                  let priority_token = Lexer.peek lexer in
+                  let priority =
+                    try
+                      let parsed = Token.Shape.as_float priority_token.shape in
+                      Lexer.advance lexer;
+                      parsed
+                    with
+                    | Invalid_argument _ ->
+                      Error.error
+                        priority_token.span
+                        "Expected priority, got %a"
+                        Token.print
+                        priority_token;
+                      0.0
+                  in
+                  Syntax.Rule.Priority.Filter (f priority))
+                else (
+                  Error.error
+                    peek.span
+                    "Expected priority filter, got %a"
+                    Token.print
+                    peek;
+                  Syntax.Rule.Priority.Greater)
               | _ ->
                 (* defaulting to Greater means we only need
                       to annotate with <- or -> where we want associativity

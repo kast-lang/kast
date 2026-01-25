@@ -14,7 +14,7 @@ module Rule = struct
     type filter_kind =
       | Greater
       | GreaterOrEqual
-      | Any
+      | Filter of filter
 
     let compare = Float.compare
 
@@ -32,7 +32,7 @@ module Rule = struct
       match kind with
       | Greater -> Greater p
       | GreaterOrEqual -> GreaterOrEqual p
-      | Any -> Any
+      | Filter f -> f
     ;;
 
     let check_filter_with_range (range : priority Range.Inclusive.t) (filter : filter) =
