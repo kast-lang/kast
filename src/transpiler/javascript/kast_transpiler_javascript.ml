@@ -162,16 +162,43 @@ module Impl = struct
       | None -> ctx
       | Some captured -> { ctx with captured }
     in
-    let arg_name = JsAst.gen_name ~original:None "arg" in
+    let named_args = ref [] in
+    let unnamed_args = ref [] in
+    (match arg.shape with
+     | P_Tuple { guaranteed_anonymous = _; parts } ->
+       parts
+       |> List.iter (fun part ->
+         match part with
+         | Field { label; label_span = _; field } ->
+           (match label with
+            | Some label ->
+              let name = Label.get_name label in
+              named_args := !named_args @ [ name, field ]
+            | None ->
+              let name = JsAst.gen_name ~original:None "arg" in
+              unnamed_args := !unnamed_args @ [ name, field ])
+         | Unpack _ -> failwith __LOC__)
+     | _ -> fail "fn arg is not tuple?");
+    let unnamed_args = !unnamed_args in
+    let named_args = !named_args in
+    let named_arg_name = JsAst.gen_name "named_args" ~original:None in
     try
       calculate
         { shape =
             JsAst.Fn
               { async = async_fns
-              ; args = [ arg_name; ctx_var ]
+              ; args =
+                  ([ ctx_var ]
+                   @ (unnamed_args |> List.map fst)
+                   @ if named_args |> List.is_empty then [] else [ named_arg_name ])
               ; body =
                   scope (fun () ->
-                    pattern_match arg (place_of_var arg_name);
+                    unnamed_args
+                    |> List.iter (fun (name, pattern) ->
+                      pattern_match pattern (place_of_var name));
+                    named_args
+                    |> List.iter (fun (name, pattern) ->
+                      pattern_match pattern (place_of_var_field named_arg_name name));
                     let result = transpile_expr body in
                     execute { shape = JsAst.Return (pure result); span = None })
               }
@@ -834,6 +861,57 @@ module Impl = struct
       ; span = None
       }
 
+  and call ~span (f : expr) (arg : expr) : no_effect_expr =
+    let f = pure <| transpile_expr f in
+    let named_args = ref [] in
+    let unnamed_args =
+      match arg.shape with
+      | E_Constant { id = _; value = arg } ->
+        (match arg |> Value.expect_tuple with
+         | Some { tuple; ty = _ } ->
+           let field_value (field : value_tuple_field) =
+             pure <| transpile_value (field.place |> Kast_interpreter.read_place ~span)
+           in
+           tuple.named
+           |> StringMap.iter (fun name field ->
+             let field : JsAst.obj_part = Field { name; value = field_value field } in
+             named_args := !named_args @ [ field ]);
+           tuple.unnamed |> Array.to_list |> List.map field_value
+         | None -> fail "called not with tuple but %a?" Value.print arg)
+      | E_Tuple { guaranteed_anonymous = _; parts } ->
+        parts
+        |> List.filter_map (fun part ->
+          match part with
+          | Field { label; label_span = _; field } ->
+            let value = pure <| transpile_expr field in
+            (match label with
+             | None -> Some value
+             | Some label ->
+               let name = Label.get_name label in
+               let field : JsAst.obj_part = Field { name; value } in
+               named_args := !named_args @ [ field ];
+               None)
+          | Unpack _ -> failwith __LOC__)
+      | _ -> fail "called not with tuple but %a?" Expr.print_with_spans arg
+    in
+    let named_args : JsAst.expr list =
+      match !named_args with
+      | [] -> []
+      | named_args -> [ { shape = JsAst.Obj named_args; span = None } ]
+    in
+    calculate
+      { shape =
+          JsAst.Call
+            { async = async_fns
+            ; f
+            ; args =
+                [ ({ shape = Var ctx_var; span = None } : JsAst.expr) ]
+                @ unnamed_args
+                @ named_args
+            }
+      ; span = Some span
+      }
+
   and transpile_expr : expr -> no_effect_expr =
     fun expr ->
     try
@@ -902,30 +980,8 @@ module Impl = struct
           }
       | E_Variant { label; label_span = _; value } ->
         create_variant label (value |> Option.map transpile_expr)
-      | E_Apply { f; arg } ->
-        let f = pure <| transpile_expr f in
-        let arg = pure <| transpile_expr arg in
-        calculate
-          { shape =
-              JsAst.Call
-                { async = async_fns
-                ; f
-                ; args = [ arg; { shape = Var ctx_var; span = None } ]
-                }
-          ; span
-          }
-      | E_InstantiateGeneric { generic; arg } ->
-        let generic = pure <| transpile_expr generic in
-        let arg = pure <| transpile_expr arg in
-        calculate
-          { shape =
-              JsAst.Call
-                { async = async_fns
-                ; f = generic
-                ; args = [ arg; { shape = Var ctx_var; span = None } ]
-                }
-          ; span
-          }
+      | E_Apply { f; arg } -> call ~span:expr.data.span f arg
+      | E_InstantiateGeneric { generic; arg } -> call ~span:expr.data.span generic arg
       | E_Assign { assignee; value } ->
         let place = transpile_place_expr value in
         assign assignee place;

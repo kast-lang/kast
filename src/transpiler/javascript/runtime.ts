@@ -3,7 +3,7 @@ import type * as fs from "node:fs";
 import type * as util from "node:util";
 
 type Context = unknown;
-type Fn<A, R> = (arg: A, ctx: Context) => Promise<R>;
+type Fn<A extends any[], R> = (ctx: Context, ...args: A) => Promise<R>;
 
 interface Ref<T> {
   get: () => T;
@@ -17,6 +17,7 @@ type Id = number;
 interface Type {
   id: Id;
   name: string;
+  todo?: string;
 }
 type Value = any;
 
@@ -42,55 +43,45 @@ interface Backend<isNode> {
     print: Fn<Value, void>;
   };
   io: {
-    input: Fn<string, string>;
+    input: Fn<[string], string>;
   };
   fs: isNode extends true
     ? {
-        read_file: Fn<string, string>;
+        read_file: Fn<[string], string>;
       }
     : undefined;
   sys: isNode extends true
     ? {
-        chdir: Fn<string, void>;
-        argc: Fn<undefined, number>;
-        argv_at: Fn<number, string>;
-        exec: Fn<string, number>;
-        get_env: Fn<string, Option<string>>;
-        exit: Fn<number, never>;
+        chdir: Fn<[string], void>;
+        argc: Fn<[], number>;
+        argv_at: Fn<[number], string>;
+        exec: Fn<[string], number>;
+        get_env: Fn<[string], Option<string>>;
+        exit: Fn<[number], never>;
       }
     : undefined;
   net: isNode extends true
     ? {
         tcp: {
-          connect: Fn<string, TcpStream>;
+          connect: Fn<[string], TcpStream>;
           stream: {
-            read_line: Fn<RefMut<TcpStream>, string>;
-            write: Fn<
-              {
-                0: RefMut<TcpStream>;
-                1: Ref<string>;
-              },
-              void
-            >;
-            close: Fn<TcpStream, void>;
+            read_line: Fn<[RefMut<TcpStream>], string>;
+            write: Fn<[RefMut<TcpStream>, Ref<string>], void>;
+            close: Fn<[TcpStream], void>;
           };
-          bind: Fn<string, TcpListener>;
+          bind: Fn<[string], TcpListener>;
           listener: {
-            listen: Fn<
-              {
-                0: RefMut<TcpListener>;
-                1: number;
-              },
-              void
-            >;
+            listen: Fn<[RefMut<TcpListener>, number], void>;
             accept: Fn<
-              {
-                0: RefMut<TcpListener>;
-                close_on_exec: boolean;
-              },
+              [
+                RefMut<TcpListener>,
+                {
+                  close_on_exec: boolean;
+                },
+              ],
               { stream: TcpStream; addr: string }
             >;
-            close: Fn<TcpListener, void>;
+            close: Fn<[TcpListener], void>;
           };
         };
       }
@@ -98,7 +89,72 @@ interface Backend<isNode> {
   cleanup(): Promise<void>;
 }
 
-const Kast = await (async () => {
+type Char = string;
+
+interface Kast<isNode> extends Backend<isNode> {
+  io: Backend<isNode>["io"] & {
+    print: Fn<[string], void>;
+    eprint: Fn<[string], void>;
+  };
+  cmp: {
+    less: Fn<[Value, Value], boolean>;
+    less_or_equal: Fn<[Value, Value], boolean>;
+    equal: Fn<[Value, Value], boolean>;
+    not_equal: Fn<[Value, Value], boolean>;
+    greater_or_equal: Fn<[Value, Value], boolean>;
+    greater: Fn<[Value, Value], boolean>;
+  };
+  op: {
+    add: Fn<[Value, Value], Value>;
+    sub: Fn<[Value, Value], Value>;
+    mul: Fn<[Value, Value], Value>;
+    rem: Fn<[Value, Value], Value>;
+    div_temp: Fn<[Type, Value, Value], Value>;
+    neg: Fn<[Value], Value>;
+    bit_and: Fn<[Value, Value], Value>;
+    bit_or: Fn<[Value, Value], Value>;
+    bit_xor: Fn<[Value, Value], Value>;
+    bit_not: Fn<[Value], Value>;
+    bit_shift_left: Fn<[Value, Value], Value>;
+    bit_shift_right: Fn<[Value, Value], Value>;
+  };
+  Char: {
+    code: Fn<[Char], number>;
+    from_code: Fn<[number], Char>;
+  };
+  String: {
+    substring: Fn<[string, number, number], string>;
+    iter: Fn<[string, Fn<[Char], void>], void>;
+    at: Fn<[string, number], Char>;
+    length: Fn<[string], number>;
+    to_string: Fn<[Value], string>;
+  };
+  parse: {
+    Int32: Fn<[string], number>;
+    Int64: Fn<[string], bigint>;
+    Float64: Fn<[string], number>;
+  };
+  types: {
+    todo: (s: string) => Type;
+    create_or_find: (s: string) => Type;
+    primitive: {
+      Unit: Type;
+      Bool: Type;
+      Char: Type;
+      Int32: Type;
+      Int64: Type;
+      Float64: Type;
+      String: Type;
+    };
+  };
+  panic: Fn<[string], void>;
+  casts: {
+    add_impl: (args: { value: Value; target: Value; impl: Value }) => void;
+    get_impl: (args: { value: Value; target: Value }) => Value;
+  };
+}
+
+const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
   const isNode: true | false =
     typeof process !== "undefined" &&
     process.versions != null &&
@@ -191,17 +247,17 @@ const Kast = await (async () => {
 
       return {
         dbg: {
-          async print(value: Value) {
+          async print(ctx, value: Value) {
             console.log(util.inspect(value, { depth: null, colors: true }));
           },
         },
         io: {
-          async input(prompt: string) {
+          async input(ctx, prompt: string) {
             return await ensure_readline_interface().question(prompt);
           },
         },
         fs: {
-          async read_file(path: string) {
+          async read_file(ctx, path: string) {
             return await new Promise((resolve, reject) => {
               fs.readFile(path, "utf8", (err, data) => {
                 if (err) reject(err);
@@ -212,7 +268,7 @@ const Kast = await (async () => {
         },
         net: {
           tcp: {
-            async connect(addr: string): Promise<TcpStream> {
+            async connect(ctx, addr: string): Promise<TcpStream> {
               const colon_idx = addr.lastIndexOf(":");
               if (colon_idx < 0) {
                 throw Error("no : in tcp.connect");
@@ -225,7 +281,10 @@ const Kast = await (async () => {
               return stream;
             },
             stream: {
-              async read_line(stream_ref: RefMut<TcpStream>): Promise<string> {
+              async read_line(
+                ctx: Context,
+                stream_ref: RefMut<TcpStream>,
+              ): Promise<string> {
                 const stream = stream_ref.get();
                 while (true) {
                   let newline_idx = stream.buffer.indexOf("\n");
@@ -238,13 +297,11 @@ const Kast = await (async () => {
                   }
                 }
               },
-              async write({
-                0: stream_ref,
-                1: data_ref,
-              }: {
-                0: RefMut<TcpStream>;
-                1: Ref<string>;
-              }): Promise<void> {
+              async write(
+                ctx: Context,
+                stream_ref: RefMut<TcpStream>,
+                data_ref: Ref<string>,
+              ): Promise<void> {
                 const stream = stream_ref.get();
                 const data = data_ref.get();
                 return new Promise((resolve, reject) => {
@@ -257,11 +314,11 @@ const Kast = await (async () => {
                   });
                 });
               },
-              async close(stream: TcpStream): Promise<void> {
+              async close(ctx: Context, stream: TcpStream): Promise<void> {
                 stream.socket.destroy();
               },
             },
-            async bind(addr: string): Promise<TcpListener> {
+            async bind(ctx: Context, addr: string): Promise<TcpListener> {
               const colon_idx = addr.lastIndexOf(":");
               if (colon_idx < 0) {
                 throw Error("no : in tcp.bind");
@@ -276,20 +333,19 @@ const Kast = await (async () => {
               return listener;
             },
             listener: {
-              async listen(args: {
-                0: RefMut<TcpListener>;
-                1: number;
-              }): Promise<void> {
-                const listener = args[0].get();
-                const max_pending = args[1];
+              async listen(
+                ctx: Context,
+                listener: RefMut<TcpListener>,
+                max_pending: number,
+              ): Promise<void> {
                 // Don't need to do anything?
               },
-              async accept(args: {
-                0: RefMut<TcpListener>;
-                close_on_exec: boolean;
-              }): Promise<{ stream: TcpStream; addr: string }> {
-                const listener = args[0].get();
-                args.close_on_exec;
+              async accept(
+                ctx: Context,
+                listener_ref: RefMut<TcpListener>,
+                { close_on_exec },
+              ): Promise<{ stream: TcpStream; addr: string }> {
+                const listener = listener_ref.get();
                 const [socket] = await waitForServerEvent(
                   listener,
                   "connection",
@@ -299,7 +355,7 @@ const Kast = await (async () => {
                   addr: JSON.stringify(socket.address()),
                 };
               },
-              async close(listener: TcpListener): Promise<void> {
+              async close(ctx: Context, listener: TcpListener): Promise<void> {
                 return new Promise((resolve, reject) => {
                   listener.server.close((err) => {
                     if (err) {
@@ -314,16 +370,16 @@ const Kast = await (async () => {
           },
         },
         sys: {
-          async chdir(path: string): Promise<void> {
+          async chdir(ctx: Context, path: string): Promise<void> {
             process.chdir(path);
           },
-          async argc(): Promise<number> {
+          async argc(ctx: Context): Promise<number> {
             return process.argv.length - 1;
           },
-          async argv_at(i: number): Promise<string> {
+          async argv_at(ctx: Context, i: number): Promise<string> {
             return process.argv[i + 1];
           },
-          async exec(cmd: string): Promise<number> {
+          async exec(ctx: Context, cmd: string): Promise<number> {
             return new Promise((resolve, reject) => {
               const child = child_process.spawn("/bin/sh", ["-c", cmd], {
                 stdio: "inherit",
@@ -338,7 +394,7 @@ const Kast = await (async () => {
               child.on("error", reject);
             });
           },
-          async get_env(name: string): Promise<Option<string>> {
+          async get_env(ctx: Context, name: string): Promise<Option<string>> {
             const value = process.env[name];
             if (value === undefined) {
               return { tag: "None" };
@@ -346,7 +402,7 @@ const Kast = await (async () => {
               return { tag: "Some", data: value };
             }
           },
-          exit(code: number): never {
+          exit(ctx: Context, code: number): never {
             process.exit(code);
           },
         },
@@ -357,12 +413,12 @@ const Kast = await (async () => {
     } else {
       return {
         dbg: {
-          async print(value: Value) {
+          async print(ctx: Context, value: Value) {
             console.debug(value);
           },
         },
         io: {
-          async input(p: string) {
+          async input(ctx: Context, p: string) {
             const result = prompt(p);
             if (result === null) {
               throw Error("No input was provided");
@@ -378,8 +434,12 @@ const Kast = await (async () => {
     }
   })();
 
-  async function call<A, R>(f: Fn<A, R>, arg: A, ctx: Context): Promise<R> {
-    return await f(arg, ctx);
+  async function call<A extends any[], R>(
+    f: Fn<A, R>,
+    ctx: Context,
+    ...args: A
+  ): Promise<R> {
+    return await f(ctx, ...args);
   }
 
   let next_id = 0;
@@ -401,9 +461,20 @@ const Kast = await (async () => {
       throw Error(value.todo);
     }
   }
-  const cast_impls = {
+  const cast_impls: {
+    by_target: Map<any, Map<any, any>>;
+  } = {
     by_target: new Map(),
   };
+
+  function single_arg(arg: Value): Value {
+    if ("0" in arg) {
+      return arg["0"];
+    } else {
+      throw new Error("expected single arg");
+    }
+  }
+
   function add_cast_impl({
     value,
     target,
@@ -413,13 +484,15 @@ const Kast = await (async () => {
     target: Value;
     impl: Value;
   }) {
+    value = single_arg(value);
     if (!cast_impls.by_target.get(target)) {
       cast_impls.by_target.set(target, new Map());
     }
-    const by_target = cast_impls.by_target.get(target);
+    const by_target = cast_impls.by_target.get(target)!;
     by_target.set(value, impl);
   }
   function get_cast_impl({ value, target }: { value: Value; target: Value }) {
+    value = single_arg(value);
     check_todo(target);
     check_todo(value);
     const by_target = cast_impls.by_target.get(target);
@@ -438,6 +511,8 @@ const Kast = await (async () => {
   const types = {
     todo(s: string) {
       return {
+        id: Id.gen(),
+        name: "<todo>",
         todo: s,
       };
     },
@@ -461,105 +536,97 @@ const Kast = await (async () => {
   };
   return {
     ...backend,
-    Id,
-    check_todo,
     io: {
       ...backend.io,
-      async print(s: string, ctx: Context) {
+      async print(ctx: Context, s: string) {
         console.log(s);
       },
-      async eprint(s: string, ctx: Context) {
+      async eprint(ctx: Context, s: string) {
         console.error(s);
       },
     },
     cmp: {
-      async less(args: { 0: Value; 1: Value }) {
-        return args["0"] < args["1"];
+      async less(ctx, lhs, rhs) {
+        return lhs < rhs;
       },
-      async less_or_equal(args: { 0: Value; 1: Value }) {
-        return args["0"] <= args["1"];
+      async less_or_equal(ctx, lhs, rhs) {
+        return lhs <= rhs;
       },
-      async equal(args: { 0: Value; 1: Value }) {
-        return args["0"] === args["1"];
+      async equal(ctx, lhs, rhs) {
+        return lhs === rhs;
       },
-      async not_equal(args: { 0: Value; 1: Value }) {
-        return args["0"] !== args["1"];
+      async not_equal(ctx, lhs, rhs) {
+        return lhs !== rhs;
       },
-      async greater_or_equal(args: { 0: Value; 1: Value }) {
-        return args["0"] >= args["1"];
+      async greater_or_equal(ctx, lhs, rhs) {
+        return lhs >= rhs;
       },
-      async greater(args: { 0: Value; 1: Value }) {
-        return args["0"] > args["1"];
+      async greater(ctx, lhs, rhs) {
+        return lhs > rhs;
       },
     },
     op: {
-      add: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs + rhs,
-      sub: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs - rhs,
-      mul: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs * rhs,
-      rem: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs % rhs,
-      div_temp: async ({
-        0: T,
-        1: lhs,
-        2: rhs,
-      }: {
-        0: Type;
-        1: Value;
-        2: Value;
-      }) => {
+      add: async (ctx, lhs, rhs) => lhs + rhs,
+      sub: async (ctx, lhs, rhs) => lhs - rhs,
+      mul: async (ctx, lhs, rhs) => lhs * rhs,
+      rem: async (ctx, lhs, rhs) => lhs % rhs,
+      div_temp: async (ctx, T, lhs, rhs) => {
         if (T === types.primitive.Float64) return lhs / rhs;
         if (T === types.primitive.Int64) return lhs / rhs;
         return Math.floor(lhs / rhs);
       },
-      neg: async (x: Value) => -x,
-      bit_and: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs & rhs,
-      bit_or: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs | rhs,
-      bit_xor: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) => lhs ^ rhs,
-      bit_not: async (x: Value) => ~x,
-      bit_shift_left: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) =>
-        lhs << rhs,
-      bit_shift_right: async ({ 0: lhs, 1: rhs }: { 0: Value; 1: Value }) =>
-        lhs >> rhs,
+      neg: async (ctx, x: Value) => -x,
+      bit_and: async (ctx, lhs, rhs) => lhs & rhs,
+      bit_or: async (ctx, lhs, rhs) => lhs | rhs,
+      bit_xor: async (ctx, lhs, rhs) => lhs ^ rhs,
+      bit_not: async (ctx, x: Value) => ~x,
+      bit_shift_left: async (ctx, lhs, rhs) => lhs << rhs,
+      bit_shift_right: async (ctx, lhs, rhs) => lhs >> rhs,
     },
     Char: {
-      async code(c: string): Promise<number> {
+      async code(ctx, c: string): Promise<number> {
         return c.charCodeAt(0);
       },
-      async from_code(code: number): Promise<string> {
+      async from_code(ctx, code: number): Promise<string> {
         return String.fromCharCode(code);
       },
     },
     String: {
-      substring: async ({
-        0: s,
-        1: start,
-        2: len,
-      }: {
-        0: string;
-        1: number;
-        2: number;
-      }) => {
+      substring: async (ctx, s, start, len) => {
         return s.substring(start, start + len);
       },
-      iter: async (
-        { 0: s, 1: f }: { 0: string; 1: Fn<string, void> },
-        ctx: Context,
-      ) => {
+      iter: async (ctx, s, f) => {
         for (let c of s) {
-          await call(f, c, ctx);
+          await call(f, ctx, c);
         }
       },
-      at: async ({ 0: s, 1: i }: { 0: string; 1: number }) => {
-        return s.at(i);
+      at: async (ctx, s, i) => {
+        const c = s.at(i);
+        if (c === undefined) {
+          throw new Error("out of bounds");
+        }
+        return c;
       },
-      length: async (s: string) => {
+      length: async (ctx, s: string) => {
         return s.length;
       },
       to_string: async (x: Value) => {
         return x.toString();
       },
     },
+    parse: {
+      async Int32(ctx, s) {
+        return parseInt(s);
+      },
+      async Int64(ctx, s) {
+        return BigInt(s);
+      },
+      async Float64(ctx, s) {
+        return parseFloat(s);
+      },
+    },
     types,
-    panic: async (s: string) => {
+    panic: async (ctx, s: string) => {
       throw Error(s);
     },
     casts: {
