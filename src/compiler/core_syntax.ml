@@ -15,6 +15,205 @@ type core_syntax =
   ; handle : 'a. 'a handle
   }
 
+let tuple_field
+      (type a)
+      (module C : Compiler.S)
+      (kind : a compiled_kind)
+      (ast : Ast.t)
+      ({ children; _ } : Ast.group)
+  : string * field_span:span * field_label:Label.t option * a
+  =
+  let span = ast.data.span in
+  let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
+  let label =
+    match label_ast.shape with
+    | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
+    | _ ->
+      Error.error label_ast.data.span "field label must be ident";
+      invalid_arg "tuple field"
+  in
+  let ty =
+    children
+    |> Tuple.get_named_opt "type"
+    |> Option.map (fun ty ->
+      let group = ty |> Ast.Child.expect_group in
+      group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
+  in
+  let value =
+    children
+    |> Tuple.get_named_opt "value"
+    |> Option.map (fun value ->
+      let group = value |> Ast.Child.expect_group in
+      group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
+  in
+  match kind with
+  | PlaceExpr -> unreachable "tuple field"
+  | Expr ->
+    let value =
+      match value with
+      | Some value -> C.compile Expr value
+      | None ->
+        C.state |> State.enter_ast_def_site label_ast;
+        State.Scopes.find
+          ~hygiene:label_ast.data.hygiene
+          ~from_scope:(State.var_scope C.state)
+          ~from:label_ast.data.span
+          label
+          C.state.scopes
+        |> Compiler.local_expr span C.state
+    in
+    (match ty |> Option.map (Compiler.eval_ty (module C)) with
+     | None ->
+       ( label
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
+       , value )
+     | Some (ty, ty_expr) ->
+       value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
+       ( label
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
+       , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
+  | TyExpr ->
+    (match value with
+     | None -> ()
+     | Some _ -> error span "unexpected value");
+    let value =
+      match ty with
+      | Some value -> C.compile TyExpr value
+      | None ->
+        C.state |> State.enter_ast_def_site label_ast;
+        let expr =
+          State.Scopes.find
+            ~hygiene:label_ast.data.hygiene
+            ~from_scope:(State.var_scope C.state)
+            ~from:label_ast.data.span
+            label
+            C.state.scopes
+          |> Compiler.local_expr span C.state
+        in
+        (fun () -> TE_Expr expr) |> init_ty_expr span C.state
+    in
+    ( label
+    , ~field_span:label_ast.data.span
+    , ~field_label:(Some (Label.create_definition label_ast.data.span label))
+    , value )
+  | Assignee ->
+    error span "todo %s" __LOC__;
+    invalid_arg "todo"
+  | Pattern ->
+    let value =
+      match value with
+      | Some value -> C.compile Pattern value
+      | None ->
+        let scope = State.var_scope C.state in
+        P_Binding
+          { bind_mode = Claim
+          ; binding =
+              { id = Id.gen ()
+              ; scope
+              ; name = Symbol.create label
+              ; ty = Ty.new_not_inferred ~scope ~span:label_ast.data.span
+              ; span = label_ast.data.span
+              ; label = Label.create_reference label_ast.data.span label
+              ; mut = false
+              ; hygiene = label_ast.data.hygiene
+              ; def_site = label_ast.data.def_site
+              }
+          }
+        |> init_pattern span C.state
+    in
+    (match ty |> Option.map (Compiler.eval_ty (module C)) with
+     | None ->
+       ( label
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
+       , value )
+     | Some (ty, ty_expr) ->
+       value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
+       ( label
+       , ~field_span:label_ast.data.span
+       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
+       , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
+;;
+
+let tuple_impl
+      ~allow_toplevel_parens
+      (type a)
+      (module C : Compiler.S)
+      (kind : a compiled_kind)
+      (ast : Ast.t)
+  : a
+  =
+  let ast =
+    if allow_toplevel_parens
+    then (
+      match ast.shape with
+      | Complex { rule = { name = "core:scope"; _ }; root } ->
+        root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+      | _ -> ast)
+    else ast
+  in
+  match kind with
+  | PlaceExpr -> fail "tuple place exprs????"
+  | _ ->
+    let span = ast.data.span in
+    let children =
+      ast
+      |> Ast.collect_list
+           ~trailing_or_leading_rule_name:"core:trailing comma"
+           ~binary_rule_name:"core:comma"
+    in
+    Log.trace (fun log ->
+      log "at %a tuple children: %a" Span.print span (List.print Ast.print) children);
+    let parts_rev : a Types.tuple_part_of list ref = ref [] in
+    let unnamed_idx = ref 0 in
+    children
+    |> List.iter (fun (child : Ast.t) ->
+      match child.shape with
+      | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
+        let name, ~field_span, ~field_label, value =
+          tuple_field (module C) kind child root
+        in
+        let part : a Types.tuple_part_of =
+          Field { label_span = field_span; label = field_label; field = value }
+        in
+        parts_rev := part :: !parts_rev
+      | Complex { rule = { name = "core:unpack"; _ }; root; _ } ->
+        let packed =
+          root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+        in
+        let part : a Types.tuple_part_of = Unpack (C.compile kind packed) in
+        parts_rev := part :: !parts_rev
+      | _ ->
+        unnamed_idx := !unnamed_idx + 1;
+        let part : a Types.tuple_part_of =
+          Field
+            { label_span = child.data.span; label = None; field = C.compile kind child }
+        in
+        parts_rev := part :: !parts_rev);
+    (match kind with
+     | PlaceExpr -> unreachable "comma: checked earier"
+     | Assignee ->
+       A_Tuple { parts = !parts_rev |> List.rev } |> init_assignee span C.state
+     | Pattern -> P_Tuple { parts = !parts_rev |> List.rev } |> init_pattern span C.state
+     | TyExpr ->
+       (fun () -> TE_Tuple { parts = !parts_rev |> List.rev })
+       |> init_ty_expr span C.state
+     | Expr -> E_Tuple { parts = !parts_rev |> List.rev } |> init_expr span C.state)
+;;
+
+let fail_toplevel_tuple
+      (type a)
+      (module C : Compiler.S)
+      (kind : a compiled_kind)
+      (ast : Ast.t)
+  : a
+  =
+  Error.error ast.data.span "Did you forget {}";
+  init_error ast.data.span C.state kind
+;;
+
 let apply : core_syntax =
   { name = "apply"
   ; handle =
@@ -33,7 +232,7 @@ let apply : core_syntax =
         match kind with
         | Expr ->
           let f = C.compile Expr f in
-          let arg = C.compile Expr arg in
+          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Expr arg in
           E_Apply { f; arg } |> init_expr span C.state
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | TyExpr -> (fun () -> TE_Expr (C.compile Expr ast)) |> init_ty_expr span C.state
@@ -61,7 +260,7 @@ let instantiate_generic : core_syntax =
         match kind with
         | Expr ->
           let generic = C.compile Expr generic in
-          let arg = C.compile Expr arg in
+          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Expr arg in
           E_InstantiateGeneric { generic; arg } |> init_expr span C.state
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | TyExpr -> (fun () -> TE_Expr (C.compile Expr ast)) |> init_ty_expr span C.state
@@ -253,7 +452,13 @@ let fn_type : core_syntax =
         | TyExpr ->
           (fun () ->
             let state = C.state |> State.enter_scope ~span ~recursive:false in
-            let arg = C.compile ~state TyExpr arg in
+            let arg =
+              tuple_impl
+                ~allow_toplevel_parens:true
+                (Compiler.update_module (module C) state)
+                TyExpr
+                arg
+            in
             let result = C.compile ~state TyExpr result in
             TE_Fn { arg; result })
           |> init_ty_expr span C.state)
@@ -317,7 +522,13 @@ let fn : core_syntax =
           State.Scope.fork (fun () ->
             let state = C.state |> State.enter_scope ~span ~recursive:false in
             Log.trace (fun log -> log "starting to compile fn at %a" Span.print span);
-            let arg = C.compile ~state Pattern arg in
+            let arg =
+              tuple_impl
+                ~allow_toplevel_parens:true
+                (Compiler.update_module (module C) state)
+                Pattern
+                arg
+            in
             Log.trace (fun log ->
               log
                 "compiled fn arg = %a at %a"
@@ -399,7 +610,7 @@ let generic : core_syntax =
               (module C)
               (C.state |> State.enter_scope ~span ~recursive:false)
           in
-          let arg = C.compile Pattern arg in
+          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Pattern arg in
           C.state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
           let result_ty, result_expr = Compiler.eval_ty (module C) body in
           let generic_ty =
@@ -417,19 +628,21 @@ let generic : core_syntax =
           let def : Types.maybe_compiled_fn =
             { span; compiled = None; on_compiled = [] }
           in
-          let inner_state = C.state |> State.enter_scope ~span ~recursive:false in
-          let arg = C.compile ~state:inner_state Pattern arg in
-          inner_state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
+          let (module C : Compiler.S) =
+            Compiler.update_module
+              (module C)
+              (C.state |> State.enter_scope ~span ~recursive:false)
+          in
+          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Pattern arg in
+          C.state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
           let ty =
             Interpreter.generic_ty
               ~span
               arg
-              (Ty.new_not_inferred
-                 ~scope:(State.var_scope inner_state)
-                 ~span:body.data.span)
+              (Ty.new_not_inferred ~scope:(State.var_scope C.state) ~span:body.data.span)
           in
           State.Scope.fork (fun () ->
-            let body = C.compile ~state:inner_state Expr body in
+            let body = C.compile Expr body in
             Compiler.finish_compiling def { arg; body };
             Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
             Log.trace (fun log -> log "body.data.ty = %a" Ty.print body.data.ty);
@@ -961,172 +1174,6 @@ let dot : core_syntax =
   }
 ;;
 
-let tuple_field
-      (type a)
-      (module C : Compiler.S)
-      (kind : a compiled_kind)
-      (ast : Ast.t)
-      ({ children; _ } : Ast.group)
-  : string * field_span:span * field_label:Label.t option * a
-  =
-  let span = ast.data.span in
-  let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
-  let label =
-    match label_ast.shape with
-    | Simple { token = { shape = Ident ident; _ }; _ } -> ident.name
-    | _ ->
-      Error.error label_ast.data.span "field label must be ident";
-      invalid_arg "tuple field"
-  in
-  let ty =
-    children
-    |> Tuple.get_named_opt "type"
-    |> Option.map (fun ty ->
-      let group = ty |> Ast.Child.expect_group in
-      group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
-  in
-  let value =
-    children
-    |> Tuple.get_named_opt "value"
-    |> Option.map (fun value ->
-      let group = value |> Ast.Child.expect_group in
-      group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
-  in
-  match kind with
-  | PlaceExpr -> unreachable "tuple field"
-  | Expr ->
-    let value =
-      match value with
-      | Some value -> C.compile Expr value
-      | None ->
-        C.state |> State.enter_ast_def_site label_ast;
-        State.Scopes.find
-          ~hygiene:label_ast.data.hygiene
-          ~from_scope:(State.var_scope C.state)
-          ~from:label_ast.data.span
-          label
-          C.state.scopes
-        |> Compiler.local_expr span C.state
-    in
-    (match ty |> Option.map (Compiler.eval_ty (module C)) with
-     | None ->
-       ( label
-       , ~field_span:label_ast.data.span
-       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
-       , value )
-     | Some (ty, ty_expr) ->
-       value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
-       ( label
-       , ~field_span:label_ast.data.span
-       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
-       , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
-  | TyExpr ->
-    (match value with
-     | None -> ()
-     | Some _ -> error span "unexpected value");
-    let value =
-      match ty with
-      | Some value -> C.compile TyExpr value
-      | None ->
-        C.state |> State.enter_ast_def_site label_ast;
-        let expr =
-          State.Scopes.find
-            ~hygiene:label_ast.data.hygiene
-            ~from_scope:(State.var_scope C.state)
-            ~from:label_ast.data.span
-            label
-            C.state.scopes
-          |> Compiler.local_expr span C.state
-        in
-        (fun () -> TE_Expr expr) |> init_ty_expr span C.state
-    in
-    ( label
-    , ~field_span:label_ast.data.span
-    , ~field_label:(Some (Label.create_definition label_ast.data.span label))
-    , value )
-  | Assignee ->
-    error span "todo %s" __LOC__;
-    invalid_arg "todo"
-  | Pattern ->
-    let value =
-      match value with
-      | Some value -> C.compile Pattern value
-      | None ->
-        let scope = State.var_scope C.state in
-        P_Binding
-          { bind_mode = Claim
-          ; binding =
-              { id = Id.gen ()
-              ; scope
-              ; name = Symbol.create label
-              ; ty = Ty.new_not_inferred ~scope ~span:label_ast.data.span
-              ; span = label_ast.data.span
-              ; label = Label.create_reference label_ast.data.span label
-              ; mut = false
-              ; hygiene = label_ast.data.hygiene
-              ; def_site = label_ast.data.def_site
-              }
-          }
-        |> init_pattern span C.state
-    in
-    (match ty |> Option.map (Compiler.eval_ty (module C)) with
-     | None ->
-       ( label
-       , ~field_span:label_ast.data.span
-       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
-       , value )
-     | Some (ty, ty_expr) ->
-       value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
-       ( label
-       , ~field_span:label_ast.data.span
-       , ~field_label:(Some (Label.create_reference label_ast.data.span label))
-       , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
-;;
-
-let comma_impl (type a) (module C : Compiler.S) (kind : a compiled_kind) (ast : Ast.t) : a
-  =
-  match kind with
-  | PlaceExpr -> Compiler.temp_expr (module C) ast
-  | _ ->
-    let span = ast.data.span in
-    let children = ast |> Ast.collect_list ~binary_rule_name:"core:comma" in
-    let parts_rev : a Types.tuple_part_of list ref = ref [] in
-    let unnamed_idx = ref 0 in
-    children
-    |> List.iter (fun (child : Ast.t) ->
-      match child.shape with
-      | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
-        let name, ~field_span, ~field_label, value =
-          tuple_field (module C) kind child root
-        in
-        let part : a Types.tuple_part_of =
-          Field { label_span = field_span; label = field_label; field = value }
-        in
-        parts_rev := part :: !parts_rev
-      | Complex { rule = { name = "core:unpack"; _ }; root; _ } ->
-        let packed =
-          root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
-        in
-        let part : a Types.tuple_part_of = Unpack (C.compile kind packed) in
-        parts_rev := part :: !parts_rev
-      | _ ->
-        unnamed_idx := !unnamed_idx + 1;
-        let part : a Types.tuple_part_of =
-          Field
-            { label_span = child.data.span; label = None; field = C.compile kind child }
-        in
-        parts_rev := part :: !parts_rev);
-    (match kind with
-     | PlaceExpr -> unreachable "comma: checked earier"
-     | Assignee ->
-       A_Tuple { parts = !parts_rev |> List.rev } |> init_assignee span C.state
-     | Pattern -> P_Tuple { parts = !parts_rev |> List.rev } |> init_pattern span C.state
-     | TyExpr ->
-       (fun () -> TE_Tuple { parts = !parts_rev |> List.rev })
-       |> init_ty_expr span C.state
-     | Expr -> E_Tuple { parts = !parts_rev |> List.rev } |> init_expr span C.state)
-;;
-
 let comma : core_syntax =
   { name = "comma"
   ; handle =
@@ -1135,7 +1182,7 @@ let comma : core_syntax =
         (kind : a compiled_kind)
         (ast : Ast.t)
         (_ : Ast.group)
-        : a -> comma_impl (module C) kind ast)
+        : a -> fail_toplevel_tuple (module C) kind ast)
   }
 ;;
 
@@ -1149,7 +1196,7 @@ let trailing_comma : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let ast = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
-        comma_impl (module C) kind ast)
+        fail_toplevel_tuple (module C) kind ast)
   }
 ;;
 
@@ -1479,7 +1526,7 @@ let field_init : core_syntax =
         (kind : a compiled_kind)
         (ast : Ast.t)
         (_ : Ast.group)
-        : a -> comma_impl (module C) kind ast)
+        : a -> fail_toplevel_tuple (module C) kind ast)
   }
 ;;
 
@@ -1909,19 +1956,38 @@ let variant_impl =
   | PlaceExpr -> Compiler.temp_expr (module C) ast
   | Expr ->
     let label = Label.create_reference label_ast.data.span label in
-    E_Variant { label; label_span; value = value_ast |> Option.map (C.compile Expr) }
+    E_Variant
+      { label
+      ; label_span
+      ; value =
+          value_ast
+          |> Option.map (tuple_impl ~allow_toplevel_parens:false (module C) Expr)
+      }
     |> init_expr span C.state
   | TyExpr ->
     (fun () ->
       let label = Label.create_definition label_ast.data.span label in
       TE_Variant
         { variants =
-            [ { label_span; label; value = value_ast |> Option.map (C.compile TyExpr) } ]
+            [ { label_span
+              ; label
+              ; value =
+                  value_ast
+                  |> Option.map
+                       (tuple_impl ~allow_toplevel_parens:false (module C) TyExpr)
+              }
+            ]
         })
     |> init_ty_expr span C.state
   | Pattern ->
     let label = Label.create_reference label_ast.data.span label in
-    P_Variant { label_span; label; value = value_ast |> Option.map (C.compile Pattern) }
+    P_Variant
+      { label_span
+      ; label
+      ; value =
+          value_ast
+          |> Option.map (tuple_impl ~allow_toplevel_parens:false (module C) Pattern)
+      }
     |> init_pattern span C.state
   | Assignee ->
     error span "variant can't be assignee";
@@ -2145,7 +2211,11 @@ let impl_cast : core_syntax =
               (module C)
               target
           in
-          E_ImplCast { value = C.compile Expr value; target; impl = C.compile Expr impl }
+          E_ImplCast
+            { value = tuple_impl ~allow_toplevel_parens:true (module C) Expr value
+            ; target
+            ; impl = C.compile Expr impl
+            }
           |> init_expr span C.state
           |> Compiler.data_add Expr (target_expr, target) kind
         | _ ->
@@ -2220,7 +2290,10 @@ let cast : core_syntax =
               (module C)
               target
           in
-          E_Cast { value = C.compile Expr value; target }
+          E_Cast
+            { value = tuple_impl ~allow_toplevel_parens:true (module C) Expr value
+            ; target
+            }
           |> init_expr span C.state
           |> Compiler.data_add Expr (target_expr, target) kind
         | _ ->
@@ -2311,6 +2384,23 @@ let no_hygiene : core_syntax =
   }
 ;;
 
+let record : core_syntax =
+  { name = "record"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | TyExpr | Expr | Pattern | Assignee ->
+          let inner = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+          tuple_impl ~allow_toplevel_parens:false (module C) kind inner)
+  }
+;;
+
 let core =
   [ apply
   ; instantiate_generic
@@ -2373,6 +2463,7 @@ let core =
   ; typeof
   ; include_ast
   ; no_hygiene
+  ; record
   ]
 ;;
 

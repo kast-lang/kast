@@ -3,6 +3,7 @@ open Common
 let init () =
   let code =
     native_fn "char.code" (fun _ty ~caller ~state:_ arg : value ->
+      let arg = single_arg ~span arg in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "char.code: %s" msg;
@@ -14,7 +15,8 @@ let init () =
         V_Int32 (Char.code c |> Int32.of_int) |> Value.inferred ~span))
   in
   let from_code =
-    native_fn "char.from_code" (fun _ty ~caller ~state:_ arg : value ->
+    native_fn "char.from_code" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "char.from_code: %s" msg;

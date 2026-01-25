@@ -17,9 +17,9 @@ const range = (start :: Int32, end :: Int32) -> std.iter.ReversibleIterable[Int3
     );
     (
         module:
-        let construct = (.forward, .backward) => (
+        let construct = (.forward, .backward) => {
             .iter = forward,
             .rev = () => construct(.forward = backward, .backward = forward),
-        );
+        };
     ).construct(.forward, .backward)
 )

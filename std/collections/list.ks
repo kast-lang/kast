@@ -1,10 +1,10 @@
 module:
-const t = [T] newtype (
+const t = [T] newtype {
     .inner :: Treap.t[T]
-);
-const create = [T] () -> List.t[T] => (
+};
+const create = [T] () -> List.t[T] => {
     .inner = Treap.create[T]()
-);
+};
 const push_back = [T] (a :: &mut List.t[T], value :: T) => (
     a^.inner = Treap.join(a^.inner, Treap.singleton(value));
 );

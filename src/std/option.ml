@@ -24,6 +24,13 @@ module Option = struct
     | None -> other
   ;;
 
+  let unwrap : 'a. 'a option -> 'a =
+    fun opt ->
+    match opt with
+    | Some x -> x
+    | None -> failwith "unwrapped None"
+  ;;
+
   let unwrap_or_else : 'a. (unit -> 'a) -> 'a option -> 'a =
     fun f opt ->
     match opt with

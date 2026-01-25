@@ -4,7 +4,8 @@ let argv : string array ref = ref [||]
 
 let init () =
   let chdir =
-    native_fn "sys.chdir" (fun _ty ~caller ~state:_ arg : value ->
+    native_fn "sys.chdir" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_String path ->
         Stdlib.Sys.chdir path;
@@ -14,11 +15,12 @@ let init () =
         V_Error |> Value.inferred ~span)
   in
   let argc =
-    native_fn "sys.argc" (fun _ty ~caller:_ ~state:_ _arg : value ->
+    native_fn "sys.argc" (fun _ty ~caller:_ ~state:_ _args : value ->
       V_Int32 (!argv |> Array.length |> Int32.of_int) |> Value.inferred ~span)
   in
   let argv_at =
-    native_fn "sys.argv_at" (fun _ty ~caller ~state:_ arg : value ->
+    native_fn "sys.argv_at" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_Int32 idx ->
         (match Array.get_opt !argv (Int32.to_int idx) with
@@ -31,7 +33,8 @@ let init () =
         V_Error |> Value.inferred ~span)
   in
   let exec =
-    native_fn "sys.exec" (fun _ty ~caller ~state:_ arg : value ->
+    native_fn "sys.exec" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_String cmd ->
         V_Int32 (Stdlib.Sys.command cmd |> Int32.of_int) |> Value.inferred ~span
@@ -40,7 +43,8 @@ let init () =
         V_Error |> Value.inferred ~span)
   in
   let get_env =
-    native_fn "sys.get_env" (fun ty ~caller ~state:_ arg : value ->
+    native_fn "sys.get_env" (fun ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       let sum_variant_ty =
         match Ty.await_inferred ty.result with
         | Types.T_Variant variant_ty -> variant_ty
@@ -92,7 +96,8 @@ let init () =
         V_Error |> Value.inferred ~span)
   in
   let exit =
-    native_fn "sys.exit" (fun _ty ~caller ~state:_ arg : value ->
+    native_fn "sys.exit" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_Int32 idx -> Int32.to_int idx |> exit
       | _ ->

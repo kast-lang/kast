@@ -39,6 +39,7 @@ let init_natives () =
              let error () =
                return (V_Ty (Ty.inferred ~span T_Error) |> Value.inferred ~span)
              in
+             let arg = single_arg ~span arg in
              let arg =
                arg
                |> Value.expect_ty
@@ -52,7 +53,22 @@ let init_natives () =
          ( name
          , fun ty ->
              let fn_ty : Types.ty_fn =
-               { arg = Ty.inferred ~span T_Ty; result = Ty.inferred ~span T_Ty }
+               { arg =
+                   Ty.inferred ~span
+                   <| T_Tuple
+                        { name = OptionalName.new_inferred ~span None
+                        ; tuple =
+                            Tuple.make
+                              [ ({ ty = Ty.inferred ~span T_Ty
+                                 ; symbol = None
+                                 ; label = None
+                                 }
+                                 : Types.ty_tuple_field)
+                              ]
+                              []
+                        }
+               ; result = Ty.inferred ~span T_Ty
+               }
              in
              ty |> Inference.Ty.expect_inferred_as ~span (T_Fn fn_ty |> Ty.inferred ~span);
              V_NativeFn { id = Id.gen (); name; ty = fn_ty; impl } |> Value.inferred ~span
@@ -61,12 +77,14 @@ let init_natives () =
   let natives : natives =
     let list : (string * (ty -> value)) list =
       [ native_fn "create_context_type" (fun _ty ~caller ~state:_ arg ->
+          let arg = single_arg ~span arg in
           match arg |> Value.await_inferred with
           | V_Ty ty -> V_ContextTy { id = Id.gen (); ty } |> Value.inferred ~span
           | _ ->
             Error.error caller "create_context_type expected a type";
             V_Error |> Value.inferred ~span)
       ; native_fn "panic" (fun _ty ~caller:_ ~state:_ arg ->
+          let arg = single_arg ~span arg in
           match arg |> Value.expect_string with
           | Some s -> raise (Panic s)
           | None -> V_Error |> Value.inferred ~span)

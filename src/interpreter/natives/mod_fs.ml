@@ -3,6 +3,7 @@ open Common
 let init () =
   let read_file =
     native_fn "fs.read_file" (fun _ty ~caller ~state:_ arg : value ->
+      let arg = single_arg ~span arg in
       match arg |> Value.await_inferred with
       | V_String path ->
         let contents = read_from_filesystem path in

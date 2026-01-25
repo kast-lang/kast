@@ -13,18 +13,18 @@ impl String as module = (
         | target.name == "javascript" => (@native "Kast.String.substring")(s, start, len)
     );
     const iter = (s :: String) -> std.iter.Iterable[Char] => @cfg (
-        | target.name == "interpreter" => (
+        | target.name == "interpreter" => {
             .iter = f => (@native "string.iter")(s, f)
-        )
-        | target.name == "javascript" => (
+        }
+        | target.name == "javascript" => {
             .iter = f => (@native "Kast.String.iter")(s, f)
-        )
+        }
     );
-    const iteri = (s :: String) -> std.iter.Iterable[type (Int32, Char)] => (
+    const iteri = (s :: String) -> std.iter.Iterable[type {Int32, Char}] => (
         iter(s) |> std.iter.enumerate
     );
     const index_of = (c :: Char, s :: String) -> Int32 => with_return (
-        for (i, c_at_i) in iteri(s) do (
+        for {i, c_at_i} in iteri(s) do (
             if c == c_at_i then (
                 return i;
             );
@@ -33,14 +33,14 @@ impl String as module = (
     );
     const last_index_of = (c :: Char, s :: String) -> Int32 => (
         let mut result = -1;
-        for (i, c_at_i) in iteri(s) do (
+        for {i, c_at_i} in iteri(s) do (
             if c == c_at_i then (
                 result = i;
             );
         );
         result
     );
-    const split = (s :: String, sep :: Char) -> std.iter.Iterable[String] => (
+    const split = (s :: String, sep :: Char) -> std.iter.Iterable[String] => {
         .iter = f => (
             let mut start = 0;
             let perform_split = i => (
@@ -48,22 +48,22 @@ impl String as module = (
                 f(part);
                 start = i + 1;
             );
-            for (i, c) in iteri(s) do (
+            for {i, c} in iteri(s) do (
                 if c == sep then (
                     perform_split(i);
                 );
             );
             perform_split(length(s));
         )
-    );
+    };
     const lines = s => split(s, '\n');
-    const split_once = (s :: String, sep :: Char) -> (String, String) => with_return (
-        for (i, c) in iteri(s) do (
+    const split_once = (s :: String, sep :: Char) -> {String, String} => with_return (
+        for {i, c} in iteri(s) do (
             if c == sep then (
-                return (
+                return {
                     substring(s, 0, i),
-                    substring(s, i + 1, length(s) - i - 1)
-                )
+                    substring(s, i + 1, length(s) - i - 1),
+                }
             );
         );
         panic("split_once separator not found")
@@ -154,15 +154,15 @@ impl String as module = (
     
     const find_match = (
         s :: String, f :: Char -> Bool
-    ) -> std.Option.t[type (Int32, Char)] => with_return (
-        iteri(s).iter((idx, c) => if f(c) then return (:Some(idx, c)));
+    ) -> std.Option.t[type {Int32, Char}] => with_return (
+        iteri(s).iter({idx, c} => if f(c) then return (:Some({idx, c})));
         :None
     );
     
     const to_lowercase = (s :: String) -> String => (
         let next_alphabet = find_match(s, Char.is_uppercase);
         match next_alphabet with (
-            | :Some(i, c) => (
+            | :Some({i, c}) => (
                 substring(s, 0, i)
                 + to_string(Char.to_lowercase(c))
                 + to_lowercase(substring(s, i + 1, length(s) - i - 1))
@@ -174,7 +174,7 @@ impl String as module = (
     const to_uppercase = (s :: String) -> String => (
         let next_alphabet = find_match(s, Char.is_lowercase);
         match next_alphabet with (
-            | :Some(i, c) => (
+            | :Some({i, c}) => (
                 substring(s, 0, i)
                 + to_string(Char.to_uppercase(c))
                 + to_uppercase(substring(s, i + 1, length(s) - i - 1))
@@ -183,32 +183,32 @@ impl String as module = (
         )
     );
     
-    const FromString = [Self] newtype (
+    const FromString = [Self] newtype {
         .from_string :: String -> Self
-    );
+    };
     
-    impl Int32 as FromString = (
+    impl Int32 as FromString = {
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "ocaml" => @native "@natives.todo()"
             | target.name == "javascript" => (@native "parseInt")(s)
         )
-    );
-    impl Int64 as FromString = (
+    };
+    impl Int64 as FromString = {
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "ocaml" => @native "@natives.todo()"
             | target.name == "javascript" => (@native "parseInt")(s)
         )
-    );
-    impl Float64 as FromString = (
+    };
+    impl Float64 as FromString = {
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "ocaml" => @native "@natives.todo()"
             | target.name == "javascript" => (@native "parseFloat")(s)
         )
-    );
-    impl Bool as FromString = (
+    };
+    impl Bool as FromString = {
         .from_string = s => if s == "true" then (
             true
         ) else if s == "false" then (
@@ -216,42 +216,42 @@ impl String as module = (
         ) else (
             panic("cannot parse '" + s + "' as bool")
         )
-    );
+    };
     
-    const ToString = [Self] newtype (
+    const ToString = [Self] newtype {
         .to_string :: Self -> String
-    );
+    };
     
-    impl Char as ToString = (
+    impl Char as ToString = {
         .to_string = c => @cfg (
             | target.name == "interpreter" => (@native "to_string")(c)
             | target.name == "javascript" => (@native "Kast.String.to_string")(c)
         )
-    );
-    impl Int32 as ToString = (
+    };
+    impl Int32 as ToString = {
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string")(num)
             | target.name == "ocaml" => @native "@natives.todo()"
             | target.name == "javascript" => (@native "Kast.String.to_string")(num)
         )
-    );
-    impl Int64 as ToString = (
+    };
+    impl Int64 as ToString = {
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string")(num)
             | target.name == "ocaml" => @native "@natives.todo()"
             | target.name == "javascript" => (@native "Kast.String.to_string")(num)
         )
-    );
-    impl Float64 as ToString = (
+    };
+    impl Float64 as ToString = {
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string")(num)
             | target.name == "ocaml" => @native "@natives.todo()"
             | target.name == "javascript" => (@native "Kast.String.to_string")(num)
         )
-    );
-    impl Bool as ToString = (
+    };
+    impl Bool as ToString = {
         .to_string = b => if b then "true" else "false"
-    );
+    };
     
     const parse = [T] (s :: String) -> T => (
         (T as FromString).from_string(s)

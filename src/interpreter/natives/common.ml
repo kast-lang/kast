@@ -6,6 +6,12 @@ module Inference = Kast_inference
 
 let span = Span.of_ocaml __POS__
 
+let single_arg ~span (args : value) : value =
+  let args = args |> Value.expect_tuple |> Option.unwrap in
+  let arg = args.tuple |> Tuple.unwrap_single_unnamed in
+  claim ~span arg.place
+;;
+
 let native_fn name impl : string * (ty -> value) =
   ( name
   , fun ty ->

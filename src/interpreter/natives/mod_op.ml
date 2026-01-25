@@ -7,11 +7,11 @@ let init () =
         (op_int64 : int64 -> int64 -> int64)
         (op_float : (float -> float -> float) option)
     =
-    native_fn name (fun _ty ~caller ~state:_ value ->
+    native_fn name (fun _ty ~caller ~state:_ args ->
       Kast_profiling.record
         (fun () -> make_string "native %S" name)
         (fun () ->
-           match value |> Value.await_inferred with
+           match args |> Value.await_inferred with
            | V_Tuple { ty = _; tuple } ->
              let a, b = tuple |> Tuple.unwrap_unnamed2 in
              let a = a.place |> claim ~span:caller in
@@ -66,7 +66,8 @@ let init () =
          Error.error caller "bit_not doesnt work with %a" Value.Shape.print value;
          V_Error)
       |> Value.inferred ~span)
-  ; native_fn "unary -" (fun _ty ~caller ~state:_ arg ->
+  ; native_fn "unary -" (fun _ty ~caller ~state:_ args ->
+      let arg = single_arg ~span args in
       (match arg |> Value.await_inferred with
        | V_Int32 x -> V_Int32 (Int32.neg x)
        | V_Int64 x -> V_Int64 (Int64.neg x)

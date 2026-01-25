@@ -43,10 +43,10 @@ const tcp = (
             | target.name == "javascript" => (@native "Kast.net.tcp.listener.listen")(listener, max_pending)
         );
         
-        const accept = (listener :: &mut Listener, .close_on_exec :: Bool) -> (
+        const accept = (listener :: &mut Listener, .close_on_exec :: Bool) -> {
             .stream :: Stream,
             .addr :: String
-        ) => @cfg (
+        } => @cfg (
             | target.name == "interpreter" => (@native "net.tcp.accept")(listener, close_on_exec)
             | target.name == "javascript" => (@native "Kast.net.tcp.listener.accept")(listener, close_on_exec)
         );

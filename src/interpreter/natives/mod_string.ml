@@ -1,17 +1,18 @@
 open Common
 
 let init () =
-  [ native_fn "string.at" (fun _ty ~caller ~state:_ arg : value ->
+  [ native_fn "string.at" (fun _ty ~caller ~state:_ args : value ->
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "string.at: %s" msg;
           return (V_Error |> Value.inferred ~span)
         in
-        let arg =
-          arg |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
+        let args =
+          args |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
         in
-        if not (arg.tuple |> Tuple.is_unnamed 2) then error "expected 2 unnamed fields" ();
-        let s, idx = arg.tuple |> Tuple.unwrap_unnamed2 in
+        if not (args.tuple |> Tuple.is_unnamed 2)
+        then error "expected 2 unnamed fields" ();
+        let s, idx = args.tuple |> Tuple.unwrap_unnamed2 in
         let s =
           s.place
           |> claim ~span:caller
@@ -26,7 +27,8 @@ let init () =
         in
         V_Char (String.get s (Int32.to_int idx) |> Option.unwrap_or_else (error "oob"))
         |> Value.inferred ~span))
-  ; native_fn "string.length" (fun _ty ~caller ~state:_ arg : value ->
+  ; native_fn "string.length" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "string.length: %s" msg;
@@ -38,17 +40,18 @@ let init () =
           |> Option.unwrap_or_else (error "expected string as arg")
         in
         V_Int32 (Int32.of_int (String.length s)) |> Value.inferred ~span))
-  ; native_fn "string.substring" (fun _ty ~caller ~state:_ arg : value ->
+  ; native_fn "string.substring" (fun _ty ~caller ~state:_ args : value ->
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "string.substring: %s" msg;
           return (V_Error |> Value.inferred ~span)
         in
-        let arg =
-          arg |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
+        let args =
+          args |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
         in
-        if not (arg.tuple |> Tuple.is_unnamed 3) then error "expected 2 unnamed fields" ();
-        let s, start, len = arg.tuple |> Tuple.unwrap_unnamed3 in
+        if not (args.tuple |> Tuple.is_unnamed 3)
+        then error "expected 2 unnamed fields" ();
+        let s, start, len = args.tuple |> Tuple.unwrap_unnamed3 in
         let s =
           s.place
           |> claim ~span:caller
@@ -69,17 +72,18 @@ let init () =
         in
         V_String (String.sub s (Int32.to_int start) (Int32.to_int len))
         |> Value.inferred ~span))
-  ; native_fn "string.iter" (fun _ty ~caller ~state arg : value ->
+  ; native_fn "string.iter" (fun _ty ~caller ~state args : value ->
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "string.iter: %s" msg;
           return (V_Error |> Value.inferred ~span)
         in
-        let arg =
-          arg |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
+        let args =
+          args |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
         in
-        if not (arg.tuple |> Tuple.is_unnamed 2) then error "expected 2 unnamed fields" ();
-        let s, f = arg.tuple |> Tuple.unwrap_unnamed2 in
+        if not (args.tuple |> Tuple.is_unnamed 2)
+        then error "expected 2 unnamed fields" ();
+        let s, f = args.tuple |> Tuple.unwrap_unnamed2 in
         let s =
           s.place
           |> claim ~span:caller
@@ -98,7 +102,8 @@ let init () =
           ignore <| call caller state f c;
           ());
         V_Unit |> Value.inferred ~span))
-  ; native_fn "to_string" (fun _ty ~caller ~state:_ arg ->
+  ; native_fn "to_string" (fun _ty ~caller ~state:_ args ->
+      let arg = single_arg ~span args in
       with_return (fun { return } : Value.Shape.t ->
         let s =
           match arg |> Value.await_inferred with
@@ -113,8 +118,9 @@ let init () =
         in
         V_String s)
       |> Value.inferred ~span)
-  ; native_fn "parse" (fun ty ~caller ~state:_ arg ->
+  ; native_fn "parse" (fun ty ~caller ~state:_ args ->
       let { arg = _; result = result_ty } : Types.ty_fn = ty in
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_String s ->
         let shape : Value.shape =

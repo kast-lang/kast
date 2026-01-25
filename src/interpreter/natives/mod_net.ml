@@ -9,7 +9,8 @@ type tcp_stream =
 type tcp_listener = { file : Unix.file_descr }
 
 let tcp () =
-  [ native_fn "net.tcp.read_line" (fun _ty ~caller ~state:_ arg : value ->
+  [ native_fn "net.tcp.read_line" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_Ref { mut = _; place } ->
         (match read_place ~span place |> Value.await_inferred with
@@ -63,7 +64,8 @@ let tcp () =
       let wrote = Unix.write_substring stream.file data 0 (String.length data) in
       if String.length data <> wrote then failwith "SHORT WRITE";
       V_Unit |> Value.inferred ~span)
-  ; native_fn "net.tcp.connect" (fun ty ~caller ~state:_ arg : value ->
+  ; native_fn "net.tcp.connect" (fun ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match Ty.await_inferred ty.result with
       | T_Opaque result_ty ->
         (match arg |> Value.await_inferred with
@@ -93,7 +95,8 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.connect returns type TcpStream";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.bind" (fun ty ~caller ~state:_ arg : value ->
+  ; native_fn "net.tcp.bind" (fun ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match Ty.await_inferred ty.result with
       | T_Opaque result_ty ->
         (match arg |> Value.await_inferred with
@@ -122,8 +125,8 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.bind returns type TcpStream";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.listen" (fun _ty ~caller:_ ~state:_ arg : value ->
-      let args = arg |> Value.expect_tuple |> Option.get in
+  ; native_fn "net.tcp.listen" (fun _ty ~caller:_ ~state:_ args : value ->
+      let args = args |> Value.expect_tuple |> Option.get in
       let stream, max_pending = args.tuple |> Tuple.unwrap_unnamed2 in
       let stream : tcp_stream =
         (stream.place |> claim ~span |> Value.expect_ref |> Option.get).place
@@ -137,7 +140,7 @@ let tcp () =
       (* Native call *)
       Unix.listen stream.file (Int32.to_int max_pending);
       V_Unit |> Value.inferred ~span)
-  ; native_fn "net.tcp.accept" (fun ty ~caller ~state:_ arg : value ->
+  ; native_fn "net.tcp.accept" (fun ty ~caller ~state:_ args : value ->
       match Ty.await_inferred ty.result with
       (* Get return type *)
       | T_Tuple ({ tuple = result_ty_field; _ } as result_ty) ->
@@ -149,7 +152,7 @@ let tcp () =
          (* Assert .stream :: TcpStream & .addr :: String)` *)
          | T_Opaque client_stream_ty, T_String ->
            (* Destructure input argument as expected type *)
-           let args = arg |> Value.expect_tuple |> Option.get in
+           let args = args |> Value.expect_tuple |> Option.get in
            let stream, close_on_exec = args.tuple |> Tuple.unwrap_unnamed2 in
            let stream : tcp_stream =
              (stream.place |> claim ~span |> Value.expect_ref |> Option.get).place
@@ -205,7 +208,8 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.accept returns tuple";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.stream.close" (fun _ty ~caller ~state:_ arg : value ->
+  ; native_fn "net.tcp.stream.close" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_Opaque { ty = _; value = stream } ->
         let stream : tcp_stream = Obj.obj stream in
@@ -215,7 +219,8 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.stream.close expected the tcp.stream";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.listener.close" (fun _ty ~caller ~state:_ arg : value ->
+  ; native_fn "net.tcp.listener.close" (fun _ty ~caller ~state:_ args : value ->
+      let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_Opaque { ty = _; value = stream } ->
         let listener : tcp_listener = Obj.obj stream in
