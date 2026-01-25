@@ -7,15 +7,15 @@ let variant_name = value => match value with (
     | :Any => "Any"
 );
 let mut a :: (:Some _ | :None | :Any) = :None;
-print <| variant_name(a);
+print(variant_name(a));
 a = :Some { .a = 123, .b = "some_value" };
-print <| variant_name(a);
+print(variant_name(a));
 let mut b = :Any;
-print <| variant_name(b);
+print(variant_name(b));
 b = :None;
-print <| variant_name(b);
+print(variant_name(b));
 b = :Any;
-print <| variant_name(b);
+print(variant_name(b));
 a = b;
-print <| variant_name(a);
+print(variant_name(a));
 let f = (x :: std.Int32) => :Some x;
