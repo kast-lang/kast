@@ -1,9 +1,9 @@
 use std.prelude.*;
 
 const CanvasRenderingContext2DRaw = @opaque_type;
-const CanvasRenderingContext = newtype (
+const CanvasRenderingContext = newtype {
     .raw :: CanvasRenderingContext2DRaw,
-);
+};
 
 impl CanvasRenderingContext as module = (
     module:
@@ -34,21 +34,21 @@ impl CanvasRenderingContext as module = (
     );
 );
 
-const HtmlCanvasElement = newtype (
+const HtmlCanvasElement = newtype {
     .width :: Int32,
     .height :: Int32,
     .getContext :: String -> CanvasRenderingContext2DRaw,
-);
+};
 
-const HtmlBodyElement = newtype (
+const HtmlBodyElement = newtype {
     .innerHTML :: String,
     .appendChild :: HtmlCanvasElement -> (),
-);
+};
 
-const HtmlDocumentElement = newtype (
+const HtmlDocumentElement = newtype {
     .body :: HtmlBodyElement,
     .createElement :: String -> HtmlCanvasElement,
-);
+};
 
 const document = () -> HtmlDocumentElement => (
     @native "document"
@@ -80,9 +80,9 @@ canvas.height = 300;
 appendChild(document.body, canvas);
 
 const Context = CanvasRenderingContext;
-const getContext = (canvas, t) -> CanvasRenderingContext => (
+const getContext = (canvas, t) -> CanvasRenderingContext => {
     .raw = (@native "async ({canvas, t},ctx) => canvas.getContext(t)")(.canvas, .t),
-);
+};
 
 let mut context = getContext(canvas, "2d");
 

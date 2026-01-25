@@ -4,17 +4,17 @@ const Ast = @native "ast";
 impl syntax (macro!(arg)) = `(
     include_ast $macro(`($arg))
 );
-const dbg = (
+const dbg = {
     .print = [T] (x :: T) -> () => (
         (@native "dbg.print")(x)
     ),
-);
+};
 # actual code
 (
     const macro = (inner :: Ast) -> Ast => `(
         let _ :: Ast = _;
         let x = "x_in_macro_def";
-        dbg.print(x, $inner);
+        dbg.print({ x, $inner });
     );
     let x = "x_global";
     macro!(x);
@@ -37,7 +37,7 @@ impl syntax (for pattern in value do body) = `(
     loop_body(value.y);
 );
 
-for x in (.x = "hello", .y = "world") do (
+for x in { .x = "hello", .y = "world" } do (
     (@native "dbg.print")(x);
 );
 # x_scope: (

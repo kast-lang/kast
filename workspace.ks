@@ -1,4 +1,6 @@
-.roots = (
-    "examples/*.ks",
-    "examples/hkt/*.ks",
-)
+{
+    .roots = {
+        "examples/*.ks",
+        "examples/hkt/*.ks",
+    },
+}

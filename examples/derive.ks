@@ -1,10 +1,10 @@
 const reflection = (
     module:
     
-    const Field = newtype (
+    const Field = newtype {
         .name :: String,
         .ty :: TypeInfo,
-    );
+    };
     
     const TypeInfo = newtype (
         | :Int32

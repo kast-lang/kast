@@ -1,20 +1,20 @@
 use std.prelude.*;
 
-const Monad = [M :: [_ :: type] type] newtype (
+const Monad = [M :: [_ :: type] type] newtype {
     .ret :: [T] T -> M[T],
     .flat_map :: [A, B] (M[A], (A -> M[B])) -> M[B],
-);
+};
 
-impl Option.t as Monad = (
+impl Option.t as Monad = {
     .ret = [T] (x :: T) => :Some x,
     .flat_map = [A, B] (opt, f) => match opt with (
         | :Some x => f(x)
         | :None => :None
     ),
-);
+};
 
 use std.collections.Treap;
-impl Treap.t as Monad = (
+impl Treap.t as Monad = {
     .ret = Treap.singleton,
     .flat_map = [A, B] (a, f) => (
         let mut result = Treap.create();
@@ -23,7 +23,7 @@ impl Treap.t as Monad = (
         );
         result
     ),
-);
+};
 
 const join = [M :: [_ :: type] type] (
     [T] (a :: M[M[T]]) -> M[T] => (
