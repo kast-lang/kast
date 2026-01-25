@@ -1034,13 +1034,32 @@ module Impl = struct
           };
         NoEffect { shape = Var result; span }
       | E_And { lhs; rhs } ->
-        let lhs = pure <| transpile_expr lhs in
-        let rhs = pure <| transpile_expr rhs in
-        calculate { shape = BinOp { op = And; lhs; rhs }; span }
+        let var = JsAst.gen_name ~original:None "and" in
+        let_var var (transpile_expr lhs);
+        execute
+          { shape =
+              If
+                { condition = { shape = Var var; span = None }
+                ; then_case = scope (fun () -> assign_var var (transpile_expr rhs))
+                ; else_case = None
+                }
+          ; span = None
+          };
+        NoEffect { shape = Var var; span }
       | E_Or { lhs; rhs } ->
-        let lhs = pure <| transpile_expr lhs in
-        let rhs = pure <| transpile_expr rhs in
-        calculate { shape = BinOp { op = Or; lhs; rhs }; span }
+        let var = JsAst.gen_name ~original:None "and" in
+        let_var var (transpile_expr lhs);
+        execute
+          { shape =
+              If
+                { condition =
+                    { shape = Not { shape = Var var; span = None }; span = None }
+                ; then_case = scope (fun () -> assign_var var (transpile_expr rhs))
+                ; else_case = None
+                }
+          ; span = None
+          };
+        NoEffect { shape = Var var; span }
       | E_Match { value; branches } ->
         let value = transpile_place_expr value in
         let result = JsAst.gen_name ~original:None "match_result" in
