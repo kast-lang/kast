@@ -474,7 +474,9 @@ module Impl = struct
       when equal_bind_mode bind_mode_a bind_mode_b ->
       [ a, b ]
     | P_Binding _, _ -> fail ()
-    | P_Tuple { parts = parts_a }, P_Tuple { parts = parts_b } ->
+    | ( P_Tuple { guaranteed_anonymous = ga_a; parts = parts_a }
+      , P_Tuple { guaranteed_anonymous = ga_b; parts = parts_b } )
+      when Bool.equal ga_a ga_b ->
       let rec check_parts
                 (a : pattern tuple_part_of list)
                 (b : pattern tuple_part_of list)

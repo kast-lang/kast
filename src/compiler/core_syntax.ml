@@ -145,6 +145,7 @@ let tuple_impl
       (ast : Ast.t)
   : a
   =
+  let guaranteed_anonymous = allow_toplevel_parens in
   let ast =
     if allow_toplevel_parens
     then (
@@ -195,12 +196,17 @@ let tuple_impl
     (match kind with
      | PlaceExpr -> unreachable "comma: checked earier"
      | Assignee ->
-       A_Tuple { parts = !parts_rev |> List.rev } |> init_assignee span C.state
-     | Pattern -> P_Tuple { parts = !parts_rev |> List.rev } |> init_pattern span C.state
+       A_Tuple { guaranteed_anonymous; parts = !parts_rev |> List.rev }
+       |> init_assignee span C.state
+     | Pattern ->
+       P_Tuple { guaranteed_anonymous; parts = !parts_rev |> List.rev }
+       |> init_pattern span C.state
      | TyExpr ->
-       (fun () -> TE_Tuple { parts = !parts_rev |> List.rev })
+       (fun () -> TE_Tuple { guaranteed_anonymous; parts = !parts_rev |> List.rev })
        |> init_ty_expr span C.state
-     | Expr -> E_Tuple { parts = !parts_rev |> List.rev } |> init_expr span C.state)
+     | Expr ->
+       E_Tuple { guaranteed_anonymous; parts = !parts_rev |> List.rev }
+       |> init_expr span C.state)
 ;;
 
 let fail_toplevel_tuple
@@ -1439,7 +1445,8 @@ let impl_syntax : core_syntax =
                  let state = State.enter_scope C.state ~span ~recursive:false in
                  let arg =
                    P_Tuple
-                     { parts =
+                     { guaranteed_anonymous = true
+                     ; parts =
                          fields
                          |> Tuple.to_seq
                          |> Seq.map

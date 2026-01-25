@@ -378,7 +378,7 @@ let rec inject_pattern_bindings
   | P_Ref inner -> state |> inject_pattern_bindings ~only_compiler inner
   | P_Binding { bind_mode = _; binding } ->
     state |> add_local ~only_compiler (Binding binding)
-  | P_Tuple { parts } ->
+  | P_Tuple { guaranteed_anonymous = _; parts } ->
     parts
     |> List.iter (fun (part : _ Types.tuple_part_of) ->
       match part with
@@ -403,7 +403,7 @@ let rec inject_assignee_bindings
   | A_Placeholder -> ()
   | A_Unit -> ()
   | A_Place _ -> ()
-  | A_Tuple { parts } ->
+  | A_Tuple { guaranteed_anonymous = _; parts } ->
     parts
     |> List.iter (fun (part : _ Types.tuple_part_of) ->
       match part with

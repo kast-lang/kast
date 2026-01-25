@@ -91,7 +91,7 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
              }
              : Types.interpreter_local)
       } )
-  | P_Tuple { parts } ->
+  | P_Tuple { guaranteed_anonymous = _; parts } ->
     (match place |> claim ~span |> Value.await_inferred with
      | V_Tuple { ty = _; tuple } ->
        let matched = ref true in
@@ -452,7 +452,7 @@ and assign : span:span -> state -> Expr.assignee -> parent_mut:bool -> place -> 
      | Place (~mut:assignee_mut, assignee_place) ->
        let value = claim ~span place in
        assignee_place |> Place.assign ~parent_mut:assignee_mut value)
-  | A_Tuple { parts } ->
+  | A_Tuple { guaranteed_anonymous = _; parts } ->
     let parent_mut = Place.is_mutable ~parent_mut place in
     (match place |> claim ~span |> Value.await_inferred with
      | V_Tuple { ty = _; tuple } ->
@@ -652,7 +652,7 @@ and pattern_bindings : pattern -> binding list =
   | P_Binding { bind_mode = _; binding } -> [ binding ]
   | P_Placeholder | P_Unit | P_Error -> []
   | P_Ref referenced -> pattern_bindings referenced
-  | P_Tuple { parts } ->
+  | P_Tuple { guaranteed_anonymous = _; parts } ->
     parts
     |> List.map (fun (part : pattern Types.tuple_part_of) ->
       match part with
@@ -683,7 +683,7 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   |> Value.inferred ~span
 
 and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
-  fun state expr { parts } ->
+  fun state expr { guaranteed_anonymous = _; parts } ->
   let span = expr.data.span in
   (*  TODO dont panic - get rid of Option.get *)
   let ty = expr.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.get in
@@ -1030,7 +1030,6 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
   match impl with
   | Some impl -> impl
   | None ->
-    Error.error span "no impl of %a as %a" Value.print value Value.print target;
     state.cast_impls.map
     |> Types.ValueMap.iter (fun existing_target impls ->
       impls
@@ -1039,13 +1038,14 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
           Types.ValueImpl.compare target existing_target = 0
           && Types.ValueImpl.compare value existing_value = 0
         then Log.error (fun log -> log "Not found but actually there????");
-        Log.trace (fun log ->
+        Log.info (fun log ->
           log
             "Exists impl: %a as %a"
             Value.print
             existing_value
             Value.print
             existing_target)));
+    Error.error span "no impl of %a as %a" Value.print value Value.print target;
     V_Error |> Value.inferred ~span
 
 and await_fully_inferred value : Value.Shape.t =
@@ -1278,7 +1278,7 @@ and eval_ty : state -> Expr.ty -> ty =
               Ty.print
               (Value.ty_of value);
             Ty.inferred ~span T_Error)
-        | TE_Tuple { parts } ->
+        | TE_Tuple { guaranteed_anonymous = _; parts } ->
           let tuple = ref Tuple.empty in
           parts
           |> List.iter (fun (part : _ Types.tuple_part_of) ->

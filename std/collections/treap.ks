@@ -9,16 +9,19 @@ const data = [T] newtype {
 };
 const t = [T] newtype (
     | :Empty
-    | :Node(data[T])
+    | :Node data[T]
 );
+
 const create = [T] () -> Treap.t[T] => :Empty;
-const singleton = [T] (value :: T) -> Treap.t[T] => :Node({
-    .left = :Empty,
-    .right = :Empty,
-    .value,
-    .count = 1,
-    .priority = std.random.gen_range(.min = 0, .max = 1000000000),
-});
+const singleton = [T] (value :: T) -> Treap.t[T] => :Node(
+    {
+        .left = :Empty,
+        .right = :Empty,
+        .value,
+        .count = 1,
+        .priority = std.random.gen_range(.min = 0, .max = 1000000000),
+    }
+);
 const length = [T] (v :: &Treap.t[T]) -> Int32 => (
     match v^ with (
         | :Empty => 0
@@ -29,13 +32,15 @@ const update_data = [T] (
     root :: data[T],
     .left :: Treap.t[T],
     .right :: Treap.t[T]
-) -> Treap.t[T] => :Node({
-    .value = root.value,
-    .priority = root.priority,
-    .left,
-    .right,
-    .count = 1 + length(&left) + length(&right),
-});
+) -> Treap.t[T] => :Node(
+    {
+        .value = root.value,
+        .priority = root.priority,
+        .left,
+        .right,
+        .count = 1 + length(&left) + length(&right),
+    }
+);
 const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
     match {left, right} with (
         | {:Empty, :Empty} => :Empty
@@ -62,7 +67,7 @@ const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
 const node_split_behavior = [T] newtype (
     | :LeftSubtree
     | :RightSubtree
-    | :Node(T, T)
+    | :Node {T, T}
 );
 const node_splitter = [T] type (
     &data[T] -> node_split_behavior[T]
@@ -90,7 +95,7 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> {t[T], t[T]} => (
                 );
                 {node, right_right}
             )
-            | :Node(left, right) => (
+            | :Node {left, right} => (
                 let left = singleton(left);
                 let right = singleton(right);
                 {join(node.left, left), join(right, node.right)}
@@ -185,5 +190,5 @@ const iter_mut = [T] (v :: &mut Treap.t[T]) -> std.iter.Iterable[type (&mut T)] 
                 (iter_mut[T](&mut data^.right)).iter(f);
             )
         )
-    )
+    ),
 };

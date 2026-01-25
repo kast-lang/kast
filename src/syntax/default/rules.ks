@@ -90,8 +90,8 @@
 @syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\\\n" ")");
 @syntax "core:unwindable" 80 @wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 80 @wrap never = "unwind" " " token " " value;
-@syntax "core:variant_without_value" 90 @wrap never = ":" label;
-@syntax "core:variant" 90 @wrap if_any = ":" label "(" ""/"\n\t" value:any ""/"\\\n" ")";
+@syntax "core:variant_without_value" 69 @wrap never = ":" label: >=1000;
+@syntax "core:variant" 69 @wrap never = ":" label: >=1000 " " value ->;
 @syntax "core:mut" 500 @wrap never = "mut" " " _;
 @syntax "core:type expr" 500 @wrap never = "type" " " _;
 @syntax "core:newtype" 500 @wrap never = "newtype" " " _;

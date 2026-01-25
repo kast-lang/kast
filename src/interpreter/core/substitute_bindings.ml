@@ -522,9 +522,10 @@ module Impl = struct
       state.scope
       |> Scope.add_local new_binding.span ~mut:false new_binding.name binding_value;
       P_Binding { bind_mode; binding = new_binding }
-    | P_Tuple { parts } ->
+    | P_Tuple { guaranteed_anonymous : bool; parts } ->
       P_Tuple
-        { parts =
+        { guaranteed_anonymous
+        ; parts =
             parts
             |> List.map (fun (part : pattern tuple_part_of) : pattern tuple_part_of ->
               match part with

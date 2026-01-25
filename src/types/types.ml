@@ -132,7 +132,7 @@ module rec TypesImpl : sig
     }
 
   and value_tuple =
-    { ty : ty_tuple
+    { ty : ty_tuple [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; tuple : value_tuple_field Tuple.t
     }
 
@@ -250,7 +250,11 @@ module rec TypesImpl : sig
     | Field of 'a tuple_field_of
     | Unpack of 'a
 
-  and 'a tuple_of = { parts : 'a tuple_part_of list }
+  and 'a tuple_of =
+    { guaranteed_anonymous : bool
+    ; parts : 'a tuple_part_of list
+    }
+
   and expr_tuple = expr tuple_of
 
   and expr_variant =
@@ -789,12 +793,12 @@ end = struct
 
   and value_tuple_field =
     { place : place
-    ; span : Span.t
-    ; ty_field : ty_tuple_field
+    ; span : Span.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; ty_field : ty_tuple_field [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_tuple =
-    { ty : ty_tuple
+    { ty : ty_tuple [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; tuple : value_tuple_field Tuple.t
     }
 
@@ -912,7 +916,11 @@ end = struct
     | Field of 'a tuple_field_of
     | Unpack of 'a
 
-  and 'a tuple_of = { parts : 'a tuple_part_of list }
+  and 'a tuple_of =
+    { guaranteed_anonymous : bool
+    ; parts : 'a tuple_part_of list
+    }
+
   and expr_tuple = expr tuple_of
 
   and expr_variant =

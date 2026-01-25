@@ -250,7 +250,8 @@ module Impl = struct
     | P_Ref referenced -> complete_pattern referenced
     | P_Unit -> ()
     | P_Binding { bind_mode = _; binding } -> complete_binding binding
-    | P_Tuple { parts } -> parts |> List.iter (complete_tuple_part_of complete_pattern)
+    | P_Tuple { guaranteed_anonymous : bool = _; parts } ->
+      parts |> List.iter (complete_tuple_part_of complete_pattern)
     | P_Variant { label = _; label_span = _; value } ->
       complete_option complete_pattern value
     | P_Error -> ()
@@ -277,7 +278,8 @@ module Impl = struct
     | E_Generic { ty; def } ->
       complete_ty_generic ty;
       complete_maybe_compiled_fn def
-    | E_Tuple { parts } -> parts |> List.iter (complete_tuple_part_of complete_expr)
+    | E_Tuple { guaranteed_anonymous : bool = _; parts } ->
+      parts |> List.iter (complete_tuple_part_of complete_expr)
     | E_Variant { label = _; label_span = _; value } ->
       complete_option complete_expr value
     | E_Apply { f; arg } ->
@@ -382,7 +384,7 @@ module Impl = struct
     match shape with
     | A_Placeholder -> ()
     | A_Unit -> ()
-    | A_Tuple { parts } ->
+    | A_Tuple { guaranteed_anonymous : bool = _; parts } ->
       parts |> List.iter (complete_tuple_part_of complete_assignee_expr)
     | A_Place expr -> complete_place_expr expr
     | A_Let pattern -> complete_pattern pattern
@@ -408,7 +410,8 @@ module Impl = struct
       complete_ty_expr arg;
       complete_ty_expr result
     | TE_Expr expr -> complete_expr expr
-    | TE_Tuple { parts } -> parts |> List.iter (complete_tuple_part_of complete_ty_expr)
+    | TE_Tuple { guaranteed_anonymous : bool = _; parts } ->
+      parts |> List.iter (complete_tuple_part_of complete_ty_expr)
     | TE_Variant { variants } ->
       variants
       |> List.iter

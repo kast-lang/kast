@@ -428,7 +428,7 @@ module Impl = struct
       does_match referenced_pattern (place_from_js (read_place place))
     | P_Unit -> NoEffect { shape = Bool true; span }
     | P_Binding _ -> NoEffect { shape = Bool true; span }
-    | P_Tuple { parts } ->
+    | P_Tuple { guaranteed_anonymous = _; parts } ->
       let var = JsAst.gen_name ~original:None "matches" in
       let_var var (NoEffect { shape = Bool true; span = None });
       let matches_label = JsAst.gen_name ~original:None "matches" in
@@ -565,7 +565,7 @@ module Impl = struct
              ; span
              }
          | None -> let_var (binding_name ~span:pattern.data.span binding) value)
-      | P_Tuple { parts } ->
+      | P_Tuple { guaranteed_anonymous = _; parts } ->
         let index = ref 0 in
         parts
         |> List.iter (fun (part : pattern tuple_part_of) ->
@@ -600,7 +600,7 @@ module Impl = struct
       match assignee.shape with
       | A_Placeholder -> ()
       | A_Unit -> ()
-      | A_Tuple { parts } ->
+      | A_Tuple { guaranteed_anonymous = _; parts } ->
         let index = ref 0 in
         parts
         |> List.iter (fun (part : assignee_expr tuple_part_of) ->
@@ -868,7 +868,7 @@ module Impl = struct
         transpile_expr expr
       | E_Fn { ty = _; def } -> fn ~captured:None def
       | E_Generic { def; ty = _ } -> fn ~captured:None def
-      | E_Tuple { parts } ->
+      | E_Tuple { guaranteed_anonymous = _; parts } ->
         let idx = ref 0 in
         calculate
           { shape =

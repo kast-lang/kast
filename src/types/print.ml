@@ -456,7 +456,7 @@ module Impl = struct
   and print_ir_tuple
     : 'a. char -> (formatter -> 'a -> unit) -> formatter -> 'a tuple_of -> unit
     =
-    fun eq print_a fmt { parts } ->
+    fun eq print_a fmt { parts; guaranteed_anonymous = _ } ->
     fprintf fmt "tuple %a" (List.print (print_ir_tuple_part eq print_a)) parts
 
   and print_ir_tuple_part

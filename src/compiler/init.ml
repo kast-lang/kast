@@ -18,7 +18,11 @@ let init_evaled () : Types.ir_evaled =
 let tuple_ty
   : 'a. scope:VarScope.t -> span:span -> 'a compiled_kind -> 'a Types.tuple_of -> ty
   =
-  fun (type a) ~scope ~span (kind : a compiled_kind) ({ parts } : a Types.tuple_of) ->
+  fun (type a)
+    ~scope
+    ~span
+    (kind : a compiled_kind)
+    ({ guaranteed_anonymous; parts } : a Types.tuple_of) ->
   let result = Ty.new_not_inferred ~scope ~span in
   let should_infer_unpack_parts_based_on_result =
     match kind with
@@ -118,7 +122,12 @@ let tuple_ty
       let inferred =
         Ty.inferred ~span
         <| T_Tuple
-             { name = OptionalName.new_not_inferred ~scope ~span; tuple = !result_tuple }
+             { name =
+                 (if guaranteed_anonymous
+                  then OptionalName.new_inferred ~span None
+                  else OptionalName.new_not_inferred ~scope ~span)
+             ; tuple = !result_tuple
+             }
       in
       result |> Inference.Ty.expect_inferred_as ~span inferred));
   result

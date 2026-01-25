@@ -58,7 +58,7 @@ const get_or_init = [K, V] (
             )
         ),
     );
-    let{ mut equal, greater} = Treap.split(
+    let {mut equal, greater} = Treap.split(
         greater_or_equal,
         data => (
             if data^.value.key <= key then (
