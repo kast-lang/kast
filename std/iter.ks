@@ -17,13 +17,13 @@ const map = [A, B] (f :: A -> B) => (
     }
 );
 
-const enumerate = [T] (iter :: Iterable[T]) -> Iterable[type {Int32, T}] => (
+const enumerate = [T] (iter :: Iterable[T]) -> Iterable[type { Int32, T }] => (
     let mut i = 0;
     {
         .iter = consume => (
             iter.iter(
                 x => (
-                    consume({i, x});
+                    consume({ i, x });
                     i += 1;
                 )
             );

@@ -1,10 +1,10 @@
 const Foo = newtype (
-    | :Variant1(Int32)
+    | :Variant1 Int32
 );
 
 impl Foo as String.FromString = (
     .from_string = s => (
-        :Variant1(s |> parse)
+        :Variant1 (s |> parse)
     ),
 );
 

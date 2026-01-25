@@ -22,7 +22,7 @@ const increment_all = [F :: [type] -> type] (a :: F[Int32]) -> F[Int32] => (
     (F as Functor).fmap(a, el => el + 1)
 );
 
-let opt :: Option.t[Int32] = :Some(1);
+let opt :: Option.t[Int32] = :Some 1;
 let opt_incremented = increment_all(opt);
 dbg.print(.opt, .opt_incremented);
 

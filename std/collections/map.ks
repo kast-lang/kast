@@ -16,7 +16,7 @@ const add = [K, V] (map :: &mut Map.t[K, V], key :: K, value :: V) => (
 );
 
 const get = [K, V] (map :: &Map.t[K, V], key :: K) -> Option.t[type (&V)] => (
-    let {less, greater_or_equal} = Treap.split(
+    let { less, greater_or_equal } = Treap.split(
         map^.inner,
         data => (
             if data^.value.key < key then (
@@ -26,7 +26,7 @@ const get = [K, V] (map :: &Map.t[K, V], key :: K) -> Option.t[type (&V)] => (
             )
         ),
     );
-    let {equal, greater} = Treap.split(
+    let { equal, greater } = Treap.split(
         greater_or_equal,
         data => (
             if data^.value.key <= key then (
@@ -39,7 +39,7 @@ const get = [K, V] (map :: &Map.t[K, V], key :: K) -> Option.t[type (&V)] => (
     if Treap.length(&equal) == 0 then (
         :None
     ) else (
-        :Some(&(Treap.at(&equal, 0))^.value)
+        :Some &(Treap.at(&equal, 0))^.value
     )
 );
 
@@ -48,7 +48,7 @@ const get_or_init = [K, V] (
     key :: K,
     init :: () -> V,
 ) -> &mut V => (
-    let {less, greater_or_equal} = Treap.split(
+    let { less, greater_or_equal } = Treap.split(
         map^.inner,
         data => (
             if data^.value.key < key then (
@@ -58,7 +58,7 @@ const get_or_init = [K, V] (
             )
         ),
     );
-    let {mut equal, greater} = Treap.split(
+    let { mut equal, greater } = Treap.split(
         greater_or_equal,
         data => (
             if data^.value.key <= key then (
@@ -69,7 +69,7 @@ const get_or_init = [K, V] (
         ),
     );
     if Treap.length(&equal) == 0 then (
-        equal = Treap.singleton({.key, .value = init()});
+        equal = Treap.singleton({ .key, .value = init() });
     );
     map^.inner = Treap.join(less, Treap.join(equal, greater));
     &mut (Treap.at_mut(&mut equal, 0))^.value

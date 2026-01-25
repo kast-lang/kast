@@ -77,6 +77,8 @@
 
 @syntax "return_without_value" 40 @wrap never = "return";
 @syntax "return_with_value" 40 @wrap never = "return" " " value;
+@syntax "core:variant_without_value" 42 @wrap never = ":" label: >=1000;
+@syntax "core:variant" 42 @wrap never = ":" label: >=1000 " " value ->;
 @syntax "unary -" 45 @wrap never = "-" _;
 @syntax "unary +" 45 @wrap never = "+" _;
 @syntax "with_return" 60 @wrap never = "with_return" " " body;
@@ -90,8 +92,6 @@
 @syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\\\n" ")");
 @syntax "core:unwindable" 80 @wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 80 @wrap never = "unwind" " " token " " value;
-@syntax "core:variant_without_value" 69 @wrap never = ":" label: >=1000;
-@syntax "core:variant" 69 @wrap never = ":" label: >=1000 " " value ->;
 @syntax "core:mut" 500 @wrap never = "mut" " " _;
 @syntax "core:type expr" 500 @wrap never = "type" " " _;
 @syntax "core:newtype" 500 @wrap never = "newtype" " " _;
@@ -107,7 +107,7 @@
 @syntax "opaque_type" 500 @wrap never = "@opaque_type";
 @syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
-@syntax "core:record" 1000 @wrap if_any = "{" ""/"\n\t" _:any ""/"\\\n" "}";
+@syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" _:any " "/"\\\n" "}";
 @syntax "core:placeholder" 1000 @wrap never = "_";
 @syntax "core:quote" 1000 @wrap if_any = "`" "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:unquote" 1000 @wrap never = "$" _ ->;

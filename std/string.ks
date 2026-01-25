@@ -20,11 +20,11 @@ impl String as module = (
             .iter = f => (@native "Kast.String.iter")(s, f)
         }
     );
-    const iteri = (s :: String) -> std.iter.Iterable[type {Int32, Char}] => (
+    const iteri = (s :: String) -> std.iter.Iterable[type { Int32, Char }] => (
         iter(s) |> std.iter.enumerate
     );
     const index_of = (c :: Char, s :: String) -> Int32 => with_return (
-        for {i, c_at_i} in iteri(s) do (
+        for { i, c_at_i } in iteri(s) do (
             if c == c_at_i then (
                 return i;
             );
@@ -33,7 +33,7 @@ impl String as module = (
     );
     const last_index_of = (c :: Char, s :: String) -> Int32 => (
         let mut result = -1;
-        for {i, c_at_i} in iteri(s) do (
+        for { i, c_at_i } in iteri(s) do (
             if c == c_at_i then (
                 result = i;
             );
@@ -48,7 +48,7 @@ impl String as module = (
                 f(part);
                 start = i + 1;
             );
-            for {i, c} in iteri(s) do (
+            for { i, c } in iteri(s) do (
                 if c == sep then (
                     perform_split(i);
                 );
@@ -57,8 +57,8 @@ impl String as module = (
         )
     };
     const lines = s => split(s, '\n');
-    const split_once = (s :: String, sep :: Char) -> {String, String} => with_return (
-        for {i, c} in iteri(s) do (
+    const split_once = (s :: String, sep :: Char) -> { String, String } => with_return (
+        for { i, c } in iteri(s) do (
             if c == sep then (
                 return {
                     substring(s, 0, i),
@@ -154,15 +154,15 @@ impl String as module = (
     
     const find_match = (
         s :: String, f :: Char -> Bool
-    ) -> std.Option.t[type {Int32, Char}] => with_return (
-        iteri(s).iter({idx, c} => if f(c) then return (:Some({idx, c})));
+    ) -> std.Option.t[type { Int32, Char }] => with_return (
+        iteri(s).iter({ idx, c } => if f(c) then return :Some { idx, c });
         :None
     );
     
     const to_lowercase = (s :: String) -> String => (
         let next_alphabet = find_match(s, Char.is_uppercase);
         match next_alphabet with (
-            | :Some({i, c}) => (
+            | :Some { i, c } => (
                 substring(s, 0, i)
                 + to_string(Char.to_lowercase(c))
                 + to_lowercase(substring(s, i + 1, length(s) - i - 1))
@@ -174,7 +174,7 @@ impl String as module = (
     const to_uppercase = (s :: String) -> String => (
         let next_alphabet = find_match(s, Char.is_lowercase);
         match next_alphabet with (
-            | :Some({i, c}) => (
+            | :Some { i, c } => (
                 substring(s, 0, i)
                 + to_string(Char.to_uppercase(c))
                 + to_uppercase(substring(s, i + 1, length(s) - i - 1))

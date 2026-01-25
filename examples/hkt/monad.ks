@@ -6,9 +6,9 @@ const Monad = [M :: [_ :: type] type] newtype (
 );
 
 impl Option.t as Monad = (
-    .ret = [T] (x :: T) => :Some(x),
+    .ret = [T] (x :: T) => :Some x,
     .flat_map = [A, B] (opt, f) => match opt with (
-        | :Some(x) => f(x)
+        | :Some x => f(x)
         | :None => :None
     ),
 );
@@ -69,14 +69,14 @@ impl syntax (a;; b) = `(compose($a, $b));
 @syntax "bind_and_then" 0 @wrap if_any = var " " "<-" " " expr ";" ";" " "/"\n" b ->;
 impl syntax (var <- expr;; b) = `($expr >>= ($var => $b));
 
-let opt :: Option.t[Int32] = :Some(1);
+let opt :: Option.t[Int32] = :Some 1;
 
-(_ as Monad).flat_map(opt, x => :Some(x));
+(_ as Monad).flat_map(opt, x => :Some x);
 
 let result = do
     x <- opt;;
-    y <- :Some(2);;
-    :Some(x + y)
+    y <- :Some 2;;
+    :Some (x + y)
 done;
 
 dbg.print(result);

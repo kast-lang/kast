@@ -39,9 +39,9 @@ let parse_msg = (msg :: String) -> Msg => with_return (
                 String.substring(s, 1, String.length(s) - 1)
             );
         ) else if first == ':' then (
-            prefix = :Some(String.substring(s, 1, String.length(s) - 1));
+            prefix = :Some (String.substring(s, 1, String.length(s) - 1));
         ) else if &command |> Option.is_none then (
-            command = :Some(s);
+            command = :Some s;
         ) else (
             List.push_back(&mut params, s);
         );
@@ -49,7 +49,7 @@ let parse_msg = (msg :: String) -> Msg => with_return (
     loop (
         if (&command |> Option.is_some)
         and String.at(unparsed, 0) == ':' then (
-            trailing = :Some(String.substring(unparsed, 1, String.length(unparsed) - 1));
+            trailing = :Some (String.substring(unparsed, 1, String.length(unparsed) - 1));
             break;
         );
         let space_idx = String.index_of(' ', unparsed);

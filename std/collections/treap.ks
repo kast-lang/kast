@@ -13,7 +13,7 @@ const t = [T] newtype (
 );
 
 const create = [T] () -> Treap.t[T] => :Empty;
-const singleton = [T] (value :: T) -> Treap.t[T] => :Node(
+const singleton = [T] (value :: T) -> Treap.t[T] => :Node (
     {
         .left = :Empty,
         .right = :Empty,
@@ -25,28 +25,26 @@ const singleton = [T] (value :: T) -> Treap.t[T] => :Node(
 const length = [T] (v :: &Treap.t[T]) -> Int32 => (
     match v^ with (
         | :Empty => 0
-        | :Node(v) => v.count
+        | :Node v => v.count
     )
 );
 const update_data = [T] (
     root :: data[T],
     .left :: Treap.t[T],
     .right :: Treap.t[T]
-) -> Treap.t[T] => :Node(
-    {
-        .value = root.value,
-        .priority = root.priority,
-        .left,
-        .right,
-        .count = 1 + length(&left) + length(&right),
-    }
-);
+) -> Treap.t[T] => :Node {
+    .value = root.value,
+    .priority = root.priority,
+    .left,
+    .right,
+    .count = 1 + length(&left) + length(&right),
+};
 const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
-    match {left, right} with (
-        | {:Empty, :Empty} => :Empty
-        | {:Empty, other} => other
-        | {other, :Empty} => other
-        | {:Node(left_data :: data[T]), :Node(right_data :: data[T])} => (
+    match { left, right } with (
+        | { :Empty, :Empty } => :Empty
+        | { :Empty, other } => other
+        | { other, :Empty } => other
+        | { :Node (left_data :: data[T]), :Node (right_data :: data[T]) } => (
             if left_data.priority > right_data.priority then (
                 update_data(
                     left_data,
@@ -67,44 +65,44 @@ const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
 const node_split_behavior = [T] newtype (
     | :LeftSubtree
     | :RightSubtree
-    | :Node {T, T}
+    | :Node { T, T }
 );
 const node_splitter = [T] type (
     &data[T] -> node_split_behavior[T]
 );
 
-const split = [T] (v :: t[T], f :: node_splitter[T]) -> {t[T], t[T]} => (
+const split = [T] (v :: t[T], f :: node_splitter[T]) -> { t[T], t[T] } => (
     match v with (
-        | :Empty => {:Empty, :Empty}
-        | :Node(node) => match f(&node) with (
+        | :Empty => { :Empty, :Empty }
+        | :Node node => match f(&node) with (
             | :RightSubtree => (
-                let {left_left, left_right} = split[T](node.left, f);
+                let { left_left, left_right } = split[T](node.left, f);
                 let node = update_data(
                     node,
                     .left = left_right,
                     .right = node.right,
                 );
-                {left_left, node}
+                { left_left, node }
             )
             | :LeftSubtree => (
-                let {right_left, right_right} = split[T](node.right, f);
+                let { right_left, right_right } = split[T](node.right, f);
                 let node = update_data(
                     node,
                     .left = node.left,
                     .right = right_left,
                 );
-                {node, right_right}
+                { node, right_right }
             )
-            | :Node {left, right} => (
+            | :Node { left, right } => (
                 let left = singleton(left);
                 let right = singleton(right);
-                {join(node.left, left), join(right, node.right)}
+                { join(node.left, left), join(right, node.right) }
             )
         )
     )
 );
 
-const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> {Treap.t[T], Treap.t[T]} => (
+const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> { Treap.t[T], Treap.t[T] } => (
     split(
         v,
         node => (
@@ -122,7 +120,7 @@ const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> {Treap.t[T], Treap.t
 const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
     match v^ with (
         | :Empty => panic("oob")
-        | :Node(v) => (
+        | :Node v => (
             if idx == length(&v.left) then (
                 &v.value
             ) else if idx < length(&v.left) then (
@@ -136,7 +134,7 @@ const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
 const at_mut = [T] (v :: &mut Treap.t[T], idx :: Int32) -> &mut T => (
     match v^ with (
         | :Empty => panic("oob")
-        | :Node(ref mut v) => (
+        | :Node ref mut v => (
             if idx == length(&v^.left) then (
                 &mut v^.value
             ) else if idx < length(&v^.left) then (
@@ -148,8 +146,8 @@ const at_mut = [T] (v :: &mut Treap.t[T], idx :: Int32) -> &mut T => (
     )
 );
 const set_at = [T] (v :: Treap.t[T], idx :: Int32, value :: T) -> Treap.t[T] => (
-    let {left, v} = split_at(v, idx);
-    let {_, right} = split_at(v, 1);
+    let { left, v } = split_at(v, idx);
+    let { _, right } = split_at(v, 1);
     join(left, join(singleton(value), right))
 );
 const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T] => (
@@ -172,7 +170,7 @@ const iter = [T] (v :: &Treap.t[T]) -> std.iter.Iterable[type (&T)] => {
     .iter = f => (
         match v^ with (
             | :Empty => ()
-            | :Node(ref data) => (
+            | :Node ref data => (
                 (iter[T](&data^.left)).iter(f);
                 f(&data^.value);
                 (iter[T](&data^.right)).iter(f);
@@ -184,7 +182,7 @@ const iter_mut = [T] (v :: &mut Treap.t[T]) -> std.iter.Iterable[type (&mut T)] 
     .iter = f => (
         match v^ with (
             | :Empty => ()
-            | :Node(ref mut data) => (
+            | :Node ref mut data => (
                 (iter_mut[T](&mut data^.left)).iter(f);
                 f(&mut data^.value);
                 (iter_mut[T](&mut data^.right)).iter(f);
