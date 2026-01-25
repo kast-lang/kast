@@ -610,7 +610,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       length: async (ctx, s: string) => {
         return s.length;
       },
-      to_string: async (x: Value) => {
+      to_string: async (ctx, x: Value) => {
         return x.toString();
       },
     },
