@@ -12,6 +12,14 @@ let single_arg ~span (args : value) : value =
   claim ~span arg.place
 ;;
 
+let make_single_arg ~span (arg : value) (ty : Types.ty_tuple) : value =
+  let ty_field = ty.tuple |> Tuple.unwrap_single_unnamed in
+  let field : Types.value_tuple_field =
+    { place = Place.init ~mut:Inherit arg; span; ty_field }
+  in
+  V_Tuple { tuple = Tuple.make [ field ] []; ty } |> Value.inferred ~span
+;;
+
 let native_fn name impl : string * (ty -> value) =
   ( name
   , fun ty ->

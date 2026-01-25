@@ -81,6 +81,11 @@ module Ty = struct
       | _ -> None
     ;;
 
+    let expect_fn : t -> ty_fn option = function
+      | T_Fn t -> Some t
+      | _ -> None
+    ;;
+
     let name : t -> optional_name =
       let span = Span.fake "<Ty.Shape.name>" in
       function

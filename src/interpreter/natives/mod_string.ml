@@ -99,7 +99,13 @@ let init () =
         s
         |> String.iter (fun c ->
           let c : value = V_Char c |> Value.inferred ~span in
-          ignore <| call caller state f c;
+          (match Value.ty_of f |> Ty.await_inferred |> Ty.Shape.expect_fn with
+           | Some f_ty ->
+             let f_arg_ty =
+               f_ty.arg |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+             in
+             ignore <| call caller state f (make_single_arg ~span c f_arg_ty)
+           | None -> Error.error span "not a fn");
           ());
         V_Unit |> Value.inferred ~span))
   ; native_fn "to_string" (fun _ty ~caller ~state:_ args ->
