@@ -164,6 +164,7 @@ module Impl = struct
     in
     let named_args = ref [] in
     let unnamed_args = ref [] in
+    let unpacks = ref [] in
     (match arg.shape with
      | P_Tuple { guaranteed_anonymous = _; parts } ->
        parts
@@ -172,12 +173,23 @@ module Impl = struct
          | Field { label; label_span = _; field } ->
            (match label with
             | Some label ->
-              let name = Label.get_name label in
+              let name = tuple_field_name (Name (Label.get_name label)) in
               named_args := !named_args @ [ name, field ]
             | None ->
               let name = JsAst.gen_name ~original:None "arg" in
-              unnamed_args := !unnamed_args @ [ name, field ])
-         | Unpack _ -> failwith __LOC__)
+              unnamed_args := !unnamed_args @ [ name, Some field ])
+         | Unpack packed ->
+           let packed_ty =
+             packed.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+           in
+           let unnamed_names =
+             packed_ty.tuple.unnamed
+             |> Array.to_list
+             |> List.map (fun _ -> JsAst.gen_name ~original:None "unpack")
+           in
+           unnamed_args
+           := !unnamed_args @ (unnamed_names |> List.map (fun name -> name, None));
+           unpacks := !unpacks @ [ unnamed_names, packed_ty, packed ])
      | _ -> fail "fn arg is not tuple?");
     let unnamed_args = !unnamed_args in
     let named_args = !named_args in
@@ -195,10 +207,51 @@ module Impl = struct
                   scope (fun () ->
                     unnamed_args
                     |> List.iter (fun (name, pattern) ->
-                      pattern_match pattern (place_of_var name));
+                      match pattern with
+                      | Some pattern -> pattern_match pattern (place_of_var name)
+                      | None -> ());
                     named_args
                     |> List.iter (fun (name, pattern) ->
                       pattern_match pattern (place_of_var_field named_arg_name name));
+                    !unpacks
+                    |> List.iter (fun (unnamed_names, ty, packed_pattern) ->
+                      let var = JsAst.gen_name ~original:None "packed" in
+                      let_var
+                        var
+                        (NoEffect
+                           { shape =
+                               (let unnamed =
+                                  unnamed_names
+                                  |> List.mapi (fun i name : JsAst.obj_part ->
+                                    Field
+                                      { name = tuple_field_name (Index i)
+                                      ; value = { shape = Var name; span = None }
+                                      })
+                                in
+                                let named =
+                                  ty.tuple.named
+                                  |> StringMap.to_list
+                                  |> List.map (fun (name, _) : JsAst.obj_part ->
+                                    let name = tuple_field_name (Name name) in
+                                    Field
+                                      { name
+                                      ; value =
+                                          { shape =
+                                              Field
+                                                { obj =
+                                                    { shape = Var named_arg_name
+                                                    ; span = None
+                                                    }
+                                                ; field = name
+                                                }
+                                          ; span = None
+                                          }
+                                      })
+                                in
+                                Obj (unnamed @ named))
+                           ; span = None
+                           });
+                      pattern_match packed_pattern (place_of_var var));
                     let result = transpile_expr body in
                     execute { shape = JsAst.Return (pure result); span = None })
               }
@@ -863,37 +916,54 @@ module Impl = struct
 
   and call ~span (f : expr) (arg : expr) : no_effect_expr =
     let f = pure <| transpile_expr f in
+    let unnamed_args = ref [] in
     let named_args = ref [] in
-    let unnamed_args =
-      match arg.shape with
-      | E_Constant { id = _; value = arg } ->
-        (match arg |> Value.expect_tuple with
-         | Some { tuple; ty = _ } ->
-           let field_value (field : value_tuple_field) =
-             pure <| transpile_value (field.place |> Kast_interpreter.read_place ~span)
+    (match arg.shape with
+     | E_Constant { id = _; value = arg } ->
+       (match arg |> Value.expect_tuple with
+        | Some { tuple; ty = _ } ->
+          let field_value (field : value_tuple_field) =
+            pure <| transpile_value (field.place |> Kast_interpreter.read_place ~span)
+          in
+          tuple.named
+          |> StringMap.iter (fun name field ->
+            let field : JsAst.obj_part = Field { name; value = field_value field } in
+            named_args := !named_args @ [ field ]);
+          unnamed_args := tuple.unnamed |> Array.to_list |> List.map field_value
+        | None -> fail "called not with tuple but %a?" Value.print arg)
+     | E_Tuple { guaranteed_anonymous = _; parts } ->
+       parts
+       |> List.iter (fun part ->
+         match part with
+         | Field { label; label_span = _; field } ->
+           let value = pure <| transpile_expr field in
+           (match label with
+            | None -> unnamed_args := !unnamed_args @ [ value ]
+            | Some label ->
+              let name = tuple_field_name (Name (Label.get_name label)) in
+              let field : JsAst.obj_part = Field { name; value } in
+              named_args := !named_args @ [ field ])
+         | Unpack packed ->
+           let var = JsAst.gen_name ~original:None "packed" in
+           let_var var (transpile_expr packed);
+           let ty =
+             packed.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
            in
-           tuple.named
-           |> StringMap.iter (fun name field ->
-             let field : JsAst.obj_part = Field { name; value = field_value field } in
-             named_args := !named_args @ [ field ]);
-           tuple.unnamed |> Array.to_list |> List.map field_value
-         | None -> fail "called not with tuple but %a?" Value.print arg)
-      | E_Tuple { guaranteed_anonymous = _; parts } ->
-        parts
-        |> List.filter_map (fun part ->
-          match part with
-          | Field { label; label_span = _; field } ->
-            let value = pure <| transpile_expr field in
-            (match label with
-             | None -> Some value
-             | Some label ->
-               let name = Label.get_name label in
-               let field : JsAst.obj_part = Field { name; value } in
-               named_args := !named_args @ [ field ];
-               None)
-          | Unpack _ -> failwith __LOC__)
-      | _ -> fail "called not with tuple but %a?" Expr.print_with_spans arg
-    in
+           ty.tuple
+           |> Tuple.iter (fun member _ ->
+             let field_name = tuple_field_name member in
+             let value : JsAst.expr =
+               { shape =
+                   Field { obj = { shape = Var var; span = None }; field = field_name }
+               ; span = None
+               }
+             in
+             match member with
+             | Index _ -> unnamed_args := !unnamed_args @ [ value ]
+             | Name _ ->
+               let field : JsAst.obj_part = Field { name = field_name; value } in
+               named_args := !named_args @ [ field ]))
+     | _ -> fail "called not with tuple but %a?" Expr.print_with_spans arg);
     let named_args : JsAst.expr list =
       match !named_args with
       | [] -> []
@@ -906,7 +976,7 @@ module Impl = struct
             ; f
             ; args =
                 [ ({ shape = Var ctx_var; span = None } : JsAst.expr) ]
-                @ unnamed_args
+                @ !unnamed_args
                 @ named_args
             }
       ; span = Some span
