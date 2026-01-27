@@ -212,11 +212,11 @@ and call_untyped_fn
       log
         "fn arg (%a) = %a"
         (Pattern.print ~options:{ spans = false; types = false })
-        def.arg
+        def.args.pattern
         Value.print
         arg);
     let ~matched:arg_matched, arg_bindings =
-      pattern_match ~span (Place.init ~mut:Inherit arg) def.arg
+      pattern_match ~span (Place.init ~mut:Inherit arg) def.args.pattern
     in
     if not arg_matched then Error.error span "Failed to pattern match fn's arg";
     let new_state =
@@ -664,8 +664,8 @@ and pattern_bindings : pattern -> binding list =
      | Some value -> pattern_bindings value
      | None -> [])
 
-and generic_ty : span:span -> pattern -> ty -> Types.ty_generic =
-  fun ~span arg result -> { arg; result }
+and generic_ty : span:span -> Types.pattern_args -> ty -> Types.ty_generic =
+  fun ~span args result -> { args; result }
 
 and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   fun state expr { def; ty } ->
@@ -1014,7 +1014,7 @@ and eval_expr_implcast : state -> expr -> Types.expr_impl_cast -> value =
   state.cast_impls.map
   <- state.cast_impls.map |> Types.ValueMap.add target updated_target_impls;
   Log.trace (fun log ->
-    log "Added cast impl: %a as %a" Value.print value Value.print target);
+    log "Added cast impl: %a as %a" Print.print_args value Value.print target);
   V_Unit |> Value.inferred ~span
 
 and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
@@ -1041,11 +1041,11 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
         Log.info (fun log ->
           log
             "Exists impl: %a as %a"
-            Value.print
+            Print.print_args
             existing_value
             Value.print
             existing_target)));
-    Error.error span "no impl of %a as %a" Value.print value Value.print target;
+    Error.error span "no impl of %a as %a" Print.print_args value Value.print target;
     V_Error |> Value.inferred ~span
 
 and await_fully_inferred value : Value.Shape.t =
@@ -1262,9 +1262,9 @@ and eval_ty : state -> Expr.ty -> ty =
           let referenced = eval_ty state referenced in
           Ty.inferred ~span <| T_Ref { mut; referenced }
         | TE_Fn { arg; result } ->
-          let arg = eval_ty state arg in
+          let args = eval_ty state arg in
           let result = eval_ty state result in
-          Ty.inferred ~span <| T_Fn { arg; result }
+          Ty.inferred ~span <| T_Fn { args = { ty = args }; result }
         | TE_Expr expr ->
           let value = eval state expr in
           Log.trace (fun log ->
@@ -1341,7 +1341,11 @@ and eval_ty : state -> Expr.ty -> ty =
                                  Types.ty_expr_variant_variant)
                               ->
                               ( label
-                              , ({ data = value |> Option.map (eval_ty state) }
+                              , ({ data =
+                                     value
+                                     |> Option.map (fun ty : Types.ty_args ->
+                                       { ty = eval_ty state ty })
+                                 }
                                  : Types.ty_variant_data) )))
                }
         | TE_Error -> Ty.inferred ~span T_Error

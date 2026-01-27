@@ -51,7 +51,7 @@ const compose = [M :: [type] -> type] [A, B] (a :: M[A], b :: M[B]) -> M[B] => (
 
 @syntax ">>=" 6.5 @wrap if_any = a " "/"\n" ">>=" " " b ->;
 impl syntax (a >>= b) = `(
-    (_ as Monad).flat_map($a, $b)
+    (Option.t as Monad).flat_map($a, $b)
     # TODO (_ as Monad).flat_map ($a, $b)
 );
 
@@ -71,8 +71,7 @@ impl syntax (var <- expr;; b) = `($expr >>= ($var => $b));
 
 let opt :: Option.t[Int32] = :Some 1;
 
-(_ as Monad).flat_map(opt, x => :Some x);
-
+# TODO (_ as Monad).flat_map(opt, x => :Some x);
 let result = do
     x <- opt;;
     y <- :Some 2;;

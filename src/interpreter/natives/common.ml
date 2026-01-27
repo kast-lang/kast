@@ -32,7 +32,7 @@ let native_fn name impl : string * (ty -> value) =
   , fun ty ->
       let scope = VarScope.of_ty ty in
       let fn_ty : Types.ty_fn =
-        { arg = Ty.new_not_inferred ~scope ~span
+        { args = { ty = Ty.new_not_inferred ~scope ~span }
         ; result = Ty.new_not_inferred ~scope ~span
         }
       in

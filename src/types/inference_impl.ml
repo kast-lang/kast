@@ -105,15 +105,16 @@ module VarScope = struct
     fun { data } ->
     match data with
     | None -> root ()
-    | Some data -> of_ty data
+    | Some { ty = data } -> of_ty data
 
   and of_ty_unwind_token : ty_unwind_token -> var_scope = fun { result } -> of_ty result
 
   and of_ty_fn : ty_fn -> var_scope =
-    fun { arg; result } -> deepest (of_ty arg) (of_ty result)
+    fun { args = { ty = args }; result } -> deepest (of_ty args) (of_ty result)
 
   and of_ty_generic : ty_generic -> var_scope =
-    fun { arg; result } -> deepest (of_ty arg.data.ty) (of_ty result)
+    fun { args = { pattern = args }; result } ->
+    deepest (of_ty args.data.ty) (of_ty result)
 
   and of_ty_opaque : ty_opaque -> var_scope = fun { name } -> of_name name
 
@@ -372,9 +373,11 @@ module Impl = struct
     | BV_ClaimRef _, _ -> fail ()
 
   and unite_ty_generic : ty_generic Inference.unite =
-    fun ~span { arg = arg_a; result = result_a } { arg = arg_b; result = result_b } ->
+    fun ~span
+      { args = { pattern = args_a }; result = result_a }
+      { args = { pattern = args_b }; result = result_b } ->
     let result : ty_generic =
-      let bindings_ab = unite_pattern ~span arg_a arg_b in
+      let bindings_ab = unite_pattern ~span args_a args_b in
       let sub_ty = Option.get !sub_ty in
       let sub_scope_id = Id.gen () in
       let sub_with (bindings : (binding * binding) list) ty =
@@ -431,9 +434,9 @@ module Impl = struct
         log
           "unite_generic_ty arg: %a and %a"
           (print_pattern ~options:{ spans = false; types = false })
-          arg_a
+          args_a
           (print_pattern ~options:{ spans = false; types = false })
-          arg_b);
+          args_b);
       Log.trace (fun log ->
         log "unite_generic_ty result_ty: %a and %a" print_ty result_a print_ty result_b);
       Log.trace (fun log ->
@@ -451,7 +454,7 @@ module Impl = struct
       Log.trace (fun log ->
         log "unite_generic_ty b->a %a and %a" print_ty result_b_subbed print_ty result_a);
       let _ : ty = unite_ty ~span result_b_subbed result_a in
-      { arg = arg_a; result = result_a }
+      { args = { pattern = args_a }; result = result_a }
     in
     result
 
@@ -616,12 +619,14 @@ module Impl = struct
          | Some ty, None | None, Some ty ->
            error span "data & not data mismatch in variant";
            Some ty
-         | Some a, Some b -> Some (unite_ty ~span a b))
+         | Some a, Some b -> Some { ty = unite_ty ~span a.ty b.ty })
     }
 
   and unite_ty_fn : ty_fn Inference.unite =
     fun ~span a b ->
-    { arg = unite_ty ~span a.arg b.arg; result = unite_ty ~span a.result b.result }
+    { args = { ty = unite_ty ~span a.args.ty b.args.ty }
+    ; result = unite_ty ~span a.result b.result
+    }
 
   and unite_ty : ty Inference.unite =
     fun ~span { var = a } { var = b } ->

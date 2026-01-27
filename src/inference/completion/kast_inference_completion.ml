@@ -138,9 +138,11 @@ module Impl = struct
     =
     match compiled with
     | None -> error span "Function could not be compiled"
-    | Some { arg; body } ->
-      complete_pattern arg;
+    | Some { args; body } ->
+      complete_pattern_args args;
       complete_expr body
+
+  and complete_pattern_args ({ pattern } : pattern_args) = complete_pattern pattern
 
   and complete_value_tuple_field ({ place; span = _; ty_field } : value_tuple_field) =
     complete_place place;
@@ -199,14 +201,16 @@ module Impl = struct
     complete_row ~name:"ty variant" complete_ty_variant_data variants
 
   and complete_ty_variant_data ({ data } : ty_variant_data) =
-    complete_option complete_ty data
+    complete_option complete_ty_args data
 
-  and complete_ty_fn ({ arg; result } : ty_fn) =
-    complete_ty arg;
+  and complete_ty_fn ({ args; result } : ty_fn) =
+    complete_ty_args args;
     complete_ty result
 
-  and complete_ty_generic ({ arg; result } : ty_generic) =
-    complete_pattern arg;
+  and complete_ty_args ({ ty } : ty_args) = complete_ty ty
+
+  and complete_ty_generic ({ args; result } : ty_generic) =
+    complete_pattern_args args;
     complete_ty result
 
   and complete_ty_opaque ({ name } : ty_opaque) = complete_name name

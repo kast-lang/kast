@@ -108,7 +108,7 @@ let init () =
           (match Value.ty_of f |> Ty.await_inferred |> Ty.Shape.expect_fn with
            | Some f_ty ->
              let f_arg_ty =
-               f_ty.arg |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+               f_ty.args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
              in
              ignore <| call caller state f (make_single_arg ~span c f_arg_ty)
            | None -> Error.error span "not a fn");
@@ -145,7 +145,7 @@ let init () =
           (match Value.ty_of f |> Ty.await_inferred |> Ty.Shape.expect_fn with
            | Some f_ty ->
              let f_arg_ty =
-               f_ty.arg |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+               f_ty.args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
              in
              ignore
              <| call caller state f (make_args ~span (Tuple.make [ i; c ] []) f_arg_ty)
@@ -169,7 +169,7 @@ let init () =
         V_String s)
       |> Value.inferred ~span)
   ; native_fn "parse" (fun ty ~caller ~state:_ args ->
-      let { arg = _; result = result_ty } : Types.ty_fn = ty in
+      let { args = _; result = result_ty } : Types.ty_fn = ty in
       let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_String s ->

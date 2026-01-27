@@ -192,7 +192,7 @@ module Impl = struct
       }
     in
     let state = inner_state in
-    { arg = sub_pattern_and_inject_replacements ~state f.arg
+    { args = { pattern = sub_pattern_and_inject_replacements ~state f.args.pattern }
     ; body = sub_expr ~state f.body
     }
 
@@ -367,7 +367,7 @@ module Impl = struct
            ~sub_value:(fun ~state ({ data } : ty_variant_data) : ty_variant_data ->
              { data =
                  data
-                 |> Option.map (fun ty ->
+                 |> Option.map (fun ({ ty } : ty_args) ->
                    let result = sub_ty ~state ty in
                    Log.trace (fun log ->
                      log
@@ -376,7 +376,7 @@ module Impl = struct
                        ty
                        Ty.print
                        result);
-                   result)
+                   { ty = result })
              })
     in
     let result = { name; variants } in
@@ -434,7 +434,7 @@ module Impl = struct
       log "subbed ty shape = %a into %a" Ty.Shape.print shape Ty.print result);
     result
 
-  and sub_ty_generic ~(state : sub_state) ({ arg; result } as generic : ty_generic)
+  and sub_ty_generic ~(state : sub_state) ({ args; result } as generic : ty_generic)
     : ty_generic
     =
     let ctx = Effect.perform GetCtx in
@@ -456,9 +456,11 @@ module Impl = struct
     Log.trace (fun log -> log "subbing generic = %a" Print.print_ty_generic generic);
     Log.trace (fun log ->
       log "inner scope = %a" Print.print_var_scope inner_state.result_scope);
-    let arg = sub_pattern_and_inject_replacements ~state:inner_state arg in
+    let args =
+      { pattern = sub_pattern_and_inject_replacements ~state:inner_state args.pattern }
+    in
     let result = sub_ty ~state:inner_state result in
-    let generic : ty_generic = { arg; result } in
+    let generic : ty_generic = { args; result } in
     Log.trace (fun log -> log "subbed generic = %a" Print.print_ty_generic generic);
     generic
 
@@ -467,8 +469,8 @@ module Impl = struct
     =
     { label; symbol; ty = sub_ty ~state ty }
 
-  and sub_ty_fn ~state ({ arg; result } : ty_fn) : ty_fn =
-    { arg = arg |> sub_ty ~state; result = result |> sub_ty ~state }
+  and sub_ty_fn ~state ({ args; result } : ty_fn) : ty_fn =
+    { args = { ty = args.ty |> sub_ty ~state }; result = result |> sub_ty ~state }
 
   and sub_pattern_and_inject_replacements : state:sub_state -> pattern -> pattern =
     fun ~state pattern ->

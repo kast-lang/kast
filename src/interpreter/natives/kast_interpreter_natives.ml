@@ -12,20 +12,19 @@ exception Panic of string
 
 let init_natives () =
   let plain_types : (string * Ty.Shape.t) list =
-    [ "unit", T_Unit
-    ; "int32", T_Int32
-    ; "int64", T_Int64
-    ; "float64", T_Float64
-    ; "string", T_String
-    ; "char", T_Char
-    ; "type", T_Ty
-    ; "bool", T_Bool
-    ; "ast", T_Ast
+    [ "Unit", T_Unit
+    ; "Int32", T_Int32
+    ; "Int64", T_Int64
+    ; "Float64", T_Float64
+    ; "String", T_String
+    ; "Char", T_Char
+    ; "Type", T_Ty
+    ; "Bool", T_Bool
+    ; "Ast", T_Ast
     ]
   in
   let generic_types : (string * (Ty.Shape.t -> Ty.Shape.t)) list =
-    [ ("unwind_token", fun result -> T_UnwindToken { result = Ty.inferred ~span result })
-    ]
+    [ ("UnwindToken", fun result -> T_UnwindToken { result = Ty.inferred ~span result }) ]
   in
   let types =
     (plain_types
@@ -53,20 +52,22 @@ let init_natives () =
          ( name
          , fun ty ->
              let fn_ty : Types.ty_fn =
-               { arg =
-                   Ty.inferred ~span
-                   <| T_Tuple
-                        { name = OptionalName.new_inferred ~span None
-                        ; tuple =
-                            Tuple.make
-                              [ ({ ty = Ty.inferred ~span T_Ty
-                                 ; symbol = None
-                                 ; label = None
-                                 }
-                                 : Types.ty_tuple_field)
-                              ]
-                              []
-                        }
+               { args =
+                   { ty =
+                       Ty.inferred ~span
+                       <| T_Tuple
+                            { name = OptionalName.new_inferred ~span None
+                            ; tuple =
+                                Tuple.make
+                                  [ ({ ty = Ty.inferred ~span T_Ty
+                                     ; symbol = None
+                                     ; label = None
+                                     }
+                                     : Types.ty_tuple_field)
+                                  ]
+                                  []
+                            }
+                   }
                ; result = Ty.inferred ~span T_Ty
                }
              in

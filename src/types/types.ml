@@ -162,18 +162,22 @@ module rec TypesImpl : sig
     ; tuple : ty_tuple_field Tuple.t
     }
 
+  and ty_args = { ty : ty }
+
   and ty_fn =
-    { arg : ty
+    { args : ty_args
     ; result : ty
     }
 
+  and pattern_args = { pattern : pattern }
+
   and ty_generic =
-    { arg : pattern
+    { args : pattern_args
     ; result : ty
     }
 
   and ty_unwind_token = { result : ty }
-  and ty_variant_data = { data : ty option }
+  and ty_variant_data = { data : ty_args option }
 
   and ty_variant =
     { name : optional_name
@@ -215,7 +219,7 @@ module rec TypesImpl : sig
 
   (* EXPR *)
   and compiled_fn =
-    { arg : pattern
+    { args : pattern_args
     ; body : expr
     }
 
@@ -828,18 +832,22 @@ end = struct
     ; tuple : ty_tuple_field Tuple.t
     }
 
+  and ty_args = { ty : ty }
+
   and ty_fn =
-    { arg : ty
+    { args : ty_args
     ; result : ty
     }
 
+  and pattern_args = { pattern : pattern }
+
   and ty_generic =
-    { arg : pattern
+    { args : pattern_args
     ; result : ty
     }
 
   and ty_unwind_token = { result : ty }
-  and ty_variant_data = { data : ty option }
+  and ty_variant_data = { data : ty_args option }
 
   and ty_variant =
     { name : optional_name
@@ -881,7 +889,7 @@ end = struct
 
   (* EXPR *)
   and compiled_fn =
-    { arg : pattern
+    { args : pattern_args
     ; body : expr
     }
 

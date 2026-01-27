@@ -47,8 +47,8 @@ module Impl = struct
      | MovedOut -> fprintf fmt "<moved out");
     fprintf fmt " %a>" Id.print place.id
 
-  and print_place_value : formatter -> place -> unit =
-    fun fmt place ->
+  and print_place_value_with : (formatter -> value -> unit) -> formatter -> place -> unit =
+    fun print_value fmt place ->
     match place.state with
     | Uninitialized -> fprintf fmt "<uninitialized>"
     | Occupied value -> print_value fmt value
@@ -76,12 +76,12 @@ module Impl = struct
     | V_Variant { label; data; ty = _ } ->
       fprintf fmt ":%a" Label.print label;
       (match data with
-       | Some data -> fprintf fmt " %a" print_place_value data
+       | Some data -> fprintf fmt " %a" (print_place_value_with print_args) data
        | None -> ())
     | V_Generic g -> print_name_shape fmt g.name
     (* fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
           print_ty_generic g.ty *)
-    | V_NativeFn f -> fprintf fmt "@{<italic><native %s>@}" f.name
+    | V_NativeFn f -> fprintf fmt "@{<italic><native %a>@}" String.print_debug f.name
     | V_Ast ast ->
       Ast.print fmt ast
       (* TODO fprintf fmt "@{<magenta>ast@}<%a>" Kast_highlight.print_ast ast *)
@@ -99,7 +99,7 @@ module Impl = struct
       fmt
       "%a"
       (Tuple.print (fun fmt (field : value_tuple_field) ->
-         print_place_value fmt field.place))
+         (print_place_value_with print_value) fmt field.place))
       tuple
 
   and print_value : formatter -> value -> unit =
@@ -147,47 +147,64 @@ module Impl = struct
              }
            (fun fmt ({ data } : ty_variant_data) ->
               match data with
-              | Some data -> fprintf fmt " %a" print_ty data
+              | Some data -> fprintf fmt " %a" print_ty_args data
               | None -> ()))
         variants
       (* ; fprintf fmt "(row scope=%a)" print_var_scope
           (Inference.Var.scope variants.var) *))
 
   and print_ty_generic : formatter -> ty_generic -> unit =
-    fun fmt { arg; result } ->
+    fun fmt { args; result } ->
     fprintf
       fmt
       "[%a] %a"
-      (print_pattern ~options:{ spans = false; types = true })
-      arg
+      (print_pattern_args ~options:{ types = true; spans = false })
+      args
       print_ty
       result
+
+  and print_pattern_args : options:options -> formatter -> pattern_args -> unit =
+    fun ~options fmt args ->
+    match args.pattern.shape with
+    | P_Tuple { parts = [ Field { label = None; label_span = _; field = p } ]; _ } ->
+      print_pattern ~options fmt p
+    | _ -> print_pattern ~options fmt args.pattern
 
   and print_ty_shape : formatter -> ty_shape -> unit =
     fun fmt -> function
     | T_Unit -> fprintf fmt "()"
-    | T_Bool -> fprintf fmt "bool"
-    | T_Int32 -> fprintf fmt "int32"
-    | T_Int64 -> fprintf fmt "int64"
-    | T_Float64 -> fprintf fmt "float64"
-    | T_Char -> fprintf fmt "char"
-    | T_String -> fprintf fmt "string"
+    | T_Bool -> fprintf fmt "Bool"
+    | T_Int32 -> fprintf fmt "Int32"
+    | T_Int64 -> fprintf fmt "Int64"
+    | T_Float64 -> fprintf fmt "Float64"
+    | T_Char -> fprintf fmt "Char"
+    | T_String -> fprintf fmt "String"
     | T_Ref { mut; referenced } ->
       fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
     | T_Variant v -> print_ty_variant fmt v
     | T_Tuple t -> print_ty_tuple fmt t
-    | T_Ty -> fprintf fmt "type"
-    | T_Fn { arg; result } ->
-      fprintf fmt "@[<hv>%a@] -> @[<hv>%a@]" print_ty arg print_ty result
+    | T_Ty -> fprintf fmt "Type"
+    | T_Fn f -> print_ty_fn fmt f
     | T_Generic ty -> print_ty_generic fmt ty
-    | T_Ast -> fprintf fmt "ast"
+    | T_Ast -> fprintf fmt "Ast"
     | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
-    | T_Target -> fprintf fmt "target"
-    | T_ContextTy -> fprintf fmt "context_type"
+    | T_Target -> fprintf fmt "Target"
+    | T_ContextTy -> fprintf fmt "ContextType"
     | T_CompilerScope -> fprintf fmt "<compiler scope>"
     | T_Opaque { name } -> print_name fmt name
     | T_Blocked blocked -> print_blocked_value fmt blocked
     | T_Error -> fprintf fmt "@{<red><error>@}"
+
+  and print_ty_args : formatter -> ty_args -> unit =
+    fun fmt { ty } ->
+    match ty.var |> Inference.Var.inferred_opt with
+    | Some (T_Tuple { tuple; _ }) ->
+      if tuple |> Tuple.is_unnamed 1
+      then (
+        let ty = tuple |> Tuple.unwrap_single_unnamed in
+        print_ty fmt ty.ty)
+      else print_ty fmt ty
+    | _ -> print_ty fmt ty
 
   and print_ty : formatter -> ty -> unit =
     fun fmt { var } -> print_var print_ty_shape fmt var
@@ -200,7 +217,7 @@ module Impl = struct
     | None -> fprintf fmt "?mut "
 
   and print_ty_fn : formatter -> ty_fn -> unit =
-    fun fmt { arg; result } -> fprintf fmt "%a -> %a" print_ty arg print_ty result
+    fun fmt { args; result } -> fprintf fmt "%a -> %a" print_ty_args args print_ty result
 
   (* VAR *)
   and print_var : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
@@ -295,23 +312,23 @@ module Impl = struct
         (Tuple.make [ expr ] [])
     | E_Fn { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
-       | Some { arg; body } ->
+       | Some { args; body } ->
          fprintf
            fmt
            "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-           (print_pattern ~options)
-           arg
+           (print_pattern_args ~options)
+           args
            (print_expr ~options)
            body
        | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
     | E_Generic { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
-       | Some { arg; body } ->
+       | Some { args; body } ->
          fprintf
            fmt
            "@{<magenta>generic@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
-           (print_pattern ~options)
-           arg
+           (print_pattern_args ~options)
+           args
            (print_expr ~options)
            body
        | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
@@ -677,6 +694,18 @@ module Impl = struct
     | Concat (a, b) -> fprintf fmt "%a.%a" print_name_shape a print_name_part b
     | Instantiation { generic; arg } ->
       fprintf fmt "%a[%a]" print_value generic print_value arg
+
+  and print_args fmt (args : value) =
+    match args.var |> Inference.Var.inferred_opt with
+    | Some (V_Tuple { tuple; _ }) ->
+      if tuple |> Tuple.is_unnamed 1
+      then
+        print_place_value_with
+          print_value
+          fmt
+          (tuple |> Tuple.unwrap_single_unnamed).place
+      else print_value fmt args
+    | _ -> print_value fmt args
   ;;
 end
 
@@ -735,10 +764,11 @@ let print_pattern ~options = with_cache (Impl.print_pattern ~options)
 let print_pattern_shape ~options = with_cache (Impl.print_pattern_shape ~options)
 let print_binding = with_cache Impl.print_binding
 let print_place_ref = with_cache Impl.print_place_ref
-let print_place_value = with_cache Impl.print_place_value
+let print_place_value = with_cache (Impl.print_place_value_with Impl.print_value)
 let print_name = with_cache Impl.print_name
 let print_name_shape = with_cache Impl.print_name_shape
 let print_name_part = with_cache Impl.print_name_part
 let print_ty_tuple = with_cache Impl.print_ty_tuple
 let print_ty_variant = with_cache Impl.print_ty_variant
 let print_ty_generic = with_cache Impl.print_ty_generic
+let print_args = with_cache Impl.print_args

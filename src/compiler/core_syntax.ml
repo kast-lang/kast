@@ -511,7 +511,7 @@ let fn : core_syntax =
         | Expr ->
           let scope = State.var_scope C.state in
           let ty : Types.ty_fn =
-            { arg = Ty.new_not_inferred ~scope ~span:arg.data.span
+            { args = { ty = Ty.new_not_inferred ~scope ~span:arg.data.span }
             ; result =
                 Ty.new_not_inferred
                   ~scope
@@ -528,7 +528,7 @@ let fn : core_syntax =
           State.Scope.fork (fun () ->
             let state = C.state |> State.enter_scope ~span ~recursive:false in
             Log.trace (fun log -> log "starting to compile fn at %a" Span.print span);
-            let arg =
+            let args =
               tuple_impl
                 ~allow_toplevel_parens:true
                 (Compiler.update_module (module C) state)
@@ -539,11 +539,12 @@ let fn : core_syntax =
               log
                 "compiled fn arg = %a at %a"
                 (Pattern.print ~options:{ types = false; spans = false })
-                arg
+                args
                 Span.print
                 span);
-            ty.arg |> Inference.Ty.expect_inferred_as ~span:arg.data.span arg.data.ty;
-            state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
+            ty.args.ty
+            |> Inference.Ty.expect_inferred_as ~span:args.data.span args.data.ty;
+            state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
             let body = C.compile ~state Expr body in
             Log.trace (fun log ->
               log
@@ -578,7 +579,7 @@ let fn : core_syntax =
              | Some result_ty_expr ->
                result_fn_expr |> Compiler.data_append TyExpr result_ty_expr Expr);
             ty.result |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty;
-            Compiler.finish_compiling def { arg; body };
+            Compiler.finish_compiling def { args = { pattern = args }; body };
             Log.trace (fun log ->
               log
                 "finished compiling fn at %a, result ty = %a"
@@ -600,7 +601,7 @@ let generic : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.data.span in
-        let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let args = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
         let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -616,17 +617,18 @@ let generic : core_syntax =
               (module C)
               (C.state |> State.enter_scope ~span ~recursive:false)
           in
-          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Pattern arg in
-          C.state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
+          let args = tuple_impl ~allow_toplevel_parens:false (module C) Pattern args in
+          C.state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
           let result_ty, result_expr = Compiler.eval_ty (module C) body in
           let generic_ty =
-            T_Generic (Interpreter.generic_ty ~span arg result_ty) |> Ty.inferred ~span
+            T_Generic (Interpreter.generic_ty ~span { pattern = args } result_ty)
+            |> Ty.inferred ~span
           in
           let generic_ty = V_Ty generic_ty |> Value.inferred ~span in
           let expr =
             const_shape generic_ty
             |> init_expr span C.state
-            |> Compiler.data_add Pattern arg Expr
+            |> Compiler.data_add Pattern args Expr
             |> Compiler.data_add TyExpr (result_expr, result_ty) Expr
           in
           (fun () -> TE_Expr expr) |> init_ty_expr span C.state
@@ -639,17 +641,17 @@ let generic : core_syntax =
               (module C)
               (C.state |> State.enter_scope ~span ~recursive:false)
           in
-          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Pattern arg in
-          C.state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
+          let args = tuple_impl ~allow_toplevel_parens:false (module C) Pattern args in
+          C.state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
           let ty =
             Interpreter.generic_ty
               ~span
-              arg
+              { pattern = args }
               (Ty.new_not_inferred ~scope:(State.var_scope C.state) ~span:body.data.span)
           in
           State.Scope.fork (fun () ->
             let body = C.compile Expr body in
-            Compiler.finish_compiling def { arg; body };
+            Compiler.finish_compiling def { args = { pattern = args }; body };
             Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
             Log.trace (fun log -> log "body.data.ty = %a" Ty.print body.data.ty);
             ty.result |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty);
@@ -1434,7 +1436,8 @@ let impl_syntax : core_syntax =
                (* TODO maybe reduce copypasta here and compiling fn *)
                let ty : Types.ty_fn =
                  let scope = State.var_scope C.state in
-                 { arg = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__)
+                 { args =
+                     { ty = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__) }
                  ; result = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__)
                  }
                in
@@ -1443,7 +1446,7 @@ let impl_syntax : core_syntax =
                in
                State.Scope.fork (fun () ->
                  let state = State.enter_scope C.state ~span ~recursive:false in
-                 let arg =
+                 let args =
                    P_Tuple
                      { guaranteed_anonymous = true
                      ; parts =
@@ -1470,10 +1473,11 @@ let impl_syntax : core_syntax =
                      }
                    |> init_pattern name.data.span C.state
                  in
-                 state |> Compiler.inject_pattern_bindings ~only_compiler:false arg;
+                 state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
                  let body = C.compile ~state Expr impl in
-                 Compiler.finish_compiling def { arg; body };
-                 ty.arg |> Inference.Ty.expect_inferred_as ~span:arg.data.span arg.data.ty;
+                 Compiler.finish_compiling def { args = { pattern = args }; body };
+                 ty.args.ty
+                 |> Inference.Ty.expect_inferred_as ~span:args.data.span args.data.ty;
                  ty.result
                  |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty);
                E_Fn { def; ty } |> init_expr span C.state

@@ -154,7 +154,7 @@ module Impl = struct
     =
     let ctx = Effect.perform GetCtx in
     let compiled = def |> Kast_interpreter.await_compiled ~span:ctx.span in
-    let { arg; body } =
+    let { args; body } =
       compiled |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
     in
     let ctx =
@@ -165,7 +165,7 @@ module Impl = struct
     let named_args = ref [] in
     let unnamed_args = ref [] in
     let unpacks = ref [] in
-    (match arg.shape with
+    (match args.pattern.shape with
      | P_Tuple { guaranteed_anonymous = _; parts } ->
        parts
        |> List.iter (fun part ->

@@ -302,7 +302,9 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         State.Scope.fork (fun () ->
           let inferred_ty =
             with_return (fun { return } ->
-              let ({ arg = arg_pattern; result = result_ty } : Types.ty_generic) =
+              let ({ args = { pattern = arg_pattern }; result = result_ty }
+                    : Types.ty_generic)
+                =
                 match generic.data.ty |> Ty.await_inferred with
                 | T_Generic ty -> ty
                 | _ ->
@@ -356,7 +358,10 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                  <| R_Cons
                       { label
                       ; value : Types.ty_variant_data =
-                          { data = value |> Option.map (fun (expr : expr) -> expr.data.ty)
+                          { data =
+                              value
+                              |> Option.map (fun (expr : expr) : Types.ty_args ->
+                                { ty = expr.data.ty })
                           }
                       ; rest = Row.new_not_inferred ~scope ~span
                       }
@@ -369,7 +374,8 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         f.data.ty
         |> Inference.Ty.expect_inferred_as
              ~span:f.data.span
-             (Ty.inferred ~span:f.data.span <| T_Fn { arg = f_arg; result = f_result });
+             (Ty.inferred ~span:f.data.span
+              <| T_Fn { args = { ty = f_arg }; result = f_result });
         arg.data.ty |> Inference.Ty.expect_inferred_as ~span:arg.data.span f_arg;
         f_result
       | E_Assign { assignee; value } ->
@@ -554,7 +560,8 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
                       ; value : Types.ty_variant_data =
                           { data =
                               value
-                              |> Option.map (fun (pattern : pattern) -> pattern.data.ty)
+                              |> Option.map (fun (pattern : pattern) : Types.ty_args ->
+                                { ty = pattern.data.ty })
                           }
                       ; rest = Row.new_not_inferred ~scope ~span
                       }

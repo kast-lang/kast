@@ -1,7 +1,10 @@
 module:
 const std = @current_scope;
 include "./syntax.ks";
-const UnwindToken = [T :: type] (@native "unwind_token")(T);
+
+const Type = @native "Type";
+
+const UnwindToken = [T :: type] ((@native "UnwindToken")(T) :: Type);
 const UnwindUnit = UnwindToken[type ()];
 const LoopBlock = @context UnwindUnit;
 const LoopBody = @context UnwindUnit;
@@ -9,14 +12,14 @@ const LoopBody = @context UnwindUnit;
 #     .T :: type,
 #     .token :: Any,
 # );
-const Bool :: type = @native "bool";
-const Int32 :: type = @native "int32";
+const Bool :: type = @native "Bool";
+const Int32 :: type = @native "Int32";
 const UInt32 = Int32;
-const Int64 :: type = @native "int64";
-const Float64 :: type = @native "float64";
-const Char :: type = @native "char";
-const String :: type = @native "string";
-const Ast :: type = @native "ast";
+const Int64 :: type = @native "Int64";
+const Float64 :: type = @native "Float64";
+const Char :: type = @native "Char";
+const String :: type = @native "String";
+const Ast :: type = @native "Ast";
 
 const cmp = include "./cmp.ks";
 const op = include "./op.ks";

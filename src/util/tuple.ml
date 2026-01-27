@@ -139,11 +139,11 @@ module Tuple = struct
     }
 
   let default_print_options : print_options =
-    { open_ = "("
+    { open_ = "{"
     ; field_sep = ","
     ; named_field_before = "."
     ; named_field_middle = " = "
-    ; close = ")"
+    ; close = "}"
     }
   ;;
 
