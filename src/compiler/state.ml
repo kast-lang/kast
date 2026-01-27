@@ -43,6 +43,8 @@ module Scope = struct
 
   let rec find_opt : from:span -> string -> scope -> local option =
     fun ~from ident scope ->
+    Log.trace (fun log ->
+      log "looking for %a in %a" String.print_debug ident Id.print scope.id);
     match StringMap.find_opt ident scope.locals with
     | Some local ->
       let binding = Local.binding local in

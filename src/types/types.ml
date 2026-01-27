@@ -326,6 +326,15 @@ module rec TypesImpl : sig
     }
 
   and expr_quote_ast =
+    | Complex of expr_quote_ast_complex
+    | Simple of expr_quote_ast_simple
+
+  and expr_quote_ast_simple =
+    { ast : Ast.t
+    ; def_site : compiler_scope option
+    }
+
+  and expr_quote_ast_complex =
     { rule : Syntax.Rule.t
     ; root : expr_quote_ast_group
     ; def_site : compiler_scope option
@@ -996,6 +1005,15 @@ end = struct
     }
 
   and expr_quote_ast =
+    | Complex of expr_quote_ast_complex
+    | Simple of expr_quote_ast_simple
+
+  and expr_quote_ast_simple =
+    { ast : Ast.t
+    ; def_site : compiler_scope option
+    }
+
+  and expr_quote_ast_complex =
     { rule : Syntax.Rule.t
     ; root : expr_quote_ast_group
     ; def_site : compiler_scope option

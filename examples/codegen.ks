@@ -12,36 +12,18 @@ impl syntax (@parse code) = `(
 
 use std.Ast;
 
-const type_to_ast = (t :: Type) -> Ast => (
-    let x = 2 + 2;
-    # TODO
-    `(
-        x
-    )
-);
-
-const type_to_ast_string = (t :: Type) -> String => (
-    if t == String then (
-        "String"
-    ) else if t == Float64 then (
-        "Float64"
-    ) else (
-        panic("i dont know them")
-    )
-);
-
 const generate = (what :: WhatToGenerate) -> Ast => (
-    let mut code = "const " + what.name + " = (";
-    code += "...args :: {";
+    let name :: Ast = @parse what.name;
+    let todo = `(_);
+    let mut args = `();
     for &arg in List.iter(&what.args) do (
-        code += type_to_ast_string(arg);
-        code += ", ";
+        args = `($args, arg);
     );
-    code += "}) -> " + type_to_ast_string(what.returns);
-    code += " => (\n";
-    code += "(@native \"(ctx,...args)=>" + what.name + "(...args)\")(...args)";
-    code += "\n)";
-    @parse code
+    `(
+        const $name = (...args :: { $args }) -> what.returns => (
+            (@native "(ctx,...args)=>" + what.name + "(...args)")(...args)
+        )
+    )
 );
 
 include_ast generate(

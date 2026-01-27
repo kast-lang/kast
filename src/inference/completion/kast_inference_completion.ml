@@ -320,15 +320,7 @@ module Impl = struct
       |> List.iter (fun { pattern; body } ->
         complete_pattern pattern;
         complete_expr body)
-    | E_QuoteAst { rule = _; root; def_site = _ } ->
-      let rec complete_group ({ rule = _; children; span = _ } : expr_quote_ast_group) =
-        children
-        |> complete_tuple (fun (child : expr_quote_ast_child) ->
-          match child with
-          | Group group -> complete_group group
-          | Ast expr -> complete_expr expr)
-      in
-      complete_group root
+    | E_QuoteAst expr -> complete_expr_quote_ast expr
     | E_Loop { body } -> complete_expr body
     | E_Unwindable { token; body } ->
       complete_pattern token;
@@ -353,6 +345,19 @@ module Impl = struct
         complete_expr cond;
         complete_expr body)
     | E_Error -> ()
+
+  and complete_expr_quote_ast (expr : expr_quote_ast) =
+    match expr with
+    | Simple { ast = _; def_site = _ } -> ()
+    | Complex { rule = _; root; def_site = _ } ->
+      let rec complete_group ({ rule = _; children; span = _ } : expr_quote_ast_group) =
+        children
+        |> complete_tuple (fun (child : expr_quote_ast_child) ->
+          match child with
+          | Group group -> complete_group group
+          | Ast expr -> complete_expr expr)
+      in
+      complete_group root
 
   and complete_place_expr ({ shape; mut; data } : place_expr) =
     Error.error_context

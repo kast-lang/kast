@@ -1561,28 +1561,22 @@ let quote : core_syntax =
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
           let rec construct ~root (ast : Ast.t) : expr =
-            let def_site =
+            (* let def_site =
               if true || root
               then Some (C.state.scopes |> State.Scopes.call_site)
               else None
-            in
+            in *)
+            let def_site = Some (C.state.scopes |> State.Scopes.def_site) in
             match ast.shape with
             | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
-              let ast =
-                { ast with
-                  data =
-                    { ast.data with def_site = ast.data.def_site |> Option.or_ def_site }
-                }
-              in
-              const_shape (V_Ast ast |> Value.inferred ~span:ast.data.span)
-              |> init_expr ast.data.span C.state
+              E_QuoteAst (Simple { ast; def_site }) |> init_expr ast.data.span C.state
             | Ast.Complex { rule; root } when rule.name = "core:unquote" ->
               let unquote =
                 root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
               in
               C.compile kind unquote
             | Ast.Complex { rule; root } ->
-              E_QuoteAst { rule; root = construct_group root; def_site }
+              E_QuoteAst (Complex { rule; root = construct_group root; def_site })
               |> init_expr ast.data.span C.state
             | Ast.Syntax _ -> fail "TODO"
           and construct_group (group : Ast.group) : Expr.Shape.quote_ast_group =

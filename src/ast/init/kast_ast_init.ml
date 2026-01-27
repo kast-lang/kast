@@ -127,4 +127,4 @@ module InitAstDefSite = struct
   ;;
 end
 
-let init_ast_def_site_delete = InitAstDefSite.init_ast
+let init_ast_def_site = InitAstDefSite.init_ast

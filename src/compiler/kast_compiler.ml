@@ -222,7 +222,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    |> Ast.flatten_children
                    |> Tuple.mapi (fun member (ast : Ast.t) : Types.value_tuple_field ->
                      let ast =
-                       Kast_ast_init.init_ast_def_site_delete
+                       Kast_ast_init.init_ast_def_site
                          (state.scopes |> State.Scopes.def_site)
                          ast
                      in

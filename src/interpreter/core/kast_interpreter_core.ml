@@ -1221,26 +1221,32 @@ and find_target_dependent_branch
 
 and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
   fun ~span state expr ->
-  let rec quote_group (group : Expr.Shape.quote_ast_group) : Ast.group =
-    { rule = group.rule
-    ; parts = []
-    ; children =
-        group.children
-        |> Tuple.map (fun (child : Expr.Shape.quote_ast_child) : Ast.child ->
-          match child with
-          | Group child_group -> Group (quote_group child_group)
-          | Ast child ->
-            Ast
-              (let child = eval state child in
-               match child |> Value.await_inferred with
-               | V_Ast ast -> ast
-               | _ -> fail "child must be ast"))
-    ; span = group.span
+  match expr with
+  | Simple expr ->
+    { shape = expr.ast.shape
+    ; data = { span; hygiene = DefSite; def_site = expr.def_site }
     }
-  in
-  { shape = Complex { rule = expr.rule; root = quote_group expr.root }
-  ; data = { span; hygiene = DefSite; def_site = expr.def_site }
-  }
+  | Complex expr ->
+    let rec quote_group (group : Expr.Shape.quote_ast_group) : Ast.group =
+      { rule = group.rule
+      ; parts = []
+      ; children =
+          group.children
+          |> Tuple.map (fun (child : Expr.Shape.quote_ast_child) : Ast.child ->
+            match child with
+            | Group child_group -> Group (quote_group child_group)
+            | Ast child ->
+              Ast
+                (let child = eval state child in
+                 match child |> Value.await_inferred with
+                 | V_Ast ast -> ast
+                 | _ -> fail "child must be ast"))
+      ; span = group.span
+      }
+    in
+    { shape = Complex { rule = expr.rule; root = quote_group expr.root }
+    ; data = { span; hygiene = DefSite; def_site = expr.def_site }
+    }
 
 and current_name : state -> Types.name_shape =
   fun state ->
