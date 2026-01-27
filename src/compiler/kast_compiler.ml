@@ -97,7 +97,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      ident.name
                      state.scopes
                  in
-                 local |> Compiler.local_place_expr span state
+                 local |> Compiler.local_place_expr def_site.interpreter span state
                | _ -> PE_Temp (compile state Expr ast) |> init_place_expr span state)
             | Expr ->
               (match token.shape with
@@ -110,7 +110,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      ident.name
                      state.scopes
                  in
-                 local |> Compiler.local_expr span state
+                 local |> Compiler.local_expr def_site.interpreter span state
                | Token.Shape.String s ->
                  let value : Value.shape =
                    match s.delimeter with
@@ -223,7 +223,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    |> Tuple.mapi (fun member (ast : Ast.t) : Types.value_tuple_field ->
                      let ast =
                        Kast_ast_init.init_ast_def_site
-                         (state.scopes |> State.Scopes.def_site)
+                         { compiler = Some (state.scopes |> State.Scopes.def_site)
+                         ; interpreter = None
+                         }
                          ast
                      in
                      (* let ast =

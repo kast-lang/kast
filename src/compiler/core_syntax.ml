@@ -60,7 +60,7 @@ let tuple_field
           ~from:label_ast.data.span
           label
           C.state.scopes
-        |> Compiler.local_expr span C.state
+        |> Compiler.local_expr label_ast.data.def_site.interpreter span C.state
     in
     (match ty |> Option.map (Compiler.eval_ty (module C)) with
      | None ->
@@ -90,7 +90,7 @@ let tuple_field
             ~from:label_ast.data.span
             label
             C.state.scopes
-          |> Compiler.local_expr span C.state
+          |> Compiler.local_expr label_ast.data.def_site.interpreter span C.state
         in
         (fun () -> TE_Expr expr) |> init_ty_expr span C.state
     in
@@ -118,7 +118,7 @@ let tuple_field
               ; label = Label.create_reference label_ast.data.span label
               ; mut = false
               ; hygiene = label_ast.data.hygiene
-              ; def_site = label_ast.data.def_site
+              ; def_site = label_ast.data.def_site.compiler
               }
           }
         |> init_pattern span C.state
@@ -1175,7 +1175,7 @@ let dot : core_syntax =
                          field
                          scope
                      in
-                     Compiler.local_place_expr span C.state local
+                     Compiler.local_place_expr None span C.state local
                      |> Compiler.data_add Expr (obj_expr, obj) kind
                    | _ ->
                      error span "expected obj to be compiler scope";

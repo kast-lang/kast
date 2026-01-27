@@ -331,7 +331,7 @@ let enter_ast_def_site (ast : Ast.t) (state : t) =
   match ast.data.hygiene with
   | CallSite -> () (* TODO maybe somthing *)
   | DefSite ->
-    (match ast.data.def_site with
+    (match ast.data.def_site.compiler with
      | None -> state.scopes <- { state.scopes with def_site = None }
      | Some def_site ->
        state.scopes <- state.scopes |> Scopes.enter_def_site ~span:ast.data.span def_site)

@@ -295,17 +295,48 @@ let finish_compiling (def : Types.maybe_compiled_fn) (compiled : Types.compiled_
   fs |> List.iter (fun f -> f ())
 ;;
 
-let rec local_place_expr span state (local : State.Scope.local) =
-  match local with
-  | Const _ -> PE_Temp (local_expr span state local) |> Init.init_place_expr span state
-  | Binding binding -> PE_Binding binding |> Init.init_place_expr span state
+type looked_up_local =
+  | Const of
+      { value : value
+      ; binding : binding option
+      }
+  | Binding of binding
 
-and local_expr span state (local : State.Scope.local) =
+let local_lookup def_site_interpreter_scope span (local : State.Scope.local)
+  : looked_up_local
+  =
   match local with
   | Const { place; binding } ->
     let value = Kast_interpreter.read_place place ~span in
+    Const { value; binding = Some binding }
+  | Binding binding ->
+    (match def_site_interpreter_scope with
+     | Some scope ->
+       (match Kast_interpreter.Scope.find_opt binding.name scope with
+        | Some place ->
+          let value = Kast_interpreter.read_place place ~span in
+          Const { value; binding = Some binding }
+        | None -> Binding binding)
+     | _ -> Binding binding)
+;;
+
+let rec local_place_expr def_site_interpreter_scope span state (local : State.Scope.local)
+  =
+  match local_lookup def_site_interpreter_scope span local with
+  | Const _ ->
+    PE_Temp (local_expr def_site_interpreter_scope span state local)
+    |> Init.init_place_expr span state
+  | Binding binding -> PE_Binding binding |> Init.init_place_expr span state
+
+and local_expr def_site_interpreter_scope span state (local : State.Scope.local) =
+  match local_lookup def_site_interpreter_scope span local with
+  | Const { value; binding } ->
     let expr = E_Constant { id = Id.gen (); value } |> Init.init_expr span state in
-    expr.data.evaled.binding <- Some binding;
+    (match binding with
+     | Some binding -> expr.data.evaled.binding <- Some binding
+     | None -> ());
     expr
-  | Binding _ -> E_Claim (local_place_expr span state local) |> Init.init_expr span state
+  | Binding _ ->
+    E_Claim (local_place_expr def_site_interpreter_scope span state local)
+    |> Init.init_expr span state
 ;;

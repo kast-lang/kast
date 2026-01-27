@@ -27,7 +27,12 @@ module InitAst = struct
             }
         | Error { parts } -> Error { parts = parts |> List.map init_ast_part }
       in
-      let data : Ast.Data.t = { span = ast.data; hygiene = DefSite; def_site = None } in
+      let data : Ast.Data.t =
+        { span = ast.data
+        ; hygiene = DefSite
+        ; def_site = { compiler = None; interpreter = None }
+        }
+      in
       let result : Ast.t = { shape; data } in
       Hashtbl.add ctx id result;
       result
@@ -64,7 +69,7 @@ let init_ast = InitAst.init_ast
 module InitAstDefSite = struct
   type ctx =
     { inited : (int, Ast.t) Hashtbl.t
-    ; scope : Types.compiler_scope
+    ; def_site : Types.def_site
     }
 
   type _ Effect.t += GetCtx : ctx Effect.t
@@ -93,7 +98,11 @@ module InitAstDefSite = struct
       let data : Ast.Data.t =
         { span = ast.data.span
         ; hygiene = ast.data.hygiene
-        ; def_site = ast.data.def_site |> Option.or_ (Some ctx.scope)
+        ; def_site =
+            { compiler = ast.data.def_site.compiler |> Option.or_ ctx.def_site.compiler
+            ; interpreter =
+                ast.data.def_site.interpreter |> Option.or_ ctx.def_site.interpreter
+            }
         }
       in
       let result : Ast.t = { shape; data } in
@@ -120,8 +129,8 @@ module InitAstDefSite = struct
     | Group g -> Group (init_ast_group g)
   ;;
 
-  let init_ast scope ast =
-    let ctx : ctx = { inited = Hashtbl.create 0; scope } in
+  let init_ast def_site ast =
+    let ctx : ctx = { inited = Hashtbl.create 0; def_site } in
     try init_ast ast with
     | effect GetCtx, k -> Effect.continue k ctx
   ;;

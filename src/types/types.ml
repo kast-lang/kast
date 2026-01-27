@@ -667,7 +667,12 @@ module rec TypesImpl : sig
   and ast_data =
     { span : Span.t
     ; hygiene : ast_hygiene
-    ; def_site : compiler_scope option
+    ; def_site : def_site
+    }
+
+  and def_site =
+    { compiler : compiler_scope option
+    ; interpreter : interpreter_scope option
     }
 
   and ast_hygiene =
@@ -1352,7 +1357,12 @@ end = struct
   and ast_data =
     { span : Span.t
     ; hygiene : ast_hygiene
-    ; def_site : compiler_scope option
+    ; def_site : def_site
+    }
+
+  and def_site =
+    { compiler : compiler_scope option
+    ; interpreter : interpreter_scope option
     }
 
   and ast_hygiene =
