@@ -11,7 +11,7 @@ const reflection = (
         | :Tuple List.t[Field]
     );
     
-    const get_info :: type -> TypeInfo = @native "reflection.get_info";
+    const get_info :: Type -> TypeInfo = @native "reflection.get_info";
 );
 
 @syntax "@field" 10 @wrap never = "@field" "(" obj "," " " field ")";
@@ -22,7 +22,7 @@ impl syntax (@field(obj, field)) = `(
 
 (
     module:
-    const default_value = [T :: type] T => with_return (
+    const default_value = [T :: Type] T => with_return (
         match reflection.get_info(T) with (
             | :Int32 => 0
             | :Tuple fields => (

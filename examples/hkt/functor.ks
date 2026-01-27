@@ -1,6 +1,6 @@
 use std.prelude.*;
 
-const Functor = [F :: [type] -> type] type {
+const Functor = [F :: [Type] -> Type] newtype {
     .fmap :: [A, B] (F[A], A -> B) -> F[B],
 };
 
@@ -18,7 +18,7 @@ impl List.t as Functor = {
     ),
 };
 
-const increment_all = [F :: [type] -> type] (a :: F[Int32]) -> F[Int32] => (
+const increment_all = [F :: [Type] -> Type] (a :: F[Int32]) -> F[Int32] => (
     (F as Functor).fmap(a, el => el + 1)
 );
 

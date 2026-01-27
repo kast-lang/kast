@@ -1,4 +1,5 @@
 module:
+use Type;
 use Bool;
 use UInt32;
 use Int32;

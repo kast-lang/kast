@@ -1,8 +1,8 @@
 use std.prelude.*;
 
 # * -> *
-const TypeFn = type ([T :: type] type);
-const Apply = [F :: TypeFn, A :: type] (
+const TypeFn = type ([T :: Type] Type);
+const Apply = [F :: TypeFn, A :: Type] (
     F[A]
 );
 const Id :: TypeFn = [T] T;

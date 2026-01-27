@@ -4,22 +4,22 @@ include "./syntax.ks";
 
 const Type = @native "Type";
 
-const UnwindToken = [T :: type] ((@native "UnwindToken")(T) :: Type);
+const UnwindToken = [T :: Type] ((@native "UnwindToken")(T) :: Type);
 const UnwindUnit = UnwindToken[type ()];
 const LoopBlock = @context UnwindUnit;
 const LoopBody = @context UnwindUnit;
 # const ReturnBlock = @context newtype (
-#     .T :: type,
+#     .T :: Type,
 #     .token :: Any,
 # );
-const Bool :: type = @native "Bool";
-const Int32 :: type = @native "Int32";
+const Bool :: Type = @native "Bool";
+const Int32 :: Type = @native "Int32";
 const UInt32 = Int32;
-const Int64 :: type = @native "Int64";
-const Float64 :: type = @native "Float64";
-const Char :: type = @native "Char";
-const String :: type = @native "String";
-const Ast :: type = @native "Ast";
+const Int64 :: Type = @native "Int64";
+const Float64 :: Type = @native "Float64";
+const Char :: Type = @native "Char";
+const String :: Type = @native "String";
+const Ast :: Type = @native "Ast";
 
 const cmp = include "./cmp.ks";
 const op = include "./op.ks";
@@ -44,6 +44,6 @@ const panic = [T] (s :: String) -> T => @cfg (
     | target.name == "interpreter" => (@native "panic")(s)
     | target.name == "javascript" => (@native "Kast.panic")(s)
 );
-const type_of_value = [T] (x :: T) -> type => T;
+const type_of_value = [T] (x :: T) -> Type => T;
 
 const prelude = include "./prelude.ks";

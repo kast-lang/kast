@@ -1,6 +1,6 @@
 use std.prelude.*;
 
-const Monad = [M :: [_ :: type] type] newtype {
+const Monad = [M :: [_ :: Type] Type] newtype {
     .ret :: [T] T -> M[T],
     .flat_map :: [A, B] (M[A], (A -> M[B])) -> M[B],
 };
@@ -25,7 +25,7 @@ impl Treap.t as Monad = {
     ),
 };
 
-const join = [M :: [_ :: type] type] (
+const join = [M :: [_ :: Type] Type] (
     [T] (a :: M[M[T]]) -> M[T] => (
         (M as Monad).flat_map(a, x => x)
     )
@@ -45,7 +45,7 @@ const join = [M :: [_ :: type] type] (
     print <| Treap.to_string(&a, &x => x |> to_string);
 );
 
-const compose = [M :: [type] -> type] [A, B] (a :: M[A], b :: M[B]) -> M[B] => (
+const compose = [M :: [Type] -> Type] [A, B] (a :: M[A], b :: M[B]) -> M[B] => (
     (M as Monad).flat_map(a, _ => b)
 );
 
