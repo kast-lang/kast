@@ -14,13 +14,13 @@ let rec find_in : Included_dir.included_dir -> string -> string =
     else (
       match dir.entries |> StringMap.find_opt dir_name with
       | Some (Dir dir) -> find_in dir rest
-      | Some _ -> fail "%S is not a dir" dir_name
-      | None -> fail "dir %S doesnt exist" dir_name)
+      | Some _ -> fail "%a is not a dir" String.print_debug dir_name
+      | None -> fail "dir %a doesnt exist" String.print_debug dir_name)
   | None ->
     (match dir.entries |> StringMap.find_opt path with
      | Some (File { contents }) -> contents
-     | Some _ -> fail "%S is not a file" path
-     | None -> fail "file %S doesnt exist" path)
+     | Some _ -> fail "%a is not a file" String.print_debug path
+     | None -> fail "file %a doesnt exist" String.print_debug path)
 ;;
 
 let with_embedded_std : 'a. (unit -> 'a) -> 'a =

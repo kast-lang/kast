@@ -1507,7 +1507,8 @@ let impl_syntax : core_syntax =
                 |> Kast_parser.Ruleset.find_rule_opt name
                 |> (function
                  | Some rule -> Hashtbl.add C.state.custom_syntax_impls rule.id impl
-                 | None -> Error.error span "Syntax rule not found: %S" name)
+                 | None ->
+                   Error.error span "Syntax rule not found: %a" String.print_debug name)
               | None -> Error.error name_expr.data.span "Name must be a string");
              const_shape (V_Unit |> Value.inferred ~span)
              |> init_expr span C.state
@@ -2481,7 +2482,7 @@ let all : core_syntax StringMap.t =
 let handle name (module C : Compiler.S) kind (ast : Ast.t) root =
   match all |> StringMap.find_opt name with
   | None ->
-    error ast.data.span "there is no core syntax %S" name;
+    error ast.data.span "there is no core syntax %a" String.print_debug name;
     init_error ast.data.span C.state kind
   | Some core_syntax -> core_syntax.handle (module C) kind ast root
 ;;

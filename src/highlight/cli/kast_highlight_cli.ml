@@ -22,7 +22,8 @@ module Args = struct
     | [ "--html"; path ] | [ path; "--html" ] -> { path = Uri.file path; output = Html }
     | [ ("--term" | "--terminal"); path ] | [ path; ("--term" | "--terminal") ] ->
       { path = Uri.file path; output = Term }
-    | _ :: first :: _rest -> fail "Unexpected arg %S, expecting --html or --term" first
+    | _ :: first :: _rest ->
+      fail "Unexpected arg %a, expecting --html or --term" String.print_debug first
   ;;
 end
 

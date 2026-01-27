@@ -77,7 +77,7 @@ let complete (type a) (kind : a compiled_kind) (compiled : a) (pos : position) =
   Log.trace (fun log ->
     log
       "Completed with %a"
-      (List.print String.print_dbg)
+      (List.print String.print_debug)
       (completions |> StringMap.to_list |> List.map (fun (key, _) -> key)));
   Some (completions |> StringMap.to_list |> List.map (fun (_key, value) -> value))
 ;;

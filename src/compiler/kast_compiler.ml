@@ -117,13 +117,17 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    match s.delimeter with
                    | "\"" -> V_String s.contents
                    | "'" ->
-                     if s.contents |> String.length = 1
-                     then V_Char (String.get s.contents 0 |> Option.get)
-                     else (
-                       Error.error span "Char literals must have a single char";
-                       V_Error)
+                     (match String.into_single_utf8 s.contents with
+                      | Some c -> V_Char c
+                      | None ->
+                        Error.error span "Char literals must have a single char";
+                        V_Error)
                    | _ ->
-                     Error.error span "Unexpected delimeter %S" s.delimeter;
+                     Error.error
+                       span
+                       "Unexpected delimeter %a"
+                       String.print_debug
+                       s.delimeter;
                      V_Error
                  in
                  const_shape (value |> Value.inferred ~span) |> init_expr span state
@@ -278,7 +282,11 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                     Error.error span "macro expanded not to ast???";
                     init_error span state kind)
                | None ->
-                 Error.error span "Must impl rule before using it: %S" rule.name;
+                 Error.error
+                   span
+                   "Must impl rule before using it: %a"
+                   String.print_debug
+                   rule.name;
                  init_error span state kind))
          | Ast.Syntax { mode; value_after; comments_before = _; tokens = _ } ->
            (match value_after with
@@ -293,7 +301,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
        with
        | Cancel -> raise Cancel
        | exc ->
-         Log.trace (fun log -> log "Exception: %S" (Printexc.to_string exc));
+         Log.trace (fun log ->
+           log "Exception: %a" String.print_debug (Printexc.to_string exc));
          Log.error (fun log ->
            log
              "While compiling %a %a at %a"

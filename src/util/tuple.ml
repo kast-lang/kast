@@ -18,7 +18,7 @@ module Tuple = struct
 
     let print fmt = function
       | Index i -> fprintf fmt "%d" i
-      | Name name -> fprintf fmt "%S" name
+      | Name name -> fprintf fmt "%a" String.print_debug name
     ;;
   end
 
@@ -233,9 +233,9 @@ module Tuple = struct
     then
       fail
         "Expected named fields %a, got %a"
-        (List.print String.print_dbg)
+        (List.print String.print_debug)
         named
-        (List.print String.print_dbg)
+        (List.print String.print_debug)
         (tuple.named_order_rev |> List.rev);
     List.append
       (tuple.unnamed |> Array.to_list)

@@ -9,7 +9,7 @@ let init () =
     =
     native_fn name (fun _ty ~caller ~state:_ args ->
       Kast_profiling.record
-        (fun () -> make_string "native %S" name)
+        (fun () -> make_string "native %a" String.print_debug name)
         (fun () ->
            match args |> Value.await_inferred with
            | V_Tuple { ty = _; tuple } ->
@@ -37,7 +37,11 @@ let init () =
              in
              result |> Value.inferred ~span
            | _ ->
-             Error.error caller "bin op %S expected a tuple as arg" name;
+             Error.error
+               caller
+               "bin op %a expected a tuple as arg"
+               String.print_debug
+               name;
              V_Error |> Value.inferred ~span))
   in
   [ bin_op "+" Int32.add Int64.add (Some Float.add)

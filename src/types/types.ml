@@ -56,7 +56,7 @@ module rec TypesImpl : sig
     | V_Int32 of int32
     | V_Int64 of int64
     | V_Float64 of float
-    | V_Char of char
+    | V_Char of Uchar.t
     | V_Ref of value_ref
     | V_String of string
     | V_Tuple of value_tuple
@@ -722,7 +722,7 @@ end = struct
     | V_Int32 of int32
     | V_Int64 of int64
     | V_Float64 of float
-    | V_Char of char
+    | V_Char of Uchar.t
     | V_Ref of value_ref
     | V_String of string
     | V_Tuple of value_tuple

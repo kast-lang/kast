@@ -183,7 +183,7 @@ module Value = struct
     | _ -> None
   ;;
 
-  let expect_char : value -> char option =
+  let expect_char : value -> Uchar.t option =
     fun value ->
     match value |> await_inferred with
     | V_Char value -> Some value

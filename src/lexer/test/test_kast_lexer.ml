@@ -16,7 +16,7 @@ module ExpectedToken = struct
     match token with
     | Ident s -> fprintf fmt "@{<under>%a@}" String.print_maybe_escaped s
     | Punct s -> fprintf fmt "%a" String.print_maybe_escaped s
-    | String s -> fprintf fmt "@{<green>%S@}" s
+    | String s -> fprintf fmt "@{<green>%a@}" String.print_debug s
     | Eof -> fprintf fmt "@{<italic><eof>@}"
   ;;
 

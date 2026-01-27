@@ -98,7 +98,13 @@ let expect_next : lexer -> string -> unit =
   let token = peek lexer in
   if Token.is_raw expected_raw token
   then advance lexer
-  else error "expected @{<white>%S@}, got %a" expected_raw Token.print token
+  else
+    error
+      "expected @{<white>%a@}, got %a"
+      String.print_debug
+      expected_raw
+      Token.print
+      token
 ;;
 
 let expect_eof : lexer -> unit =
@@ -389,5 +395,5 @@ let maybe_convert_to_raw_ident : string -> string =
     | None -> true
     | Some _ident -> reader |> Reader.peek |> Option.is_some
   in
-  if convert_to_raw then Format.sprintf "@%S" name else name
+  if convert_to_raw then make_string "@%a" String.print_debug name else name
 ;;

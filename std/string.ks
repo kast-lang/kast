@@ -20,8 +20,13 @@ impl String as module = (
             .iter = f => (@native "Kast.String.iter")(s, f)
         }
     );
-    const iteri = (s :: String) -> std.iter.Iterable[type { Int32, Char }] => (
-        iter(s) |> std.iter.enumerate
+    const iteri = (s :: String) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
+        | target.name == "interpreter" => {
+            .iter = f => (@native "string.iteri")(s, (i, c) => f({ i, c }))
+        }
+        | target.name == "javascript" => {
+            .iter = f => (@native "Kast.String.iteri")(s, f)
+        }
     );
     const index_of = (c :: Char, s :: String) -> Int32 => with_return (
         for { i, c_at_i } in iteri(s) do (

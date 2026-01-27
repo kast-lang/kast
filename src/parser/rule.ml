@@ -218,7 +218,8 @@ let collect : Parsed_part.t list -> Syntax.Rule.t -> Ast.t =
       if parsed_keyword |> Token.is_raw expected_keyword |> not
       then
         unreachable
-          "Can't collect parsed parts, expected keyword %S, got %a"
+          "Can't collect parsed parts, expected keyword %a, got %a"
+          String.print_debug
           expected_keyword
           Token.print
           parsed_keyword;

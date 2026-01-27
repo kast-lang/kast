@@ -18,7 +18,7 @@ module SyntaxMode = struct
   let print fmt mode =
     fprintf fmt "@{<yellow>";
     (match mode with
-     | Define rule -> fprintf fmt "@syntax %S" rule.name
+     | Define rule -> fprintf fmt "@syntax %a" String.print_debug rule.name
      | FromScratch -> fprintf fmt "@syntax from_scratch");
     fprintf fmt "@}"
   ;;

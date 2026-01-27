@@ -810,7 +810,7 @@ and eval_expr_native : state -> expr -> Types.expr_native -> value =
         let ty = monomorphized_ty ~state expr.data in
         f ty
       | None ->
-        Error.error expr.data.span "no native %S" native_expr;
+        Error.error expr.data.span "no native %a" String.print_debug native_expr;
         V_Error |> Value.inferred ~span
     in
     Hashtbl.add state.monomorphization_state.native id value;

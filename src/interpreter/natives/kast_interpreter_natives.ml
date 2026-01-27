@@ -44,7 +44,7 @@ let init_natives () =
                arg
                |> Value.expect_ty
                |> Option.unwrap_or_else (fun () ->
-                 Error.error caller "%S expected a type arg" name;
+                 Error.error caller "%a expected a type arg" String.print_debug name;
                  error ())
                |> fun ty -> Ty.await_inferred ty
              in

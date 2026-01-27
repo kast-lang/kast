@@ -73,10 +73,12 @@ let unite_data ~span:_ a b =
       if a.name <> b.name
       then
         fail
-          "tried uniting different labels %S (%a) and %S (%a)"
+          "tried uniting different labels %a (%a) and %a (%a)"
+          String.print_debug
           a.name
           Span.print
           (get_data_span a)
+          String.print_debug
           b.name
           Span.print
           (get_data_span b)

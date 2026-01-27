@@ -18,6 +18,7 @@ let rsplit_at = (s :: String, c :: Char) -> { String, String } => (
 let parse_tags = (s :: String) -> Map.t[String, String] => (
     let mut tags = Map.create();
     for part in String.split(s, ';') do (
+        dbg.print(part);
         let { key, value } = String.split_once(part, '=');
         Map.add(&mut tags, key, value);
     );
@@ -78,6 +79,6 @@ let parse_user = (s :: String) -> User => (
     { .nick, .user, .host }
 );
 
-let raw_msg = "@badge-info=subscriber/53;badges=broadcaster/1,subscriber/0,hornet/1;client-nonce=df1d6cc48c1f4e8e8dc49de271c2203e;color=#FF69B4;display-name=kuviman;emotes=;first-msg=0;flags=;id=3ecda213-8e3c-4a1f-b9b6-9bf22c74b954;mod=0;returning-chatter=0;room-id=105277748;subscriber=1;tmi-sent-ts=1768541275311;turbo=0;user-id=105277748;user-type= :kuviman!kuviman@kuviman.tmi.twitch.tv PRIVMSG #kuviman :test";
+let raw_msg = "@badge-info=subscriber/53;badges=broadcaster/1,subscriber/0,hornet/1;client-nonce=989c6a77f6844d258fbb16d0ce85967c;color=#FF69B4;display-name=kuviman;emotes=;first-msg=0;flags=;id=ed2b925a-2b35-4bb3-8fd9-cfaed01ed23d;mod=0;reply-parent-display-name=mynameistito_;reply-parent-msg-body=🤔\\s🤔;reply-parent-msg-id=12197a59-20d2-4051-a78a-6c078f9fd5f9;reply-parent-user-id=178668441;reply-parent-user-login=mynameistito_;reply-thread-parent-display-name=mynameistito_;reply-thread-parent-msg-id=12197a59-20d2-4051-a78a-6c078f9fd5f9;reply-thread-parent-user-id=178668441;reply-thread-parent-user-login=mynameistito_;returning-chatter=0;room-id=105277748;subscriber=1;tmi-sent-ts=1769459706619;turbo=0;user-id=105277748;user-type= :kuviman!kuviman@kuviman.tmi.twitch.tv PRIVMSG #kuviman :@mynameistito_ dsds";
 let msg = raw_msg |> parse_msg;
 dbg.print({ .msg });

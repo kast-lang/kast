@@ -181,7 +181,7 @@ module VarScope = struct
     | V_Int32 (_ : int32) -> root ()
     | V_Int64 (_ : int64) -> root ()
     | V_Float64 (_ : float) -> root ()
-    | V_Char (_ : char) -> root ()
+    | V_Char (_ : Uchar.t) -> root ()
     | V_Ref x -> of_value_ref x
     | V_String (_ : string) -> root ()
     | V_Tuple x -> of_value_tuple x

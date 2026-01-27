@@ -115,7 +115,7 @@ let finish (writer : t) : unit =
     writer.sources
     |> List.iteri (fun i source ->
       if i <> 0 then fprintf fmt ",";
-      fprintf fmt "%S" (Uri.to_string source));
+      fprintf fmt "%a" String.print_debug (Uri.to_string source));
     fprintf fmt "]"
   in
   let print_sources_content fmt =
@@ -124,7 +124,7 @@ let finish (writer : t) : unit =
     |> List.iteri (fun i source ->
       if i <> 0 then fprintf fmt ",";
       let source = Source.read source in
-      fprintf fmt "%S" source.contents);
+      fprintf fmt "%a" String.print_debug source.contents);
     fprintf fmt "]"
   in
   let print_names fmt =
@@ -132,15 +132,16 @@ let finish (writer : t) : unit =
     writer.names
     |> List.iteri (fun i name ->
       if i <> 0 then fprintf fmt ",";
-      fprintf fmt "%S" name);
+      fprintf fmt "%a" String.print_debug name);
     fprintf fmt "]"
   in
   fprintf
     fmt
-    "{\"version\":3,\"sources\":%t,\"sourcesContent\":%t,\"names\":%t,\"mappings\":%S}"
+    "{\"version\":3,\"sources\":%t,\"sourcesContent\":%t,\"names\":%t,\"mappings\":%a}"
     print_sources
     print_sources_content
     print_names
+    String.print_debug
     mappings;
   Format.pp_print_flush fmt ();
   close_out out;

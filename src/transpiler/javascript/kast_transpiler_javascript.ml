@@ -277,7 +277,7 @@ module Impl = struct
     if check_simple_name name
     then (
       let name = make_string "%a" Print.print_name_shape name in
-      let expr = make_string "Kast.types.create_or_find(%S)" name in
+      let expr = make_string "Kast.types.create_or_find(%a)" String.print_debug name in
       calculate { shape = JsAst.Raw expr; span = None })
     else raise (Invalid_argument "only simple names pls")
 
@@ -291,11 +291,16 @@ module Impl = struct
   and transpile_ty_shape : ty_shape -> no_effect_expr =
     fun shape ->
     let todo_ty s : no_effect_expr =
-      calculate { shape = JsAst.Raw (make_string "Kast.types.todo(%S)" s); span = None }
+      calculate
+        { shape = JsAst.Raw (make_string "Kast.types.todo(%a)" String.print_debug s)
+        ; span = None
+        }
     in
     let primitive s : no_effect_expr =
       calculate
-        { shape = JsAst.Raw (make_string "Kast.types.primitive[%S]" s); span = None }
+        { shape = JsAst.Raw (make_string "Kast.types.primitive[%a]" String.print_debug s)
+        ; span = None
+        }
     in
     match shape with
     | T_Unit -> primitive "Unit"
@@ -405,7 +410,8 @@ module Impl = struct
       | V_Int32 x -> NoEffect { shape = JsAst.Number (Int32.to_float x); span = None }
       | V_Int64 x -> NoEffect { shape = JsAst.Bigint (Int64.to_string x); span = None }
       | V_Float64 x -> NoEffect { shape = JsAst.Number x; span = None }
-      | V_Char c -> NoEffect { shape = JsAst.String (String.make 1 c); span = None }
+      | V_Char c ->
+        NoEffect { shape = JsAst.String (String.from_single_utf8 c); span = None }
       | V_String s -> calculate { shape = JsAst.String s; span = None }
       | V_Ref _ -> failwith __LOC__
       | V_Tuple { tuple; ty = _ } ->
@@ -835,7 +841,12 @@ module Impl = struct
               Let
                 { var = name
                 ; value =
-                    { shape = Raw (make_string "Symbol(%S)" (Label.get_name label))
+                    { shape =
+                        Raw
+                          (make_string
+                             "Symbol(%a)"
+                             String.print_debug
+                             (Label.get_name label))
                     ; span = None
                     }
                 }

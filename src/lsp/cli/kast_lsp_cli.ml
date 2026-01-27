@@ -34,7 +34,7 @@ module Args = struct
 
   let parse : string list -> args = function
     | [] -> { dummy = () }
-    | arg :: _rest -> fail "Unexpected arg %S" arg
+    | arg :: _rest -> fail "Unexpected arg %a" String.print_debug arg
   ;;
 end
 
@@ -141,7 +141,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
       ~(notify_back : Linol_eio.Jsonrpc2.notify_back)
       (uri : Lsp.Types.DocumentUri.t)
       (contents : string) =
-      Log.info (fun log -> log "_on_doc %S" (Lsp.Uri0.to_path uri));
+      Log.info (fun log -> log "_on_doc %a" String.print_debug (Lsp.Uri0.to_string uri));
       if changed
       then (
         Processing.update_file (self#get_state ()) uri contents;

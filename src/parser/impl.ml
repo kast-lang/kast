@@ -115,12 +115,15 @@ and try_continue_with_keyword (state : parse_one_state) (context : context)
       && context.continuation_keywords |> StringSet.contains keyword
     then (
       Log.trace (fun log ->
-        log "Not continuing with keyword because %S is in continuation keywords" keyword);
+        log
+          "Not continuing with keyword because %a is in continuation keywords"
+          String.print_debug
+          keyword);
       return None);
     let edge : Ruleset.edge = Keyword keyword in
     let* next_node = state.node.next |> Ruleset.EdgeMap.find_opt edge in
     if not (should_continue_with next_node state context) then return None;
-    Log.trace (fun log -> log "Following with keyword %S" keyword);
+    Log.trace (fun log -> log "Following with keyword %a" String.print_debug keyword);
     Lexer.advance context.lexer;
     let new_state : parse_one_state =
       { node = next_node

@@ -16,8 +16,9 @@ type ast =
       }
 
 let rec print fmt = function
-  | Simple s -> fprintf fmt "%S" s
-  | Complex { name; children } -> fprintf fmt "%S %a" name (Tuple.print print) children
+  | Simple s -> fprintf fmt "%a" String.print_debug s
+  | Complex { name; children } ->
+    fprintf fmt "%a %a" String.print_debug name (Tuple.print print) children
 ;;
 
 let get_name : Ast.t -> string = function

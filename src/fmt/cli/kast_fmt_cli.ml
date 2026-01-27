@@ -35,7 +35,8 @@ module Args = struct
         | "term" | "terminal" -> Some Term
         | _ ->
           fail
-            "Unexpected highlight output '%S', only 'html', 'term' or 'none' are allowed"
+            "Unexpected highlight output %a, only 'html', 'term' or 'none' are allowed"
+            String.print_debug
             highlight
       in
       { (parse rest) with hl_output }
@@ -68,7 +69,12 @@ let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
           with
           | e ->
             Log.error (fun log ->
-              log "while rewriting %S at %a" rule.name Span.print ast.data);
+              log
+                "while rewriting %a at %a"
+                String.print_debug
+                rule.name
+                Span.print
+                ast.data);
             raise e)
        | None ->
          { shape = Ast.Complex { rule; root = rewrite_group root }; data = ast.data })

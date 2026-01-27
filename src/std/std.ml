@@ -1,5 +1,6 @@
 include Format
 include Char
+include Uchar
 include String
 include Option
 include List
@@ -81,6 +82,6 @@ let timed name f =
   let start = Sys.time () in
   let result = f () in
   let time = Sys.time () -. start in
-  Log.info (fun log -> log "time for %S = %f s" name time);
+  Log.info (fun log -> log "time for %a = %f s" String.print_debug name time);
   result
 ;;

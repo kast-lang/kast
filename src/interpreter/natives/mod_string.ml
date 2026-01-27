@@ -25,8 +25,14 @@ let init () =
           |> Value.expect_int32
           |> Option.unwrap_or_else (error "expected idx be int32")
         in
-        V_Char (String.get s (Int32.to_int idx) |> Option.unwrap_or_else (error "oob"))
-        |> Value.inferred ~span))
+        let idx = Int32.to_int idx in
+        if idx >= String.length s
+        then error "oob" ()
+        else (
+          let c = String.get_utf_8_uchar s idx in
+          if Uchar.utf_decode_is_valid c
+          then V_Char (Uchar.utf_decode_uchar c) |> Value.inferred ~span
+          else error "invalid utf8 index" ())))
   ; native_fn "string.length" (fun _ty ~caller ~state:_ args : value ->
       let arg = single_arg ~span args in
       with_return (fun { return } ->
@@ -97,7 +103,7 @@ let init () =
           |> Option.unwrap_or_else (error "expected fn as second arg")
         in
         s
-        |> String.iter (fun c ->
+        |> String.iter_utf8 (fun c ->
           let c : value = V_Char c |> Value.inferred ~span in
           (match Value.ty_of f |> Ty.await_inferred |> Ty.Shape.expect_fn with
            | Some f_ty ->
@@ -108,13 +114,51 @@ let init () =
            | None -> Error.error span "not a fn");
           ());
         V_Unit |> Value.inferred ~span))
+  ; native_fn "string.iteri" (fun _ty ~caller ~state args : value ->
+      with_return (fun { return } ->
+        let error msg () =
+          Error.error caller "string.iteri: %s" msg;
+          return (V_Error |> Value.inferred ~span)
+        in
+        let args =
+          args |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
+        in
+        if not (args.tuple |> Tuple.is_unnamed 2)
+        then error "expected 2 unnamed fields" ();
+        let s, f = args.tuple |> Tuple.unwrap_unnamed2 in
+        let s =
+          s.place
+          |> claim ~span:caller
+          |> Value.expect_string
+          |> Option.unwrap_or_else (error "expected string as first arg")
+        in
+        let f = f.place |> claim ~span:caller in
+        let _ =
+          f
+          |> Value.expect_fn
+          |> Option.unwrap_or_else (error "expected fn as second arg")
+        in
+        s
+        |> String.iteri_utf8 (fun i c ->
+          let i : value = V_Int32 (Int32.of_int i) |> Value.inferred ~span in
+          let c : value = V_Char c |> Value.inferred ~span in
+          (match Value.ty_of f |> Ty.await_inferred |> Ty.Shape.expect_fn with
+           | Some f_ty ->
+             let f_arg_ty =
+               f_ty.arg |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+             in
+             ignore
+             <| call caller state f (make_args ~span (Tuple.make [ i; c ] []) f_arg_ty)
+           | None -> Error.error span "not a fn");
+          ());
+        V_Unit |> Value.inferred ~span))
   ; native_fn "to_string" (fun _ty ~caller ~state:_ args ->
       let arg = single_arg ~span args in
       with_return (fun { return } : Value.Shape.t ->
         let s =
           match arg |> Value.await_inferred with
           | V_Bool value -> Bool.to_string value
-          | V_Char value -> String.make 1 value
+          | V_Char value -> String.from_single_utf8 value
           | V_Int32 value -> Int32.to_string value
           | V_Int64 value -> Int64.to_string value
           | V_Float64 value -> Float.to_string value
@@ -145,7 +189,13 @@ let init () =
           match parsed with
           | Some value -> value
           | None ->
-            Error.error caller "could not parse %S as %a" s Ty.print result_ty;
+            Error.error
+              caller
+              "could not parse %a as %a"
+              String.print_debug
+              s
+              Ty.print
+              result_ty;
             V_Error
         in
         shape |> Value.inferred ~span

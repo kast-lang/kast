@@ -65,8 +65,8 @@ module Impl = struct
     | V_Int32 value -> fprintf fmt "@{<italic>%ld@}" value
     | V_Int64 value -> fprintf fmt "@{<italic>%Ld@}" value
     | V_Float64 value -> fprintf fmt "@{<italic>%f@}" value
-    | V_Char value -> fprintf fmt "@{<green>%C@}" value
-    | V_String value -> fprintf fmt "@{<green>%S@}" value
+    | V_Char value -> fprintf fmt "@{<green>%a@}" Uchar.print_debug value
+    | V_String value -> fprintf fmt "@{<green>%a@}" String.print_debug value
     | V_Ref { mut; place } ->
       fprintf fmt "&";
       if mut then fprintf fmt "mut ";
@@ -351,7 +351,8 @@ module Impl = struct
         "@{<magenta>newtype@} %a"
         (Tuple.print (print_ty_expr ~options))
         (Tuple.make [ e ] [])
-    | E_Native { id = _; expr } -> fprintf fmt "@{<magenta>native@} @{<green>%S@}" expr
+    | E_Native { id = _; expr } ->
+      fprintf fmt "@{<magenta>native@} @{<green>%a@}" String.print_debug expr
     | E_Module { def; bindings = _ } ->
       fprintf fmt "@{<magenta>module@} %a" (print_expr ~options) def
     | E_UseDotStar { used; bindings = _ } ->
@@ -646,7 +647,7 @@ module Impl = struct
   (* ; Id.print fmt binding.id *)
 
   and print_target : formatter -> value_target -> unit =
-    fun fmt { name } -> fprintf fmt "@{<italic><target=%S>@}" name
+    fun fmt { name } -> fprintf fmt "@{<italic><target=%a>@}" String.print_debug name
 
   and print_optionally_named : formatter -> optional_name -> (formatter -> unit) -> unit =
     fun fmt name f ->

@@ -43,7 +43,6 @@ module Scope = struct
 
   let rec find_opt : from:span -> string -> scope -> local option =
     fun ~from ident scope ->
-    (* Log.trace (fun log -> log "Looking for %S in %a" ident Id.print scope.id); *)
     match StringMap.find_opt ident scope.locals with
     | Some local ->
       let binding = Local.binding local in
@@ -53,16 +52,8 @@ module Scope = struct
       let find_in_parent () = scope.parent |> Option.and_then (find_opt ~from ident) in
       if scope.recursive && not scope.closed
       then
-        if
-          (* Log.trace (fun log ->
-              log "Waiting for %S symbol in recursive scope %a" ident Id.print
-                scope.id); *)
-          Effect.perform (AwaitUpdate scope)
-        then
-          (* Log.trace (fun log ->
-                log "Waited for %S symbol in recursive scope %a" ident Id.print
-                  scope.id); *)
-          find_opt ~from ident scope
+        if Effect.perform (AwaitUpdate scope)
+        then find_opt ~from ident scope
         else find_in_parent ()
       else find_in_parent ()
   ;;
@@ -86,7 +77,7 @@ module Scope = struct
     scope
     |> find_opt ~from ident
     |> Option.unwrap_or_else (fun () : local ->
-      error from "Could not find %S in scope" ident;
+      error from "Could not find %a in scope" String.print_debug ident;
       Binding
         { id = Id.gen ()
         ; scope = from_scope
@@ -119,7 +110,8 @@ module Scope = struct
       let id = Id.gen () in
       Log.trace (fun log ->
         log
-          "Injected %S into %a (parent=%a) (original scope=%a)"
+          "Injected %a into %a (parent=%a) (original scope=%a)"
+          String.print_debug
           name
           Id.print
           id
@@ -258,13 +250,15 @@ module Scopes = struct
       | DefSite ->
         Log.trace (fun log ->
           log
-            "Finding %S in def site %a"
+            "Finding %a in def site %a"
+            String.print_debug
             label
             (Option.print Id.print)
             (scopes.def_site |> Option.map (fun (scope : Scope.t) -> scope.id)));
         def_site scopes
     in
-    Log.trace (fun log -> log "Finding %S in scope %a" label Id.print scope.id);
+    Log.trace (fun log ->
+      log "Finding %a in scope %a" String.print_debug label Id.print scope.id);
     scope |> Scope.find ~from_scope ~from label
   ;;
 end

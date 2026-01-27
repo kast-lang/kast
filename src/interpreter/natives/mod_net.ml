@@ -70,7 +70,7 @@ let tcp () =
       | T_Opaque result_ty ->
         (match arg |> Value.await_inferred with
          | V_String uri ->
-           Log.trace (fun log -> log "Connecting to %S" uri);
+           Log.trace (fun log -> log "Connecting to %a" String.print_debug uri);
            let host, port =
              match String.split_on_char ':' uri with
              | [ host; port ] -> host, port
@@ -101,7 +101,7 @@ let tcp () =
       | T_Opaque result_ty ->
         (match arg |> Value.await_inferred with
          | V_String uri ->
-           Log.trace (fun log -> log "Binding to %S" uri);
+           Log.trace (fun log -> log "Binding to %a" String.print_debug uri);
            let host, port =
              match String.split_on_char ':' uri with
              | [ host; port ] -> host, port

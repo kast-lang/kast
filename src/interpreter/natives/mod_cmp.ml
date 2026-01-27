@@ -12,7 +12,7 @@ let init () =
         let result : bool = op a b in
         V_Bool result |> Value.inferred ~span
       | _ ->
-        Error.error caller "cmp op %S expected a tuple as arg" name;
+        Error.error caller "cmp op %a expected a tuple as arg" String.print_debug name;
         V_Error |> Value.inferred ~span)
   in
   let equal_value_shape a b =

@@ -189,7 +189,7 @@ let rec print_expr ~(precedence : Precedence.t) (writer : Writer.t) (expr : expr
      | Bigint x ->
        writer |> write x;
        writer |> write "n"
-     | String s -> writer |> write (make_string "%S" s)
+     | String s -> writer |> write (make_string "%a" String.print_debug s)
      | List a ->
        writer |> write "[";
        a
@@ -226,7 +226,7 @@ let rec print_expr ~(precedence : Precedence.t) (writer : Writer.t) (expr : expr
      | Field { obj; field } ->
        print_expr ~precedence:Obj writer obj;
        writer |> write "[";
-       writer |> write (make_string "%S" field);
+       writer |> write (make_string "%a" String.print_debug field);
        writer |> write "]"
      | Not expr ->
        writer |> write "!";
@@ -243,7 +243,7 @@ let rec print_expr ~(precedence : Precedence.t) (writer : Writer.t) (expr : expr
 
 and print_obj_part writer = function
   | Field { name; value } ->
-    writer |> write (make_string "%S" name);
+    writer |> write (make_string "%a" String.print_debug name);
     writer |> write ":";
     print_expr ~precedence:Field writer value
   | Unpack packed ->

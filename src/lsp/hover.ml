@@ -396,7 +396,7 @@ let hover (pos : Lsp.Types.Position.t) ({ uri; compiled; _ } : Processing.file_s
   let* (Compiled (kind, compiled)) = compiled in
   let hover_info = hover kind compiled ~evaled:None (Span.single_char pos uri) in
   let hover_text = hover_text hover_info in
-  Log.trace (fun log -> log "Hover result: %S" hover_text);
+  Log.trace (fun log -> log "Hover result: %a" String.print_debug hover_text);
   let* ty = hover_info.ty in
   Some
     ({ contents = `MarkedString { language = None; value = hover_text }

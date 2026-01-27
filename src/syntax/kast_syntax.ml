@@ -107,7 +107,9 @@ module Rule = struct
 
   type rule = t
 
-  let print : formatter -> rule -> unit = fun fmt rule -> fprintf fmt "%S" rule.name
+  let print : formatter -> rule -> unit =
+    fun fmt rule -> fprintf fmt "%a" String.print_debug rule.name
+  ;;
 
   let keywords : rule -> string Seq.t =
     fun rule ->
@@ -123,13 +125,14 @@ module Rule = struct
     let print : formatter -> part -> unit =
       fun fmt -> function
       | Whitespace _ -> fprintf fmt "whitespace"
-      | Keyword keyword -> fprintf fmt "keyword %S" keyword
+      | Keyword keyword -> fprintf fmt "keyword %a" String.print_debug keyword
       | Value binding ->
-        fprintf fmt "value %a" (Option.print String.print_dbg) binding.name
+        fprintf fmt "value %a" (Option.print String.print_debug) binding.name
       | Group group ->
         (match group.nested with
          | Flat -> fprintf fmt "group <flat>"
-         | Nested { name } -> fprintf fmt "group %a" (Option.print String.print_dbg) name)
+         | Nested { name } ->
+           fprintf fmt "group %a" (Option.print String.print_debug) name)
     ;;
   end
 end

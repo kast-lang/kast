@@ -69,7 +69,7 @@ module Impl = struct
          | V_Int32 (_ : int32) -> ()
          | V_Int64 (_ : int64) -> ()
          | V_Float64 (_ : float) -> ()
-         | V_Char (_ : char) -> ()
+         | V_Char (_ : Uchar.t) -> ()
          | V_Ref { mut : bool = _; place } -> complete_place place
          | V_String (_ : string) -> ()
          | V_Tuple { ty; tuple } ->

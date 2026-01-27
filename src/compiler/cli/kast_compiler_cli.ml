@@ -46,7 +46,7 @@ module Args = struct
     let args, ~rest = parse args in
     match rest with
     | [] -> args
-    | first :: _rest -> fail "Unexpected arg %S" first
+    | first :: _rest -> fail "Unexpected arg %a" String.print_debug first
   ;;
 end
 

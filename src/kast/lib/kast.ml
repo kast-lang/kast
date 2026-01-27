@@ -42,7 +42,7 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
     let stdlib_uri =
       match Sys.getenv_opt "KAST_STD" with
       | Some path ->
-        Log.trace (fun log -> log "Using KAST_STD env var = %S" path);
+        Log.trace (fun log -> log "Using KAST_STD env var = %a" String.print_debug path);
         Uri.file path
       | None ->
         (match [%getenv "KAST_STD"] with
@@ -52,9 +52,10 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
            let bin_path = Sys.executable_name in
            Log.trace (fun log ->
              log
-               "Using KAST_STD env var (comptime) = %a, bin path = %S"
+               "Using KAST_STD env var (comptime) = %a, bin path = %a"
                Uri.print_full
                path
+               String.print_debug
                bin_path);
            Uri.resolve "" (Uri.file bin_path) path)
     in
@@ -66,7 +67,8 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
         let path = Uri.file_path uri in
         read_from_filesystem path
       | Some "stdin" -> In_channel.input_all stdin
-      | scheme -> fail "unsupported uri scheme %a" (Option.print String.print_dbg) scheme)
+      | scheme ->
+        fail "unsupported uri scheme %a" (Option.print String.print_debug) scheme)
   | effect Interpreter.Natives.Io.Input s, k ->
     print_string s;
     flush stdout;

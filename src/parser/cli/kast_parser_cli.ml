@@ -10,7 +10,7 @@ module Args = struct
   let parse : string list -> args = function
     | [] -> { path = Uri.stdin }
     | [ path ] -> { path = Uri.file path }
-    | first :: _rest -> fail "Unexpected arg %S" first
+    | first :: _rest -> fail "Unexpected arg %a" String.print_debug first
   ;;
 end
 

@@ -12,12 +12,19 @@ let single_arg ~span (args : value) : value =
   claim ~span arg.place
 ;;
 
+let make_args ~span (args : value tuple) (ty : Types.ty_tuple) : value =
+  V_Tuple
+    { tuple =
+        Tuple.zip_order_a args ty.tuple
+        |> Tuple.map (fun (arg, ty_field) : Types.value_tuple_field ->
+          { place = Place.init ~mut:Inherit arg; span; ty_field })
+    ; ty
+    }
+  |> Value.inferred ~span
+;;
+
 let make_single_arg ~span (arg : value) (ty : Types.ty_tuple) : value =
-  let ty_field = ty.tuple |> Tuple.unwrap_single_unnamed in
-  let field : Types.value_tuple_field =
-    { place = Place.init ~mut:Inherit arg; span; ty_field }
-  in
-  V_Tuple { tuple = Tuple.make [ field ] []; ty } |> Value.inferred ~span
+  make_args ~span (Tuple.make [ arg ] []) ty
 ;;
 
 let native_fn name impl : string * (ty -> value) =

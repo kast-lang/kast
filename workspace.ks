@@ -4,5 +4,6 @@
         "examples/hkt/*.ks",
         "examples/tcp/*.ks",
         "tests/*.ks",
+        "playground/test.ks",
     },
 }

@@ -12,7 +12,7 @@ let init () =
         let c =
           arg |> Value.expect_char |> Option.unwrap_or_else (error "arg must be char")
         in
-        V_Int32 (Char.code c |> Int32.of_int) |> Value.inferred ~span))
+        V_Int32 (Uchar.to_int c |> Int32.of_int) |> Value.inferred ~span))
   in
   let from_code =
     native_fn "char.from_code" (fun _ty ~caller ~state:_ args : value ->
@@ -28,7 +28,11 @@ let init () =
           |> Option.unwrap_or_else
                (error (make_string "arg must be uint32, got %a" Value.print arg))
         in
-        V_Char (Char.chr (Int32.to_int code)) |> Value.inferred ~span))
+        try
+          let c = Uchar.of_int (Int32.to_int code) in
+          V_Char c |> Value.inferred ~span
+        with
+        | Invalid_argument _ -> error "invalid utf8" ()))
   in
   [ code; from_code ]
 ;;
