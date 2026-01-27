@@ -95,6 +95,19 @@ let init_natives () =
                ~span
                (T_Opaque { name = current_name state |> Name.new_inferred ~span }))
           |> Value.inferred ~span)
+      ; native_fn "@parse" (fun _ty ~caller ~state:_ arg ->
+          let arg = single_arg ~span arg in
+          match arg |> Value.expect_string with
+          | Some contents ->
+            let source : Source.t = { contents; uri = Uri.fake "@parse" } in
+            (* TODO actually using current syntax? *)
+            let { ast; trailing_comments = _; eof = _ } : Kast_parser.result =
+              Kast_parser.parse source Kast_default_syntax.ruleset
+            in
+            V_Ast (Kast_ast_init.init_ast ast) |> Value.inferred ~span
+          | None ->
+            Error.error caller "@parse needs a String as arg";
+            V_Error |> Value.inferred ~span)
       ]
       @ types
       @ Mod_fs.init ()

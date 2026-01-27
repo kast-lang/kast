@@ -121,6 +121,7 @@ let finish (writer : t) : unit =
   let print_sources_content fmt =
     fprintf fmt "[";
     writer.sources
+    |> List.filter (fun source -> Uri.scheme source = Some "file")
     |> List.iteri (fun i source ->
       if i <> 0 then fprintf fmt ",";
       let source = Source.read source in

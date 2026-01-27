@@ -38,6 +38,7 @@ module Uri = struct
   include Uri
 
   let stdin = of_string "stdin:"
+  let fake s = of_string <| "fake:" ^ s
 
   let file path =
     let no_backslashes = String.map (fun c -> if c = '\\' then '/' else c) in
@@ -150,7 +151,7 @@ module Span = struct
 
   let beginning_of uri = { start = Position.beginning; finish = Position.beginning; uri }
   let single_char pos uri = { start = pos; finish = pos; uri }
-  let fake desc = beginning_of <| Uri.of_string ("fake:" ^ desc)
+  let fake desc = beginning_of <| Uri.fake desc
   let is_fake span = span.uri |> Uri.scheme = Some "fake"
 
   let of_ocaml : string * int * int * int -> span =

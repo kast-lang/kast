@@ -72,7 +72,7 @@ let process_file (global : global_state) (source : source) : file_state =
   let ast = parsed |> Option.map (fun ({ ast; _ } : Parser.result) -> ast) in
   let compiled =
     Option.bind ast (fun ast ->
-      let ast = Compiler.init_ast ast in
+      let ast = Kast_ast_init.init_ast ast in
       try
         let compiler =
           Compiler.default (Uri source.uri) ~import_cache:global.import_cache ()

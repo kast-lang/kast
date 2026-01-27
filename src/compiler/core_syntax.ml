@@ -906,7 +906,7 @@ let include' : core_syntax =
           let parsed : Kast_parser.result =
             Kast_parser.parse source Kast_default_syntax.ruleset
           in
-          let compiled = C.compile kind (parsed.ast |> Compiler.init_ast) in
+          let compiled = C.compile kind (parsed.ast |> Kast_ast_init.init_ast) in
           Effect.perform
             (CompilerEffect.FileIncluded
                { root = C.state.currently_compiled_file |> Option.get
@@ -986,7 +986,11 @@ let const_let
                 |> Option.get
             ; binding
             }));
-  let_expr
+  if C.state.scopes.call_site.recursive
+  then let_expr
+  else
+    E_Constant { id = Id.gen (); value = V_Unit |> Value.inferred ~span }
+    |> init_expr span C.state
 ;;
 
 let const : core_syntax =
