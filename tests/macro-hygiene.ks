@@ -1,6 +1,6 @@
 #!/usr/bin/env -S kast run --no-std
 # this is part of std
-const Ast = @native "ast";
+const Ast = @native "Ast";
 impl syntax (macro!(arg)) = `(
     include_ast $macro(`($arg))
 );

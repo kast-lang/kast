@@ -1,4 +1,7 @@
-let s = "🤔";
-for c in String.iter(s) do (
-    dbg.print({ .c, .code = Char.code(c) });
+use std.Ast;
+
+let mut x = "hello, world";
+for i in 0..10 do (
+    let one :: Int32 = 1;
+    x += one;
 );
