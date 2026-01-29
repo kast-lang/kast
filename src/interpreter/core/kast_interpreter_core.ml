@@ -1122,10 +1122,10 @@ and eval : state -> expr -> value =
            | E_Ref place -> eval_expr_ref state expr place
            | E_Claim place -> eval_expr_claim state expr place
            | E_Constant { id; value } ->
-             Log.info (fun log -> log "const: before sub = %a" Value.print value);
-             Log.info (fun log -> log "const :: %a" Ty.print (Value.ty_of value));
+             Log.trace (fun log -> log "const: before sub = %a" Value.print value);
+             Log.trace (fun log -> log "const :: %a" Ty.print (Value.ty_of value));
              let result = monomorphized_value ~span ~state id value in
-             Log.info (fun log -> log "const: after sub = %a" Value.print result);
+             Log.trace (fun log -> log "const: after sub = %a" Value.print result);
              result
            | E_Fn f -> eval_expr_fn state expr f
            | E_Generic f -> eval_expr_generic state expr f

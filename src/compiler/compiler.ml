@@ -302,6 +302,21 @@ type looked_up_local =
       }
   | Binding of binding
 
+let is_ty_blocked (ty : ty) =
+  match ty.var |> Inference.Var.inferred_opt with
+  | None -> false
+  | Some (T_Blocked _) -> true
+  | Some _ -> false
+;;
+
+let is_blocked (value : value) =
+  match value.var |> Inference.Var.inferred_opt with
+  | None -> false
+  | Some (V_Blocked _) -> true
+  | Some (V_Ty ty) -> is_ty_blocked ty
+  | Some _ -> false
+;;
+
 let local_lookup def_site_interpreter_scope span (local : State.Scope.local)
   : looked_up_local
   =
@@ -315,7 +330,9 @@ let local_lookup def_site_interpreter_scope span (local : State.Scope.local)
        (match Kast_interpreter.Scope.find_opt binding.name scope with
         | Some place ->
           let value = Kast_interpreter.read_place place ~span in
-          Const { value; binding = Some binding }
+          if is_blocked value
+          then Binding binding
+          else Const { value; binding = Some binding }
         | None -> Binding binding)
      | _ -> Binding binding)
 ;;

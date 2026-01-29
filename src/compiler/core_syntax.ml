@@ -963,11 +963,7 @@ let const_let
     E_Assign
       { assignee = A_Let pattern |> init_assignee pattern.data.span C.state
       ; value =
-          (let const =
-             const_shape value
-             |> init_expr value_expr.data.span C.state
-             |> Compiler.data_add Expr (value_expr, value) Expr
-           in
+          (let const = const_shape value |> init_expr value_expr.data.span C.state in
            PE_Temp const |> init_place_expr value_expr.data.span C.state)
       }
     |> init_expr span C.state
@@ -986,11 +982,14 @@ let const_let
                 |> Option.get
             ; binding
             }));
-  if C.state.scopes.call_site.recursive
-  then let_expr
-  else
-    E_Constant { id = Id.gen (); value = V_Unit |> Value.inferred ~span }
-    |> init_expr span C.state
+  let result =
+    if C.state.scopes.call_site.recursive
+    then let_expr
+    else
+      E_Constant { id = Id.gen (); value = V_Unit |> Value.inferred ~span }
+      |> init_expr span C.state
+  in
+  result |> Compiler.data_add Expr (value_expr, value) Expr
 ;;
 
 let const : core_syntax =
