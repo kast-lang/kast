@@ -493,8 +493,12 @@ let fn : core_syntax =
           children
           |> Tuple.get_named_opt "result"
           |> Option.map (fun (child : Ast.child) ->
-            let group = child |> Ast.Child.expect_group in
-            group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
+            let group =
+              (child |> Ast.Child.expect_group).children |> Ast.flatten_children
+            in
+            let result_ty = group |> Tuple.get_unnamed 0 in
+            let context = group |> Tuple.get_named_opt "context" in
+            result_ty)
         in
         let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
         match kind with

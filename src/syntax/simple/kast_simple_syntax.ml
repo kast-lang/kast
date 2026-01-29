@@ -6,7 +6,12 @@ module Ast = Kast_ast.T
 module Lexer = Kast_lexer
 module Parser = Kast_parser
 
-let ruleset : Parser.ruleset = Parser.Ruleset.parse_lines [%include_file "rules.ks"]
+let ruleset : Parser.ruleset =
+  Parser.Ruleset.parse_source
+    { contents = [%include_file "rules.ks"]
+    ; uri = Uri.of_string (Filename.dirname __FILE__ ^ "/rules.ks")
+    }
+;;
 
 type ast =
   | Simple of string

@@ -22,16 +22,18 @@ type node =
   ; priority_range : Syntax.Rule.priority Range.inclusive option
   ; next : node EdgeMap.t
   ; next_keywords : StringSet.t
+  ; parent : (node * edge) option
   }
 
 module Node = struct
-  let empty : node =
+  let empty ~parent : node =
     { terminal = None
     ; value_filter = None
     ; prev_value_filter = None
     ; priority_range = None
     ; next = EdgeMap.empty
     ; next_keywords = StringSet.empty
+    ; parent
     }
   ;;
 end
@@ -45,7 +47,7 @@ type ruleset =
 type t = ruleset
 
 let empty : ruleset =
-  { rules = StringMap.empty; keywords = StringSet.empty; root = Node.empty }
+  { rules = StringMap.empty; keywords = StringSet.empty; root = Node.empty ~parent:None }
 ;;
 
 let update_value_filter
@@ -61,6 +63,17 @@ let update_value_filter
        | Some current -> Syntax.Rule.Priority.stricter_filter current priority_filter
        | None -> priority_filter)
   | _ -> current_filter
+;;
+
+let rec print_node_path fmt (node : node) =
+  match node.parent with
+  | Some (parent, edge) ->
+    print_node_path fmt parent;
+    fprintf fmt " ";
+    (match edge with
+     | Edge.Keyword k -> fprintf fmt "%a" String.print_debug k
+     | Edge.Value -> fprintf fmt "_")
+  | None -> fprintf fmt "<root>"
 ;;
 
 let add : Syntax.rule -> ruleset -> ruleset =
@@ -96,20 +109,28 @@ let add : Syntax.rule -> ruleset -> ruleset =
          | Some existing ->
            Error.error
              rule.span
-             "Duplicate rule: %a and %a"
+             "Duplicate syntax %a: %a and %a"
+             print_node_path
+             node
              Syntax.Rule.print
              existing
              Syntax.Rule.print
              rule;
            node
          | None ->
-           { terminal = Some rule
-           ; value_filter = updated_value_filter
-           ; prev_value_filter = updated_prev_value_filter
-           ; priority_range = updated_priority_range
-           ; next = node.next
-           ; next_keywords = node.next_keywords
-           })
+           let result =
+             { terminal = Some rule
+             ; value_filter = updated_value_filter
+             ; prev_value_filter = updated_prev_value_filter
+             ; priority_range = updated_priority_range
+             ; next = node.next
+             ; next_keywords = node.next_keywords
+             ; parent = node.parent
+             }
+           in
+           Log.trace (fun log ->
+             log "Added %a syntax: %a" Syntax.Rule.print rule print_node_path result);
+           result)
       | Whitespace _ :: rest -> insert ~prev_prev ~prev rest node
       | Group { id = _; wrap_mode = _; nested = _; parts = group_parts; quantifier }
         :: rest ->
@@ -129,7 +150,7 @@ let add : Syntax.rule -> ruleset -> ruleset =
           fun current ->
           let next =
             match current with
-            | None -> Node.empty
+            | None -> Node.empty ~parent:(Some (node, edge))
             | Some existing -> existing
           in
           Some (insert ~prev_prev:prev ~prev:(Some first) rest next)
@@ -144,6 +165,7 @@ let add : Syntax.rule -> ruleset -> ruleset =
              | Value _ -> node.next_keywords
              | Keyword keyword -> StringSet.add keyword node.next_keywords
              | Group _ | Whitespace _ -> unreachable ":)")
+        ; parent = node.parent
         }
     in
     { rules = updated_rules
@@ -166,6 +188,41 @@ let find_rule_opt : string -> ruleset -> Syntax.rule option =
 
 let of_list : Syntax.rule list -> ruleset = fun rules -> List.fold_right add rules empty
 
+let parse_source : source -> ruleset =
+  fun source ->
+  let lexer = Lexer.init Lexer.default_rules source in
+  let rec go acc : ruleset =
+    let peek = Lexer.peek lexer in
+    if peek |> Lexer.Token.is_eof
+    then acc
+    else if peek |> Lexer.Token.is_comment
+    then (
+      Lexer.advance lexer;
+      go acc)
+    else if peek |> Lexer.Token.is_raw "@syntax"
+    then (
+      Lexer.advance lexer;
+      if lexer |> Lexer.peek |> Lexer.Token.is_raw "from_scratch"
+      then (
+        Lexer.advance lexer;
+        Lexer.expect_next lexer ";";
+        go acc)
+      else (
+        let rule = Rule.parse lexer in
+        Log.trace (fun log ->
+          log "Parsed rule %a at %a" String.print_debug rule.name Span.print rule.span);
+        acc.rules
+        |> StringMap.iter (fun name _rule ->
+          Log.trace (fun log -> log "current rule: %S" name));
+        Lexer.expect_next lexer ";";
+        go (add rule acc)))
+    else (
+      Error.error peek.span "Unexpected %a" Lexer.Token.print peek;
+      failwith "NOT CONTINUING")
+  in
+  go empty
+;;
+
 let parse_list : string list -> ruleset =
   fun rules ->
   rules
@@ -179,16 +236,4 @@ let parse_list : string list -> ruleset =
     Lexer.expect_eof lexer;
     rule)
   |> of_list
-;;
-
-let parse_lines : string -> ruleset =
-  fun s ->
-  s
-  |> String.split_on_char '\n'
-  |> List.filter (fun s ->
-    not (String.is_whitespace s || String.starts_with ~prefix:"#" s))
-  |> List.map (fun s -> String.strip_prefix ~prefix:"@syntax " s |> Option.get)
-  |> List.map (fun s -> String.strip_suffix ~suffix:";" s |> Option.get)
-  |> List.filter (fun line -> String.trim line <> "from_scratch")
-  |> parse_list
 ;;

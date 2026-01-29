@@ -168,12 +168,13 @@ let parse : Lexer.t -> Syntax.rule =
     | Some part -> part :: collect_parts ()
     | None -> []
   in
+  let parts = collect_parts () in
   let finish = Lexer.position lexer in
   { id = Id.gen ()
   ; span = { start; finish; uri = (Lexer.source lexer).uri }
   ; name
   ; priority
-  ; parts = collect_parts ()
+  ; parts
   ; do_parse
   ; wrap_mode
   }

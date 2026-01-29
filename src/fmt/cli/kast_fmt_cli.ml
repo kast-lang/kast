@@ -46,7 +46,7 @@ module Args = struct
   ;;
 end
 
-let parse_ruleset uri = Parser.Ruleset.parse_lines (Source.read uri).contents
+let parse_ruleset uri = Parser.Ruleset.parse_source (Source.read uri)
 
 let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
   let into = parse_ruleset into in

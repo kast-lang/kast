@@ -65,6 +65,11 @@ module Shape = struct
     fun expected_raw shape -> Some expected_raw = raw shape
   ;;
 
+  let is_eof : shape -> bool = function
+    | Eof -> true
+    | _ -> false
+  ;;
+
   let is_comment : shape -> bool =
     fun shape ->
     match shape with
@@ -92,6 +97,8 @@ type token = t
 
 let raw token = Shape.raw token.shape
 let is_raw s token = Shape.is_raw s token.shape
+let is_eof token = Shape.is_eof token.shape
+let is_comment token = Shape.is_comment token.shape
 
 let print fmt { shape; span } =
   fprintf fmt "%a @{<dim>at %a@}" Shape.print shape Span.print span
