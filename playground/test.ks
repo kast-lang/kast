@@ -7,4 +7,6 @@ const create_my_list = [T2] (value :: T2) -> MyList[T2] => {
 const Type = @native "Type";
 const String :: Type = @native "String";
 
-const foo :: MyList[Type] = create_my_list(String);
+const foo = (:: MyList[Type]) (create_my_list(String));
+
+let (:: Int32) x = 123;

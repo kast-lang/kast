@@ -158,3 +158,5 @@ impl syntax (if value is pattern then body else else_body) = `(
 impl syntax (macro!(ast)) = `(
     include_ast $macro(`($ast))
 );
+
+impl syntax ((:: ty) value) = `($value :: $ty);

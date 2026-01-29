@@ -28,6 +28,7 @@
 @syntax "core:field init" 6 @wrap never = "." label type=(" " "::" " " _)? value=(" " "=" " " _)?;
 
 @syntax "core:type ascribe" 6.2 @wrap never = expr " " "::" " " type;
+@syntax "prefix type ascribe" 6.2 @wrap never = _=(@wrap if_any "(" "::" " "/"\n\t" type:any ""/"\\\n" ")") " " expr;
 
 @syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
 @syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " "->" " " body ->;
