@@ -122,14 +122,18 @@ module Var = struct
       =
       find_root var
     in
+    if false
+    then
+      fprintf
+        fmt
+        "%a%a="
+        Id.print
+        recurse_id
+        (List.print Span.print)
+        (spans |> SpanSet.to_list);
     match inferred with
     | None -> fprintf fmt "_"
-    (* fprintf fmt "_%a%a" Id.print recurse_id (List.print Span.print)
-          (spans |> SpanSet.to_list) *)
-    | Some inferred ->
-      (* fprintf fmt "_%a%a=" Id.print recurse_id (List.print Span.print)
-          (spans |> SpanSet.to_list); *)
-      print_inferred fmt inferred
+    | Some inferred -> print_inferred fmt inferred
   ;;
 
   let unite_data =

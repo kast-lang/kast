@@ -122,7 +122,7 @@ let rec unite_shape
   fun (type a)
     (type scope)
     (module Scope : Inference.Scope with type t = scope)
-    value_scope
+    (value_scope : a -> scope)
     unite_value
     ~span
     a

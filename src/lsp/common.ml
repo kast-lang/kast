@@ -184,7 +184,7 @@ let inner_compiled_with_handler
     data.evaled
   in
   exprs |> List.iter (fun (expr, value) -> handler.handle Expr ~evaled:value expr);
-  ty_exprs |> List.iter (fun (expr, ty) -> handler.handle TyExpr expr);
+  ty_exprs |> List.iter (fun (expr, _ty) -> handler.handle TyExpr expr);
   patterns |> List.iter (handler.handle Pattern)
 ;;
 

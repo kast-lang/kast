@@ -158,7 +158,7 @@ module Impl = struct
       log "subbed value shape = %a into %a" Value.Shape.print shape Value.print result);
     result
 
-  and sub_untyped_fn ~state (f : value_untyped_fn) : value_untyped_fn = f
+  and sub_untyped_fn ~state:_ (f : value_untyped_fn) : value_untyped_fn = f
 
   and sub_maybe_compiled_fn
         ~state
@@ -202,15 +202,15 @@ module Impl = struct
     ; mut = sub_is_mutable ~state expr.mut
     }
 
-  and sub_is_mutable ~state (mut : is_mutable) : is_mutable = mut
+  and sub_is_mutable ~state:_ (mut : is_mutable) : is_mutable = mut
 
-  and sub_place_expr_shape ~state (shape : place_expr_shape) : place_expr_shape =
+  and sub_place_expr_shape ~state:_ (_shape : place_expr_shape) : place_expr_shape =
     failwith __LOC__
 
   and sub_expr ~state (expr : expr) : expr =
     { shape = sub_expr_shape ~state expr.shape; data = sub_ir_data ~state expr.data }
 
-  and sub_expr_shape ~state (shape : expr_shape) : expr_shape = failwith __LOC__
+  and sub_expr_shape ~state:_ (_shape : expr_shape) : expr_shape = failwith __LOC__
 
   and sub_blocked ~original_value ~state (blocked : blocked_value) : value =
     let ctx = Effect.perform GetCtx in
@@ -318,7 +318,7 @@ module Impl = struct
           ctx.span);
       Instantiation { generic; arg }
 
-  and sub_name_part ~(state : sub_state) (part : name_part) : name_part =
+  and sub_name_part ~state:_ (part : name_part) : name_part =
     match part with
     | Uri uri -> Uri uri
     | Str s -> Str s
@@ -333,7 +333,7 @@ module Impl = struct
     -> 'shape option
     -> 'v
     =
-    fun (type a) ~new_inferred ~sub_value ~state original opt ->
+    fun ~new_inferred ~sub_value ~state original opt ->
     let ctx = Effect.perform GetCtx in
     match opt with
     | None -> original

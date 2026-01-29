@@ -170,7 +170,7 @@ let print_bin_op writer op =
         | Or -> "||")
 ;;
 
-let rec print_expr ~(precedence : Precedence.t) (writer : Writer.t) (expr : expr) =
+let rec print_expr ~precedence:(_ : Precedence.t) (writer : Writer.t) (expr : expr) =
   writer
   |> write_maybe_spanned expr.span (fun () ->
     let surround_with_parens = true in
