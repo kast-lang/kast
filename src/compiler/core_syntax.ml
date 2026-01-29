@@ -1582,37 +1582,56 @@ let quote : core_syntax =
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
-          let rec construct ~root (ast : Ast.t) : expr =
+          let rec unquote_level (ast : Ast.t) : int * Ast.t =
+            match ast.shape with
+            | Complex { rule; root } when rule.name = "core:unquote" ->
+              let unquoted =
+                root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
+              in
+              let level, final_unquoted = unquote_level unquoted in
+              level + 1, final_unquoted
+            | _ -> 0, ast
+          in
+          let rec construct ~quote_level ~root (ast : Ast.t) : expr =
             (* let def_site =
               if true || root
               then Some (C.state.scopes |> State.Scopes.call_site)
               else None
             in *)
-            let def_site = Some (C.state.scopes |> State.Scopes.def_site) in
-            match ast.shape with
-            | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
-              E_QuoteAst (Simple { ast; def_site }) |> init_expr ast.data.span C.state
-            | Ast.Complex { rule; root } when rule.name = "core:unquote" ->
-              let unquote =
-                root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
-              in
-              C.compile kind unquote
-            | Ast.Complex { rule; root } ->
-              E_QuoteAst (Complex { rule; root = construct_group root; def_site })
-              |> init_expr ast.data.span C.state
-            | Ast.Syntax _ -> fail "TODO"
-          and construct_group (group : Ast.group) : Expr.Shape.quote_ast_group =
+            let unquote_level, final_unquoted = unquote_level ast in
+            if unquote_level > quote_level
+            then (
+              Error.error ast.data.span "Too much unquoting";
+              init_error ast.data.span C.state Expr)
+            else if unquote_level = quote_level
+            then C.compile kind final_unquoted
+            else (
+              let def_site = Some (C.state.scopes |> State.Scopes.def_site) in
+              match ast.shape with
+              | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
+                E_QuoteAst (Simple { ast; def_site }) |> init_expr ast.data.span C.state
+              | Ast.Complex { rule; root } ->
+                let quote_level =
+                  if rule.name = "core:quote" then quote_level + 1 else quote_level
+                in
+                E_QuoteAst
+                  (Complex { rule; root = construct_group ~quote_level root; def_site })
+                |> init_expr ast.data.span C.state
+              | Ast.Syntax _ -> fail "TODO")
+          and construct_group ~quote_level (group : Ast.group)
+            : Expr.Shape.quote_ast_group
+            =
             { rule = group.rule
             ; children =
                 group.children
                 |> Tuple.map (fun (child : Ast.child) : Expr.Shape.quote_ast_child ->
                   match child with
-                  | Group child_group -> Group (construct_group child_group)
-                  | Ast child -> Ast (construct ~root:false child))
+                  | Group child_group -> Group (construct_group ~quote_level child_group)
+                  | Ast child -> Ast (construct ~quote_level ~root:false child))
             ; span = group.span
             }
           in
-          construct ~root:true body
+          construct ~quote_level:1 ~root:true body
         | _ ->
           error span "quote must be expr";
           init_error span C.state kind)

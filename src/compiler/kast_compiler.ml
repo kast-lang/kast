@@ -17,7 +17,7 @@ let init_import_cache = State.init_import_cache
 (* TODO compile_for - figure out *)
 let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
   fun ~import_cache ~compile_for ->
-  let scope = State.Scope.init ~recursive:false in
+  let scope = State.Scope.init ~span:(Span.fake "<init>") ~recursive:false in
   let scope =
     SymbolMap.fold
       (fun name (local : Types.interpreter_local) scope ->

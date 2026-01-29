@@ -17,8 +17,9 @@ module Scope = struct
     ;;
   end
 
-  let init ~recursive : scope =
+  let init ~span ~recursive : scope =
     { id = Id.gen ()
+    ; span
     ; parent = None
     ; locals = StringMap.empty
     ; recursive
@@ -27,24 +28,29 @@ module Scope = struct
     }
   ;;
 
-  let enter ~recursive (parent : scope) : scope =
+  let print fmt (scope : scope) = Span.print_osc8 scope.span Id.print scope.id fmt
+
+  let enter ~span ~recursive (parent : scope) : scope =
     let id = Id.gen () in
-    Log.trace (fun log -> log "Entered scope %a -> %a" Id.print parent.id Id.print id);
-    { id
-    ; parent = Some parent
-    ; locals = StringMap.empty
-    ; recursive
-    ; closed = false
-    ; on_update = []
-    }
+    let result : scope =
+      { id
+      ; span
+      ; parent = Some parent
+      ; locals = StringMap.empty
+      ; recursive
+      ; closed = false
+      ; on_update = []
+      }
+    in
+    Log.trace (fun log -> log "Entered scope %a -> %a" print parent print result);
+    result
   ;;
 
   type _ Effect.t += AwaitUpdate : scope -> bool Effect.t
 
   let rec find_opt : from:span -> string -> scope -> local option =
     fun ~from ident scope ->
-    Log.trace (fun log ->
-      log "looking for %a in %a" String.print_debug ident Id.print scope.id);
+    Log.trace (fun log -> log "looking for %a in %a" String.print_debug ident print scope);
     match StringMap.find_opt ident scope.locals with
     | Some local ->
       let binding = Local.binding local in
@@ -101,7 +107,8 @@ module Scope = struct
 
   let add : local -> scope -> scope =
     fun local scope ->
-    let name = (Local.binding local).name.name in
+    let binding = Local.binding local in
+    let name = binding.name.name in
     if scope.recursive
     then (
       scope.locals <- scope.locals |> StringMap.add name local;
@@ -109,25 +116,28 @@ module Scope = struct
       scope)
     else (
       close scope;
-      let id = Id.gen () in
+      let result : scope =
+        { id = Id.gen ()
+        ; span = binding.span
+        ; parent = scope.parent
+        ; locals = scope.locals |> StringMap.add name local
+        ; recursive = false
+        ; closed = false
+        ; on_update = []
+        }
+      in
       Log.trace (fun log ->
         log
           "Injected %a into %a (parent=%a) (original scope=%a)"
-          String.print_debug
-          name
-          Id.print
-          id
-          (Option.print Id.print)
-          (scope.parent |> Option.map (fun (scope : scope) -> scope.id))
-          Id.print
-          scope.id);
-      { id
-      ; parent = scope.parent
-      ; locals = scope.locals |> StringMap.add name local
-      ; recursive = false
-      ; closed = false
-      ; on_update = []
-      })
+          Binding.print
+          binding
+          print
+          result
+          (Option.print print)
+          scope.parent
+          print
+          scope);
+      result)
   ;;
 end
 
@@ -139,7 +149,7 @@ module Scopes = struct
     }
 
   let only scope = { call_site = scope; def_sites = Id.Map.empty; def_site = None }
-  let init ~recursive = only (Scope.init ~recursive)
+  let init ~span ~recursive = only (Scope.init ~span ~recursive)
 
   let map f scopes =
     { call_site = scopes.call_site |> f
@@ -148,7 +158,7 @@ module Scopes = struct
     }
   ;;
 
-  let enter ~recursive = map (Scope.enter ~recursive)
+  let enter ~span ~recursive = map (Scope.enter ~span ~recursive)
 
   let enter_def_site ~span (def_site : Scope.t) scopes =
     { call_site = scopes.call_site
@@ -161,22 +171,22 @@ module Scopes = struct
                Log.trace (fun log ->
                  log
                    "Entered (already) def site %a = %a at %a"
-                   Id.print
-                   def_site.id
-                   Id.print
-                   result.id
+                   Scope.print
+                   def_site
+                   Scope.print
+                   result
                    Span.print
                    span);
                result
              | None ->
-               let result = def_site |> Scope.enter ~recursive:false in
+               let result = def_site |> Scope.enter ~span ~recursive:false in
                Log.trace (fun log ->
                  log
                    "Entered def site %a = %a at %a"
-                   Id.print
-                   def_site.id
-                   Id.print
-                   result.id
+                   Scope.print
+                   def_site
+                   Scope.print
+                   result
                    Span.print
                    span);
                result))
@@ -200,8 +210,8 @@ module Scopes = struct
             "injecting into def site for %a = %a at %a"
             Binding.print
             binding
-            Id.print
-            def_site.id
+            Scope.print
+            def_site
             Span.print
             binding.span);
         scopes |> enter_def_site ~span:binding.span def_site
@@ -255,12 +265,12 @@ module Scopes = struct
             "Finding %a in def site %a"
             String.print_debug
             label
-            (Option.print Id.print)
-            (scopes.def_site |> Option.map (fun (scope : Scope.t) -> scope.id)));
+            (Option.print Scope.print)
+            scopes.def_site);
         def_site scopes
     in
     Log.trace (fun log ->
-      log "Finding %a in scope %a" String.print_debug label Id.print scope.id);
+      log "Finding %a in scope %a" String.print_debug label Scope.print scope);
     scope |> Scope.find ~from_scope ~from label
   ;;
 end
@@ -293,7 +303,7 @@ type t =
 type state = t
 
 let blank name_part ~import_cache =
-  { scopes = Scopes.init ~recursive:false
+  { scopes = Scopes.init ~span:(Span.fake "<blank>") ~recursive:false
   ; currently_compiled_file = None
   ; import_cache
   ; interpreter = Interpreter.default name_part
@@ -314,7 +324,7 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
     ; mut_enabled
     ; bind_mode
     } ->
-  { scopes = scopes |> Scopes.enter ~recursive
+  { scopes = scopes |> Scopes.enter ~span ~recursive
   ; interpreter =
       Interpreter.enter_scope ~new_result_scope:true ~span ~recursive interpreter
   ; currently_compiled_file

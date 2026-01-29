@@ -12,7 +12,6 @@
 ## Language improvements
 
 - [ ] Self hosting
-- [ ] Context
 - [ ] Context inference
 - [ ] Embed DSLs in the languages
         to be able to parse binding definitions

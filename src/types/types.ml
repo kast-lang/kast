@@ -584,6 +584,7 @@ module rec TypesImpl : sig
 
   and compiler_scope =
     { id : Id.t
+    ; span : Span.t
     ; parent : compiler_scope option
     ; recursive : bool
     ; mutable locals : compiler_local StringMap.t
@@ -1268,6 +1269,7 @@ end = struct
 
   and compiler_scope =
     { id : Id.t
+    ; span : Span.t
     ; parent : compiler_scope option
     ; recursive : bool
     ; mutable locals : compiler_local StringMap.t
