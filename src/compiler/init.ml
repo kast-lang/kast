@@ -244,8 +244,8 @@ and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
   State.Scope.fork (fun () ->
     match Kast_interpreter.eval_place state.interpreter value with
     | RefBlocked _ -> Error.error span "refblocked cast_as_module_ty"
-    | Place p ->
-      let value = Kast_interpreter.claim_ ~span p in
+    | Place (~mut:_, place) ->
+      let value = Kast_interpreter.claim ~span place in
       let module_ = Kast_interpreter.cast_as_module ~span state.interpreter value in
       ty |> Inference.Ty.expect_inferred_as ~span (Value.ty_of module_));
   ty
@@ -272,6 +272,8 @@ and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
     | other -> Error.error span "can't cast into %a" Value.Shape.print other);
   ty
 
+and ignored_ty (_ : ty) = ( (* TODO maybe should be a warning? configurable *) )
+
 and init_expr : span -> State.t -> Expr.Shape.t -> expr =
   fun span state shape ->
   let scope = State.var_scope state in
@@ -293,7 +295,9 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         (match List.last_opt list with
          | None -> Ty.inferred ~span T_Unit
          | Some last -> last.data.ty)
-      | E_Stmt { expr } -> Ty.inferred ~span T_Unit
+      | E_Stmt { expr } ->
+        ignored_ty expr.data.ty;
+        Ty.inferred ~span T_Unit
       | E_Scope { expr } -> expr.data.ty
       | E_Fn { ty; _ } -> Ty.inferred ~span <| T_Fn ty
       | E_Generic { def = _; ty } -> T_Generic ty |> Ty.inferred ~span
@@ -441,7 +445,9 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
       | E_QuoteAst _ ->
         (* TODO assert all children are ast *)
         Ty.inferred ~span T_Ast
-      | E_Loop { body } -> Ty.new_not_inferred ~scope ~span
+      | E_Loop { body } ->
+        ignored_ty body.data.ty;
+        Ty.new_not_inferred ~scope ~span
       | E_Error -> Ty.new_not_inferred ~scope ~span
       | E_Unwindable { token; body } ->
         token.data.ty

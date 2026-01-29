@@ -31,9 +31,9 @@
 
 @syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
 @syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " "->" " " body ->;
-@syntax "core:fn_type" 6.5 @wrap never = arg " " context_args=("with" " " _ " ")? "->" " " result context_result=("with" " " _ " ")?;
+@syntax "core:fn_type" 6.5 @wrap never = arg " " context_args=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
 
-@syntax "core:fn" 7 @wrap never = arg " " context_args=("with" " " _ " ")? result=("->" " " _ " " context_result=("with" " " _ " ")?)? "=>" " " body;
+@syntax "core:fn" 7 @wrap never = arg " " context_args=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
 
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;

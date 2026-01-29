@@ -196,7 +196,7 @@ module Span = struct
 
   let print_osc8 : 'a. span -> (formatter -> 'a -> unit) -> 'a -> formatter -> unit =
     fun span print_value value fmt ->
-    let print_span fmt { start; finish; uri } =
+    let print_span fmt { start; finish = _; uri } =
       fprintf fmt "vscode://file%a:%d:%d" Uri.print uri start.line start.column
       (* fprintf fmt "vscode://file%a:%d.%d-%d.%d" Uri.print uri start.line
         start.column finish.line finish.column *)

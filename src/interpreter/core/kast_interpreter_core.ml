@@ -46,11 +46,9 @@ let claim ~span (place : place) : value =
     V_Error |> Value.inferred ~span
 ;;
 
-let claim_ ~span ((~mut:_, place) : mut:bool * place) : value = claim ~span place
-
-let claim_ref ~span ~state ~result_ty ref : value =
+let claim_ref ~span ~state:_ ~result_ty ref : value =
   match ref |> Value.await_inferred with
-  | V_Ref { mut; place } -> claim_ ~span (~mut, place)
+  | V_Ref { mut = _; place } -> claim ~span place
   | V_Blocked blocked ->
     V_Blocked { shape = BV_ClaimRef blocked; ty = result_ty } |> Value.inferred ~span
   | _ ->
@@ -193,7 +191,11 @@ and await_compiled ~span (f : Types.maybe_compiled_fn) : Types.compiled_fn optio
 
 and await_compiled_ty_expr ~span (expr : Expr.ty) : Expr.Ty.Shape.t =
   if expr.compiled_shape |> Option.is_none then Effect.perform (AwaitCompiledTyExpr expr);
-  expr.compiled_shape |> Option.get
+  match expr.compiled_shape with
+  | Some expr -> expr
+  | None ->
+    Error.error span "Couldn't await ty expr to be compiled";
+    TE_Error
 
 and call_untyped_fn
       ~(sub_mode : Substitute_bindings.mode)
@@ -670,7 +672,7 @@ and pattern_bindings : pattern -> binding list =
      | None -> [])
 
 and generic_ty : span:span -> Types.pattern_args -> ty -> Types.ty_generic =
-  fun ~span args result -> { args; result }
+  fun ~span:_ args result -> { args; result }
 
 and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
   fun state expr { def; ty } ->
@@ -769,15 +771,15 @@ and eval_expr_then : state -> expr -> Types.expr_then -> value =
   !result
 
 and eval_expr_stmt : state -> expr -> Types.expr_stmt -> value =
-  fun state expr { expr } ->
+  fun state _expr { expr } ->
   let span = expr.data.span in
   ignore <| eval state expr;
   V_Unit |> Value.inferred ~span
 
 and eval_expr_scope : state -> expr -> Types.expr_scope -> value =
-  fun state expr { expr } ->
+  fun state _expr { expr } ->
   let span = expr.data.span in
-  let state = state |> enter_scope ~span:expr.data.span ~recursive:false in
+  let state = state |> enter_scope ~span ~recursive:false in
   eval state expr
 
 and eval_expr_assign : state -> expr -> Types.expr_assign -> value =
@@ -793,7 +795,6 @@ and eval_expr_assign : state -> expr -> Types.expr_assign -> value =
 
 and eval_expr_apply : state -> expr -> Types.expr_apply -> value =
   fun state expr { f; arg } ->
-  let span = expr.data.span in
   let f = eval state f in
   let arg = eval state arg in
   call expr.data.span state f arg
@@ -806,7 +807,7 @@ and eval_expr_instantiategeneric
   let generic = eval state generic in
   let arg = eval state arg in
   let result_ty = monomorphized_ty ~state expr.data in
-  instantiate ~result_ty expr.data.span state generic arg
+  instantiate ~result_ty span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
   fun state expr { id; expr = native_expr } ->
@@ -924,7 +925,7 @@ and eval_expr_match : state -> expr -> Types.expr_match -> value =
   | RefBlocked _ ->
     Error.error span "Can't match blocked values";
     V_Error |> Value.inferred ~span
-  | Place (~mut, place) ->
+  | Place (~mut:_, place) ->
     let result =
       branches
       |> List.find_map (fun (branch : Types.expr_match_branch) ->
@@ -948,16 +949,14 @@ and eval_expr_match : state -> expr -> Types.expr_match -> value =
        V_Error |> Value.inferred ~span)
 
 and eval_expr_loop : state -> expr -> Types.expr_loop -> value =
-  fun state expr { body } ->
-  let span = expr.data.span in
+  fun state _expr { body } ->
   let state = state |> enter_scope ~span:body.data.span ~recursive:false in
   while true do
     ignore @@ eval state body
   done
 
 and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
-  fun state expr { token = token_pattern; body } ->
-  let span = expr.data.span in
+  fun state _expr { token = token_pattern; body } ->
   let id = Id.gen () in
   let token : Types.value_unwind_token =
     { id; result_ty = monomorphized_ty ~state body.data }

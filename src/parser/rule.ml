@@ -78,7 +78,7 @@ let parse : Lexer.t -> Syntax.rule =
           Lexer.advance lexer;
           Some (Keyword contents))
       | Punct { raw = "("; _ } ->
-        fail "flat groups are broken";
+        if true then fail "flat groups are broken";
         Some (group_part Syntax.Rule.Flat)
       | Ident { raw; _ } ->
         Lexer.advance lexer;

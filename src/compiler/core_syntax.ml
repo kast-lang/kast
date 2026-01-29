@@ -434,7 +434,11 @@ let fn_type : core_syntax =
             let group = child |> Ast.Child.expect_group in
             group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
         in
-        let result = children |> Tuple.get_named "result" |> Ast.Child.expect_ast in
+        let result = children |> Tuple.get_named "result" |> Ast.Child.expect_group in
+        let result = result.children |> Ast.flatten_children in
+        let result_ty = result |> Tuple.get_unnamed 0 in
+        let result_context = result |> Tuple.get_named_opt "context" in
+        let _todo = context, result_context in
         match kind with
         | Assignee ->
           error span "fn_type can't be assignee";
@@ -458,7 +462,7 @@ let fn_type : core_syntax =
                 TyExpr
                 arg
             in
-            let result = C.compile ~state TyExpr result in
+            let result = C.compile ~state TyExpr result_ty in
             TE_Fn { arg; result })
           |> init_ty_expr span C.state)
   }
@@ -482,17 +486,18 @@ let fn : core_syntax =
             let group = child |> Ast.Child.expect_group in
             group.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast)
         in
-        let result_ty =
-          children
-          |> Tuple.get_named_opt "result"
-          |> Option.map (fun (child : Ast.child) ->
+        let result_ty, result_context =
+          match children |> Tuple.get_named_opt "result" with
+          | Some (child : Ast.child) ->
             let group =
               (child |> Ast.Child.expect_group).children |> Ast.flatten_children
             in
             let result_ty = group |> Tuple.get_unnamed 0 in
-            let context = group |> Tuple.get_named_opt "context" in
-            result_ty)
+            let result_context = group |> Tuple.get_named_opt "context" in
+            Some result_ty, result_context
+          | None -> None, None
         in
+        let _todo = context, result_context in
         let body = children |> Tuple.get_named "body" |> Ast.Child.expect_ast in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -1585,7 +1590,7 @@ let quote : core_syntax =
               level + 1, final_unquoted
             | _ -> 0, ast
           in
-          let rec construct ~quote_level ~root (ast : Ast.t) : expr =
+          let rec construct ~quote_level (ast : Ast.t) : expr =
             (* let def_site =
               if true || root
               then Some (C.state.scopes |> State.Scopes.call_site)
@@ -1620,11 +1625,11 @@ let quote : core_syntax =
                 |> Tuple.map (fun (child : Ast.child) : Expr.Shape.quote_ast_child ->
                   match child with
                   | Group child_group -> Group (construct_group ~quote_level child_group)
-                  | Ast child -> Ast (construct ~quote_level ~root:false child))
+                  | Ast child -> Ast (construct ~quote_level child))
             ; span = group.span
             }
           in
-          construct ~quote_level:1 ~root:true body
+          construct ~quote_level:1 body
         | _ ->
           error span "quote must be expr";
           init_error span C.state kind)
@@ -2418,10 +2423,9 @@ let no_hygiene : core_syntax =
       (fun (type a)
         (module C : Compiler.S)
         (kind : a compiled_kind)
-        (ast : Ast.t)
+        (_ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        let span = ast.data.span in
         let ast = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let ast = { ast with data = { ast.data with hygiene = CallSite } } in
         C.compile kind ast)

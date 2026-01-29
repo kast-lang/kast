@@ -289,7 +289,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    String.print_debug
                    rule.name;
                  init_error span state kind))
-         | Ast.Syntax { mode; value_after; comments_before = _; tokens = _ } ->
+         | Ast.Syntax { mode = _; value_after; comments_before = _; tokens = _ } ->
            (match value_after with
             | Some value -> compile state kind value
             | None ->

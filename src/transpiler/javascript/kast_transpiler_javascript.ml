@@ -69,48 +69,52 @@ module Impl = struct
       (NoEffect
          { shape = Field { obj = { shape = Var name; span = None }; field }; span = None })
 
-  and place_to_js (place : transpiled_place) : no_effect_expr =
+  and place_to_js ~(mut : bool) (place : transpiled_place) : no_effect_expr =
     match place with
     | Js place -> place
     | OCaml place ->
+      let get : JsAst.obj_part =
+        Field
+          { name = "get"
+          ; value =
+              { shape =
+                  JsAst.Fn
+                    { async = async_get_set
+                    ; args = []
+                    ; body =
+                        [ { shape =
+                              JsAst.Return
+                                (let (NoEffect get) = place.get () in
+                                 get)
+                          ; span = None
+                          }
+                        ]
+                    }
+              ; span = None
+              }
+          }
+      in
+      let set : JsAst.obj_part =
+        Field
+          { name = "set"
+          ; value =
+              (let var = JsAst.gen_name ~original:None "value" in
+               { shape =
+                   JsAst.Fn
+                     { async = async_get_set
+                     ; args = [ var ]
+                     ; body = scope (fun () -> place.set { shape = Var var; span = None })
+                     }
+               ; span = None
+               })
+          }
+      in
       NoEffect
         { shape =
             Obj
-              [ Field
-                  { name = "get"
-                  ; value =
-                      { shape =
-                          JsAst.Fn
-                            { async = async_get_set
-                            ; args = []
-                            ; body =
-                                [ { shape =
-                                      JsAst.Return
-                                        (let (NoEffect get) = place.get () in
-                                         get)
-                                  ; span = None
-                                  }
-                                ]
-                            }
-                      ; span = None
-                      }
-                  }
-              ; Field
-                  { name = "set"
-                  ; value =
-                      (let var = JsAst.gen_name ~original:None "value" in
-                       { shape =
-                           JsAst.Fn
-                             { async = async_get_set
-                             ; args = [ var ]
-                             ; body =
-                                 scope (fun () ->
-                                   place.set { shape = Var var; span = None })
-                             }
-                       ; span = None
-                       })
-                  }
-              ]
+              (match mut with
+               | true -> [ get; set ]
+               | _ -> [ get ])
         ; span = None
         }
 
@@ -350,7 +354,6 @@ module Impl = struct
 
   and transpile_blocked : blocked_value -> transpiled_place =
     fun value ->
-    let ctx = Effect.perform GetCtx in
     match value.shape with
     | BV_Binding binding -> transpile_binding ~span:None binding
     | BV_Instantiate _ -> failwith __LOC__
@@ -452,19 +455,21 @@ module Impl = struct
         log "While transpiling value shape %a" Value.Shape.print shape);
       raise e
 
+  and is_keyword = function
+    | "break" | "case" | "catch" | "class" | "const" | "continue" | "debugger" | "default"
+    | "delete" | "do" | "else" | "export" | "extends" | "false" | "finally" | "for"
+    | "function" | "if" | "import" | "in" | "instanceof" | "new" | "null" | "return"
+    | "super" | "switch" | "this" | "throw" | "true" | "try" | "typeof" | "var" | "void"
+    | "while" | "with" ->
+      true
+    | _ -> false
+
   and binding_name : span:span -> binding -> JsAst.name =
     fun ~span binding ->
     { (* raw = make_string "%s_%d" binding.name.name binding.id.value; *)
       raw =
         (let name = binding.name.name in
-         match name with
-         | "break" | "case" | "catch" | "class" | "const" | "continue" | "debugger"
-         | "default" | "delete" | "do" | "else" | "export" | "extends" | "false"
-         | "finally" | "for" | "function" | "if" | "import" | "in" | "instanceof" | "new"
-         | "null" | "return" | "super" | "switch" | "this" | "throw" | "true" | "try"
-         | "typeof" | "var" | "void" | "while" | "with" | _ ->
-           make_string "%s_%d" name binding.id.value
-         | _ -> name)
+         make_string "%s_%d" name binding.id.value)
     ; original = Some { raw = binding.name.name; span }
     }
 
@@ -554,7 +559,7 @@ module Impl = struct
                       }
                 ; span
                 }
-            | Unpack packed -> failwith __LOC__))
+            | Unpack _packed -> failwith __LOC__))
       in
       execute
         { shape =
@@ -631,7 +636,7 @@ module Impl = struct
         let value =
           match bind_mode with
           | Claim -> claim place
-          | ByRef { mut } -> place_to_js place
+          | ByRef { mut } -> place_to_js ~mut place
         in
         (match ctx.mut.module_of_binding |> Id.Map.find_opt binding.id with
          | Some module_var ->
@@ -666,7 +671,7 @@ module Impl = struct
               | Some name -> Tuple.Member.Name (Label.get_name name)
             in
             pattern_match field_pattern (field_place place member)
-          | Unpack packed -> failwith __LOC__)
+          | Unpack _packed -> failwith __LOC__)
       | P_Variant { label = _; label_span = _; value = value_pattern } ->
         (match value_pattern with
          | None -> ()
@@ -681,7 +686,6 @@ module Impl = struct
 
   and assign : assignee_expr -> transpiled_place -> unit =
     fun assignee place ->
-    let span = Some assignee.data.span in
     try
       match assignee.shape with
       | A_Placeholder -> ()
@@ -701,7 +705,7 @@ module Impl = struct
               | Some name -> Tuple.Member.Name (Label.get_name name)
             in
             assign field_assignee (field_place place member)
-          | Unpack packed -> failwith __LOC__)
+          | Unpack _packed -> failwith __LOC__)
       | A_Place assignee_place ->
         let assignee_place = transpile_place_expr assignee_place in
         assign_to_place assignee_place (claim place)
@@ -1002,7 +1006,7 @@ module Impl = struct
       | E_Constant { id = _; value } -> transpile_value value
       | E_Ref { mut; place } ->
         let place = transpile_place_expr place in
-        place_to_js place
+        place_to_js ~mut place
       | E_Claim place ->
         let place = transpile_place_expr place in
         claim place
