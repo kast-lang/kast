@@ -9,6 +9,10 @@ module Parser = Kast_parser
 module Processing = Kast_lsp.Processing
 open Kast_types
 
+let show_json_only_in_debug f =
+  if !Log.max_level >= Debug then Yojson.Safe.to_string (f ()) else "<hidden>"
+;;
+
 (* TODO remove once linol 0.11 is released *)
 module Linol_eio = struct
   include Linol_eio
@@ -306,25 +310,21 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
 
     method! on_request ~notify_back ~server_request ~id request =
       let jsonrpc_request = Lsp.Client_request.to_jsonrpc_request request ~id in
-      let json = Linol_jsonrpc.Jsonrpc.Request.yojson_of_t jsonrpc_request in
-      let s = Yojson.Safe.to_string json in
-      let s = "<hidden>" in
       Log.info (fun log ->
         log
           "Got request %s: %s"
           (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
-          s);
+          (show_json_only_in_debug (fun () ->
+             Linol_jsonrpc.Jsonrpc.Request.yojson_of_t jsonrpc_request)));
       let response = super#on_request ~notify_back ~server_request ~id request in
       (match response with
        | Ok response ->
-         let json = Lsp.Client_request.yojson_of_result request response in
-         let s = Yojson.Safe.to_string json in
-         let s = "<hidden>" in
          Log.info (fun log ->
            log
              "Respond %s: %s"
              (id |> Linol_jsonrpc.Jsonrpc.Id.yojson_of_t |> Yojson.Safe.to_string)
-             s)
+             (show_json_only_in_debug (fun () ->
+                Lsp.Client_request.yojson_of_result request response)))
        | Error s ->
          Log.info (fun log ->
            log
@@ -335,10 +335,11 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
 
     method! on_notification ~notify_back ~server_request n =
       let jsonrpc_n = Lsp.Client_notification.to_jsonrpc n in
-      let json = Linol_jsonrpc.Jsonrpc.Notification.yojson_of_t jsonrpc_n in
-      let s = Yojson.Safe.to_string json in
-      let s = "<hidden>" in
-      Log.info (fun log -> log "Got notification: %s" s);
+      Log.info (fun log ->
+        log
+          "Got notification: %s"
+          (show_json_only_in_debug (fun () ->
+             Linol_jsonrpc.Jsonrpc.Notification.yojson_of_t jsonrpc_n)));
       super#on_notification ~notify_back ~server_request n
   end
 
