@@ -21,7 +21,7 @@ let tuple_field
       (kind : a compiled_kind)
       (ast : Ast.t)
       ({ children; _ } : Ast.group)
-  : string * field_span:span * field_label:Label.t option * a
+  : field_span:span * field_label:Label.t option * a
   =
   let span = ast.data.span in
   let label_ast = children |> Tuple.get_named "label" |> Ast.Child.expect_ast in
@@ -64,14 +64,12 @@ let tuple_field
     in
     (match ty |> Option.map (Compiler.eval_ty (module C)) with
      | None ->
-       ( label
-       , ~field_span:label_ast.data.span
+       ( ~field_span:label_ast.data.span
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value )
      | Some (ty, ty_expr) ->
        value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
-       ( label
-       , ~field_span:label_ast.data.span
+       ( ~field_span:label_ast.data.span
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
   | TyExpr ->
@@ -94,8 +92,7 @@ let tuple_field
         in
         (fun () -> TE_Expr expr) |> init_ty_expr span C.state
     in
-    ( label
-    , ~field_span:label_ast.data.span
+    ( ~field_span:label_ast.data.span
     , ~field_label:(Some (Label.create_definition label_ast.data.span label))
     , value )
   | Assignee ->
@@ -125,14 +122,12 @@ let tuple_field
     in
     (match ty |> Option.map (Compiler.eval_ty (module C)) with
      | None ->
-       ( label
-       , ~field_span:label_ast.data.span
+       ( ~field_span:label_ast.data.span
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value )
      | Some (ty, ty_expr) ->
        value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
-       ( label
-       , ~field_span:label_ast.data.span
+       ( ~field_span:label_ast.data.span
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
 ;;
@@ -173,9 +168,7 @@ let tuple_impl
     |> List.iter (fun (child : Ast.t) ->
       match child.shape with
       | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
-        let name, ~field_span, ~field_label, value =
-          tuple_field (module C) kind child root
-        in
+        let ~field_span, ~field_label, value = tuple_field (module C) kind child root in
         let part : a Types.tuple_part_of =
           Field { label_span = field_span; label = field_label; field = value }
         in
