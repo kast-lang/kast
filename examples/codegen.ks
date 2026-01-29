@@ -33,15 +33,15 @@ const generate = (what :: WhatToGenerate) -> Ast => (
     )
 );
 
-# include_ast generate(
-#     {
-#         .name = "parseFloat",
-#         .args = (
-#             let mut args = List.create();
-#             &mut args |> List.push_back(String);
-#             args
-#         ),
-#         .returns = Float64,
-#     }
-# );
-# dbg.print(parseFloat("123"));
+include_ast generate(
+    {
+        .name = "parseFloat",
+        .args = (
+            let mut args = List.create();
+            &mut args |> List.push_back(String);
+            args
+        ),
+        .returns = Float64,
+    }
+);
+dbg.print(parseFloat("123"));

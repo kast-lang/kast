@@ -132,12 +132,16 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
             | None -> Error.error span "No field %a" Tuple.Member.print member)
          | Unpack packed_pattern ->
            (match
+              (* CHECK
+                no monomorphized ty here
+                since we dont look at the actual type,
+                only care about members? *)
               packed_pattern.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple
             with
             | Some ty_tuple ->
               let tuple =
                 ty_tuple.tuple
-                |> Tuple.mapi (fun member (field : Types.ty_tuple_field) ->
+                |> Tuple.mapi (fun member (_field : Types.ty_tuple_field) ->
                   let member : Tuple.member =
                     match member with
                     | Index _ ->
@@ -531,19 +535,20 @@ and sub_here : state -> Types.sub_state = fun state -> state
 and eval_place : state -> Types.place_expr -> evaled_place_expr =
   fun state expr ->
   try
+    let result_ty = monomorphized_ty ~state expr.data in
     let span = expr.data.span in
     Log.trace (fun log -> log "evaluating place at %a" Span.print span);
     let result =
       with_return (fun { return } ->
         match expr.shape with
-        | PE_Error -> Place (~mut:true, error_place expr.data.ty)
+        | PE_Error -> Place (~mut:true, error_place result_ty)
         | PE_Binding binding ->
           let result =
             Scope.find_opt binding.name state.scope
             |> Option.unwrap_or_else (fun () : place ->
               Log.trace (fun log -> log "all in scope: %a" Scope.print_all state.scope);
               Error.error expr.data.span "%a not found" Symbol.print binding.name;
-              error_place expr.data.ty)
+              error_place result_ty)
           in
           Log.trace (fun log ->
             log "evaled binding %a = %a" Binding.print binding Id.print result.id);
@@ -555,14 +560,14 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
           (match eval state ref_expr |> Value.expect_ref with
            | None ->
              Error.error ref_expr.data.span "Expected a reference";
-             Place (~mut:true, error_place expr.data.ty)
+             Place (~mut:true, error_place result_ty)
            | Some { mut; place } ->
              Place (~mut:(Place.is_mutable ~parent_mut:mut place), place))
         | PE_Field { obj; field; field_span = _ } ->
           let member : Tuple.member =
             match eval_field_expr state field with
             | Ok member -> member
-            | Error () -> return <| Place (~mut:true, error_place expr.data.ty)
+            | Error () -> return <| Place (~mut:true, error_place result_ty)
           in
           (match eval_place state obj with
            | RefBlocked obj_ref ->
@@ -576,7 +581,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                                ~scope:state.result_scope
                                ~span
                          }
-                     ; referenced = expr.data.ty
+                     ; referenced = result_ty
                      }
                    |> Ty.inferred ~span
                }
@@ -686,7 +691,12 @@ and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
   fun state expr { guaranteed_anonymous = _; parts } ->
   let span = expr.data.span in
   (*  TODO dont panic - get rid of Option.get *)
-  let ty = expr.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.get in
+  let ty =
+    monomorphized_ty ~state expr.data
+    |> Ty.await_inferred
+    |> Ty.Shape.expect_tuple
+    |> Option.get
+  in
   let result = ref Tuple.empty in
   parts
   |> List.iter (fun (part : _ Types.tuple_part_of) ->
@@ -741,7 +751,7 @@ and eval_expr_variant : state -> expr -> Types.expr_variant -> value =
   let span = expr.data.span in
   (*  TODO dont panic - get rid of Option.get *)
   let ty =
-    expr.data.ty.var
+    (monomorphized_ty ~state expr.data).var
     |> Kast_inference_base.Var.inferred_opt
     |> Option.get
     |> Ty.Shape.expect_variant
@@ -838,7 +848,7 @@ and eval_expr_module : state -> expr -> Types.expr_module -> value =
   in
   (*  TODO dont panic - get rid of Option.get *)
   let ty =
-    expr.data.ty.var
+    (monomorphized_ty ~state expr.data).var
     |> Kast_inference_base.Var.inferred_opt
     |> Option.get
     |> Ty.Shape.expect_tuple
@@ -1173,7 +1183,15 @@ and eval : state -> expr -> value =
            | E_TargetDependent e -> eval_expr_targetdependent state expr e
          in
          (* let result = Substitute_bindings.sub_value ~state result in *)
-         Log.trace (fun log -> log "evaled at %a = %a" Span.print span Value.print result);
+         Log.trace (fun log ->
+           log
+             "evaled at %a = %a :: %a"
+             Span.print
+             span
+             Value.print
+             result
+             Ty.print
+             (Value.ty_of result));
          Log.trace (fun log ->
            log
              "scope = %a, result scope = %a"

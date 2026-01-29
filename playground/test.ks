@@ -1,9 +1,10 @@
-use std.Ast;
+const MyList = [T1] newtype { .value :: T1 };
 
-@syntax test 10 @wrap never = "test" " " var " " body;
-impl syntax (test var body) = `(
-    let $var = 0 :: Int32;
-    $body
-);
+const create_my_list = [T2] (value :: T2) -> MyList[T2] => {
+    .value
+};
 
-dbg.print(include_ast (test x `(x)));
+const Type = @native "Type";
+const String :: Type = @native "String";
+
+const foo :: MyList[Type] = create_my_list(String);

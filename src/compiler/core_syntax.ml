@@ -930,9 +930,23 @@ let eval_const ~async (state : State.t) (expr : expr) : value =
   invoke (fun () ->
     let value = Kast_interpreter.eval state.interpreter expr in
     Log.trace (fun log ->
-      log "evaled const at %a = %a" Span.print expr.data.span Value.print value);
+      log
+        "evaled const at %a = %a :: %a"
+        Span.print
+        expr.data.span
+        Value.print
+        value
+        Ty.print
+        (Value.ty_of value));
     Log.trace (fun log ->
-      log "const at %a temp result = %a" Span.print expr.data.span Value.print result);
+      log
+        "const at %a temp result = %a :: %a"
+        Span.print
+        expr.data.span
+        Value.print
+        result
+        Ty.print
+        (Value.ty_of result));
     result |> Inference.Value.expect_inferred_as ~span:expr.data.span value;
     Log.trace (fun log ->
       log "const at %a is unified with temp result" Span.print expr.data.span));
@@ -945,8 +959,10 @@ let const_let
       (value_expr : expr)
       (module C : Compiler.S)
   =
+  Log.trace (fun log -> log "starting to compile const at %a" Span.print span);
   value_expr.data.ty
   |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span pattern.data.ty;
+  Log.trace (fun log -> log "while compiling const, set value type at %a" Span.print span);
   let interpreter_state =
     match pattern.shape with
     | P_Binding { bind_mode = Claim; binding } ->
@@ -955,10 +971,12 @@ let const_let
       }
     | _ -> C.state.interpreter
   in
+  Log.trace (fun log -> log "before eval const at %a" Span.print span);
   (* TODO async true *)
   let value =
     eval_const ~async:false { C.state with interpreter = interpreter_state } value_expr
   in
+  Log.trace (fun log -> log "evaled const %a at %a" Value.print value Span.print span);
   let let_expr =
     E_Assign
       { assignee = A_Let pattern |> init_assignee pattern.data.span C.state
@@ -989,6 +1007,7 @@ let const_let
       E_Constant { id = Id.gen (); value = V_Unit |> Value.inferred ~span }
       |> init_expr span C.state
   in
+  Log.trace (fun log -> log "compiled const %a at %a" Value.print value Span.print span);
   result |> Compiler.data_add Expr (value_expr, value) Expr
 ;;
 
