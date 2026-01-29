@@ -1008,6 +1008,7 @@ let const_let
     else
       E_Constant { id = Id.gen (); value = V_Unit |> Value.inferred ~span }
       |> init_expr span C.state
+      |> Compiler.data_add Pattern pattern Expr
   in
   Log.trace (fun log -> log "compiled const %a at %a" Value.print value Span.print span);
   result |> Compiler.data_add Expr (value_expr, value) Expr
