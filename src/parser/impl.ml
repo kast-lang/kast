@@ -24,7 +24,7 @@ type parse_result =
 
 type parse_one_state =
   { parsed_rev : Parsed_part.t list
-  ; node : Ruleset.node
+  ; node : Ruleset.Category.node
   ; made_progress : bool
   }
 
@@ -32,9 +32,14 @@ type context =
   { unused_comments_rev : Token.comment list ref
   ; lexer : Lexer.t
   ; ruleset : Ruleset.t
+  ; category : Syntax.Category.t
   ; continuation_keywords : StringSet.t
   ; filter : Syntax.Rule.Priority.filter
   }
+
+let current_category context =
+  context.ruleset |> Ruleset.find_category_opt context.category |> Option.unwrap
+;;
 
 let rec peek_token (context : context) : Token.t =
   let peek = context.lexer |> Lexer.peek in
@@ -62,7 +67,7 @@ and take_comments_as_parts_rev (context : context) : Parsed_part.t list =
 
 (* On the **first** iteration need to check that start value satisfies prev filter *)
 and is_trying_to_extend_incorrect_priority
-      (next_node : Ruleset.node)
+      (next_node : Ruleset.Category.node)
       (state : parse_one_state)
       (_context : context)
   : bool
@@ -91,7 +96,7 @@ and is_trying_to_extend_incorrect_priority
       |> not)
 
 and should_continue_with
-      (next_node : Ruleset.node)
+      (next_node : Ruleset.Category.node)
       (state : parse_one_state)
       (context : context)
   : bool
@@ -120,8 +125,8 @@ and try_continue_with_keyword (state : parse_one_state) (context : context)
           String.print_debug
           keyword);
       return None);
-    let edge : Ruleset.edge = Keyword keyword in
-    let* next_node = state.node.next |> Ruleset.EdgeMap.find_opt edge in
+    let edge : Ruleset.Category.edge = Keyword keyword in
+    let* next_node = state.node.next |> Ruleset.Category.EdgeMap.find_opt edge in
     if not (should_continue_with next_node state context) then return None;
     Log.trace (fun log -> log "Following with keyword %a" String.print_debug keyword);
     Lexer.advance context.lexer;
@@ -142,13 +147,14 @@ and try_continue_with_value (state : parse_one_state) (context : context)
   with_return (fun { return } ->
     if state.parsed_rev |> List.is_empty then return None;
     Log.trace (fun log -> log "trying to continue with value");
-    let edge : Ruleset.edge = Value in
-    let* next_node = state.node.next |> Ruleset.EdgeMap.find_opt edge in
+    let edge : Ruleset.Category.edge = Value in
+    let* next_node = state.node.next |> Ruleset.Category.EdgeMap.find_opt edge in
     if not (should_continue_with next_node state context) then return None;
     let inner_context : context =
       { lexer = context.lexer
       ; ruleset = context.ruleset
-      ; filter = next_node.value_filter |> Option.get
+      ; category = next_node.value_category |> Option.unwrap
+      ; filter = next_node.value_filter |> Option.unwrap
       ; continuation_keywords =
           (match next_node.value_filter with
            | None | Some Any -> next_node.next_keywords
@@ -235,11 +241,12 @@ and try_skipping_token_because_error (state : parse_one_state) (context : contex
      | Token.Shape.Eof -> return None);
     let* raw_token = peek |> Token.raw in
     if context.continuation_keywords |> StringSet.contains raw_token then return None;
-    if context.ruleset.root.next_keywords |> StringSet.contains raw_token then return None;
+    let category = current_category context in
+    if category.root.next_keywords |> StringSet.contains raw_token then return None;
     (match
-       context.ruleset.root.next
-       |> Ruleset.EdgeMap.find Value
-       |> fun node -> node.next |> Ruleset.EdgeMap.find_opt (Keyword raw_token)
+       category.root.next
+       |> Ruleset.Category.EdgeMap.find Value
+       |> fun node -> node.next |> Ruleset.Category.EdgeMap.find_opt (Keyword raw_token)
      with
      | Some node ->
        (match state.node.priority_range, node.prev_value_filter with
@@ -270,7 +277,7 @@ and parse_simple (context : context) : Ast.t option =
         Ast.Simple { comments_before = context |> take_comments; token = peek }
       | Punct { raw = "@syntax"; _ } -> return <| Some (parse_syntax_extension context)
       | Ident { raw; _ } ->
-        if Ruleset.is_keyword raw context.ruleset
+        if Ruleset.Category.is_keyword raw (current_category context)
         then return None
         else Ast.Simple { comments_before = context |> take_comments; token = peek }
       | Comment _ -> unreachable "comments were skipped"
@@ -286,11 +293,13 @@ and parse_minimal (context : context) : parse_result =
   | Some simple -> MadeProgress simple
   | None ->
     parse_one_from
-      { made_progress = false; parsed_rev = []; node = context.ruleset.root }
+      { made_progress = false; parsed_rev = []; node = (current_category context).root }
       context
 
 and extend_minimal (start_value : Ast.t) (context : context) : parse_result =
-  match context.ruleset.root.next |> Ruleset.EdgeMap.find_opt Value with
+  match
+    (current_category context).root.next |> Ruleset.Category.EdgeMap.find_opt Value
+  with
   | None -> NoProgress
   | Some node ->
     let state : parse_one_state =

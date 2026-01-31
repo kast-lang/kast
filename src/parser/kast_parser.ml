@@ -29,6 +29,7 @@ let parse_with_lexer : Lexer.t -> ruleset -> result =
       ; filter = Any
       ; lexer
       ; ruleset
+      ; category = Global
       ; unused_comments_rev
       }
     |> Option.get

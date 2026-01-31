@@ -1,6 +1,13 @@
 open Std
 open Kast_util
 
+module Category = struct
+  type t =
+    | Global
+    | DomainSpecific of { name : string }
+  [@@deriving eq, ord]
+end
+
 module Rule = struct
   module Priority = struct
     type t = float
@@ -66,6 +73,7 @@ module Rule = struct
   type binding =
     { name : string option
     ; priority : Priority.filter_kind
+    ; category : Category.t
     }
 
   type part =
@@ -95,6 +103,7 @@ module Rule = struct
   type t =
     { id : Id.t
     ; span : span
+    ; category : Category.t
     ; name : string
     ; priority : float
     ; parts : part list
@@ -108,7 +117,11 @@ module Rule = struct
   type rule = t
 
   let print : formatter -> rule -> unit =
-    fun fmt rule -> fprintf fmt "%a" String.print_debug rule.name
+    fun fmt rule ->
+    (match rule.category with
+     | Global -> ()
+     | DomainSpecific { name } -> fprintf fmt "%a." String.print_debug name);
+    fprintf fmt "%a" String.print_debug rule.name
   ;;
 
   let keywords : rule -> string Seq.t =

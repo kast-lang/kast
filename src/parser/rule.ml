@@ -33,11 +33,18 @@ let parse : Lexer.t -> Syntax.rule =
   in
   let get_name (token : Token.t) =
     match token.shape with
-    | Ident { raw; _ } -> raw
+    | Ident { name; _ } -> name
     | String { contents; _ } -> contents
     | _ -> fail "Expected rule name, got %a" Token.print token
   in
-  let name = get_name (Lexer.next lexer) in
+  let category, name =
+    let name = get_name (Lexer.next lexer) in
+    if Lexer.peek lexer |> Token.is_raw "."
+    then (
+      Lexer.advance lexer;
+      Syntax.Category.DomainSpecific { name }, get_name (Lexer.next lexer))
+    else Syntax.Category.Global, name
+  in
   let priority =
     let token = Lexer.next lexer in
     try Token.Shape.as_float token.shape with
@@ -144,7 +151,15 @@ let parse : Lexer.t -> Syntax.rule =
                       or :any where we want parentheses-like behavior *)
                 Syntax.Rule.Priority.Greater)
           in
-          Some (Value { name; priority }))
+          let category =
+            if Lexer.peek lexer |> Lexer.Token.is_raw "::"
+            then (
+              Lexer.advance lexer;
+              let name = Lexer.next lexer |> get_name in
+              Syntax.Category.DomainSpecific { name })
+            else Syntax.Category.Global
+          in
+          Some (Value { name; priority; category }))
       | _ ->
         if left_assoc
         then Error.error token.span "Expected value name, got %a" Token.print token;
@@ -172,6 +187,7 @@ let parse : Lexer.t -> Syntax.rule =
   let finish = Lexer.position lexer in
   { id = Id.gen ()
   ; span = { start; finish; uri = (Lexer.source lexer).uri }
+  ; category
   ; name
   ; priority
   ; parts

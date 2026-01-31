@@ -56,7 +56,7 @@ let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
     | Ast.Empty -> ast
     | Ast.Simple _ -> ast
     | Ast.Complex { rule; root } ->
-      (match into |> Parser.Ruleset.find_rule_opt rule.name with
+      (match into |> Parser.Ruleset.find_rule_opt rule.category rule.name with
        | Some rule_into ->
          (try
             { shape =

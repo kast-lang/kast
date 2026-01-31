@@ -1532,8 +1532,9 @@ let impl_syntax : core_syntax =
              in
              (match name with
               | Some name ->
+                (* TODO this is wrong *)
                 Kast_default_syntax.ruleset
-                |> Kast_parser.Ruleset.find_rule_opt name
+                |> Kast_parser.Ruleset.find_rule_opt Global name
                 |> (function
                  | Some rule -> Hashtbl.add C.state.custom_syntax_impls rule.id impl
                  | None ->
