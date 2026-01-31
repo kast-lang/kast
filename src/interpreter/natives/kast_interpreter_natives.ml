@@ -101,7 +101,9 @@ let init_natives () =
           | Some contents ->
             let source : Source.t = { contents; uri = Uri.fake "@parse" } in
             (* TODO actually using current syntax? *)
-            let { ast; trailing_comments = _; eof = _ } : Kast_parser.result =
+            let { ast; trailing_comments = _; eof = _; ruleset_with_all_new_syntax = _ }
+              : Kast_parser.result
+              =
               Kast_parser.parse source Kast_default_syntax.ruleset
             in
             V_Ast (Kast_ast_init.init_ast ast) |> Value.inferred ~span

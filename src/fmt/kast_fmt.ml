@@ -12,7 +12,7 @@ type parent =
   }
 
 let format : formatter -> Parser.result -> unit =
-  fun fmt { ast; trailing_comments; eof = _ } ->
+  fun fmt { ast; trailing_comments; eof = _; ruleset_with_all_new_syntax = _ } ->
   let print_indent level =
     for _ = 1 to level do
       fprintf fmt "    "

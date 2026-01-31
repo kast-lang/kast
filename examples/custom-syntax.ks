@@ -7,14 +7,15 @@ impl syntax (for_once x in a do e) = `(
 # impl syntax "for" = (.elem = x, .iterator = a, .body = e) => `(same thing);
 for_once x in "123" do std.io.print(x);
 
-@syntax "sql" 10 @wrap if_any = "@sql" " " "(" ""/"\n\t" sql:any :: SQL ""/"\\\n" ")";
+import "sql.ks";
 
-@syntax SQL."SELECT" 10 @wrap never = "SELECT" " " columns :: SQL " " "FROM" " " table :: SQL;
-@syntax SQL."SELECT*" 10 @wrap never = "SELECT" " " "*" " " "FROM" " " table :: SQL;
-@syntax SQL."," 20 @wrap never = <- _ "," " " _;
 impl syntax (@sql (sql)) = `(
     dbg.print(sql);
 );
 
-@sql (SELECT a, b, c FROM MyTable);
+impl syntax (@sql (sql)) = `(
+    dbg.print(sql);
+);
+
+@sql (SELECT a, b, c FROM $(2 + 2));
 @sql (SELECT * FROM MyTable);

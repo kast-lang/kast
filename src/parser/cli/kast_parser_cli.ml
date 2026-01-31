@@ -17,7 +17,9 @@ end
 let run : Args.t -> unit =
   fun { path } ->
   let source = Source.read path in
-  let { ast; trailing_comments = _; eof = _ } : Parser.result =
+  let { ast; trailing_comments = _; eof = _; ruleset_with_all_new_syntax = _ }
+    : Parser.result
+    =
     Parser.parse source Kast_default_syntax.ruleset
   in
   println "%a" Ast.print ast

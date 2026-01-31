@@ -211,6 +211,18 @@ module Category = struct
   let find_rule_opt : string -> t -> Syntax.rule option =
     fun name ruleset -> StringMap.find_opt name ruleset.rules
   ;;
+
+  let merge (a : t) (b : t) : t =
+    b.rules
+    |> StringMap.to_list
+    |> List.map snd
+    |> List.fold_left
+         (fun (acc : t) (rule : Syntax.rule) ->
+            match acc.rules |> StringMap.find_opt rule.name with
+            | Some existing when Id.equal existing.id rule.id -> acc
+            | _ -> add rule acc)
+         a
+  ;;
 end
 
 module CategoryMap = Map.Make (Syntax.Category)
@@ -285,4 +297,29 @@ let find_rule_opt category name ruleset =
   ruleset
   |> find_category_opt category
   |> Option.and_then (fun category -> category |> Category.find_rule_opt name)
+;;
+
+let merge a b =
+  { categories =
+      CategoryMap.merge
+        (fun _category a b ->
+           match a, b with
+           | Some c, None | None, Some c -> Some c
+           | Some a, Some b -> Some (Category.merge a b)
+           | None, None -> None)
+        a.categories
+        b.categories
+  }
+;;
+
+let print fmt { categories } =
+  categories
+  |> CategoryMap.iter (fun key (value : Category.t) ->
+    fprintf
+      fmt
+      "CATEGORY %a: %a\n"
+      Syntax.Category.print
+      key
+      (List.print String.print_debug)
+      (value.rules |> StringMap.to_list |> List.map fst))
 ;;

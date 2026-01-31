@@ -4,6 +4,7 @@ module Token = Kast_token
 module Lexer = Kast_lexer
 module Ast = Kast_ast.T
 module Syntax = Kast_syntax
+open Effects
 
 let expect_eof : Lexer.t -> unit =
   fun lexer ->
@@ -17,6 +18,11 @@ let expect_eof : Lexer.t -> unit =
       "%t"
       msg
 ;;
+
+type parsed =
+  { ast : Ast.t
+  ; ruleset_with_all_new_syntax : Ruleset.t (* TODO ?????? *)
+  }
 
 type parse_result =
   | MadeProgress of Ast.t
@@ -350,24 +356,50 @@ and parse_syntax_extension (context : context) : Ast.t =
   in
   { shape; data = span }
 
-and parse_value (context : context) : Ast.t option =
-  let rec loop ~(already_parsed : Ast.t option) : Ast.t option =
+and parse (context : context) : parsed option =
+  let rec loop context ~(already_parsed : Ast.t option) : parsed option =
     match parse_or_extend_minimal already_parsed context with
     | MadeProgress ast ->
       Log.trace (fun log -> log "Made progress: %a" Ast.print ast);
-      loop ~already_parsed:(Some ast)
-    | NoProgress -> already_parsed
+      let updated_context =
+        match ast.shape with
+        | Complex { rule = { name = "core:import"; _ }; root } ->
+          let path =
+            root.children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
+          in
+          (match path.shape with
+           | Simple { token = { shape = String path; _ }; _ } ->
+             let span = ast.data in
+             let uri =
+               Uri.maybe_relative_to_file span.uri (Uri.of_string path.contents)
+             in
+             let imported_ruleset = Effect.perform (Import (span, uri)) in
+             let new_ruleset = Ruleset.merge context.ruleset imported_ruleset in
+             { context with ruleset = new_ruleset }
+           | _ -> context)
+        | _ -> context
+      in
+      loop updated_context ~already_parsed:(Some ast)
+    | NoProgress ->
+      already_parsed
+      |> Option.map (fun ast -> { ast; ruleset_with_all_new_syntax = context.ruleset })
   in
-  let result = loop ~already_parsed:None in
+  let result = loop context ~already_parsed:None in
   if context.filter = Any && result |> Option.is_none
   then
     Some
-      { shape = Ast.Empty
-      ; data =
-          { start = context.lexer |> Lexer.position
-          ; finish = context.lexer |> Lexer.position
-          ; uri = (context.lexer |> Lexer.source).uri
+      { ast =
+          { shape = Ast.Empty
+          ; data =
+              { start = context.lexer |> Lexer.position
+              ; finish = context.lexer |> Lexer.position
+              ; uri = (context.lexer |> Lexer.source).uri
+              }
           }
+      ; ruleset_with_all_new_syntax = context.ruleset
       }
   else result
+
+and parse_value (context : context) : Ast.t option =
+  parse context |> Option.map (fun parsed -> parsed.ast)
 ;;

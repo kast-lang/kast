@@ -65,7 +65,9 @@ and collect_children ast : ast tuple =
 
 let parse : source -> ast =
   fun source ->
-  let { ast; trailing_comments = _; eof = _ } : Parser.result =
+  let { ast; trailing_comments = _; eof = _; ruleset_with_all_new_syntax = _ }
+    : Parser.result
+    =
     Parser.parse source ruleset
   in
   Log.trace (fun log -> log "Parsed: %a" Ast.print ast);

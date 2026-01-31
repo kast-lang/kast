@@ -860,8 +860,8 @@ let import : core_syntax =
               Compiler.update_data Expr path_expr (fun data ->
                 { data with included_file = Some uri })
             in
-            let imported_value : value = Compiler.import ~span (module C) uri in
-            const_shape imported_value
+            let imported = Compiler.import ~span (module C) uri in
+            const_shape imported.value
             |> init_expr span C.state
             |> Compiler.data_add Expr (path_expr, path_value) Expr
           | Assignee ->

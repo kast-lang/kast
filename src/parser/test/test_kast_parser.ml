@@ -34,7 +34,9 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
 
 let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit =
   try
-    let { ast; trailing_comments = _; eof = _ } : Parser.result =
+    let { ast; trailing_comments = _; eof = _; ruleset_with_all_new_syntax = _ }
+      : Parser.result
+      =
       Parser.parse
         { contents = source; uri = Uri.of_string "ocaml:test" }
         (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)
@@ -53,7 +55,9 @@ let test ~(source : string) ~(expected : string) ?(ruleset : Parser.ruleset opti
   let expected =
     Kast_simple_syntax.parse { contents = expected; uri = Uri.of_string "ocaml:test" }
   in
-  let { ast; trailing_comments = _; eof = _ } : Parser.result =
+  let { ast; trailing_comments = _; eof = _; ruleset_with_all_new_syntax = _ }
+    : Parser.result
+    =
     Parser.parse
       { contents = source; uri = Uri.of_string "ocaml:test" }
       (ruleset |> Option.value ~default:Kast_default_syntax.ruleset)

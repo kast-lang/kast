@@ -213,7 +213,7 @@ end
 let print
       (module Output : Output)
       (fmt : formatter)
-      ({ ast; trailing_comments; eof } : Parser.result)
+      ({ ast; trailing_comments; eof; ruleset_with_all_new_syntax = _ } : Parser.result)
   : unit
   =
   let printer = { fmt; position = Position.beginning } in

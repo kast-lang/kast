@@ -114,7 +114,7 @@ let temp_expr (module C : S) (ast : Ast.t) : Expr.Place.t =
   PE_Temp expr |> Init.init_place_expr ast.data.span C.state
 ;;
 
-let import ~(span : span) (module C : S) (uri : Uri.t) : value =
+let import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
   let import_cache = C.state.import_cache in
   let result : State.imported =
     match UriMap.find_opt uri import_cache.by_uri with
@@ -148,11 +148,15 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
       Effect.perform (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
       let imported : State.imported =
         { value
+        ; parser_ruleset = parsed.ruleset_with_all_new_syntax
         ; custom_syntax_impls = state.custom_syntax_impls
         ; cast_impls = state.interpreter.cast_impls
         }
       in
-      (let { value; custom_syntax_impls; cast_impls } : State.imported = imported in
+      (let { value; custom_syntax_impls; cast_impls; parser_ruleset = _ } : State.imported
+         =
+         imported
+       in
        Kast_inference_completion.complete_value value;
        custom_syntax_impls
        |> Hashtbl.iter (fun _id impl -> Kast_inference_completion.complete_value impl);
@@ -178,6 +182,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
     | Some InProgress ->
       error span "No recursive imports!";
       { value = V_Error |> Value.inferred ~span
+      ; parser_ruleset = Kast_parser.Ruleset.empty
       ; custom_syntax_impls = Hashtbl.create 0
       ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
       }
@@ -227,7 +232,7 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : value =
           Some a)
        C.state.interpreter.cast_impls.as_module
        result.cast_impls.as_module;
-  result.value
+  result
 ;;
 
 let add_local ~(only_compiler : bool) (local : State.Scope.local) (state : State.t) : unit

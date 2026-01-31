@@ -104,7 +104,7 @@ let run ({ parsed; _ } : Processing.file_state) : Lsp.Types.SemanticTokens.t opt
   Log.trace (fun log -> log "got semantic tokens request");
   match parsed with
   | None -> None
-  | Some { ast; trailing_comments; eof = _ } ->
+  | Some { ast; trailing_comments; eof = _; ruleset_with_all_new_syntax = _ } ->
     let data =
       let prev_pos = ref Position.beginning in
       let tokens =

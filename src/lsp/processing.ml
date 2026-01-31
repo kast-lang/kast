@@ -44,9 +44,14 @@ let process_file (global : global_state) (source : source) : file_state =
             Some (diag :: current))
          global.diagnostics
   in
+  let compiler = Compiler.default (Uri source.uri) ~import_cache:global.import_cache () in
   let parsed =
     try
-      let result = Parser.parse source Kast_default_syntax.ruleset in
+      let result =
+        compiler
+        |> Compiler.handle_parser_imports (fun () ->
+          Parser.parse source Kast_default_syntax.ruleset)
+      in
       Some result
     with
     | effect Parser.Error.Error error, k ->
@@ -73,12 +78,7 @@ let process_file (global : global_state) (source : source) : file_state =
   let compiled =
     Option.bind ast (fun ast ->
       let ast = Kast_ast_init.init_ast ast in
-      try
-        let compiler =
-          Compiler.default (Uri source.uri) ~import_cache:global.import_cache ()
-        in
-        Some (Compiler.compile compiler Expr ast)
-      with
+      try Some (Compiler.compile compiler Expr ast) with
       | effect Kast_inference_completion.Error.Error error, k ->
         log_error (fun log -> log "%a" Kast_inference_completion.Error.print error);
         add_diagnostic

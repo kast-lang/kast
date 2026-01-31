@@ -64,7 +64,18 @@ let run_formatter_if_needed : Args.t -> unit =
 let run : Args.t -> unit =
   fun ({ path; target; no_std; output; formatter = _ } as args) ->
   let source = Source.read path in
-  let parsed = Parser.parse source Kast_default_syntax.ruleset in
+  let compiler =
+    if no_std
+    then (
+      let interpreter = Interpreter.default (Uri path) in
+      Compiler.init ~import_cache:(Compiler.init_import_cache ()) ~compile_for:interpreter)
+    else Compiler.default (Uri source.uri) ()
+  in
+  let parsed =
+    compiler
+    |> Compiler.handle_parser_imports (fun () ->
+      Parser.parse source Kast_default_syntax.ruleset)
+  in
   let out : out_channel =
     match output with
     | None -> stdout
@@ -74,13 +85,6 @@ let run : Args.t -> unit =
   in
   let fmt = Format.formatter_of_out_channel out in
   Format.setup_tty_if_needed fmt out;
-  let compiler =
-    if no_std
-    then (
-      let interpreter = Interpreter.default (Uri path) in
-      Compiler.init ~import_cache:(Compiler.init_import_cache ()) ~compile_for:interpreter)
-    else Compiler.default (Uri source.uri) ()
-  in
   let ast = parsed.ast |> Kast_ast_init.init_ast in
   let expr : expr = Compiler.compile compiler Expr ast in
   (match target with

@@ -6,6 +6,11 @@ module Category = struct
     | Global
     | DomainSpecific of { name : string }
   [@@deriving eq, ord]
+
+  let print fmt = function
+    | Global -> fprintf fmt "Global"
+    | DomainSpecific { name } -> fprintf fmt "Domain %a" String.print_debug name
+  ;;
 end
 
 module Rule = struct

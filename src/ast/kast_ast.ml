@@ -164,10 +164,13 @@ module Make (Data : DataS) : S with module Data = Data = struct
 
   and ast = t [@@deriving eq, ord]
 
+  let print_spans = false
+
   let rec print : formatter -> ast -> unit =
     fun fmt { shape; data } ->
     let span = Data.span data in
-    fprintf fmt "%a @{<dim>at %a@}" print_shape shape Span.print span
+    print_shape fmt shape;
+    if print_spans then fprintf fmt " @{<dim>at %a@}" Span.print span
 
   and print_part =
     fun fmt -> function

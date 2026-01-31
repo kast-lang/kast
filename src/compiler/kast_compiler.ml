@@ -338,6 +338,7 @@ let default name_part ?(import_cache : import_cache option) () : state =
   in
   let bootstrap_span = Span.fake "std-bootstrap" in
   let std = Compiler.import ~span:bootstrap_span (make_compiler bootstrap) std_uri in
+  let std_value = std.value in
   let std_symbol = Symbol.create "std" in
   let std_label = Label.create_definition (Span.beginning_of std_uri) std_symbol.name in
   let interpreter_with_std =
@@ -346,9 +347,9 @@ let default name_part ?(import_cache : import_cache option) () : state =
       { by_symbol =
           SymbolMap.singleton
             std_symbol
-            ({ place = Place.init ~mut:Immutable std
+            ({ place = Place.init ~mut:Immutable std_value
              ; ty_field =
-                 { ty = Value.ty_of std
+                 { ty = Value.ty_of std_value
                  ; label = Some std_label
                  ; symbol = Some std_symbol
                  }
@@ -357,7 +358,7 @@ let default name_part ?(import_cache : import_cache option) () : state =
       }
   in
   let prelude =
-    let std = std |> Value.expect_tuple |> Option.get in
+    let std = std_value |> Value.expect_tuple |> Option.get in
     let prelude = std.tuple |> Tuple.get_named "prelude" in
     prelude.place |> Interpreter.read_place ~span:bootstrap_span
   in
@@ -371,14 +372,26 @@ let default name_part ?(import_cache : import_cache option) () : state =
   }
 ;;
 
+let handle_parser_imports : 'a. (unit -> 'a) -> state -> 'a =
+  fun f state ->
+  try f () with
+  | effect Kast_parser.Import (span, uri), k ->
+    let imported = Compiler.import ~span (make_compiler state) uri in
+    Log.trace (fun log ->
+      log "Imported ruleset: %a" Kast_parser.Ruleset.print imported.parser_ruleset);
+    Std.Effect.continue k imported.parser_ruleset
+;;
+
 let compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   fun state kind ast ->
-  Fun.protect
-    (fun () ->
-       state.currently_compiled_file <- Some ast.data.span.uri;
-       let result = compile state kind ast in
-       Log.trace (fun log -> log "Completing inference");
-       Kast_inference_completion.complete_compiled kind result;
-       result)
-    ~finally:(fun () -> state.currently_compiled_file <- None)
+  state
+  |> handle_parser_imports (fun () ->
+    Fun.protect
+      (fun () ->
+         state.currently_compiled_file <- Some ast.data.span.uri;
+         let result = compile state kind ast in
+         Log.trace (fun log -> log "Completing inference");
+         Kast_inference_completion.complete_compiled kind result;
+         result)
+      ~finally:(fun () -> state.currently_compiled_file <- None))
 ;;

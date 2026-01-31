@@ -64,8 +64,12 @@ let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
   if target <> Ir then fail "Unsupported evaluation target";
   let name_part : Types.name_part = Uri path in
   let source = Source.read path in
-  let parsed = Parser.parse source Kast_default_syntax.ruleset in
   let compiler, interpreter = init_compiler_interpreter ~no_std name_part in
+  let parsed =
+    compiler
+    |> Compiler.handle_parser_imports (fun () ->
+      Parser.parse source Kast_default_syntax.ruleset)
+  in
   let ast = parsed.ast |> Kast_ast_init.init_ast in
   let expr : expr = Compiler.compile compiler Expr ast in
   let value : value = Interpreter.eval interpreter expr in
