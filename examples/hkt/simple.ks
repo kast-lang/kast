@@ -1,5 +1,3 @@
-use std.prelude.*;
-
 # * -> *
 const TypeFn = type ([T :: Type] Type);
 const Apply = [F :: TypeFn, A :: Type] (

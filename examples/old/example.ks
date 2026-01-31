@@ -1,4 +1,3 @@
-use std.prelude.*;
 const T = import "./import-test.ks";
 const f = (arg :: T) => @eval (
     module:

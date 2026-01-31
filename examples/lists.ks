@@ -1,4 +1,3 @@
-use std.prelude.*;
 let mut a = List.create();
 List.push_back(&mut a, 1 :: Int32);
 List.push_back(&mut a, 2);

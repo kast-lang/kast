@@ -1,4 +1,3 @@
-use std.prelude.*;
 #  let some1and2 = :Option[int32].Some (1, 2);
 # std::variant
 let variant_name = value => match value with (

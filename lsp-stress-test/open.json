@@ -6,7 +6,7 @@
             "uri": "file:///home/kuviman/projects/kast-lang/kast/examples/hello.ks",
             "languageId": "kast",
             "version": 1,
-            "text": "use std.prelude.*;\nprint \"Hello, world!\""
+            "text": "print(\"Hello, world!\")"
         }
     }
 }

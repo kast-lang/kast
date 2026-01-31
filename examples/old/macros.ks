@@ -1,5 +1,3 @@
-use std.prelude.*;
-
 let x = 123 :: Int32;
 
 const ast = if typeof x == Int32 then (

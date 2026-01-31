@@ -1,5 +1,3 @@
-use std.prelude.*;
-
 const CanvasRenderingContext2DRaw = @opaque_type;
 const CanvasRenderingContext = newtype {
     .raw :: CanvasRenderingContext2DRaw,

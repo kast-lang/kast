@@ -1,5 +1,3 @@
-use std.prelude.*;
-
 const Functor = [F :: [Type] -> Type] newtype {
     .fmap :: [A, B] (F[A], A -> B) -> F[B],
 };

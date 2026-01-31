@@ -1,5 +1,3 @@
-use std.prelude.*;
-
 const id_t = type ([X] X -> X);
 const id :: id_t = [T] (x :: T) => x;
 print(id("hello, world!"));

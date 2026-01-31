@@ -1,4 +1,3 @@
-use std.prelude.*;
 use std.collections.Treap;
 let mut v = Treap.create();
 for i in 0..10 do (

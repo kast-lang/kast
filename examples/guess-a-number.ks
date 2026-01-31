@@ -1,5 +1,3 @@
-use std.prelude.*;
-
 let main = () with io => (
     print("Welcome to the Guessing Number Game :-)");
     let picked :: Int32 = std.random.gen_range(.min = 1, .max = 10);

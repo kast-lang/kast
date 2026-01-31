@@ -1,5 +1,3 @@
-use std.prelude.*;
-
 const Monad = [M :: [_ :: Type] Type] newtype {
     .ret :: [T] T -> M[T],
     .flat_map :: [A, B] (M[A], (A -> M[B])) -> M[B],
