@@ -152,7 +152,7 @@ module Impl = struct
              }
            (fun fmt ({ data } : ty_variant_data) ->
               match data with
-              | Some data -> fprintf fmt " %a" print_ty_args data
+              | Some data -> fprintf fmt " %a" (print_ty_args ~open_:"{" ~close:"}") data
               | None -> ()))
         variants
       (* ; fprintf fmt "(row scope=%a)" print_var_scope
@@ -200,15 +200,21 @@ module Impl = struct
     | T_Blocked blocked -> print_blocked_value fmt blocked
     | T_Error -> fprintf fmt "@{<red><error>@}"
 
-  and print_ty_args : formatter -> ty_args -> unit =
-    fun fmt { ty } ->
+  and print_ty_args : open_:string -> close:string -> formatter -> ty_args -> unit =
+    fun ~open_ ~close fmt { ty } ->
     match ty.var |> Inference.Var.inferred_opt with
     | Some (T_Tuple { tuple; _ }) ->
       if tuple |> Tuple.is_unnamed 1
       then (
         let ty = tuple |> Tuple.unwrap_single_unnamed in
         print_ty fmt ty.ty)
-      else print_ty fmt ty
+      else
+        Tuple.print
+          ~options:
+            { Tuple.default_print_options with open_; close; named_field_middle = " :: " }
+          (fun fmt (field : ty_tuple_field) -> print_ty fmt field.ty)
+          fmt
+          tuple
     | _ -> print_ty fmt ty
 
   and print_optionally_named_ty : always_print_named_shape:bool -> formatter -> ty -> unit
@@ -226,7 +232,8 @@ module Impl = struct
     | None -> fprintf fmt "?mut "
 
   and print_ty_fn : formatter -> ty_fn -> unit =
-    fun fmt { args; result } -> fprintf fmt "%a -> %a" print_ty_args args print_ty result
+    fun fmt { args; result } ->
+    fprintf fmt "%a -> %a" (print_ty_args ~open_:"(" ~close:")") args print_ty result
 
   (* VAR *)
   and print_var : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
