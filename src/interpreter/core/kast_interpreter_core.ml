@@ -1023,7 +1023,12 @@ and eval_expr_implcast : state -> expr -> Types.expr_impl_cast -> value =
   state.cast_impls.map
   <- state.cast_impls.map |> Types.ValueMap.add target updated_target_impls;
   Log.trace (fun log ->
-    log "Added cast impl: %a as %a" Print.print_args value Value.print target);
+    log
+      "Added cast impl: %a as %a"
+      (Print.print_args ~open_:"(" ~close:")")
+      value
+      Value.print
+      target);
   V_Unit |> Value.inferred ~span
 
 and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
@@ -1050,11 +1055,17 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
         Log.info (fun log ->
           log
             "Exists impl: %a as %a"
-            Print.print_args
+            (Print.print_args ~open_:"(" ~close:")")
             existing_value
             Value.print
             existing_target)));
-    Error.error span "no impl of %a as %a" Print.print_args value Value.print target;
+    Error.error
+      span
+      "no impl of %a as %a"
+      (Print.print_args ~open_:"(" ~close:")")
+      value
+      Value.print
+      target;
     V_Error |> Value.inferred ~span
 
 and await_fully_inferred value : Value.Shape.t =

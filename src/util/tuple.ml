@@ -159,10 +159,12 @@ module Tuple = struct
       print_value
       fmt
       { unnamed; named; named_order_rev } ->
-    Format.pp_print_custom_break
-      fmt
-      ~fits:(options.open_, 1, "")
-      ~breaks:(options.open_, 2, "");
+    if options.open_ <> ""
+    then
+      Format.pp_print_custom_break
+        fmt
+        ~fits:(options.open_, 1, "")
+        ~breaks:(options.open_, 2, "");
     let sep fmt () =
       Format.pp_print_custom_break
         fmt
@@ -187,11 +189,13 @@ module Tuple = struct
         value
     in
     Format.pp_print_iter ~pp_sep:sep List.iter print_named fmt (List.rev named_order_rev);
-    Format.pp_print_custom_break
-      fmt
-      ~fits:("", 1, options.close)
-      ~breaks:
-        ((if has_named || has_unnamed then options.field_sep else ""), 0, options.close)
+    if options.close <> ""
+    then
+      Format.pp_print_custom_break
+        fmt
+        ~fits:("", 1, options.close)
+        ~breaks:
+          ((if has_named || has_unnamed then options.field_sep else ""), 0, options.close)
   ;;
 
   let map : 'a 'b. ('a -> 'b) -> 'a tuple -> 'b tuple =

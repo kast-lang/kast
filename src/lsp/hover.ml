@@ -68,7 +68,7 @@ let hover_text info =
   | Some ty ->
     make_string "%t" (fun fmt ->
       fprintf fmt "```kast@\n";
-      fprintf fmt "@[<v>:: %a@]\n" Ty.print ty.ty;
+      fprintf fmt "@[<v>:: %a@]\n" Print.print_ty_with_shape_if_named ty.ty;
       (match ty.evaled with
        | None -> ()
        | Some value -> fprintf fmt "@[<v>= %a@]\n" Value.print value);

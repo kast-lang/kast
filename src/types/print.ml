@@ -76,7 +76,12 @@ module Impl = struct
     | V_Variant { label; data; ty = _ } ->
       fprintf fmt ":%a" Label.print label;
       (match data with
-       | Some data -> fprintf fmt " %a" (print_place_value_with print_args) data
+       | Some data ->
+         fprintf
+           fmt
+           " %a"
+           (print_place_value_with (print_args ~open_:"{" ~close:"}"))
+           data
        | None -> ())
     | V_Generic g -> print_name_shape fmt g.name
     (* fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
@@ -119,9 +124,9 @@ module Impl = struct
     | BV_ClaimRef ref -> fprintf fmt "%a^" print_blocked_value ref
 
   (* TY *)
-  and print_ty_tuple : formatter -> ty_tuple -> unit =
-    fun fmt { name; tuple } ->
-    print_optionally_named fmt name (fun fmt ->
+  and print_ty_tuple : always_print_shape:bool -> formatter -> ty_tuple -> unit =
+    fun ~always_print_shape fmt { name; tuple } ->
+    print_optionally_named ~always_print_shape fmt name (fun fmt ->
       fprintf
         fmt
         "%a"
@@ -130,9 +135,9 @@ module Impl = struct
            (fun fmt (field : ty_tuple_field) -> print_ty fmt field.ty))
         tuple)
 
-  and print_ty_variant : formatter -> ty_variant -> unit =
-    fun fmt { name; variants } ->
-    print_optionally_named fmt name (fun fmt ->
+  and print_ty_variant : always_print_shape:bool -> formatter -> ty_variant -> unit =
+    fun ~always_print_shape fmt { name; variants } ->
+    print_optionally_named ~always_print_shape fmt name (fun fmt ->
       fprintf
         fmt
         "%a"
@@ -170,8 +175,8 @@ module Impl = struct
       print_pattern ~options fmt p
     | _ -> print_pattern ~options fmt args.pattern
 
-  and print_ty_shape : formatter -> ty_shape -> unit =
-    fun fmt -> function
+  and print_ty_shape : always_print_named_shape:bool -> formatter -> ty_shape -> unit =
+    fun ~always_print_named_shape fmt -> function
     | T_Unit -> fprintf fmt "()"
     | T_Bool -> fprintf fmt "Bool"
     | T_Int32 -> fprintf fmt "Int32"
@@ -181,8 +186,8 @@ module Impl = struct
     | T_String -> fprintf fmt "String"
     | T_Ref { mut; referenced } ->
       fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
-    | T_Variant v -> print_ty_variant fmt v
-    | T_Tuple t -> print_ty_tuple fmt t
+    | T_Variant v -> print_ty_variant ~always_print_shape:always_print_named_shape fmt v
+    | T_Tuple t -> print_ty_tuple ~always_print_shape:always_print_named_shape fmt t
     | T_Ty -> fprintf fmt "Type"
     | T_Fn f -> print_ty_fn fmt f
     | T_Generic ty -> print_ty_generic fmt ty
@@ -206,8 +211,12 @@ module Impl = struct
       else print_ty fmt ty
     | _ -> print_ty fmt ty
 
-  and print_ty : formatter -> ty -> unit =
-    fun fmt { var } -> print_var print_ty_shape fmt var
+  and print_optionally_named_ty : always_print_named_shape:bool -> formatter -> ty -> unit
+    =
+    fun ~always_print_named_shape fmt { var } ->
+    print_var (print_ty_shape ~always_print_named_shape) fmt var
+
+  and print_ty fmt ty = print_optionally_named_ty ~always_print_named_shape:false fmt ty
 
   and print_is_mutable : formatter -> is_mutable -> unit =
     fun fmt { var } ->
@@ -666,11 +675,14 @@ module Impl = struct
   and print_target : formatter -> value_target -> unit =
     fun fmt { name } -> fprintf fmt "@{<italic><target=%a>@}" String.print_debug name
 
-  and print_optionally_named : formatter -> optional_name -> (formatter -> unit) -> unit =
-    fun fmt name f ->
+  and print_optionally_named
+    : always_print_shape:bool -> formatter -> optional_name -> (formatter -> unit) -> unit
+    =
+    fun ~always_print_shape fmt name f ->
     match name.var |> Inference.Var.inferred_opt with
-    | Some (Some name) when false -> print_name_shape fmt name
-    (* ; fprintf fmt "(=%t)" f *)
+    | Some (Some name) ->
+      print_name_shape fmt name;
+      if always_print_shape then fprintf fmt " = %t" f
     | _ -> f fmt
 
   and print_name : formatter -> name -> unit =
@@ -693,18 +705,30 @@ module Impl = struct
     | Simple part -> print_name_shape_part fmt part
     | Concat (a, b) -> fprintf fmt "%a.%a" print_name_shape a print_name_part b
     | Instantiation { generic; arg } ->
-      fprintf fmt "%a[%a]" print_value generic print_value arg
+      fprintf fmt "%a[%a]" print_value generic (print_args ~open_:"" ~close:"") arg
 
-  and print_args fmt (args : value) =
+  and print_args ~open_ ~close fmt (args : value) =
     match args.var |> Inference.Var.inferred_opt with
-    | Some (V_Tuple { tuple; _ }) ->
+    | Some (V_Tuple { tuple; ty = _ }) ->
       if tuple |> Tuple.is_unnamed 1
       then
         print_place_value_with
           print_value
           fmt
           (tuple |> Tuple.unwrap_single_unnamed).place
-      else print_value fmt args
+      else
+        Tuple.print
+          ~options:
+            { open_
+            ; field_sep = ","
+            ; named_field_before = "."
+            ; named_field_middle = " = "
+            ; close
+            }
+          (fun fmt (field : value_tuple_field) ->
+             (print_place_value_with print_value) fmt field.place)
+          fmt
+          tuple
     | _ -> print_value fmt args
   ;;
 end
@@ -718,7 +742,12 @@ let with_cache f =
 ;;
 
 let print_ty = with_cache Impl.print_ty
-let print_ty_shape = with_cache Impl.print_ty_shape
+
+let print_ty_with_shape_if_named =
+  with_cache (Impl.print_optionally_named_ty ~always_print_named_shape:true)
+;;
+
+let print_ty_shape = with_cache (Impl.print_ty_shape ~always_print_named_shape:false)
 let print_blocked_value = with_cache Impl.print_blocked_value
 let print_blocked_value_shape = with_cache Impl.print_blocked_value_shape
 let print_value = with_cache Impl.print_value
@@ -768,7 +797,7 @@ let print_place_value = with_cache (Impl.print_place_value_with Impl.print_value
 let print_name = with_cache Impl.print_name
 let print_name_shape = with_cache Impl.print_name_shape
 let print_name_part = with_cache Impl.print_name_part
-let print_ty_tuple = with_cache Impl.print_ty_tuple
-let print_ty_variant = with_cache Impl.print_ty_variant
+let print_ty_tuple = with_cache (Impl.print_ty_tuple ~always_print_shape:false)
+let print_ty_variant = with_cache (Impl.print_ty_variant ~always_print_shape:false)
 let print_ty_generic = with_cache Impl.print_ty_generic
-let print_args = with_cache Impl.print_args
+let print_args ~open_ ~close = with_cache (Impl.print_args ~open_ ~close)
