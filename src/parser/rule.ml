@@ -37,7 +37,7 @@ let parse : Lexer.t -> Syntax.rule =
     | String { contents; _ } -> contents
     | _ -> fail "Expected rule name, got %a" Token.print token
   in
-  let category, name =
+  let rule_category, name =
     let name = get_name (Lexer.next lexer) in
     if Lexer.peek lexer |> Token.is_raw "."
     then (
@@ -156,8 +156,10 @@ let parse : Lexer.t -> Syntax.rule =
             then (
               Lexer.advance lexer;
               let name = Lexer.next lexer |> get_name in
-              Syntax.Category.DomainSpecific { name })
-            else Syntax.Category.Global
+              if name = "GLOBAL"
+              then Syntax.Category.Global
+              else Syntax.Category.DomainSpecific { name })
+            else rule_category
           in
           Some (Value { name; priority; category }))
       | _ ->
@@ -187,7 +189,7 @@ let parse : Lexer.t -> Syntax.rule =
   let finish = Lexer.position lexer in
   { id = Id.gen ()
   ; span = { start; finish; uri = (Lexer.source lexer).uri }
-  ; category
+  ; category = rule_category
   ; name
   ; priority
   ; parts
