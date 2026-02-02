@@ -1,1 +1,3 @@
-"hi"
+module:
+
+const C = "hi";

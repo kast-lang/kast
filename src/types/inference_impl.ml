@@ -752,14 +752,8 @@ module Impl = struct
                     (fun fmt -> fprintf fmt "field %a" Tuple.Member.print member))
       }
     with
-    | Invalid_argument _ ->
-      error
-        span
-        "value_tuple %a != %a"
-        print_value_tuple
-        value_a
-        print_value_tuple
-        value_b;
+    | Invalid_argument s ->
+      error span "%s" s;
       value_a
 
   and unite_value_variant : value_variant Inference.unite =

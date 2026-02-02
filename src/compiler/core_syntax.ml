@@ -1316,7 +1316,7 @@ let use : core_syntax =
           let pattern = pattern |> init_pattern used_expr.data.span C.state in
           const_let span pattern used_expr (module C)
         | _ ->
-          error span "use .* must be expr";
+          error span "use must be expr";
           init_error span C.state kind)
   }
 ;;
@@ -1341,6 +1341,7 @@ let use_dot_star : core_syntax =
               (module C)
               used_ast
           in
+          let bindings = ref [] in
           (match used |> Value.await_inferred with
            | V_Tuple { tuple; ty = _ } ->
              tuple
@@ -1368,10 +1369,12 @@ let use_dot_star : core_syntax =
                    ; def_site = None
                    }
                  in
+                 bindings := binding :: !bindings;
                  let local : State.Scope.local = Const { place = field.place; binding } in
                  C.state |> Compiler.add_local ~only_compiler:true local)
            | _ -> error span "can't use .* %a" Value.print used);
-          const_shape (V_Unit |> Value.inferred ~span)
+          E_UseDotStar
+            { used = const_shape used |> init_expr span C.state; bindings = !bindings }
           |> init_expr span C.state
           |> Compiler.data_add Expr (used_expr, used) Expr
         | _ ->
