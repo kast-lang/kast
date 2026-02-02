@@ -13,3 +13,5 @@ impl Foo as module = (
 impl Foo as FromString = {
     .from_string = s => { .x = parse(s) }
 };
+
+const imported2 = import "./imported2.ks";

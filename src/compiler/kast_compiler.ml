@@ -315,15 +315,7 @@ let rec default name_part ?(import_cache : import_cache option) () : state =
   state
 ;;
 
-let handle_parser_imports : 'a. (unit -> 'a) -> state -> 'a =
-  fun f state ->
-  try f () with
-  | effect Kast_parser.Import (span, uri), k ->
-    let imported = Compiler.import ~span (make_compiler state) uri in
-    Log.trace (fun log ->
-      log "Imported ruleset: %a" Kast_parser.Ruleset.print imported.parser_ruleset);
-    Std.Effect.continue k imported.parser_ruleset
-;;
+let handle_parser_imports f state = Compiler.handle_parser_imports f (make_compiler state)
 
 let compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
   fun state kind ast ->

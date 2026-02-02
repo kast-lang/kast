@@ -114,63 +114,76 @@ let temp_expr (module C : S) (ast : Ast.t) : Expr.Place.t =
   PE_Temp expr |> Init.init_place_expr ast.data.span C.state
 ;;
 
-let import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
+let rec handle_parser_imports : 'a. (unit -> 'a) -> (module S) -> 'a =
+  fun f (module C : S) ->
+  try f () with
+  | effect Kast_parser.Import (span, uri), k ->
+    let imported = calculate_import ~span (module C : S) uri in
+    Log.trace (fun log ->
+      log "Imported ruleset: %a" Kast_parser.Ruleset.print imported.parser_ruleset);
+    Std.Effect.continue k imported.parser_ruleset
+
+and calculate_import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
   let import_cache = C.state.import_cache in
-  let result : State.imported =
-    match UriMap.find_opt uri import_cache.by_uri with
-    | None ->
-      Log.trace (fun log -> log "Importing %a" Uri.print uri);
-      Effect.perform (CompilerEffect.FileStartedProcessing uri);
-      import_cache.by_uri
-      <- UriMap.add uri (InProgress : State.import) import_cache.by_uri;
-      let state : State.t = !State.default (Uri uri) ~import_cache in
-      state.currently_compiled_file <- Some uri;
-      let source = Source.read uri in
-      let parsed = Kast_parser.parse source Kast_default_syntax.ruleset in
-      let expr = C.compile ~state Expr (parsed.ast |> Kast_ast_init.init_ast) in
-      let value : value = Kast_interpreter.eval state.interpreter expr in
-      Effect.perform (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
-      let imported : State.imported =
-        { value
-        ; parser_ruleset = parsed.ruleset_with_all_new_syntax
-        ; custom_syntax_impls = state.custom_syntax_impls
-        ; cast_impls = state.interpreter.cast_impls
-        }
-      in
-      (let { value; custom_syntax_impls; cast_impls; parser_ruleset = _ } : State.imported
-         =
-         imported
-       in
-       Kast_inference_completion.complete_value value;
-       custom_syntax_impls
-       |> Hashtbl.iter (fun _id impl -> Kast_inference_completion.complete_value impl);
-       let { map = cast_impls; as_module = cast_as_module } : Types.cast_impls =
-         cast_impls
-       in
+  match UriMap.find_opt uri import_cache.by_uri with
+  | None ->
+    Log.trace (fun log -> log "Importing %a" Uri.print uri);
+    Effect.perform (CompilerEffect.FileStartedProcessing uri);
+    import_cache.by_uri <- UriMap.add uri (InProgress : State.import) import_cache.by_uri;
+    let state : State.t = !State.default (Uri uri) ~import_cache in
+    state.currently_compiled_file <- Some uri;
+    let source = Source.read uri in
+    let parsed =
+      (module C)
+      |> handle_parser_imports (fun () ->
+        Kast_parser.parse source Kast_default_syntax.ruleset)
+    in
+    let expr = C.compile ~state Expr (parsed.ast |> Kast_ast_init.init_ast) in
+    let value : value = Kast_interpreter.eval state.interpreter expr in
+    Effect.perform (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
+    let imported : State.imported =
+      { value
+      ; parser_ruleset = parsed.ruleset_with_all_new_syntax
+      ; custom_syntax_impls = state.custom_syntax_impls
+      ; cast_impls = state.interpreter.cast_impls
+      }
+    in
+    (let { value; custom_syntax_impls; cast_impls; parser_ruleset = _ } : State.imported =
+       imported
+     in
+     Kast_inference_completion.complete_value value;
+     custom_syntax_impls
+     |> Hashtbl.iter (fun _id impl -> Kast_inference_completion.complete_value impl);
+     let { map = cast_impls; as_module = cast_as_module } : Types.cast_impls =
        cast_impls
-       |> Types.ValueMap.iter (fun target impls ->
-         Kast_inference_completion.complete_value target;
-         impls
-         |> Types.ValueMap.iter (fun value impl ->
-           Kast_inference_completion.complete_value value;
-           Kast_inference_completion.complete_value impl));
-       cast_as_module
+     in
+     cast_impls
+     |> Types.ValueMap.iter (fun target impls ->
+       Kast_inference_completion.complete_value target;
+       impls
        |> Types.ValueMap.iter (fun value impl ->
          Kast_inference_completion.complete_value value;
          Kast_inference_completion.complete_value impl));
-      import_cache.by_uri
-      <- UriMap.add uri (Imported imported : State.import) import_cache.by_uri;
-      Log.trace (fun log -> log "Imported %a" Uri.print uri);
-      imported
-    | Some (Imported value) -> value
-    | Some InProgress ->
-      error span "No recursive imports!";
-      { value = V_Error |> Value.inferred ~span
-      ; parser_ruleset = Kast_parser.Ruleset.empty
-      ; custom_syntax_impls = Hashtbl.create 0
-      ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
-      }
-  in
+     cast_as_module
+     |> Types.ValueMap.iter (fun value impl ->
+       Kast_inference_completion.complete_value value;
+       Kast_inference_completion.complete_value impl));
+    import_cache.by_uri
+    <- UriMap.add uri (Imported imported : State.import) import_cache.by_uri;
+    Log.trace (fun log -> log "Imported %a" Uri.print uri);
+    imported
+  | Some (Imported value) -> value
+  | Some InProgress ->
+    error span "No recursive imports!";
+    { value = V_Error |> Value.inferred ~span
+    ; parser_ruleset = Kast_parser.Ruleset.empty
+    ; custom_syntax_impls = Hashtbl.create 0
+    ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
+    }
+;;
+
+let rec import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
+  let result : State.imported = calculate_import ~span (module C) uri in
   Log.trace (fun log -> log "imported (maybe cached) %a" Uri.print uri);
   Hashtbl.add_seq C.state.custom_syntax_impls (Hashtbl.to_seq result.custom_syntax_impls);
   (* TODO what if its going to be evaluated in a different interpreter? *)
