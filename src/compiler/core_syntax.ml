@@ -989,11 +989,12 @@ let const_let
   in
   Log.trace (fun log -> log "evaled const %a at %a" Value.print value Span.print span);
   let let_expr =
+    let span = Span.fake "const_let" in
     E_Assign
       { assignee = A_Let pattern |> init_assignee pattern.data.span C.state
       ; value =
-          (let const = const_shape value |> init_expr value_expr.data.span C.state in
-           PE_Temp const |> init_place_expr value_expr.data.span C.state)
+          (let const = const_shape value |> init_expr span C.state in
+           PE_Temp const |> init_place_expr span C.state)
       }
     |> init_expr span C.state
   in
