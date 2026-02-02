@@ -347,3 +347,44 @@ let enter_ast_def_site (ast : Ast.t) (state : t) =
      | Some def_site ->
        state.scopes <- state.scopes |> Scopes.enter_def_site ~span:ast.data.span def_site)
 ;;
+
+(* TODO compile_for - figure out *)
+let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
+  fun ~import_cache ~compile_for ->
+  let scope = Scope.init ~span:(Span.fake "<init>") ~recursive:false in
+  let scope =
+    SymbolMap.fold
+      (fun name (local : Types.interpreter_local) scope ->
+         scope
+         |> Scope.add
+              (Const
+                 { place = local.place
+                 ; binding =
+                     { id = Id.gen ()
+                     ; scope = Some compile_for.scope
+                     ; name
+                     ; ty = local.place.ty
+                     ; span = Span.fake "<interpreter>"
+                     ; label = local.ty_field.label |> Option.get
+                     ; mut = Place.Mut.to_bool local.place.mut
+                     ; hygiene = CallSite
+                     ; def_site = None
+                     }
+                 }))
+      compile_for.scope.locals.by_symbol
+      scope
+  in
+  { scopes = Scopes.only scope
+  ; currently_compiled_file = None
+  ; interpreter = compile_for
+  ; import_cache
+  ; custom_syntax_impls = Hashtbl.create 0
+  ; mut_enabled = false
+  ; bind_mode = Claim
+  }
+;;
+
+let default =
+  ref (fun name_part ~import_cache : state ->
+    init ~import_cache ~compile_for:(Interpreter.default name_part))
+;;

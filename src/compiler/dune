@@ -8,4 +8,8 @@
   kast_inference
   kast_parser
   kast_default_syntax
-  kast_inference_completion))
+  kast_inference_completion)
+ (preprocessor_deps
+  (file prelude.ks))
+ (preprocess
+  (pps ppx_include_dir)))

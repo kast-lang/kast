@@ -7,6 +7,8 @@ use Int64;
 use Float64;
 use Char;
 use String;
+use String.ToString;
+use String.FromString;
 use String.to_string;
 use String.parse;
 use io.print;

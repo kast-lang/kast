@@ -108,9 +108,10 @@ module rec TypesImpl : sig
 
   and value_untyped_fn =
     { id : Id.t
-    ; def : maybe_compiled_fn
-    ; captured : interpreter_scope
+    ; def : maybe_compiled_fn [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; captured : interpreter_scope [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; monomorphization_state : monomorphization_state
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and monomorphization_state =
@@ -120,9 +121,9 @@ module rec TypesImpl : sig
     }
 
   and value_generic =
-    { name : name_shape
+    { name : name_shape [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; fn : value_untyped_fn
-    ; ty : ty_generic
+    ; ty : ty_generic [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_tuple_field =
@@ -793,9 +794,10 @@ end = struct
 
   and value_untyped_fn =
     { id : Id.t
-    ; def : maybe_compiled_fn
-    ; captured : interpreter_scope
+    ; def : maybe_compiled_fn [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; captured : interpreter_scope [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; monomorphization_state : monomorphization_state
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and monomorphization_state =
@@ -805,9 +807,9 @@ end = struct
     }
 
   and value_generic =
-    { name : name_shape
+    { name : name_shape [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; fn : value_untyped_fn
-    ; ty : ty_generic
+    ; ty : ty_generic [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_tuple_field =
@@ -1419,10 +1421,15 @@ end = struct
 
   let empty = { entries = [] }
 
-  let find_opt key map =
-    map.entries
-    |> List.find_map (fun (map_key, value) ->
-      if ValueImpl.equal key map_key then Some value else None)
+  let find_opt (key : key) (map : 'a t) : 'a option =
+    let values =
+      map.entries
+      |> List.to_seq
+      |> Seq.filter_map (fun (map_key, value) ->
+        if ValueImpl.equal key map_key then Some value else None)
+    in
+    if values |> Seq.length > 1 then fail "TODO: Multiple values for key";
+    values |> Seq.find_map (fun x -> Some x)
   ;;
 
   let update (key : key) (f : 'a option -> 'a option) (map : 'a t) : 'a t =

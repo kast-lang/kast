@@ -827,6 +827,15 @@ let type_ascribe : core_syntax =
   }
 ;;
 
+let resolve_uri ~from uri =
+  match Uri.scheme uri with
+  | Some "std" ->
+    let uri = Uri.with_scheme uri None in
+    let std_base = Effect.perform CompilerEffect.FindStd in
+    Uri.append_if_relative std_base uri
+  | _ -> Uri.maybe_relative_to_file from uri
+;;
+
 let import : core_syntax =
   { name = "import"
   ; handle =
@@ -855,7 +864,7 @@ let import : core_syntax =
               |> Value.expect_string
               |> Option.unwrap_or_else (fun () -> return <| init_error span C.state kind)
             in
-            let uri = Uri.maybe_relative_to_file span.uri (Uri.of_string path) in
+            let uri = resolve_uri ~from:span.uri (Uri.of_string path) in
             let path_expr =
               Compiler.update_data Expr path_expr (fun data ->
                 { data with included_file = Some uri })
@@ -898,7 +907,7 @@ let include' : core_syntax =
             |> Value.expect_string
             |> Option.unwrap_or_else (fun () -> return <| init_error span C.state kind)
           in
-          let uri = Uri.maybe_relative_to_file span.uri (Uri.of_string path) in
+          let uri = resolve_uri ~from:span.uri (Uri.of_string path) in
           Effect.perform (CompilerEffect.FileStartedProcessing uri);
           let path_expr =
             Compiler.update_data Expr path_expr (fun data ->

@@ -123,24 +123,8 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
       Effect.perform (CompilerEffect.FileStartedProcessing uri);
       import_cache.by_uri
       <- UriMap.add uri (InProgress : State.import) import_cache.by_uri;
-      let state : State.t =
-        { currently_compiled_file = Some uri
-        ; (* TODO should have impls from std? *)
-          custom_syntax_impls = Hashtbl.create 0
-        ; (* TODO why is this not a new scope? *)
-          scopes = C.state.scopes
-        ; import_cache
-        ; interpreter =
-            { (* TODO should be brand new interpreter? and compiler? *)
-              C.state.interpreter
-              with
-              cast_impls =
-                { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
-            }
-        ; mut_enabled = false
-        ; bind_mode = Claim
-        }
-      in
+      let state : State.t = !State.default (Uri uri) ~import_cache in
+      state.currently_compiled_file <- Some uri;
       let source = Source.read uri in
       let parsed = Kast_parser.parse source Kast_default_syntax.ruleset in
       let expr = C.compile ~state Expr (parsed.ast |> Kast_ast_init.init_ast) in
@@ -209,17 +193,19 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
           Some
             (Types.ValueMap.union
                (fun value a b ->
-                  error
-                    span
-                    "conflicting impls of cast %a as %a (%a and %a)"
-                    Value.print
-                    value
-                    Value.print
-                    target
-                    Value.print
-                    a
-                    Value.print
-                    b;
+                  if not (Repr.phys_equal a b)
+                  then
+                    error
+                      span
+                      "conflicting impls of cast %a as %a (%a and %a)"
+                      Value.print
+                      value
+                      Value.print
+                      target
+                      Value.print
+                      a
+                      Value.print
+                      b;
                   Some a)
                impls_a
                impls_b))
@@ -227,8 +213,9 @@ let import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
        result.cast_impls.map;
   C.state.interpreter.cast_impls.as_module
   <- Types.ValueMap.union
-       (fun value a _b ->
-          error span "conflicting impls of cast %a as module" Value.print value;
+       (fun value a b ->
+          if not (Repr.phys_equal a b)
+          then error span "conflicting impls of cast %a as module" Value.print value;
           Some a)
        C.state.interpreter.cast_impls.as_module
        result.cast_impls.as_module;

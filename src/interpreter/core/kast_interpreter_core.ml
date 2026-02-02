@@ -1036,29 +1036,51 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
   let span = expr.data.span in
   let value = eval state value in
   let _ : Value.shape = value |> await_fully_inferred in
+  let target_impls = state.cast_impls.map |> Types.ValueMap.find_opt target in
   let impl =
-    state.cast_impls.map
-    |> Types.ValueMap.find_opt target
+    target_impls
     |> Option.and_then (fun target_impls -> target_impls |> Types.ValueMap.find_opt value)
   in
   match impl with
   | Some impl -> impl
   | None ->
-    state.cast_impls.map
-    |> Types.ValueMap.iter (fun existing_target impls ->
-      impls
-      |> Types.ValueMap.iter (fun existing_value _impl ->
-        if
-          Types.ValueImpl.compare target existing_target = 0
-          && Types.ValueImpl.compare value existing_value = 0
-        then Log.error (fun log -> log "Not found but actually there????");
-        Log.info (fun log ->
-          log
-            "Exists impl: %a as %a"
-            (Print.print_args ~open_:"(" ~close:")")
-            existing_value
-            Value.print
-            existing_target)));
+    let existing_target = target in
+    (match target_impls with
+     | Some impls ->
+       impls
+       |> Types.ValueMap.iter (fun existing_value _impl ->
+         if
+           Types.ValueImpl.compare target existing_target = 0
+           && Types.ValueImpl.compare value existing_value = 0
+         then Log.error (fun log -> log "Not found but actually there????");
+         Log.info (fun log ->
+           log
+             "Exists impl: %a as %a"
+             (Print.print_args ~open_:"(" ~close:")")
+             existing_value
+             Value.print
+             existing_target))
+     | None ->
+       Log.info (fun log -> log "No impls like _ as %a" Value.print existing_target));
+    if true
+    then (
+      Log.info (fun log -> log "ALL IMPLS:");
+      state.cast_impls.map
+      |> Types.ValueMap.iter (fun existing_target impls ->
+        Log.info (fun log -> log "FOR TARGET = %a" Value.print existing_target);
+        impls
+        |> Types.ValueMap.iter (fun existing_value _impl ->
+          if
+            Types.ValueImpl.compare target existing_target = 0
+            && Types.ValueImpl.compare value existing_value = 0
+          then Log.error (fun log -> log "Not found but actually there????");
+          Log.info (fun log ->
+            log
+              "%a as %a"
+              (Print.print_args ~open_:"(" ~close:")")
+              existing_value
+              Value.print
+              existing_target))));
     Error.error
       span
       "no impl of %a as %a"

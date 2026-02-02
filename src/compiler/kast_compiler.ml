@@ -8,48 +8,13 @@ open Init
 module Error = Error
 module Scope = State.Scope
 
+let init = State.init
+
 type state = State.t
 type import_cache = State.import_cache
 
 let const_shape = Types.const_shape
 let init_import_cache = State.init_import_cache
-
-(* TODO compile_for - figure out *)
-let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
-  fun ~import_cache ~compile_for ->
-  let scope = State.Scope.init ~span:(Span.fake "<init>") ~recursive:false in
-  let scope =
-    SymbolMap.fold
-      (fun name (local : Types.interpreter_local) scope ->
-         scope
-         |> State.Scope.add
-              (Const
-                 { place = local.place
-                 ; binding =
-                     { id = Id.gen ()
-                     ; scope = Some compile_for.scope
-                     ; name
-                     ; ty = local.place.ty
-                     ; span = Span.fake "<interpreter>"
-                     ; label = local.ty_field.label |> Option.get
-                     ; mut = Place.Mut.to_bool local.place.mut
-                     ; hygiene = CallSite
-                     ; def_site = None
-                     }
-                 }))
-      compile_for.scope.locals.by_symbol
-      scope
-  in
-  { scopes = State.Scopes.only scope
-  ; currently_compiled_file = None
-  ; interpreter = compile_for
-  ; import_cache
-  ; custom_syntax_impls = Hashtbl.create 0
-  ; mut_enabled = false
-  ; bind_mode = Claim
-  }
-;;
-
 let get_data = Compiler.get_data
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
@@ -325,51 +290,29 @@ and make_compiler (original_state : state) : (module Compiler.S) =
   end : Compiler.S)
 ;;
 
-let default name_part ?(import_cache : import_cache option) () : state =
+let rec default name_part ?(import_cache : import_cache option) () : state =
   let import_cache =
     import_cache |> Option.unwrap_or_else (fun () -> State.init_import_cache ())
   in
-  let interpreter_without_std = Interpreter.default (Str "std") in
-  let bootstrap = init ~import_cache ~compile_for:interpreter_without_std in
-  let std_uri =
-    Uri.append_if_relative
-      (Stdlib.Effect.perform Effect.FindStd)
-      (Uri.of_string "./lib.ks")
+  let state = init ~import_cache ~compile_for:(Interpreter.default name_part) in
+  let prelude = [%include_file "prelude.ks"] in
+  let prelude_parsed =
+    try
+      Kast_parser.parse
+        { contents = prelude; uri = Uri.fake "prelude" }
+        Kast_default_syntax.ruleset
+    with
+    | effect Kast_parser.Import _, k -> Std.Effect.continue k Kast_parser.Ruleset.empty
   in
-  let bootstrap_span = Span.fake "std-bootstrap" in
-  let std = Compiler.import ~span:bootstrap_span (make_compiler bootstrap) std_uri in
-  let std_value = std.value in
-  let std_symbol = Symbol.create "std" in
-  let std_label = Label.create_definition (Span.beginning_of std_uri) std_symbol.name in
-  let interpreter_with_std =
-    Interpreter.init
-      name_part
-      { by_symbol =
-          SymbolMap.singleton
-            std_symbol
-            ({ place = Place.init ~mut:Immutable std_value
-             ; ty_field =
-                 { ty = Value.ty_of std_value
-                 ; label = Some std_label
-                 ; symbol = Some std_symbol
-                 }
-             }
-             : Types.interpreter_local)
-      }
+  let prelude_span = Span.of_ocaml __POS__ in
+  let _prelude_value, _prelude_expr =
+    Compiler.eval
+      ~ty:(T_Unit |> Ty.inferred ~span:prelude_span)
+      (make_compiler state)
+      (prelude_parsed.ast |> Kast_ast_init.init_ast)
   in
-  let prelude =
-    let std = std_value |> Value.expect_tuple |> Option.get in
-    let prelude = std.tuple |> Tuple.get_named "prelude" in
-    prelude.place |> Interpreter.read_place ~span:bootstrap_span
-  in
-  Interpreter.usedotstar ~span:bootstrap_span interpreter_with_std prelude;
-  (* TODO hack??? *)
-  interpreter_with_std.cast_impls.map <- interpreter_without_std.cast_impls.map;
-  interpreter_with_std.cast_impls.as_module
-  <- interpreter_without_std.cast_impls.as_module;
-  { (init ~import_cache ~compile_for:interpreter_with_std) with
-    custom_syntax_impls = bootstrap.custom_syntax_impls
-  }
+  (State.default := fun name_part ~import_cache -> default name_part ~import_cache ());
+  state
 ;;
 
 let handle_parser_imports : 'a. (unit -> 'a) -> state -> 'a =
