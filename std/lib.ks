@@ -19,7 +19,8 @@ const Int64 :: Type = @native "Int64";
 const Float64 :: Type = @native "Float64";
 const Char :: Type = @native "Char";
 const String :: Type = @native "String";
-const Ast :: Type = @native "Ast";
+
+include "./ast.ks";
 
 const cmp = include "./cmp.ks";
 const op = include "./op.ks";
@@ -27,6 +28,7 @@ const op = include "./op.ks";
 include "./char.ks";
 include "./string.ks";
 
+const reflection = include "./reflection.ks";
 const range = include "./range.ks";
 const iter = include "./iter.ks";
 const Option = include "./option.ks";

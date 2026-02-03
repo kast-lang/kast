@@ -123,6 +123,7 @@ let init_natives () =
       @ Mod_cmp.init ()
       @ Mod_op.init ()
       @ Mod_reflection.init ()
+      @ Mod_syntax.init ()
     in
     { by_name = list |> StringMap.of_list }
   in
@@ -140,3 +141,4 @@ module Io = Mod_io
 module Cmp = Mod_cmp
 module Op = Mod_op
 module Reflection = Mod_reflection
+module Syntax = Mod_syntax

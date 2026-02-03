@@ -1,6 +1,3 @@
-open Std
-open Kast_util
-open Kast_types
 open Common
 
 let construct_tuple ~span (ty : Types.ty_tuple) (tuple : (ty -> value) tuple) : value =
@@ -57,6 +54,43 @@ let construct_variant
   |> Value.inferred ~span
 ;;
 
+let construct_list ~span list_ty (f : ty -> value list) : value =
+  let list_ty =
+    list_ty |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.unwrap
+  in
+  let list_name = list_ty.name |> OptionalName.await_inferred |> Option.unwrap in
+  let elem_ty =
+    match list_name with
+    | Instantiation { generic = _; arg } ->
+      let arg = single_arg ~span arg in
+      arg
+      |> Value.expect_ty
+      |> Option.unwrap_or_else (fun () ->
+        fail "List instantiated not with type but with %a" Value.print arg)
+    | _ -> fail "impossible :)"
+  in
+  let rec construct = function
+    | [] -> construct_variant ~span list_ty "Nil" None
+    | value :: tail ->
+      construct_variant
+        ~span
+        list_ty
+        "Cons"
+        (Some
+           (fun data_ty ->
+             let data_ty =
+               data_ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+             in
+             construct_tuple
+               ~span
+               data_ty
+               (Tuple.make
+                  []
+                  [ ("value", fun _ -> value); ("tail", fun _ -> construct tail) ])))
+  in
+  construct (f elem_ty)
+;;
+
 let init () =
   [ native_fn "reflection.type_info" (fun ty_fn ~caller:span ~state:_ args ->
       let type_info_ty =
@@ -94,7 +128,48 @@ let init () =
                        ; ("referenced", fun _ -> V_Ty referenced |> Value.inferred ~span)
                        ]))
          | T_Variant _ -> failwith __LOC__
-         | T_Tuple _ -> failwith __LOC__
+         | T_Tuple ty_tuple ->
+           construct_variant
+             ~span
+             type_info_ty
+             "Tuple"
+             (Some
+                (fun data_ty ->
+                  let data_ty =
+                    data_ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+                  in
+                  construct_tuple ~span data_ty
+                  <| Tuple.make
+                       []
+                       [ ( "unnamed"
+                         , fun list_ty ->
+                             construct_list ~span list_ty (fun _elem_ty ->
+                               ty_tuple.tuple.unnamed
+                               |> Array.to_list
+                               |> List.map (fun (field : Types.ty_tuple_field) ->
+                                 V_Ty field.ty |> Value.inferred ~span)) )
+                       ; ( "named"
+                         , fun list_ty ->
+                             construct_list ~span list_ty (fun elem_ty ->
+                               ty_tuple.tuple.named
+                               |> StringMap.to_list
+                               |> List.map
+                                    (fun
+                                        ((name, field) : string * Types.ty_tuple_field) ->
+                                       construct_tuple
+                                         ~span
+                                         (elem_ty
+                                          |> Ty.await_inferred
+                                          |> Ty.Shape.expect_tuple
+                                          |> Option.unwrap)
+                                       <| Tuple.make
+                                            [ (fun _ ->
+                                                V_String name |> Value.inferred ~span)
+                                            ; (fun _ ->
+                                                V_Ty field.ty |> Value.inferred ~span)
+                                            ]
+                                            [])) )
+                       ]))
          | T_Ty -> failwith __LOC__
          | T_Fn _ -> failwith __LOC__
          | T_Generic _ -> failwith __LOC__

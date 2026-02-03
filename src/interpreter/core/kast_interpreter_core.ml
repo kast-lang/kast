@@ -1295,7 +1295,7 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
                 (let child = eval state child in
                  match child |> Value.await_inferred with
                  | V_Ast ast -> ast
-                 | _ -> fail "child must be ast"))
+                 | _ -> fail "child must be ast - got %a" Value.print child))
       ; span = group.span
       }
     in
