@@ -1406,10 +1406,7 @@ and eval_ty : state -> Expr.ty -> ty =
                                  Types.ty_expr_variant_variant)
                               ->
                               ( label
-                              , ({ data =
-                                     value
-                                     |> Option.map (fun ty : Types.ty_args ->
-                                       { ty = eval_ty state ty })
+                              , ({ data = value |> Option.map (fun ty -> eval_ty state ty)
                                  }
                                  : Types.ty_variant_data) )))
                }

@@ -178,7 +178,7 @@ module rec TypesImpl : sig
     }
 
   and ty_unwind_token = { result : ty }
-  and ty_variant_data = { data : ty_args option }
+  and ty_variant_data = { data : ty option }
 
   and ty_variant =
     { name : optional_name
@@ -864,7 +864,7 @@ end = struct
     }
 
   and ty_unwind_token = { result : ty }
-  and ty_variant_data = { data : ty_args option }
+  and ty_variant_data = { data : ty option }
 
   and ty_variant =
     { name : optional_name

@@ -367,7 +367,7 @@ module Impl = struct
            ~sub_value:(fun ~state ({ data } : ty_variant_data) : ty_variant_data ->
              { data =
                  data
-                 |> Option.map (fun ({ ty } : ty_args) ->
+                 |> Option.map (fun ty ->
                    let result = sub_ty ~state ty in
                    Log.trace (fun log ->
                      log
@@ -376,7 +376,7 @@ module Impl = struct
                        ty
                        Ty.print
                        result);
-                   { ty = result })
+                   result)
              })
     in
     let result = { name; variants } in

@@ -362,10 +362,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                  <| R_Cons
                       { label
                       ; value : Types.ty_variant_data =
-                          { data =
-                              value
-                              |> Option.map (fun (expr : expr) : Types.ty_args ->
-                                { ty = expr.data.ty })
+                          { data = value |> Option.map (fun (expr : expr) -> expr.data.ty)
                           }
                       ; rest = Row.new_not_inferred ~scope ~span
                       }
@@ -566,8 +563,7 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
                       ; value : Types.ty_variant_data =
                           { data =
                               value
-                              |> Option.map (fun (pattern : pattern) : Types.ty_args ->
-                                { ty = pattern.data.ty })
+                              |> Option.map (fun (pattern : pattern) -> pattern.data.ty)
                           }
                       ; rest = Row.new_not_inferred ~scope ~span
                       }

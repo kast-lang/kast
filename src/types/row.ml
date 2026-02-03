@@ -186,6 +186,16 @@ and unite
   }
 ;;
 
+let rec await_find_opt label_string { var } =
+  match var |> Inference.Var.await_inferred ~error_shape:R_Error with
+  | R_Error -> None
+  | R_Empty -> None
+  | R_Cons { label; value; rest } ->
+    if String.equal (Label.get_name label) label_string
+    then Some (label, value)
+    else await_find_opt label_string rest
+;;
+
 let rec await_inferred_to_list { var } =
   match var |> Inference.Var.await_inferred ~error_shape:R_Error with
   | R_Error -> []

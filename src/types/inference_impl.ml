@@ -105,7 +105,7 @@ module VarScope = struct
     fun { data } ->
     match data with
     | None -> root ()
-    | Some { ty = data } -> of_ty data
+    | Some data -> of_ty data
 
   and of_ty_unwind_token : ty_unwind_token -> var_scope = fun { result } -> of_ty result
 
@@ -619,7 +619,7 @@ module Impl = struct
          | Some ty, None | None, Some ty ->
            error span "data & not data mismatch in variant";
            Some ty
-         | Some a, Some b -> Some { ty = unite_ty ~span a.ty b.ty })
+         | Some a, Some b -> Some (unite_ty ~span a b))
     }
 
   and unite_ty_fn : ty_fn Inference.unite =
@@ -709,7 +709,8 @@ module Impl = struct
              ; ty = unite_ty_generic ~span a.ty b.ty
              }
          | V_Generic _, _ -> fail ()
-         | V_NativeFn _, _ -> fail () (* TODO *)
+         | V_NativeFn a, V_NativeFn b when Id.equal a.id b.id -> V_NativeFn a
+         | V_NativeFn _, _ -> fail ()
          | V_Ast a, V_Ast b when Repr.phys_equal a b -> V_Ast a
          | V_Ast _, _ -> fail ()
          | ( V_UnwindToken { result_ty = ty_a; id = id_a }

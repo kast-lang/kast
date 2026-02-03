@@ -2020,38 +2020,19 @@ let variant_impl =
   | PlaceExpr -> Compiler.temp_expr (module C) ast
   | Expr ->
     let label = Label.create_reference label_ast.data.span label in
-    E_Variant
-      { label
-      ; label_span
-      ; value =
-          value_ast
-          |> Option.map (tuple_impl ~allow_toplevel_parens:false (module C) Expr)
-      }
+    E_Variant { label; label_span; value = value_ast |> Option.map (C.compile Expr) }
     |> init_expr span C.state
   | TyExpr ->
     (fun () ->
       let label = Label.create_definition label_ast.data.span label in
       TE_Variant
         { variants =
-            [ { label_span
-              ; label
-              ; value =
-                  value_ast
-                  |> Option.map
-                       (tuple_impl ~allow_toplevel_parens:false (module C) TyExpr)
-              }
-            ]
+            [ { label_span; label; value = value_ast |> Option.map (C.compile TyExpr) } ]
         })
     |> init_ty_expr span C.state
   | Pattern ->
     let label = Label.create_reference label_ast.data.span label in
-    P_Variant
-      { label_span
-      ; label
-      ; value =
-          value_ast
-          |> Option.map (tuple_impl ~allow_toplevel_parens:false (module C) Pattern)
-      }
+    P_Variant { label_span; label; value = value_ast |> Option.map (C.compile Pattern) }
     |> init_pattern span C.state
   | Assignee ->
     error span "variant can't be assignee";

@@ -399,4 +399,8 @@ module IsMutable = struct
   let new_not_inferred ~scope ~span : t =
     { var = Inference.Var.new_not_inferred ~scope ~span }
   ;;
+
+  let await_inferred ({ var } : t) =
+    var |> Inference.Var.await_inferred ~error_shape:false
+  ;;
 end

@@ -153,7 +153,7 @@ module Impl = struct
              }
            (fun fmt ({ data } : ty_variant_data) ->
               match data with
-              | Some data -> fprintf fmt " %a" (print_ty_args ~open_:"{" ~close:"}") data
+              | Some data -> fprintf fmt " %a" print_ty data
               | None -> ()))
         variants
       (* ; fprintf fmt "(row scope=%a)" print_var_scope

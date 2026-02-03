@@ -201,7 +201,7 @@ module Impl = struct
     complete_row ~name:"ty variant" complete_ty_variant_data variants
 
   and complete_ty_variant_data ({ data } : ty_variant_data) =
-    complete_option complete_ty_args data
+    complete_option complete_ty data
 
   and complete_ty_fn ({ args; result } : ty_fn) =
     complete_ty_args args;
