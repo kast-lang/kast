@@ -148,6 +148,8 @@ interface Kast<isNode> extends Backend<isNode> {
       String: Type;
     };
   };
+  check_todo: (value: Value) => void;
+  value_todo: (s: string) => Value;
   panic: Fn<[string], void>;
   casts: {
     add_impl: (args: { value: Value; target: Value; impl: Value }) => void;
@@ -634,6 +636,10 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       },
     },
     types,
+    check_todo,
+    value_todo: (s) => {
+      return { todo: s };
+    },
     panic: async (ctx, s: string) => {
       throw Error(s);
     },

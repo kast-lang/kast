@@ -292,6 +292,12 @@ module Impl = struct
     | None -> calculate <| not_inferred ty.var
     | Some shape -> shape |> transpile_ty_shape
 
+  and todo_value s : no_effect_expr =
+    calculate
+      { shape = JsAst.Raw (make_string "Kast.value_todo(%a)" String.print_debug s)
+      ; span = None
+      }
+
   and transpile_ty_shape : ty_shape -> no_effect_expr =
     fun shape ->
     let todo_ty s : no_effect_expr =
@@ -440,7 +446,7 @@ module Impl = struct
       | V_Fn { ty = _; fn = { def; captured; _ } } -> fn ~captured:(Some captured) def
       | V_Generic { name = _; fn = { def; captured; _ }; ty = _ } ->
         fn ~captured:(Some captured) def
-      | V_NativeFn _ -> failwith __LOC__
+      | V_NativeFn { name; _ } -> todo_value name
       | V_Ast _ -> failwith __LOC__
       | V_UnwindToken _ -> failwith __LOC__
       | V_Target _ -> failwith __LOC__
