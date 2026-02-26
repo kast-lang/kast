@@ -34,8 +34,8 @@ let label_definition (label : Label.t) : definition =
   { span; references }
 ;;
 
-type hover_info_ty =
-  { ty : ty
+type hover_info_signature =
+  { signature : ir_signature
   ; evaled : value option
   ; span : span
   }
@@ -46,12 +46,12 @@ type hover_info_rename =
   }
 
 type hover_info =
-  { ty : hover_info_ty option
+  { signature : hover_info_signature option
   ; rename : hover_info_rename option
   ; file : Uri.t option
   }
 
-let hover_info_none = { ty = None; rename = None; file = None }
+let hover_info_none = { signature = None; rename = None; file = None }
 
 let combine_hover_info a b : hover_info =
   { file = a.file |> Option.or_ b.file
@@ -59,17 +59,18 @@ let combine_hover_info a b : hover_info =
       max a.rename b.rename
       (* Using max means that DefinedNotHere is preferred to DefinedHere
          which is important for things like `use foo` *)
-  ; ty = a.ty |> Option.or_ b.ty
+  ; signature = a.signature |> Option.or_ b.signature
   }
 ;;
 
 let hover_text info =
-  match info.ty with
-  | Some ty ->
+  match info.signature with
+  | Some signature ->
     make_string "%t" (fun fmt ->
       fprintf fmt "```kast@\n";
-      fprintf fmt "@[<v>:: %a@]\n" Print.print_ty_with_shape_if_named ty.ty;
-      (match ty.evaled with
+      let { ty } : ir_signature = signature.signature in
+      fprintf fmt "@[<v>:: %a@]\n" Print.print_ty_with_shape_if_named ty;
+      (match signature.evaled with
        | None -> ()
        | Some value -> fprintf fmt "@[<v>= %a@]\n" Value.print value);
       fprintf fmt "```")
@@ -117,7 +118,8 @@ let hover_tuple : 'a. 'a compiled_kind -> 'a -> span -> hover_info option =
       then (
         let data = Compiler.get_data kind field in
         Some
-          { ty = Some { span = label_span; ty = data.ty; evaled = None }
+          { signature =
+              Some { span = label_span; signature = data.signature; evaled = None }
           ; rename =
               label
               |> Option.map (fun label ->
@@ -146,7 +148,7 @@ let hover_specifically
   let included_file = data.included_file in
   match data.evaled.binding with
   | Some binding ->
-    { ty = Some { ty = data.ty; span = data.span; evaled }
+    { signature = Some { signature = data.signature; span = data.span; evaled }
     ; rename =
         Some
           { span = binding.span
@@ -178,7 +180,9 @@ let hover_specifically
                    })
             | _ -> None
           in
-          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          { signature =
+              Some
+                { signature = compiled.data.signature; span = compiled.data.span; evaled }
           ; rename
           ; file = included_file
           }
@@ -192,12 +196,16 @@ let hover_specifically
                 }
             | _ -> None
           in
-          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          { signature =
+              Some
+                { signature = compiled.data.signature; span = compiled.data.span; evaled }
           ; rename
           ; file = included_file
           }
         | Assignee ->
-          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          { signature =
+              Some
+                { signature = compiled.data.signature; span = compiled.data.span; evaled }
           ; rename = None
           ; file = included_file
           }
@@ -219,7 +227,9 @@ let hover_specifically
               else None
             | _ -> None
           in
-          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          { signature =
+              Some
+                { signature = compiled.data.signature; span = compiled.data.span; evaled }
           ; rename
           ; file = included_file
           }
@@ -241,7 +251,9 @@ let hover_specifically
                       else None)
             | _ -> None
           in
-          { ty = Some { ty = compiled.data.ty; span = compiled.data.span; evaled }
+          { signature =
+              Some
+                { signature = compiled.data.signature; span = compiled.data.span; evaled }
           ; rename
           ; file = included_file
           }))
@@ -397,7 +409,7 @@ let hover (pos : Lsp.Types.Position.t) ({ uri; compiled; _ } : Processing.file_s
   let hover_info = hover kind compiled ~evaled:None (Span.single_char pos uri) in
   let hover_text = hover_text hover_info in
   Log.trace (fun log -> log "Hover result: %a" String.print_debug hover_text);
-  let* ty = hover_info.ty in
+  let* ty = hover_info.signature in
   Some
     ({ contents = `MarkedString { language = None; value = hover_text }
      ; range = Some (Common.span_to_range ty.span)

@@ -68,7 +68,7 @@ let tuple_field
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value )
      | Some (ty, ty_expr) ->
-       value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
+       value.data.signature.ty |> Inference.Ty.expect_inferred_as ~span ty;
        ( ~field_span:label_ast.data.span
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
@@ -126,7 +126,7 @@ let tuple_field
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value )
      | Some (ty, ty_expr) ->
-       value.data.ty |> Inference.Ty.expect_inferred_as ~span ty;
+       value.data.signature.ty |> Inference.Ty.expect_inferred_as ~span ty;
        ( ~field_span:label_ast.data.span
        , ~field_label:(Some (Label.create_reference label_ast.data.span label))
        , value |> Compiler.data_add TyExpr (ty_expr, ty) kind ))
@@ -545,14 +545,14 @@ let fn : core_syntax =
                 Span.print
                 span);
             ty.args.ty
-            |> Inference.Ty.expect_inferred_as ~span:args.data.span args.data.ty;
+            |> Inference.Ty.expect_inferred_as ~span:args.data.span args.data.signature.ty;
             state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
             let body = C.compile ~state Expr body in
             Log.trace (fun log ->
               log
                 "compiled fn body (ty = %a) at %a"
                 Ty.print
-                body.data.ty
+                body.data.signature.ty
                 Span.print
                 body.data.span);
             let result_ty_expr =
@@ -567,20 +567,31 @@ let fn : core_syntax =
                     Span.print
                     body.data.span);
                 Log.trace (fun log ->
-                  log "unifying %a and %a" Ty.print body.data.ty Ty.print result_ty);
-                body.data.ty
+                  log
+                    "unifying %a and %a"
+                    Ty.print
+                    body.data.signature.ty
+                    Ty.print
+                    result_ty);
+                body.data.signature.ty
                 |> Inference.Ty.expect_inferred_as ~span:body.data.span result_ty;
                 Log.trace (fun log ->
                   log "unified result ty and body ty at %a" Span.print body.data.span);
                 Log.trace (fun log ->
-                  log "after unifying %a and %a" Ty.print body.data.ty Ty.print result_ty);
+                  log
+                    "after unifying %a and %a"
+                    Ty.print
+                    body.data.signature.ty
+                    Ty.print
+                    result_ty);
                 result_expr, result_ty)
             in
             (match result_ty_expr with
              | None -> ()
              | Some result_ty_expr ->
                result_fn_expr |> Compiler.data_append TyExpr result_ty_expr Expr);
-            ty.result |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty;
+            ty.result
+            |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.signature.ty;
             Compiler.finish_compiling def { args = { pattern = args }; body };
             Log.trace (fun log ->
               log
@@ -655,8 +666,9 @@ let generic : core_syntax =
             let body = C.compile Expr body in
             Compiler.finish_compiling def { args = { pattern = args }; body };
             Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
-            Log.trace (fun log -> log "body.data.ty = %a" Ty.print body.data.ty);
-            ty.result |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty);
+            Log.trace (fun log -> log "body.data.ty = %a" Ty.print body.data.signature.ty);
+            ty.result
+            |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.signature.ty);
           let result = E_Generic { def; ty } |> init_expr span C.state in
           result)
   }
@@ -818,7 +830,8 @@ let type_ascribe : core_syntax =
               expected_ty
               Print.print_var_scope
               (Inference.Var.scope expected_ty.var));
-          expr_data.ty |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
+          expr_data.signature.ty
+          |> Inference.Ty.expect_inferred_as ~span:expr_data.span expected_ty;
           let _ : a =
             expr |> Compiler.data_add TyExpr (expected_ty_expr, expected_ty) kind
           in
@@ -935,7 +948,7 @@ let eval_const ~async (state : State.t) (expr : expr) : value =
     Value.new_not_inferred_of_ty
       ~scope:(State.var_scope state)
       ~span:expr.data.span
-      expr.data.ty
+      expr.data.signature.ty
   in
   let invoke = if async then State.Scope.fork else fun f -> f () in
   invoke (fun () ->
@@ -971,8 +984,8 @@ let const_let
       (module C : Compiler.S)
   =
   Log.trace (fun log -> log "starting to compile const at %a" Span.print span);
-  value_expr.data.ty
-  |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span pattern.data.ty;
+  value_expr.data.signature.ty
+  |> Inference.Ty.expect_inferred_as ~span:value_expr.data.span pattern.data.signature.ty;
   Log.trace (fun log -> log "while compiling const, set value type at %a" Span.print span);
   let interpreter_state =
     match pattern.shape with
@@ -1185,7 +1198,7 @@ let dot : core_syntax =
                 error span "field must be ident";
                 return <| init_error span C.state kind
             in
-            (match obj.data.ty.var |> Inference.Var.inferred_opt with
+            (match obj.data.signature.ty.var |> Inference.Var.inferred_opt with
              | Some T_CompilerScope ->
                let obj_expr = E_Claim obj |> init_expr span C.state in
                let obj = Kast_interpreter.eval C.state.interpreter obj_expr in
@@ -1284,7 +1297,7 @@ let use : core_syntax =
                        ; scope = State.var_scope C.state
                        ; name = Symbol.create (Label.get_name label)
                        ; span = field_span
-                       ; ty = used_expr.data.ty
+                       ; ty = used_expr.data.signature.ty
                        ; label
                        ; mut = false
                        ; hygiene = DefSite
@@ -1515,9 +1528,13 @@ let impl_syntax : core_syntax =
                  let body = C.compile ~state Expr impl in
                  Compiler.finish_compiling def { args = { pattern = args }; body };
                  ty.args.ty
-                 |> Inference.Ty.expect_inferred_as ~span:args.data.span args.data.ty;
+                 |> Inference.Ty.expect_inferred_as
+                      ~span:args.data.span
+                      args.data.signature.ty;
                  ty.result
-                 |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.ty);
+                 |> Inference.Ty.expect_inferred_as
+                      ~span:body.data.span
+                      body.data.signature.ty);
                E_Fn { def; ty } |> init_expr span C.state
              in
              let impl = Interpreter.eval C.state.interpreter impl_expr in
@@ -2380,7 +2397,7 @@ let typeof : core_syntax =
         let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let expr () =
           let expr = C.compile Expr expr in
-          let ty_value = V_Ty expr.data.ty |> Value.inferred ~span in
+          let ty_value = V_Ty expr.data.signature.ty |> Value.inferred ~span in
           const_shape ty_value
           |> init_expr span C.state
           |> Compiler.data_add Expr (expr, ty_value) Expr

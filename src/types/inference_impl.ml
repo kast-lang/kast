@@ -114,7 +114,7 @@ module VarScope = struct
 
   and of_ty_generic : ty_generic -> var_scope =
     fun { args = { pattern = args }; result } ->
-    deepest (of_ty args.data.ty) (of_ty result)
+    deepest (of_ty args.data.signature.ty) (of_ty result)
 
   and of_ty_opaque : ty_opaque -> var_scope = fun { name } -> of_name name
 
@@ -465,7 +465,7 @@ module Impl = struct
       error span "patterns can't be united: %a and %a" print_pattern a print_pattern b;
       []
     in
-    let _ : ty = unite_ty ~span a.data.ty b.data.ty in
+    let _ : ty = unite_ty ~span a.data.signature.ty b.data.signature.ty in
     match a.shape, b.shape with
     | P_Placeholder, _ | _, P_Placeholder -> []
     | P_Unit, P_Unit -> []
@@ -853,6 +853,12 @@ module Impl = struct
     | Symbol a, Symbol b when Symbol.equal a b -> Symbol a
     | Symbol _, _ -> fail ()
 
+  and unite_contexts : contexts Inference.unite =
+    fun ~span { var = a } { var = b } ->
+    { var = Inference.Var.unite unite_contexts_shape VarScopeImpl.unite ~span a b }
+
+  and unite_contexts_shape : contexts_shape Inference.unite = fun ~span a b -> ()
+
   and inferred_ty ~span shape : ty =
     { var = Inference.Var.new_inferred VarScope.of_ty_shape ~span shape }
 
@@ -1004,6 +1010,7 @@ let unite_name = unite_with_ctx Impl.unite_name
 let unite_name_instantiation = unite_with_ctx Impl.unite_name_instantiation
 let unite_name_shape = unite_with_ctx Impl.unite_name_shape
 let unite_name_part = unite_with_ctx Impl.unite_name_part
+let unite_contexts_shape = unite_with_ctx Impl.unite_contexts_shape
 let inferred_ty ~span shape = with_ctx (fun () -> Impl.inferred_ty ~span shape)
 let inferred_value ~span shape = with_ctx (fun () -> Impl.inferred_value ~span shape)
 

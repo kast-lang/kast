@@ -348,6 +348,12 @@ end
 
 type ir_data = Ir_data.t
 
+module IrSignature = struct
+  type t = ir_signature
+end
+
+type ir_signature = IrSignature.t
+
 module Place = struct
   type t = place
 
@@ -402,5 +408,13 @@ module IsMutable = struct
 
   let await_inferred ({ var } : t) =
     var |> Inference.Var.await_inferred ~error_shape:false
+  ;;
+end
+
+module Contexts = struct
+  type t = contexts
+
+  let new_not_inferred ~scope ~span : t =
+    { var = Inference.Var.new_not_inferred ~span ~scope }
   ;;
 end

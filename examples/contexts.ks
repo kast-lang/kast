@@ -14,8 +14,12 @@ const init_logger = (name :: String) -> () with Logger => (
     # with return Logger = create_logger(name);
 );
 
+##
+
+# log("Before logger is initialized"); # compilation error
+
 init_logger("Test");
-log("test logger");
+log("Logger has been initialized!");
 
 with Logger = create_logger("GLOBAL");
 (

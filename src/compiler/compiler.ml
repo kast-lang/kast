@@ -91,7 +91,7 @@ let set_evaled (value : value) (type b) (kind : b compiled_kind) (compiled : b) 
 let eval_ty (module C : S) (ast : Ast.t) : ty * Expr.ty =
   let ty_expr = C.compile TyExpr ast in
   let ty : ty =
-    ty_expr.data.ty
+    ty_expr.data.signature.ty
     |> Inference.Ty.expect_inferred_as
          ~span:ty_expr.data.span
          (Ty.inferred ~span:ty_expr.data.span T_Ty);
@@ -103,7 +103,7 @@ let eval_ty (module C : S) (ast : Ast.t) : ty * Expr.ty =
 let eval ~(ty : ty) (module C : S) (ast : Ast.t) : value * expr =
   let expr = C.compile Expr ast in
   let value : value =
-    expr.data.ty |> Inference.Ty.expect_inferred_as ~span:expr.data.span ty;
+    expr.data.signature.ty |> Inference.Ty.expect_inferred_as ~span:expr.data.span ty;
     Kast_interpreter.eval C.state.interpreter expr
   in
   value, expr

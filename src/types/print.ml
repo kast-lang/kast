@@ -36,7 +36,7 @@ module Impl = struct
 
   and print_data ~options fmt (data : ir_data) =
     if options.spans then fprintf fmt " @{<dim>at %a@}" Span.print data.span;
-    if options.types then fprintf fmt " @{<dim>:: %a@}" print_ty data.ty
+    if options.types then fprintf fmt " @{<dim>:: %a@}" print_ty data.signature.ty
 
   (* PLACE *)
   and print_place_ref : formatter -> place -> unit =

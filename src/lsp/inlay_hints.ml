@@ -18,7 +18,7 @@ let rec inlay_hints
     | Expr -> None
     | Pattern ->
       (match compiled.shape with
-       | P_Binding _ -> Some compiled.data.ty
+       | P_Binding _ -> Some compiled.data.signature.ty
        | _ -> None)
     | Assignee -> None
     | TyExpr -> None

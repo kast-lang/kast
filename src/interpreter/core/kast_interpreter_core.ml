@@ -134,7 +134,9 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
                 no monomorphized ty here
                 since we dont look at the actual type,
                 only care about members? *)
-              packed_pattern.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple
+              packed_pattern.data.signature.ty
+              |> Ty.await_inferred
+              |> Ty.Shape.expect_tuple
             with
             | Some ty_tuple ->
               let tuple =
@@ -613,7 +615,7 @@ and monomorphized_ty ~state (data : ir_data) : ty =
   | Some ty -> ty
   | None ->
     let span = data.span in
-    let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) data.ty in
+    let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) data.signature.ty in
     Log.trace (fun log -> log "monomorphized ty at %a = %a" Span.print span Ty.print ty);
     Hashtbl.add state.monomorphization_state.ty data.id ty;
     ty

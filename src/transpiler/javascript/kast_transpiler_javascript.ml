@@ -184,7 +184,10 @@ module Impl = struct
               unnamed_args := !unnamed_args @ [ name, Some field ])
          | Unpack packed ->
            let packed_ty =
-             packed.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+             packed.data.signature.ty
+             |> Ty.await_inferred
+             |> Ty.Shape.expect_tuple
+             |> Option.unwrap
            in
            let unnamed_names =
              packed_ty.tuple.unnamed
@@ -968,7 +971,10 @@ module Impl = struct
            let var = JsAst.gen_name ~original:None "packed" in
            let_var var (transpile_expr packed);
            let ty =
-             packed.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+             packed.data.signature.ty
+             |> Ty.await_inferred
+             |> Ty.Shape.expect_tuple
+             |> Option.unwrap
            in
            ty.tuple
            |> Tuple.iter (fun member _ ->
@@ -1060,7 +1066,9 @@ module Impl = struct
                        }
                    | Unpack packed ->
                      (match
-                        packed.data.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple
+                        packed.data.signature.ty
+                        |> Ty.await_inferred
+                        |> Ty.Shape.expect_tuple
                       with
                       | Some { name = _; tuple } ->
                         if tuple.unnamed |> Array.length <> 0

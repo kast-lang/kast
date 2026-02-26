@@ -560,10 +560,26 @@ module Impl = struct
         }
     ; span = data.span
     ; included_file = None
-    ; ty = sub_ty ~state data.ty
+    ; signature = sub_signature ~state data.signature
     ; id = data.id
     ; compiler_scope = data.compiler_scope
     }
+
+  and sub_signature ~state ({ ty } : ir_signature) : ir_signature =
+    { ty = sub_ty ~state ty }
+
+  and sub_contexts ~state (contexts : contexts) : contexts =
+    sub_var
+      ~name:"contexts"
+      ~unite_shape:Inference_impl.unite_contexts_shape
+      ~sub_shape:sub_contexts_shape
+      ~get_var:(fun ({ var } : contexts) -> var)
+      ~new_not_inferred:Contexts.new_not_inferred
+      ~state
+      contexts
+
+  and sub_contexts_shape ~state (original : contexts) (shape : contexts_shape) : contexts =
+    original
 
   and sub_row
     :  'a.

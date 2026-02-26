@@ -632,12 +632,22 @@ module rec TypesImpl : sig
 
   and ir_data =
     { span : Span.t
-    ; ty : ty
+    ; signature : ir_signature
     ; evaled : ir_evaled
     ; compiler_scope : compiler_scope
     ; included_file : Uri.t option
     ; id : Id.t
     }
+
+  and ir_signature = { ty : ty }
+
+  and ir_signature_contexts =
+    { required : contexts
+    ; produced : contexts
+    }
+
+  and contexts = { var : contexts_shape var }
+  and contexts_shape = unit
 
   and ir_evaled =
     { mutable patterns : pattern list
@@ -1324,12 +1334,22 @@ end = struct
 
   and ir_data =
     { span : Span.t
-    ; ty : ty
+    ; signature : ir_signature
     ; evaled : ir_evaled
     ; compiler_scope : compiler_scope
     ; included_file : Uri.t option
     ; id : Id.t
     }
+
+  and ir_signature = { ty : ty }
+
+  and ir_signature_contexts =
+    { required : contexts
+    ; produced : contexts
+    }
+
+  and contexts = { var : contexts_shape var }
+  and contexts_shape = unit
 
   and ir_evaled =
     { mutable patterns : pattern list

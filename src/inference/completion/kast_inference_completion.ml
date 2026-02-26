@@ -430,10 +430,25 @@ module Impl = struct
     | TE_Error -> ()
 
   and complete_ir_data
-        ({ span = _; ty; evaled = _; included_file = _; id = _; compiler_scope = _ } :
+        ({ span = _
+         ; signature
+         ; evaled = _
+         ; included_file = _
+         ; id = _
+         ; compiler_scope = _
+         } :
           ir_data)
     =
-    complete_ty ty
+    complete_signature signature
+
+  and complete_signature ({ ty } : ir_signature) : unit = complete_ty ty
+
+  and complete_contexts ({ var } : contexts) =
+    complete_var ~name:"contexts" complete_contexts_shape var
+
+  and complete_contexts_shape (() : contexts_shape) =
+    (* TODO *)
+    ()
 
   and complete_tuple_part_of : 'a. ('a -> unit) -> 'a tuple_part_of -> unit =
     fun (type a) (complete_value : a -> unit) part ->
