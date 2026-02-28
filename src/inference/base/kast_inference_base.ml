@@ -198,18 +198,20 @@ module Var = struct
     : 'a 'scope. 'a unite -> ('scope -> 'scope -> 'scope) -> ('a, 'scope) var unite
     =
     fun unite_inferred unite_scope ~span a b ->
-    try
-      let root_a = find_root_var a in
-      let root_b = find_root_var b in
-      if root_a == root_b
-      then a
-      else (
-        let data_a = find_root a in
-        let data_b = find_root b in
-        let root_a, root_b = if Random.bool () then root_a, root_b else root_b, root_a in
-        let temp_data : ('a, 'scope) var_data = data_a in
-        root_a.state <- Root { data = temp_data };
-        root_b.state <- NotRoot { closer_to_root = root_a };
+    let root_a = find_root_var a in
+    let root_b = find_root_var b in
+    if root_a == root_b
+    then a
+    else (
+      let data_a = find_root a in
+      let data_b = find_root b in
+      let root_a, root_b = if Random.bool () then root_a, root_b else root_b, root_a in
+      let temp_data : ('a, 'scope) var_data = data_a in
+      let old_state_a = root_a.state in
+      let old_state_b = root_b.state in
+      root_a.state <- Root { data = temp_data };
+      root_b.state <- NotRoot { closer_to_root = root_a };
+      try
         let united_data = unite_data ~span unite_inferred unite_scope data_a data_b in
         let root = find_root_var a in
         let root_data = find_root a in
@@ -218,11 +220,14 @@ module Var = struct
         in
         root.state <- Root { data = united_data_final };
         united_data_final |> run_once_inferred_if_needed;
-        root)
-    with
-    | effect (Error.Error _ as eff), _k ->
-      Effect.perform eff;
-      a
+        root
+      with
+      | effect (Error.Error _ as eff), _k ->
+        (* TODO this is probably very wrong *)
+        root_a.state <- old_state_a;
+        root_b.state <- old_state_b;
+        Effect.perform eff;
+        a)
   ;;
 
   let infer_as
