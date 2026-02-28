@@ -540,8 +540,9 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
   with
   | Cancel -> raise Cancel
   | exc ->
+    let backtrace = Printexc.get_raw_backtrace () in
     Log.error (fun log -> log "while initializing expr at %a" Span.print span);
-    raise exc
+    Printexc.raise_with_backtrace exc backtrace
 ;;
 
 let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =

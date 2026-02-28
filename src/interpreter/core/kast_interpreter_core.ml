@@ -1237,6 +1237,7 @@ and eval : state -> expr -> value =
        with
        | Unwind _ as exc -> raise exc
        | exc ->
+         let backtrace = Printexc.get_raw_backtrace () in
          Log.error (fun log ->
            log
              "While evaluating %a expr at %a"
@@ -1244,7 +1245,7 @@ and eval : state -> expr -> value =
              expr
              Span.print
              expr.data.span);
-         raise exc)
+         Printexc.raise_with_backtrace exc backtrace)
 
 and find_target_dependent_branch
   :  state

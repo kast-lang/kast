@@ -267,6 +267,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
        with
        | Cancel -> raise Cancel
        | exc ->
+         let backtrace = Printexc.get_raw_backtrace () in
          Log.trace (fun log ->
            log "Exception: %a" String.print_debug (Printexc.to_string exc));
          Log.error (fun log ->
@@ -278,7 +279,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
              ast.shape
              Span.print
              span);
-         raise exc)
+         Printexc.raise_with_backtrace exc backtrace)
 
 and make_compiler (original_state : state) : (module Compiler.S) =
   (module struct
