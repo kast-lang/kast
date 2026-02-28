@@ -39,7 +39,7 @@ let init_compiler_interpreter ~no_std name_part =
   then (
     let interpreter = Interpreter.default name_part in
     let compiler =
-      Compiler.init ~import_cache:(Compiler.init_import_cache ()) ~compile_for:interpreter
+      Compiler.init ~cache:(Compiler.init_cache ()) ~compile_for:interpreter
     in
     compiler, interpreter)
   else (

@@ -124,13 +124,13 @@ let rec handle_parser_imports : 'a. (unit -> 'a) -> (module S) -> 'a =
     Std.Effect.continue k imported.parser_ruleset
 
 and calculate_import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
-  let import_cache = C.state.import_cache in
-  match UriMap.find_opt uri import_cache.by_uri with
+  let cache = C.state.cache in
+  match UriMap.find_opt uri cache.imported with
   | None ->
     Log.trace (fun log -> log "Importing %a" Uri.print uri);
     Effect.perform (CompilerEffect.FileStartedProcessing uri);
-    import_cache.by_uri <- UriMap.add uri (InProgress : State.import) import_cache.by_uri;
-    let state : State.t = !State.default (Uri uri) ~import_cache in
+    cache.imported <- UriMap.add uri (InProgress : State.import) cache.imported;
+    let state : State.t = !State.default (Uri uri) ~cache in
     state.currently_compiled_file <- Some uri;
     let source = Source.read uri in
     let parsed =
@@ -168,11 +168,12 @@ and calculate_import ~(span : span) (module C : S) (uri : Uri.t) : State.importe
      |> Types.ValueMap.iter (fun value impl ->
        Kast_inference_completion.complete_value value;
        Kast_inference_completion.complete_value impl));
-    import_cache.by_uri
-    <- UriMap.add uri (Imported imported : State.import) import_cache.by_uri;
+    cache.imported <- UriMap.add uri (Imported imported : State.import) cache.imported;
     Log.trace (fun log -> log "Imported %a" Uri.print uri);
     imported
-  | Some (Imported value) -> value
+  | Some (Imported value) ->
+    Log.trace (fun log -> log "Imported from cache %a" Uri.print uri);
+    value
   | Some InProgress ->
     error span "No recursive imports!";
     { value = V_Error |> Value.inferred ~span

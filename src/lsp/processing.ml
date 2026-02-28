@@ -12,10 +12,9 @@ module UriSet = Set.Make (Uri)
 type global_state =
   { workspaces : workspace_state list
   ; mutable vfs : string UriMap.t
-  ; mutable import_cache : Compiler.import_cache
+  ; mutable cache : Compiler.cache
   ; mutable diagnostics : Lsp.Types.Diagnostic.t list UriMap.t
   ; mutable parse_errors : UriSet.t
-  ; root_of_included : (Uri.t, Uri.t) Hashtbl.t
   }
 
 and workspace_state =
@@ -30,102 +29,33 @@ and file_state =
   }
 
 let process_file (global : global_state) (source : source) : file_state =
-  Log.debug (fun log -> log "Processing %a" Uri.print source.uri);
-  Hashtbl.remove global.root_of_included source.uri;
-  global.diagnostics <- global.diagnostics |> UriMap.add source.uri [];
-  global.parse_errors <- global.parse_errors |> UriSet.remove source.uri;
-  let add_diagnostic uri (diag : Lsp.Types.Diagnostic.t) : unit =
-    Log.trace (fun log -> log "Added diag for %a" Uri.print uri);
-    global.diagnostics
-    <- UriMap.update
-         uri
-         (fun prev ->
-            let current = prev |> Option.unwrap_or_else (fun () -> []) in
-            Some (diag :: current))
-         global.diagnostics
-  in
-  let compiler = Compiler.default (Uri source.uri) ~import_cache:global.import_cache () in
-  let parsed =
-    try
-      let result =
-        compiler
-        |> Compiler.handle_parser_imports (fun () ->
-          Parser.parse source Kast_default_syntax.ruleset)
-      in
-      Some result
-    with
-    | effect Parser.Error.Error error, k ->
-      log_error (fun log -> log "%a" Parser.Error.print error);
-      global.parse_errors <- global.parse_errors |> UriSet.add source.uri;
-      add_diagnostic
-        error.span.uri
-        { range = error.span |> Common.span_to_range
-        ; severity = Some Error
-        ; code = None
-        ; codeDescription = None
-        ; source = None
-        ; message = `String (make_string "%t" error.msg)
-        ; tags = None
-        ; relatedInformation = None
-        ; data = None
-        };
-      Effect.continue k ()
-    | Cancel -> raise Cancel
-    (* TODO msg about crash? *)
-    | _ -> None
-  in
-  let ast = parsed |> Option.map (fun ({ ast; _ } : Parser.result) -> ast) in
-  let compiled =
-    Option.bind ast (fun ast ->
-      let ast = Kast_ast_init.init_ast ast in
-      try Some (Compiler.compile compiler Expr ast) with
-      | effect Kast_inference_completion.Error.Error error, k ->
-        log_error (fun log -> log "%a" Kast_inference_completion.Error.print error);
-        add_diagnostic
-          error.span.uri
-          { range = error.span |> Common.span_to_range
-          ; severity = Some Error
-          ; code = None
-          ; codeDescription = None
-          ; source = None
-          ; message = `String (make_string "%t" error.msg)
-          ; tags = None
-          ; relatedInformation = None
-          ; data = None
-          };
-        Effect.continue k ()
-      | effect Kast_interpreter.Error.Error error, k ->
-        log_error (fun log -> log "%a" Kast_interpreter.Error.print error);
-        add_diagnostic
-          error.span.uri
-          { range = error.span |> Common.span_to_range
-          ; severity = Some Error
-          ; code = None
-          ; codeDescription = None
-          ; source = None
-          ; message = `String (make_string "%t" error.msg)
-          ; tags = None
-          ; relatedInformation = None
-          ; data = None
-          };
-        Effect.continue k ()
-      | effect Compiler.Error.Error error, k ->
-        log_error (fun log -> log "%a" Compiler.Error.print error);
-        add_diagnostic
-          error.span.uri
-          { range = error.span |> Common.span_to_range
-          ; severity = Some Error
-          ; code = None
-          ; codeDescription = None
-          ; source = None
-          ; message = `String (make_string "%t" error.msg)
-          ; tags = None
-          ; relatedInformation = None
-          ; data = None
-          };
-        Effect.continue k ()
-      | effect Kast_inference.Error.Error error, k ->
-        log_error (fun log -> log "%a" Kast_inference.Error.print error);
+  timed (make_string "Processing %a" Uri.print source.uri) (fun () ->
+    Log.debug (fun log -> log "Processing %a" Uri.print source.uri);
+    global.diagnostics <- global.diagnostics |> UriMap.add source.uri [];
+    global.parse_errors <- global.parse_errors |> UriSet.remove source.uri;
+    let add_diagnostic uri (diag : Lsp.Types.Diagnostic.t) : unit =
+      Log.trace (fun log -> log "Added diag for %a" Uri.print uri);
+      global.diagnostics
+      <- UriMap.update
+           uri
+           (fun prev ->
+              let current = prev |> Option.unwrap_or_else (fun () -> []) in
+              Some (diag :: current))
+           global.diagnostics
+    in
+    let compiler = Compiler.default (Uri source.uri) ~cache:global.cache () in
+    let parsed =
+      try
+        let result =
+          compiler
+          |> Compiler.handle_parser_imports (fun () ->
+            Parser.parse source Kast_default_syntax.ruleset)
+        in
+        Some result
+      with
+      | effect Parser.Error.Error error, k ->
+        log_error (fun log -> log "%a" Parser.Error.print error);
+        global.parse_errors <- global.parse_errors |> UriSet.add source.uri;
         add_diagnostic
           error.span.uri
           { range = error.span |> Common.span_to_range
@@ -140,13 +70,82 @@ let process_file (global : global_state) (source : source) : file_state =
           };
         Effect.continue k ()
       | Cancel -> raise Cancel
-      | _ -> None)
-  in
-  Log.debug (fun log -> log "Processing done %a" Uri.print source.uri);
-  { uri = source.uri
-  ; parsed
-  ; compiled = compiled |> Option.map (fun e : compiled -> Compiled (Expr, e))
-  }
+      (* TODO msg about crash? *)
+      | _ -> None
+    in
+    let ast = parsed |> Option.map (fun ({ ast; _ } : Parser.result) -> ast) in
+    let compiled =
+      Option.bind ast (fun ast ->
+        let ast = Kast_ast_init.init_ast ast in
+        try Some (Compiler.compile compiler Expr ast) with
+        | effect Kast_inference_completion.Error.Error error, k ->
+          log_error (fun log -> log "%a" Kast_inference_completion.Error.print error);
+          add_diagnostic
+            error.span.uri
+            { range = error.span |> Common.span_to_range
+            ; severity = Some Error
+            ; code = None
+            ; codeDescription = None
+            ; source = None
+            ; message = `String (make_string "%t" error.msg)
+            ; tags = None
+            ; relatedInformation = None
+            ; data = None
+            };
+          Effect.continue k ()
+        | effect Kast_interpreter.Error.Error error, k ->
+          log_error (fun log -> log "%a" Kast_interpreter.Error.print error);
+          add_diagnostic
+            error.span.uri
+            { range = error.span |> Common.span_to_range
+            ; severity = Some Error
+            ; code = None
+            ; codeDescription = None
+            ; source = None
+            ; message = `String (make_string "%t" error.msg)
+            ; tags = None
+            ; relatedInformation = None
+            ; data = None
+            };
+          Effect.continue k ()
+        | effect Compiler.Error.Error error, k ->
+          log_error (fun log -> log "%a" Compiler.Error.print error);
+          add_diagnostic
+            error.span.uri
+            { range = error.span |> Common.span_to_range
+            ; severity = Some Error
+            ; code = None
+            ; codeDescription = None
+            ; source = None
+            ; message = `String (make_string "%t" error.msg)
+            ; tags = None
+            ; relatedInformation = None
+            ; data = None
+            };
+          Effect.continue k ()
+        | effect Kast_inference.Error.Error error, k ->
+          log_error (fun log -> log "%a" Kast_inference.Error.print error);
+          add_diagnostic
+            error.span.uri
+            { range = error.span |> Common.span_to_range
+            ; severity = Some Error
+            ; code = None
+            ; codeDescription = None
+            ; source = None
+            ; message = `String (make_string "%t" error.msg)
+            ; tags = None
+            ; relatedInformation = None
+            ; data = None
+            };
+          Effect.continue k ()
+        | Cancel -> raise Cancel
+        | _ -> None)
+    in
+    Log.debug (fun log -> log "Processing done %a" Uri.print source.uri);
+    { uri = source.uri
+    ; parsed
+    ; compiled = compiled |> Option.map (fun e : compiled -> Compiled (Expr, e))
+    })
 ;;
 
 let handle_processed workspace uri file_state =
@@ -211,7 +210,7 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
   Log.debug (fun log -> log "Processing workspace at %a" Uri.print workspace.root);
   (* workspace.files <- UriMap.empty; *)
   (* TODO make imports immutable *)
-  global.import_cache <- Compiler.init_import_cache ();
+  (* global.import_cache <- Compiler.init_import_cache (); *)
   try
     try
       workspace_roots global workspace
@@ -231,14 +230,12 @@ let process_workspace (global : global_state) (workspace : workspace_state) =
       global.parse_errors <- global.parse_errors |> UriSet.remove uri;
       Effect.Deep.continue k ()
     | effect Compiler.Effect.FileIncluded { root; uri; parsed; kind; compiled }, k ->
-      Hashtbl.add global.root_of_included uri root;
       let file_state : file_state =
         { uri; parsed = Some parsed; compiled = Some (Compiled (kind, compiled)) }
       in
       handle_processed workspace uri file_state;
       Effect.Deep.continue k ()
     | effect Compiler.Effect.FileImported { uri; parsed; compiled; value = _ }, k ->
-      Hashtbl.remove global.root_of_included uri;
       let file_state : file_state =
         { uri; parsed = Some parsed; compiled = Some (Compiled (Expr, compiled)) }
       in
@@ -272,10 +269,9 @@ let init (workspaces : Lsp.Uri0.t list) : global_state =
   let bootstrap : global_state =
     { workspaces = []
     ; vfs = UriMap.empty
-    ; import_cache = Compiler.init_import_cache ()
+    ; cache = Compiler.init_cache ()
     ; diagnostics = UriMap.empty
     ; parse_errors = UriSet.empty
-    ; root_of_included = Hashtbl.create 0
     }
   in
   let workspaces =
@@ -293,10 +289,7 @@ let file_state (state : global_state) (uri : Lsp.Uri0.t) : file_state option =
 let update_file (global : global_state) (uri : Lsp.Uri0.t) (source : string) : unit =
   let uri = Common.uri_from_lsp uri in
   Log.trace (fun log -> log "PROJECT: update %a" Uri.print uri);
-  global.import_cache.by_uri
-  <- UriMap.remove
-       (Hashtbl.find_opt global.root_of_included uri |> Option.value ~default:uri)
-       global.import_cache.by_uri;
+  global.cache |> Compiler.Cache.invalidate uri;
   global.vfs <- UriMap.add uri source global.vfs
 ;;
 

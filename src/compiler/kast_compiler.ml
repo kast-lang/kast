@@ -11,10 +11,23 @@ module Scope = State.Scope
 let init = State.init
 
 type state = State.t
-type import_cache = State.import_cache
+type cache = State.cache
+
+module Cache = struct
+  type t = cache
+
+  let invalidate (uri : Uri.t) (cache : t) : unit =
+    (* TODO dependents *)
+    let root_uri = cache.root |> UriMap.find_opt uri |> Option.value ~default:uri in
+    cache.imported <- cache.imported |> UriMap.remove root_uri;
+    cache.compiled <- cache.compiled |> UriMap.remove root_uri;
+    cache.parsed <- cache.parsed |> UriMap.remove uri;
+    cache.root <- cache.root |> UriMap.remove uri
+  ;;
+end
 
 let const_shape = Types.const_shape
-let init_import_cache = State.init_import_cache
+let init_cache = State.init_cache
 let get_data = Compiler.get_data
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
@@ -291,11 +304,9 @@ and make_compiler (original_state : state) : (module Compiler.S) =
   end : Compiler.S)
 ;;
 
-let rec default name_part ?(import_cache : import_cache option) () : state =
-  let import_cache =
-    import_cache |> Option.unwrap_or_else (fun () -> State.init_import_cache ())
-  in
-  let state = init ~import_cache ~compile_for:(Interpreter.default name_part) in
+let rec default name_part ?(cache : cache option) () : state =
+  let cache = cache |> Option.unwrap_or_else (fun () -> State.init_cache ()) in
+  let state = init ~cache ~compile_for:(Interpreter.default name_part) in
   let prelude = [%include_file "prelude.ks"] in
   let prelude_parsed =
     try
@@ -312,7 +323,7 @@ let rec default name_part ?(import_cache : import_cache option) () : state =
       (make_compiler state)
       (prelude_parsed.ast |> Kast_ast_init.init_ast)
   in
-  (State.default := fun name_part ~import_cache -> default name_part ~import_cache ());
+  (State.default := fun name_part ~cache -> default name_part ~cache ());
   state
 ;;
 

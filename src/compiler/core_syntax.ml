@@ -922,6 +922,8 @@ let include' : core_syntax =
           in
           let uri = resolve_uri ~from:span.uri (Uri.of_string path) in
           Effect.perform (CompilerEffect.FileStartedProcessing uri);
+          let root = C.state.currently_compiled_file |> Option.get in
+          C.state.cache.root <- C.state.cache.root |> UriMap.add uri root;
           let path_expr =
             Compiler.update_data Expr path_expr (fun data ->
               { data with included_file = Some uri })
@@ -932,13 +934,7 @@ let include' : core_syntax =
           in
           let compiled = C.compile kind (parsed.ast |> Kast_ast_init.init_ast) in
           Effect.perform
-            (CompilerEffect.FileIncluded
-               { root = C.state.currently_compiled_file |> Option.get
-               ; uri
-               ; parsed
-               ; kind
-               ; compiled
-               });
+            (CompilerEffect.FileIncluded { root; uri; parsed; kind; compiled });
           compiled |> Compiler.data_add Expr (path_expr, path_value) kind))
   }
 ;;

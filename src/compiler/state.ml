@@ -286,15 +286,27 @@ type import =
   | InProgress
   | Imported of imported
 
-type import_cache = { mutable by_uri : import UriMap.t }
+type cache =
+  { (* TODO parsed & compiled not used *)
+    mutable parsed : Kast_parser.result UriMap.t
+  ; mutable compiled : compiled UriMap.t
+  ; mutable imported : import UriMap.t
+  ; mutable root : Uri.t UriMap.t
+  }
 
-let init_import_cache () : import_cache = { by_uri = UriMap.empty }
+let init_cache () : cache =
+  { parsed = UriMap.empty
+  ; compiled = UriMap.empty
+  ; imported = UriMap.empty
+  ; root = UriMap.empty
+  }
+;;
 
 type t =
   { (* TODO do this properly *)
     mutable scopes : Scopes.t
   ; mutable currently_compiled_file : Uri.t option
-  ; import_cache : import_cache
+  ; cache : cache
   ; interpreter : Interpreter.state
   ; custom_syntax_impls : (Id.t, value) Hashtbl.t
   ; mut_enabled : bool
@@ -303,10 +315,10 @@ type t =
 
 type state = t
 
-let blank name_part ~import_cache =
+let blank name_part ~cache =
   { scopes = Scopes.init ~span:(Span.fake "<blank>") ~recursive:false
   ; currently_compiled_file = None
-  ; import_cache
+  ; cache
   ; interpreter = Interpreter.default name_part
   ; custom_syntax_impls = Hashtbl.create 0
   ; mut_enabled = false
@@ -320,7 +332,7 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
     { scopes
     ; currently_compiled_file
     ; interpreter
-    ; import_cache
+    ; cache
     ; custom_syntax_impls
     ; mut_enabled
     ; bind_mode
@@ -329,7 +341,7 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
   ; interpreter =
       Interpreter.enter_scope ~new_result_scope:true ~span ~recursive interpreter
   ; currently_compiled_file
-  ; import_cache
+  ; cache
   ; custom_syntax_impls
   ; mut_enabled
   ; bind_mode
@@ -349,8 +361,8 @@ let enter_ast_def_site (ast : Ast.t) (state : t) =
 ;;
 
 (* TODO compile_for - figure out *)
-let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
-  fun ~import_cache ~compile_for ->
+let init : cache:cache -> compile_for:Interpreter.state -> state =
+  fun ~cache ~compile_for ->
   let scope = Scope.init ~span:(Span.fake "<init>") ~recursive:false in
   let scope =
     SymbolMap.fold
@@ -377,7 +389,7 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
   { scopes = Scopes.only scope
   ; currently_compiled_file = None
   ; interpreter = compile_for
-  ; import_cache
+  ; cache
   ; custom_syntax_impls = Hashtbl.create 0
   ; mut_enabled = false
   ; bind_mode = Claim
@@ -385,6 +397,6 @@ let init : import_cache:import_cache -> compile_for:Interpreter.state -> state =
 ;;
 
 let default =
-  ref (fun name_part ~import_cache : state ->
-    init ~import_cache ~compile_for:(Interpreter.default name_part))
+  ref (fun name_part ~cache : state ->
+    init ~cache ~compile_for:(Interpreter.default name_part))
 ;;
