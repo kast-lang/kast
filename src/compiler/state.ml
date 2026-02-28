@@ -286,27 +286,47 @@ type import =
   | InProgress
   | Imported of imported
 
-type cache =
-  { (* TODO parsed & compiled not used *)
-    mutable parsed : Kast_parser.result UriMap.t
-  ; mutable compiled : compiled UriMap.t
-  ; mutable imported : import UriMap.t
-  ; mutable root : Uri.t UriMap.t
-  }
+module Cache = struct
+  type t =
+    { (* TODO parsed & compiled not used *)
+      mutable parsed : Kast_parser.result UriMap.t
+    ; mutable compiled : compiled UriMap.t
+    ; mutable imported : import UriMap.t
+    ; mutable dependents : Uri.t list UriMap.t
+    }
 
-let init_cache () : cache =
-  { parsed = UriMap.empty
-  ; compiled = UriMap.empty
-  ; imported = UriMap.empty
-  ; root = UriMap.empty
-  }
-;;
+  let rec invalidate (uri : Uri.t) (cache : t) : unit =
+    cache.imported <- cache.imported |> UriMap.remove uri;
+    cache.compiled <- cache.compiled |> UriMap.remove uri;
+    cache.parsed <- cache.parsed |> UriMap.remove uri;
+    match cache.dependents |> UriMap.find_opt uri with
+    | None -> ()
+    | Some dependents ->
+      cache.dependents <- cache.dependents |> UriMap.remove uri;
+      dependents |> List.iter (fun dep -> invalidate dep cache)
+  ;;
+
+  let add_dependency ~dependent ~dependency cache =
+    cache.dependents
+    <- cache.dependents
+       |> UriMap.update dependency (fun cur ->
+         Some (dependent :: (cur |> Option.value ~default:[])))
+  ;;
+
+  let init () : t =
+    { parsed = UriMap.empty
+    ; compiled = UriMap.empty
+    ; imported = UriMap.empty
+    ; dependents = UriMap.empty
+    }
+  ;;
+end
 
 type t =
   { (* TODO do this properly *)
     mutable scopes : Scopes.t
   ; mutable currently_compiled_file : Uri.t option
-  ; cache : cache
+  ; cache : Cache.t
   ; interpreter : Interpreter.state
   ; custom_syntax_impls : (Id.t, value) Hashtbl.t
   ; mut_enabled : bool
@@ -361,7 +381,7 @@ let enter_ast_def_site (ast : Ast.t) (state : t) =
 ;;
 
 (* TODO compile_for - figure out *)
-let init : cache:cache -> compile_for:Interpreter.state -> state =
+let init : cache:Cache.t -> compile_for:Interpreter.state -> state =
   fun ~cache ~compile_for ->
   let scope = Scope.init ~span:(Span.fake "<init>") ~recursive:false in
   let scope =

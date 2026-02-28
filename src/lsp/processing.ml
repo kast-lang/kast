@@ -12,7 +12,7 @@ module UriSet = Set.Make (Uri)
 type global_state =
   { workspaces : workspace_state list
   ; mutable vfs : string UriMap.t
-  ; mutable cache : Compiler.cache
+  ; mutable cache : Compiler.Cache.t
   ; mutable diagnostics : Lsp.Types.Diagnostic.t list UriMap.t
   ; mutable parse_errors : UriSet.t
   }
@@ -269,7 +269,7 @@ let init (workspaces : Lsp.Uri0.t list) : global_state =
   let bootstrap : global_state =
     { workspaces = []
     ; vfs = UriMap.empty
-    ; cache = Compiler.init_cache ()
+    ; cache = Compiler.Cache.init ()
     ; diagnostics = UriMap.empty
     ; parse_errors = UriSet.empty
     }

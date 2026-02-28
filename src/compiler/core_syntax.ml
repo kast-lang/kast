@@ -923,7 +923,7 @@ let include' : core_syntax =
           let uri = resolve_uri ~from:span.uri (Uri.of_string path) in
           Effect.perform (CompilerEffect.FileStartedProcessing uri);
           let root = C.state.currently_compiled_file |> Option.get in
-          C.state.cache.root <- C.state.cache.root |> UriMap.add uri root;
+          C.state.cache |> State.Cache.add_dependency ~dependent:span.uri ~dependency:uri;
           let path_expr =
             Compiler.update_data Expr path_expr (fun data ->
               { data with included_file = Some uri })

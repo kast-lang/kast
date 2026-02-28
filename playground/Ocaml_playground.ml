@@ -1,5 +1,13 @@
+type _ Effect.t += Test : unit Effect.t
+
+let add a b = a + b
+
+let f () =
+  let x = add 2 2 in
+  Effect.perform Test
+;;
+
 let () =
-  let rec pow acc x n = if n = 0 then 1 else acc * x * pow 1 x (n - 1) in
-  let x = pow 1 10 60 in
-  print_int x
+  try f () with
+  | effect Test, k -> Effect.Deep.continue k ()
 ;;

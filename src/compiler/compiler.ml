@@ -184,6 +184,7 @@ and calculate_import ~(span : span) (module C : S) (uri : Uri.t) : State.importe
 ;;
 
 let rec import ~(span : span) (module C : S) (uri : Uri.t) : State.imported =
+  C.state.cache |> State.Cache.add_dependency ~dependent:span.uri ~dependency:uri;
   let result : State.imported = calculate_import ~span (module C) uri in
   Log.trace (fun log -> log "imported (maybe cached) %a" Uri.print uri);
   Hashtbl.add_seq C.state.custom_syntax_impls (Hashtbl.to_seq result.custom_syntax_impls);

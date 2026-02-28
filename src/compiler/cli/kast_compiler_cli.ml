@@ -68,7 +68,7 @@ let run : Args.t -> unit =
     if no_std
     then (
       let interpreter = Interpreter.default (Uri path) in
-      Compiler.init ~cache:(Compiler.init_cache ()) ~compile_for:interpreter)
+      Compiler.init ~cache:(Compiler.Cache.init ()) ~compile_for:interpreter)
     else Compiler.default (Uri source.uri) ()
   in
   let parsed =
