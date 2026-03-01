@@ -130,44 +130,53 @@ and calculate_import ~(span : span) (module C : S) (uri : Uri.t) : State.importe
     Log.trace (fun log -> log "Importing %a" Uri.print uri);
     Effect.perform (CompilerEffect.FileStartedProcessing uri);
     cache.imported <- UriMap.add uri (InProgress : State.import) cache.imported;
-    let state : State.t = !State.default (Uri uri) ~cache in
-    state.currently_compiled_file <- Some uri;
-    let source = Source.read uri in
-    let parsed =
-      (module C)
-      |> handle_parser_imports (fun () ->
-        Kast_parser.parse source Kast_default_syntax.ruleset)
+    let imported =
+      Fun.protect
+        ~finally:(fun () -> cache.imported <- UriMap.remove uri cache.imported)
+        (fun () ->
+           let state : State.t = !State.default (Uri uri) ~cache in
+           state.currently_compiled_file <- Some uri;
+           let source = Source.read uri in
+           let parsed =
+             (module C)
+             |> handle_parser_imports (fun () ->
+               Kast_parser.parse source Kast_default_syntax.ruleset)
+           in
+           let expr = C.compile ~state Expr (parsed.ast |> Kast_ast_init.init_ast) in
+           let value : value = Kast_interpreter.eval state.interpreter expr in
+           Effect.perform
+             (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
+           let imported : State.imported =
+             { value
+             ; parser_ruleset = parsed.ruleset_with_all_new_syntax
+             ; custom_syntax_impls = state.custom_syntax_impls
+             ; cast_impls = state.interpreter.cast_impls
+             }
+           in
+           let { value; custom_syntax_impls; cast_impls; parser_ruleset = _ }
+             : State.imported
+             =
+             imported
+           in
+           Kast_inference_completion.complete_value value;
+           custom_syntax_impls
+           |> Hashtbl.iter (fun _id impl -> Kast_inference_completion.complete_value impl);
+           let { map = cast_impls; as_module = cast_as_module } : Types.cast_impls =
+             cast_impls
+           in
+           cast_impls
+           |> Types.ValueMap.iter (fun target impls ->
+             Kast_inference_completion.complete_value target;
+             impls
+             |> Types.ValueMap.iter (fun value impl ->
+               Kast_inference_completion.complete_value value;
+               Kast_inference_completion.complete_value impl));
+           cast_as_module
+           |> Types.ValueMap.iter (fun value impl ->
+             Kast_inference_completion.complete_value value;
+             Kast_inference_completion.complete_value impl);
+           imported)
     in
-    let expr = C.compile ~state Expr (parsed.ast |> Kast_ast_init.init_ast) in
-    let value : value = Kast_interpreter.eval state.interpreter expr in
-    Effect.perform (CompilerEffect.FileImported { uri; parsed; compiled = expr; value });
-    let imported : State.imported =
-      { value
-      ; parser_ruleset = parsed.ruleset_with_all_new_syntax
-      ; custom_syntax_impls = state.custom_syntax_impls
-      ; cast_impls = state.interpreter.cast_impls
-      }
-    in
-    (let { value; custom_syntax_impls; cast_impls; parser_ruleset = _ } : State.imported =
-       imported
-     in
-     Kast_inference_completion.complete_value value;
-     custom_syntax_impls
-     |> Hashtbl.iter (fun _id impl -> Kast_inference_completion.complete_value impl);
-     let { map = cast_impls; as_module = cast_as_module } : Types.cast_impls =
-       cast_impls
-     in
-     cast_impls
-     |> Types.ValueMap.iter (fun target impls ->
-       Kast_inference_completion.complete_value target;
-       impls
-       |> Types.ValueMap.iter (fun value impl ->
-         Kast_inference_completion.complete_value value;
-         Kast_inference_completion.complete_value impl));
-     cast_as_module
-     |> Types.ValueMap.iter (fun value impl ->
-       Kast_inference_completion.complete_value value;
-       Kast_inference_completion.complete_value impl));
     cache.imported <- UriMap.add uri (Imported imported : State.import) cache.imported;
     Log.trace (fun log -> log "Imported %a" Uri.print uri);
     imported
