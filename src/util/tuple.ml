@@ -54,6 +54,8 @@ module Tuple = struct
     let named_order_rev = a.named_order_rev in
     let named =
       try
+        if List.length a.named_order_rev <> List.length b.named_order_rev
+        then raise Not_found;
         named_order_rev
         |> List.map (fun name ->
           name, (StringMap.find name a.named, StringMap.find name b.named))
