@@ -17,7 +17,9 @@ const map = [A, B] (f :: A -> B) => (
     }
 );
 
-const enumerate = [T] (iter :: Iterable[T]) -> Iterable[type { Int32, T }] => (
+const enumerate = [T] (
+    iter :: Iterable[T]
+) -> Iterable[type { Int32, T }] => (
     let mut i = 0;
     {
         .iter = consume => (
@@ -29,4 +31,18 @@ const enumerate = [T] (iter :: Iterable[T]) -> Iterable[type { Int32, T }] => (
             );
         ),
     }
+);
+
+const reduce = [T] (
+    iter :: Iterable[T], 
+    f :: (T, T) -> T,
+) -> Option.t[T] => (
+    let mut result = :None;
+    iter.iter(x => (
+        result = :Some (match result with (
+            | :None => x
+            | :Some prev => f(prev, x)
+        ));
+    ));
+    result
 );
