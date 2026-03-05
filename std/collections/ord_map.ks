@@ -7,15 +7,15 @@ const KV = [K, V] newtype {
 const t = [K, V] newtype {
     .inner :: Treap.t[KV[K, V]],
 };
-const create = [K, V] () -> Map.t[K, V] => {
-    .inner = Treap.create()
+const new = [K, V] () -> OrdMap.t[K, V] => {
+    .inner = Treap.new()
 };
 
-const add = [K, V] (map :: &mut Map.t[K, V], key :: K, value :: V) => (
+const add = [K, V] (map :: &mut OrdMap.t[K, V], key :: K, value :: V) => (
     get_or_init(map, key, () => value);
 );
 
-const get = [K, V] (map :: &Map.t[K, V], key :: K) -> Option.t[type (&V)] => (
+const get = [K, V] (map :: &OrdMap.t[K, V], key :: K) -> Option.t[type (&V)] => (
     let { less, greater_or_equal } = Treap.split(
         map^.inner,
         data => (
@@ -44,7 +44,7 @@ const get = [K, V] (map :: &Map.t[K, V], key :: K) -> Option.t[type (&V)] => (
 );
 
 const get_or_init = [K, V] (
-    map :: &mut Map.t[K, V],
+    map :: &mut OrdMap.t[K, V],
     key :: K,
     init :: () -> V,
 ) -> &mut V => (
@@ -75,6 +75,6 @@ const get_or_init = [K, V] (
     &mut (Treap.at_mut(&mut equal, 0))^.value
 );
 
-const iter = [K, V] (map :: &Map.t[K, V]) -> std.iter.Iterable[type (&KV[K, V])] => (
+const iter = [K, V] (map :: &OrdMap.t[K, V]) -> std.iter.Iterable[type (&KV[K, V])] => (
     Treap.iter(&map^.inner)
 );

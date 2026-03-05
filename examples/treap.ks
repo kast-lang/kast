@@ -1,5 +1,5 @@
 use std.collections.Treap;
-let mut v = Treap.create();
+let mut v = Treap.new();
 for i in 0..10 do (
     v = Treap.join(v, Treap.singleton(i + 10));
 );

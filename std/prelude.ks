@@ -15,7 +15,7 @@ use io.print;
 use io.eprint;
 use io.input;
 use panic;
-use collections.List;
+use collections.ArrayList;
 use dbg;
 use convert.Into;
 use Option;

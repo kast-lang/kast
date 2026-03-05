@@ -31,8 +31,8 @@ const to_str = [T] (x :: &T) -> String => (
                 );
                 while x != 0 do (
                     let digit = x % 10;
-                    let c = Char.from_code (Char.code('0') + digit);
-                    result = std.String.to_string (c) + result;
+                    let c = Char.from_code(Char.code('0') + digit);
+                    result = std.String.to_string(c) + result;
                     x /= 10;
                 );
                 result
@@ -51,14 +51,14 @@ const to_str = [T] (x :: &T) -> String => (
             | :Tuple { .unnamed, .named } => (
                 let add = `(add);
                 let mut add_fields = `();
-                for { i, ty } in unnamed |> SList.iter |> std.iter.enumerate do (
+                for { i, ty } in unnamed |> SList.into_iter |> std.iter.enumerate do (
                     let i :: Ast = Ast.number_literal(i);
                     add_fields = `(
                         $add_fields;
                         $add(:None, &$self^.$i)
                     );
                 );
-                for { name, ty } in named |> SList.iter do (
+                for { name, ty } in named |> SList.into_iter do (
                     let ident :: Ast = Ast.ident(name);
                     add_fields = `(
                         $add_fields;
@@ -68,7 +68,7 @@ const to_str = [T] (x :: &T) -> String => (
                 `(
                     let mut result = "{";
                     let mut first = true;
-                    let $add = [T](name, value :: &T) => (
+                    let $add = [T] (name, value :: &T) => (
                         if first then (
                             result += " ";
                             first = false;

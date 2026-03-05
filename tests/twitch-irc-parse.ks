@@ -1,11 +1,11 @@
 # Just parsing twitch irc message
-use std.collections.Map;
+use std.collections.OrdMap;
 
 const Msg = type {
-    .tags :: Map.t[String, String],
+    .tags :: OrdMap.t[String, String],
     .prefix :: Option.t[String],
     .command :: String,
-    .params :: List.t[String],
+    .params :: ArrayList.t[String],
     .trailing :: Option.t[String],
 };
 let rsplit_at = (s :: String, c :: Char) -> { String, String } => (
@@ -15,22 +15,22 @@ let rsplit_at = (s :: String, c :: Char) -> { String, String } => (
         String.substring(s, i + 1, String.length(s) - i - 1),
     }
 );
-let parse_tags = (s :: String) -> Map.t[String, String] => (
-    let mut tags = Map.create();
+let parse_tags = (s :: String) -> OrdMap.t[String, String] => (
+    let mut tags = OrdMap.new();
     for part in String.split(s, ';') do (
         dbg.print(part);
         let { key, value } = String.split_once(part, '=');
-        Map.add(&mut tags, key, value);
+        OrdMap.add(&mut tags, key, value);
     );
     
     tags
 );
 let parse_msg = (msg :: String) -> Msg => with_return (
     let mut unparsed = msg;
-    let mut tags = Map.create();
+    let mut tags = OrdMap.new();
     let mut prefix = :None;
     let mut command = :None;
-    let mut params = List.create();
+    let mut params = ArrayList.new();
     let mut trailing = :None;
     let add_part = s => (
         let first = String.at(s, 0);
@@ -43,7 +43,7 @@ let parse_msg = (msg :: String) -> Msg => with_return (
         ) else if &command |> Option.is_none then (
             command = :Some s;
         ) else (
-            List.push_back(&mut params, s);
+            ArrayList.push_back(&mut params, s);
         );
     );
     loop (

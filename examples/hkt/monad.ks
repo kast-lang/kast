@@ -15,7 +15,7 @@ use std.collections.Treap;
 impl Treap.t as Monad = {
     .ret = Treap.singleton,
     .flat_map = [A, B] (a, f) => (
-        let mut result = Treap.create();
+        let mut result = Treap.new();
         for &x in Treap.iter(&a) do (
             result = Treap.join(result, f(x));
         );

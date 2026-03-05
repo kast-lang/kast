@@ -3,8 +3,8 @@ const t = [T] newtype {
     .inner :: Treap.t[T]
 };
 
-const create = [T] () -> Queue.t[T] => {
-    .inner = Treap.create()
+const new = [T] () -> Queue.t[T] => {
+    .inner = Treap.new()
 };
 const push = [T] (q :: &mut Queue.t[T], value :: T) => (
     q^.inner = Treap.join(q^.inner, Treap.singleton(value));

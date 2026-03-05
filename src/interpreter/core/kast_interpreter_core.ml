@@ -947,7 +947,11 @@ and eval_expr_match : state -> expr -> Types.expr_match -> value =
     (match result with
      | Some result -> result
      | None ->
-       Error.error expr.data.span "pattern match non exhaustive";
+       Error.error
+         expr.data.span
+         "pattern match non exhaustive: %a"
+         Place.print_value
+         place;
        V_Error |> Value.inferred ~span)
 
 and eval_expr_loop : state -> expr -> Types.expr_loop -> value =

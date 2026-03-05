@@ -12,7 +12,7 @@ const t = [T] newtype (
     | :Node data[T]
 );
 
-const create = [T] () -> Treap.t[T] => :Empty;
+const new = [T] () -> Treap.t[T] => :Empty;
 const singleton = [T] (value :: T) -> Treap.t[T] => :Node (
     {
         .left = :Empty,

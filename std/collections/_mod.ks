@@ -1,6 +1,6 @@
 module:
 const Treap = include "./treap.ks";
-const List = include "./list.ks";
+const ArrayList = include "./array_list.ks";
 const Queue = include "./queue.ks";
-const Map = include "./map.ks";
+const OrdMap = include "./ord_map.ks";
 const SList = include "./slist.ks";
