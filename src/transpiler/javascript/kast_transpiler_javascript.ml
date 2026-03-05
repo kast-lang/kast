@@ -440,7 +440,9 @@ module Impl = struct
       | V_Variant { label; data; ty = _ } ->
         create_variant
           label
-          (data |> Option.map (fun place -> place |> transpile_place |> read_place))
+          (data
+           |> Option.map (fun place ->
+             place |> Kast_interpreter.read_place ~span:ctx.span |> transpile_value))
       | V_Ty ty -> transpile_ty ty
       | V_Fn { ty = _; fn = { def; captured; _ } } -> fn ~captured:(Some captured) def
       | V_Generic { name = _; fn = { def; captured; _ }; ty = _ } ->
