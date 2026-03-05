@@ -286,7 +286,7 @@ module Impl = struct
       let name = make_string "%a" Print.print_name_shape name in
       let expr = make_string "Kast.types.create_or_find(%a)" String.print_debug name in
       calculate { shape = JsAst.Raw expr; span = None })
-    else raise (Invalid_argument "only simple names pls")
+    else todo_ty (make_string "only simple names pls: %a" Print.print_name_shape name)
 
   and transpile_ty : ty -> no_effect_expr =
     fun ty ->
@@ -301,14 +301,14 @@ module Impl = struct
       ; span = None
       }
 
+  and todo_ty (s : string) : no_effect_expr =
+    calculate
+      { shape = JsAst.Raw (make_string "Kast.types.todo(%a)" String.print_debug s)
+      ; span = None
+      }
+
   and transpile_ty_shape : ty_shape -> no_effect_expr =
     fun shape ->
-    let todo_ty s : no_effect_expr =
-      calculate
-        { shape = JsAst.Raw (make_string "Kast.types.todo(%a)" String.print_debug s)
-        ; span = None
-        }
-    in
     let primitive s : no_effect_expr =
       calculate
         { shape = JsAst.Raw (make_string "Kast.types.primitive[%a]" String.print_debug s)
@@ -326,15 +326,11 @@ module Impl = struct
     | T_Ref _ -> todo_ty __LOC__
     | T_Variant { name; variants = _ } ->
       (match name |> OptionalName.await_inferred with
-       | Some name ->
-         (try type_named name with
-          | Invalid_argument _ -> todo_ty __LOC__)
+       | Some name -> type_named name
        | None -> todo_ty __LOC__)
     | T_Tuple { name; tuple = _ } ->
       (match name |> OptionalName.await_inferred with
-       | Some name ->
-         (try type_named name with
-          | Invalid_argument _ -> todo_ty __LOC__)
+       | Some name -> type_named name
        | None -> todo_ty __LOC__)
     | T_Ty -> todo_ty __LOC__
     | T_Fn _ -> todo_ty __LOC__
@@ -344,7 +340,7 @@ module Impl = struct
     | T_Target -> todo_ty __LOC__
     | T_ContextTy -> todo_ty __LOC__
     | T_CompilerScope -> todo_ty __LOC__
-    | T_Opaque _ -> todo_ty __LOC__
+    | T_Opaque { name } -> type_named (name |> Name.await_inferred)
     | T_Blocked _ -> todo_ty __LOC__
     | T_Error -> NoEffect { shape = JsAst.Null; span = None }
 

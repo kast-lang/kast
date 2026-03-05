@@ -187,7 +187,7 @@ and unite
 ;;
 
 let rec await_find_opt label_string { var } =
-  match var |> Inference.Var.await_inferred ~error_shape:R_Error with
+  match var |> Inference.Var.await_inferred ~error_shape:(fun () -> R_Error) with
   | R_Error -> None
   | R_Empty -> None
   | R_Cons { label; value; rest } ->
@@ -197,7 +197,7 @@ let rec await_find_opt label_string { var } =
 ;;
 
 let rec await_inferred_to_list { var } =
-  match var |> Inference.Var.await_inferred ~error_shape:R_Error with
+  match var |> Inference.Var.await_inferred ~error_shape:(fun () -> R_Error) with
   | R_Error -> []
   | R_Empty -> []
   | R_Cons { label; value; rest } -> (label, value) :: await_inferred_to_list rest

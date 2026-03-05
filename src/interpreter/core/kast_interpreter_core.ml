@@ -313,7 +313,9 @@ and instantiate
              span
              Value.print
              result);
-         let name = name.var |> Inference.Var.await_inferred ~error_shape:None in
+         let name =
+           name.var |> Inference.Var.await_inferred ~error_shape:(fun () -> None)
+         in
          (match name with
           | None -> ()
           | Some name ->

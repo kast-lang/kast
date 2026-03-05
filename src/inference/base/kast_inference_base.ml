@@ -283,7 +283,7 @@ module Var = struct
       once_inferred f var
   ;;
 
-  let rec await_inferred : 'a 'scope. error_shape:'a -> ('a, 'scope) var -> 'a =
+  let rec await_inferred : 'a 'scope. error_shape:(unit -> 'a) -> ('a, 'scope) var -> 'a =
     fun ~error_shape var ->
     let root_data = find_root var in
     match root_data.inferred with
@@ -291,7 +291,7 @@ module Var = struct
     | None ->
       if Effect.perform (AwaitUpdate var)
       then await_inferred ~error_shape var
-      else error_shape
+      else error_shape ()
   ;;
 
   let compare

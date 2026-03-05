@@ -17,6 +17,10 @@ module Ast = Ast
 module Name = struct
   type t = name
 
+  let await_inferred (value : name) =
+    value.var |> Inference.Var.await_inferred ~error_shape:(fun () -> failwith __LOC__)
+  ;;
+
   let new_inferred ~span value : name =
     { var = Inference.Var.new_inferred VarScope.of_name_shape ~span value }
   ;;
@@ -30,7 +34,7 @@ module OptionalName = struct
   type t = optional_name
 
   let await_inferred (value : optional_name) =
-    value.var |> Inference.Var.await_inferred ~error_shape:None
+    value.var |> Inference.Var.await_inferred ~error_shape:(fun () -> None)
   ;;
 
   let new_inferred ~span value : optional_name =
@@ -63,7 +67,7 @@ module Ty = struct
   let inferred = Inference_impl.inferred_ty
 
   let await_inferred : ty -> ty_shape =
-    fun ty -> ty.var |> Inference.Var.await_inferred ~error_shape:T_Error
+    fun ty -> ty.var |> Inference.Var.await_inferred ~error_shape:(fun () -> T_Error)
   ;;
 
   module Shape = struct
@@ -136,7 +140,8 @@ module Value = struct
   ;;
 
   let await_inferred : value -> value_shape =
-    fun value -> value.var |> Inference.Var.await_inferred ~error_shape:V_Error
+    fun value ->
+    value.var |> Inference.Var.await_inferred ~error_shape:(fun () -> V_Error)
   ;;
 
   let name value = await_inferred value |> Shape.name
@@ -407,7 +412,7 @@ module IsMutable = struct
   ;;
 
   let await_inferred ({ var } : t) =
-    var |> Inference.Var.await_inferred ~error_shape:false
+    var |> Inference.Var.await_inferred ~error_shape:(fun () -> false)
   ;;
 end
 
