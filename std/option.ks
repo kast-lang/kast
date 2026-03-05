@@ -40,3 +40,18 @@ const unwrap = [T] (opt :: Option[T]) -> T => match opt with (
     | :Some x => x
     | :None => panic("unwrapped :None")
 );
+
+const unwrap_or_else = [T] (opt :: Option[T], default :: () -> T) -> T => (
+    match opt with (
+        | :Some x => x
+        | :None => default()
+    )
+);
+
+const unwrap_or = [T] (opt :: Option[T], default :: T) -> T => (
+    match opt with (
+        | :Some x => x
+        | :None => default
+    )
+);
+
