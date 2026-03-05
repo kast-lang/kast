@@ -151,8 +151,10 @@ let init () =
                        ; ( "named"
                          , fun list_ty ->
                              construct_list ~span list_ty (fun elem_ty ->
-                               ty_tuple.tuple.named
-                               |> StringMap.to_list
+                               ty_tuple.tuple.named_order_rev
+                               |> List.rev
+                               |> List.map (fun name ->
+                                 name, ty_tuple.tuple.named |> StringMap.find name)
                                |> List.map
                                     (fun
                                         ((name, field) : string * Types.ty_tuple_field) ->
