@@ -9,13 +9,14 @@ const ReversibleIterable = [Item] newtype {
     .rev :: () -> ReversibleIterable[Item],
 };
 
-const map = [A, B] (f :: A -> B) => (
-    (iter :: Iterable[A]) -> Iterable[B] => {
-        .iter = consume => (
-            iter.iter(a => consume(f(a)))
-        )
-    }
-);
+const map = [A, B] (
+    iter :: Iterable[A],
+    f :: A -> B,
+) -> Iterable[B] => {
+    .iter = consume => (
+        iter.iter(a => consume(f(a)))
+    )
+};
 
 const enumerate = [T] (
     iter :: Iterable[T]
