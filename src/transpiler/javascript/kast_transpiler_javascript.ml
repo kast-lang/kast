@@ -855,7 +855,7 @@ module Impl = struct
                     { shape =
                         Raw
                           (make_string
-                             "Symbol(%a)"
+                             "Kast.gen_symbol(%a)"
                              String.print_debug
                              (Label.get_name label))
                     ; span = None
@@ -1215,7 +1215,7 @@ module Impl = struct
         let token_var = JsAst.gen_name ~original:None "unwind_token" in
         let catch_var = JsAst.gen_name ~original:None "e" in
         let result = JsAst.gen_name ~original:None "result" in
-        let_var token_var (calculate { shape = Raw "Symbol()"; span });
+        let_var token_var (calculate { shape = Raw "Kast.gen_symbol()"; span });
         let_var result (NoEffect { shape = Undefined; span = None });
         execute
           { shape =
