@@ -142,6 +142,7 @@
             memtrace_viewer
             valgrind
             prettier
+            hyperfine
           ]);
           shellHook = ''
             echo 'Hello from Kast devshell'
