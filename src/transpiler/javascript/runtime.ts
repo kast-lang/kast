@@ -2,8 +2,10 @@ import type * as readline from "node:readline/promises";
 import type * as fs from "node:fs";
 import type * as util from "node:util";
 
+type MaybePromise<T> = Promise<T> | T;
+
 type Context = unknown;
-type Fn<A extends any[], R> = (ctx: Context, ...args: A) => Promise<R>;
+type Fn<A extends any[], R> = (ctx: Context, ...args: A) => MaybePromise<R>;
 
 interface Ref<T> {
   get: () => T;
@@ -250,7 +252,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
 
       return {
         dbg: {
-          async print(ctx, value: Value) {
+          print(ctx, value: Value) {
             console.log(util.inspect(value, { depth: null, colors: true }));
           },
         },
@@ -373,13 +375,13 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
           },
         },
         sys: {
-          async chdir(ctx: Context, path: string): Promise<void> {
+          chdir(ctx: Context, path: string): void {
             process.chdir(path);
           },
-          async argc(ctx: Context): Promise<number> {
+          argc(ctx: Context): number {
             return process.argv.length - 1;
           },
-          async argv_at(ctx: Context, i: number): Promise<string> {
+          argv_at(ctx: Context, i: number): string {
             return process.argv[i + 1];
           },
           async exec(ctx: Context, cmd: string): Promise<number> {
@@ -397,7 +399,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
               child.on("error", reject);
             });
           },
-          async get_env(ctx: Context, name: string): Promise<Option<string>> {
+          get_env(ctx: Context, name: string): Option<string> {
             const value = process.env[name];
             if (value === undefined) {
               return { tag: "None" };
@@ -416,7 +418,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     } else {
       return {
         dbg: {
-          async print(ctx: Context, value: Value) {
+          print(ctx: Context, value: Value) {
             console.debug(value);
           },
         },
@@ -437,12 +439,12 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     }
   })();
 
-  async function call<A extends any[], R>(
+  function call<A extends any[], R>(
     f: Fn<A, R>,
     ctx: Context,
     ...args: A
-  ): Promise<R> {
-    return await f(ctx, ...args);
+  ): MaybePromise<R> {
+    return f(ctx, ...args);
   }
 
   let next_id = 0;
@@ -541,61 +543,61 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     ...backend,
     io: {
       ...backend.io,
-      async print(ctx: Context, s: string) {
+      print(ctx: Context, s: string) {
         console.log(s);
       },
-      async eprint(ctx: Context, s: string) {
+      eprint(ctx: Context, s: string) {
         console.error(s);
       },
     },
     cmp: {
-      async less(ctx, lhs, rhs) {
+      less(ctx, lhs, rhs) {
         return lhs < rhs;
       },
-      async less_or_equal(ctx, lhs, rhs) {
+      less_or_equal(ctx, lhs, rhs) {
         return lhs <= rhs;
       },
-      async equal(ctx, lhs, rhs) {
+      equal(ctx, lhs, rhs) {
         return lhs === rhs;
       },
-      async not_equal(ctx, lhs, rhs) {
+      not_equal(ctx, lhs, rhs) {
         return lhs !== rhs;
       },
-      async greater_or_equal(ctx, lhs, rhs) {
+      greater_or_equal(ctx, lhs, rhs) {
         return lhs >= rhs;
       },
-      async greater(ctx, lhs, rhs) {
+      greater(ctx, lhs, rhs) {
         return lhs > rhs;
       },
     },
     op: {
-      add: async (ctx, lhs, rhs) => lhs + rhs,
-      sub: async (ctx, lhs, rhs) => lhs - rhs,
-      mul: async (ctx, lhs, rhs) => lhs * rhs,
-      rem: async (ctx, lhs, rhs) => lhs % rhs,
-      div_temp: async (ctx, T, lhs, rhs) => {
+      add: (ctx, lhs, rhs) => lhs + rhs,
+      sub: (ctx, lhs, rhs) => lhs - rhs,
+      mul: (ctx, lhs, rhs) => lhs * rhs,
+      rem: (ctx, lhs, rhs) => lhs % rhs,
+      div_temp: (ctx, T, lhs, rhs) => {
         if (T === types.primitive.Float64) return lhs / rhs;
         if (T === types.primitive.Int64) return lhs / rhs;
         return Math.floor(lhs / rhs);
       },
-      neg: async (ctx, x: Value) => -x,
-      bit_and: async (ctx, lhs, rhs) => lhs & rhs,
-      bit_or: async (ctx, lhs, rhs) => lhs | rhs,
-      bit_xor: async (ctx, lhs, rhs) => lhs ^ rhs,
-      bit_not: async (ctx, x: Value) => ~x,
-      bit_shift_left: async (ctx, lhs, rhs) => lhs << rhs,
-      bit_shift_right: async (ctx, lhs, rhs) => lhs >> rhs,
+      neg: (ctx, x: Value) => -x,
+      bit_and: (ctx, lhs, rhs) => lhs & rhs,
+      bit_or: (ctx, lhs, rhs) => lhs | rhs,
+      bit_xor: (ctx, lhs, rhs) => lhs ^ rhs,
+      bit_not: (ctx, x: Value) => ~x,
+      bit_shift_left: (ctx, lhs, rhs) => lhs << rhs,
+      bit_shift_right: (ctx, lhs, rhs) => lhs >> rhs,
     },
     Char: {
-      async code(ctx, c: string): Promise<number> {
+      code(ctx, c: string): number {
         return c.charCodeAt(0);
       },
-      async from_code(ctx, code: number): Promise<string> {
+      from_code(ctx, code: number): string {
         return String.fromCharCode(code);
       },
     },
     String: {
-      substring: async (ctx, s, start, len) => {
+      substring: (ctx, s, start, len) => {
         return s.substring(start, start + len);
       },
       iter: async (ctx, s, f) => {
@@ -610,28 +612,28 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
           i += c.length;
         }
       },
-      at: async (ctx, s, i) => {
+      at: (ctx, s, i) => {
         const c = s.at(i);
         if (c === undefined) {
           throw new Error("out of bounds");
         }
         return c;
       },
-      length: async (ctx, s: string) => {
+      length: (ctx, s: string) => {
         return s.length;
       },
-      to_string: async (ctx, x: Value) => {
+      to_string: (ctx, x: Value) => {
         return x.toString();
       },
     },
     parse: {
-      async Int32(ctx, s) {
+      Int32(ctx, s) {
         return parseInt(s);
       },
-      async Int64(ctx, s) {
+      Int64(ctx, s) {
         return BigInt(s);
       },
-      async Float64(ctx, s) {
+      Float64(ctx, s) {
         return parseFloat(s);
       },
     },
@@ -640,7 +642,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     value_todo: (s) => {
       return { todo: s };
     },
-    panic: async (ctx, s: string) => {
+    panic: (ctx, s: string) => {
       throw Error(s);
     },
     casts: {
