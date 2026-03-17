@@ -11,10 +11,16 @@ type no_effect_expr = NoEffect of JsAst.expr
 let async_get_set = false
 let async_fns = true
 
+type ref_var =
+  { name : JsAst.name
+  ; usage : JsAst.var_usage
+  }
+
 type transpiled_place =
   | OCaml of
       { get : unit -> no_effect_expr
       ; set : JsAst.expr -> unit
+      ; ref_var : ref_var option
       }
   | Js of no_effect_expr
 
@@ -33,6 +39,7 @@ type ctx =
   ; captured : interpreter_scope
   ; span : span
   ; target : value_target
+  ; mutable ref_vars : ref_var StringMap.t
   }
 
 let ctx_var : JsAst.name = { raw = "ctx"; original = None }
@@ -60,9 +67,18 @@ module Impl = struct
       ; set =
           (fun value ->
             execute { shape = Assign { assignee = pure expr; value }; span = None })
+      ; ref_var = None
       }
 
-  and place_of_var name = place_of (NoEffect { shape = Var name; span = None })
+  and place_of_var (name : JsAst.name) : transpiled_place =
+    let ctx = Effect.perform GetCtx in
+    let place = place_of (NoEffect { shape = Var name; span = None }) in
+    match ctx.ref_vars |> StringMap.find_opt name.raw with
+    | Some ref_var ->
+      (match place with
+       | OCaml place -> OCaml { place with ref_var = Some ref_var }
+       | Js _ -> unreachable "???")
+    | None -> place
 
   and place_of_var_field name field =
     place_of
@@ -72,6 +88,9 @@ module Impl = struct
   and place_to_js ~(mut : bool) (place : transpiled_place) : no_effect_expr =
     match place with
     | Js place -> place
+    | OCaml { ref_var = Some ref_var; _ } ->
+      ref_var.usage.can_be_deleted <- false;
+      NoEffect { shape = Var ref_var.name; span = None }
     | OCaml place ->
       let get : JsAst.obj_part =
         Field
@@ -394,17 +413,11 @@ module Impl = struct
       then (
         Log.trace (fun log -> log "prepend %a" Value.print value);
         with_global_scope (fun () ->
-          execute
-            { shape =
-                JsAst.Let
-                  { var = value_name
-                  ; value =
-                      (match value.var |> Inference.Var.inferred_opt with
-                       | None -> not_inferred value.var
-                       | Some value_shape -> value_shape |> transpile_value_shape |> pure)
-                  }
-            ; span = None
-            }));
+          let_var
+            value_name
+            (match value.var |> Inference.Var.inferred_opt with
+             | None -> calculate (not_inferred value.var)
+             | Some value_shape -> value_shape |> transpile_value_shape)));
       (* TODO copy? *)
       NoEffect { shape = Var value_name; span = None }
 
@@ -583,6 +596,7 @@ module Impl = struct
               ; value =
                   (let (NoEffect result) = read_place place in
                    result)
+              ; usage = { can_be_deleted = false }
               }
         ; span
         };
@@ -753,7 +767,15 @@ module Impl = struct
          <- ctx.mut.captured_places |> Id.Map.add captured_place.id place;
          let value = transpile_value value in
          prepend_late
-           [ { shape = Let { var = value_name; value = pure value }; span = None } ];
+           [ { shape =
+                 Let
+                   { var = value_name
+                   ; value = pure value
+                   ; usage = { can_be_deleted = false }
+                   }
+             ; span = None
+             }
+           ];
          place)
 
   and transpile_place_expr : place_expr -> transpiled_place =
@@ -777,11 +799,11 @@ module Impl = struct
         field_place obj member
       | PE_Deref expr ->
         let var = JsAst.gen_name ~original:None "ref" in
-        execute { shape = Let { var; value = transpile_expr expr |> pure }; span };
+        let_var var (transpile_expr expr);
         place_from_js_var var
       | PE_Temp expr ->
         let var = JsAst.gen_name ~original:None "temp" in
-        execute { shape = Let { var; value = transpile_expr expr |> pure }; span };
+        let_var var (transpile_expr expr);
         place_of_var var
       | PE_Error -> failwith __LOC__
     with
@@ -860,6 +882,7 @@ module Impl = struct
                              (Label.get_name label))
                     ; span = None
                     }
+                ; usage = { can_be_deleted = false }
                 }
           ; span = None
           }
@@ -888,7 +911,8 @@ module Impl = struct
   and calculate : JsAst.expr -> no_effect_expr =
     fun value ->
     let var = JsAst.gen_name ~original:None "var" in
-    execute { shape = Let { var; value }; span = None };
+    execute
+      { shape = Let { var; value; usage = { can_be_deleted = false } }; span = None };
     NoEffect { shape = Var var; span = None }
 
   and scope (f : unit -> unit) : JsAst.stmt list =
@@ -904,7 +928,24 @@ module Impl = struct
       }
 
   and let_var (var : JsAst.name) (value : no_effect_expr) : unit =
-    execute { shape = Let { var; value = pure value }; span = None }
+    execute
+      { shape = Let { var; value = pure value; usage = { can_be_deleted = false } }
+      ; span = None
+      };
+    let ref_var : ref_var =
+      { name = JsAst.gen_name "ref" ~original:None; usage = { can_be_deleted = true } }
+    in
+    execute
+      { shape =
+          Let
+            { var = ref_var.name
+            ; value = place_of_var var |> place_to_js ~mut:true |> pure
+            ; usage = ref_var.usage
+            }
+      ; span = None
+      };
+    let ctx = Effect.perform GetCtx in
+    ctx.ref_vars <- ctx.ref_vars |> StringMap.add var.raw ref_var
 
   and undefined () = NoEffect { shape = Undefined; span = None }
 
@@ -1093,7 +1134,12 @@ module Impl = struct
           ctx.mut.module_of_binding
           <- ctx.mut.module_of_binding |> Id.Map.add binding.id module_var);
         execute
-          { shape = JsAst.Let { var = module_var; value = { shape = Obj []; span } }
+          { shape =
+              JsAst.Let
+                { var = module_var
+                ; value = { shape = Obj []; span }
+                ; usage = { can_be_deleted = false }
+                }
           ; span
           };
         let (NoEffect _) = transpile_expr def in
@@ -1376,6 +1422,7 @@ let with_ctx ~state ~span f =
         }
     ; span
     ; target = { name = "javascript" }
+    ; ref_vars = StringMap.empty
     }
   in
   let user_code =
@@ -1400,7 +1447,12 @@ let with_ctx ~state ~span f =
     | effect GetCtx, k -> Effect.continue k ctx
   in
   let ast : JsAst.stmt list =
-    [ ({ shape = Let { var = ctx_var; value = { shape = Obj []; span = None } }
+    [ ({ shape =
+           Let
+             { var = ctx_var
+             ; value = { shape = Obj []; span = None }
+             ; usage = { can_be_deleted = false }
+             }
        ; span = None
        }
        : JsAst.stmt)

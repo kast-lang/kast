@@ -79,6 +79,8 @@ and obj_part =
       }
   | Unpack of expr
 
+and var_usage = { mutable can_be_deleted : bool }
+
 and stmt_shape =
   | Block of stmt list
   | Labelled of
@@ -89,6 +91,7 @@ and stmt_shape =
   | Let of
       { var : name
       ; value : expr
+      ; usage : var_usage
       }
   | Assign of
       { assignee : expr
@@ -287,11 +290,13 @@ and print_stmt writer (stmt : stmt) =
     | Return e ->
       writer |> write "return ";
       print_expr ~precedence:Returned writer e
-    | Let { var; value } ->
-      writer |> write "let ";
-      print_name writer var;
-      writer |> write " = ";
-      print_expr ~precedence:Assigned writer value
+    | Let { var; value; usage } ->
+      if not usage.can_be_deleted
+      then (
+        writer |> write "let ";
+        print_name writer var;
+        writer |> write " = ";
+        print_expr ~precedence:Assigned writer value)
     | Assign { assignee; value } ->
       print_expr ~precedence:Assignee writer assignee;
       writer |> write " = ";

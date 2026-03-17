@@ -44,7 +44,10 @@ and optimize_expr_as_stmts : span:span option -> expr -> stmt list =
     let result =
       (List.zip f_args call_args
        |> List.map (fun (f_arg, call_arg) ->
-         { shape = Let { var = f_arg; value = call_arg }; span = None }))
+         { shape =
+             Let { var = f_arg; value = call_arg; usage = { can_be_deleted = false } }
+         ; span = None
+         }))
       @ body
     in
     result
@@ -72,7 +75,8 @@ and optimize_stmt : stmt -> stmt list =
   | Block stmts -> [ { shape = Block (optimize_stmts stmts); span } ]
   | LabelledBreak _label -> [ original ]
   | Expr expr -> optimize_expr_as_stmts ~span expr
-  | Let { var; value } -> [ { shape = Let { var; value = optimize_expr value }; span } ]
+  | Let { var; value; usage } ->
+    [ { shape = Let { var; value = optimize_expr value; usage }; span } ]
   | Assign { assignee; value } ->
     [ { shape = Assign { assignee; value = optimize_expr value }; span } ]
   | Return value -> [ { shape = Return (optimize_expr value); span } ]
