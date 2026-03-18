@@ -448,6 +448,18 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     return f(ctx, ...args);
   }
 
+  function call_sync<A extends any[], R>(
+    f: Fn<A, R>,
+    ctx: Context,
+    ...args: A
+  ): R {
+    const result = f(ctx, ...args);
+    if (result instanceof Promise) {
+      throw Error("sync call to async fn");
+    }
+    return result;
+  }
+
   let next_id = 0;
   const Id = {
     gen: () => {
@@ -606,15 +618,15 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       substring: (ctx, s, start, len) => {
         return s.substring(start, start + len);
       },
-      iter: async (ctx, s, f) => {
+      iter: (ctx, s, f) => {
         for (let c of s) {
-          await call(f, ctx, c);
+          call_sync(f, ctx, c);
         }
       },
-      iteri: async (ctx, s, f) => {
+      iteri: (ctx, s, f) => {
         let i = 0;
         for (let c of s) {
-          await call(f, ctx, { 0: i, 1: c });
+          call_sync(f, ctx, { 0: i, 1: c });
           i += c.length;
         }
       },
