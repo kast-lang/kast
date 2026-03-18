@@ -1,7 +1,7 @@
 open Std
 module Parser = Kast_parser
 
-let ruleset : Parser.ruleset =
+let ruleset : Parser.Ruleset.t =
   try
     Parser.Ruleset.parse_source
       { contents = [%include_file "rules.ks"]

@@ -1085,25 +1085,26 @@ let native : core_syntax =
         (ast : Ast.t)
         ({ children; _ } : Ast.group)
         : a ->
-        with_return (fun { return } ->
+        with_return (fun { return } : a ->
           let span = ast.data.span in
-          let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
-          let expr_value, expr =
-            Compiler.eval ~ty:(Ty.inferred ~span:expr.data.span T_String) (module C) expr
-          in
-          let expr_string : string =
-            expr_value
-            |> Value.expect_string
-            |> Option.unwrap_or_else (fun () -> return <| init_error span C.state kind)
-          in
           match kind with
+          | PlaceExpr -> Compiler.temp_expr (module C) ast
           | Expr ->
-            E_Native { id = Id.gen (); expr = expr_string }
-            |> init_expr span C.state
-            |> Compiler.data_add Expr (expr, expr_value) kind
-          | PlaceExpr ->
-            error span "native must be expr, not place expr";
-            init_error span C.state kind
+            let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+            let parts =
+              match expr.shape with
+              | Ast.String { parts; _ } ->
+                parts
+                |> List.map (function
+                  | Ast.Content s -> Types.Raw s.raw
+                  | Ast.Interpolate inner ->
+                    let inner = C.compile Expr inner in
+                    Types.Expr inner)
+              | _ ->
+                error span "native expr must be (interpolated) string";
+                return <| init_error span C.state kind
+            in
+            E_Native { id = Id.gen (); parts } |> init_expr span C.state
           | Assignee ->
             error span "native must be expr, not assignee expr";
             init_error span C.state kind
@@ -1634,8 +1635,24 @@ let quote : core_syntax =
             else (
               let def_site = Some (C.state.scopes |> State.Scopes.def_site) in
               match ast.shape with
-              | Ast.Error _ | Ast.Simple _ | Ast.Empty ->
+              | Ast.Error _ | Ast.Simple _ | Ast.Empty
+              | Ast.String { parts = [ Content _ ]; _ } ->
                 E_QuoteAst (Simple { ast; def_site }) |> init_expr ast.data.span C.state
+              | Ast.String { delimeter; open_span; parts; close_span } ->
+                E_QuoteAst
+                  (String
+                     { delimeter
+                     ; open_span
+                     ; close_span
+                     ; parts =
+                         parts
+                         |> List.map (function
+                           | Ast.Content { raw; span } -> Types.Content { raw; span }
+                           | Ast.Interpolate inner ->
+                             Types.Interpolate (construct ~quote_level inner))
+                     ; def_site
+                     })
+                |> init_expr ast.data.span C.state
               | Ast.Complex { rule; root } ->
                 let quote_level =
                   if rule.name = "core:quote" then quote_level + 1 else quote_level

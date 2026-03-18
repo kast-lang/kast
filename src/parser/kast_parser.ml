@@ -13,20 +13,470 @@ type error = Error.t
 
 let error = Error.error
 
-type ruleset = Ruleset.t
-
 type result =
   { ast : Ast.t
-  ; ruleset_with_all_new_syntax : ruleset
+  ; ruleset_with_all_new_syntax : Ruleset.t
   ; trailing_comments : Token.comment list
   ; eof : position
   }
 
-let collect_all_new_syntax ast =
+let expect_eof : Lexer.t -> unit =
+  fun lexer ->
+  try Lexer.expect_eof lexer with
+  | Lexer.Error msg ->
+    Error.error
+      { start = Lexer.position lexer
+      ; finish = Lexer.position lexer
+      ; uri = (Lexer.source lexer).uri
+      }
+      "%t"
+      msg
+;;
+
+type parsed =
+  { ast : Ast.t
+  ; ruleset_with_all_new_syntax : Ruleset.t (* TODO ?????? *)
+  }
+
+type parse_result =
+  | MadeProgress of Ast.t
+  | NoProgress
+
+type parse_one_state =
+  { parsed_rev : Parsed_part.t list
+  ; node : Ruleset.Category.node
+  ; made_progress : bool
+  }
+
+type context =
+  { unused_comments_rev : Token.comment list ref
+  ; lexer : Lexer.t
+  ; ruleset : Ruleset.t
+  ; category : Syntax.Category.t
+  ; continuation_keywords : StringSet.t
+  ; filter : Syntax.Rule.Priority.filter
+  }
+
+let current_category context =
+  context.ruleset |> Ruleset.find_category_opt context.category |> Option.unwrap
+;;
+
+let rec peek_token (context : context) : Token.t =
+  let peek = context.lexer |> Lexer.peek in
+  match peek.shape with
+  | Comment comment ->
+    context.unused_comments_rev
+    := { shape = comment; span = peek.span } :: !(context.unused_comments_rev);
+    context.lexer |> Lexer.advance;
+    peek_token context
+  | _ -> peek
+;;
+
+let rec _unused = ()
+
+and take_comments_rev (context : context) : Token.comment list =
+  let result = !(context.unused_comments_rev) in
+  context.unused_comments_rev := [];
+  result
+
+and take_comments (context : context) : Token.comment list =
+  context |> take_comments_rev |> List.rev
+
+and take_comments_as_parts_rev (context : context) : Parsed_part.t list =
+  context |> take_comments_rev |> List.map (fun comment -> Parsed_part.Comment comment)
+
+(* On the **first** iteration need to check that start value satisfies prev filter *)
+and is_trying_to_extend_incorrect_priority
+      (next_node : Ruleset.Category.node)
+      (state : parse_one_state)
+      (_context : context)
+  : bool
+  =
+  with_return (fun { return } ->
+    if state.made_progress then return false;
+    let start_value =
+      match state.parsed_rev with
+      | [ Value value ] -> value
+      | _ -> return false
+    in
+    let rec priority (value : Ast.t) : Syntax.Rule.priority option =
+      match value.shape with
+      | Ast.Empty -> None
+      | Ast.Error _ -> None
+      | Ast.Simple _ -> None
+      | Ast.String _ -> None
+      | Ast.Complex { rule; _ } -> Some rule.priority
+      | Ast.Syntax { value_after; _ } -> value_after |> Option.and_then priority
+    in
+    match priority start_value with
+    | None -> false
+    | Some start_priority ->
+      Syntax.Rule.Priority.check_filter
+        start_priority
+        (next_node.prev_value_filter |> Option.get)
+      |> not)
+
+and should_continue_with
+      (next_node : Ruleset.Category.node)
+      (state : parse_one_state)
+      (context : context)
+  : bool
+  =
+  if is_trying_to_extend_incorrect_priority next_node state context
+  then false
+  else (
+    match next_node.priority_range with
+    | None -> false
+    | Some range -> Syntax.Rule.Priority.check_filter_with_range range context.filter)
+
+and try_continue_with_keyword (state : parse_one_state) (context : context)
+  : parse_result option
+  =
+  Log.trace (fun log -> log "trying to continue with keyword");
+  with_return (fun { return } ->
+    let token = context |> peek_token in
+    let* keyword = token |> Token.raw in
+    if
+      (not state.made_progress)
+      && context.continuation_keywords |> StringSet.contains keyword
+    then (
+      Log.trace (fun log ->
+        log
+          "Not continuing with keyword because %a is in continuation keywords"
+          String.print_debug
+          keyword);
+      return None);
+    let edge : Ruleset.Category.edge = Keyword keyword in
+    let* next_node = state.node.next |> Ruleset.Category.EdgeMap.find_opt edge in
+    if not (should_continue_with next_node state context) then return None;
+    Log.trace (fun log -> log "Following with keyword %a" String.print_debug keyword);
+    Lexer.advance context.lexer;
+    let new_state : parse_one_state =
+      { node = next_node
+      ; parsed_rev =
+          [ Parsed_part.Keyword token ]
+          @ (context |> take_comments_as_parts_rev)
+          @ state.parsed_rev
+      ; made_progress = true
+      }
+    in
+    Some (parse_one_from new_state context))
+
+and try_continue_with_value (state : parse_one_state) (context : context)
+  : parse_result option
+  =
+  with_return (fun { return } ->
+    if state.parsed_rev |> List.is_empty then return None;
+    Log.trace (fun log -> log "trying to continue with value");
+    let edge : Ruleset.Category.edge = Value in
+    let* next_node = state.node.next |> Ruleset.Category.EdgeMap.find_opt edge in
+    if not (should_continue_with next_node state context) then return None;
+    let inner_context : context =
+      { lexer = context.lexer
+      ; ruleset = context.ruleset
+      ; category = next_node.value_category |> Option.unwrap
+      ; filter = next_node.value_filter |> Option.unwrap
+      ; continuation_keywords =
+          (match next_node.value_filter with
+           | None | Some Any -> next_node.next_keywords
+           | _ -> StringSet.union context.continuation_keywords next_node.next_keywords)
+      ; unused_comments_rev = context.unused_comments_rev
+      }
+    in
+    Log.trace (fun log -> log "Trying to parse value to follow with");
+    let* value : Ast.t = parse_value inner_context in
+    Log.trace (fun log -> log "Following with value %a" Ast.print value);
+    let new_state : parse_one_state =
+      { made_progress = true
+      ; parsed_rev = Value value :: state.parsed_rev
+      ; node = next_node
+      }
+    in
+    Some (parse_one_from new_state context))
+
+and terminate (state : parse_one_state) (context : context) : parse_result =
+  Log.trace (fun log -> log "trying to terminate");
+  with_return (fun { return } ->
+    if not state.made_progress then return NoProgress;
+    (match state.node.terminal with
+     | Some rule ->
+       let parsed = state.parsed_rev |> List.rev in
+       let ast = Rule.collect parsed rule in
+       Log.trace (fun log -> log "Parsed %a" Ast.print ast);
+       return (MadeProgress ast)
+     | None -> ());
+    (let single_value =
+       state.parsed_rev
+       |> List.fold_left
+            (fun acc part ->
+               match part with
+               | Parsed_part.Comment _ -> acc
+               | Parsed_part.Keyword _ -> Some None
+               | Parsed_part.Value value ->
+                 (match acc with
+                  | None -> Some (Some value)
+                  | Some _ -> Some None))
+            None
+     in
+     match single_value with
+     | Some (Some ast) -> return (MadeProgress ast)
+     | _ -> ());
+    let token = context |> peek_token in
+    Error.error token.span "Unexpected %a" Token.print token;
+    let parts = state.parsed_rev |> List.rev in
+    Log.trace (fun log -> log "Parsed: %a" (List.print Parsed_part.print) parts);
+    let spans =
+      parts
+      |> List.map (function
+        | Parsed_part.Comment comment -> comment.span
+        | Parsed_part.Value value -> value.data
+        | Parsed_part.Keyword keyword -> keyword.span)
+    in
+    let parts =
+      parts
+      |> List.map (function
+        | Parsed_part.Comment comment -> Ast.Comment comment
+        | Parsed_part.Value value -> Ast.Value value
+        | Parsed_part.Keyword keyword -> Ast.Keyword keyword)
+    in
+    let span : span =
+      { start = (spans |> List.head).start
+      ; finish = (spans |> List.last).finish
+      ; uri = token.span.uri
+      }
+    in
+    MadeProgress { shape = Error { parts }; data = span })
+
+(* TODO improve this logic? *)
+and try_skipping_token_because_error (state : parse_one_state) (context : context)
+  : parse_result option
+  =
+  with_return (fun { return } ->
+    let peek = context |> peek_token in
+    (match peek.shape with
+     | Token.Types.Punct _ -> ()
+     | Token.Types.Ident _ -> return None
+     | Token.Types.String _ -> return None
+     | Token.Types.Number _ -> return None
+     | Token.Types.Comment _ -> unreachable "comment???"
+     | Token.Types.Eof -> return None);
+    let* raw_token = peek |> Token.raw in
+    if context.continuation_keywords |> StringSet.contains raw_token then return None;
+    let category = current_category context in
+    if category.root.next_keywords |> StringSet.contains raw_token then return None;
+    (match
+       category.root.next
+       |> Ruleset.Category.EdgeMap.find Value
+       |> fun node -> node.next |> Ruleset.Category.EdgeMap.find_opt (Keyword raw_token)
+     with
+     | Some node ->
+       (match state.node.priority_range, node.prev_value_filter with
+        | Some range, Some filter
+          when Syntax.Rule.Priority.check_filter_with_range range filter ->
+          return None
+        | _ -> ())
+     | None -> ());
+    Error.error peek.span "Skipping unexpected %a" Token.print peek;
+    context.lexer |> Lexer.advance;
+    Some (parse_one_from state context))
+
+and parse_one_from (state : parse_one_state) (context : context) : parse_result =
+  try_continue_with_keyword state context
+  |> Option.or_else (fun () -> try_continue_with_value state context)
+  |> Option.or_else (fun () -> try_skipping_token_because_error state context)
+  |> Option.unwrap_or_else (fun () -> terminate state context)
+
+and parse_simple (context : context) : Ast.t option =
+  with_return (fun { return } ->
+    let peek = context |> peek_token in
+    let start = peek.span.start in
+    let shape =
+      match peek.shape with
+      | Number _ ->
+        Ast.Simple { comments_before = context |> take_comments; token = peek }
+      | String { raw = _; delimeter; open_span; close_span; parts } ->
+        (* TODO comments *)
+        let comments_before = context |> take_comments in
+        let parts =
+          parts
+          |> List.map (function
+            | Token.Types.Content { raw; span } -> Ast.Content { raw; span }
+            | Token.Types.Interpolate tokens ->
+              let { ast = inner
+                  ; trailing_comments
+                  ; ruleset_with_all_new_syntax = _
+                  ; eof = _
+                  }
+                =
+                parse_with_lexer
+                  (Lexer.init_with
+                     Lexer.default_rules
+                     tokens
+                     (Lexer.source context.lexer).uri)
+                  context.ruleset
+              in
+              Ast.Interpolate inner)
+        in
+        Ast.String { delimeter; open_span; close_span; parts }
+      | Punct { raw = "@syntax"; _ } -> return <| Some (parse_syntax_extension context)
+      | Ident { raw; _ } ->
+        if Ruleset.Category.is_keyword raw (current_category context)
+        then return None
+        else Ast.Simple { comments_before = context |> take_comments; token = peek }
+      | Comment _ -> unreachable "comments were skipped"
+      | Eof -> return None
+      | Punct _ -> return None
+    in
+    Log.trace (fun log -> log "Parsed simple %a" Ast.Shape.print shape);
+    context.lexer |> Lexer.advance;
+    Some ({ shape; data = { peek.span with start } } : Ast.t))
+
+and parse_minimal (context : context) : parse_result =
+  match parse_simple context with
+  | Some simple -> MadeProgress simple
+  | None ->
+    parse_one_from
+      { made_progress = false; parsed_rev = []; node = (current_category context).root }
+      context
+
+and extend_minimal (start_value : Ast.t) (context : context) : parse_result =
+  match
+    (current_category context).root.next |> Ruleset.Category.EdgeMap.find_opt Value
+  with
+  | None -> NoProgress
+  | Some node ->
+    let state : parse_one_state =
+      { made_progress = false; parsed_rev = [ Value start_value ]; node }
+    in
+    parse_one_from state context
+
+and parse_or_extend_minimal (start_value : Ast.t option) (context : context)
+  : parse_result
+  =
+  match start_value with
+  | Some value -> extend_minimal value context
+  | None -> parse_minimal context
+
+and parse_syntax_extension (context : context) : Ast.t =
+  let tokens_rec = context.lexer |> Lexer.start_rec in
+  let token = context.lexer |> Lexer.next in
+  if token |> Token.is_raw "@syntax" |> not then fail "expected \"@syntax\"";
+  let comments_before = context |> take_comments in
+  let mode =
+    match context |> peek_token |> Token.raw with
+    | Some "from_scratch" ->
+      context.lexer |> Lexer.advance;
+      Ast.SyntaxMode.FromScratch
+    | _ -> Ast.SyntaxMode.Define (Rule.parse context.lexer)
+  in
+  let token = context.lexer |> Lexer.next in
+  if token |> Token.is_raw ";" |> not
+  then Error.error token.span "expected \";\" to finish syntax, got %a" Token.print token;
+  let tokens : Token.t list = Lexer.stop_rec tokens_rec in
+  let span : span =
+    { start = (List.head tokens).span.start
+    ; finish = (List.last tokens).span.start
+    ; uri = (List.head tokens).span.uri
+    }
+  in
+  let new_ruleset =
+    match mode with
+    | Define rule -> Ruleset.add rule context.ruleset
+    | FromScratch -> Ruleset.empty
+  in
+  let value_after : Ast.t option = parse_value { context with ruleset = new_ruleset } in
+  let shape : Ast.shape = Syntax { comments_before; mode; value_after; tokens } in
+  let span =
+    match value_after with
+    | None -> span
+    | Some value -> { span with finish = value.data.finish }
+  in
+  { shape; data = span }
+
+and parse (context : context) : parsed option =
+  let rec loop context ~(already_parsed : Ast.t option) : parsed option =
+    match parse_or_extend_minimal already_parsed context with
+    | MadeProgress ast ->
+      Log.trace (fun log -> log "Made progress: %a" Ast.print ast);
+      let updated_context =
+        match ast.shape with
+        | Complex { rule = { name = "core:import"; _ }; root } ->
+          let path =
+            root.children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
+          in
+          (match path.shape with
+           | Simple
+               { token =
+                   { shape = String { parts = [ Content { raw = path; _ } ]; _ }; _ }
+               ; _
+               } ->
+             let span = ast.data in
+             let uri = Uri.maybe_relative_to_file span.uri (Uri.of_string path) in
+             let imported_ruleset = Effect.perform (Import (span, uri)) in
+             let new_ruleset = Ruleset.merge context.ruleset imported_ruleset in
+             { context with ruleset = new_ruleset }
+           | _ -> context)
+        | _ -> context
+      in
+      loop updated_context ~already_parsed:(Some ast)
+    | NoProgress ->
+      already_parsed
+      |> Option.map (fun ast -> { ast; ruleset_with_all_new_syntax = context.ruleset })
+  in
+  let result = loop context ~already_parsed:None in
+  if context.filter = Any && result |> Option.is_none
+  then
+    Some
+      { ast =
+          { shape = Ast.Empty
+          ; data =
+              { start = context.lexer |> Lexer.position
+              ; finish = context.lexer |> Lexer.position
+              ; uri = (context.lexer |> Lexer.source).uri
+              }
+          }
+      ; ruleset_with_all_new_syntax = context.ruleset
+      }
+  else result
+
+and parse_value (context : context) : Ast.t option =
+  parse context |> Option.map (fun parsed -> parsed.ast)
+
+and parse_with_lexer : Lexer.t -> Ruleset.t -> result =
+  fun lexer ruleset ->
+  let unused_comments_rev = ref [] in
+  let { ast; ruleset_with_all_new_syntax } : parsed =
+    parse
+      { continuation_keywords = StringSet.empty
+      ; filter = Any
+      ; lexer
+      ; ruleset
+      ; category = Global
+      ; unused_comments_rev
+      }
+    |> Option.unwrap
+  in
+  let ruleset_with_all_new_syntax = collect_all_new_syntax ast in
+  Log.trace (fun log ->
+    log "Parsed %a = %a" Uri.print (Lexer.source lexer).uri Ast.print ast);
+  expect_eof lexer;
+  { ast
+  ; ruleset_with_all_new_syntax
+  ; trailing_comments = !unused_comments_rev |> List.rev
+  ; eof = Lexer.position lexer
+  }
+
+and collect_all_new_syntax ast =
   let rec collect_ast (ast : Ast.t) =
     match ast.shape with
     | Ast.Empty -> Seq.empty
     | Ast.Simple _ -> Seq.empty
+    | Ast.String { delimeter = _; parts; open_span = _; close_span = _ } ->
+      parts
+      |> List.to_seq
+      |> Seq.flat_map (function
+        | Ast.Content _ -> Seq.empty
+        | Ast.Interpolate inner -> collect_ast inner)
     | Ast.Complex { rule = _; root } -> collect_group root
     | Ast.Syntax { comments_before = _; tokens = _; mode; value_after } ->
       let after = value_after |> Option.to_seq |> Seq.flat_map collect_ast in
@@ -47,31 +497,6 @@ let collect_all_new_syntax ast =
   Ruleset.of_list rules
 ;;
 
-let parse_with_lexer : Lexer.t -> ruleset -> result =
-  fun lexer ruleset ->
-  let unused_comments_rev = ref [] in
-  let { ast; ruleset_with_all_new_syntax } : Impl.parsed =
-    Impl.parse
-      { continuation_keywords = StringSet.empty
-      ; filter = Any
-      ; lexer
-      ; ruleset
-      ; category = Global
-      ; unused_comments_rev
-      }
-    |> Option.unwrap
-  in
-  let ruleset_with_all_new_syntax = collect_all_new_syntax ast in
-  Log.trace (fun log ->
-    log "Parsed %a = %a" Uri.print (Lexer.source lexer).uri Ast.print ast);
-  Impl.expect_eof lexer;
-  { ast
-  ; ruleset_with_all_new_syntax
-  ; trailing_comments = !unused_comments_rev |> List.rev
-  ; eof = Lexer.position lexer
-  }
-;;
-
-let parse : source -> ruleset -> result =
+let parse : source -> Ruleset.t -> result =
   fun source ruleset -> parse_with_lexer (Lexer.init Lexer.default_rules source) ruleset
 ;;

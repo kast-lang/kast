@@ -297,7 +297,11 @@ module Impl = struct
       complete_place_expr value
     | E_Ty expr -> complete_ty_expr expr
     | E_Newtype expr -> complete_ty_expr expr
-    | E_Native { id : id = _; expr : string = _ } -> ()
+    | E_Native { id : id = _; parts } ->
+      parts
+      |> List.iter (function
+        | Raw (_ : string) -> ()
+        | Expr e -> complete_expr e)
     | E_Module { def; bindings } ->
       complete_expr def;
       bindings |> List.iter complete_binding
@@ -349,6 +353,11 @@ module Impl = struct
   and complete_expr_quote_ast (expr : expr_quote_ast) =
     match expr with
     | Simple { ast = _; def_site = _ } -> ()
+    | String { delimeter = _; open_span = _; close_span = _; def_site = _; parts } ->
+      parts
+      |> List.iter (function
+        | Content _ -> ()
+        | Interpolate expr -> complete_expr expr)
     | Complex { rule = _; root; def_site = _ } ->
       let rec complete_group ({ rule = _; children; span = _ } : expr_quote_ast_group) =
         children

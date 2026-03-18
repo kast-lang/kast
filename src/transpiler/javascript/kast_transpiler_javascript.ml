@@ -1126,7 +1126,16 @@ module Impl = struct
         undefined ()
       | E_Ty _ -> NoEffect { shape = JsAst.Null; span }
       | E_Newtype _ -> NoEffect { shape = JsAst.Null; span }
-      | E_Native { id = _; expr } -> calculate { shape = JsAst.Raw expr; span }
+      | E_Native { id = _; parts } ->
+        calculate
+          { shape =
+              JsAst.RawList
+                (parts
+                 |> List.map (function
+                   | Raw s -> ({ shape = JsAst.Raw s; span = None } : JsAst.expr)
+                   | Expr e -> transpile_expr e |> pure))
+          ; span
+          }
       | E_Module { def; bindings } ->
         let module_var = JsAst.gen_name ~original:None "module" in
         bindings

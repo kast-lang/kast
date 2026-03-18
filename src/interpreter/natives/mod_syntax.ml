@@ -5,7 +5,7 @@ let init () =
       let arg = single_arg ~span arg in
       match arg |> Value.await_inferred with
       | V_Int32 n ->
-        let token : Kast_token.Shape.number = { raw = Int32.to_string n } in
+        let token : Kast_token.Types.number = { raw = Int32.to_string n } in
         let ast : Ast.t =
           { shape =
               Simple { comments_before = []; token = { shape = Number token; span } }
@@ -21,7 +21,7 @@ let init () =
       let arg = single_arg ~span arg in
       match arg |> Value.await_inferred with
       | V_String name ->
-        let token : Kast_token.Shape.ident = { raw = name; name } in
+        let token : Kast_token.Types.ident = { raw = name; name } in
         let ast : Ast.t =
           { shape = Simple { comments_before = []; token = { shape = Ident token; span } }
           ; data = span

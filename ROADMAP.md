@@ -5,7 +5,7 @@
 - [x] Interpreter
 - [x] Transpile to JavaScript
   - [ ] JS Bindgen (WebIDL / d.ts)
-- [ ] Transpile C / QBE
+- [ ] Transpile C
   - [ ] Bindgen (header files)
 - [ ] LLVM for max performance
 
@@ -18,6 +18,6 @@
 
 ## Writing code in Kast
 
-- [ ] twitch bot
+- [x] twitch bot
 - [ ] game engine
-  - [ ] participate in game jams
+  - [x] participate in game jams

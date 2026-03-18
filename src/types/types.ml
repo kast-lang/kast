@@ -287,8 +287,12 @@ module rec TypesImpl : sig
 
   and expr_native =
     { id : Id.t
-    ; expr : string
+    ; parts : expr_native_part list
     }
+
+  and expr_native_part =
+    | Raw of string
+    | Expr of expr
 
   and expr_module =
     { def : expr
@@ -329,6 +333,22 @@ module rec TypesImpl : sig
   and expr_quote_ast =
     | Complex of expr_quote_ast_complex
     | Simple of expr_quote_ast_simple
+    | String of expr_quote_ast_string
+
+  and expr_quote_ast_string =
+    { delimeter : string
+    ; open_span : Span.t
+    ; close_span : Span.t
+    ; parts : expr_quote_ast_string_part list
+    ; def_site : compiler_scope option
+    }
+
+  and expr_quote_ast_string_part =
+    | Content of
+        { raw : string
+        ; span : Span.t
+        }
+    | Interpolate of expr
 
   and expr_quote_ast_simple =
     { ast : Ast.t
@@ -983,8 +1003,12 @@ end = struct
 
   and expr_native =
     { id : Id.t
-    ; expr : string
+    ; parts : expr_native_part list
     }
+
+  and expr_native_part =
+    | Raw of string
+    | Expr of expr
 
   and expr_module =
     { def : expr
@@ -1025,6 +1049,22 @@ end = struct
   and expr_quote_ast =
     | Complex of expr_quote_ast_complex
     | Simple of expr_quote_ast_simple
+    | String of expr_quote_ast_string
+
+  and expr_quote_ast_string =
+    { delimeter : string
+    ; open_span : Span.t
+    ; close_span : Span.t
+    ; parts : expr_quote_ast_string_part list
+    ; def_site : compiler_scope option
+    }
+
+  and expr_quote_ast_string_part =
+    | Content of
+        { raw : string
+        ; span : Span.t
+        }
+    | Interpolate of expr
 
   and expr_quote_ast_simple =
     { ast : Ast.t

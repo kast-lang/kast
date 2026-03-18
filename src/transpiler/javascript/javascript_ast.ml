@@ -38,6 +38,7 @@ type expr_shape =
       ; args : expr list
       }
   | Raw of string
+  | RawList of expr list
   | Obj of obj_part list
   | Field of
       { obj : expr
@@ -180,6 +181,12 @@ let rec print_expr ~precedence:(_ : Precedence.t) (writer : Writer.t) (expr : ex
     if surround_with_parens then writer |> write "(";
     (match expr.shape with
      | Raw s -> writer |> write s
+     | RawList list ->
+       list
+       |> List.iter (fun part ->
+         match part.shape with
+         | Raw s -> writer |> write s
+         | _ -> print_expr ~precedence:None writer part)
      | Undefined -> writer |> write "undefined"
      | Null -> writer |> write "null"
      | Bool b ->

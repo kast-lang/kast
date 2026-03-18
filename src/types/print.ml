@@ -385,8 +385,12 @@ module Impl = struct
         "@{<magenta>newtype@} %a"
         (Tuple.print (print_ty_expr ~options))
         (Tuple.make [ e ] [])
-    | E_Native { id = _; expr } ->
-      fprintf fmt "@{<magenta>native@} @{<green>%a@}" String.print_debug expr
+    | E_Native { id = _; parts } ->
+      fprintf fmt "@{<magenta>native@}";
+      parts
+      |> List.iter (function
+        | Raw s -> fprintf fmt " @{<green>%a@}" String.print_debug s
+        | Expr e -> print_expr ~options fmt e)
     | E_Module { def; bindings = _ } ->
       fprintf fmt "@{<magenta>module@} %a" (print_expr ~options) def
     | E_UseDotStar { used; bindings = _ } ->

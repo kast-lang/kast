@@ -12,15 +12,19 @@ type linecol =
 let linecol (pos : position) : linecol = { line = pos.line; column = pos.column }
 
 type token_shape =
-  | Keyword of Token.Shape.t
-  | Value of Token.Shape.t
-  | Comment of Token.Shape.comment
-  | Unknown of Token.Shape.t
+  | Keyword of string
+  | Value of string
+  | String of string
+  | Number of string
+  | Comment of Token.Types.comment
+  | Unknown of string
 
 type token =
   { token : token_shape
   ; span : span
   }
+
+let raw token = Token.raw token |> Option.value ~default:""
 
 let rec collect_parts (parts : Ast.part list) : token Seq.t =
   parts
@@ -28,7 +32,7 @@ let rec collect_parts (parts : Ast.part list) : token Seq.t =
   |> Seq.flat_map (function
     | Ast.Value ast -> collect ast
     | Ast.Keyword token ->
-      List.to_seq [ { token = Keyword token.shape; span = token.span } ]
+      List.to_seq [ { token = Keyword (raw token); span = token.span } ]
     | Ast.Comment comment ->
       List.to_seq [ { token = Comment comment.shape; span = comment.span } ]
     | Ast.Group group -> collect_parts group.parts)
@@ -38,20 +42,42 @@ and collect : Ast.t -> token Seq.t =
   match shape with
   | Ast.Empty -> Seq.empty
   | Ast.Error { parts } -> collect_parts parts
+  | Ast.String { delimeter; parts; open_span; close_span } ->
+    let parts =
+      parts
+      |> List.to_seq
+      |> Seq.flat_map (function
+        | Ast.Content s -> Seq.empty
+        | Ast.Interpolate inner -> collect inner)
+    in
+    [ Seq.singleton { token = String delimeter; span = open_span }
+    ; parts
+    ; Seq.singleton { token = String delimeter; span = close_span }
+    ]
+    |> List.to_seq
+    |> Seq.flat_map (fun s -> s)
   | Ast.Simple { comments_before; token } ->
     Seq.append
       (comments_before
        |> List.to_seq
        |> Seq.map (fun (comment : Token.comment) ->
          { token = Comment comment.shape; span = comment.span }))
-      (List.to_seq [ { token = Value token.shape; span = token.span } ])
+      (List.to_seq
+         [ { token =
+               (match token.shape with
+                | Number _ -> Number (raw token)
+                | String _ -> String (raw token)
+                | _ -> Value (raw token))
+           ; span = token.span
+           }
+         ])
   | Ast.Complex { root; _ } -> collect_parts root.parts
   | Ast.Syntax { value_after; tokens; _ } ->
     Seq.append
       (tokens
        |> List.to_seq
        |> Seq.map (fun (token : Token.t) ->
-         { token = Unknown token.shape; span = token.span }))
+         { token = Unknown (raw token); span = token.span }))
       (value_after |> Option.to_seq |> Seq.flat_map collect)
 ;;
 
@@ -152,13 +178,11 @@ let run ({ parsed; _ } : Processing.file_state) : Lsp.Types.SemanticTokens.t opt
         let tokenType =
           match token with
           | Keyword _ -> Some 19 (* keyword *)
-          | Value token ->
-            (match token with
-             | String _ -> Some 18 (* string *)
-             | Number _ -> Some 20
-             | _ -> None)
+          | String _ -> Some 18 (* string *)
+          | Number _ -> Some 20
           | Comment _ -> Some 17
           | Unknown _ -> Some 15
+          | Value _ -> None
         in
         let tokenModifiers = 0 in
         let data =

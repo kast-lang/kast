@@ -43,10 +43,15 @@ module String = struct
 
   let print : formatter -> string -> unit = fun fmt s -> fprintf fmt "%s" s
 
+  let print_escaped_content : in_string:bool -> formatter -> string -> unit =
+    fun ~in_string fmt s ->
+    s |> iter_utf8 (fun c -> Uchar.print_maybe_escaped ~in_string fmt c)
+  ;;
+
   let print_debug : formatter -> string -> unit =
     fun fmt s ->
     fprintf fmt "\"";
-    s |> iter_utf8 (fun c -> Uchar.print_maybe_escaped ~in_string:true fmt c);
+    print_escaped_content ~in_string:true fmt s;
     fprintf fmt "\""
   ;;
 

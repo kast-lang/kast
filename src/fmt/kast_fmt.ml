@@ -31,8 +31,8 @@ let format : formatter -> Parser.result -> unit =
     fprintf fmt format
   in
   let prev_span : span ref = ref <| Span.beginning_of Uri.empty in
-  let prev_was_comment : Token.Shape.comment_ty option ref = ref None in
-  let print ?(is_comment : Token.Shape.comment_ty option) (span : span) f value =
+  let prev_was_comment : Token.Types.comment_ty option ref = ref None in
+  let print ?(is_comment : Token.Types.comment_ty option) (span : span) f value =
     (* We create spans with Uri.empty in rewriter and we want to skip them *)
     let span = if Uri.equal span.uri Uri.empty then !prev_span else span in
     if span.start.line > !prev_span.finish.line + 1 then print_newline ();
@@ -79,6 +79,17 @@ let format : formatter -> Parser.result -> unit =
         |> List.iter (fun (comment : Token.comment) ->
           print ~is_comment:comment.shape.ty comment.span String.print comment.shape.raw);
         print token.span String.print (Token.raw token |> Option.get)
+      | String { delimeter; parts; open_span; close_span } ->
+        fprintf fmt "%a" String.print delimeter;
+        parts
+        |> List.iter (function
+          | Ast.Content { raw = s; span } ->
+            String.print_escaped_content ~in_string:(delimeter = "\"") fmt s
+          | Ast.Interpolate inner ->
+            fprintf fmt "\\(";
+            print_ast ~filter:(Filter Any) ~parent:None inner;
+            fprintf fmt ")");
+        fprintf fmt "%a" String.print delimeter
       | Complex { rule; root } ->
         let wrapped =
           match parent with

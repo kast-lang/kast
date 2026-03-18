@@ -12,6 +12,7 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
   | Error _, _ -> false
   | Simple { token; _ }, Simple expected -> Token.raw token |> Option.get = expected
   | Simple _, _ -> false
+  | String _, _ -> false
   | Complex { rule; root }, Complex { name = expected_name; children = expected_children }
     ->
     let children = root.children |> Ast.flatten_children in
@@ -32,7 +33,7 @@ let rec matches (ast : Ast.t) (expected : expected) : bool =
   | Empty, _ -> false
 ;;
 
-let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit =
+let test_should_fail ?(ruleset : Parser.Ruleset.t option) (source : string) : unit =
   try
     let { ast; trailing_comments = _; eof = _; ruleset_with_all_new_syntax = _ }
       : Parser.result
@@ -49,7 +50,7 @@ let test_should_fail ?(ruleset : Parser.ruleset option) (source : string) : unit
   | Lexer.Error f -> Log.trace (fun log -> log "Test properly failed: %t" f)
 ;;
 
-let test ~(source : string) ~(expected : string) ?(ruleset : Parser.ruleset option) ()
+let test ~(source : string) ~(expected : string) ?(ruleset : Parser.Ruleset.t option) ()
   : unit
   =
   let expected =

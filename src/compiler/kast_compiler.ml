@@ -49,11 +49,47 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
          | Ast.Error _ ->
            Error.error span "Trying to compile error node";
            init_error span state kind
+         | Ast.String { delimeter; parts; open_span = _; close_span = _ } ->
+           (match kind with
+            | Pattern ->
+              Error.error span "No string pattern yet";
+              P_Error |> init_pattern span state
+            | Assignee ->
+              Error.error span "Can't assign to string";
+              A_Error |> init_assignee span state
+            | TyExpr ->
+              Error.error span "String is not type";
+              (fun () -> TE_Error) |> init_ty_expr span state
+            | PlaceExpr -> PE_Temp (compile state Expr ast) |> init_place_expr span state
+            | Expr ->
+              let value : Value.shape =
+                match parts with
+                | [ Content { raw = contents; _ } ] ->
+                  (match delimeter with
+                   | "\"" -> V_String contents
+                   | "'" ->
+                     (match String.into_single_utf8 contents with
+                      | Some c -> V_Char c
+                      | None ->
+                        Error.error span "Char literals must have a single char";
+                        V_Error)
+                   | _ ->
+                     Error.error
+                       span
+                       "Unexpected delimeter %a"
+                       String.print_debug
+                       delimeter;
+                     V_Error)
+                | _ ->
+                  Error.error span "Interpolation is TODO";
+                  V_Error
+              in
+              const_shape (value |> Value.inferred ~span) |> init_expr span state)
          | Ast.Simple { token; _ } ->
            (match kind with
             | PlaceExpr ->
               (match token.shape with
-               | Token.Shape.Ident ident ->
+               | Token.Types.Ident ident ->
                  let local =
                    State.Scopes.find
                      ~hygiene
@@ -66,7 +102,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                | _ -> PE_Temp (compile state Expr ast) |> init_place_expr span state)
             | Expr ->
               (match token.shape with
-               | Token.Shape.Ident ident ->
+               | Token.Types.Ident ident ->
                  let local =
                    State.Scopes.find
                      ~hygiene
@@ -76,26 +112,8 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      state.scopes
                  in
                  local |> Compiler.local_expr def_site.interpreter span state
-               | Token.Shape.String s ->
-                 let value : Value.shape =
-                   match s.delimeter with
-                   | "\"" -> V_String s.contents
-                   | "'" ->
-                     (match String.into_single_utf8 s.contents with
-                      | Some c -> V_Char c
-                      | None ->
-                        Error.error span "Char literals must have a single char";
-                        V_Error)
-                   | _ ->
-                     Error.error
-                       span
-                       "Unexpected delimeter %a"
-                       String.print_debug
-                       s.delimeter;
-                     V_Error
-                 in
-                 const_shape (value |> Value.inferred ~span) |> init_expr span state
-               | Token.Shape.Number { raw; _ } ->
+               | Token.Types.String _ -> unreachable "Got simple string token in ast???"
+               | Token.Types.Number { raw; _ } ->
                  let default : Ty.Shape.t =
                    if String.contains raw '.' then T_Float64 else T_Int32
                  in
@@ -133,25 +151,25 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                         ~span
                         (actual_const |> Value.inferred ~span));
                  const_shape const |> init_expr span state
-               | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
+               | Token.Types.Comment _ | Token.Types.Punct _ | Token.Types.Eof ->
                  unreachable "!")
             | TyExpr ->
               (fun () -> TE_Expr (compile state Expr ast)) |> init_ty_expr span state
             | Assignee ->
               (match token.shape with
-               | Token.Shape.Ident _ ->
+               | Token.Types.Ident _ ->
                  A_Place (compile state PlaceExpr ast) |> init_assignee span state
-               | Token.Shape.String _ ->
+               | Token.Types.String _ ->
                  Error.error span "string can't be assignee";
                  init_error span state kind
-               | Token.Shape.Number _ ->
+               | Token.Types.Number _ ->
                  Error.error span "number can't be assignee";
                  init_error span state kind
-               | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
+               | Token.Types.Comment _ | Token.Types.Punct _ | Token.Types.Eof ->
                  unreachable "!")
             | Pattern ->
               (match token.shape with
-               | Token.Shape.Ident ident ->
+               | Token.Types.Ident ident ->
                  let scope = State.var_scope state in
                  let binding : binding =
                    { id = Id.gen ()
@@ -167,13 +185,13 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                  in
                  P_Binding { bind_mode = state.bind_mode; binding }
                  |> init_pattern span state
-               | Token.Shape.String _ ->
+               | Token.Types.String _ ->
                  Error.error span "string can't be pattern";
                  init_error span state kind
-               | Token.Shape.Number _ ->
+               | Token.Types.Number _ ->
                  Error.error span "number can't be pattern";
                  init_error span state kind
-               | Token.Shape.Comment _ | Token.Shape.Punct _ | Token.Shape.Eof ->
+               | Token.Types.Comment _ | Token.Types.Punct _ | Token.Types.Eof ->
                  unreachable "!"))
          | Ast.Complex { rule; root } ->
            (match rule.name |> String.strip_prefix ~prefix:"core:" with

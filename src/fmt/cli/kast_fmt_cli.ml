@@ -55,6 +55,7 @@ let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
     match ast.shape with
     | Ast.Empty -> ast
     | Ast.Simple _ -> ast
+    | Ast.String _ -> ast
     | Ast.Complex { rule; root } ->
       (match into |> Parser.Ruleset.find_rule_opt rule.category rule.name with
        | Some rule_into ->
@@ -183,7 +184,7 @@ let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
     | _, Keyword k :: rest_rule_parts ->
       let token_shape =
         match Lexer.read_all Lexer.default_rules { contents = k; uri = Uri.empty } with
-        | [ token; { shape = Token.Shape.Eof; span = _ } ] -> token.shape
+        | [ token; { shape = Token.Types.Eof; span = _ } ] -> token.shape
         | tokens ->
           fail "keyword is multiple tokens??? %a" (List.print Token.print) tokens
       in

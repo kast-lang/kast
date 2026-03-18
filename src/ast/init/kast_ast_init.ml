@@ -17,6 +17,13 @@ module InitAst = struct
         match ast.shape with
         | Empty -> Empty
         | Simple simple -> Simple simple
+        | String { delimeter; parts; open_span; close_span } ->
+          String
+            { delimeter
+            ; parts = parts |> List.map init_string_part
+            ; open_span
+            ; close_span
+            }
         | Complex { rule; root } -> Complex { rule; root = init_ast_group root }
         | Syntax { comments_before; mode; tokens; value_after } ->
           Syntax
@@ -36,6 +43,10 @@ module InitAst = struct
       let result : Ast.t = { shape; data } in
       Hashtbl.add ctx id result;
       result
+
+  and init_string_part : Kast_ast.T.str_part -> Ast.str_part = function
+    | Content { raw; span } -> Content { raw; span }
+    | Interpolate inner -> Interpolate (init_ast inner)
 
   and init_ast_child : Kast_ast.T.child -> Ast.child =
     fun child ->
@@ -85,6 +96,13 @@ module InitAstDefSite = struct
         match ast.shape with
         | Empty -> Empty
         | Simple simple -> Simple simple
+        | String { delimeter; parts; open_span; close_span } ->
+          String
+            { delimeter
+            ; parts = parts |> List.map init_string_part
+            ; open_span
+            ; close_span
+            }
         | Complex { rule; root } -> Complex { rule; root = init_ast_group root }
         | Syntax { comments_before; mode; tokens; value_after } ->
           Syntax
@@ -108,6 +126,10 @@ module InitAstDefSite = struct
       let result : Ast.t = { shape; data } in
       Hashtbl.add ctx.inited id result;
       result
+
+  and init_string_part : Ast.str_part -> Ast.str_part = function
+    | Content s -> Content s
+    | Interpolate inner -> Interpolate (init_ast inner)
 
   and init_ast_child : Ast.child -> Ast.child =
     fun child ->

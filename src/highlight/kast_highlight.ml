@@ -24,6 +24,8 @@ module type Output = sig
   val print_syntax_part : printer -> Token.Shape.t -> unit
   val print_value : printer -> Token.Shape.t -> unit
   val move_to_eof : printer -> position -> unit
+  val print_with_str_color : printer -> string -> unit
+  val print_with_keyword_color : printer -> string -> unit
 end
 
 (* Highlight for a terminal *)
@@ -75,6 +77,8 @@ module Term : Output = struct
     | Eof -> unreachable "<eof> value??"
   ;;
 
+  let print_with_str_color printer s = fprintf printer.fmt "@{<green>%s@}" s
+  let print_with_keyword_color printer s = fprintf printer.fmt "@{<magenta>%s@}" s
   let move_to_eof = move_to
 end
 
@@ -171,6 +175,8 @@ module Html : Output = struct
     | Eof -> unreachable "<eof> value??"
   ;;
 
+  let print_with_str_color printer s = print_str printer.fmt s "green"
+  let print_with_keyword_color printer s = print_str printer.fmt s "magenta"
   let move_to_eof _printer _pos = ()
 end
 
@@ -201,6 +207,16 @@ module Common (Output : Output) = struct
     | Simple { comments_before; token } ->
       comments_before |> List.iter (Output.print_comment printer);
       print_token printer Output.print_value token
+    | String { delimeter; parts; open_span; close_span } ->
+      Output.print_with_str_color printer delimeter;
+      parts
+      |> List.iter (function
+        | Ast.Content { raw = s; span } -> Output.print_with_str_color printer s
+        | Ast.Interpolate inner ->
+          Output.print_with_keyword_color printer "\\(";
+          print_ast printer inner;
+          Output.print_with_keyword_color printer ")");
+      Output.print_with_str_color printer delimeter
     | Complex { root; _ } -> print_parts root.parts
     | Syntax { tokens; value_after; _ } ->
       tokens |> List.iter (print_token printer Output.print_syntax_part);

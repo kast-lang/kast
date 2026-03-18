@@ -20,6 +20,7 @@ let rec optimize_expr : expr -> expr =
     let args = args |> List.map optimize_expr in
     { shape = Call { async; f; args }; span }
   | Raw _ -> original
+  | RawList list -> { shape = RawList (list |> List.map optimize_expr); span }
   | Obj parts -> { shape = Obj (parts |> List.map optimize_obj_part); span }
   | Field { obj; field } -> { shape = Field { obj = optimize_expr obj; field }; span }
   | Not expr -> { shape = Not (optimize_expr expr); span }

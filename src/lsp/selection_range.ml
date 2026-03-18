@@ -17,6 +17,12 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
      | Empty -> []
      | Error _ -> []
      | Simple _ -> []
+     | String { parts; _ } ->
+       parts
+       |> List.map (function
+         | Ast.Content _ -> []
+         | Ast.Interpolate inner -> find_spans_start_biggest inner pos)
+       |> List.flatten
      | Complex { root; _ } ->
        let rec find_in_group ({ children; _ } : Ast.group) : span list option =
          children

@@ -26,9 +26,9 @@ test-aoc:
 run-js path *args:
     kast run --format prettier --target javascript {{path}} {{args}}
 
-bench file:
+bench *args:
     kast compile \
         --output target/compiled.mjs \
         --target javascript \
-        {{file}}
+        {{args}}
     hyperfine "node target/compiled.mjs"

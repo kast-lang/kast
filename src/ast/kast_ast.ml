@@ -68,9 +68,24 @@ module type S = sig
 
   and error = { parts : part list }
 
+  and str =
+    { delimeter : string
+    ; open_span : span
+    ; parts : str_part list
+    ; close_span : span
+    }
+
+  and str_part =
+    | Content of
+        { raw : String.t
+        ; span : span
+        }
+    | Interpolate of ast
+
   and shape =
     | Empty
     | Simple of simple
+    | String of str
     | Complex of complex
     | Syntax of syntax
     | Error of error
@@ -150,9 +165,24 @@ module Make (Data : DataS) : S with module Data = Data = struct
 
   and error = { parts : part list }
 
+  and str =
+    { delimeter : string
+    ; open_span : Span.t
+    ; parts : str_part list
+    ; close_span : Span.t
+    }
+
+  and str_part =
+    | Content of
+        { raw : String.t
+        ; span : Span.t
+        }
+    | Interpolate of ast
+
   and shape =
     | Empty
     | Simple of simple
+    | String of str
     | Complex of complex
     | Syntax of syntax
     | Error of error
@@ -188,10 +218,31 @@ module Make (Data : DataS) : S with module Data = Data = struct
     fun fmt { rule = _; parts = _; span = _; children } ->
     Tuple.print print_child fmt children
 
+  and print_str_part : formatter -> str_part -> unit =
+    fun fmt -> function
+    | Content { raw; _ } -> fprintf fmt "@{<green>%a@}" String.print_debug raw
+    | Interpolate inner -> print fmt inner
+
   and print_shape : formatter -> shape -> unit =
     fun fmt -> function
     | Empty -> fprintf fmt "@{<magenta><empty>@}"
     | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
+    | String
+        { delimeter
+        ; parts = [ Content { raw = s; span = _ } ]
+        ; open_span = _
+        ; close_span = _
+        } ->
+      fprintf
+        fmt
+        "%s@{<green>%a@}%s"
+        delimeter
+        (String.print_escaped_content ~in_string:(String.equal delimeter "\""))
+        s
+        delimeter
+    | String { delimeter; parts; open_span = _; close_span = _ } ->
+      fprintf fmt ".delimeter=%a" String.print_debug delimeter;
+      List.print print_str_part fmt parts
     | Complex { rule; root } ->
       fprintf
         fmt
@@ -211,6 +262,14 @@ module Make (Data : DataS) : S with module Data = Data = struct
     fun fmt -> function
     | Empty -> fprintf fmt "@{<magenta><empty>@}"
     | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
+    | String
+        { delimeter = _
+        ; parts = [ Content { raw = s; span = _ } ]
+        ; open_span = _
+        ; close_span = _
+        } ->
+      fprintf fmt "@{<green>%a@}" String.print_debug s
+    | String _ -> fprintf fmt "<interpolated string>"
     | Complex { rule; root = _ } ->
       fprintf fmt "@{<magenta>%a@}" String.print_maybe_escaped rule.name
     | Syntax { comments_before = _; mode = _; value_after = _; tokens = _ } ->

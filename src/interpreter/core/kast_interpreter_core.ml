@@ -814,7 +814,12 @@ and eval_expr_instantiategeneric
   instantiate ~result_ty span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
-  fun state expr { id; expr = native_expr } ->
+  fun state expr { id; parts } ->
+  let native_expr =
+    match parts with
+    | [ Raw s ] -> s
+    | _ -> fail "Interpolated strings not supported in interpreter natives"
+  in
   match Hashtbl.find_opt state.monomorphization_state.native id with
   | Some value -> value
   | None ->
@@ -1288,6 +1293,24 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
         { span
         ; hygiene = DefSite
         ; def_site = { compiler = expr.def_site; interpreter = Some state.scope }
+        }
+    }
+  | String { delimeter; open_span; close_span; parts; def_site } ->
+    let parts =
+      parts
+      |> List.map (function
+        | Types.Content { raw; span } -> Ast.Content { raw; span }
+        | Types.Interpolate expr ->
+          Ast.Interpolate
+            (match eval state expr |> Value.await_inferred with
+             | V_Ast ast -> ast
+             | other -> fail "interpolated as not ast but %a" Value.Shape.print other))
+    in
+    { shape = String { delimeter; open_span; close_span; parts }
+    ; data =
+        { span
+        ; hygiene = DefSite
+        ; def_site = { compiler = def_site; interpreter = Some state.scope }
         }
     }
   | Complex expr ->
