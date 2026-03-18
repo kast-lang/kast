@@ -68,8 +68,9 @@ let hover_text info =
   | Some signature ->
     make_string "%t" (fun fmt ->
       fprintf fmt "```kast@\n";
-      let { ty } : ir_signature = signature.signature in
+      let { ty; async } : ir_signature = signature.signature in
       fprintf fmt "@[<v>:: %a@]\n" Print.print_ty_with_shape_if_named ty;
+      fprintf fmt "@[<v>async = %a@]\n" Print.print_value async.value;
       (match signature.evaled with
        | None -> ()
        | Some value -> fprintf fmt "@[<v>= %a@]\n" Value.print value);

@@ -469,8 +469,11 @@ module Impl = struct
     =
     { label; symbol; ty = sub_ty ~state ty }
 
-  and sub_ty_fn ~state ({ args; result } : ty_fn) : ty_fn =
-    { args = { ty = args.ty |> sub_ty ~state }; result = result |> sub_ty ~state }
+  and sub_ty_fn ~state ({ args; result; async } : ty_fn) : ty_fn =
+    { args = { ty = args.ty |> sub_ty ~state }
+    ; result = result |> sub_ty ~state
+    ; async = { value = async.value |> sub_value ~state }
+    }
 
   and sub_pattern_and_inject_replacements : state:sub_state -> pattern -> pattern =
     fun ~state pattern ->
@@ -565,8 +568,8 @@ module Impl = struct
     ; compiler_scope = data.compiler_scope
     }
 
-  and sub_signature ~state ({ ty } : ir_signature) : ir_signature =
-    { ty = sub_ty ~state ty }
+  and sub_signature ~state ({ ty; async } : ir_signature) : ir_signature =
+    { ty = sub_ty ~state ty; async = { value = sub_value ~state async.value } }
 
   and sub_contexts ~state (contexts : contexts) : contexts =
     sub_var

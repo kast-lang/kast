@@ -168,8 +168,10 @@ module rec TypesImpl : sig
   and ty_fn =
     { args : ty_args
     ; result : ty
+    ; async : bool_value
     }
 
+  and bool_value = { value : value }
   and pattern_args = { pattern : pattern }
 
   and ty_generic =
@@ -506,6 +508,7 @@ module rec TypesImpl : sig
   and ty_expr_fn =
     { arg : ty_expr
     ; result : ty_expr
+    ; async : expr
     }
 
   and ty_expr_tuple = ty_expr tuple_of
@@ -659,7 +662,10 @@ module rec TypesImpl : sig
     ; id : Id.t
     }
 
-  and ir_signature = { ty : ty }
+  and ir_signature =
+    { ty : ty
+    ; async : bool_value
+    }
 
   and ir_signature_contexts =
     { required : contexts
@@ -884,8 +890,10 @@ end = struct
   and ty_fn =
     { args : ty_args
     ; result : ty
+    ; async : bool_value
     }
 
+  and bool_value = { value : value }
   and pattern_args = { pattern : pattern }
 
   and ty_generic =
@@ -1222,6 +1230,7 @@ end = struct
   and ty_expr_fn =
     { arg : ty_expr
     ; result : ty_expr
+    ; async : expr
     }
 
   and ty_expr_tuple = ty_expr tuple_of
@@ -1381,7 +1390,10 @@ end = struct
     ; id : Id.t
     }
 
-  and ir_signature = { ty : ty }
+  and ir_signature =
+    { ty : ty
+    ; async : bool_value
+    }
 
   and ir_signature_contexts =
     { required : contexts

@@ -163,9 +163,10 @@ let inner_compiled_with_handler
         (match shape with
          | TE_Unit -> ()
          | TE_Ref { mut = _; referenced } -> handler.handle TyExpr referenced
-         | TE_Fn { arg; result } ->
+         | TE_Fn { arg; result; async } ->
            handler.handle TyExpr arg;
-           handler.handle TyExpr result
+           handler.handle TyExpr result;
+           handler.handle Expr async
          | TE_Expr expr -> handler.handle Expr expr
          | TE_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler
          | TE_Union { elements } -> elements |> List.iter (handler.handle TyExpr)

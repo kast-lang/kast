@@ -416,6 +416,26 @@ let placeholder : core_syntax =
   }
 ;;
 
+let fn_async span (module C : Compiler.S) children =
+  match children |> Tuple.get_named_opt "async" with
+  | None ->
+    let scope = State.var_scope C.state in
+    E_Constant { id = Id.gen (); value = Value.new_not_inferred ~scope ~span }
+    |> init_expr span C.state
+  | Some async_group ->
+    let async_group = async_group |> Ast.Child.expect_group in
+    let async_group = async_group.children |> Ast.flatten_children in
+    (match async_group |> Tuple.get_named_opt "value" with
+     | Some value ->
+       let expr = C.compile Expr value in
+       expr.data.signature.ty
+       |> Inference.Ty.expect_inferred_as ~span (Ty.inferred ~span T_Bool);
+       expr
+     | None ->
+       E_Constant { id = Id.gen (); value = Value.inferred ~span (V_Bool true) }
+       |> init_expr span C.state)
+;;
+
 let fn_type : core_syntax =
   { name = "fn_type"
   ; handle =
@@ -427,6 +447,7 @@ let fn_type : core_syntax =
         : a ->
         let span = ast.data.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let async : expr = fn_async span (module C) children in
         let context =
           children
           |> Tuple.get_named_opt "context"
@@ -463,7 +484,7 @@ let fn_type : core_syntax =
                 arg
             in
             let result = C.compile ~state TyExpr result_ty in
-            TE_Fn { arg; result })
+            TE_Fn { arg; result; async })
           |> init_ty_expr span C.state)
   }
 ;;
@@ -479,6 +500,10 @@ let fn : core_syntax =
         : a ->
         let span = ast.data.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let async = fn_async span (module C) children in
+        let async : BoolValue.t =
+          { value = Kast_interpreter.eval C.state.interpreter async }
+        in
         let context =
           children
           |> Tuple.get_named_opt "context"
@@ -521,6 +546,7 @@ let fn : core_syntax =
                     (result_ty
                      |> Option.map_or body.data.span (fun (result : Ast.t) ->
                        result.data.span))
+            ; async
             }
           in
           let def : Types.maybe_compiled_fn =
@@ -548,6 +574,8 @@ let fn : core_syntax =
             |> Inference.Ty.expect_inferred_as ~span:args.data.span args.data.signature.ty;
             state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
             let body = C.compile ~state Expr body in
+            body.data.signature.async |> BoolValue.implies ~span async;
+            async |> BoolValue.implies ~span body.data.signature.async;
             Log.trace (fun log ->
               log
                 "compiled fn body (ty = %a) at %a"
@@ -1487,6 +1515,7 @@ let impl_syntax : core_syntax =
                  { args =
                      { ty = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__) }
                  ; result = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__)
+                 ; async = BoolValue.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__)
                  }
                in
                let def : Types.maybe_compiled_fn =

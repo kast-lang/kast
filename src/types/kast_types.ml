@@ -254,6 +254,35 @@ module Value = struct
   type shape = Shape.t
 end
 
+module BoolValue = struct
+  type t = bool_value
+
+  let new_not_inferred ~scope ~span : t =
+    let bool_ty = Ty.inferred ~span T_Bool in
+    { value = Value.new_not_inferred_of_ty ~scope ~span bool_ty }
+  ;;
+
+  let inferred ~span value : t = { value = Value.inferred ~span (V_Bool value) }
+
+  let inferred_opt (value : t) : bool option =
+    value.value.var
+    |> Inference.Var.inferred_opt
+    |> Option.and_then (function
+      | V_Bool value -> Some value
+      | _ -> None)
+  ;;
+
+  let implies ~span (that : t) (this : t) =
+    this.value.var
+    |> Inference.Var.once_inferred (function
+      | V_Bool true ->
+        (* this=true means that=this which means that=true *)
+        let _ : value = Inference_impl.unite_value ~span this.value that.value in
+        ()
+      | _ -> ())
+  ;;
+end
+
 type value = Value.t
 
 module Expr = struct

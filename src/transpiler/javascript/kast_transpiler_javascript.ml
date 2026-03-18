@@ -9,7 +9,13 @@ module Writer = Writer
 type no_effect_expr = NoEffect of JsAst.expr
 
 let async_get_set = false
-let async_fns = true
+
+type async_mode =
+  | Never
+  | Always
+  | BasedOnInference
+
+let async_fns = BasedOnInference
 
 type ref_var =
   { name : JsAst.name
@@ -180,6 +186,13 @@ module Impl = struct
     let { args; body } =
       compiled |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
     in
+    let async =
+      match async_fns with
+      | Always -> true
+      | Never -> false
+      | BasedOnInference ->
+        body.data.signature.async |> BoolValue.inferred_opt |> Option.value ~default:false
+    in
     let ctx =
       match captured with
       | None -> ctx
@@ -224,7 +237,7 @@ module Impl = struct
       calculate
         { shape =
             JsAst.Fn
-              { async = async_fns
+              { async
               ; args =
                   ([ ctx_var ]
                    @ (unnamed_args |> List.map fst)
@@ -978,6 +991,16 @@ module Impl = struct
       }
 
   and call ~span (f : expr) (arg : expr) : no_effect_expr =
+    let async =
+      match async_fns with
+      | Always -> true
+      | Never -> false
+      | BasedOnInference ->
+        (match f.data.signature.ty |> Ty.await_inferred with
+         | T_Fn f -> f.async |> BoolValue.inferred_opt |> Option.value ~default:false
+         | T_Generic g -> false
+         | other -> fail "calling %a???" Ty.Shape.print other)
+    in
     let f = pure <| transpile_expr f in
     let unnamed_args = ref [] in
     let named_args = ref [] in
@@ -1038,7 +1061,7 @@ module Impl = struct
     calculate
       { shape =
           JsAst.Call
-            { async = async_fns
+            { async
             ; f
             ; args =
                 [ ({ shape = Var ctx_var; span = None } : JsAst.expr) ]

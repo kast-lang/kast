@@ -233,8 +233,16 @@ module Impl = struct
     | None -> fprintf fmt "?mut "
 
   and print_ty_fn : formatter -> ty_fn -> unit =
-    fun fmt { args; result } ->
-    fprintf fmt "%a -> %a" (print_ty_args ~open_:"(" ~close:")") args print_ty result
+    fun fmt { args; result; async } ->
+    fprintf
+      fmt
+      "async=%a %a -> %a"
+      print_value
+      async.value
+      (print_ty_args ~open_:"(" ~close:")")
+      args
+      print_ty
+      result
 
   (* VAR *)
   and print_var : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =
@@ -615,12 +623,17 @@ module Impl = struct
         mut
         (Tuple.print (print_ty_expr ~options))
         (Tuple.make [ referenced ] [])
-    | TE_Fn { arg; result } ->
+    | TE_Fn { arg; result; async } ->
       fprintf
         fmt
         "@{<magenta>fn@} %a"
-        (Tuple.print (print_ty_expr ~options))
-        (Tuple.make [] [ "arg", arg; "result", result ])
+        (Tuple.print (print_compiled ~options))
+        (Tuple.make
+           []
+           [ "arg", Compiled (TyExpr, arg)
+           ; "result", Compiled (TyExpr, result)
+           ; "async", Compiled (Expr, async)
+           ])
     | TE_Expr expr -> fprintf fmt "@{<magenta>expr@} %a" (print_expr ~options) expr
     | TE_Tuple tuple -> print_ir_tuple '=' (print_ty_expr ~options) fmt tuple
     | TE_Union { elements } ->
@@ -641,6 +654,15 @@ module Impl = struct
                  (fun ({ label_span = _; label; value } : ty_expr_variant_variant) ->
                     Label.get_name label, value)))
     | TE_Error -> fprintf fmt "@{<red><error>@}"
+
+  and print_compiled : options:options -> formatter -> compiled -> unit =
+    fun ~options fmt (Compiled (kind, e)) ->
+    match kind with
+    | TyExpr -> print_ty_expr ~options fmt e
+    | Expr -> print_expr ~options fmt e
+    | Pattern -> print_pattern ~options fmt e
+    | Assignee -> print_assignee_expr ~options fmt e
+    | PlaceExpr -> print_place_expr ~options fmt e
 
   and print_ty_expr : options:options -> formatter -> ty_expr -> unit =
     fun ~options fmt { compiled_shape; on_compiled = _; data } ->

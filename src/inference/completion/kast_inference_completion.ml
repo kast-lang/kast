@@ -203,9 +203,10 @@ module Impl = struct
   and complete_ty_variant_data ({ data } : ty_variant_data) =
     complete_option complete_ty data
 
-  and complete_ty_fn ({ args; result } : ty_fn) =
+  and complete_ty_fn ({ args; result; async } : ty_fn) =
     complete_ty_args args;
-    complete_ty result
+    complete_ty result;
+    complete_value async.value
 
   and complete_ty_args ({ ty } : ty_args) = complete_ty ty
 
@@ -424,9 +425,10 @@ module Impl = struct
     | TE_Ref { mut; referenced } ->
       complete_is_mutable mut;
       complete_ty_expr referenced
-    | TE_Fn { arg; result } ->
+    | TE_Fn { arg; result; async } ->
       complete_ty_expr arg;
-      complete_ty_expr result
+      complete_ty_expr result;
+      complete_expr async
     | TE_Expr expr -> complete_expr expr
     | TE_Tuple { guaranteed_anonymous : bool = _; parts } ->
       parts |> List.iter (complete_tuple_part_of complete_ty_expr)
@@ -450,7 +452,9 @@ module Impl = struct
     =
     complete_signature signature
 
-  and complete_signature ({ ty } : ir_signature) : unit = complete_ty ty
+  and complete_signature ({ ty; async } : ir_signature) : unit =
+    complete_ty ty;
+    complete_value async.value
 
   and complete_contexts ({ var } : contexts) =
     complete_var ~name:"contexts" complete_contexts_shape var

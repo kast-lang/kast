@@ -69,6 +69,7 @@ let init_natives () =
                             }
                    }
                ; result = Ty.inferred ~span T_Ty
+               ; async = BoolValue.inferred ~span false
                }
              in
              ty |> Inference.Ty.expect_inferred_as ~span (T_Fn fn_ty |> Ty.inferred ~span);

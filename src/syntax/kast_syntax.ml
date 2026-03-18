@@ -131,10 +131,14 @@ module Rule = struct
 
   let keywords : rule -> string Seq.t =
     fun rule ->
-    List.to_seq rule.parts
-    |> Seq.filter_map (function
-      | Keyword keyword -> Some keyword
-      | _ -> None)
+    let rec of_parts parts =
+      List.to_seq parts
+      |> Seq.flat_map (function
+        | Keyword keyword -> Seq.singleton keyword
+        | Group g -> of_parts g.parts
+        | Value _ | Whitespace _ -> Seq.empty)
+    in
+    of_parts rule.parts
   ;;
 
   module Part = struct

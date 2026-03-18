@@ -14,7 +14,7 @@ const eprint = (line :: String) -> () => (
         | target.name == "javascript" => (@native "Kast.io.eprint")(line)
     )
 );
-const input = (prompt :: String) -> String => (
+const input = async (prompt :: String) -> String => (
     @cfg (
         | target.name == "interpreter" => (@native "io.input")(prompt)
         | target.name == "ocaml" => (@native "@natives.input")(prompt)
