@@ -10,7 +10,6 @@ loop (
     let token = &lexer |> Lexer.peek;
     token |> Token.print;
     (@current Output).write("\n");
-    # dbg.print(token);
     if token.shape is :Eof then break;
     Lexer.advance(&mut lexer);
 );

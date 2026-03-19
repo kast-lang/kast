@@ -1,3 +1,4 @@
+const Ansi = import "./ansi.ks";
 use (import "./output.ks").*;
 use (import "./span.ks").*;
 
@@ -14,8 +15,13 @@ impl Token as module = (
     const print = (self :: Token) => (
         let output = @current Output;
         self.shape |> TokenShape.print;
-        output.write(" at ");
-        self.span |> Span.print;
+        Ansi.with_mode(
+            :Dim,
+            () => (
+                output.write(" at ");
+                self.span |> Span.print;
+            )
+        );
     );
 );
 
@@ -55,16 +61,28 @@ impl TokenShape as module = (
         let output = @current Output;
         match self with (
             | :Punct { .raw, ... } => (
-                output.write(raw);
+                Ansi.with_mode(
+                    :Italic,
+                    () => output.write(raw),
+                );
             )
             | :Ident { .raw, ... } => (
-                output.write(raw);
+                Ansi.with_mode(
+                    :Under,
+                    () => output.write(raw),
+                );
             )
             | :String { .raw, ... } => (
-                output.write(raw);
+                Ansi.with_mode(
+                    :Green,
+                    () => output.write(raw),
+                );
             )
             | :Eof => (
-                output.write(":Eof");
+                Ansi.with_mode(
+                    :Italic,
+                    () => output.write("<eof>"),
+                );
             )
         );
     );
