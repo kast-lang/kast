@@ -23,6 +23,8 @@ impl Position as module = (
             pos^.line += 1;
             pos^.column = 0;
         ) else (
+            # TODO should be unicode width?
+            # https://www.unicode.org/reports/tr11/
             pos^.column += Char.utf16_len(c);
         );
     );
