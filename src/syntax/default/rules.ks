@@ -42,6 +42,7 @@
 @syntax "if_is_else" 7.5 @wrap never = "if" " " value " " "is" " " pattern " " "then" " " body " " "else" " " else_body ->;
 @syntax "core:match" 7.5 @wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
 @syntax "while" 7.5 @wrap never = "while" " " cond " " "do" " " body;
+@syntax "while_is" 7.5 @wrap never = "while" " " value " " "is" pattern " " "do" " " body;
 @syntax "for" 7.5 @wrap never = "for" " " pattern " " "in" " " iterable " " "do" " " body;
 
 @syntax "range" 8 @wrap never = start ".." end;

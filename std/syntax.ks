@@ -108,6 +108,11 @@ impl syntax (while cond do body) = `(
         if $cond then $body else break
     )
 );
+impl syntax (while value is pattern do body) = `(
+    loop (
+        if $value is $pattern then $body else break
+    )
+);
 impl syntax (for pattern in iterable do body) = `(
     unwindable loop_block (
         @eval with std.LoopBlock = loop_block;
