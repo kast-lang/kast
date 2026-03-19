@@ -1957,11 +1957,12 @@ let current_context : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.data.span in
-        let context_type =
-          children |> Ast.flatten_children |> Tuple.unwrap_single_named "context_type"
-        in
         match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
+          let context_type =
+            children |> Ast.flatten_children |> Tuple.unwrap_single_named "context_type"
+          in
           let context_ty_value, context_ty_expr =
             context_type
             |> Compiler.eval
