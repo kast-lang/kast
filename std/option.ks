@@ -36,6 +36,13 @@ const as_deref = [T] (opt :: Option[type (&T)]) -> Option[T] => match opt with (
     | :Some x => :Some x^
 );
 
+const or_else = [T] (opt :: Option[T], default :: () -> Option[T]) -> Option[T] => (
+    match opt with (
+        | :Some _ => opt
+        | :None => default()
+    )
+);
+
 const unwrap = [T] (opt :: Option[T]) -> T => match opt with (
     | :Some x => x
     | :None => panic("unwrapped :None")
