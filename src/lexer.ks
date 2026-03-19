@@ -49,15 +49,82 @@ impl Lexer as module = (
                 | :None => :Some :Eof
             )
         );
-        const actual :: ReadFn = reader => (
-            let raw = reader |> Reader.read_while(c => not Char.is_whitespace(c));
-            :Some :Raw raw
+        const read_punct :: ReadFn = reader => with_return (
+            const is_punct = (c :: Char) -> Bool => (
+                if c == '_' or c == '\'' or c == '"' then (
+                    false
+                ) else if Char.is_whitespace(c) then (
+                    false
+                ) else if Char.is_ascii_alphanumeric(c) then (
+                    false
+                ) else (
+                    true
+                )
+            );
+            const is_single_punct = (c :: Char) -> Bool => (
+                String.index_of(c, "@(){}[]&^$;\\,") >= 0
+            );
+            let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
+            if not is_punct(c) then return :None;
+            let start = reader^.position.index;
+            Reader.advance(reader);
+            if not is_single_punct(c) then (
+                reader |> Reader.read_while(c => is_punct(c) and not is_single_punct(c));
+            );
+            let end = reader^.position.index;
+            :Some :Punct {
+                .raw = String.substring(reader^.contents, start, end - start),
+            }
         );
+        
+        const is_ident_start = (c :: Char) -> Bool => (
+            c == '_' or Char.is_ascii_alpha(c)
+        );
+        
+        const read_ident :: ReadFn = reader => with_return (
+            let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
+            if not is_ident_start(c) then return :None;
+            let start = reader^.position.index;
+            Reader.advance(reader);
+            reader |> Reader.read_while(Char.is_ascii_alphanumeric);
+            let end = reader^.position.index;
+            :Some :Ident {
+                .raw = String.substring(reader^.contents, start, end - start),
+            }
+        );
+        
+        const read_string_with_delim = (reader, delim :: Char) => with_return (
+            let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
+            if c != delim then return :None;
+            let start = reader^.position.index;
+            Reader.advance(reader);
+            reader |> Reader.read_while(c => c != delim);
+            let c = Reader.peek(&reader^)
+                |> Option.unwrap_or_else(
+                    () => (
+                        panic("Unfinished string (eof)")
+                    )
+                );
+            if c != delim then panic("Unfinished string");
+            Reader.advance(reader);
+            let end = reader^.position.index;
+            :Some :String {
+                .raw = String.substring(reader^.contents, start, end - start),
+            }
+        );
+        
+        const read_string :: ReadFn = reader => (
+            read_string_with_delim(reader, '\'')
+                |> Option.or_else(() => read_string_with_delim(reader, '"'))
+        );
+        
         const read_fns :: ArrayList.t[ReadFn] = (
             let mut read_fns = ArrayList.new();
             &mut read_fns |> ArrayList.push_back(skip_whitespace);
             &mut read_fns |> ArrayList.push_back(read_eof);
-            &mut read_fns |> ArrayList.push_back(actual);
+            &mut read_fns |> ArrayList.push_back(read_punct);
+            &mut read_fns |> ArrayList.push_back(read_ident);
+            &mut read_fns |> ArrayList.push_back(read_string);
             read_fns
         );
         

@@ -1,3 +1,5 @@
+use (import "./output.ks").*;
+
 module:
 
 const Position = newtype {
@@ -21,7 +23,14 @@ impl Position as module = (
             pos^.line += 1;
             pos^.column = 0;
         ) else (
-            pos^.column += 1;
+            pos^.column += Char.utf16_len(c);
         );
+    );
+
+    const print = (self :: Position) => (
+        let output = @current Output;
+        output.write(to_string(self.line + 1));
+        output.write(".");
+        output.write(to_string(self.column + 1));
     );
 );

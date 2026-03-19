@@ -1,3 +1,5 @@
+use (import "./output.ks").*;
+
 module:
 
 const Uri = newtype {
@@ -10,4 +12,9 @@ impl Uri as module = (
     const new_path = (path :: String) -> Uri => {
         .path,
     };
+
+    const print = (self :: Uri) => (
+        let output = @current Output;
+        output.write(self.path);
+    );
 );
