@@ -3,22 +3,31 @@ impl Char as module = (
     const is_whitespace = (c :: Char) -> Bool => (
         c == ' ' or c == '\n' or c == '\t'
     );
-    const is_uppercase = (c :: Char) -> Bool => (
+    const is_ascii_uppercase = (c :: Char) -> Bool => (
         code(c) >= (@eval code('A')) and code(c) <= (@eval code('Z'))
     );
-    const is_lowercase = (c :: Char) -> Bool => (
+    const is_ascii_lowercase = (c :: Char) -> Bool => (
         code(c) >= (@eval code('a')) and code(c) <= (@eval code('z'))
     );
-    const to_uppercase = (c :: Char) -> Char => (
-        if is_lowercase(c) then (
+    const is_ascii_alpha = (c :: Char) -> Bool => (
+        is_ascii_uppercase(c) or is_ascii_lowercase(c)
+    );
+    const is_ascii_digit = (c :: Char) -> Bool => (
+        code(c) >= (@eval code('0')) and code(c) <= (@eval code('9'))
+    );
+    const is_ascii_alphanumeric = (c :: Char) -> Bool => (
+        is_ascii_alpha(c) or is_ascii_digit(c)
+    );
+    const to_ascii_uppercase = (c :: Char) -> Char => (
+        if is_ascii_lowercase(c) then (
             code(c) - (@eval (Char.code('a') - Char.code('A')))
                 |> from_code
         ) else (
             c
         )
     );
-    const to_lowercase = (c :: Char) -> Char => (
-        if is_uppercase(c) then (
+    const to_ascii_lowercase = (c :: Char) -> Char => (
+        if is_ascii_uppercase(c) then (
             code(c) + (@eval (Char.code('a') - Char.code('A')))
                 |> from_code
         ) else (

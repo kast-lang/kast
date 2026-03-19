@@ -164,25 +164,25 @@ impl String as module = (
         :None
     );
     
-    const to_lowercase = (s :: String) -> String => (
-        let next_alphabet = find_match(s, Char.is_uppercase);
+    const to_ascii_lowercase = (s :: String) -> String => (
+        let next_alphabet = find_match(s, Char.is_ascii_uppercase);
         match next_alphabet with (
             | :Some { i, c } => (
                 substring(s, 0, i)
-                + to_string(Char.to_lowercase(c))
-                + to_lowercase(substring(s, i + 1, length(s) - i - 1))
+                + to_string(Char.to_ascii_lowercase(c))
+                + to_ascii_lowercase(substring(s, i + 1, length(s) - i - 1))
             )
             | :None => s
         )
     );
     
-    const to_uppercase = (s :: String) -> String => (
-        let next_alphabet = find_match(s, Char.is_lowercase);
+    const to_ascii_uppercase = (s :: String) -> String => (
+        let next_alphabet = find_match(s, Char.is_ascii_lowercase);
         match next_alphabet with (
             | :Some { i, c } => (
                 substring(s, 0, i)
-                + to_string(Char.to_uppercase(c))
-                + to_uppercase(substring(s, i + 1, length(s) - i - 1))
+                + to_string(Char.to_ascii_uppercase(c))
+                + to_ascii_uppercase(substring(s, i + 1, length(s) - i - 1))
             )
             | :None => s
         )
