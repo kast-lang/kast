@@ -1,0 +1,5 @@
+{
+    .roots = {
+        "src/main.ks",
+    },
+}
