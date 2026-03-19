@@ -609,10 +609,10 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     },
     Char: {
       code(ctx, c: string): number {
-        return c.charCodeAt(0);
+        return c.codePointAt(0)!;
       },
       from_code(ctx, code: number): string {
-        return String.fromCharCode(code);
+        return String.fromCodePoint(code);
       },
       string_encoding_len(ctx, c: string): number {
         return c.length;
@@ -635,11 +635,11 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
         }
       },
       at: (ctx, s, i) => {
-        const c = s.at(i);
+        const c = s.codePointAt(i);
         if (c === undefined) {
-          throw new Error("out of bounds");
+          throw new Error("incorrect index");
         }
-        return c;
+        return String.fromCodePoint(c);
       },
       length: (ctx, s: string) => {
         return s.length;
