@@ -25,6 +25,7 @@
 @syntax "core:trailing comma" 5 @wrap never = <- _ ",";
 
 @syntax "core:unpack" 5.5 @wrap never = "..." _;
+@syntax "core:unpack_ignore" 5.5 @wrap never = "...";
 
 @syntax "core:field init" 6 @wrap never = "." label type=(" " "::" " " _)? value=(" " "=" " " _)?;
 

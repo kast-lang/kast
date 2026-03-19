@@ -15,6 +15,33 @@ type core_syntax =
   ; handle : 'a. 'a handle
   }
 
+let rec create_placeholder : 'a. 'a compiled_kind -> Span.t -> State.t -> 'a =
+  fun (type a) (kind : a compiled_kind) (span : Span.t) (state : State.t) : a ->
+  match kind with
+  | Assignee -> A_Placeholder |> init_assignee span state
+  | Pattern -> P_Placeholder |> init_pattern span state
+  | Expr -> expr_placeholder span state
+  | PlaceExpr ->
+    PE_Temp (create_placeholder Expr span state) |> Init.init_place_expr span state
+  | TyExpr ->
+    (fun () -> TE_Expr (create_placeholder Expr span state)) |> init_ty_expr span state
+;;
+
+let placeholder : core_syntax =
+  { name = "placeholder"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        Tuple.assert_empty children;
+        create_placeholder kind span C.state)
+  }
+;;
+
 let tuple_field
       (type a)
       (module C : Compiler.S)
@@ -178,6 +205,11 @@ let tuple_impl
           root.children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast
         in
         let part : a Types.tuple_part_of = Unpack (C.compile kind packed) in
+        parts_rev := part :: !parts_rev
+      | Complex { rule = { name = "core:unpack_ignore"; _ }; root; _ } ->
+        let part : a Types.tuple_part_of =
+          Unpack (create_placeholder kind span C.state)
+        in
         parts_rev := part :: !parts_rev
       | _ ->
         unnamed_idx := !unnamed_idx + 1;
@@ -393,26 +425,6 @@ let let' : core_syntax =
         | _ ->
           error span "assign must be expr";
           init_error span Compiler.state kind)
-  }
-;;
-
-let placeholder : core_syntax =
-  { name = "placeholder"
-  ; handle =
-      (fun (type a)
-        (module C : Compiler.S)
-        (kind : a compiled_kind)
-        (ast : Ast.t)
-        ({ children; _ } : Ast.group)
-        : a ->
-        let span = ast.data.span in
-        Tuple.assert_empty children;
-        match kind with
-        | Assignee -> A_Placeholder |> init_assignee span C.state
-        | Pattern -> P_Placeholder |> init_pattern span C.state
-        | Expr -> expr_placeholder span C.state
-        | PlaceExpr -> Compiler.temp_expr (module C) ast
-        | TyExpr -> (fun () -> TE_Expr (C.compile Expr ast)) |> init_ty_expr span C.state)
   }
 ;;
 
