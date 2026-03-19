@@ -16,6 +16,7 @@
 @syntax "rem_assign" 2 @wrap never = _ " " "%=" " " _;
 @syntax "core:let" 3 @wrap never = "let" " " pattern;
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;
+@syntax "let else" 3 @wrap never = "let" " " pattern " " "=" " " value " " "else" " " else_case;
 
 @syntax "core:leading union" 3.99 @wrap never = "|" " " _;
 @syntax "core:union" 4 @wrap if_any_assoc = <- _ " "/"\n" "|" " " _;
@@ -42,7 +43,7 @@
 @syntax "if_is_else" 7.5 @wrap never = "if" " " value " " "is" " " pattern " " "then" " " body " " "else" " " else_body ->;
 @syntax "core:match" 7.5 @wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
 @syntax "while" 7.5 @wrap never = "while" " " cond " " "do" " " body;
-@syntax "while_is" 7.5 @wrap never = "while" " " value " " "is" pattern " " "do" " " body;
+@syntax "while_is" 7.5 @wrap never = "while" " " value " " "is" " " pattern " " "do" " " body;
 @syntax "for" 7.5 @wrap never = "for" " " pattern " " "in" " " iterable " " "do" " " body;
 
 @syntax "range" 8 @wrap never = start ".." end;
