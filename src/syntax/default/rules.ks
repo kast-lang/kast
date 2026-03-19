@@ -16,7 +16,7 @@
 @syntax "rem_assign" 2 @wrap never = _ " " "%=" " " _;
 @syntax "core:let" 3 @wrap never = "let" " " pattern;
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;
-@syntax "let else" 3 @wrap never = "let" " " pattern " " "=" " " value " " "else" " " else_case;
+# @syntax "let else" 3 @wrap never = "let" " " pattern " " "=" " " value " " "else" " " else_case;
 
 @syntax "core:leading union" 3.99 @wrap never = "|" " " _;
 @syntax "core:union" 4 @wrap if_any_assoc = <- _ " "/"\n" "|" " " _;
