@@ -58,7 +58,7 @@ let init () =
         let c =
           arg |> Value.expect_char |> Option.unwrap_or_else (error "arg must be char")
         in
-        V_Int32 (Uchar.utf_16_byte_length c |> Int32.of_int) |> Value.inferred ~span))
+        V_Int32 (Uchar.utf_16_byte_length c / 2 |> Int32.of_int) |> Value.inferred ~span))
   in
   [ code; from_code; string_encoding_len; utf16_len ]
 ;;
