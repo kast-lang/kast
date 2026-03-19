@@ -25,6 +25,10 @@ impl Char as module = (
             c
         )
     );
+    const string_encoding_len = (c :: Char) -> Int32 => @cfg (
+        | target.name == "interpreter" => (@native "char.string_encoding_len")(c)
+        | target.name == "javascript" => (@native "Kast.Char.string_encoding_len")(c)
+    );
     const code = (c :: Char) -> UInt32 => @cfg (
         | target.name == "interpreter" => (@native "char.code")(c)
         | target.name == "javascript" => (@native "Kast.Char.code")(c)

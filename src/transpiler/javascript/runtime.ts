@@ -123,6 +123,7 @@ interface Kast<isNode> extends Backend<isNode> {
   Char: {
     code: Fn<[Char], number>;
     from_code: Fn<[number], Char>;
+    string_encoding_len: Fn<[Char], number>;
   };
   String: {
     substring: Fn<[string, number, number], string>;
@@ -612,6 +613,9 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       },
       from_code(ctx, code: number): string {
         return String.fromCharCode(code);
+      },
+      string_encoding_len(ctx, c: string): number {
+        return c.length;
       },
     },
     String: {

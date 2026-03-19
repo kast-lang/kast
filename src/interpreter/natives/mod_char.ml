@@ -34,5 +34,18 @@ let init () =
         with
         | Invalid_argument _ -> error "invalid utf8" ()))
   in
-  [ code; from_code ]
+  let string_encoding_len =
+    native_fn "char.string_encoding_len" (fun _ty ~caller ~state:_ arg : value ->
+      let arg = single_arg ~span arg in
+      with_return (fun { return } ->
+        let error msg () =
+          Error.error caller "char.string_encoding_len: %s" msg;
+          return (V_Error |> Value.inferred ~span)
+        in
+        let c =
+          arg |> Value.expect_char |> Option.unwrap_or_else (error "arg must be char")
+        in
+        V_Int32 (Uchar.utf_8_byte_length c |> Int32.of_int) |> Value.inferred ~span))
+  in
+  [ code; from_code; string_encoding_len ]
 ;;
