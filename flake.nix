@@ -17,12 +17,18 @@
         devShells.default = mkShell {
           packages = [
             (pkgs.writeShellScriptBin "kast" ''
-              systemd-run --user --scope -p MemoryMax=10G \
+              systemd-run --quiet --user --scope -p MemoryMax=5G \
                 rlwrap ${kast}/bin/kast "$@"
+            '')
+            (pkgs.writeShellScriptBin "self-kast" ''
+              systemd-run --quiet --user --scope -p MemoryMax=5G \
+                rlwrap kast src/main.ks "$@"
             '')
             rlwrap
             nixfmt-classic
             nodejs
+            just
+            fd
           ];
         };
       });

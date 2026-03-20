@@ -1,15 +1,71 @@
+const ansi = import "./ansi.ks";
 use (import "./output.ks").*;
 use (import "./source.ks").*;
 use (import "./lexer.ks").*;
 use (import "./token.ks").*;
 
-let mut lexer = Lexer.new(Source.read_file("tests/hello.ks"));
-
 with Output = stdout();
-loop (
-    let token = &lexer |> Lexer.peek;
-    token |> Token.print;
-    (@current Output).write("\n");
-    if token.shape is :Eof then break;
-    Lexer.advance(&mut lexer);
+
+const Args = (
+    module:
+    
+    const LexerArgs = (
+        module:
+        
+        const t = newtype {
+            .paths :: ArrayList.t[String],
+        };
+        
+        const parse = start_index -> t => (
+            let mut paths = ArrayList.new();
+            for i in start_index..std.sys.argc() do (
+                &mut paths |> ArrayList.push_back(std.sys.argv_at(i));
+            );
+            {
+                .paths,
+            }
+        );
+    );
+    
+    const Subcommand = newtype (
+        | :Tokenize LexerArgs.t
+    );
+    
+    const t = newtype {
+        .subcommand :: Subcommand,
+    };
+    
+    const parse = () -> t => (
+        let subcommand = unwindable subcommand (
+            for i in 1..std.sys.argc() do (
+                let arg = std.sys.argv_at(i);
+                if arg == "lex" or arg == "tokenize" then (
+                    unwind subcommand (:Tokenize LexerArgs.parse(i + 1));
+                );
+                panic("Unexpected arg " + arg);
+            );
+            panic("No default subcommand")
+        );
+        {
+            .subcommand
+        }
+    );
+);
+
+let args = Args.parse();
+# dbg.print(args);
+match args.subcommand with (
+    | :Tokenize { .paths } => (
+        for &path in ArrayList.iter(&paths) do (
+            ansi.with_mode(:Bold, () => write("Lexing " + path + "\n\n"));
+            let mut lexer = Lexer.new(Source.read_file(path));
+            loop (
+                let token = &lexer |> Lexer.peek;
+                token |> Token.print;
+                (@current Output).write("\n");
+                if token.shape is :Eof then break;
+                Lexer.advance(&mut lexer);
+            );
+        );
+    )
 );

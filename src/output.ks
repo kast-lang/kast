@@ -24,3 +24,7 @@ const stdout = () -> OutputT => (
         ),
     }
 );
+
+const write = (s :: String) => (
+    (@current Output).write(s);
+);
