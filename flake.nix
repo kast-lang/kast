@@ -22,7 +22,7 @@
             '')
             (pkgs.writeShellScriptBin "self-kast" ''
               systemd-run --quiet --user --scope -p MemoryMax=5G \
-                rlwrap kast src/main.ks "$@"
+                rlwrap kast $SELF_KAST_ARGS src/main.ks "$@"
             '')
             rlwrap
             nixfmt-classic
@@ -30,6 +30,10 @@
             just
             fd
           ];
+          shellHook = ''
+            echo Welcome to Kast self hosted devShell
+            export SELF_KAST_ARGS="--quiet --target js"
+          '';
         };
       });
 }
