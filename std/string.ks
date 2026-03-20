@@ -28,7 +28,7 @@ impl String as module = (
             .iter = f => (@native "Kast.String.iteri")(s, f)
         }
     );
-    const index_of = (c :: Char, s :: String) -> Int32 => with_return (
+    const index_of = (s :: String, c :: Char) -> Int32 => with_return (
         for { i, c_at_i } in iteri(s) do (
             if c == c_at_i then (
                 return i;
@@ -36,7 +36,7 @@ impl String as module = (
         );
         -1
     );
-    const last_index_of = (c :: Char, s :: String) -> Int32 => (
+    const last_index_of = (s :: String, c :: Char) -> Int32 => (
         let mut result = -1;
         for { i, c_at_i } in iteri(s) do (
             if c == c_at_i then (

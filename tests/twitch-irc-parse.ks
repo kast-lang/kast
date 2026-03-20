@@ -9,7 +9,7 @@ const Msg = type {
     .trailing :: Option.t[String],
 };
 let rsplit_at = (s :: String, c :: Char) -> { String, String } => (
-    let i = String.last_index_of(c, s);
+    let i = s |> String.last_index_of(c);
     {
         String.substring(s, 0, i),
         String.substring(s, i + 1, String.length(s) - i - 1),
@@ -52,7 +52,7 @@ let parse_msg = (msg :: String) -> Msg => with_return (
             trailing = :Some (String.substring(unparsed, 1, String.length(unparsed) - 1));
             break;
         );
-        let space_idx = String.index_of(' ', unparsed);
+        let space_idx = unparsed |> String.index_of(' ');
         if space_idx == -1 then (
             add_part(unparsed);
             break;
