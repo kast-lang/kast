@@ -1,4 +1,4 @@
-use (import "./uri.ks").*;
+use (import "../deps/uri/src/lib.ks").*;
 
 module:
 
