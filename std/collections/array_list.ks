@@ -35,6 +35,16 @@ const length = [T] (a :: &ArrayList.t[T]) -> Int32 => @cfg (
     | target.name == "interpreter" => (@native "List.length")(a)
     | target.name == "javascript" => @native "\(a^).length"
 );
-const to_string = [T] (a :: &ArrayList.t[T], f :: &T -> String) -> String => (
-    panic("TODO")
+const to_string = [T] (a :: &ArrayList.t[T], t_to_string :: &T -> String) -> String => (
+    let mut result = "[";
+    let mut i :: Int32 = 0;
+    for x in iter(a) do (
+        if i != 0 then (
+            result += ", ";
+        );
+        result += t_to_string(x);
+        i += 1;
+    );
+    result += "]";
+    result
 );
