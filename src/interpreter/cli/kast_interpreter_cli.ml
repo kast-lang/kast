@@ -94,8 +94,13 @@ let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t)
     Kast_compiler_cli.run { args.compiler with output = Some path };
     let node_args = if enable_source_maps then [ "--enable-source-maps" ] else [] in
     let node_args = node_args @ (path :: argv_except_program) in
-    Log.info (fun log ->
-      log "Launching node with args %a" (List.print String.print_maybe_escaped) node_args);
+    if not !quiet
+    then
+      Log.info (fun log ->
+        log
+          "Launching node with args %a"
+          (List.print String.print_maybe_escaped)
+          node_args);
     Unix.execvp "node" (Array.of_list ("node" :: node_args))
 ;;
 

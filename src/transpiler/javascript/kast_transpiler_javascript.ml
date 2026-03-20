@@ -145,7 +145,7 @@ module Impl = struct
 
   and not_inferred : 'a 'scope. ('a, 'scope) Inference.Var.t -> JsAst.expr =
     fun var ->
-    Log.error (fun log -> log "transpiling not inferred var");
+    if not !Kast_util.quiet then Log.error (fun log -> log "transpiling not inferred var");
     { shape =
         JsAst.Obj
           [ Field

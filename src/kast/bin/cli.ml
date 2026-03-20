@@ -43,6 +43,9 @@ let parse () : args =
   let inference_completion = ref false in
   let profile = ref None in
   let rec parse_flags = function
+    | "--quiet" :: args ->
+      Kast_util.quiet := true;
+      parse_flags args
     | "--stop-on-error=false" :: args | "--stop-on-error" :: "false" :: args ->
       stop_on_error := false;
       parse_flags args
