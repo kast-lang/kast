@@ -122,7 +122,7 @@ module Var = struct
       =
       find_root var
     in
-    if true
+    if false
     then (
       fprintf fmt "%a" Id.print recurse_id;
       (* fprintf fmt "%a" (List.print Span.print) (spans |> SpanSet.to_list); *)
