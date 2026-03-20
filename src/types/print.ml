@@ -72,6 +72,7 @@ module Impl = struct
       if mut then fprintf fmt "mut ";
       print_place_ref fmt place
     | V_Tuple tuple -> print_value_tuple fmt tuple
+    | V_List list -> print_value_list fmt list
     | V_Fn { ty; fn = _ } -> fprintf fmt "@{<italic><fn %a>@}" print_ty_fn ty
     | V_Variant { label; data; ty = _ } ->
       fprintf fmt ":%a" Label.print label;
@@ -98,6 +99,10 @@ module Impl = struct
     | V_Opaque { ty = _; value = _ } -> fprintf fmt "@{<italic><opaque>@}"
     | V_Blocked blocked -> print_blocked_value fmt blocked
     | V_Target target -> print_target fmt target
+
+  and print_value_list : formatter -> value_list -> unit =
+    fun fmt { ty = _; elements } ->
+    List.print (print_place_value_with print_value) fmt (Dynarray.to_list elements)
 
   and print_value_tuple : formatter -> value_tuple -> unit =
     fun fmt { ty = _; tuple } ->
@@ -189,6 +194,7 @@ module Impl = struct
       fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
     | T_Variant v -> print_ty_variant ~always_print_shape:always_print_named_shape fmt v
     | T_Tuple t -> print_ty_tuple ~always_print_shape:always_print_named_shape fmt t
+    | T_List { element_ty } -> fprintf fmt "ArrayList[%a]" print_ty element_ty
     | T_Ty -> fprintf fmt "Type"
     | T_Fn f -> print_ty_fn fmt f
     | T_Generic ty -> print_ty_generic fmt ty
@@ -787,6 +793,7 @@ let print_blocked_value_shape = with_cache Impl.print_blocked_value_shape
 let print_value = with_cache Impl.print_value
 let print_value_shape = with_cache Impl.print_value_shape
 let print_value_tuple = with_cache Impl.print_value_tuple
+let print_value_list = with_cache Impl.print_value_list
 
 let print_expr_with_spans =
   with_cache (Impl.print_expr ~options:{ spans = true; types = false })

@@ -364,6 +364,7 @@ module Impl = struct
       (match name |> OptionalName.await_inferred with
        | Some name -> type_named name
        | None -> todo_ty __LOC__)
+    | T_List _ -> todo_ty __LOC__
     | T_Ty -> todo_ty __LOC__
     | T_Fn _ -> todo_ty __LOC__
     | T_Generic _ -> todo_ty __LOC__
@@ -461,6 +462,17 @@ module Impl = struct
                    in
                    Field { name = field_name; value = transpile_value value |> pure })
                  |> List.of_seq)
+          ; span = None
+          }
+      | V_List { ty = _; elements } ->
+        calculate
+          { shape =
+              JsAst.List
+                (elements
+                 |> Dynarray.to_list
+                 |> List.map (fun place ->
+                   let value = place |> Kast_interpreter.read_place ~span:ctx.span in
+                   transpile_value value |> pure))
           ; span = None
           }
       | V_Variant { label; data; ty = _ } ->

@@ -75,6 +75,9 @@ module Impl = struct
          | V_Tuple { ty; tuple } ->
            complete_ty_tuple ty;
            complete_tuple complete_value_tuple_field tuple
+         | V_List { ty; elements } ->
+           complete_ty_list ty;
+           elements |> Dynarray.iter complete_place
          | V_Variant { label : Label.t = _; data; ty } ->
            complete_ty_variant ty;
            complete_option complete_place data
@@ -174,6 +177,7 @@ module Impl = struct
            complete_ty referenced
          | T_Variant ty -> complete_ty_variant ty
          | T_Tuple ty -> complete_ty_tuple ty
+         | T_List ty -> complete_ty_list ty
          | T_Ty -> ()
          | T_Fn ty -> complete_ty_fn ty
          | T_Generic ty -> complete_ty_generic ty
@@ -187,6 +191,7 @@ module Impl = struct
          | T_Error -> ())
       (fun fmt -> fprintf fmt "while completing ty shape %a" Ty.Shape.print shape)
 
+  and complete_ty_list ({ element_ty } : ty_list) = complete_ty element_ty
   and complete_ty_unwind_token ({ result } : ty_unwind_token) = complete_ty result
 
   and complete_is_mutable ({ var } : is_mutable) =

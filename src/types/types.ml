@@ -60,6 +60,7 @@ module rec TypesImpl : sig
     | V_Ref of value_ref
     | V_String of string
     | V_Tuple of value_tuple
+    | V_List of value_list
     | V_Variant of value_variant
     | V_Ty of ty
     | V_Fn of value_fn
@@ -137,6 +138,11 @@ module rec TypesImpl : sig
     ; tuple : value_tuple_field Tuple.t
     }
 
+  and value_list =
+    { ty : ty_list [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; elements : place Dynarray.t
+    }
+
   and value_variant =
     { label : Label.t
     ; data : place option
@@ -163,6 +169,7 @@ module rec TypesImpl : sig
     ; tuple : ty_tuple_field Tuple.t
     }
 
+  and ty_list = { element_ty : ty }
   and ty_args = { ty : ty }
 
   and ty_fn =
@@ -206,6 +213,7 @@ module rec TypesImpl : sig
     | T_Ref of ty_ref
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
+    | T_List of ty_list
     | T_Ty
     | T_Fn of ty_fn
     | T_Generic of ty_generic
@@ -782,6 +790,7 @@ end = struct
     | V_Ref of value_ref
     | V_String of string
     | V_Tuple of value_tuple
+    | V_List of value_list
     | V_Variant of value_variant
     | V_Ty of ty
     | V_Fn of value_fn
@@ -859,6 +868,11 @@ end = struct
     ; tuple : value_tuple_field Tuple.t
     }
 
+  and value_list =
+    { ty : ty_list [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; elements : place Dynarray.t
+    }
+
   and value_variant =
     { label : Label.t
     ; data : place option
@@ -885,6 +899,7 @@ end = struct
     ; tuple : ty_tuple_field Tuple.t
     }
 
+  and ty_list = { element_ty : ty }
   and ty_args = { ty : ty }
 
   and ty_fn =
@@ -928,6 +943,7 @@ end = struct
     | T_Ref of ty_ref
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
+    | T_List of ty_list
     | T_Ty
     | T_Fn of ty_fn
     | T_Generic of ty_generic

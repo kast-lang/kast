@@ -89,6 +89,7 @@ module VarScope = struct
     | T_Ref x -> of_ty_ref x
     | T_Variant x -> of_ty_variant x
     | T_Tuple x -> of_ty_tuple x
+    | T_List x -> of_ty_list x
     | T_Ty -> root ()
     | T_Fn x -> of_ty_fn x
     | T_Generic x -> of_ty_generic x
@@ -100,6 +101,8 @@ module VarScope = struct
     | T_Opaque x -> of_ty_opaque x
     | T_Blocked x -> of_blocked_value x
     | T_Error -> root ()
+
+  and of_ty_list : ty_list -> var_scope = fun { element_ty } -> of_ty element_ty
 
   and of_ty_variant_data : ty_variant_data -> var_scope =
     fun { data } ->
@@ -187,6 +190,7 @@ module VarScope = struct
     | V_Ref x -> of_value_ref x
     | V_String (_ : string) -> root ()
     | V_Tuple x -> of_value_tuple x
+    | V_List x -> of_value_list x
     | V_Variant x -> of_value_variant x
     | V_Ty ty -> of_ty ty
     | V_Fn x -> of_value_fn x
@@ -205,6 +209,12 @@ module VarScope = struct
     fun { mut : bool = _; place } ->
     (*  TODO check if place can be ignored *)
     of_place place
+
+  and of_value_list : value_list -> var_scope =
+    fun { ty; elements } ->
+    elements
+    |> Dynarray.to_seq
+    |> Seq.fold_left (fun acc element -> deepest acc (of_place element)) (of_ty_list ty)
 
   and of_value_tuple : value_tuple -> var_scope =
     fun { tuple; ty } ->
@@ -302,6 +312,8 @@ module Impl = struct
          | T_Ref _, _ -> fail ()
          | T_Tuple a, T_Tuple b -> T_Tuple (unite_ty_tuple ~span a b)
          | T_Tuple _, _ -> fail ()
+         | T_List a, T_List b -> T_List (unite_ty_list ~span a b)
+         | T_List _, _ -> fail ()
          | T_Variant a, T_Variant b -> T_Variant (unite_ty_variant ~span a b)
          | T_Variant _, _ -> fail ()
          | T_Ty, T_Ty -> T_Ty
@@ -327,6 +339,9 @@ module Impl = struct
          | T_Blocked a, T_Blocked b -> T_Blocked (unite_blocked_value ~span a b)
          | T_Blocked _, _ -> fail ())
       (fun fmt -> fprintf fmt "ty_shape %a != %a" print_ty_shape a print_ty_shape b)
+
+  and unite_ty_list : ty_list Inference.unite =
+    fun ~span a b -> { element_ty = unite_ty ~span a.element_ty b.element_ty }
 
   and unite_blocked_value : blocked_value Inference.unite =
     fun ~span a b ->
@@ -697,6 +712,8 @@ module Impl = struct
          | V_Ref _, _ -> fail ()
          | V_Tuple a, V_Tuple b -> V_Tuple (unite_value_tuple ~span a b)
          | V_Tuple _, _ -> fail ()
+         | V_List a, V_List b -> V_List (unite_value_list ~span a b)
+         | V_List _, _ -> fail ()
          | V_Variant a, V_Variant b -> V_Variant (unite_value_variant ~span a b)
          | V_Variant _, _ -> fail ()
          | V_Ty a, V_Ty b -> V_Ty (unite_ty ~span a b)
@@ -731,6 +748,19 @@ module Impl = struct
          | V_CompilerScope _, _ -> fail ())
       (fun fmt ->
          fprintf fmt "value_shape %a != %a" print_value_shape a print_value_shape b)
+
+  and unite_value_list : value_list Inference.unite =
+    fun ~span a b ->
+    if Dynarray.length a.elements <> Dynarray.length b.elements
+    then (
+      error span "%a != %a" print_value_list a print_value_list b;
+      a)
+    else
+      { ty = unite_ty_list ~span a.ty b.ty
+      ; elements =
+          Dynarray.init (Dynarray.length a.elements) (fun i ->
+            unite_place ~span (Dynarray.get a.elements i) (Dynarray.get b.elements i))
+      }
 
   and unite_value_tuple : value_tuple Inference.unite =
     fun ~span
@@ -894,6 +924,7 @@ module Impl = struct
                  ; ty_field = field
                  })
            })
+    | T_List _ -> None
     | T_Ty -> Some (V_Ty (new_not_inferred_ty ~scope ~span))
     | T_Fn _ -> None
     | T_Generic _ -> None
@@ -970,6 +1001,7 @@ module Impl = struct
              ; referenced = place.ty
              })
       | V_Tuple { ty; tuple = _ } -> inferred_ty ~span <| T_Tuple ty
+      | V_List { ty; elements = _ } -> inferred_ty ~span <| T_List ty
       | V_Variant { ty; _ } -> inferred_ty ~span <| T_Variant ty
       | V_Ty _ -> inferred_ty ~span T_Ty
       | V_Fn { ty; _ } -> inferred_ty ~span <| T_Fn ty

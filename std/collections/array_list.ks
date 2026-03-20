@@ -1,29 +1,40 @@
 module:
 
-const t = [T] newtype {
-    .inner :: Treap.t[T]
+const t = [T] (@native "List")(T);
+const new = [T] () -> ArrayList.t[T] => @cfg (
+    | target.name == "interpreter" => (@native "List.new")()
+    | target.name == "javascript" => @native "[]"
+);
+const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) => @cfg (
+    | target.name == "interpreter" => (@native "List.push_back")(a, value)
+    | target.name == "javascript" => @native "\(a^).push(\(value))"
+);
+const iter = [T] (a :: &ArrayList.t[T]) -> std.iter.Iterable[type (&T)] => {
+    .iter = consumer => (
+        for i in 0..length(a) do (
+            consumer(a |> at(i))
+        );
+    ),
 };
-const new = [T] () -> ArrayList.t[T] => {
-    .inner = Treap.new[T]()
+const iter_mut = [T] (a :: &mut ArrayList.t[T]) -> std.iter.Iterable[type (&mut T)] => {
+    .iter = consumer => (
+        for i in 0..length(&a^) do (
+            consumer(a |> at_mut(i))
+        );
+    ),
 };
-const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) => (
-    a^.inner = Treap.join(a^.inner, Treap.singleton(value));
+const at = [T] (a :: &ArrayList.t[T], idx :: Int32) -> &T => @cfg (
+    | target.name == "interpreter" => (@native "List.at")(a, idx)
+    | target.name == "javascript" => @native "{get:()=>\(a^)[\(idx)]}"
 );
-const iter = [T] (a :: &ArrayList.t[T]) -> std.iter.Iterable[type (&T)] => (
-    Treap.iter(&a^.inner)
+const at_mut = [T] (a :: &mut ArrayList.t[T], idx :: Int32) -> &mut T => @cfg (
+    | target.name == "interpreter" => (@native "List.at")(a, idx)
+    | target.name == "javascript" => @native "{get:()=>\(a^)[\(idx)],set:x=>{\(a^)[\(idx)]=x}}"
 );
-const iter_mut = [T] (a :: &mut ArrayList.t[T]) -> std.iter.Iterable[type (&mut T)] => (
-    Treap.iter_mut(&mut a^.inner)
-);
-const at = [T] (a :: &ArrayList.t[T], idx :: Int32) -> &T => (
-    Treap.at(&a^.inner, idx)
-);
-const at_mut = [T] (a :: &mut ArrayList.t[T], idx :: Int32) -> &mut T => (
-    Treap.at_mut(&mut a^.inner, idx)
-);
-const length = [T] (q :: &ArrayList.t[T]) -> Int32 => (
-    Treap.length(&q^.inner)
+const length = [T] (a :: &ArrayList.t[T]) -> Int32 => @cfg (
+    | target.name == "interpreter" => (@native "List.length")(a)
+    | target.name == "javascript" => @native "\(a^).length"
 );
 const to_string = [T] (a :: &ArrayList.t[T], f :: &T -> String) -> String => (
-    Treap.to_string(&a^.inner, f)
+    panic("TODO")
 );

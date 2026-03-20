@@ -23,8 +23,10 @@ let init_natives () =
     ; "Ast", T_Ast
     ]
   in
-  let generic_types : (string * (Ty.Shape.t -> Ty.Shape.t)) list =
-    [ ("UnwindToken", fun result -> T_UnwindToken { result = Ty.inferred ~span result }) ]
+  let generic_types : (string * (ty -> Ty.Shape.t)) list =
+    [ ("UnwindToken", fun arg -> T_UnwindToken { result = arg })
+    ; ("List", fun arg -> T_List { element_ty = arg })
+    ]
   in
   let types =
     (plain_types
@@ -45,7 +47,6 @@ let init_natives () =
                |> Option.unwrap_or_else (fun () ->
                  Error.error caller "%a expected a type arg" String.print_debug name;
                  error ())
-               |> fun ty -> Ty.await_inferred ty
              in
              V_Ty (Ty.inferred ~span (f arg)) |> Value.inferred ~span)
          in
@@ -125,6 +126,7 @@ let init_natives () =
       @ Mod_op.init ()
       @ Mod_reflection.init ()
       @ Mod_syntax.init ()
+      @ Mod_list.init ()
     in
     { by_name = list |> StringMap.of_list }
   in
@@ -143,3 +145,4 @@ module Cmp = Mod_cmp
 module Op = Mod_op
 module Reflection = Mod_reflection
 module Syntax = Mod_syntax
+module List = Mod_list
