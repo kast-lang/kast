@@ -166,6 +166,18 @@ const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String 
     result += "]";
     result
 );
+const into_iter = [T] (v :: Treap.t[T]) -> std.iter.Iterable[T] => {
+    .iter = f => (
+        match v with (
+            | :Empty => ()
+            | :Node data => (
+                (into_iter[T](data.left)).iter(f);
+                f(data.value);
+                (into_iter[T](data.right)).iter(f);
+            )
+        )
+    )
+};
 const iter = [T] (v :: &Treap.t[T]) -> std.iter.Iterable[type (&T)] => {
     .iter = f => (
         match v^ with (
