@@ -120,6 +120,26 @@ impl Lexer as module = (
                 |> Option.or_else(() => read_string_with_delim(reader, '"'))
         );
         
+        const read_hex_number :: ReadFn = reader => with_return (
+            let start = reader^.position.index;
+            let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
+            if c != '0' then return :None;
+            let c2 = Reader.peek2(&reader^) |> Option.unwrap_or_else(() => return :None);
+            if c2 != 'x' then return :None;
+            Reader.advance(reader);
+            Reader.advance(reader);
+            const is_hex_digit = (c :: Char) -> Bool => (
+                ('0' <= c and c <= '9')
+                or ('a' <= c and c <= 'f')
+                or ('A' <= c and c <= 'F')
+            );
+            reader |> Reader.read_while(is_hex_digit);
+            let end = reader^.position.index;
+            :Some :Number {
+                .raw = String.substring(reader^.contents, start, end - start),
+            }
+        );
+        
         const read_fns :: ArrayList.t[ReadFn] = (
             let mut read_fns = ArrayList.new();
             &mut read_fns |> ArrayList.push_back(skip_whitespace);
@@ -127,6 +147,7 @@ impl Lexer as module = (
             &mut read_fns |> ArrayList.push_back(read_punct);
             &mut read_fns |> ArrayList.push_back(read_ident);
             &mut read_fns |> ArrayList.push_back(read_string);
+            &mut read_fns |> ArrayList.push_back(read_hex_number);
             read_fns
         );
         

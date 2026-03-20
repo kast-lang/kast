@@ -35,6 +35,9 @@ const TokenShape = newtype (
     | :String {
         .raw :: String,
     }
+    | :Number {
+        .raw :: String,
+    }
     | :Eof
     | :Error {
         .raw :: String,
@@ -48,6 +51,7 @@ impl TokenShape as module = (
         | :Punct { .raw, ... } => raw
         | :Ident { .raw, ... } => raw
         | :String { .raw, ... } => raw
+        | :Number { .raw, ... } => raw
         | :Error { .raw, ... } => raw
         | :Eof => ""
     );
@@ -64,6 +68,12 @@ impl TokenShape as module = (
             | :Ident { .raw, ... } => (
                 ansi.with_mode(
                     :Under,
+                    () => output.write(raw),
+                );
+            )
+            | :Number { .raw, ... } => (
+                ansi.with_mode(
+                    :Italic,
                     () => output.write(raw),
                 );
             )
