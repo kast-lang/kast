@@ -10,7 +10,7 @@ const is_hex_digit = (c :: Char) -> Bool => (
     or ('A' <= c and c <= 'F')
 );
 
-const next_is = ( reader :: &Reader, c :: Char) -> Bool => (
+const next_is = (reader :: &Reader, c :: Char) -> Bool => (
     match reader |> Reader.peek with (
         | :Some peek => c == peek
         | :None => false
@@ -94,7 +94,7 @@ impl Lexer as module = (
                 )
             );
             const is_single_punct = (c :: Char) -> Bool => (
-                String.index_of(c, "@(){}[]&^$;\\,") >= 0
+                "@(){}[]&^$;\\," |> String.index_of(c) >= 0
             );
             let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
             if not is_punct(c) then return :None;

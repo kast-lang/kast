@@ -11,9 +11,9 @@ const stdout = () -> OutputT => (
         .write = s => (
             buffer += s;
             loop (
-                let i = String.index_of('\n', buffer);
+                let i = buffer |> String.index_of('\n');
                 if i < 0 then break;
-                std.io.print(String.substring(buffer, 0, i));
+                std.io.print(buffer |> String.substring(0, i));
                 let i = i + 1;
                 buffer = String.substring(
                     buffer,
