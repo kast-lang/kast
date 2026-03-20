@@ -559,10 +559,12 @@ module Impl = struct
       let body =
         scope (fun () ->
           let index = ref 0 in
+          let had_unpack = ref false in
           parts
           |> List.iter (fun (part : pattern tuple_part_of) ->
             match part with
             | Field { label; label_span = _; field = field_pattern } ->
+              if !had_unpack then fail "TODO unpacking only supported in the end atm";
               let member =
                 match label with
                 | None ->
@@ -592,7 +594,11 @@ module Impl = struct
                       }
                 ; span
                 }
-            | Unpack _packed -> failwith __LOC__))
+            | Unpack packed ->
+              (match packed.shape with
+               | P_Placeholder -> ()
+               | _ -> failwith __LOC__);
+              had_unpack := true))
       in
       execute
         { shape =
@@ -692,10 +698,12 @@ module Impl = struct
          | None -> let_var (binding_name ~span:pattern.data.span binding) value)
       | P_Tuple { guaranteed_anonymous = _; parts } ->
         let index = ref 0 in
+        let had_unpack = ref false in
         parts
         |> List.iter (fun (part : pattern tuple_part_of) ->
           match part with
           | Field { label; label_span = _; field = field_pattern } ->
+            if !had_unpack then fail "TODO match after unpack";
             let member =
               match label with
               | None ->
@@ -705,7 +713,11 @@ module Impl = struct
               | Some name -> Tuple.Member.Name (Label.get_name name)
             in
             pattern_match field_pattern (field_place place member)
-          | Unpack _packed -> failwith __LOC__)
+          | Unpack packed ->
+            (match packed.shape with
+             | P_Placeholder -> ()
+             | _ -> failwith __LOC__);
+            had_unpack := true)
       | P_Variant { label = _; label_span = _; value = value_pattern } ->
         (match value_pattern with
          | None -> ()
