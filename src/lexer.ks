@@ -100,7 +100,7 @@ impl Lexer as module = (
             if not is_ident_start(c) then return :None;
             let start = reader^.position.index;
             Reader.advance(reader);
-            reader |> Reader.read_while(Char.is_ascii_alphanumeric);
+            reader |> Reader.read_while(c => Char.is_ascii_alphanumeric(c) or c == '_');
             let end = reader^.position.index;
             :Some :Ident {
                 .raw = String.substring(reader^.contents, start, end - start),
