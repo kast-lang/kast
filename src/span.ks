@@ -25,11 +25,14 @@ impl Span as module = (
 
     const single_char = (
         .position :: Position,
-        .char :: Char,
+        .char :: Option.t[Char],
         .uri :: Uri,
     ) -> Span => {
         .start = position,
-        .end = Position.advance_copy(position, char),
+        .end = match char with (
+            | :Some char => Position.advance_copy(position, char)
+            | :None => position
+        ),
         .uri,
     };
 );

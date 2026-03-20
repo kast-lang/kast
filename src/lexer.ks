@@ -4,6 +4,14 @@ use (import "./reader.ks").*;
 use (import "./token.ks").*;
 use (import "./error.ks").*;
 
+const is_hex_digit = (c :: Char) -> Bool => (
+    ('0' <= c and c <= '9')
+    or ('a' <= c and c <= 'f')
+    or ('A' <= c and c <= 'F')
+);
+
+const panic = "NO PANIC";
+
 module:
 
 const Lexer = newtype {
@@ -34,8 +42,9 @@ impl Lexer as module = (
     );
     
     const read_next = (lexer :: &mut Lexer) -> Token => with_return (
-        const ReadFn = type (&mut Reader -> Option.t[TokenShape]);
-        const skip_whitespace :: ReadFn = reader => (
+        const ReadFn = type (&mut Lexer -> Option.t[TokenShape]);
+        const skip_whitespace :: ReadFn = lexer => (
+            let reader = &mut lexer^.reader;
             while Reader.peek(&reader^) is :Some c do (
                 if Char.is_whitespace(c) then (
                     Reader.advance(reader);
@@ -45,13 +54,15 @@ impl Lexer as module = (
             );
             :None
         );
-        const read_eof :: ReadFn = reader => (
+        const read_eof :: ReadFn = lexer => (
+            let reader = &mut lexer^.reader;
             match Reader.peek(&reader^) with (
                 | :Some _ => :None
                 | :None => :Some :Eof
             )
         );
-        const read_punct :: ReadFn = reader => with_return (
+        const read_punct :: ReadFn = lexer => with_return (
+            let reader = &mut lexer^.reader;
             const is_punct = (c :: Char) -> Bool => (
                 if c == '_' or c == '\'' or c == '"' then (
                     false
@@ -83,7 +94,8 @@ impl Lexer as module = (
             c == '_' or Char.is_ascii_alpha(c)
         );
         
-        const read_ident :: ReadFn = reader => with_return (
+        const read_ident :: ReadFn = lexer => with_return (
+            let reader = &mut lexer^.reader;
             let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
             if not is_ident_start(c) then return :None;
             let start = reader^.position.index;
@@ -95,32 +107,156 @@ impl Lexer as module = (
             }
         );
         
-        const read_string_with_delim = (reader, delim :: Char) => with_return (
+        const read_string_with_delim = (lexer, delim :: Char) => with_return (
+            let reader = &mut lexer^.reader;
             let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
             if c != delim then return :None;
             let start = reader^.position.index;
+            let error = [T] message -> T => (
+                let span = Span.single_char(
+                    .position = reader^.position,
+                    .char = Reader.peek(&reader^),
+                    .uri = lexer^.source.uri,
+                );
+                Error.report(span, message);
+                let end = reader^.position.index;
+                return :Some :Error { .raw = String.substring(reader^.contents, start, end - start) }
+            );
+            let expected = [T] expected -> T => (
+                let got = match Reader.peek(&reader^) with (
+                    | :Some c => to_string(c)
+                    | :None => "<eof>"
+                );
+                error("Expected " + expected + ", got " + got)
+            );
             Reader.advance(reader);
-            reader |> Reader.read_while(c => c != delim);
+            let mut contents = "";
+            let add_char = (c :: Char) => (
+                contents += to_string(c);
+            );
+            while Reader.peek(&reader^) is :Some c do (
+                if c == delim then break;
+                if c == '\\' then (
+                    Reader.advance(reader);
+                    let c = match Reader.peek(&reader^) with (
+                        | :Some c => c
+                        | :None => error("Expected escaped char")
+                    );
+                    # TODO match instead
+                    let c = if c == '(' then (
+                        error("TODO interpolation")
+                    ) else if c == '\\' then (
+                        '\\'
+                    
+                    ) else if c == 'n' then (
+                        '\n'
+                    
+                    ) else if c == 'r' then (
+                        '\r'
+                    
+                    ) else if c == 'b' then (
+                        '\b'
+                    
+                    ) else if c == 't' then (
+                        '\t'
+                    
+                    ) else if c == '\'' then (
+                        '\''
+                    
+                    ) else if c == '"' then (
+                        '"'
+                    
+                    ) else if c == 'x' then (
+                        Reader.advance(reader);
+                        let c1 = Reader.peek(&reader^)
+                            |> Option.unwrap_or_else(
+                                () => (
+                                    error("Expected 2 hex digits after '\\x'")
+                                )
+                            );
+                        let c2 = Reader.peek2(&reader^)
+                            |> Option.unwrap_or_else(
+                                () => (
+                                    error("Expected 2 hex digits after '\\x'")
+                                )
+                            );
+                        if not is_hex_digit(c1) or not is_hex_digit(c2) then (
+                            error("Expected 2 hex digits after '\\x'");
+                        );
+                        Reader.advance(reader);
+                        Reader.advance(reader);
+                        let c1 = Char.to_digit_radix(c1, 16);
+                        let c2 = Char.to_digit_radix(c2, 16);
+                        let code = c1 * 16 + c2;
+                        if code > 0x7f then (
+                            error("Hex escaped char must be in range 0x00 to 0x7f");
+                        );
+                        add_char(Char.from_code(code));
+                        continue
+                    ) else if c == 'u' then (
+                        Reader.advance(reader);
+                        let c = match Reader.peek(&reader^) with (
+                            | :Some c => c
+                            | :None => expected("{")
+                        );
+                        if c != '{' then (
+                            expected("{")
+                        );
+                        Reader.advance(reader);
+                        let hex_code = Reader.read_while(reader, is_hex_digit);
+                        let c = match Reader.peek(&reader^) with (
+                            | :Some c => c
+                            | :None => error("Expected }")
+                        );
+                        if c != '}' then (
+                            error("Expected }")
+                        );
+                        Reader.advance(reader);
+                        if hex_code |> String.length == 0 then (
+                            error("This escape must have at least 1 hex digit");
+                        );
+                        if hex_code |> String.length > 6 then (
+                            error("This escape must have at most 6 hex digits");
+                        );
+                        let mut code = 0;
+                        for c in String.iter(hex_code) do (
+                            code = code * 16 + Char.to_digit_radix(c, 16);
+                        );
+                        add_char(Char.from_code(code));
+                        continue
+                    ) else (
+                        error("Unexpected escape char " + to_string(c))
+                    );
+                    add_char(c);
+                    Reader.advance(reader);
+                    continue;
+                );
+                add_char(c);
+                Reader.advance(reader);
+            );
             let c = Reader.peek(&reader^)
                 |> Option.unwrap_or_else(
                     () => (
-                        panic("Unfinished string (eof)")
+                        error("Unfinished string (eof)")
                     )
                 );
-            if c != delim then panic("Unfinished string");
+            if c != delim then error("Unfinished string");
             Reader.advance(reader);
             let end = reader^.position.index;
             :Some :String {
                 .raw = String.substring(reader^.contents, start, end - start),
+                .contents,
             }
         );
         
-        const read_string :: ReadFn = reader => (
-            read_string_with_delim(reader, '\'')
-                |> Option.or_else(() => read_string_with_delim(reader, '"'))
+        const read_string :: ReadFn = lexer => (
+            let reader = &mut lexer^.reader;
+            read_string_with_delim(lexer, '\'')
+                |> Option.or_else(() => read_string_with_delim(lexer, '"'))
         );
         
-        const read_hex_number :: ReadFn = reader => with_return (
+        const read_hex_number :: ReadFn = lexer => with_return (
+            let reader = &mut lexer^.reader;
             let start = reader^.position.index;
             let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
             if c != '0' then return :None;
@@ -128,12 +264,36 @@ impl Lexer as module = (
             if c2 != 'x' then return :None;
             Reader.advance(reader);
             Reader.advance(reader);
-            const is_hex_digit = (c :: Char) -> Bool => (
-                ('0' <= c and c <= '9')
-                or ('a' <= c and c <= 'f')
-                or ('A' <= c and c <= 'F')
-            );
             reader |> Reader.read_while(is_hex_digit);
+            let end = reader^.position.index;
+            :Some :Number {
+                .raw = String.substring(reader^.contents, start, end - start),
+            }
+        );
+        
+        const read_number :: ReadFn = lexer => with_return (
+            let reader = &mut lexer^.reader;
+            let start = reader^.position.index;
+            let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
+            if not Char.is_ascii_digit(c) then return :None;
+            let seen_dot = match Reader.prev(&reader^) with (
+                | :Some c => c == '.'
+                | :None => false
+            );
+            Reader.read_while(reader, Char.is_ascii_digit);
+            match Reader.peek(&reader^) with (
+                | :Some c => (
+                    let digit_after_dot = match Reader.peek2(&reader^) with (
+                        | :Some c => Char.is_ascii_digit(c)
+                        | :None => false
+                    );
+                    if not seen_dot and c == '.' and digit_after_dot then (
+                        Reader.advance(reader);
+                        Reader.read_while(reader, Char.is_ascii_digit);
+                    )
+                )
+                | :None => ()
+            );
             let end = reader^.position.index;
             :Some :Number {
                 .raw = String.substring(reader^.contents, start, end - start),
@@ -148,12 +308,13 @@ impl Lexer as module = (
             &mut read_fns |> ArrayList.push_back(read_ident);
             &mut read_fns |> ArrayList.push_back(read_string);
             &mut read_fns |> ArrayList.push_back(read_hex_number);
+            &mut read_fns |> ArrayList.push_back(read_number);
             read_fns
         );
         
         for &read_fn in ArrayList.iter(&read_fns) do (
             let start = { ...lexer^.reader.position };
-            if read_fn(&mut lexer^.reader) is :Some shape then (
+            if read_fn(lexer) is :Some shape then (
                 let end = lexer^.reader.position;
                 return {
                     .shape,
@@ -165,7 +326,7 @@ impl Lexer as module = (
     );
     
     const unexpected_char = (lexer :: &mut Lexer, message :: String) -> Token => (
-        let char = Reader.peek(&lexer^.reader) |> Option.unwrap;
+        let char = Reader.peek(&lexer^.reader);
         let span = Span.single_char(
             .position = lexer^.reader.position,
             .char,
@@ -174,7 +335,12 @@ impl Lexer as module = (
         Error.report(span, message);
         Reader.advance(&mut lexer^.reader);
         {
-            .shape = :Error { .raw = to_string(char) },
+            .shape = :Error {
+                .raw = match char with (
+                    | :Some char => to_string(char)
+                    | :None => ""
+                ),
+            },
             .span,
         }
     );

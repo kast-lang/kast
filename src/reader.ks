@@ -15,6 +15,14 @@ impl Reader as module = (
         .position = Position.beginning(),
     };
     
+    const prev = (reader :: &Reader) -> Option.t[Char] => (
+        if reader^.position.index == 0 then (
+            :None
+        ) else (
+            :Some (reader^.contents |> String.at(reader^.position.index - 1))
+        )
+    );
+    
     const peek = (reader :: &Reader) -> Option.t[Char] => (
         if reader^.position.index < reader^.contents |> String.length then (
             :Some (reader^.contents |> String.at(reader^.position.index))

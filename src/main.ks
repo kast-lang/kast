@@ -1,3 +1,4 @@
+use (import "./error.ks").*;
 use (import "./ansi.ks").*;
 use (import "./output.ks").*;
 use (import "./source.ks").*;
@@ -33,27 +34,34 @@ const Args = (
     
     const t = newtype {
         .subcommand :: Subcommand,
+        .stop_on_error :: Bool,
     };
     
     const parse = () -> t => (
+        let mut stop_on_error = true;
         let subcommand = unwindable subcommand (
             for i in 1..std.sys.argc() do (
                 let arg = std.sys.argv_at(i);
                 if arg == "lex" or arg == "tokenize" then (
                     unwind subcommand (:Tokenize LexerArgs.parse(i + 1));
                 );
+                if arg == "--continue-on-error" then (
+                    stop_on_error = false;
+                    continue;
+                );
                 panic("Unexpected arg " + arg);
             );
             panic("No default subcommand")
         );
         {
-            .subcommand
+            .stop_on_error,
+            .subcommand,
         }
     );
 );
 
 let args = Args.parse();
-# dbg.print(args);
+with Error.HandlerContext = Error.init_handler(.stop_on_error = args.stop_on_error);
 match args.subcommand with (
     | :Tokenize { .paths } => (
         for &path in ArrayList.iter(&paths) do (

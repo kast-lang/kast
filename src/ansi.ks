@@ -91,9 +91,8 @@ const ansi = (
     );
     
     const write_code = (code :: String) => (
-        const begin = (Char.from_code(0x1b) |> to_string) + "[";
         let output = @current Output;
-        output.write(begin);
+        output.write("\x1b[");
         output.write(code);
         # if multiple code can separate with ";"
         output.write("m");

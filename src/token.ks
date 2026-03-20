@@ -34,6 +34,7 @@ const TokenShape = newtype (
     }
     | :String {
         .raw :: String,
+        .contents :: String,
     }
     | :Number {
         .raw :: String,
@@ -77,10 +78,15 @@ impl TokenShape as module = (
                     () => output.write(raw),
                 );
             )
-            | :String { .raw, ... } => (
+            | :String { .raw, .contents, ... } => (
                 ansi.with_mode(
                     :Green,
                     () => output.write(raw),
+                );
+                output.write("\n  contents=");
+                ansi.with_mode(
+                    :Green,
+                    () => output.write(contents),
                 );
             )
             | :Error { .raw, ... } => (
