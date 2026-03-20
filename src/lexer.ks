@@ -10,6 +10,25 @@ const is_hex_digit = (c :: Char) -> Bool => (
     or ('A' <= c and c <= 'F')
 );
 
+const next_is = ( reader :: &Reader, c :: Char) -> Bool => (
+    match reader |> Reader.peek with (
+        | :Some peek => c == peek
+        | :None => false
+    )
+);
+
+const next_two_are = (reader :: &Reader, c1 :: Char, c2 :: Char) -> Bool => with_return (
+    match reader |> Reader.peek with (
+        | :Some c => if c != c1 then return false
+        | :None => return false
+    );
+    match reader |> Reader.peek2 with (
+        | :Some c => if c != c2 then return false
+        | :None => return false
+    );
+    true
+);
+
 const panic = "NO PANIC";
 
 module:
@@ -259,10 +278,9 @@ impl Lexer as module = (
         const read_hex_number :: ReadFn = lexer => with_return (
             let reader = &mut lexer^.reader;
             let start = reader^.position.index;
-            let c = Reader.peek(&reader^) |> Option.unwrap_or_else(() => return :None);
-            if c != '0' then return :None;
-            let c2 = Reader.peek2(&reader^) |> Option.unwrap_or_else(() => return :None);
-            if c2 != 'x' then return :None;
+            if not next_two_are(&reader^, '0', 'x') then (
+                return :None;
+            );
             Reader.advance(reader);
             Reader.advance(reader);
             reader |> Reader.read_while(is_hex_digit);
@@ -301,10 +319,56 @@ impl Lexer as module = (
             }
         );
         
+        const read_line_comment :: ReadFn = lexer => with_return (
+            let reader = &mut lexer^.reader;
+            if not next_is(&reader^, '#') then (
+                return :None;
+            );
+            let start = reader^.position.index;
+            reader |> Reader.read_while(c => c != '\n');
+            let end = reader^.position.index;
+            :Some :Comment {
+                .raw = String.substring(reader^.contents, start, end - start),
+                .ty = :Line,
+            }
+        );
+        
+        const read_block_comment :: ReadFn = lexer => with_return (
+            let reader = &mut lexer^.reader;
+            if not next_two_are(&reader^, '(', '#') then (
+                return :None
+            );
+            let start = reader^.position.index;
+            let mut nest_depth :: Int32 = 0;
+            loop (
+                if next_two_are(&reader^, '(', '#') then (
+                    Reader.advance(reader);
+                    Reader.advance(reader);
+                    nest_depth += 1;
+                    continue;
+                );
+                if next_two_are(&reader^, '#', ')') then (
+                    nest_depth -= 1;
+                    Reader.advance(reader);
+                    Reader.advance(reader);
+                    if nest_depth == 0 then break;
+                    continue;
+                );
+                Reader.advance(reader);
+            );
+            let end = reader^.position.index;
+            :Some :Comment {
+                .raw = String.substring(reader^.contents, start, end - start),
+                .ty = :Line,
+            }
+        );
+        
         const read_fns :: ArrayList.t[ReadFn] = (
             let mut read_fns = ArrayList.new();
             &mut read_fns |> ArrayList.push_back(skip_whitespace);
             &mut read_fns |> ArrayList.push_back(read_eof);
+            &mut read_fns |> ArrayList.push_back(read_line_comment);
+            &mut read_fns |> ArrayList.push_back(read_block_comment);
             &mut read_fns |> ArrayList.push_back(read_punct);
             &mut read_fns |> ArrayList.push_back(read_ident);
             &mut read_fns |> ArrayList.push_back(read_string);

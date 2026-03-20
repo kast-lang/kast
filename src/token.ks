@@ -27,6 +27,10 @@ impl Token as module = (
 );
 
 const TokenShape = newtype (
+    | :Comment {
+        .raw :: String,
+        .ty :: (:Line | :Block),
+    }
     | :Punct {
         .raw :: String,
     }
@@ -62,6 +66,21 @@ impl TokenShape as module = (
     const print = (self :: TokenShape) => (
         let output = @current Output;
         match self with (
+            | :Comment { .raw, ... } => (
+                for c in String.iter(raw) do (
+                    if c == '\n' then (
+                        ansi.with_mode(
+                            :Cyan,
+                            () => output.write("\\n"),
+                        );
+                    ) else (
+                        ansi.with_mode(
+                            :Gray,
+                            () => output.write(to_string(c)),
+                        );
+                    );
+                );
+            )
             | :Punct { .raw, ... } => (
                 ansi.with_mode(
                     :Italic,
@@ -85,7 +104,7 @@ impl TokenShape as module = (
                     :Green,
                     () => output.write(raw),
                 );
-                ansi.with_mode (
+                ansi.with_mode(
                     :Yellow,
                     () => output.write(" contents="),
                 );
