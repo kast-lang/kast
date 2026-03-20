@@ -1,6 +1,4 @@
 {
-  description = "A devShell example";
-
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     kast.url = "github:kast-lang/kast";
@@ -31,7 +29,7 @@
             fd
           ];
           shellHook = ''
-            echo Welcome to Kast self hosted devShell
+            echo Hello from Kast dev shell
             export SELF_KAST_ARGS="--quiet --target js"
           '';
         };
