@@ -4,9 +4,6 @@ use (import "./source.ks").*;
 use (import "./lexer.ks").*;
 use (import "./token.ks").*;
 
-@eval dbg.print(Token);
-dbg.print(Token);
-
 with Output = stdout();
 
 const Args = (
@@ -64,7 +61,9 @@ match args.subcommand with (
             let mut lexer = Lexer.new(Source.read_file(path));
             loop (
                 let token = &lexer |> Lexer.peek;
-                token |> Token.print;
+                # THIS IS HACK BECAUSE OF BUG IN KAST
+                let f :: Token -> () = Token.print;
+                token |> f;
                 (@current Output).write("\n");
                 if token.shape is :Eof then break;
                 Lexer.advance(&mut lexer);
