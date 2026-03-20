@@ -531,6 +531,17 @@ and get_field ~span ~state ~(result_ty : ty) ~obj_mut obj member : evaled_place_
          | Some obj_mod ->
            return <| get_field ~state ~span ~result_ty ~obj_mut obj_mod member
          | None ->
+           Log.trace (fun log -> log "value=%a" Value.print obj);
+           state.cast_impls.as_module
+           |> Types.ValueMap.iter (fun key _ ->
+             Log.trace (fun log ->
+               log
+                 "Existing cast as module for %a, eq=%b"
+                 Value.print
+                 key
+                 (Inference.CompareRecurseCache.with_cache
+                    (Inference.CompareRecurseCache.create ())
+                    (fun () -> Types.equal_value key obj))));
            Error.error span "%a doesnt have fields" Value.Shape.print obj_shape;
            error_place result_ty)
     in
@@ -1113,6 +1124,7 @@ and await_fully_inferred value : Value.Shape.t =
 and impl_cast_as_module : span:span -> state -> value:value -> impl:value -> unit =
   fun ~span state ~value ~impl ->
   let _ : Value.shape = value |> await_fully_inferred in
+  Log.trace (fun log -> log "Adding impl cast %a as module" Value.print value);
   state.cast_impls.as_module
   <- state.cast_impls.as_module
      |> Types.ValueMap.update value (fun current_impl ->

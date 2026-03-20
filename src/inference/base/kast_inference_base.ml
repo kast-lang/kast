@@ -122,15 +122,11 @@ module Var = struct
       =
       find_root var
     in
-    if false
-    then
-      fprintf
-        fmt
-        "%a%a="
-        Id.print
-        recurse_id
-        (List.print Span.print)
-        (spans |> SpanSet.to_list);
+    if true
+    then (
+      fprintf fmt "%a" Id.print recurse_id;
+      (* fprintf fmt "%a" (List.print Span.print) (spans |> SpanSet.to_list); *)
+      fprintf fmt "=");
     match inferred with
     | None -> fprintf fmt "_"
     | Some inferred -> print_inferred fmt inferred

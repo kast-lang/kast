@@ -27,7 +27,7 @@ end
 module RecordingTable = Hashtbl.Make (Recording)
 
 type lexer =
-  { mutable peeked : Token.t Queue.t
+  { peeked : Token.t Queue.t
   ; rules : rule list
   ; reader : Reader.t
   ; source : source
@@ -214,9 +214,44 @@ module DefaultRules = struct
                 | 't' -> '\t'
                 | '\'' -> '\''
                 | '"' -> '"'
+                | 'x' ->
+                  Reader.advance lexer.reader;
+                  let c1 =
+                    match Reader.peek lexer.reader with
+                    | Some c ->
+                      Reader.advance lexer.reader;
+                      c
+                    | None ->
+                      error
+                        "Expected two hex digits, got @{<italic><eof>@} @{<dim>at %a@}"
+                        Position.print
+                        lexer.reader.position
+                  in
+                  let c2 =
+                    match Reader.peek lexer.reader with
+                    | Some c ->
+                      Reader.advance lexer.reader;
+                      c
+                    | None ->
+                      error
+                        "Expected two hex digits, got @{<italic><eof>@} @{<dim>at %a@}"
+                        Position.print
+                        lexer.reader.position
+                  in
+                  if not (Char.is_hex_digit c1 && Char.is_hex_digit c2)
+                  then
+                    error
+                      "Expected two hex digits, got %C and %C @{<dim>at %a@}"
+                      c1
+                      c2
+                      Position.print
+                      lexer.reader.position;
+                  let s = make_string "0x%c%c" c1 c2 in
+                  Buffer.add_char contents (Char.chr (int_of_string s));
+                  return ()
                 | _ ->
                   error
-                    "Incorrect escape charater %C @{<italic><eof>@} @{<dim>at %a@}"
+                    "Incorrect escape charater %C @{<dim>at %a@}"
                     c
                     Position.print
                     lexer.reader.position
