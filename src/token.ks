@@ -1,4 +1,4 @@
-const Ansi = import "./ansi.ks";
+use (import "./ansi.ks").*;
 use (import "./output.ks").*;
 use (import "./span.ks").*;
 
@@ -15,7 +15,7 @@ impl Token as module = (
     const print = (self :: Token) => (
         let output = @current Output;
         self.shape |> TokenShape.print;
-        Ansi.with_mode(
+        ansi.with_mode(
             :Dim,
             () => (
                 output.write(" at ");
@@ -36,50 +36,51 @@ const TokenShape = newtype (
         .raw :: String,
     }
     | :Eof
+    | :Error {
+        .raw :: String,
+    }
 );
 
 impl TokenShape as module = (
     module:
     
     const raw = (self :: TokenShape) -> String => match self with (
-        | :Punct { .raw, ... } => (
-            raw
-        )
-        | :Ident { .raw, ... } => (
-            raw
-        )
-        | :String { .raw, ... } => (
-            raw
-        )
-        | :Eof => (
-            ""
-        
-        )
+        | :Punct { .raw, ... } => raw
+        | :Ident { .raw, ... } => raw
+        | :String { .raw, ... } => raw
+        | :Error { .raw, ... } => raw
+        | :Eof => ""
     );
     
     const print = (self :: TokenShape) => (
         let output = @current Output;
         match self with (
             | :Punct { .raw, ... } => (
-                Ansi.with_mode(
+                ansi.with_mode(
                     :Italic,
                     () => output.write(raw),
                 );
             )
             | :Ident { .raw, ... } => (
-                Ansi.with_mode(
+                ansi.with_mode(
                     :Under,
                     () => output.write(raw),
                 );
             )
             | :String { .raw, ... } => (
-                Ansi.with_mode(
+                ansi.with_mode(
                     :Green,
                     () => output.write(raw),
                 );
             )
+            | :Error { .raw, ... } => (
+                ansi.with_mode(
+                    :Red,
+                    () => output.write(raw),
+                );
+            )
             | :Eof => (
-                Ansi.with_mode(
+                ansi.with_mode(
                     :Italic,
                     () => output.write("<eof>"),
                 );

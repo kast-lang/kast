@@ -1,6 +1,8 @@
+use (import "./span.ks").*;
 use (import "./source.ks").*;
 use (import "./reader.ks").*;
 use (import "./token.ks").*;
+use (import "./error.ks").*;
 
 module:
 
@@ -138,6 +140,21 @@ impl Lexer as module = (
                 };
             );
         );
-        panic("None of the read fns returned Some")
+        unexpected_char(lexer, "None of the read fns returned Some")
+    );
+    
+    const unexpected_char = (lexer :: &mut Lexer, message :: String) -> Token => (
+        let char = Reader.peek(&lexer^.reader) |> Option.unwrap;
+        let span = Span.single_char(
+            .position = lexer^.reader.position,
+            .char,
+            .uri = lexer^.source.uri,
+        );
+        Error.report(span, message);
+        Reader.advance(&mut lexer^.reader);
+        {
+            .shape = :Error { .raw = to_string(char) },
+            .span,
+        }
     );
 );

@@ -29,6 +29,12 @@ impl Position as module = (
         );
     );
 
+    const advance_copy = (pos :: Position, c :: Char) -> Position => (
+        let mut new_pos = { ...pos };
+        advance(&mut new_pos, c);
+        new_pos
+    );
+
     const print = (self :: Position) => (
         let output = @current Output;
         output.write(to_string(self.line + 1));

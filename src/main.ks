@@ -1,8 +1,11 @@
-const ansi = import "./ansi.ks";
+use (import "./ansi.ks").*;
 use (import "./output.ks").*;
 use (import "./source.ks").*;
 use (import "./lexer.ks").*;
 use (import "./token.ks").*;
+
+@eval dbg.print(Token);
+dbg.print(Token);
 
 with Output = stdout();
 

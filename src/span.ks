@@ -22,4 +22,14 @@ impl Span as module = (
         output.write("-");
         self.end |> Position.print;
     );
+
+    const single_char = (
+        .position :: Position,
+        .char :: Char,
+        .uri :: Uri,
+    ) -> Span => {
+        .start = position,
+        .end = Position.advance_copy(position, char),
+        .uri,
+    };
 );
