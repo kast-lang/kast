@@ -1,3 +1,4 @@
+use (import "./common.ks").*;
 use (import "./ansi.ks").*;
 use (import "./output.ks").*;
 use (import "./span.ks").*;
@@ -33,6 +34,7 @@ const TokenShape = newtype (
         .raw :: String,
     }
     | :String {
+        .delimeter :: String,
         .raw :: String,
         .contents :: String,
     }
@@ -78,15 +80,18 @@ impl TokenShape as module = (
                     () => output.write(raw),
                 );
             )
-            | :String { .raw, .contents, ... } => (
+            | :String { .raw, .delimeter, .contents, ... } => (
                 ansi.with_mode(
                     :Green,
                     () => output.write(raw),
                 );
-                output.write("\n  contents=");
+                ansi.with_mode (
+                    :Yellow,
+                    () => output.write(" contents="),
+                );
                 ansi.with_mode(
                     :Green,
-                    () => output.write(contents),
+                    () => output.write(escape_string(contents, .delimeter = "\"")),
                 );
             )
             | :Error { .raw, ... } => (

@@ -244,6 +244,7 @@ impl Lexer as module = (
             Reader.advance(reader);
             let end = reader^.position.index;
             :Some :String {
+                .delimeter = to_string(delim),
                 .raw = String.substring(reader^.contents, start, end - start),
                 .contents,
             }
