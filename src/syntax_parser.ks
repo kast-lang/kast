@@ -13,22 +13,6 @@ module:
 const SyntaxParser = (
     module:
     
-    const error = [T] (span, message) -> T => (
-        # TODO
-        let output = @current Output;
-        ansi.with_mode(
-            :Red,
-            () => (
-                output.write("ERROR at ");
-                span |> Span.print;
-                output.write(":\n");
-                message();
-                output.write("\n\n");
-            ),
-        );
-        std.sys.exit(-1)
-    );
-    
     const expect_and_advance = (
         tokens :: &mut TokenStream.t,
         expected_raw :: String,
@@ -36,7 +20,7 @@ const SyntaxParser = (
         let actual = &tokens^ |> TokenStream.peek;
         let actual_raw = actual.shape |> Token.Shape.raw;
         if actual_raw != expected_raw then (
-            error(
+            Error.report_and_unwind(
                 actual.span,
                 () => (
                     let output = @current Output;
@@ -87,7 +71,7 @@ const SyntaxParser = (
             return :Always;
         );
         let peek = &token_stream^ |> TokenStream.peek;
-        error(
+        Error.report_and_unwind(
             peek.span,
             () => (
                 let output = @current Output;
@@ -142,7 +126,7 @@ const SyntaxParser = (
             token_stream |> TokenStream.advance;
             raw |> parse
         ) else (
-            error(
+            Error.report_and_unwind(
                 peek.span,
                 () => (
                     let output = @current Output;
@@ -164,7 +148,7 @@ const SyntaxParser = (
                 Log.trace("<-");
                 if not top_level^.first then (
                     let peek = &token_stream^ |> TokenStream.peek;
-                    error(
+                    Error.report_and_unwind(
                         peek.span,
                         () => (
                             let output = @current Output;
@@ -213,7 +197,7 @@ const SyntaxParser = (
                         :GreaterOrEqual read_priority(token_stream)
                     ) else (
                         let peek = &token_stream^ |> TokenStream.peek;
-                        error(
+                        Error.report_and_unwind(
                             peek.span,
                             () => (
                                 let output = @current Output;
@@ -243,7 +227,7 @@ const SyntaxParser = (
                             token_stream |> TokenStream.advance;
                             contents
                         ) else (
-                            error(
+                            Error.report_and_unwind(
                                 peek.span,
                                 () => (
                                     let output = @current Output;
@@ -260,7 +244,7 @@ const SyntaxParser = (
                 )
             )
             | _ => (
-                error(
+                Error.report_and_unwind(
                     peek.span,
                     () => (
                         let output = @current Output;
@@ -283,7 +267,7 @@ const SyntaxParser = (
                 token_stream |> TokenStream.advance;
                 contents
             ) else (
-                error(
+                Error.report_and_unwind(
                     peek.span,
                     () => (
                         let output = @current Output;
@@ -309,7 +293,7 @@ const SyntaxParser = (
         while not token_stream |> peek_is(";") do (
             if top_level.right_assoc then (
                 let peek = &token_stream^ |> TokenStream.peek;
-                error(
+                Error.report_and_unwind(
                     peek.span,
                     () => (
                         let output = @current Output;
@@ -351,6 +335,16 @@ const SyntaxParser = (
         let mut result = ArrayList.new();
         loop (
             let peek = &token_stream^ |> TokenStream.peek;
+            let index_before = token_stream^.index;
+            with Error.UnwindableHandler = {
+                .unwind_on_error = [T] () => (
+                    if token_stream^.index == index_before then (
+                        Log.debug("skipping " + escape_string(Token.Shape.raw(peek.shape)));
+                        token_stream |> TokenStream.advance;
+                    );
+                    continue
+                ),
+            };
             Log.trace("parse_syntax_rules: peek = " + escape_string(Token.Shape.raw(peek.shape)));
             if peek.shape is :Eof then break;
             if peek.shape is :Comment _ then (
