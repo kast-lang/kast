@@ -32,6 +32,7 @@ const reflection = include "./reflection.ks";
 const range = include "./range.ks";
 const iter = include "./iter.ks";
 const Option = include "./option.ks";
+const Result = include "./result.ks";
 const dbg = include "./dbg.ks";
 const convert = include "./convert.ks";
 const io = include "./io.ks";
