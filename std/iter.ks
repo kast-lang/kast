@@ -9,6 +9,26 @@ const ReversibleIterable = [Item] newtype {
     .rev :: () -> ReversibleIterable[Item],
 };
 
+const any = [T] (
+    iter :: Iterable[T],
+    predicate :: T -> Bool,
+) -> Bool => with_return (
+    for x in iter do (
+        if predicate(x) then return true;
+    );
+    false
+);
+
+const all = [T] (
+    iter :: Iterable[T],
+    predicate :: T -> Bool,
+) -> Bool => with_return (
+    for x in iter do (
+        if not predicate(x) then return false;
+    );
+    true
+);
+
 const map = [A, B] (
     iter :: Iterable[A],
     f :: A -> B,

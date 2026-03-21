@@ -187,6 +187,10 @@ impl String as module = (
             | :None => s
         )
     );
+
+    const is_whitespace = (s :: String) -> Bool => (
+        iter(s) |> std.iter.all(Char.is_whitespace)
+    );
     
     const FromString = [Self] newtype {
         .from_string :: String -> Self
