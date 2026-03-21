@@ -16,6 +16,13 @@ type async_mode =
   | BasedOnInference
 
 let async_fns = BasedOnInference
+let use_numbers_instead_of_symbols = ref true
+
+let gen_symbol name =
+  if !use_numbers_instead_of_symbols
+  then make_string "Kast.gen_symbol(%a)" String.print_debug name
+  else make_string "Symbol(%a)" String.print_debug name
+;;
 
 type ref_var =
   { name : JsAst.name
@@ -910,15 +917,7 @@ module Impl = struct
         [ { shape =
               Let
                 { var = name
-                ; value =
-                    { shape =
-                        Raw
-                          (make_string
-                             "Kast.gen_symbol(%a)"
-                             String.print_debug
-                             (Label.get_name label))
-                    ; span = None
-                    }
+                ; value = { shape = Raw (gen_symbol (Label.get_name label)); span = None }
                 ; usage = { can_be_deleted = false }
                 }
           ; span = None
@@ -1317,7 +1316,7 @@ module Impl = struct
         let token_var = JsAst.gen_name ~original:None "unwind_token" in
         let catch_var = JsAst.gen_name ~original:None "e" in
         let result = JsAst.gen_name ~original:None "result" in
-        let_var token_var (calculate { shape = Raw "Kast.gen_symbol()"; span });
+        let_var token_var (calculate { shape = Raw (gen_symbol "unwind_token"); span });
         let_var result (NoEffect { shape = Undefined; span = None });
         execute
           { shape =
