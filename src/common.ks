@@ -58,6 +58,8 @@ const escape_string_contents = (s :: String, .delimeter :: String) -> String => 
     result
 );
 
-const escape_string = (s :: String, .delimeter :: String) -> String => (
+const escape_string_with = (s :: String, .delimeter :: String) -> String => (
     delimeter + escape_string_contents(s, .delimeter) + delimeter
 );
+
+const escape_string = s => escape_string_with(s, .delimeter = "\"");

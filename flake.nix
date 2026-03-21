@@ -30,7 +30,7 @@
           ];
           shellHook = ''
             echo Hello from Kast dev shell
-            export SELF_KAST_ARGS="--quiet --target js"
+            export SELF_KAST_ARGS="--use-numbers-instead-of-symbols false --quiet --target js"
           '';
         };
       });

@@ -34,7 +34,6 @@ const panic = "NO PANIC";
 module:
 
 const Lexer = newtype {
-    .peeked :: Option.t[Token],
     .source :: Source,
     .reader :: Reader,
 };
@@ -42,26 +41,13 @@ const Lexer = newtype {
 impl Lexer as module = (
     module:
     
-    const new = (source :: Source) -> Lexer => (
-        let mut lexer = {
-            .peeked = :None,
-            .source,
-            .reader = Reader.new(source.contents),
-        };
-        advance(&mut lexer);
-        lexer
-    );
+    const new = (source :: Source) -> Lexer => {
+        .source,
+        .reader = Reader.new(source.contents),
+    };
     
-    const peek = (lexer :: &Lexer) -> Token => (
-        lexer^.peeked |> Option.unwrap
-    );
-    
-    const advance = (lexer :: &mut Lexer) => (
-        lexer^.peeked = :Some read_next(lexer);
-    );
-    
-    const read_next = (lexer :: &mut Lexer) -> Token => with_return (
-        const ReadFn = type (&mut Lexer -> Option.t[TokenShape]);
+    const next = (lexer :: &mut Lexer) -> Token.t => with_return (
+        const ReadFn = type (&mut Lexer -> Option.t[Token.Shape.t]);
         const skip_whitespace :: ReadFn = lexer => (
             let reader = &mut lexer^.reader;
             while Reader.peek(&reader^) is :Some c do (
@@ -121,8 +107,10 @@ impl Lexer as module = (
             Reader.advance(reader);
             reader |> Reader.read_while(c => Char.is_ascii_alphanumeric(c) or c == '_');
             let end = reader^.position.index;
+            let raw = String.substring(reader^.contents, start, end - start);
             :Some :Ident {
-                .raw = String.substring(reader^.contents, start, end - start),
+                .raw,
+                .name = raw,
             }
         );
         
@@ -362,6 +350,20 @@ impl Lexer as module = (
                 .ty = :Line,
             }
         );
+
+        const read_raw_keyword :: ReadFn = lexer => with_return (
+            let reader = &mut lexer^.reader;
+            if not &reader^ |> next_is('@') then (
+                return :None;
+            );
+            let start = reader^.position.index;
+            reader |> Reader.advance;
+            let _ = read_ident(lexer);
+            let end = reader^.position.index;
+            :Some :Punct { 
+                .raw = String.substring(reader^.contents, start, end - start),
+            }
+        );
         
         const read_fns :: ArrayList.t[ReadFn] = (
             let mut read_fns = ArrayList.new();
@@ -369,6 +371,7 @@ impl Lexer as module = (
             &mut read_fns |> ArrayList.push_back(read_eof);
             &mut read_fns |> ArrayList.push_back(read_line_comment);
             &mut read_fns |> ArrayList.push_back(read_block_comment);
+            &mut read_fns |> ArrayList.push_back(read_raw_keyword);
             &mut read_fns |> ArrayList.push_back(read_punct);
             &mut read_fns |> ArrayList.push_back(read_ident);
             &mut read_fns |> ArrayList.push_back(read_string);
@@ -378,7 +381,7 @@ impl Lexer as module = (
         );
         
         for &read_fn in ArrayList.iter(&read_fns) do (
-            let start = { ...lexer^.reader.position };
+            let start = lexer^.reader.position;
             if read_fn(lexer) is :Some shape then (
                 let end = lexer^.reader.position;
                 return {
@@ -390,7 +393,7 @@ impl Lexer as module = (
         unexpected_char(lexer, "None of the read fns returned Some")
     );
     
-    const unexpected_char = (lexer :: &mut Lexer, message :: String) -> Token => (
+    const unexpected_char = (lexer :: &mut Lexer, message :: String) -> Token.t => (
         let char = Reader.peek(&lexer^.reader);
         let span = Span.single_char(
             .position = lexer^.reader.position,

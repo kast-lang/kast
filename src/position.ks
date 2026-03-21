@@ -18,6 +18,8 @@ impl Position as module = (
     };
 
     const advance = (pos :: &mut Position, c :: Char) => (
+        # TODO proper copy in kast
+        pos^ = { ...pos^ };
         pos^.index += Char.string_encoding_len(c);
         if c == '\n' then (
             pos^.line += 1;
@@ -30,7 +32,7 @@ impl Position as module = (
     );
 
     const advance_copy = (pos :: Position, c :: Char) -> Position => (
-        let mut new_pos = { ...pos };
+        let mut new_pos = pos;
         advance(&mut new_pos, c);
         new_pos
     );

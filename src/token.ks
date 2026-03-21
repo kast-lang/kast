@@ -5,17 +5,17 @@ use (import "./span.ks").*;
 
 module:
 
-const Token = newtype {
-    .shape :: TokenShape,
-    .span :: Span,
-};
-
-impl Token as module = (
+const Token = (
     module:
     
-    const print = (self :: Token) => (
+    const t = newtype {
+        .shape :: Token.Shape.t,
+        .span :: Span,
+    };
+    
+    const print = (self :: Token.t) => (
         let output = @current Output;
-        self.shape |> TokenShape.print;
+        self.shape |> Token.Shape.print;
         ansi.with_mode(
             :Dim,
             () => (
@@ -24,107 +24,109 @@ impl Token as module = (
             )
         );
     );
-);
-
-const TokenShape = newtype (
-    | :Comment {
-        .raw :: String,
-        .ty :: (:Line | :Block),
-    }
-    | :Punct {
-        .raw :: String,
-    }
-    | :Ident {
-        .raw :: String,
-    }
-    | :String {
-        .delimeter :: String,
-        .raw :: String,
-        .contents :: String,
-    }
-    | :Number {
-        .raw :: String,
-    }
-    | :Eof
-    | :Error {
-        .raw :: String,
-    }
-);
-
-impl TokenShape as module = (
-    module:
     
-    const raw = (self :: TokenShape) -> String => match self with (
-        | :Punct { .raw, ... } => raw
-        | :Ident { .raw, ... } => raw
-        | :String { .raw, ... } => raw
-        | :Number { .raw, ... } => raw
-        | :Error { .raw, ... } => raw
-        | :Eof => ""
-    );
-    
-    const print = (self :: TokenShape) => (
-        let output = @current Output;
-        match self with (
-            | :Comment { .raw, ... } => (
-                for c in String.iter(raw) do (
-                    if c == '\n' then (
-                        ansi.with_mode(
-                            :Cyan,
-                            () => output.write("\\n"),
-                        );
-                    ) else (
-                        ansi.with_mode(
-                            :Gray,
-                            () => output.write(to_string(c)),
+    const Shape = (
+        module:
+        
+        const t = newtype (
+            | :Comment {
+                .raw :: String,
+                .ty :: (:Line | :Block),
+            }
+            | :Punct {
+                .raw :: String,
+            }
+            | :Ident {
+                .raw :: String,
+                .name :: String,
+            }
+            | :String {
+                .delimeter :: String,
+                .raw :: String,
+                .contents :: String,
+            }
+            | :Number {
+                .raw :: String,
+            }
+            | :Eof
+            | :Error {
+                .raw :: String,
+            }
+        );
+        
+        const raw = (self :: Token.Shape.t) -> String => match self with (
+            | :Punct { .raw, ... } => raw
+            | :Comment { .raw, ... } => raw
+            | :Ident { .raw, ... } => raw
+            | :String { .raw, ... } => raw
+            | :Number { .raw, ... } => raw
+            | :Error { .raw, ... } => raw
+            | :Eof => ""
+        );
+        
+        const print = (self :: Token.Shape.t) => (
+            let output = @current Output;
+            match self with (
+                | :Comment { .raw, ... } => (
+                    for c in String.iter(raw) do (
+                        if c == '\n' then (
+                            ansi.with_mode(
+                                :Cyan,
+                                () => output.write("\\n"),
+                            );
+                        ) else (
+                            ansi.with_mode(
+                                :Gray,
+                                () => output.write(to_string(c)),
+                            );
                         );
                     );
-                );
-            )
-            | :Punct { .raw, ... } => (
-                ansi.with_mode(
-                    :Italic,
-                    () => output.write(raw),
-                );
-            )
-            | :Ident { .raw, ... } => (
-                ansi.with_mode(
-                    :Under,
-                    () => output.write(raw),
-                );
-            )
-            | :Number { .raw, ... } => (
-                ansi.with_mode(
-                    :Italic,
-                    () => output.write(raw),
-                );
-            )
-            | :String { .raw, .delimeter, .contents, ... } => (
-                ansi.with_mode(
-                    :Green,
-                    () => output.write(raw),
-                );
-                ansi.with_mode(
-                    :Yellow,
-                    () => output.write(" contents="),
-                );
-                ansi.with_mode(
-                    :Green,
-                    () => output.write(escape_string(contents, .delimeter = "\"")),
-                );
-            )
-            | :Error { .raw, ... } => (
-                ansi.with_mode(
-                    :Red,
-                    () => output.write(raw),
-                );
-            )
-            | :Eof => (
-                ansi.with_mode(
-                    :Italic,
-                    () => output.write("<eof>"),
-                );
-            )
+                )
+                | :Punct { .raw, ... } => (
+                    ansi.with_mode(
+                        :Italic,
+                        () => output.write(raw),
+                    );
+                )
+                | :Ident { .raw, ... } => (
+                    ansi.with_mode(
+                        :Under,
+                        () => output.write(raw),
+                    );
+                )
+                | :Number { .raw, ... } => (
+                    ansi.with_mode(
+                        :Italic,
+                        () => output.write(raw),
+                    );
+                )
+                | :String { .raw, .delimeter, .contents, ... } => (
+                    ansi.with_mode(
+                        :Green,
+                        () => output.write(raw),
+                    );
+                    ansi.with_mode(
+                        :Yellow,
+                        () => output.write(" contents="),
+                    );
+                    ansi.with_mode(
+                        :Green,
+                        () => output.write(escape_string_with(contents, .delimeter = "\"")),
+                    );
+                )
+                | :Error { .raw, ... } => (
+                    ansi.with_mode(
+                        :Red,
+                        () => output.write(raw),
+                    );
+                )
+                | :Eof => (
+                    ansi.with_mode(
+                        :Italic,
+                        () => output.write("<eof>"),
+                    );
+                )
+            );
         );
     );
 );
