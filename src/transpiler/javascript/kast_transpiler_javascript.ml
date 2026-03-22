@@ -15,7 +15,7 @@ type async_mode =
   | Always
   | BasedOnInference
 
-let async_fns = BasedOnInference
+let async_fns = ref BasedOnInference
 let use_numbers_instead_of_symbols = ref true
 
 let gen_symbol name =
@@ -194,7 +194,7 @@ module Impl = struct
       compiled |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
     in
     let async =
-      match async_fns with
+      match !async_fns with
       | Always -> true
       | Never -> false
       | BasedOnInference ->
@@ -1015,7 +1015,7 @@ module Impl = struct
 
   and call ~span (f : expr) (arg : expr) : no_effect_expr =
     let async =
-      match async_fns with
+      match !async_fns with
       | Always -> true
       | Never -> false
       | BasedOnInference ->

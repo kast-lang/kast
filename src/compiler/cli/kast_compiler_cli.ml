@@ -40,6 +40,14 @@ module Args = struct
     | "--use-numbers-instead-of-symbols" :: value :: rest ->
       Kast_transpiler_javascript.use_numbers_instead_of_symbols := bool_of_string value;
       parse rest
+    | "--async" :: value :: rest ->
+      (Kast_transpiler_javascript.async_fns
+       := match value with
+          | "never" -> Kast_transpiler_javascript.Never
+          | "always" -> Always
+          | "inference" -> BasedOnInference
+          | _ -> fail "incorrect async mode");
+      parse rest
     | path :: rest when not (path |> String.starts_with ~prefix:"-") ->
       default (Uri.file path), ~rest
     | rest -> default Uri.stdin, ~rest
