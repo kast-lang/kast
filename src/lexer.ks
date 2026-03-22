@@ -154,25 +154,18 @@ impl Lexer as module = (
                         error("TODO interpolation")
                     ) else if c == '\\' then (
                         '\\'
-                    
                     ) else if c == 'n' then (
                         '\n'
-                    
                     ) else if c == 'r' then (
                         '\r'
-                    
                     ) else if c == 'b' then (
                         '\b'
-                    
                     ) else if c == 't' then (
                         '\t'
-                    
                     ) else if c == '\'' then (
                         '\''
-                    
                     ) else if c == '"' then (
                         '"'
-                    
                     ) else if c == 'x' then (
                         Reader.advance(reader);
                         let c1 = Reader.peek(&reader^)

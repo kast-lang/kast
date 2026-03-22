@@ -1,3 +1,5 @@
+use (import "./span.ks").*;
+
 module:
 
 const SyntaxRule = (
@@ -7,6 +9,7 @@ const SyntaxRule = (
         .name :: String,
         .priority :: Priority,
         .parts :: ArrayList.t[Part],
+        .span :: Span,
         .wrap_mode :: WrapMode,
     };
     

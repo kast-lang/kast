@@ -6,6 +6,7 @@ use (import "./lexer.ks").*;
 use (import "./token.ks").*;
 use (import "./token_stream.ks").*;
 use (import "./syntax_parser.ks").*;
+use (import "./syntax_ruleset.ks").*;
 
 with Output = stdout();
 
@@ -29,7 +30,7 @@ const Args = (
             }
         );
     );
-
+    
     const ParseSyntaxRulesArgs = (
         module:
         
@@ -51,6 +52,7 @@ const Args = (
     const Subcommand = newtype (
         | :Tokenize LexerArgs.t
         | :ParseSyntaxRules ParseSyntaxRulesArgs.t
+        | :ParseSyntaxRuleset ParseSyntaxRulesArgs.t
     );
     
     const t = newtype {
@@ -68,6 +70,9 @@ const Args = (
                 );
                 if arg == "parse_syntax_rules" then (
                     unwind subcommand (:ParseSyntaxRules ParseSyntaxRulesArgs.parse(i + 1));
+                );
+                if arg == "parse_syntax_ruleset" then (
+                    unwind subcommand (:ParseSyntaxRuleset ParseSyntaxRulesArgs.parse(i + 1));
                 );
                 if arg == "--continue-on-error" then (
                     stop_on_error = false;
@@ -107,5 +112,18 @@ match args.subcommand with (
             let rules = SyntaxParser.parse_syntax_rules(&mut token_stream);
             dbg.print(rules);
         );
+    )
+    | :ParseSyntaxRuleset { .paths } => (
+        let mut ruleset = SyntaxRuleset.new();
+        for &path in ArrayList.iter(&paths) do (
+            ansi.with_mode(:Bold, () => write("Parsing syntax rules from " + path + "\n\n"));
+            let mut lexer = Lexer.new(Source.read_file(path));
+            let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
+            let rules = SyntaxParser.parse_syntax_rules(&mut token_stream);
+            for &rule in ArrayList.iter(&rules) do (
+                &mut ruleset |> SyntaxRuleset.add(rule);
+            );
+        );
+        SyntaxRuleset.print(&ruleset);
     )
 );

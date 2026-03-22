@@ -261,6 +261,8 @@ const SyntaxParser = (
     const parse_syntax_rule = (
         token_stream :: &mut TokenStream.t,
     ) -> SyntaxRule.t => (
+        let { .start = span_start, .uri, ... } = (&token_stream^ |> TokenStream.peek).span;
+        
         let name :: String = (
             let peek = &token_stream^ |> TokenStream.peek;
             if peek.shape is :String { .contents, ... } then (
@@ -310,11 +312,18 @@ const SyntaxParser = (
             &mut parts |> ArrayList.push_back(part);
             top_level.first = false;
         );
+        
+        let span_end = (&token_stream^ |> TokenStream.peek).span.start;
         {
             .name,
             .priority = rule_priority,
             .parts,
             .wrap_mode,
+            .span = {
+                .start = span_start,
+                .end = span_end,
+                .uri,
+            }
         }
     );
     
