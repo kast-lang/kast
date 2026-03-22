@@ -8,7 +8,7 @@ const Error = (
     
     const Handler = newtype {
         .stop_on_error :: Bool,
-        .handle :: (Span, String) -> (),
+        .handle :: (Span, () -> ()) -> (),
     };
     
     const HandlerContext = @context Handler;
@@ -27,7 +27,7 @@ const Error = (
                     output.write("ERROR at ");
                     span |> Span.print;
                     output.write(":\n");
-                    output.write(message);
+                    message();
                     output.write("\n\n");
                 ),
             );
@@ -37,7 +37,11 @@ const Error = (
         )
     };
     
-    const report = (span :: Span, message :: String) => (
+    const report_msg = (span :: Span, message :: String) => (
+        report(span, () => (@current Output).write(message))
+    );
+
+    const report = (span :: Span, message :: () -> ()) => (
         (@current HandlerContext).handle(span, message);
     );
     

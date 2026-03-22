@@ -44,8 +44,12 @@ const Ast = (
     );
 
     const print_group = (self :: &Group) => (
+        print_children(&self^.children);
+    );
+
+    const print_children = (children :: &Tuple.t[Child]) => (
         Tuple.print(
-            &self^.children,
+            children,
             .open = "{",
             .delimeter = ",",
             .before_field_name = ".",

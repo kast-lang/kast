@@ -125,7 +125,7 @@ impl Lexer as module = (
                     .char = Reader.peek(&reader^),
                     .uri = lexer^.source.uri,
                 );
-                Error.report(span, message);
+                Error.report_msg(span, message);
                 let end = reader^.position.index;
                 return :Some :Error { .raw = String.substring(reader^.contents, start, end - start) }
             );
@@ -393,7 +393,7 @@ impl Lexer as module = (
             .char,
             .uri = lexer^.source.uri,
         );
-        Error.report(span, message);
+        Error.report_msg(span, message);
         Reader.advance(&mut lexer^.reader);
         {
             .shape = :Error {

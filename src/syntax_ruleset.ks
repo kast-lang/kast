@@ -11,6 +11,7 @@ const SyntaxRuleset = (
     module:
     
     const t = newtype {
+        .keywords :: OrdSet.t[String],
         .root :: Node,
     };
     
@@ -31,6 +32,7 @@ const SyntaxRuleset = (
     const Edge = newtype {
         .key :: EdgeKey,
         .target :: Node,
+        .value_priority :: SyntaxRule.PriorityFilter,
     };
     
     const EdgeMap = OrdMap.t[EdgeKey, Edge];
@@ -49,18 +51,31 @@ const SyntaxRuleset = (
     };
     
     const new = () -> SyntaxRuleset.t => {
+        .keywords = OrdSet.new(),
         .root = new_node(),
     };
     
-    const follow_edge = (node :: &mut Node, edge_key :: EdgeKey) -> &mut Node => (
-        let mut edge = &mut node^.next
+    const Context = @context type {
+        .ruleset :: &mut SyntaxRuleset.t,
+    };
+    
+    const follow_edge = (
+        node :: &mut Node,
+        edge_key :: EdgeKey,
+        .value_priority :: SyntaxRule.PriorityFilter,
+    ) -> &mut Node => (
+        let edge = &mut node^.next
             |> OrdMap.get_or_init(
                 edge_key,
                 () => {
                     .key = edge_key,
                     .target = new_node(),
+                    .value_priority
                 }
             );
+        if SyntaxRule.compare_priority_filter(value_priority, edge^.value_priority) is :Greater then (
+            edge^.value_priority = value_priority;
+        );
         &mut edge^.target
     );
     
@@ -92,11 +107,12 @@ const SyntaxRuleset = (
                     continuation(node);
                 )
                 | :Keyword keyword => (
-                    let node = follow_edge(node, :Keyword keyword);
+                    &mut (@current Context).ruleset^.keywords |> OrdSet.add(keyword);
+                    let node = follow_edge(node, :Keyword keyword, .value_priority = :Any);
                     continuation(node);
                 )
                 | :Value value => (
-                    let node = follow_edge(node, :Value);
+                    let node = follow_edge(node, :Value, .value_priority = value.priority_filter);
                     continuation(node);
                 )
                 | :Group group => (
@@ -116,12 +132,13 @@ const SyntaxRuleset = (
     );
     
     const add = (self :: &mut SyntaxRuleset.t, rule :: SyntaxRule.t) => (
+        with Context = { .ruleset = self };
         follow_parts(
             &mut self^.root,
             &rule.parts,
             .continuation = node => (
                 if node^.terminal is :Some existing_rule then (
-                    Error.report(
+                    Error.report_msg(
                         rule.span,
                         "Conflicting syntax rules "
                         + escape_string(existing_rule.name)

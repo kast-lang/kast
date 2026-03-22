@@ -92,7 +92,7 @@
 @syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\\\n" "]");
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
-@syntax "core:apply" 70 @wrap never = <- f "(" ""/"\n\t" arg:any ""/"\\\n" ")";
+@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" arg:any ""/"\\\n" ")");
 @syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\\\n" ")");
 @syntax "core:unwindable" 80 @wrap never = "unwindable" " " token " " body;
 @syntax "core:unwind" 80 @wrap never = "unwind" " " token " " value;

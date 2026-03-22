@@ -1,4 +1,5 @@
 use (import "./common.ks").*;
+use (import "./output.ks").*;
 use (import "./tuple.ks").*;
 use (import "./log.ks").*;
 use (import "./error.ks").*;
@@ -56,7 +57,7 @@ const Parser = (
         let do_parse = match peek.shape with (
             | :Comment _ => panic("unreachable")
             | :Punct _ => false
-            | :Ident _ => true
+            | :Ident { .raw, ... } => not (&ctx.ruleset.keywords |> OrdSet.contains(raw))
             | :String _ => true
             | :Number _ => true
             | :Eof => false
@@ -125,13 +126,23 @@ const Parser = (
             if &parts |> ArrayList.length != 0 then (
                 # Try to follow with value
                 if &node^.next |> OrdMap.get(:Value) is :Some edge then (
-                    if try_parse() is :MadeProgress ast then (
+                    let value = if try_parse() is :MadeProgress ast then (
+                        :Some ast
+                    ) else if edge^.value_priority is :Any then (
+                        :Some {
+                            .shape = :Empty,
+                            .span = peek.span,
+                        }
+                    ) else (
+                        :None
+                    );
+                    if value is :Some ast then (
                         Log.debug("Following with value");
                         node = &edge^.target;
                         made_progress = true;
                         &mut parts |> ArrayList.push_back(:Value ast);
                         continue;
-                    );
+                    )
                 );
             );
             
@@ -145,7 +156,21 @@ const Parser = (
         let rule = node^.terminal
             |> Option.unwrap_or_else(
                 () => (
-                    panic("Can't finish parsing")
+                    let output = @current Output;
+                    Error.report_and_unwind(
+                        (&ctx.token_stream^ |> TokenStream.peek).span,
+                        () => (
+                            let output = @current Output;
+                            output.write("Can't finish parsing");
+                            for part in &parts |> ArrayList.iter do (
+                                output.write(" ");
+                                match part^ with (
+                                    | :Keyword token => output.write(token.shape |> Token.Shape.raw)
+                                    | :Value _ => output.write("_")
+                                );
+                            );
+                        )
+                    )
                 )
             );
         
@@ -188,7 +213,7 @@ const Parser = (
                 panic("Too many values")
             );
             match { parsed_part, rule_part^ } with (
-                | {:Value ast, :Value { .name, ... }} => (
+                | { :Value ast, :Value { .name, ... } } => (
                     &mut children |> Tuple.add(name, :Value ast);
                 )
                 | { :Keyword token, :Keyword keyword } => (
@@ -197,7 +222,17 @@ const Parser = (
                     )
                 )
                 | _ => (
-                    dbg.print(children);
+                    let output = @current Output;
+                    for part in &parsed_parts |> ArrayList.iter do (
+                        output.write("- ");
+                        match part^ with (
+                            | :Keyword token => output.write(token.shape |> Token.Shape.raw)
+                            | :Value ref ast => Ast.print(ast)
+                        );
+                        output.write("\n");
+                    );
+                    # Ast.print_children(&children);
+                    # output.write("\n");
                     panic("mismatch")
                 )
             );
@@ -247,7 +282,7 @@ const Parser = (
         );
         let peek = &ctx.token_stream^ |> TokenStream.peek;
         if peek.shape is :Eof then () else (
-            Error.report(peek.span, "Expected eof");
+            Error.report_msg(peek.span, "Expected eof");
         );
         {
             .ast

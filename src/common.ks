@@ -1,5 +1,30 @@
 module:
 
+const OrdSet = (
+    use std.collections.OrdMap;
+
+    module:
+
+    const t = [T] newtype {
+        .inner :: OrdMap.t[T, type ()],
+    };
+    
+    const new = [T] () -> OrdSet.t[T] => {
+        .inner = OrdMap.new(),
+    };
+
+    const contains = [T] (self :: &OrdSet.t[T], x :: T) -> Bool => (
+        match &self^.inner |> OrdMap.get(x) with (
+            | :Some _ => true
+            | :None => false
+        )
+    );
+
+    const add = [T] (self :: &mut OrdSet.t[T], x :: T) => (
+        &mut self^.inner |> OrdMap.add(x, ());
+    );
+);
+
 const is_printable = (c :: Char) -> Bool => (
     let code = Char.code(c);
     0x20 <= code and code <= 0xffff

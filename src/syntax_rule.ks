@@ -14,11 +14,35 @@ const SyntaxRule = (
     };
     
     const Priority = Float64;
-
+    
     const PriorityFilter = newtype (
         | :Any
-        | :Greater Priority
         | :GreaterOrEqual Priority
+        | :Greater Priority
+    );
+    
+    const priority_filter_tag_idx = (self :: PriorityFilter) -> Int32 => (
+        match self with (
+            | :Any => 0
+            | :GreaterOrEqual _ => 1
+            | :Greater _ => 2
+        )
+    );
+    
+    const compare_priority_filter = (
+        a :: PriorityFilter,
+        b :: PriorityFilter,
+    ) -> std.cmp.Ordering => with_return (
+        match std.cmp.default_compare(priority_filter_tag_idx(a), priority_filter_tag_idx(b)) with (
+            | :Equal => ()
+            | ordering => return ordering
+        );
+        match { a, b } with (
+            | { :Any, :Any } => :Equal
+            | { :GreaterOrEqual a, :GreaterOrEqual b } => std.cmp.default_compare(a, b)
+            | { :Greater a, :Greater b } => std.cmp.default_compare(a, b)
+            | _ => panic("unreachable")
+        )
     );
     
     const Part = newtype (
@@ -33,20 +57,20 @@ const SyntaxRule = (
             .no_wrap :: String,
         }
     );
-
+    
     const Group = newtype {
         .name :: Option.t[String],
         .parts :: ArrayList.t[Part],
         .quantifier :: Quantifier,
         .wrap_mode :: Option.t[WrapMode],
     };
-
+    
     const Quantifier = newtype (
         | :None
         | :Optional
         # TODO | :Repeated
     );
-
+    
     const WrapMode = newtype (
         | :Never
         | :Always
