@@ -622,15 +622,15 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       substring: (ctx, s, start, len) => {
         return s.substring(start, start + len);
       },
-      iter: (ctx, s, f) => {
+      iter: async (ctx, s, f) => {
         for (let c of s) {
-          call(f, ctx, c);
+          await call(f, ctx, c);
         }
       },
-      iteri: (ctx, s, f) => {
+      iteri: async (ctx, s, f) => {
         let i = 0;
         for (let c of s) {
-          call(f, ctx, { 0: i, 1: c });
+          await call(f, ctx, { 0: i, 1: c });
           i += c.length;
         }
       },
