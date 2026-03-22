@@ -1136,7 +1136,7 @@ let native : core_syntax =
               | Ast.String { parts; _ } ->
                 parts
                 |> List.map (function
-                  | Ast.Content s -> Types.Raw s.raw
+                  | Ast.Content s -> Types.Raw s.contents
                   | Ast.Interpolate inner ->
                     let inner = C.compile Expr inner in
                     Types.Expr inner)
