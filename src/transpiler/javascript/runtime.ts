@@ -624,13 +624,13 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       },
       iter: (ctx, s, f) => {
         for (let c of s) {
-          call_sync(f, ctx, c);
+          call(f, ctx, c);
         }
       },
       iteri: (ctx, s, f) => {
         let i = 0;
         for (let c of s) {
-          call_sync(f, ctx, { 0: i, 1: c });
+          call(f, ctx, { 0: i, 1: c });
           i += c.length;
         }
       },
