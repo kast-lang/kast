@@ -1,5 +1,4 @@
 use (import "./output.ks").*;
-use (import "./ansi.ks").*;
 use (import "./span.ks").*;
 
 module:

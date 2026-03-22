@@ -1,6 +1,5 @@
 use (import "./common.ks").*;
 use (import "./log.ks").*;
-use (import "./ansi.ks").*;
 use (import "./output.ks").*;
 use (import "./error.ks").*;
 use (import "./syntax_rule.ks").*;
@@ -136,34 +135,13 @@ const SyntaxRuleset = (
         );
     );
     
-    const PrintContext = @context type {
-        .indentation :: Int32,
-    };
-    
     const print = (self :: &SyntaxRuleset.t) => (
-        with PrintContext = {
-            .indentation = 0,
-        };
         print_node(&self^.root);
-    );
-    
-    const print_indentation = () => (
-        let { .indentation, ... } = @current PrintContext;
-        let output = @current Output;
-        ansi.with_mode(
-            :Dim,
-            () => (
-                for _ in 0..indentation do (
-                    output.write("│   ");
-                );
-            ),
-        );
     );
     
     const print_node = (node :: &Node) => (
         let output = @current Output;
         if node^.terminal is :Some rule then (
-            print_indentation();
             ansi.with_mode(
                 :Green,
                 () => output.write(escape_string(rule.name)),
@@ -171,7 +149,6 @@ const SyntaxRuleset = (
             output.write("\n");
         );
         for &{ .key = _, .value = ref edge } in &node^.next |> OrdMap.iter do (
-            print_indentation();
             match edge^.key with (
                 | :Keyword keyword => (
                     ansi.with_mode(
@@ -187,10 +164,9 @@ const SyntaxRuleset = (
                 )
             );
             output.write(" {\n");
-            (@current PrintContext).indentation += 1;
+            output.inc_indentation();
             print_node(&edge^.target);
-            (@current PrintContext).indentation -= 1;
-            print_indentation();
+            output.dec_indentation();
             output.write("}\n");
         );
     );

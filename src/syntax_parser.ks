@@ -1,9 +1,9 @@
 use (import "./output.ks").*;
-use (import "./ansi.ks").*;
 use (import "./span.ks").*;
 use (import "./common.ks").*;
 use (import "./error.ks").*;
 use (import "./syntax_rule.ks").*;
+use (import "./syntax_ruleset.ks").*;
 use (import "./token.ks").*;
 use (import "./token_stream.ks").*;
 use (import "./log.ks").*;
@@ -373,5 +373,15 @@ const SyntaxParser = (
             token_stream |> expect_and_advance(";");
         );
         result
+    );
+    
+    const parse_syntax_ruleset = (
+        token_stream :: &mut TokenStream.t,
+    ) -> SyntaxRuleset.t => (
+        let mut ruleset = SyntaxRuleset.new();
+        for &rule in &parse_syntax_rules(token_stream) |> ArrayList.iter do (
+            &mut ruleset |> SyntaxRuleset.add(rule);
+        );
+        ruleset
     );
 );

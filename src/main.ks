@@ -1,12 +1,14 @@
 use (import "./error.ks").*;
-use (import "./ansi.ks").*;
 use (import "./output.ks").*;
+use (import "./position.ks").*;
 use (import "./source.ks").*;
 use (import "./lexer.ks").*;
 use (import "./token.ks").*;
 use (import "./token_stream.ks").*;
 use (import "./syntax_parser.ks").*;
 use (import "./syntax_ruleset.ks").*;
+use (import "./ast.ks").*;
+use (import "./parser.ks").*;
 
 with Output = stdout();
 
@@ -49,10 +51,43 @@ const Args = (
         );
     );
     
+    const ParseArgs = (
+        module:
+        
+        const t = newtype {
+            .ruleset_path :: Option.t[String],
+            .paths :: ArrayList.t[String],
+        };
+        
+        const parse = start_index -> t => (
+            let mut paths = ArrayList.new();
+            let mut i = start_index;
+            let mut ruleset_path = :None;
+            while i < std.sys.argc() do (
+                let arg = std.sys.argv_at(i);
+                if arg == "--ruleset" then (
+                    if i + 1 >= std.sys.argc() then (
+                        panic("Expected ruleset path");
+                    );
+                    ruleset_path = :Some std.sys.argv_at(i + 1);
+                    i += 2;
+                    continue;
+                );
+                &mut paths |> ArrayList.push_back(arg);
+                i += 1;
+            );
+            {
+                .ruleset_path,
+                .paths,
+            }
+        );
+    );
+    
     const Subcommand = newtype (
         | :Tokenize LexerArgs.t
         | :ParseSyntaxRules ParseSyntaxRulesArgs.t
         | :ParseSyntaxRuleset ParseSyntaxRulesArgs.t
+        | :Parse ParseArgs.t
     );
     
     const t = newtype {
@@ -74,6 +109,9 @@ const Args = (
                 if arg == "parse_syntax_ruleset" then (
                     unwind subcommand (:ParseSyntaxRuleset ParseSyntaxRulesArgs.parse(i + 1));
                 );
+                if arg == "parse" then (
+                    unwind subcommand (:Parse ParseArgs.parse(i + 1));
+                );
                 if arg == "--continue-on-error" then (
                     stop_on_error = false;
                     continue;
@@ -91,22 +129,23 @@ const Args = (
 
 let args = Args.parse();
 with Error.HandlerContext = Error.init_handler(.stop_on_error = args.stop_on_error);
+let output = @current Output;
 match args.subcommand with (
     | :Tokenize { .paths } => (
         for &path in ArrayList.iter(&paths) do (
-            ansi.with_mode(:Bold, () => write("Lexing " + path + "\n\n"));
+            ansi.with_mode(:Bold, () => output.write("Lexing " + path + "\n\n"));
             let mut lexer = Lexer.new(Source.read_file(path));
             loop (
                 let token = &mut lexer |> Lexer.next;
                 token |> Token.print;
-                (@current Output).write("\n");
+                output.write("\n");
                 if token.shape is :Eof then break;
             );
         );
     )
     | :ParseSyntaxRules { .paths } => (
         for &path in ArrayList.iter(&paths) do (
-            ansi.with_mode(:Bold, () => write("Parsing syntax rules from " + path + "\n\n"));
+            ansi.with_mode(:Bold, () => output.write("Parsing syntax rules from " + path + "\n\n"));
             let mut lexer = Lexer.new(Source.read_file(path));
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let rules = SyntaxParser.parse_syntax_rules(&mut token_stream);
@@ -116,7 +155,7 @@ match args.subcommand with (
     | :ParseSyntaxRuleset { .paths } => (
         let mut ruleset = SyntaxRuleset.new();
         for &path in ArrayList.iter(&paths) do (
-            ansi.with_mode(:Bold, () => write("Parsing syntax rules from " + path + "\n\n"));
+            ansi.with_mode(:Bold, () => output.write("Parsing syntax rules from " + path + "\n\n"));
             let mut lexer = Lexer.new(Source.read_file(path));
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let rules = SyntaxParser.parse_syntax_rules(&mut token_stream);
@@ -125,5 +164,38 @@ match args.subcommand with (
             );
         );
         SyntaxRuleset.print(&ruleset);
+    )
+    | :Parse { .ruleset_path, .paths } => (
+        let ruleset_path = ruleset_path |> Option.unwrap_or("tests/syntax/kast.ks");
+        ansi.with_mode(:Bold, () => output.write("Parsing syntax rules from " + ruleset_path + "\n\n"));
+        let mut lexer = Lexer.new(Source.read_file(ruleset_path));
+        let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
+        let ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
+        for &path in ArrayList.iter(&paths) do (
+            ansi.with_mode(:Bold, () => output.write("Parsing " + path + "\n\n"));
+            let source = Source.read_file(path);
+            let entire_source_span = (
+                let start = Position.beginning();
+                let mut end = start;
+                for c in source.contents |> String.iter do (
+                    &mut end |> Position.advance(c);
+                );
+                {
+                    .start,
+                    .end,
+                    .uri = source.uri,
+                }
+            );
+            let mut lexer = Lexer.new(source);
+            let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
+            let parsed = Parser.parse(
+                .ruleset,
+                .entire_source_span,
+                .uri = source.uri,
+                .token_stream = &mut token_stream,
+            );
+
+            Ast.print(&parsed.ast);
+        );
     )
 );

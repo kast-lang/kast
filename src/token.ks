@@ -1,5 +1,4 @@
 use (import "./common.ks").*;
-use (import "./ansi.ks").*;
 use (import "./output.ks").*;
 use (import "./span.ks").*;
 
@@ -105,14 +104,14 @@ const Token = (
                         :Green,
                         () => output.write(raw),
                     );
-                    ansi.with_mode(
-                        :Yellow,
-                        () => output.write(" contents="),
-                    );
-                    ansi.with_mode(
-                        :Green,
-                        () => output.write(escape_string_with(contents, .delimeter = "\"")),
-                    );
+                    # ansi.with_mode(
+                    #     :Yellow,
+                    #     () => output.write(" contents="),
+                    # );
+                    # ansi.with_mode(
+                    #     :Green,
+                    #     () => output.write(escape_string_with(contents, .delimeter = "\"")),
+                    # );
                 )
                 | :Error { .raw, ... } => (
                     ansi.with_mode(

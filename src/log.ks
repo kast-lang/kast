@@ -1,4 +1,3 @@
-use (import "./ansi.ks").*;
 use (import "./output.ks").*;
 
 module:
@@ -13,8 +12,19 @@ const Log = (
         | :Warn
         | :Error
     );
+
+    const level_idx = (level :: Level) -> Int32 => match level with (
+        | :Trace => 0
+        | :Debug => 1
+        | :Info => 2
+        | :Warn => 3
+        | :Error => 4
+    );
+
+    const min_level :: Level = :Info;
     
-    const with_level = (level :: Level, message :: String) => (
+    const with_level = (level :: Level, message :: String) => with_return (
+        if level_idx(level) < level_idx(min_level) then return;
         let { mode :: ansi.Mode, level_text } = match level with (
             | :Trace => { :Gray, "TRACE" }
             | :Debug => { :Cyan, "DEBUG" }
