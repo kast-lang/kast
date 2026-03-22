@@ -41,3 +41,55 @@ const greater = [T] (a :: T, b :: T) -> Bool => (
         | (@native "==")(target.name, "javascript") => (@native "Kast.cmp.greater")(a, b)
     )
 );
+
+const Compare = [T] type ((T, T) -> Ordering);
+
+const Ordering = newtype (
+    | :Less
+    | :Equal
+    | :Greater
+);
+
+impl Ordering as module = (
+    module:
+
+    const is_less = (self :: Ordering) -> Bool => match self with (
+        | :Less => true
+        | _ => false
+    );
+
+    const is_less_or_equal = (self :: Ordering) -> Bool => match self with (
+        | :Greater => false
+        | _ => true
+    );
+
+    const equal = (self :: Ordering) -> Bool => match self with (
+        | :Equal => true
+        | _ => false
+    );
+
+    const not_equal = (self :: Ordering) -> Bool => match self with (
+        | :Equal => false
+        | _ => true
+    );
+
+    const greater_or_equal = (self :: Ordering) -> Bool => match self with (
+        | :Less => false
+        | _ => true
+    );
+
+    const greater = (self :: Ordering) -> Bool => match self with (
+        | :Greater => true
+        | _ => false
+    );
+);
+
+const default_compare = [T] (a :: T, b :: T) -> Ordering => (
+    if a < b then (
+        :Less
+    ) else if a == b then (
+        :Equal
+    ) else (
+        :Greater
+    )
+);
