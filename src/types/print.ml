@@ -722,7 +722,7 @@ module Impl = struct
     match name.var |> Inference.Var.inferred_opt with
     | Some (Some name) ->
       print_name_shape fmt name;
-      if true || always_print_shape then fprintf fmt " = %t" f
+      if always_print_shape then fprintf fmt " = %t" f
     | _ -> f fmt
 
   and print_name : formatter -> name -> unit =
