@@ -57,7 +57,7 @@ const get_or_init = [K, V] (
     let { less, greater_or_equal } = Treap.split(
         map^.inner,
         data => (
-            if data^.value.key < key then (
+            if map^.compare(data^.value.key, key) |> std.cmp.Ordering.is_less then (
                 :LeftSubtree
             ) else (
                 :RightSubtree
@@ -67,7 +67,7 @@ const get_or_init = [K, V] (
     let { mut equal, greater } = Treap.split(
         greater_or_equal,
         data => (
-            if data^.value.key <= key then (
+            if map^.compare(data^.value.key, key) |> std.cmp.Ordering.is_less_or_equal then (
                 :LeftSubtree
             ) else (
                 :RightSubtree
