@@ -34,7 +34,7 @@ let parse : Lexer.t -> Syntax.rule =
   let get_name (token : Token.t) =
     match token.shape with
     | Ident { name; _ } -> name
-    | String { parts = [ Content { raw = contents; _ } ]; _ } -> contents
+    | String { parts = [ Content { contents; _ } ]; _ } -> contents
     | _ -> fail "Expected rule name, got %a" Token.print token
   in
   let rule_category, name =
@@ -65,7 +65,7 @@ let parse : Lexer.t -> Syntax.rule =
       | Punct { raw = "<-"; _ } when not left_assoc ->
         Lexer.advance lexer;
         part ~left_assoc:true ()
-      | String { parts = [ Content { raw = contents; _ } ]; _ } when not left_assoc ->
+      | String { parts = [ Content { contents; _ } ]; _ } when not left_assoc ->
         if String.is_whitespace contents
         then (
           Lexer.advance lexer;
@@ -76,7 +76,7 @@ let parse : Lexer.t -> Syntax.rule =
               Lexer.advance lexer;
               let token = Lexer.next lexer in
               match token.shape with
-              | String { parts = [ Content { raw = contents; _ } ]; _ } -> contents
+              | String { parts = [ Content { contents; _ } ]; _ } -> contents
               | _ -> fail "Expected wrap str, got %a" Token.print token)
             else nowrap
           in

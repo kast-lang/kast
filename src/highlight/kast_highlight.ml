@@ -211,7 +211,8 @@ module Common (Output : Output) = struct
       Output.print_with_str_color printer delimeter;
       parts
       |> List.iter (function
-        | Ast.Content { raw = s; span } -> Output.print_with_str_color printer s
+        | Ast.Content { raw; span = _; contents = _ } ->
+          Output.print_with_str_color printer raw
         | Ast.Interpolate inner ->
           Output.print_with_keyword_color printer "\\(";
           print_ast printer inner;

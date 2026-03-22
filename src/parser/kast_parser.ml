@@ -300,7 +300,8 @@ and parse_simple (context : context) : Ast.t option =
         let parts =
           parts
           |> List.map (function
-            | Token.Types.Content { raw; span } -> Ast.Content { raw; span }
+            | Token.Types.Content { raw; contents; span } ->
+              Ast.Content { raw; contents; span }
             | Token.Types.Interpolate tokens ->
               let { ast = inner
                   ; trailing_comments
@@ -407,7 +408,7 @@ and parse (context : context) : parsed option =
           (match path.shape with
            | Simple
                { token =
-                   { shape = String { parts = [ Content { raw = path; _ } ]; _ }; _ }
+                   { shape = String { parts = [ Content { contents = path; _ } ]; _ }; _ }
                ; _
                } ->
              let span = ast.data in

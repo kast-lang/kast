@@ -17,6 +17,7 @@ module Types = struct
   and string_part =
     | Content of
         { raw : string
+        ; contents : string
         ; span : Span.t
         }
     | Interpolate of token list

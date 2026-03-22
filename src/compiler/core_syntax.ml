@@ -1688,7 +1688,8 @@ let quote : core_syntax =
                      ; parts =
                          parts
                          |> List.map (function
-                           | Ast.Content { raw; span } -> Types.Content { raw; span }
+                           | Ast.Content { raw; contents; span } ->
+                             Types.Content { raw; contents; span }
                            | Ast.Interpolate inner ->
                              Types.Interpolate (construct ~quote_level inner))
                      ; def_site

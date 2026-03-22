@@ -1311,7 +1311,7 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
     let parts =
       parts
       |> List.map (function
-        | Types.Content { raw; span } -> Ast.Content { raw; span }
+        | Types.Content { raw; contents; span } -> Ast.Content { raw; contents; span }
         | Types.Interpolate expr ->
           Ast.Interpolate
             (match eval state expr |> Value.await_inferred with

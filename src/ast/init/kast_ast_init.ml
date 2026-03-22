@@ -45,7 +45,7 @@ module InitAst = struct
       result
 
   and init_string_part : Kast_ast.T.str_part -> Ast.str_part = function
-    | Content { raw; span } -> Content { raw; span }
+    | Content { raw; contents; span } -> Content { raw; contents; span }
     | Interpolate inner -> Interpolate (init_ast inner)
 
   and init_ast_child : Kast_ast.T.child -> Ast.child =

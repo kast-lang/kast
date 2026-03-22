@@ -86,8 +86,7 @@ let format : formatter -> Parser.result -> unit =
              fprintf fmt "%a" String.print delimeter;
              parts
              |> List.iter (function
-               | Ast.Content { raw = s; span } ->
-                 String.print_escaped_content ~in_string:(delimeter = "\"") fmt s
+               | Ast.Content { raw; span = _; contents = _ } -> String.print fmt raw
                | Ast.Interpolate inner ->
                  fprintf fmt "\\(";
                  print_ast ~filter:(Filter Any) ~parent:None inner;

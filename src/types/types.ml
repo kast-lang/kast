@@ -356,6 +356,7 @@ module rec TypesImpl : sig
   and expr_quote_ast_string_part =
     | Content of
         { raw : string
+        ; contents : string
         ; span : Span.t
         }
     | Interpolate of expr
@@ -1086,6 +1087,7 @@ end = struct
   and expr_quote_ast_string_part =
     | Content of
         { raw : string
+        ; contents : string
         ; span : Span.t
         }
     | Interpolate of expr

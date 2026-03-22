@@ -78,6 +78,7 @@ module type S = sig
   and str_part =
     | Content of
         { raw : String.t
+        ; contents : String.t
         ; span : span
         }
     | Interpolate of ast
@@ -175,6 +176,7 @@ module Make (Data : DataS) : S with module Data = Data = struct
   and str_part =
     | Content of
         { raw : String.t
+        ; contents : String.t
         ; span : Span.t
         }
     | Interpolate of ast
@@ -229,17 +231,11 @@ module Make (Data : DataS) : S with module Data = Data = struct
     | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
     | String
         { delimeter
-        ; parts = [ Content { raw = s; span = _ } ]
+        ; parts = [ Content { raw; span = _; contents = _ } ]
         ; open_span = _
         ; close_span = _
         } ->
-      fprintf
-        fmt
-        "%s@{<green>%a@}%s"
-        delimeter
-        (String.print_escaped_content ~in_string:(String.equal delimeter "\""))
-        s
-        delimeter
+      fprintf fmt "%s@{<green>%s@}%s" delimeter raw delimeter
     | String { delimeter; parts; open_span = _; close_span = _ } ->
       fprintf fmt ".delimeter=%a" String.print_debug delimeter;
       List.print print_str_part fmt parts
@@ -264,7 +260,7 @@ module Make (Data : DataS) : S with module Data = Data = struct
     | Simple { comments_before = _; token } -> Token.Shape.print fmt token.shape
     | String
         { delimeter = _
-        ; parts = [ Content { raw = s; span = _ } ]
+        ; parts = [ Content { raw = s; span = _; contents = _ } ]
         ; open_span = _
         ; close_span = _
         } ->

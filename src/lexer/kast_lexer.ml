@@ -144,6 +144,7 @@ module DefaultRules = struct
     let open_span = Span.single_char lexer.reader.position lexer.source.uri in
     let raw = Reader.start_rec lexer.reader in
     Reader.advance lexer.reader;
+    let contents_raw = ref (Reader.start_rec lexer.reader) in
     let contents = Buffer.create 0 in
     let contents_start = ref lexer.reader.position in
     let parts = ref [] in
@@ -153,7 +154,8 @@ module DefaultRules = struct
         parts
         := !parts
            @ [ Token.Types.Content
-                 { raw = Buffer.contents contents
+                 { raw = Reader.finish_rec !contents_raw
+                 ; contents = Buffer.contents contents
                  ; span =
                      { start = !contents_start
                      ; finish = lexer.reader.position
@@ -161,6 +163,7 @@ module DefaultRules = struct
                      }
                  }
              ];
+      contents_raw := Reader.start_rec lexer.reader;
       contents_start := lexer.reader.position;
       Buffer.clear contents
     in
@@ -196,6 +199,7 @@ module DefaultRules = struct
                     then (
                       Reader.advance lexer.reader;
                       parts := !parts @ [ Token.Types.Interpolate !tokens ];
+                      contents_raw := Reader.start_rec lexer.reader;
                       return ())
                     else (
                       let next_token = next lexer in
@@ -270,6 +274,7 @@ module DefaultRules = struct
       | [] ->
         [ Token.Types.Content
             { raw = ""
+            ; contents = ""
             ; span =
                 { start = !contents_start
                 ; finish = lexer.reader.position
