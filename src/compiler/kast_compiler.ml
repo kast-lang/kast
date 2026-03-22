@@ -64,7 +64,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | Expr ->
               let value : Value.shape =
                 match parts with
-                | [ Content { raw = contents; _ } ] ->
+                | [ Content { contents; _ } ] ->
                   (match delimeter with
                    | "\"" -> V_String contents
                    | "'" ->
