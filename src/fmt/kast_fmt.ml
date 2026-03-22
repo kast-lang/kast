@@ -80,16 +80,20 @@ let format : formatter -> Parser.result -> unit =
           print ~is_comment:comment.shape.ty comment.span String.print comment.shape.raw);
         print token.span String.print (Token.raw token |> Option.get)
       | String { delimeter; parts; open_span; close_span } ->
-        fprintf fmt "%a" String.print delimeter;
-        parts
-        |> List.iter (function
-          | Ast.Content { raw = s; span } ->
-            String.print_escaped_content ~in_string:(delimeter = "\"") fmt s
-          | Ast.Interpolate inner ->
-            fprintf fmt "\\(";
-            print_ast ~filter:(Filter Any) ~parent:None inner;
-            fprintf fmt ")");
-        fprintf fmt "%a" String.print delimeter
+        print
+          ast.data
+          (fun fmt () ->
+             fprintf fmt "%a" String.print delimeter;
+             parts
+             |> List.iter (function
+               | Ast.Content { raw = s; span } ->
+                 String.print_escaped_content ~in_string:(delimeter = "\"") fmt s
+               | Ast.Interpolate inner ->
+                 fprintf fmt "\\(";
+                 print_ast ~filter:(Filter Any) ~parent:None inner;
+                 fprintf fmt ")");
+             fprintf fmt "%a" String.print delimeter)
+          ()
       | Complex { rule; root } ->
         let wrapped =
           match parent with
