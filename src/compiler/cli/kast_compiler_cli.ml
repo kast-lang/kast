@@ -40,6 +40,9 @@ module Args = struct
     | "--use-numbers-instead-of-symbols" :: value :: rest ->
       Kast_transpiler_javascript.use_numbers_instead_of_symbols := bool_of_string value;
       parse rest
+    | "--js-ref-vars" :: value :: rest ->
+      Kast_transpiler_javascript.ref_vars_enabled := bool_of_string value;
+      parse rest
     | "--async" :: value :: rest ->
       (Kast_transpiler_javascript.async_fns
        := match value with

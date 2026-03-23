@@ -17,6 +17,7 @@ type async_mode =
 
 let async_fns = ref BasedOnInference
 let use_numbers_instead_of_symbols = ref true
+let ref_vars_enabled = ref true
 
 let gen_symbol name =
   if !use_numbers_instead_of_symbols
@@ -87,11 +88,11 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     let place = place_of (NoEffect { shape = Var name; span = None }) in
     match ctx.ref_vars |> StringMap.find_opt name.raw with
-    | Some ref_var ->
+    | Some ref_var when !ref_vars_enabled ->
       (match place with
        | OCaml place -> OCaml { place with ref_var = Some ref_var }
        | Js _ -> unreachable "???")
-    | None -> place
+    | _ -> place
 
   and place_of_var_field name field =
     place_of
