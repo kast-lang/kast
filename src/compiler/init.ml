@@ -583,7 +583,8 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           body_async |> BoolValue.implies ~span async;
           result_ty |> Inference.Ty.expect_inferred_as ~span:body.data.span body_ty);
         { ty = result_ty; async }
-      | E_InjectContext { context_ty = _; value } ->
+      | E_InjectContext { context_ty; value } ->
+        value.data.signature.ty |> Inference.Ty.expect_inferred_as ~span context_ty.ty;
         { ty = Ty.inferred ~span T_Unit; async = value.data.signature.async }
       | E_CurrentContext { context_ty } ->
         { ty = context_ty.ty; async = BoolValue.inferred ~span false }
