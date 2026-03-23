@@ -20,6 +20,15 @@ const SyntaxRule = (
         | :GreaterOrEqual Priority
         | :Greater Priority
     );
+
+    const priority_matches = (
+        priority :: Priority,
+        filter :: PriorityFilter,
+    ) -> Bool => match filter with (
+        | :Any => true
+        | :GreaterOrEqual min_priority => priority >= min_priority
+        | :Greater min_priority => priority > min_priority
+    );
     
     const priority_filter_tag_idx = (self :: PriorityFilter) -> Int32 => (
         match self with (
@@ -63,6 +72,7 @@ const SyntaxRule = (
         .parts :: ArrayList.t[Part],
         .quantifier :: Quantifier,
         .wrap_mode :: Option.t[WrapMode],
+        .span :: Span,
     };
     
     const Quantifier = newtype (

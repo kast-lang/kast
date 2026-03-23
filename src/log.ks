@@ -23,7 +23,7 @@ const Log = (
 
     const min_level :: Level = :Info;
     
-    const with_level = (level :: Level, message :: String) => with_return (
+    const with_level = (level :: Level, message :: () -> ()) => with_return (
         if level_idx(level) < level_idx(min_level) then return;
         let { mode :: ansi.Mode, level_text } = match level with (
             | :Trace => { :Gray, "TRACE" }
@@ -39,11 +39,21 @@ const Log = (
                 output.write("[");
                 output.write(level_text);
                 output.write("] ");
-                output.write(message);
+                message();
                 output.write("\n");
             ),
         );
     );
+
+    const with_level_msg = (level :: Level, message :: String) => (
+        with_level(level, () => (@current Output).write(message));
+    );
+
+    const trace_msg = message => with_level_msg(:Trace, message);
+    const debug_msg = message => with_level_msg(:Debug, message);
+    const info_msg = message => with_level_msg(:Info, message);
+    const warn_msg = message => with_level_msg(:Warn, message);
+    const error_msg = message => with_level_msg(:Error, message);
 
     const trace = message => with_level(:Trace, message);
     const debug = message => with_level(:Debug, message);

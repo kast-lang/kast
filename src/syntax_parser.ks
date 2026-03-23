@@ -86,6 +86,7 @@ const SyntaxParser = (
         .name :: Option.t[String],
         .rule_priority :: SyntaxRule.Priority,
     ) -> SyntaxRule.Group => with_return (
+        let first_token = &token_stream^ |> TokenStream.peek;
         token_stream |> expect_and_advance("(");
         let mut parts = ArrayList.new[SyntaxRule.Part]();
         let wrap_mode :: Option.t[SyntaxRule.WrapMode] = if token_stream |> peek_is("@wrap") then (
@@ -98,8 +99,10 @@ const SyntaxParser = (
             let part = read_part(token_stream, .rule_priority, .top_level = :None);
             &mut parts |> ArrayList.push_back(part);
         );
+        let mut last_token = &token_stream^ |> TokenStream.peek;
         token_stream |> expect_and_advance(")");
         let quantifier = if token_stream |> peek_is("?") then (
+            last_token = &token_stream^ |> TokenStream.peek;
             token_stream |> TokenStream.advance;
             :Optional
         ) else (
@@ -110,6 +113,11 @@ const SyntaxParser = (
             .parts,
             .quantifier,
             .wrap_mode,
+            .span = {
+                .start = first_token.span.start,
+                .end = last_token.span.end,
+                .uri = first_token.span.uri,
+            },
         }
     );
     
@@ -145,7 +153,7 @@ const SyntaxParser = (
         let mut left_assoc = false;
         if top_level is :Some top_level then (
             if token_stream |> peek_is("<-") then (
-                Log.trace("<-");
+                Log.trace_msg("<-");
                 if not top_level^.first then (
                     let peek = &token_stream^ |> TokenStream.peek;
                     Error.report_and_unwind(
@@ -348,13 +356,13 @@ const SyntaxParser = (
             with Error.UnwindableHandler = {
                 .unwind_on_error = [T] () => (
                     if token_stream^.index == index_before then (
-                        Log.debug("skipping " + escape_string(Token.Shape.raw(peek.shape)));
+                        Log.debug_msg("skipping " + escape_string(Token.Shape.raw(peek.shape)));
                         token_stream |> TokenStream.advance;
                     );
                     continue
                 ),
             };
-            Log.trace("parse_syntax_rules: peek = " + escape_string(Token.Shape.raw(peek.shape)));
+            Log.trace_msg("parse_syntax_rules: peek = " + escape_string(Token.Shape.raw(peek.shape)));
             if peek.shape is :Eof then break;
             if peek.shape is :Comment _ then (
                 token_stream |> TokenStream.advance;
@@ -363,10 +371,10 @@ const SyntaxParser = (
             token_stream |> expect_and_advance("@syntax");
             match parse_syntax_command(token_stream) with (
                 | :FromScratch => (
-                    Log.debug("parsed from_scratch");
+                    Log.debug_msg("parsed from_scratch");
                 )
                 | :Rule rule => (
-                    Log.debug("parsed rule " + escape_string(rule.name));
+                    Log.debug_msg("parsed rule " + escape_string(rule.name));
                     &mut result |> ArrayList.push_back(rule);
                 )
             );

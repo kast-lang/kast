@@ -32,7 +32,10 @@ const SyntaxRuleset = (
     const Edge = newtype {
         .key :: EdgeKey,
         .target :: Node,
-        .value_priority :: SyntaxRule.PriorityFilter,
+        ## max priority filter of values parsed by THIS edge only
+        .max_value_priority :: SyntaxRule.PriorityFilter,
+        ## max priority of rules reachable from this edge
+        .max_rule_priority :: SyntaxRule.Priority,
     };
     
     const EdgeMap = OrdMap.t[EdgeKey, Edge];
@@ -57,6 +60,7 @@ const SyntaxRuleset = (
     
     const Context = @context type {
         .ruleset :: &mut SyntaxRuleset.t,
+        .rule :: &SyntaxRule.t,
     };
     
     const follow_edge = (
@@ -64,17 +68,22 @@ const SyntaxRuleset = (
         edge_key :: EdgeKey,
         .value_priority :: SyntaxRule.PriorityFilter,
     ) -> &mut Node => (
+        let ctx = @current Context;
         let edge = &mut node^.next
             |> OrdMap.get_or_init(
                 edge_key,
                 () => {
                     .key = edge_key,
                     .target = new_node(),
-                    .value_priority
+                    .max_value_priority = value_priority,
+                    .max_rule_priority = ctx.rule^.priority,
                 }
             );
-        if SyntaxRule.compare_priority_filter(value_priority, edge^.value_priority) is :Greater then (
-            edge^.value_priority = value_priority;
+        if SyntaxRule.compare_priority_filter(value_priority, edge^.max_value_priority) is :Greater then (
+            edge^.max_value_priority = value_priority;
+        );
+        if ctx.rule^.priority > edge^.max_rule_priority then (
+            edge^.max_rule_priority = ctx.rule^.priority;
         );
         &mut edge^.target
     );
@@ -132,7 +141,7 @@ const SyntaxRuleset = (
     );
     
     const add = (self :: &mut SyntaxRuleset.t, rule :: SyntaxRule.t) => (
-        with Context = { .ruleset = self };
+        with Context = { .ruleset = self, .rule = &rule };
         follow_parts(
             &mut self^.root,
             &rule.parts,
@@ -146,7 +155,7 @@ const SyntaxRuleset = (
                         + escape_string(rule.name),
                     );
                 );
-                Log.debug("Added rule " + rule.name);
+                Log.debug_msg("Added rule " + rule.name);
                 node^.terminal = :Some rule;
             ),
         );
