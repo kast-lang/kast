@@ -9,6 +9,7 @@ use (import "./syntax_parser.ks").*;
 use (import "./syntax_ruleset.ks").*;
 use (import "./ast.ks").*;
 use (import "./parser.ks").*;
+use (import "./json.ks").*;
 
 with Output = stdout();
 
@@ -83,11 +84,36 @@ const Args = (
         );
     );
     
+    const ParseJsonArgs = (
+        module:
+        
+        const t = newtype {
+            .path :: Option.t[String],
+        };
+        
+        const parse = start_index -> t => (
+            let mut path = :None;
+            let mut i = start_index;
+            while i < std.sys.argc() do (
+                let arg = std.sys.argv_at(i);
+                if path is :Some _ then (
+                    panic("Only 1 arg is expected to parse-json");
+                );
+                path = :Some arg;
+                i += 1;
+            );
+            {
+                .path,
+            }
+        );
+    );
+    
     const Subcommand = newtype (
         | :Tokenize LexerArgs.t
         | :ParseSyntaxRules ParseSyntaxRulesArgs.t
         | :ParseSyntaxRuleset ParseSyntaxRulesArgs.t
         | :Parse ParseArgs.t
+        | :ParseJson ParseJsonArgs.t
     );
     
     const t = newtype {
@@ -111,6 +137,9 @@ const Args = (
                 );
                 if arg == "parse" then (
                     unwind subcommand (:Parse ParseArgs.parse(i + 1));
+                );
+                if arg == "parse-json" then (
+                    unwind subcommand (:ParseJson ParseJsonArgs.parse(i + 1));
                 );
                 if arg == "--continue-on-error" then (
                     stop_on_error = false;
@@ -196,6 +225,22 @@ match args.subcommand with (
             );
 
             Ast.print(&parsed.ast);
+        );
+    )
+    | :ParseJson { .path } => (
+        let read_stdin = () => panic("TODO read stdin");
+        let json = match path with (
+            | :Some path => std.fs.read_file(path)
+            | :None => read_stdin()
+        );
+        match Json.parse(json) with (
+            | :Ok json => (
+                Json.print(&json);
+                (@current Output).write("\n");
+            )
+            | :Error { .position, .message } => (
+                panic("TODO");
+            )
         );
     )
 );

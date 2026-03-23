@@ -1,4 +1,6 @@
 use (import "../deps/uri/src/lib.ks").*;
+use (import "./position.ks").*;
+use (import "./span.ks").*;
 
 module:
 
@@ -17,4 +19,16 @@ impl Source as module = (
             .uri = Uri.new_path(path),
         }
     );
+
+    const entire_span = (self :: &Source) -> Span => {
+        .start = Position.beginning(),
+        .end = (
+            let mut position = Position.beginning();
+            for c in String.iter(self^.contents) do (
+                &mut position |> Position.advance(c);
+            );
+            position
+        ),
+        .uri = self^.uri,
+    };
 );

@@ -4,4 +4,7 @@ default:
 
 test:
     fd --type file --extension ks --exec-batch self-kast tokenize
-    self-kast parse_syntax_rules tests/kast_syntax_rules.ks tests/simple_rules.ks
+    self-kast parse_syntax_rules tests/syntax/*.ks
+    self-kast parse-json tests/test.json
+    self-kast parse-json tests/lsp-init.json
+    # fd --type file --extension ks --exec-batch self-kast parse

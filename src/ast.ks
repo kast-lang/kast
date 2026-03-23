@@ -35,18 +35,23 @@ const Ast = (
         | :Value Ast.t
         | :Group Group
     );
-
+    
+    const unwrap_child_value = (self :: Child) => match self with (
+        | :Value value => value
+        | :Group _ => panic("expected value ast child, got group")
+    );
+    
     const print_child = (self :: &Child) => (
         match self^ with (
             | :Value ref ast => print(ast)
             | :Group ref group => print_group(group)
         );
     );
-
+    
     const print_group = (self :: &Group) => (
         print_children(&self^.children);
     );
-
+    
     const print_children = (children :: &Tuple.t[Child]) => (
         Tuple.print(
             children,
@@ -77,4 +82,40 @@ const Ast = (
             )
         );
     );
+    
+    const iter_list = (
+        ast :: Ast.t,
+        .binary_rule_name :: String,
+        .trailing_or_leading_rule_name :: Option.t[String],
+    ) -> std.iter.Iterable[Ast.t] => {
+        .iter = consumer => (
+            let recurse = ast => (
+                Ast.iter_list(
+                    ast,
+                    .binary_rule_name,
+                    .trailing_or_leading_rule_name,
+                ).iter(consumer);
+            );
+            match ast.shape with (
+                | :Empty => consumer(ast)
+                | :Token token => consumer(ast)
+                | :Rule { .rule, .root = { .children, ... } } => with_return (
+                    if rule.name == binary_rule_name then (
+                        let { lhs, rhs } = Tuple.unwrap_unnamed_2(children);
+                        recurse(lhs |> Ast.unwrap_child_value);
+                        recurse(rhs |> Ast.unwrap_child_value);
+                        return;
+                    );
+                    if trailing_or_leading_rule_name is :Some name then (
+                        if rule.name == name then (
+                            let inner = Tuple.unwrap_unnamed_1(children);
+                            recurse(inner |> Ast.unwrap_child_value);
+                            return;
+                        );
+                    );
+                    consumer(ast);
+                )
+            );
+        ),
+    };
 );
