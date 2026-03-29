@@ -57,4 +57,11 @@ const stdin = (
             | target.name == "javascript" => (@native "Kast.io.stdin.read_exactly")(bytes)
         )
     );
+
+    const read_to_end = () -> String => (
+        @cfg (
+            | target.name == "interpreter" => (@native "io.stdin.read_to_end")()
+            | target.name == "javascript" => (@native "Kast.io.stdin.read_to_end")()
+        )
+    );
 );

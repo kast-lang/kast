@@ -62,6 +62,7 @@ interface Backend<isNode> {
       ? {
           read_until: Fn<[Char], string>;
           read_exactly: Fn<[number], string>;
+          read_to_end: Fn<[], string>;
         }
       : undefined;
   };
@@ -271,12 +272,13 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       const STDERR = 2;
       const stdin_buffer = Buffer.alloc(8 * 1024);
       let stdin_unprocessed = stdin_buffer.subarray(0, 0);
-      function refill_stdin_buffer() {
+      function refill_stdin_buffer(): boolean {
         const bytes = fs.readSync(STDIN, stdin_buffer);
         if (bytes == 0) {
-          throw Error("EOF reached");
+          return false;
         }
         stdin_unprocessed = stdin_buffer.subarray(0, bytes);
+        return true;
       }
 
       return {
@@ -307,7 +309,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
           },
           stdin: {
             read_until(ctx, c: Char): string {
-              const chunks = [];
+              const chunks: Array<Buffer> = [];
               for (;;) {
                 const i = stdin_unprocessed.indexOf(c, "utf-8");
                 if (i < 0) {
@@ -316,7 +318,9 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
                     stdin_unprocessed.copy(chunk);
                     chunks.push(chunk);
                   }
-                  refill_stdin_buffer();
+                  if (!refill_stdin_buffer()) {
+                    throw Error("EOF");
+                  }
                 } else {
                   if (i != 0) {
                     const chunk = Buffer.alloc(i);
@@ -347,9 +351,25 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
                 } else {
                   stdin_unprocessed.copy(buffer, pos);
                   pos += stdin_unprocessed.length;
-                  refill_stdin_buffer();
+                  if (!refill_stdin_buffer()) {
+                    throw Error("EOF");
+                  }
                 }
               }
+              return buffer.toString("utf-8");
+            },
+            read_to_end(ctx): string {
+              const chunks: Array<Buffer> = [];
+              const add_unprocessed = () => {
+                const chunk = Buffer.alloc(stdin_unprocessed.length);
+                stdin_unprocessed.copy(chunk);
+                chunks.push(chunk);
+              };
+              add_unprocessed();
+              while (refill_stdin_buffer()) {
+                add_unprocessed();
+              }
+              const buffer = Buffer.concat(chunks);
               return buffer.toString("utf-8");
             },
           },
