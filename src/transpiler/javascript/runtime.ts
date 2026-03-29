@@ -273,6 +273,9 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       let stdin_unprocessed = stdin_buffer.subarray(0, 0);
       function refill_stdin_buffer() {
         const bytes = fs.readSync(STDIN, stdin_buffer);
+        if (bytes == 0) {
+          throw Error("EOF reached");
+        }
         stdin_unprocessed = stdin_buffer.subarray(0, bytes);
       }
 
