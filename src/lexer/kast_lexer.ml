@@ -199,9 +199,10 @@ module DefaultRules = struct
                   }
                 in
                 let tokens = ref [] in
+                let balance = ref 0 in
                 while true do
                   ignore (read_whitespace lexer);
-                  if Reader.peek lexer.reader = Some ')'
+                  if Reader.peek lexer.reader = Some ')' && !balance = 0
                   then (
                     let close_span_start = lexer.reader.position in
                     Reader.advance lexer.reader;
@@ -220,6 +221,8 @@ module DefaultRules = struct
                     return ())
                   else (
                     let next_token = next lexer in
+                    if next_token |> Token.is_raw "(" then balance := !balance + 1;
+                    if next_token |> Token.is_raw ")" then balance := !balance - 1;
                     if next_token.shape |> Token.Shape.is_eof
                     then
                       error "Unclosed string interpolation, got %a" Token.print next_token;
