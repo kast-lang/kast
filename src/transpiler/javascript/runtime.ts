@@ -2,6 +2,23 @@ import type * as readline from "node:readline/promises";
 import type * as fs from "node:fs";
 import type * as util from "node:util";
 
+function deep_equal(a: any, b: any): boolean {
+  if (typeof a == "object" && typeof b === "object") {
+    const a_entries = Object.entries(a);
+    const b_entries = Object.entries(b);
+    if (a_entries.length !== b_entries.length) {
+      return false;
+    }
+    for (let [key, a_key_value] of a_entries) {
+      if (!Object.hasOwn(b, key)) return false;
+      const b_key_value = b[key];
+      if (!deep_equal(a_key_value, b_key_value)) return false;
+    }
+    return true;
+  }
+  return a === b;
+}
+
 type MaybePromise<T> = Promise<T> | T;
 
 type Context = unknown;
@@ -174,6 +191,8 @@ interface Kast<isNode> extends Backend<isNode> {
     get_impl: (args: { value: Value; target: Value }) => Value;
   };
   gen_symbol: (name: string) => number;
+  structurally_equal: Fn<[Value, Value], boolean>;
+  physically_equal: Fn<[Value, Value], boolean>;
 }
 
 const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
@@ -783,5 +802,11 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       get_impl: get_cast_impl,
     },
     gen_symbol,
+    structurally_equal: (ctx, a, b) => {
+      return deep_equal(a, b);
+    },
+    physically_equal: (ctx, a, b) => {
+      return a === b;
+    },
   };
 })();

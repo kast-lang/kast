@@ -127,6 +127,7 @@ let init_natives () =
       @ Mod_reflection.init ()
       @ Mod_syntax.init ()
       @ Mod_list.init ()
+      @ Mod_repr.init ()
     in
     { by_name = list |> StringMap.of_list }
   in

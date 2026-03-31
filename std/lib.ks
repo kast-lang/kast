@@ -41,6 +41,7 @@ const fs = include "./fs.ks";
 const net = include "./net.ks";
 const sys = include "./sys.ks";
 const random = include "./random.ks";
+const repr = include "./repr.ks";
 const collections = include "./collections/_mod.ks";
 
 include "./panic.ks";
