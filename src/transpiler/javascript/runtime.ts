@@ -284,7 +284,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       return {
         dbg: {
           print(ctx, value: Value) {
-            console.log(util.inspect(value, { depth: null, colors: true }));
+            console.error(util.inspect(value, { depth: null, colors: true }));
           },
         },
         io: {
