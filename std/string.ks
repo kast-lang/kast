@@ -12,6 +12,9 @@ impl String as module = (
         | target.name == "interpreter" => (@native "string.substring")(s, start, len)
         | target.name == "javascript" => (@native "Kast.String.substring")(s, start, len)
     );
+    const substring_from = (s :: String, start :: Int32) -> String => (
+        substring(s, start, length(s) - start)
+    );
     const iter = (s :: String) -> std.iter.Iterable[Char] => @cfg (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iter")(s, f)
