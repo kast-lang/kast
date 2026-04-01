@@ -216,6 +216,7 @@ module Impl = struct
     let named_args = ref [] in
     let unnamed_args = ref [] in
     let unpacks = ref [] in
+    let has_unpacks_with_named_fields = ref false in
     (match args.pattern.shape with
      | P_Tuple { guaranteed_anonymous = _; parts } ->
        parts
@@ -241,6 +242,8 @@ module Impl = struct
              |> Array.to_list
              |> List.map (fun _ -> JsAst.gen_name ~original:None "unpack")
            in
+           if not (packed_ty.tuple.named |> StringMap.is_empty)
+           then has_unpacks_with_named_fields := true;
            unnamed_args
            := !unnamed_args @ (unnamed_names |> List.map (fun name -> name, None));
            unpacks := !unpacks @ [ unnamed_names, packed_ty, packed ])
@@ -256,7 +259,10 @@ module Impl = struct
               ; args =
                   ([ ctx_var ]
                    @ (unnamed_args |> List.map fst)
-                   @ if named_args |> List.is_empty then [] else [ named_arg_name ])
+                   @
+                   if named_args |> List.is_empty && not !has_unpacks_with_named_fields
+                   then []
+                   else [ named_arg_name ])
               ; body =
                   scope (fun () ->
                     unnamed_args
