@@ -23,6 +23,19 @@ module String = struct
     done
   ;;
 
+  let iteri_utf8_rev : (int -> Uchar.t -> unit) -> string -> unit =
+    fun f s ->
+    let i = ref (Stdlib.String.length s - 1) in
+    while !i >= 0 do
+      let c = Stdlib.String.get_utf_8_uchar s !i in
+      if Uchar.utf_decode_is_valid c
+      then (
+        let c = Uchar.utf_decode_uchar c in
+        f !i c);
+      i := !i - 1
+    done
+  ;;
+
   let iter_utf8 : (Uchar.t -> unit) -> string -> unit =
     fun f s -> s |> iteri_utf8 (fun _i c -> f c)
   ;;

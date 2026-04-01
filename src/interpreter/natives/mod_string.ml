@@ -152,6 +152,44 @@ let init () =
            | None -> Error.error span "not a fn");
           ());
         V_Unit |> Value.inferred ~span))
+  ; native_fn "string.iteri_rev" (fun _ty ~caller ~state args : value ->
+      with_return (fun { return } ->
+        let error msg () =
+          Error.error caller "string.iteri: %s" msg;
+          return (V_Error |> Value.inferred ~span)
+        in
+        let args =
+          args |> Value.expect_tuple |> Option.unwrap_or_else (error "arg must be tuple")
+        in
+        if not (args.tuple |> Tuple.is_unnamed 2)
+        then error "expected 2 unnamed fields" ();
+        let s, f = args.tuple |> Tuple.unwrap_unnamed2 in
+        let s =
+          s.place
+          |> claim ~span:caller
+          |> Value.expect_string
+          |> Option.unwrap_or_else (error "expected string as first arg")
+        in
+        let f = f.place |> claim ~span:caller in
+        let _ =
+          f
+          |> Value.expect_fn
+          |> Option.unwrap_or_else (error "expected fn as second arg")
+        in
+        s
+        |> String.iteri_utf8_rev (fun i c ->
+          let i : value = V_Int32 (Int32.of_int i) |> Value.inferred ~span in
+          let c : value = V_Char c |> Value.inferred ~span in
+          (match Value.ty_of f |> Ty.await_inferred |> Ty.Shape.expect_fn with
+           | Some f_ty ->
+             let f_arg_ty =
+               f_ty.args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+             in
+             ignore
+             <| call caller state f (make_args ~span (Tuple.make [ i; c ] []) f_arg_ty)
+           | None -> Error.error span "not a fn");
+          ());
+        V_Unit |> Value.inferred ~span))
   ; native_fn "to_string" (fun _ty ~caller ~state:_ args ->
       let arg = single_arg ~span args in
       with_return (fun { return } : Value.Shape.t ->

@@ -161,6 +161,7 @@ interface Kast<isNode> extends Backend<isNode> {
     substring: Fn<[string, number, number], string>;
     iter: Fn<[string, Fn<[Char], void>], void>;
     iteri: Fn<[string, Fn<[{ 0: number; 1: Char }], void>], void>;
+    iteri_rev: Fn<[string, Fn<[{ 0: number; 1: Char }], void>], void>;
     at: Fn<[string, number], Char>;
     length: Fn<[string], number>;
     to_string: Fn<[Value], string>;
@@ -762,6 +763,15 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
         for (let c of s) {
           await call(f, ctx, { 0: i, 1: c });
           i += c.length;
+        }
+      },
+      iteri_rev: async (ctx, s, f) => {
+        for (let i = s.length - 1; i >= 0; i--) {
+          const c = s.codePointAt(i)!;
+          if (0xdc00 <= c && c <= 0xdfff) {
+            continue;
+          }
+          await call(f, ctx, { 0: i, 1: String.fromCodePoint(c) });
         }
       },
       at: (ctx, s, i) => {

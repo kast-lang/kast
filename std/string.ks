@@ -28,6 +28,21 @@ impl String as module = (
             .iter = f => (@native "Kast.String.iteri")(s, f)
         }
     );
+    const iteri_rev = (s :: String) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
+        | target.name == "interpreter" => {
+            .iter = f => (@native "string.iteri_rev")(s, (i, c) => f({ i, c }))
+        }
+        | target.name == "javascript" => {
+            .iter = f => (@native "Kast.String.iteri_rev")(s, f)
+        }
+    );
+    const pop_back = (s :: &mut String) -> Char => with_return (
+        for { i, c } in iteri_rev(s^) do (
+            s^ = substring(s^, 0, i);
+            return c;
+        );
+        panic("empty string")
+    );
     const index_of = (s :: String, c :: Char) -> Int32 => with_return (
         for { i, c_at_i } in iteri(s) do (
             if c == c_at_i then (
