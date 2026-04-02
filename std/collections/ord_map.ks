@@ -66,6 +66,15 @@ const get_mut = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[type (
     )
 );
 
+const remove = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[V] => (
+    let { .less, .equal, .greater } = split_inner_at_key(map^, key);
+    map^.inner = Treap.join(less, greater);
+    match equal with (
+        | :Empty => :None
+        | :Node mut data => :Some data.value.value
+    )
+);
+
 const get_or_init = [K, V] (
     map :: &mut OrdMap.t[K, V],
     key :: K,
