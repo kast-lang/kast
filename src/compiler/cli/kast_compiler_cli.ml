@@ -174,7 +174,7 @@ let run : Args.t -> unit =
         let last_mod_time = file_mod_time uri in
         last_mod_time > time_when_compiled
     in
-    (try do_compile () with
+    (try timed "Compilation" do_compile with
      | effect Source.Read uri, k ->
        file_mod_times_when_compiled
        := !file_mod_times_when_compiled |> UriMap.add uri (file_mod_time uri);
