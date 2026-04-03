@@ -153,6 +153,13 @@ let run : Args.t -> unit =
       fprintf fmt "}\n";
       close_out out
   in
+  let do_compile () =
+    try do_compile () with
+    | Cancel -> raise Cancel
+    | e when continuous ->
+      Log.error (fun log -> log "compilation failed");
+      Printexc.default_uncaught_exception_handler e (Printexc.get_raw_backtrace ())
+  in
   let file_mod_times_when_compiled = ref UriMap.empty in
   let do_continue = ref true in
   while !do_continue do
