@@ -6,6 +6,7 @@ module Token = Kast_token
 module Interpreter = Kast_interpreter
 open Init
 module Error = Error
+module State = State
 module Scope = State.Scope
 
 let init = State.init

@@ -14,6 +14,7 @@ module Args = struct
     ; formatter : string option
     ; no_std : bool
     ; save_dependency_graph : string option
+    ; continuous : bool
     }
 
   type t = args
@@ -27,6 +28,7 @@ module Args = struct
     ; output = None
     ; formatter = None
     ; save_dependency_graph = None
+    ; continuous = false
     }
   ;;
 
@@ -34,6 +36,9 @@ module Args = struct
     | "--no-std" :: rest ->
       let parsed, ~rest = parse rest in
       { parsed with no_std = true }, ~rest
+    | "--continuous" :: rest ->
+      let parsed, ~rest = parse rest in
+      { parsed with continuous = true }, ~rest
     | "--output" :: path :: rest ->
       let parsed, ~rest = parse rest in
       { parsed with output = Some path }, ~rest
@@ -86,62 +91,105 @@ let run_formatter_if_needed : Args.t -> unit =
 ;;
 
 let run : Args.t -> unit =
-  fun ({ path; target; no_std; output; save_dependency_graph; formatter = _ } as args) ->
-  let source = Source.read path in
-  let compiler =
-    if no_std
-    then (
-      let interpreter = Interpreter.default (Uri path) in
-      Compiler.init ~cache:(Compiler.Cache.init ()) ~compile_for:interpreter)
-    else Compiler.default (Uri source.uri) ()
-  in
-  let parsed =
-    compiler
-    |> Compiler.handle_parser_imports (fun () ->
-      Parser.parse source Kast_default_syntax.ruleset)
-  in
-  let out : out_channel =
-    match output with
-    | None -> stdout
-    | Some path ->
-      create_dir_all (Filename.dirname path);
-      open_out path
-  in
-  let fmt = Format.formatter_of_out_channel out in
-  Format.setup_tty_if_needed fmt out;
-  let ast = parsed.ast |> Kast_ast_init.init_ast in
-  let expr : expr = Compiler.compile ~prelude:(not no_std) compiler Expr ast in
-  (match target with
-   | Ir -> fprintf fmt "%a" Expr.print_with_types expr
-   | JavaScript ->
-     let transpiled : Kast_transpiler_javascript.result =
-       Kast_transpiler_javascript.transpile_expr
-         ~state:compiler.interpreter
-         ~span:ast.data.span
-         expr
-     in
-     let source_map_path =
-       match output with
-       | None -> "target/source.map"
-       | Some path -> path ^ ".map"
-     in
-     let writer = Kast_transpiler_javascript.Writer.init fmt source_map_path in
-     transpiled.print writer;
-     writer |> Kast_transpiler_javascript.Writer.finish);
-  close_out out;
-  run_formatter_if_needed args;
-  match save_dependency_graph with
-  | None -> ()
-  | Some path ->
-    let out = open_out path in
+  fun ({ path; target; no_std; output; save_dependency_graph; continuous; formatter = _ }
+       as args) ->
+  let cache = Compiler.Cache.init () in
+  let do_compile () =
+    let source = Source.read path in
+    let compiler =
+      if no_std
+      then (
+        let interpreter = Interpreter.default (Uri path) in
+        Compiler.init ~cache ~compile_for:interpreter)
+      else Compiler.default ~cache (Uri source.uri) ()
+    in
+    let parsed =
+      compiler
+      |> Compiler.handle_parser_imports (fun () ->
+        Parser.parse source Kast_default_syntax.ruleset)
+    in
+    let out : out_channel =
+      match output with
+      | None -> stdout
+      | Some path ->
+        create_dir_all (Filename.dirname path);
+        open_out path
+    in
     let fmt = Format.formatter_of_out_channel out in
-    fprintf fmt "digraph {\n";
-    fprintf fmt [%include_file "dep_graph_styling.dot"];
-    compiler.cache.dependents
-    |> UriMap.iter (fun dependency dependents ->
-      dependents
-      |> List.iter (fun dependent ->
-        fprintf fmt "  %S -> %S;\n" (Uri.to_string dependent) (Uri.to_string dependency)));
-    fprintf fmt "}\n";
-    close_out out
+    Format.setup_tty_if_needed fmt out;
+    let ast = parsed.ast |> Kast_ast_init.init_ast in
+    let expr : expr = Compiler.compile ~prelude:(not no_std) compiler Expr ast in
+    (match target with
+     | Ir -> fprintf fmt "%a" Expr.print_with_types expr
+     | JavaScript ->
+       let transpiled : Kast_transpiler_javascript.result =
+         Kast_transpiler_javascript.transpile_expr
+           ~state:compiler.interpreter
+           ~span:ast.data.span
+           expr
+       in
+       let source_map_path =
+         match output with
+         | None -> "target/source.map"
+         | Some path -> path ^ ".map"
+       in
+       let writer = Kast_transpiler_javascript.Writer.init fmt source_map_path in
+       transpiled.print writer;
+       writer |> Kast_transpiler_javascript.Writer.finish);
+    close_out out;
+    run_formatter_if_needed args;
+    match save_dependency_graph with
+    | None -> ()
+    | Some path ->
+      let out = open_out path in
+      let fmt = Format.formatter_of_out_channel out in
+      fprintf fmt "digraph {\n";
+      fprintf fmt [%include_file "dep_graph_styling.dot"];
+      compiler.cache.dependents
+      |> UriMap.iter (fun dependency dependents ->
+        dependents
+        |> List.iter (fun dependent ->
+          fprintf fmt "  %S -> %S;\n" (Uri.to_string dependent) (Uri.to_string dependency)));
+      fprintf fmt "}\n";
+      close_out out
+  in
+  let file_mod_times_when_compiled = ref UriMap.empty in
+  let do_continue = ref true in
+  while !do_continue do
+    let file_mod_time (uri : Uri.t) =
+      let path =
+        match Uri.scheme uri with
+        | Some "file" -> Uri.file_path uri
+        | scheme ->
+          fail "unsupported uri scheme %a" (Option.print String.print_debug) scheme
+      in
+      let result = (Unix.stat path).st_mtime in
+      Log.trace (fun log -> log "mod time of %a = %f" Uri.print uri result);
+      result
+    in
+    let file_was_changed (uri : Uri.t) : bool =
+      match !file_mod_times_when_compiled |> UriMap.find_opt uri with
+      | None -> true
+      | Some time_when_compiled ->
+        let last_mod_time = file_mod_time uri in
+        last_mod_time > time_when_compiled
+    in
+    (try do_compile () with
+     | effect Source.Read uri, k ->
+       file_mod_times_when_compiled
+       := !file_mod_times_when_compiled |> UriMap.add uri (file_mod_time uri);
+       Effect.continue k (Effect.perform (Source.Read uri)));
+    if continuous
+    then (
+      print_string "Press enter to recompile";
+      ignore <| read_line ();
+      cache.imported
+      |> UriMap.iter (fun uri _ ->
+        if file_was_changed uri
+        then (
+          Log.info (fun log -> log "%a was changed since last compilation" Uri.print uri);
+          cache |> Compiler.Cache.invalidate uri));
+      Log.info (fun log -> log "Recompiling..."))
+    else do_continue := false
+  done
 ;;

@@ -57,7 +57,14 @@ let setup_interpreter_argv (args : Args.t) =
 let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
   fun f
     ({ compiler =
-         { path; no_std; target; save_dependency_graph = _; output = _; formatter = _ }
+         { path
+         ; no_std
+         ; target
+         ; save_dependency_graph = _
+         ; output = _
+         ; formatter = _
+         ; continuous = _
+         }
      ; argv_except_program = _
      ; enable_source_maps = _
      } as args) ->
@@ -113,6 +120,7 @@ let repl
            ; save_dependency_graph = _
            ; output = _
            ; formatter = _
+           ; continuous = _
            }
        ; argv_except_program = _
        ; enable_source_maps = _

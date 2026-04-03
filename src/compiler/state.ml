@@ -320,6 +320,19 @@ module Cache = struct
     ; dependents = UriMap.empty
     }
   ;;
+
+  let log_state (cache : t) =
+    Log.error (fun log -> log "Cache state:");
+    cache.imported
+    |> UriMap.iter (fun uri (state : import) ->
+      let state =
+        match state with
+        | Imported _ -> "imported"
+        | InProgress -> "inprogress"
+      in
+      Log.error (fun log -> log "%a : %s" Uri.print uri state));
+    Log.error (fun log -> log "---")
+  ;;
 end
 
 type t =

@@ -205,6 +205,7 @@ and calculate_import ?(prelude : bool = true) ~(span : span) (module C : S) (uri
     Log.trace (fun log -> log "Imported from cache %a" Uri.print uri);
     value
   | Some InProgress ->
+    State.Cache.log_state cache;
     error span "No recursive imports!";
     { value = V_Error |> Value.inferred ~span
     ; parser_ruleset = Kast_parser.Ruleset.empty
