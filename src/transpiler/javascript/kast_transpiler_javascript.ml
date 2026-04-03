@@ -51,15 +51,18 @@ type mutable_ctx =
 type ctx =
   { interpreter : interpreter_state
   ; mut : mutable_ctx
+  ; global_ctx_var : JsAst.name
   ; captured : interpreter_scope
   ; span : span
   ; target : value_target
   ; mutable ref_vars : ref_var StringMap.t
   }
 
-let ctx_var : JsAst.name = { raw = "ctx"; original = None }
+type scope =
+  { mutable ctx_var : JsAst.name
+  ; mutable stmts : JsAst.stmt list
+  }
 
-type scope = { mutable stmts : JsAst.stmt list }
 type _ Effect.t += GetScope : scope Effect.t
 
 let execute_all stmts =
@@ -257,7 +260,7 @@ module Impl = struct
             JsAst.Fn
               { async
               ; args =
-                  ([ ctx_var ]
+                  ([ (Effect.perform GetScope).ctx_var ]
                    @ (unnamed_args |> List.map fst)
                    @
                    if named_args |> List.is_empty && not !has_unpacks_with_named_fields
@@ -419,7 +422,7 @@ module Impl = struct
     | BV_ClaimRef _ -> failwith __LOC__
     | BV_FieldRef _ -> failwith __LOC__
 
-  and with_global_scope f = prepend (scope f)
+  and with_global_scope f = prepend (scope ~global:true f)
 
   and transpile_value : value -> no_effect_expr =
     fun value ->
@@ -461,7 +464,7 @@ module Impl = struct
             | _ -> false
           in
           if early
-          then prepend_early (scope (fun () -> create_value ()))
+          then prepend_early (scope ~global:true (fun () -> create_value ()))
           else create_value ()));
       (* TODO copy? *)
       NoEffect { shape = Var value_name; span = None }
@@ -980,8 +983,15 @@ module Impl = struct
       { shape = Let { var; value; usage = { can_be_deleted = false } }; span = None };
     NoEffect { shape = Var var; span = None }
 
-  and scope (f : unit -> unit) : JsAst.stmt list =
-    let scope : scope = { stmts = [] } in
+  and scope ?(global : bool = false) (f : unit -> unit) : JsAst.stmt list =
+    let scope : scope =
+      { ctx_var =
+          (if global
+           then (Effect.perform GetCtx).global_ctx_var
+           else (Effect.perform GetScope).ctx_var)
+      ; stmts = []
+      }
+    in
     (try f () with
      | effect GetScope, k -> Effect.continue k scope);
     scope.stmts
@@ -1116,7 +1126,9 @@ module Impl = struct
             { async
             ; f
             ; args =
-                [ ({ shape = Var ctx_var; span = None } : JsAst.expr) ]
+                [ ({ shape = Var (Effect.perform GetScope).ctx_var; span = None }
+                   : JsAst.expr)
+                ]
                 @ !unnamed_args
                 @ named_args
             }
@@ -1153,8 +1165,9 @@ module Impl = struct
         let (NoEffect _) = transpile_expr expr in
         undefined ()
       | E_Scope { expr } ->
-        (* TODO js scope? *)
-        transpile_expr expr
+        let result = ref None in
+        execute_all <| scope (fun () -> result := Some (transpile_expr expr));
+        !result |> Option.unwrap
       | E_Fn { ty = _; def } -> fn ~captured:None def
       | E_Generic { def; ty = _ } -> fn ~captured:None def
       | E_Tuple { guaranteed_anonymous = _; parts } ->
@@ -1419,28 +1432,25 @@ module Impl = struct
         undefined ()
       | E_InjectContext { context_ty; value } ->
         let value = transpile_expr value in
-        execute
-          { shape =
-              Assign
-                { assignee = { shape = Var ctx_var; span = None }
-                ; value =
-                    { shape =
-                        Obj
-                          [ Unpack { shape = Var ctx_var; span = None }
-                          ; Field
-                              { name = context_ty_field context_ty; value = pure value }
-                          ]
-                    ; span = None
-                    }
-                }
-          ; span
-          };
+        let scope = Effect.perform GetScope in
+        let new_ctx_var = JsAst.gen_name ~original:None "ctx" in
+        let_var
+          new_ctx_var
+          (NoEffect
+             { shape =
+                 Obj
+                   [ Unpack { shape = Var scope.ctx_var; span = None }
+                   ; Field { name = context_ty_field context_ty; value = pure value }
+                   ]
+             ; span = None
+             });
+        scope.ctx_var <- new_ctx_var;
         undefined ()
       | E_CurrentContext { context_ty } ->
         calculate
           { shape =
               Field
-                { obj = { shape = Var ctx_var; span = None }
+                { obj = { shape = Var (Effect.perform GetScope).ctx_var; span = None }
                 ; field = context_ty_field context_ty
                 }
           ; span
@@ -1496,6 +1506,7 @@ type result = { print : Writer.t -> unit }
 let with_ctx ~state ~span f =
   let ctx : ctx =
     { interpreter = state
+    ; global_ctx_var = JsAst.gen_name ~original:None "ctx"
     ; captured = state.scope
     ; mut =
         { captured_values = ValueMap.empty
@@ -1528,14 +1539,14 @@ let with_ctx ~state ~span f =
           let value = Impl.transpile_value value in
           let impl = Impl.transpile_value impl in
           Impl.impl_as_module ~value ~impl ~ty:impl_ty));
-      Impl.scope f
+      Impl.scope ~global:true f
     with
     | effect GetCtx, k -> Effect.continue k ctx
   in
   let ast : JsAst.stmt list =
     [ ({ shape =
            Let
-             { var = ctx_var
+             { var = ctx.global_ctx_var
              ; value = { shape = Obj []; span = None }
              ; usage = { can_be_deleted = false }
              }
