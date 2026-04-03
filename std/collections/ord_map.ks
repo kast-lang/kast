@@ -96,3 +96,8 @@ const into_iter = [K, V] (map :: OrdMap.t[K, V]) -> std.iter.Iterable[KV[K, V]] 
 const iter = [K, V] (map :: &OrdMap.t[K, V]) -> std.iter.Iterable[type (&KV[K, V])] => (
     Treap.iter(&map^.inner)
 );
+
+const iter_mut = [K, V] (map :: &mut OrdMap.t[K, V]) -> std.iter.Iterable[type (&mut KV[K, V])] => (
+    Treap.iter_mut(&mut map^.inner)
+);
+
