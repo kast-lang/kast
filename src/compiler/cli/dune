@@ -6,6 +6,7 @@
   kast_compiler
   kast_default_syntax
   kast_transpiler_javascript
+  kast_transpiler_minikast
   kast_compiler_targets)
  (preprocessor_deps
   (file dep_graph_styling.dot))

@@ -194,6 +194,7 @@ let tuple_impl
     children
     |> List.iter (fun (child : Ast.t) ->
       match child.shape with
+      | Empty -> ()
       | Complex { rule = { name = "core:field init"; _ }; root; _ } ->
         let ~field_span, ~field_label, value = tuple_field (module C) kind child root in
         let part : a Types.tuple_part_of =

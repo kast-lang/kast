@@ -1,0 +1,5 @@
+(library
+ (name kast_transpiler_minikast)
+ (libraries kast_types kast_interpreter)
+ (preprocess
+  (pps ppx_include_dir)))

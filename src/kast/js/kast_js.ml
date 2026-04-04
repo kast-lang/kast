@@ -143,7 +143,7 @@ let () =
           in
           let parsed = Parser.parse source Kast_default_syntax.ruleset in
           let ast = parsed.ast |> Kast_ast_init.init_ast in
-          let compiler = Compiler.default (Str "<js>") () in
+          let compiler = Compiler.default ~no_std:false (Str "<js>") () in
           (* TODO *)
           let interpreter = compiler.interpreter in
           let expr : expr = Compiler.compile ~prelude:true compiler Expr ast in

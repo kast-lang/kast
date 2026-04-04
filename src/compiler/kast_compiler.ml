@@ -310,9 +310,9 @@ and make_compiler (original_state : state) : (module Compiler.S) =
   end : Compiler.S)
 ;;
 
-let rec default name_part ?(cache : Cache.t option) () : state =
+let rec default ~no_std name_part ?(cache : Cache.t option) () : state =
   let cache = cache |> Option.unwrap_or_else (fun () -> Cache.init ()) in
-  let state = init ~cache ~compile_for:(Interpreter.default name_part) in
+  let state = init ~no_std ~cache ~compile_for:(Interpreter.default name_part) in
   let _ : State.imported =
     Compiler.import
       ~prelude:false
@@ -320,7 +320,7 @@ let rec default name_part ?(cache : Cache.t option) () : state =
       (make_compiler state)
       (Core_syntax.resolve_uri ~from:(Uri.fake "prelude") (Uri.of_string "std:lib.ks"))
   in
-  (State.default := fun name_part ~cache -> default name_part ~cache ());
+  (State.default := fun ~no_std name_part ~cache -> default ~no_std name_part ~cache ());
   state
 ;;
 

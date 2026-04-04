@@ -35,18 +35,10 @@ type evaled =
   }
 
 let init_compiler_interpreter ~no_std name_part =
-  if no_std
-  then (
-    let interpreter = Interpreter.default name_part in
-    let compiler =
-      Compiler.init ~cache:(Compiler.Cache.init ()) ~compile_for:interpreter
-    in
-    compiler, interpreter)
-  else (
-    let compiler = Compiler.default name_part () in
-    (* TODO *)
-    let interpreter = compiler.interpreter in
-    compiler, interpreter)
+  let compiler = Compiler.default ~no_std name_part () in
+  (* TODO *)
+  let interpreter = compiler.interpreter in
+  compiler, interpreter
 ;;
 
 let setup_interpreter_argv (args : Args.t) =
@@ -93,6 +85,7 @@ let eval =
 let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t) =
   match compiler.target with
   | Ir -> eval_and ignore args
+  | Minikast _ -> fail "minikast can't be ran"
   | JavaScript ->
     let path =
       match compiler.output with

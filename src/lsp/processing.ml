@@ -123,7 +123,9 @@ let process_file (global : global_state) (source : source) : file_state =
     Log.debug (fun log -> log "Processing %a" Uri.print source.uri);
     global.diagnostics <- global.diagnostics |> UriMap.add source.uri [];
     global.parse_errors <- global.parse_errors |> UriSet.remove source.uri;
-    let compiler = Compiler.default (Uri source.uri) ~cache:global.cache () in
+    let compiler =
+      Compiler.default ~no_std:false (Uri source.uri) ~cache:global.cache ()
+    in
     let parsed =
       try
         let result =

@@ -344,20 +344,10 @@ type t =
   ; custom_syntax_impls : (Id.t, value) Hashtbl.t
   ; mut_enabled : bool
   ; bind_mode : Types.bind_mode
+  ; no_std : bool
   }
 
 type state = t
-
-let blank ~prelude name_part ~cache =
-  { scopes = Scopes.init ~span:(Span.fake "<blank>") ~recursive:false
-  ; currently_compiled_file = None
-  ; cache
-  ; interpreter = Interpreter.default name_part
-  ; custom_syntax_impls = Hashtbl.create 0
-  ; mut_enabled = false
-  ; bind_mode = Claim
-  }
-;;
 
 let enter_scope : span:span -> recursive:bool -> state -> state =
   fun ~span
@@ -369,6 +359,7 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
     ; custom_syntax_impls
     ; mut_enabled
     ; bind_mode
+    ; no_std
     } ->
   { scopes = scopes |> Scopes.enter ~span ~recursive
   ; interpreter =
@@ -378,6 +369,7 @@ let enter_scope : span:span -> recursive:bool -> state -> state =
   ; custom_syntax_impls
   ; mut_enabled
   ; bind_mode
+  ; no_std
   }
 ;;
 
@@ -394,8 +386,8 @@ let enter_ast_def_site (ast : Ast.t) (state : t) =
 ;;
 
 (* TODO compile_for - figure out *)
-let init : cache:Cache.t -> compile_for:Interpreter.state -> state =
-  fun ~cache ~compile_for ->
+let init : ?no_std:bool -> cache:Cache.t -> compile_for:Interpreter.state -> state =
+  fun ?(no_std = false) ~cache ~compile_for ->
   let scope = Scope.init ~span:(Span.fake "<init>") ~recursive:false in
   let scope =
     SymbolMap.fold
@@ -426,10 +418,11 @@ let init : cache:Cache.t -> compile_for:Interpreter.state -> state =
   ; custom_syntax_impls = Hashtbl.create 0
   ; mut_enabled = false
   ; bind_mode = Claim
+  ; no_std
   }
 ;;
 
 let default =
-  ref (fun name_part ~cache : state ->
-    init ~cache ~compile_for:(Interpreter.default name_part))
+  ref (fun ~no_std name_part ~cache : state ->
+    init ~no_std ~cache ~compile_for:(Interpreter.default name_part))
 ;;

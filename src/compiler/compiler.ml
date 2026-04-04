@@ -148,7 +148,7 @@ and calculate_import ?(prelude : bool = true) ~(span : span) (module C : S) (uri
       Fun.protect
         ~finally:(fun () -> cache.imported <- UriMap.remove uri cache.imported)
         (fun () ->
-           let state = !State.default (Uri uri) ~cache in
+           let state = !State.default ~no_std:C.state.no_std (Uri uri) ~cache in
            let (module C : S) = update_module (module C) state in
            state.currently_compiled_file <- Some uri;
            if prelude

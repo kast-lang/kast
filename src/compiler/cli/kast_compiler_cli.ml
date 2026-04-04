@@ -96,13 +96,7 @@ let run : Args.t -> unit =
   let cache = Compiler.Cache.init () in
   let do_compile () =
     let source = Source.read path in
-    let compiler =
-      if no_std
-      then (
-        let interpreter = Interpreter.default (Uri path) in
-        Compiler.init ~cache ~compile_for:interpreter)
-      else Compiler.default ~cache (Uri source.uri) ()
-    in
+    let compiler = Compiler.default ~no_std ~cache (Uri source.uri) () in
     let parsed =
       compiler
       |> Compiler.handle_parser_imports (fun () ->
@@ -121,6 +115,17 @@ let run : Args.t -> unit =
     let expr : expr = Compiler.compile ~prelude:(not no_std) compiler Expr ast in
     (match target with
      | Ir -> fprintf fmt "%a" Expr.print_with_types expr
+     | Minikast minitarget ->
+       (match minitarget with
+        | JavaScript ->
+          let transpiled =
+            Kast_transpiler_minikast.transpile_expr
+              { name = "javascript" }
+              compiler.interpreter
+              expr
+          in
+          Kast_transpiler_minikast.MiniAst.Print.print_program transpiled
+        | _ -> fail "not supported minitarget")
      | JavaScript ->
        let transpiled : Kast_transpiler_javascript.result =
          Kast_transpiler_javascript.transpile_expr
