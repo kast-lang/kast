@@ -26,6 +26,10 @@ type expr =
       { f : expr
       ; args : expr list
       }
+  | TypeAscribed of
+      { expr : expr
+      ; ty : ty
+      }
 
 and place_expr =
   | Ident of string
@@ -73,10 +77,15 @@ and fn_arg =
   ; ty : ty
   }
 
+and const =
+  { ty : ty
+  ; value : expr
+  }
+
 and program =
   { types : ty_def StringMap.t
   ; fns : fn_def StringMap.t
-  ; consts : expr StringMap.t
+  ; consts : const StringMap.t
   }
 
 module Print = struct
@@ -142,6 +151,10 @@ module Print = struct
     | Bool x -> write (make_string "%b" x)
     | Uninitialized -> write "uninitialized"
     | Claim place -> print_place_expr place
+    | TypeAscribed { expr; ty } ->
+      print_expr expr;
+      write " :: ";
+      print_ty ty
     | Let { var; value } ->
       write "let ";
       write var;
@@ -273,11 +286,16 @@ module Print = struct
       write ";";
       writeln ());
     program.consts
-    |> StringMap.iter (fun name def ->
+    |> StringMap.iter (fun name (const : const) ->
       write "const ";
       write name;
+      (match const.ty with
+       | Fn _ -> ( (* We actually use consts for fns KEK *) )
+       | _ ->
+         write " :: ";
+         print_ty const.ty);
       write " = ";
-      print_expr def;
+      print_expr const.value;
       write ";";
       writeln ())
   ;;

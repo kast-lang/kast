@@ -10,7 +10,7 @@ type ctx =
   ; target : Types.value_target
   ; mutable types : MiniAst.ty_def StringMap.t
   ; mutable fns : MiniAst.fn_def StringMap.t
-  ; mutable consts : MiniAst.expr StringMap.t
+  ; mutable consts : MiniAst.const StringMap.t
   ; mutable captured_values : string Types.ValueMap.t
   }
 
@@ -173,7 +173,10 @@ module Impl = struct
           | None -> not_inferred value.var
           | Some shape -> transpile_value_shape shape
         in
-        ctx.consts <- ctx.consts |> StringMap.add value_name value_expr);
+        let const : MiniAst.const =
+          { ty = transpile_ty (Value.ty_of value); value = value_expr }
+        in
+        ctx.consts <- ctx.consts |> StringMap.add value_name const);
       Claim (Ident value_name)
 
   and transpile_value_shape (shape : Types.value_shape) : MiniAst.expr =
@@ -264,7 +267,7 @@ module Impl = struct
             | Raw s -> Raw s
             | Expr e -> Interpolated (transpile_expr e))
         in
-        Native { parts }
+        TypeAscribed { expr = Native { parts }; ty = transpile_ty expr.data.signature.ty }
       | Types.E_Module _ -> failwith __LOC__
       | Types.E_UseDotStar { bindings; used } ->
         Then
