@@ -87,14 +87,15 @@
         in (opam-nix.buildOpamProject { } "memtrace_viewer" src {
           ocaml-base-compiler = "*";
         }).memtrace_viewer;
+        package_json = filter {
+          root = ./.;
+          include = [ "package.json" "package-lock.json" ];
+        };
       in {
         packages = rec {
           default = let
             npmDeps = pkgs.importNpmLock.buildNodeModules {
-              npmRoot = filter {
-                root = ./.;
-                include = [ "package.json" "package-lock.json" ];
-              };
+              npmRoot = package_json;
               nodejs = pkgs.nodejs;
             };
           in main.overrideAttrs (oa: {
@@ -111,6 +112,26 @@
             '';
           });
           kast = default;
+          js-runtime = let
+            npmDeps = pkgs.importNpmLock.buildNodeModules {
+              npmRoot = package_json;
+              nodejs = pkgs.nodejs;
+            };
+          in pkgs.stdenv.mkDerivation {
+            name = "kast-js-runtime";
+            src = filter {
+              root = ./src/transpiler/javascript;
+              include = [ "runtime.ts" "tsconfig.json" ];
+            };
+            nativeBuildInputs = [ pkgs.nodejs ];
+            buildPhase = ''
+              ln -s ${npmDeps}/node_modules ./node_modules
+              cp ${package_json}/* .
+              npm exec tsc
+              mkdir $out
+              cp runtime.js $out/runtime.js
+            '';
+          };
         };
         devShells.default = pkgs.mkShell {
           inputsFrom = [ main ];
