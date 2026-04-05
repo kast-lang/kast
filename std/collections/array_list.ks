@@ -1,11 +1,11 @@
 module:
 
-const t = [T] (@native "List")(T);
+const t = [T] ((@native "List")(T) :: Type);
 const new = [T] () -> ArrayList.t[T] => @cfg (
     | target.name == "interpreter" => (@native "List.new")()
     | target.name == "javascript" => @native "[]"
 );
-const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) => @cfg (
+const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) -> () => @cfg (
     | target.name == "interpreter" => (@native "List.push_back")(a, value)
     | target.name == "javascript" => @native "\(a^).push(\(value))"
 );
