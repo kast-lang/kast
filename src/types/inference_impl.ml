@@ -898,7 +898,34 @@ module Impl = struct
     { var = Inference.Var.new_inferred VarScope.of_ty_shape ~span shape }
 
   and inferred_value ~span shape : value =
-    { var = Inference.Var.new_inferred VarScope.of_value_shape ~span shape; ty = None }
+    let var = Inference.Var.new_inferred VarScope.of_value_shape ~span shape in
+    { var
+    ; ty =
+        (match shape with
+         | V_Blocked { ty; _ } ->
+           Some
+             (ty.var
+              |> Inference.Var.once_inferred (fun ty_shape ->
+                match ty_shape with
+                | T_Ty ->
+                  (* we want Blocked (b :: type) to be Ty Blocked b *)
+                  with_ctx (fun () ->
+                    match
+                      infer_value_shape ~scope:(Inference.Var.scope var) ~span ty_shape
+                    with
+                    | Some shape ->
+                      var
+                      |> Inference.Var.infer_as
+                           VarScope.of_value_shape
+                           unite_value_shape
+                           VarScopeImpl.unite
+                           ~span
+                           shape
+                    | None -> ())
+                | _ -> ());
+              ty)
+         | _ -> None)
+    }
 
   and infer_value_shape : scope:var_scope -> span:span -> ty_shape -> value_shape option =
     fun ~scope ~span ty_shape ->

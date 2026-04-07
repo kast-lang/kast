@@ -63,7 +63,7 @@ module Impl = struct
                    match name with
                    | Some name -> name
                    | None ->
-                     let name = gen_name "type" in
+                     let name = gen_name ~opt:(Ty.name ty) "type" in
                      do_prepend := true;
                      name
                  in
@@ -324,7 +324,24 @@ module Impl = struct
     in
     { args; result_ty; body }
 
-  and gen_name (name : string) : string = make_string "%s%d" name (Id.gen ()).value
+  and make_correct_ident (name : string) : string =
+    let result = ref "" in
+    name
+    |> String.iter (fun c ->
+      if !result = "" && Char.is_digit c then result := "_";
+      let c = if Char.is_alphanumeric c || c = '_' then c else '_' in
+      result := !result ^ String.make 1 c);
+    !result
+
+  and gen_name ?opt:optional_name (name : string) : string =
+    let name =
+      match optional_name |> Option.and_then OptionalName.await_inferred with
+      | Some name -> make_string "%a" Print.print_name_shape name
+      | None -> name
+    in
+    let name = make_correct_ident name in
+    make_string "%s%d" name (Id.gen ()).value
+
   and not_inferred (var : _ Inference.var) : MiniAst.expr = Uninitialized
 
   and transpile_value (value : value) : MiniAst.expr =
@@ -342,7 +359,7 @@ module Impl = struct
              match name with
              | Some name -> name
              | None ->
-               let name = gen_name "const" in
+               let name = gen_name ~opt:(Value.name value) "const" in
                do_prepend := true;
                name
            in

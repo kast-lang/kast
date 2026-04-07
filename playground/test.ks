@@ -1,21 +1,19 @@
-const std = (
+const Int32 = @native "Int32";
+const Int64 = @native "Int64";
+const String = @native "String";
+
+const Foo = (
     module:
 
-    const Int32 = @native "Int32";
-    const String = @native "String";
+    const Result = [T, U] newtype {
+        .f :: T -> U,
+    };
 
-    const dbg = (
-        module:
-
-        const print = [T] (x :: T) -> () => (
-            @native "console.log(\(x))"
-        );
-    );
-
-    const print = (s :: String) -> () => (
-        @native "console.log(\(s))"
-    );
+    const apply = [T, U] (f :: T -> U) -> Result[T, U] => {
+        .f = arg => apply[T, U](f).f(arg),
+    };
 );
 
-std.dbg.print(@native "12345" :: std.Int32);
-std.print("Hello, world");
+let result = Foo.apply(x => x).f(123 :: Int32);
+let result = Foo.apply(x => x).f(123 :: Int64);
+@native "console.log(\(result))";

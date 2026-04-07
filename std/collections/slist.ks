@@ -13,7 +13,7 @@ const into_iter = [T] (list :: t[T]) -> std.iter.Iterable[T] => {
         | :Nil => ()
         | :Cons { .value, .tail } => (
             f(value);
-            into_iter(tail).iter(f);
+            into_iter[T](tail).iter(f);
         )
     ),
 };
@@ -23,7 +23,7 @@ const iter = [T] (list :: &t[T]) -> std.iter.Iterable[type (&T)] => {
         | :Nil => ()
         | :Cons { .value = ref value, .tail = ref tail } => (
             f(value);
-            iter(tail).iter(f);
+            iter[T](tail).iter(f);
         )
     ),
 };
