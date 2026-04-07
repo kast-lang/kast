@@ -245,7 +245,7 @@ module Print = struct
         print_ty arg);
       write ") -> ";
       print_ty result
-    | Any -> write "any"
+    | Any -> write "Any"
 
   and maybe_surround surround f =
     if surround
