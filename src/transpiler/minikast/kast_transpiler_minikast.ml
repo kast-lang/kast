@@ -23,6 +23,21 @@ type _ Effect.t += GetBindingModuleMap : string Id.Map.t Effect.t
 
 let span = Span.of_ocaml __POS__
 
+let minikast_keywords =
+  StringSet.of_list
+    [ "List"
+    ; "UnwindToken"
+    ; "try"
+    ; "do"
+    ; "loop"
+    ; "if"
+    ; "then"
+    ; "else"
+    ; "match"
+    ; "unwind"
+    ]
+;;
+
 module Impl = struct
   let rec _unused () = ()
 
@@ -32,7 +47,7 @@ module Impl = struct
   and member_name (member : Tuple.member) : string =
     match member with
     | Index i -> "_" ^ Int.to_string i
-    | Name name -> name
+    | Name name -> make_correct_ident name
 
   and transpile_place_expr (expr : Expr.Place.t) : MiniAst.place_expr =
     match expr.shape with
@@ -103,7 +118,7 @@ module Impl = struct
     let variant_names =
       ty.variants
       |> Row.await_inferred_to_list
-      |> List.map (fun (label, _) -> Label.get_name label)
+      |> List.map (fun (label, _) -> make_correct_ident (Label.get_name label))
     in
     let def : MiniAst.ty_def = Enum (StringSet.of_list variant_names) in
     ctx.types <- ctx.types |> StringMap.add name def;
@@ -116,7 +131,7 @@ module Impl = struct
       ty.variants
       |> Row.await_inferred_to_list
       |> List.map (fun ((label, { data }) : Label.t * Types.ty_variant_data) ->
-        let name = Label.get_name label in
+        let name = make_correct_ident (Label.get_name label) in
         let ty =
           match data with
           | Some ty -> transpile_ty ty
@@ -182,7 +197,7 @@ module Impl = struct
       let result = transpile_ty result in
       Alias (Fn { args; result })
     | Types.T_Ast -> failwith __LOC__
-    | Types.T_UnwindToken _ -> failwith __LOC__
+    | Types.T_UnwindToken { result } -> Alias (UnwindToken (transpile_ty result))
     | Types.T_Target -> failwith __LOC__
     | Types.T_ContextTy ->
       (* TODO maybe? *)
@@ -227,7 +242,7 @@ module Impl = struct
     | Types.P_Variant { label; _ } ->
       EnumIs
         { value = Claim (Field { obj = pure_place_expr; field = "tag" })
-        ; expected = Label.get_name label
+        ; expected = make_correct_ident (Label.get_name label)
         }
     | Types.P_Error -> failwith __LOC__
 
@@ -345,6 +360,7 @@ module Impl = struct
 
   and make_correct_ident (name : string) : string =
     let result = ref "" in
+    if minikast_keywords |> StringSet.contains name then result := "_";
     name
     |> String.iter (fun c ->
       if !result = "" && Char.is_digit c then result := "_";
