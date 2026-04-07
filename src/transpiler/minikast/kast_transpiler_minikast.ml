@@ -359,7 +359,8 @@ module Impl = struct
             (match shape with
              | V_Fn { fn = { def; _ }; _ } | V_Generic { fn = { def; _ }; _ } ->
                (* TODO memoize generics *)
-               ctx.fns <- ctx.fns |> StringMap.add value_name (transpile_fn def);
+               let fn_def = transpile_fn def in
+               ctx.fns <- ctx.fns |> StringMap.add value_name fn_def;
                None
              | _ -> Some (transpile_value_shape shape))
         in
@@ -490,7 +491,8 @@ module Impl = struct
     let name = gen_name "context" in
     let ctx = Effect.perform GetCtx in
     ctx.context_names <- ctx.context_names |> Id.Map.add id name;
-    ctx.contexts <- ctx.contexts |> StringMap.add name (transpile_ty ty);
+    let context_ty = transpile_ty ty in
+    ctx.contexts <- ctx.contexts |> StringMap.add name context_ty;
     name
 
   and construct_pattern_value_with_bindings (pattern : pattern) : value =
