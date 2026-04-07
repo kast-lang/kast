@@ -20,15 +20,17 @@ profile *args:
 lsp-stress-test:
     python lsp-stress-test/main.py 2>/dev/null | kast lsp >/dev/null
 
-minikast path *args:
+[arg("no-std", long="no-std", value="--no-std")]
+minikast path no-std="" *args:
     #!/usr/bin/env bash
     set -e
     mks=$(realpath target/compiled.mks)
     mjs=$(realpath target/compiled.mjs)
-    kast compile --target minikast-js {{path}} > "$mks"
+    runtime_js=$(realpath _build/default/src/transpiler/javascript/runtime.js)
+    kast compile {{no-std}} --target minikast-js {{path}} > "$mks"
     pushd ../self-host
     node target/kast.mjs --color false mini compile \
-        --js-runtime _build/default/src/transpiler/javascript/runtime.js \
+        --js-runtime "$runtime_js" \
         "$mks" \
         > "$mjs"
     popd

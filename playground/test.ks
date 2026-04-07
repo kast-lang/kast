@@ -1,2 +1,11 @@
-let f = [A, B] (a :: A, b :: B) => "hello";
-f("yo", 123 :: Int32);
+const std = (
+    module:
+
+    const String = @native "String";
+
+    const print = (s :: String) -> () => (
+        @native "console.log(\(s))"
+    );
+);
+
+std.print("Hello, world");

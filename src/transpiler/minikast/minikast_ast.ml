@@ -123,7 +123,8 @@ and fn_arg =
   }
 
 and const =
-  { ty : ty
+  { name : string
+  ; ty : ty
   ; value : expr
   }
 
@@ -131,7 +132,7 @@ and program =
   { types : ty_def StringMap.t
   ; fns : fn_def StringMap.t
   ; contexts : ty StringMap.t
-  ; consts : const StringMap.t
+  ; consts : const list
   }
 
 module Print = struct
@@ -499,14 +500,11 @@ module Print = struct
       write ";";
       writeln ());
     program.consts
-    |> StringMap.iter (fun name (const : const) ->
+    |> List.iter (fun (const : const) ->
       write "const ";
-      write name;
-      (match const.ty with
-       | Fn _ -> ( (* We actually use consts for fns KEK *) )
-       | _ ->
-         write " :: ";
-         print_ty const.ty);
+      write const.name;
+      write " :: ";
+      print_ty const.ty;
       write " = ";
       print_expr Assign const.value;
       write ";";

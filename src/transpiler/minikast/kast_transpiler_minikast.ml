@@ -12,7 +12,7 @@ type ctx =
   ; mutable context_names : string Id.Map.t
   ; mutable types : MiniAst.ty_def StringMap.t
   ; mutable fns : MiniAst.fn_def StringMap.t
-  ; mutable consts : MiniAst.const StringMap.t
+  ; mutable consts : MiniAst.const Dynarray.t
   ; mutable captured_values : string Types.ValueMap.t
   ; mutable captured_types : string Types.ValueMap.t
   }
@@ -277,7 +277,7 @@ module Impl = struct
        | None -> Unit)
     | Types.P_Error -> failwith __LOC__
 
-  and transpile_fn_expr (def : Types.maybe_compiled_fn) : MiniAst.expr =
+  and transpile_fn (def : Types.maybe_compiled_fn) : MiniAst.fn_def =
     let def =
       Interpreter.await_compiled ~span def
       |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
@@ -322,7 +322,7 @@ module Impl = struct
          Dynarray.add_last body (transpile_expr def.body);
          Then (Dynarray.to_list body))
     in
-    Fn { args; result_ty; body }
+    { args; result_ty; body }
 
   and gen_name (name : string) : string = make_string "%s%d" name (Id.gen ()).value
   and not_inferred (var : _ Inference.var) : MiniAst.expr = Uninitialized
@@ -354,13 +354,25 @@ module Impl = struct
         Log.trace (fun log -> log "prepend %a" Value.print value);
         let value_expr =
           match value.var |> Inference.Var.inferred_opt with
-          | None -> not_inferred value.var
-          | Some shape -> transpile_value_shape shape
+          | None -> Some (not_inferred value.var)
+          | Some shape ->
+            (match shape with
+             | V_Fn { fn = { def; _ }; _ } | V_Generic { fn = { def; _ }; _ } ->
+               (* TODO memoize generics *)
+               ctx.fns <- ctx.fns |> StringMap.add value_name (transpile_fn def);
+               None
+             | _ -> Some (transpile_value_shape shape))
         in
-        let const : MiniAst.const =
-          { ty = transpile_ty (Value.ty_of value); value = value_expr }
-        in
-        ctx.consts <- ctx.consts |> StringMap.add value_name const);
+        match value_expr with
+        | None -> ()
+        | Some value_expr ->
+          let const : MiniAst.const =
+            { name = value_name
+            ; ty = transpile_ty (Value.ty_of value)
+            ; value = value_expr
+            }
+          in
+          Dynarray.add_last ctx.consts const);
       Claim (Ident value_name)
 
   and transpile_value_shape (shape : Types.value_shape) : MiniAst.expr =
@@ -391,10 +403,7 @@ module Impl = struct
     | V_List _ -> failwith __LOC__
     | V_Variant _ -> failwith __LOC__
     | V_Ty _ -> Obj []
-    | V_Fn { fn = { def; _ }; _ } -> transpile_fn_expr def
-    | V_Generic { fn = { def; _ }; _ } ->
-      (* TODO memoize *)
-      transpile_fn_expr def
+    | V_Fn _ | V_Generic _ -> fail "unreachable, we should never compile fns as consts"
     | V_NativeFn f -> fail "transpiling native fn %S at %s" f.name __LOC__
     | V_Ast _ -> failwith __LOC__
     | V_UnwindToken _ -> failwith __LOC__
@@ -538,10 +547,10 @@ module Impl = struct
       | Types.E_Then { list } -> Then (list |> List.map transpile_expr)
       | Types.E_Stmt { expr } -> Stmt (transpile_expr expr)
       | Types.E_Scope { expr } -> Scope (transpile_expr expr)
-      | Types.E_Fn { def; _ } -> transpile_fn_expr def
+      | Types.E_Fn { def; _ } -> Fn (transpile_fn def)
       | Types.E_Generic { def; _ } ->
         (* TODO memoization? *)
-        transpile_fn_expr def
+        Fn (transpile_fn def)
       | Types.E_Tuple { guaranteed_anonymous = _; parts } ->
         let var_name = gen_name "tuple" in
         let stmts = Dynarray.create () in
@@ -726,7 +735,7 @@ let transpile_expr
     ; target
     ; contexts = StringMap.empty
     ; context_names = Id.Map.empty
-    ; consts = StringMap.empty
+    ; consts = Dynarray.create ()
     ; captured_values = Types.ValueMap.empty
     ; captured_types = Types.ValueMap.empty
     ; types = StringMap.empty
@@ -745,5 +754,9 @@ let transpile_expr
     | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty
   in
   ctx.fns <- ctx.fns |> StringMap.add "main" main;
-  { types = ctx.types; fns = ctx.fns; consts = ctx.consts; contexts = ctx.contexts }
+  { types = ctx.types
+  ; fns = ctx.fns
+  ; consts = ctx.consts |> Dynarray.to_list
+  ; contexts = ctx.contexts
+  }
 ;;
