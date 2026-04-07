@@ -409,7 +409,9 @@ module Print = struct
       write "const ";
       write name;
       write " = @context ";
-      print_ty ty);
+      print_ty ty;
+      write ";";
+      writeln ());
     program.fns
     |> StringMap.iter (fun name def ->
       write "const ";
