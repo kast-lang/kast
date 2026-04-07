@@ -359,7 +359,9 @@ module Print = struct
           write ".";
           write field.name;
           write " = ";
-          print_expr Assign field.value);
+          print_expr Assign field.value;
+          write ",";
+          writeln ());
         dec_indentation ();
         write "}"
       | Native { parts } ->
@@ -475,7 +477,9 @@ module Print = struct
            writeln ());
          dec_indentation ();
          write "}"
-       | Alias ty -> print_ty ty);
+       | Alias ty ->
+         write "type ";
+         print_ty ty);
       write ";";
       writeln ());
     program.contexts

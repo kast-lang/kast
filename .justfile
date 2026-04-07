@@ -21,12 +21,18 @@ lsp-stress-test:
     python lsp-stress-test/main.py 2>/dev/null | kast lsp >/dev/null
 
 minikast path *args:
-    kast compile --target minikast-js {{path}} > target/compiled.mks
-    node ../self-host/target/kast.mjs --color false mini compile \
+    #!/usr/bin/env bash
+    set -e
+    mks=$(realpath target/compiled.mks)
+    mjs=$(realpath target/compiled.mjs)
+    kast compile --target minikast-js {{path}} > "$mks"
+    pushd ../self-host
+    node target/kast.mjs --color false mini compile \
         --js-runtime _build/default/src/transpiler/javascript/runtime.js \
-        target/compiled.mks \
-        > target/compiled.mjs
-    node target/compiled.mjs {{args}}
+        "$mks" \
+        > "$mjs"
+    popd
+    node "$mjs" {{args}}
 
 test-aoc *args:
     KAST_STD=$(pwd)/std kast ${AOC:-~/projects/aoc2025/test.ks} {{args}}
