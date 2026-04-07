@@ -21,6 +21,13 @@ const contains = [T] (self :: &OrdSet.t[T], x :: T) -> Bool => (
     )
 );
 
+const remove = [T] (self :: &mut OrdSet.t[T], x :: T) -> Bool => (
+    match &mut self^.inner |> OrdMap.remove(x) with (
+        | :None => false
+        | :Some () => true
+    )
+);
+
 const add = [T] (self :: &mut OrdSet.t[T], x :: T) => (
     &mut self^.inner |> OrdMap.add(x, ());
 );
