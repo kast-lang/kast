@@ -436,6 +436,27 @@ module Impl = struct
       then (
         let args = ref Tuple.empty in
         (match arg.shape with
+         | E_Constant { value; _ } ->
+           let value_tuple =
+             value
+             |> Value.expect_tuple
+             |> Option.unwrap_or_else (fun () -> fail "f args must be tuple")
+           in
+           value_tuple.tuple
+           |> Tuple.iter (fun member (field : Types.value_tuple_field) ->
+             let name =
+               match member with
+               | Index _ -> None
+               | Name name -> Some name
+             in
+             let var = gen_name "arg" in
+             Dynarray.add_last
+               exprs
+               (Let
+                  { var
+                  ; value = transpile_value (Interpreter.read_place ~span field.place)
+                  });
+             args := !args |> Tuple.add name var)
          | E_Tuple { parts; _ } ->
            parts
            |> List.iter (function
@@ -616,7 +637,7 @@ module Impl = struct
         Obj [ { name = "tag"; value = Variant name }; { name = "data"; value } ]
       | Types.E_Apply { f; arg } -> call_fn ~args_is_tuple:true f arg
       | Types.E_InstantiateGeneric { generic; arg } ->
-        call_fn ~args_is_tuple:false generic arg
+        call_fn ~args_is_tuple:true generic arg
       | Types.E_Assign { assignee; value } ->
         let value_var = gen_name "value" in
         Then
