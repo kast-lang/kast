@@ -47,4 +47,7 @@ const TypeInfo = newtype (
     | :Blocked
     | :Error
 );
-const type_info :: Type -> TypeInfo = @native "reflection.type_info";
+const type_info = (ty :: Type) -> TypeInfo => @cfg (
+    | target.name == "interpreter" => (@native "reflection.type_info")(ty)
+    | true => panic("reflection.type_info is comptime only")
+);

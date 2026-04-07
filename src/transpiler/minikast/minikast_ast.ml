@@ -11,9 +11,15 @@ type expr =
   | Obj of field list
   | Variant of string
   | Claim of place_expr
+  | Cast of
+      { value : expr
+      ; target : ty
+      }
   | Ref of place_expr
   | Native of native_expr
   | Fn of fn_def
+  | And of expr * expr
+  | Or of expr * expr
   | Bool of bool
   | Int32 of int32
   | Int64 of int64
@@ -213,6 +219,14 @@ module Print = struct
       let s = make_string "%a" String.print_debug s in
       write s
     | Uninitialized -> write "uninitialized"
+    | And (a, b) ->
+      print_expr a;
+      write " and ";
+      print_expr b
+    | Or (a, b) ->
+      print_expr a;
+      write " or ";
+      print_expr b
     | Claim place -> print_place_expr place
     | EnumIs { value; expected } ->
       print_expr value;
@@ -297,6 +311,10 @@ module Print = struct
           write ";";
           writeln ());
         print_expr expr)
+    | Cast { value; target } ->
+      print_expr value;
+      write " as ";
+      print_ty target
     | Scope expr ->
       write "(";
       writeln ();

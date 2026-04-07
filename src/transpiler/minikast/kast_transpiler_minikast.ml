@@ -176,8 +176,10 @@ module Impl = struct
     | Types.T_Ast -> failwith __LOC__
     | Types.T_UnwindToken _ -> failwith __LOC__
     | Types.T_Target -> failwith __LOC__
-    | Types.T_ContextTy -> failwith __LOC__
-    | Types.T_CompilerScope -> failwith __LOC__
+    | Types.T_ContextTy ->
+      (* TODO maybe? *)
+      Alias Any
+    | Types.T_CompilerScope -> Alias Unit
     | Types.T_Opaque _ -> failwith __LOC__
     | Types.T_Blocked _ -> failwith __LOC__
     | Types.T_Error -> fail "transpiling error ty"
@@ -186,10 +188,34 @@ module Impl = struct
     =
     match pattern.shape with
     | Types.P_Placeholder -> Bool true
-    | Types.P_Ref _ -> failwith __LOC__
+    | Types.P_Ref { mut = _; referenced } ->
+      does_match referenced (Deref (Claim pure_place_expr))
     | Types.P_Unit -> Bool true
     | Types.P_Binding _ -> Bool true
-    | Types.P_Tuple _ -> failwith __LOC__
+    | Types.P_Tuple { parts; _ } ->
+      let unnamed_idx = ref 0 in
+      let had_unpack = ref false in
+      parts
+      |> List.map (fun (part : pattern Types.tuple_part_of) : MiniAst.expr ->
+        match part with
+        | Field { label; field; _ } ->
+          let member =
+            match label with
+            | None ->
+              if !had_unpack then failwith __LOC__;
+              let member = Tuple.Member.Index !unnamed_idx in
+              unnamed_idx := !unnamed_idx + 1;
+              member
+            | Some label -> Tuple.Member.Name (Label.get_name label)
+          in
+          does_match field (Field { obj = pure_place_expr; field = member_name member })
+        | Unpack pattern ->
+          (match pattern.shape with
+           | P_Placeholder -> ()
+           | _ -> failwith __LOC__);
+          had_unpack := true;
+          Bool true)
+      |> List.fold_left (fun a b : MiniAst.expr -> And (a, b)) (Bool true)
     | Types.P_Variant { label; _ } ->
       EnumIs
         { value = Claim (Field { obj = pure_place_expr; field = "tag" })
@@ -202,7 +228,8 @@ module Impl = struct
     =
     match pattern.shape with
     | Types.P_Placeholder -> Unit
-    | Types.P_Ref _ -> failwith __LOC__
+    | Types.P_Ref { mut = _; referenced } ->
+      pattern_match referenced (Deref (Claim pure_place_expr))
     | Types.P_Unit -> Unit
     | Types.P_Binding { bind_mode; binding } ->
       let value : MiniAst.expr =
@@ -217,7 +244,32 @@ module Impl = struct
            ; value
            }
        | None -> Let { var = binding_name binding; value })
-    | Types.P_Tuple _ -> failwith __LOC__
+    | Types.P_Tuple { parts; _ } ->
+      let unnamed_idx = ref 0 in
+      let had_unpack = ref false in
+      Then
+        (parts
+         |> List.map (fun (part : pattern Types.tuple_part_of) : MiniAst.expr ->
+           match part with
+           | Field { label; field; _ } ->
+             let member =
+               match label with
+               | None ->
+                 if !had_unpack then failwith __LOC__;
+                 let member = Tuple.Member.Index !unnamed_idx in
+                 unnamed_idx := !unnamed_idx + 1;
+                 member
+               | Some label -> Tuple.Member.Name (Label.get_name label)
+             in
+             pattern_match
+               field
+               (Field { obj = pure_place_expr; field = member_name member })
+           | Unpack pattern ->
+             (match pattern.shape with
+              | P_Placeholder -> ()
+              | _ -> failwith __LOC__);
+             had_unpack := true;
+             Bool true))
     | Types.P_Variant { label; value = data; _ } ->
       (match data with
        | Some data_pattern ->
@@ -343,12 +395,14 @@ module Impl = struct
     | V_Generic { fn = { def; _ }; _ } ->
       (* TODO memoize *)
       transpile_fn_expr def
-    | V_NativeFn _ -> failwith __LOC__
+    | V_NativeFn f -> fail "transpiling native fn %S at %s" f.name __LOC__
     | V_Ast _ -> failwith __LOC__
     | V_UnwindToken _ -> failwith __LOC__
     | V_Target _ -> failwith __LOC__
-    | V_ContextTy _ -> failwith __LOC__
-    | V_CompilerScope _ -> failwith __LOC__
+    | V_ContextTy _ ->
+      (* TODO maybe? *)
+      Uninitialized
+    | V_CompilerScope _ -> Unit
     | V_Opaque _ -> failwith __LOC__
     | V_Blocked _ -> failwith __LOC__
     | V_Error -> failwith __LOC__
@@ -409,6 +463,70 @@ module Impl = struct
     ctx.contexts <- ctx.contexts |> StringMap.add name (transpile_ty ty);
     name
 
+  and construct_pattern_value_with_bindings (pattern : pattern) : value =
+    match pattern.shape with
+    | Types.P_Placeholder -> Value.new_not_inferred ~scope:None ~span
+    | Types.P_Ref { mut; referenced } ->
+      V_Ref
+        { mut
+        ; place =
+            Place.init ~mut:Inherit (construct_pattern_value_with_bindings referenced)
+        }
+      |> Value.inferred ~span
+    | Types.P_Unit -> V_Unit |> Value.inferred ~span
+    | Types.P_Binding { bind_mode; binding } ->
+      V_Blocked
+        { shape =
+            (match bind_mode with
+             | Claim -> BV_Binding binding
+             | ByRef { mut } -> failwith __LOC__)
+        ; ty = pattern.data.signature.ty
+        }
+      |> Value.inferred ~span
+    | Types.P_Tuple { parts; _ } ->
+      let tuple = ref Tuple.empty in
+      let ty =
+        pattern.data.signature.ty
+        |> Ty.await_inferred
+        |> Ty.Shape.expect_tuple
+        |> Option.unwrap
+      in
+      let unnamed_idx = ref 0 in
+      parts
+      |> List.iter (fun (part : pattern Types.tuple_part_of) ->
+        match part with
+        | Field { label; field; _ } ->
+          let ty_field, name =
+            match label with
+            | None ->
+              let ty_field = ty.tuple |> Tuple.get_unnamed !unnamed_idx in
+              unnamed_idx := !unnamed_idx + 1;
+              ty_field, None
+            | Some name ->
+              let name = Label.get_name name in
+              ty.tuple |> Tuple.get_named name, Some name
+          in
+          let field_value = construct_pattern_value_with_bindings field in
+          let tuple_field : Types.value_tuple_field =
+            { place = Place.init ~mut:Inherit field_value; span; ty_field }
+          in
+          tuple := !tuple |> Tuple.add name tuple_field
+        | Unpack _ -> failwith __LOC__);
+      V_Tuple { tuple = !tuple; ty } |> Value.inferred ~span
+    | Types.P_Variant _ -> failwith __LOC__
+    | Types.P_Error -> failwith __LOC__
+
+  and cast_target (target : value) : MiniAst.ty =
+    let ctx = Effect.perform GetCtx in
+    match target |> Value.await_inferred with
+    | V_Ty _ -> failwith __LOC__
+    | V_Generic { ty; _ } ->
+      let arg = construct_pattern_value_with_bindings ty.args.pattern in
+      let result = Interpreter.instantiate span ctx.interpreter target arg in
+      let result_ty = result |> Value.expect_ty |> Option.unwrap in
+      transpile_ty result_ty
+    | _ -> failwith __LOC__
+
   and transpile_expr (expr : expr) : MiniAst.expr =
     let ctx = Effect.perform GetCtx in
     let span = expr.data.span in
@@ -448,7 +566,36 @@ module Impl = struct
                  { assignee = Field { obj = Ident var_name; field = field_name }
                  ; value = transpile_expr field
                  })
-          | Unpack packed -> failwith __LOC__);
+          | Unpack packed ->
+            let packed_ty =
+              packed.data.signature.ty
+              |> Ty.await_inferred
+              |> Ty.Shape.expect_tuple
+              |> Option.unwrap
+            in
+            let packed_name = gen_name "packed" in
+            Dynarray.add_last
+              stmts
+              (Let { var = packed_name; value = transpile_expr packed });
+            packed_ty.tuple
+            |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
+              let assignee_member =
+                match member with
+                | Index i ->
+                  let member = Tuple.Member.Index !unnamed_idx in
+                  unnamed_idx := !unnamed_idx + 1;
+                  member
+                | Name name -> Name name
+              in
+              Dynarray.add_last
+                stmts
+                (Assign
+                   { assignee =
+                       Field { obj = Ident var_name; field = member_name assignee_member }
+                   ; value =
+                       Claim
+                         (Field { obj = Ident packed_name; field = member_name member })
+                   })));
         Then (Dynarray.to_list stmts)
       | Types.E_Variant { label; value; _ } ->
         let name = Label.get_name label in
@@ -547,7 +694,8 @@ module Impl = struct
       | Types.E_CurrentContext { context_ty } ->
         Claim (CurrentContext (context_ty_name context_ty))
       | Types.E_ImplCast _ -> failwith __LOC__
-      | Types.E_Cast _ -> failwith __LOC__
+      | Types.E_Cast { value; target } ->
+        Cast { value = transpile_expr value; target = cast_target target }
       | Types.E_TargetDependent target_dependent ->
         let branch =
           Kast_interpreter.find_target_dependent_branch
