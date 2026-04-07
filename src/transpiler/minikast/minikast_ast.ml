@@ -157,6 +157,63 @@ module Print = struct
     written_after_newline := false
   ;;
 
+  type priority =
+    | Any
+    | Stmt
+    | Assign
+    | Ascribe
+    | Fn
+    | If
+    | Unwind
+    | Cast
+    | Or
+    | And
+    | Compare
+    | Ref
+    | Field
+
+  let rec need_surround_place_expr (pp : priority) (place : place_expr) : bool =
+    match place with
+    | Ident _ -> false
+    | Field _ -> pp > Field
+    | CurrentContext _ -> false
+    | Deref _ -> pp > Field
+    | Temp expr -> need_surround_expr pp expr
+
+  and need_surround_expr (pp : priority) (expr : expr) : bool =
+    match expr with
+    | Unit -> false
+    | Uninitialized -> false
+    | Let _ -> pp >= Assign
+    | Obj _ -> false
+    | Variant _ -> false
+    | Claim place -> need_surround_place_expr pp place
+    | Cast _ -> pp > Cast
+    | Ref _ -> pp > Ref
+    | Native _ -> false
+    | Fn _ -> pp > Fn
+    | And (_, _) -> pp > And
+    | Or (_, _) -> pp > Or
+    | Bool _ -> false
+    | Int32 _ -> false
+    | Int64 _ -> false
+    | Float64 _ -> false
+    | Char _ -> false
+    | String _ -> false
+    | Loop _ -> false
+    | InjectContext _ -> pp > Stmt
+    | EnumIs _ -> pp >= Compare
+    | Unwindable _ -> false
+    | Unwind _ -> pp >= Unwind
+    | Stmt _ -> pp > Stmt
+    | Then _ -> pp > Stmt
+    | Assign _ -> pp >= Assign
+    | Scope _ -> false
+    | If _ -> pp >= If
+    | Apply _ -> pp > Field
+    | TypeAscribed _ -> pp >= Ascribe
+  ;;
+
   let rec _unused = ()
 
   and print_ty (ty : ty) =
@@ -190,157 +247,174 @@ module Print = struct
       print_ty result
     | Any -> write "any"
 
-  and print_place_expr (expr : place_expr) =
-    match expr with
-    | Ident name -> write name
-    | Field { obj; field } ->
-      print_place_expr obj;
-      write ".";
-      write field
-    | CurrentContext name ->
-      write "@current ";
-      write name
-    | Deref expr ->
-      print_expr expr;
-      write "^"
-    | Temp expr -> print_expr expr
+  and maybe_surround surround f =
+    if surround
+    then (
+      write "(";
+      writeln ();
+      inc_indentation ());
+    f ();
+    if surround
+    then (
+      dec_indentation ();
+      writeln ();
+      write ")")
 
-  and print_expr (expr : expr) =
-    match expr with
-    | Unit -> write "()"
-    | Bool x -> write (Bool.to_string x)
-    | Int32 x -> write (Int32.to_string x)
-    | Int64 x -> write (Int64.to_string x)
-    | Float64 x -> write (Float.to_string x)
-    | Char x ->
-      let s = make_string "%a" Uchar.print_debug x in
-      write s
-    | String s ->
-      let s = make_string "%a" String.print_debug s in
-      write s
-    | Uninitialized -> write "uninitialized"
-    | And (a, b) ->
-      print_expr a;
-      write " and ";
-      print_expr b
-    | Or (a, b) ->
-      print_expr a;
-      write " or ";
-      print_expr b
-    | Claim place -> print_place_expr place
-    | EnumIs { value; expected } ->
-      print_expr value;
-      write " == :";
-      write expected
-    | InjectContext { name; value } ->
-      write "with ";
-      write name;
-      write " = ";
-      print_expr value
-    | Variant name ->
-      write ":";
-      write name
-    | Loop body ->
-      write "@loop (";
-      inc_indentation ();
-      print_expr body;
-      dec_indentation ();
-      write ")"
-    | TypeAscribed { expr; ty } ->
-      print_expr expr;
-      write " :: ";
-      print_ty ty
-    | Assign { assignee; value } ->
-      print_place_expr assignee;
-      write " = ";
-      print_expr value
-    | Unwindable { token_ident; body } ->
-      write "unwindable ";
-      write token_ident;
-      write " (";
-      writeln ();
-      inc_indentation ();
-      print_expr body;
-      dec_indentation ();
-      write ")"
-    | Unwind { token; value } ->
-      write "unwind ";
-      print_expr token;
-      write " with ";
-      print_expr value
-    | Let { var; value } ->
-      write "let ";
-      write var;
-      write " = ";
-      print_expr value
-    | Ref place ->
-      write "&";
-      print_place_expr place
-    | Obj fields ->
-      write "{";
-      writeln ();
-      inc_indentation ();
-      fields
-      |> List.iter (fun field ->
+  and print_place_expr (pp : priority) (expr : place_expr) =
+    let surround = need_surround_place_expr pp expr in
+    maybe_surround surround (fun () ->
+      match expr with
+      | Ident name -> write name
+      | Field { obj; field } ->
+        print_place_expr Field obj;
         write ".";
-        write field.name;
+        write field
+      | CurrentContext name ->
+        write "@current ";
+        write name
+      | Deref expr ->
+        print_expr Field expr;
+        write "^"
+      | Temp expr -> print_expr pp expr)
+
+  and print_expr (pp : priority) (expr : expr) =
+    let surround = need_surround_expr pp expr in
+    maybe_surround surround (fun () ->
+      match expr with
+      | Unit -> write "()"
+      | Bool x -> write (Bool.to_string x)
+      | Int32 x -> write (Int32.to_string x)
+      | Int64 x -> write (Int64.to_string x)
+      | Float64 x -> write (Float.to_string x)
+      | Char x ->
+        let s = make_string "%a" Uchar.print_debug x in
+        write s
+      | String s ->
+        let s = make_string "%a" String.print_debug s in
+        write s
+      | Uninitialized -> write "uninitialized"
+      | And (a, b) ->
+        print_expr And a;
+        write " and ";
+        print_expr And b
+      | Or (a, b) ->
+        print_expr Or a;
+        write " or ";
+        print_expr Or b
+      | Claim place -> print_place_expr pp place
+      | EnumIs { value; expected } ->
+        print_expr Compare value;
+        write " == :";
+        write expected
+      | InjectContext { name; value } ->
+        write "with ";
+        write name;
         write " = ";
-        print_expr field.value);
-      dec_indentation ();
-      write "}"
-    | Native { parts } ->
-      write "@native \"";
-      parts
-      |> List.iter (function
-        | Raw s ->
-          write (make_string "%a" (String.print_escaped_content ~in_string:true) s)
-        | Interpolated expr ->
-          write "\\(";
-          print_expr expr;
-          write ")");
-      write "\""
-    | Fn def -> print_fn def
-    | Stmt expr ->
-      print_expr expr;
-      write ";"
-    | Then exprs ->
-      exprs
-      |> List.iteri (fun i expr ->
-        if i <> 0
-        then (
-          write ";";
-          writeln ());
-        print_expr expr)
-    | Cast { value; target } ->
-      print_expr value;
-      write " as ";
-      print_ty target
-    | Scope expr ->
-      write "(";
-      writeln ();
-      inc_indentation ();
-      print_expr expr;
-      writeln ();
-      dec_indentation ();
-      write ")"
-    | If { cond; then_case; else_case } ->
-      write "if ";
-      print_expr cond;
-      write " then ";
-      print_expr then_case;
-      (match else_case with
-       | None -> ()
-       | Some else_case ->
-         write " else ";
-         print_expr else_case)
-    | Apply { f; args } ->
-      print_expr f;
-      write "(";
-      args
-      |> List.iteri (fun i arg ->
-        if i <> 0 then write ", ";
-        print_expr arg);
-      write ")"
+        print_expr Assign value
+      | Variant name ->
+        write ":";
+        write name
+      | Loop body ->
+        write "@loop (";
+        inc_indentation ();
+        print_expr Any body;
+        dec_indentation ();
+        write ")"
+      | TypeAscribed { expr; ty } ->
+        print_expr Ascribe expr;
+        write " :: ";
+        print_ty ty
+      | Assign { assignee; value } ->
+        print_place_expr Assign assignee;
+        write " = ";
+        print_expr Assign value
+      | Unwindable { token_ident; body } ->
+        write "unwindable ";
+        write token_ident;
+        write " (";
+        writeln ();
+        inc_indentation ();
+        print_expr Any body;
+        dec_indentation ();
+        write ")"
+      | Unwind { token; value } ->
+        write "unwind ";
+        print_expr Unwind token;
+        write " with ";
+        print_expr Unwind value
+      | Let { var; value } ->
+        write "let ";
+        write var;
+        write " = ";
+        print_expr Assign value
+      | Ref place ->
+        write "&";
+        print_place_expr Ref place
+      | Obj fields ->
+        write "{";
+        writeln ();
+        inc_indentation ();
+        fields
+        |> List.iter (fun field ->
+          write ".";
+          write field.name;
+          write " = ";
+          print_expr Assign field.value);
+        dec_indentation ();
+        write "}"
+      | Native { parts } ->
+        write "@native \"";
+        parts
+        |> List.iter (function
+          | Raw s ->
+            write (make_string "%a" (String.print_escaped_content ~in_string:true) s)
+          | Interpolated expr ->
+            write "\\(";
+            print_expr Any expr;
+            write ")");
+        write "\""
+      | Fn def -> print_fn def
+      | Stmt expr ->
+        print_expr Stmt expr;
+        write ";"
+      | Then exprs ->
+        exprs
+        |> List.iteri (fun i expr ->
+          if i <> 0
+          then (
+            write ";";
+            writeln ());
+          print_expr Stmt expr)
+      | Cast { value; target } ->
+        print_expr Cast value;
+        write " as ";
+        print_ty target
+      | Scope expr ->
+        write "(";
+        writeln ();
+        inc_indentation ();
+        print_expr Any expr;
+        writeln ();
+        dec_indentation ();
+        write ")"
+      | If { cond; then_case; else_case } ->
+        write "if ";
+        print_expr If cond;
+        write " then ";
+        print_expr If then_case;
+        (match else_case with
+         | None -> ()
+         | Some else_case ->
+           write " else ";
+           print_expr If else_case)
+      | Apply { f; args } ->
+        print_expr Field f;
+        write "(";
+        args
+        |> List.iteri (fun i arg ->
+          if i <> 0 then write ", ";
+          print_expr Any arg);
+        write ")")
 
   and print_fn (def : fn_def) =
     write "(";
@@ -353,7 +427,7 @@ module Print = struct
     write ") -> ";
     print_ty def.result_ty;
     write " => ";
-    print_expr def.body
+    print_expr Fn def.body
 
   and print_program (program : program) =
     program.types
@@ -430,7 +504,7 @@ module Print = struct
          write " :: ";
          print_ty const.ty);
       write " = ";
-      print_expr const.value;
+      print_expr Assign const.value;
       write ";";
       writeln ())
   ;;
