@@ -6,6 +6,7 @@ type expr =
   | Uninitialized
   | Let of
       { var : string
+      ; ty : ty option
       ; value : expr
       }
   | Obj of field list
@@ -343,9 +344,14 @@ module Print = struct
         print_expr Unwind token;
         write " with ";
         print_expr Unwind value
-      | Let { var; value } ->
+      | Let { var; ty; value } ->
         write "let ";
         write var;
+        (match ty with
+         | Some ty ->
+           write " :: ";
+           print_ty ty
+         | None -> ());
         write " = ";
         print_expr Assign value
       | Ref place ->

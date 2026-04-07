@@ -17,14 +17,17 @@ type ctx =
   ; mutable captured_types : string Types.ValueMap.t
   }
 
+type _ Effect.t += CurrentFnCaptured : Types.interpreter_scope Effect.t
 type _ Effect.t += GetCtx : ctx Effect.t
 type _ Effect.t += GetBindingModuleMap : string Id.Map.t Effect.t
 
-module Impl = struct
-  let span = Span.of_ocaml __POS__
+let span = Span.of_ocaml __POS__
 
+module Impl = struct
   let rec _unused () = ()
-  and binding_name (binding : binding) : string = binding.name.name
+
+  and binding_name (binding : binding) : string =
+    make_correct_ident (make_string "%s_%a" binding.name.name Id.print binding.id)
 
   and member_name (member : Tuple.member) : string =
     match member with
@@ -33,7 +36,12 @@ module Impl = struct
 
   and transpile_place_expr (expr : Expr.Place.t) : MiniAst.place_expr =
     match expr.shape with
-    | Types.PE_Binding binding -> Ident (binding_name binding)
+    | Types.PE_Binding binding ->
+      (match
+         Effect.perform CurrentFnCaptured |> Kast_interpreter.Scope.find_opt binding.name
+       with
+       | Some place -> transpile_value (Interpreter.read_place ~span place)
+       | None -> Ident (binding_name binding))
     | Types.PE_Field { obj; field; field_span = _ } ->
       let field =
         match field with
@@ -243,7 +251,8 @@ module Impl = struct
            { assignee = Field { obj = Ident module_name; field = binding.name.name }
            ; value
            }
-       | None -> Let { var = binding_name binding; value })
+       | None ->
+         Let { var = binding_name binding; ty = Some (transpile_ty binding.ty); value })
     | Types.P_Tuple { parts; _ } ->
       let unnamed_idx = ref 0 in
       let had_unpack = ref false in
@@ -277,52 +286,62 @@ module Impl = struct
        | None -> Unit)
     | Types.P_Error -> failwith __LOC__
 
-  and transpile_fn (def : Types.maybe_compiled_fn) : MiniAst.fn_def =
-    let def =
-      Interpreter.await_compiled ~span def
-      |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
+  and transpile_fn
+        ~(captured : Types.interpreter_scope option)
+        (def : Types.maybe_compiled_fn)
+    : MiniAst.fn_def
+    =
+    let captured =
+      captured |> Option.unwrap_or_else (fun () -> Effect.perform CurrentFnCaptured)
     in
-    let args =
-      match def.args.pattern.data.signature.ty |> Ty.await_inferred with
-      | T_Tuple { name = _; tuple } ->
-        tuple
-        |> Tuple.to_seq
-        |> Seq.map
-             (fun
-                 ((member, field) : Tuple.member * Types.ty_tuple_field)
-                  : MiniAst.fn_arg
-                -> { name = member_name member; ty = transpile_ty field.ty })
-        |> List.of_seq
-      | _ -> fail "fn args are not tuple"
-    in
-    let result_ty = transpile_ty def.body.data.signature.ty in
-    let body : MiniAst.expr =
-      Scope
-        (let body = Dynarray.create () in
-         let arg_parts =
-           match def.args.pattern.shape with
-           | P_Tuple { parts; _ } -> parts
-           | _ -> fail "fn args must be tuple"
-         in
-         let unnamed_idx = ref 0 in
-         arg_parts
-         |> List.iter (fun (part : pattern Types.tuple_part_of) ->
-           match part with
-           | Field { label; field; _ } ->
-             let member =
-               match label with
-               | None ->
-                 let result = Tuple.Member.Index !unnamed_idx in
-                 unnamed_idx := !unnamed_idx + 1;
-                 result
-               | Some label -> Tuple.Member.Name (Label.get_name label)
-             in
-             Dynarray.add_last body (pattern_match field (Ident (member_name member)))
-           | Unpack _ -> failwith __LOC__);
-         Dynarray.add_last body (transpile_expr def.body);
-         Then (Dynarray.to_list body))
-    in
-    { args; result_ty; body }
+    try
+      let def =
+        Interpreter.await_compiled ~span def
+        |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
+      in
+      let args =
+        match def.args.pattern.data.signature.ty |> Ty.await_inferred with
+        | T_Tuple { name = _; tuple } ->
+          tuple
+          |> Tuple.to_seq
+          |> Seq.map
+               (fun
+                   ((member, field) : Tuple.member * Types.ty_tuple_field)
+                    : MiniAst.fn_arg
+                  -> { name = member_name member; ty = transpile_ty field.ty })
+          |> List.of_seq
+        | _ -> fail "fn args are not tuple"
+      in
+      let result_ty = transpile_ty def.body.data.signature.ty in
+      let body : MiniAst.expr =
+        Scope
+          (let body = Dynarray.create () in
+           let arg_parts =
+             match def.args.pattern.shape with
+             | P_Tuple { parts; _ } -> parts
+             | _ -> fail "fn args must be tuple"
+           in
+           let unnamed_idx = ref 0 in
+           arg_parts
+           |> List.iter (fun (part : pattern Types.tuple_part_of) ->
+             match part with
+             | Field { label; field; _ } ->
+               let member =
+                 match label with
+                 | None ->
+                   let result = Tuple.Member.Index !unnamed_idx in
+                   unnamed_idx := !unnamed_idx + 1;
+                   result
+                 | Some label -> Tuple.Member.Name (Label.get_name label)
+               in
+               Dynarray.add_last body (pattern_match field (Ident (member_name member)))
+             | Unpack _ -> failwith __LOC__);
+           Dynarray.add_last body (transpile_expr def.body);
+           Then (Dynarray.to_list body))
+      in
+      { args; result_ty; body }
+    with
+    | effect CurrentFnCaptured, k -> Effect.continue k captured
 
   and make_correct_ident (name : string) : string =
     let result = ref "" in
@@ -344,7 +363,7 @@ module Impl = struct
 
   and not_inferred (var : _ Inference.var) : MiniAst.expr = Uninitialized
 
-  and transpile_value (value : value) : MiniAst.expr =
+  and transpile_value (value : value) : MiniAst.place_expr =
     let ctx = Effect.perform GetCtx in
     Inference.Var.setup_default_if_needed value.var;
     match value.var |> Inference.Var.inferred_opt with
@@ -374,9 +393,10 @@ module Impl = struct
           | None -> Some (not_inferred value.var)
           | Some shape ->
             (match shape with
-             | V_Fn { fn = { def; _ }; _ } | V_Generic { fn = { def; _ }; _ } ->
+             | V_Fn { fn = { def; captured; _ }; _ }
+             | V_Generic { fn = { def; captured; _ }; _ } ->
                (* TODO memoize generics *)
-               let fn_def = transpile_fn def in
+               let fn_def = transpile_fn ~captured:(Some captured) def in
                ctx.fns <- ctx.fns |> StringMap.add value_name fn_def;
                None
              | _ -> Some (transpile_value_shape shape))
@@ -391,7 +411,7 @@ module Impl = struct
             }
           in
           Dynarray.add_last ctx.consts const);
-      Claim (Ident value_name)
+      Ident value_name
 
   and transpile_value_shape (shape : Types.value_shape) : MiniAst.expr =
     match shape with
@@ -413,7 +433,8 @@ module Impl = struct
                   : MiniAst.field
                 ->
                 { name = member_name member
-                ; value = transpile_value (field.place |> Interpreter.read_place ~span)
+                ; value =
+                    Claim (transpile_value (field.place |> Interpreter.read_place ~span))
                 })
         |> List.of_seq
       in
@@ -472,7 +493,9 @@ module Impl = struct
                exprs
                (Let
                   { var
-                  ; value = transpile_value (Interpreter.read_place ~span field.place)
+                  ; ty = None
+                  ; value =
+                      Claim (transpile_value (Interpreter.read_place ~span field.place))
                   });
              args := !args |> Tuple.add name var)
          | E_Tuple { parts; _ } ->
@@ -481,7 +504,9 @@ module Impl = struct
              | (Field { label; field; _ } : _ Types.tuple_part_of) ->
                let name = label |> Option.map Label.get_name in
                let var = gen_name "arg" in
-               Dynarray.add_last exprs (Let { var; value = transpile_expr field });
+               Dynarray.add_last
+                 exprs
+                 (Let { var; ty = None; value = transpile_expr field });
                args := !args |> Tuple.add name var
              | Unpack _ -> failwith __LOC__)
          | _ -> fail "f args must be tuple");
@@ -581,20 +606,26 @@ module Impl = struct
     let span = expr.data.span in
     try
       match expr.shape with
-      | Types.E_Constant { id = _; value } -> transpile_value value
+      | Types.E_Constant { id = _; value } -> Claim (transpile_value value)
       | Types.E_Ref { mut = _; place } -> Ref (transpile_place_expr place)
       | Types.E_Claim place -> Claim (transpile_place_expr place)
       | Types.E_Then { list } -> Then (list |> List.map transpile_expr)
       | Types.E_Stmt { expr } -> Stmt (transpile_expr expr)
       | Types.E_Scope { expr } -> Scope (transpile_expr expr)
-      | Types.E_Fn { def; _ } -> Fn (transpile_fn def)
+      | Types.E_Fn { def; _ } -> Fn (transpile_fn ~captured:None def)
       | Types.E_Generic { def; _ } ->
         (* TODO memoization? *)
-        Fn (transpile_fn def)
+        Fn (transpile_fn ~captured:None def)
       | Types.E_Tuple { guaranteed_anonymous = _; parts } ->
         let var_name = gen_name "tuple" in
         let stmts = Dynarray.create () in
-        Dynarray.add_last stmts (MiniAst.Let { var = var_name; value = Uninitialized });
+        Dynarray.add_last
+          stmts
+          (MiniAst.Let
+             { var = var_name
+             ; ty = Some (transpile_ty expr.data.signature.ty)
+             ; value = Uninitialized
+             });
         let unnamed_idx = ref 0 in
         parts
         |> List.iter (fun (part : expr Types.tuple_part_of) ->
@@ -625,7 +656,7 @@ module Impl = struct
             let packed_name = gen_name "packed" in
             Dynarray.add_last
               stmts
-              (Let { var = packed_name; value = transpile_expr packed });
+              (Let { var = packed_name; ty = None; value = transpile_expr packed });
             packed_ty.tuple
             |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
               let assignee_member =
@@ -645,6 +676,7 @@ module Impl = struct
                        Claim
                          (Field { obj = Ident packed_name; field = member_name member })
                    })));
+        Dynarray.add_last stmts (Claim (Ident var_name));
         Then (Dynarray.to_list stmts)
       | Types.E_Variant { label; value; _ } ->
         let name = Label.get_name label in
@@ -660,7 +692,7 @@ module Impl = struct
       | Types.E_Assign { assignee; value } ->
         let value_var = gen_name "value" in
         Then
-          [ Let { var = value_var; value = Ref (transpile_place_expr value) }
+          [ Let { var = value_var; ty = None; value = Ref (transpile_place_expr value) }
           ; assign assignee (Deref (Claim (Ident value_var)))
           ]
       | Types.E_Ty _ -> Obj []
@@ -681,19 +713,32 @@ module Impl = struct
         |> List.iter (fun (binding : binding) ->
           binding_module_map := !binding_module_map |> Id.Map.add binding.id var);
         let binding_module_map = !binding_module_map in
-        (try Then [ Let { var; value = Uninitialized }; transpile_expr def ] with
+        (try
+           Then
+             [ Let
+                 { var
+                 ; ty = Some (transpile_ty expr.data.signature.ty)
+                 ; value = Uninitialized
+                 }
+             ; transpile_expr def
+             ; Claim (Ident var)
+             ]
+         with
          | effect GetBindingModuleMap, k -> Effect.continue k binding_module_map)
       | Types.E_UseDotStar { bindings; used } ->
         Then
           (let stmts : MiniAst.expr Dynarray.t = Dynarray.create () in
            let used_var = gen_name "used" in
-           Dynarray.add_last stmts (Let { var = used_var; value = transpile_expr used });
+           Dynarray.add_last
+             stmts
+             (Let { var = used_var; ty = None; value = transpile_expr used });
            let used : MiniAst.place_expr = Ident used_var in
            bindings
            |> List.iter (fun (binding : binding) ->
              let stmt : MiniAst.expr =
                Let
                  { var = binding_name binding
+                 ; ty = None
                  ; value = Claim (Field { obj = used; field = binding.name.name })
                  }
              in
@@ -713,7 +758,7 @@ module Impl = struct
         (* TODO panic(not exhaustive) *)
         let non_exhaustive : MiniAst.expr = Uninitialized in
         Then
-          [ Let { var = value_var; value = value_ref }
+          [ Let { var = value_var; ty = None; value = value_ref }
           ; List.fold_right
               (fun ({ pattern; body } : Types.expr_match_branch) acc : MiniAst.expr ->
                  If
@@ -782,6 +827,7 @@ let transpile_expr
     ; fns = StringMap.empty
     }
   in
+  let current_fn_captured = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
   let main : MiniAst.fn_def =
     try
       let body = Impl.transpile_expr expr in
@@ -790,6 +836,7 @@ let transpile_expr
       ; body = Scope body
       }
     with
+    | effect CurrentFnCaptured, k -> Effect.continue k current_fn_captured
     | effect GetCtx, k -> Effect.continue k ctx
     | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty
   in
