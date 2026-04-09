@@ -15,6 +15,23 @@ impl String as module = (
     const substring_from = (s :: String, start :: Int32) -> String => (
         substring(s, start, length(s) - start)
     );
+    const strip_prefix = (s :: String, .prefix :: String) -> Option.t[String] => (
+        let prefix_len = String.length(prefix);
+        if (
+            String.length(s) >= prefix_len
+            and String.substring(s, 0, prefix_len) == prefix
+        ) then (
+            :Some String.substring_from(s, prefix_len)
+        ) else (
+            :None
+        )
+    );
+    const starts_with = (s :: String, .prefix :: String) -> Bool => (
+        match strip_prefix(s, .prefix) with (
+            | :Some _ => true
+            | :None => false
+        )
+    );
     const iter = (s :: String) -> std.iter.Iterable[Char] => @cfg (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iter")(s, f)
