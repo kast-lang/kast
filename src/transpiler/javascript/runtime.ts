@@ -1,6 +1,7 @@
 import type * as readline from "node:readline/promises";
 import type * as fs from "node:fs";
 import type * as util from "node:util";
+import type * as tty from "node:tty";
 
 function deep_equal(a: any, b: any): boolean {
   if (typeof a == "object" && typeof b === "object") {
@@ -68,11 +69,13 @@ interface Backend<isNode> {
     stdout: isNode extends true
       ? {
           write: Fn<[string], void>;
+          isatty: Fn<[], boolean>;
         }
       : undefined;
     stderr: isNode extends true
       ? {
           write: Fn<[string], void>;
+          isatty: Fn<[], boolean>;
         }
       : undefined;
     stdin: isNode extends true
@@ -80,6 +83,7 @@ interface Backend<isNode> {
           read_until: Fn<[Char], string>;
           read_exactly: Fn<[number], string>;
           read_to_end: Fn<[], string>;
+          isatty: Fn<[], boolean>;
         }
       : undefined;
   };
@@ -208,6 +212,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       const readline = await import("node:readline/promises");
       const fs = await import("node:fs");
       const net = await import("node:net");
+      const tty = await import("node:tty");
       const child_process = await import("node:child_process");
 
       let readline_interface: readline.Interface | null = null;
@@ -318,16 +323,25 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
             return await ensure_readline_interface().question(prompt);
           },
           stdout: {
+            isatty(ctx) {
+              return tty.isatty(STDOUT);
+            },
             write(ctx, s) {
               fs.writeFileSync(STDOUT, s, "utf-8");
             },
           },
           stderr: {
+            isatty(ctx) {
+              return tty.isatty(STDERR);
+            },
             write(ctx, s) {
               fs.writeFileSync(STDERR, s, "utf-8");
             },
           },
           stdin: {
+            isatty(ctx) {
+              return tty.isatty(STDIN);
+            },
             read_until(ctx, c: Char): string {
               const chunks: Array<Buffer> = [];
               for (;;) {

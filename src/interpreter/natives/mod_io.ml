@@ -2,6 +2,12 @@ open Common
 
 type _ Effect.t += Input : string -> string Effect.t
 
+let isatty s f =
+  native_fn
+    ("io." ^ s ^ ".isatty")
+    (fun _ty ~caller:_ ~state:_ _args -> V_Bool (Unix.isatty f) |> Value.inferred ~span)
+;;
+
 let init () =
   [ native_fn "io.print" (fun _ty ~caller ~state:_ args ->
       let value = single_arg ~span args in
@@ -24,5 +30,8 @@ let init () =
       | _ ->
         Error.error caller "io.input expected a string";
         V_Error |> Value.inferred ~span)
+  ; isatty "stdout" Unix.stdout
+  ; isatty "stderr" Unix.stderr
+  ; isatty "stdin" Unix.stdin
   ]
 ;;

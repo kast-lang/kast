@@ -169,15 +169,13 @@ let run : Args.t -> unit =
   let do_continue = ref true in
   while !do_continue do
     let file_mod_time (uri : Uri.t) =
-      let path =
-        match Uri.scheme uri with
-        | Some "file" -> Uri.file_path uri
-        | scheme ->
-          fail "unsupported uri scheme %a" (Option.print String.print_debug) scheme
-      in
-      let result = (Unix.stat path).st_mtime in
-      Log.trace (fun log -> log "mod time of %a = %f" Uri.print uri result);
-      result
+      match Uri.scheme uri with
+      | Some "file" ->
+        let path = Uri.file_path uri in
+        let result = (Unix.stat path).st_mtime in
+        Log.trace (fun log -> log "mod time of %a = %f" Uri.print uri result);
+        result
+      | _ -> 0.0
     in
     let file_was_changed (uri : Uri.t) : bool =
       match !file_mod_times_when_compiled |> UriMap.find_opt uri with
