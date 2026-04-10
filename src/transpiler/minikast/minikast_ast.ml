@@ -78,6 +78,7 @@ and place_expr =
       }
   | CurrentContext of string
   | Deref of expr
+  | TypeInfo of ty
   | Temp of expr
 
 and native_expr = { parts : native_expr_part list }
@@ -180,6 +181,7 @@ module Print = struct
     | Field _ -> pp > Field
     | CurrentContext _ -> false
     | Deref _ -> pp > Field
+    | TypeInfo _ -> false
     | Temp expr -> need_surround_expr pp expr
 
   and need_surround_expr (pp : priority) (expr : expr) : bool =
@@ -277,6 +279,10 @@ module Print = struct
       | Deref expr ->
         print_expr Field expr;
         write "^"
+      | TypeInfo ty ->
+        write "@TypeInfo(";
+        print_ty ty;
+        write ")"
       | Temp expr -> print_expr pp expr)
 
   and print_expr (pp : priority) (expr : expr) =

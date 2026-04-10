@@ -168,7 +168,7 @@ module Impl = struct
       in
       Struct fields
     | Types.T_List { element_ty } -> Alias (List (transpile_ty element_ty))
-    | Types.T_Ty -> Struct StringMap.empty
+    | Types.T_Ty -> Alias (Ref (Named "TypeInfo"))
     | Types.T_Fn { args; result; async = _ } ->
       let args = args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap in
       let args =
@@ -457,7 +457,7 @@ module Impl = struct
       Obj fields
     | V_List _ -> failwith __LOC__
     | V_Variant _ -> failwith __LOC__
-    | V_Ty _ -> Obj []
+    | V_Ty ty -> Ref (TypeInfo (transpile_ty ty))
     | V_Fn _ | V_Generic _ -> fail "unreachable, we should never compile fns as consts"
     | V_NativeFn f -> fail "transpiling native fn %S at %s" f.name __LOC__
     | V_Ast _ -> failwith __LOC__

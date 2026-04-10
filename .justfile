@@ -30,7 +30,8 @@ minikast path no-std="" *args:
     kast compile {{no-std}} --target minikast-js {{path}} > "$mks"
     pushd ../self-host
     node target/kast.mjs --color false mini compile \
-        --js-runtime "$runtime_js" \
+        --target js --js-runtime "$runtime_js" \
+        src/mini/backends/javascript/runtime.mks \
         "$mks" \
         > "$mjs"
     popd
