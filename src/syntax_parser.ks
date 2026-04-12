@@ -106,7 +106,7 @@ const SyntaxParser = (
             :None
         );
         while not token_stream |> peek_is(")") do (
-            let part = read_part(token_stream, .rule_priority, .top_level = :None);
+            let part = read_part(token_stream, .rule_priority, .toplevel = :None);
             &mut parts |> ArrayList.push_back(part);
         );
         let mut last_token = &token_stream^ |> TokenStream.peek;
@@ -158,13 +158,13 @@ const SyntaxParser = (
     const read_part = (
         token_stream :: &mut TokenStream.t,
         .rule_priority :: SyntaxRule.Priority,
-        .top_level :: Option.t[type (&mut TopLevelState)],
+        .toplevel :: Option.t[type (&mut TopLevelState)],
     ) -> SyntaxRule.Part => with_return (
         let mut left_assoc = false;
-        if top_level is :Some top_level then (
+        if toplevel is :Some toplevel then (
             if token_stream |> peek_is("<-") then (
                 Log.trace_msg("<-");
-                if not top_level^.first then (
+                if not toplevel^.first then (
                     let peek = &token_stream^ |> TokenStream.peek;
                     report_error_and_unwind(
                         peek.span,
@@ -194,9 +194,9 @@ const SyntaxParser = (
                 );
 
                 let mut right_assoc = false;
-                if top_level is :Some top_level then (
+                if toplevel is :Some toplevel then (
                     if token_stream |> peek_is("->") then (
-                        top_level^.right_assoc = true;
+                        toplevel^.right_assoc = true;
                         right_assoc = true;
                         token_stream |> TokenStream.advance;
                     );
@@ -306,12 +306,12 @@ const SyntaxParser = (
         token_stream |> expect_and_advance("=");
 
         let mut parts = ArrayList.new[SyntaxRule.Part]();
-        let mut top_level :: TopLevelState = {
+        let mut toplevel :: TopLevelState = {
             .first = true,
             .right_assoc = false,
         };
         while not token_stream |> peek_is(";") do (
-            if top_level.right_assoc then (
+            if toplevel.right_assoc then (
                 let peek = &token_stream^ |> TokenStream.peek;
                 report_error_and_unwind(
                     peek.span,
@@ -325,10 +325,10 @@ const SyntaxParser = (
             let part = read_part(
                 token_stream,
                 .rule_priority,
-                .top_level = :Some &mut top_level,
+                .toplevel = :Some &mut toplevel,
             );
             &mut parts |> ArrayList.push_back(part);
-            top_level.first = false;
+            toplevel.first = false;
         );
 
         let span_end = (&token_stream^ |> TokenStream.peek).span.start;

@@ -1,4 +1,4 @@
-use (import "../../ir.ks").*;
+use (import "../../ir/_lib.ks").*;
 use (import "../../../diagnostic.ks").*;
 use (import "../../../output.ks").*;
 use (import "../../../span.ks").*;

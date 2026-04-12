@@ -1,4 +1,4 @@
-use (import "../../ir.ks").*;
+use (import "../../ir/_lib.ks").*;
 use std.collections.OrdMap;
 
 module:
@@ -10,7 +10,7 @@ const JavaScript = (
 
     const State = newtype {
         .next_var_id :: Int32,
-        .top_level :: Ast.Block,
+        .toplevel :: Ast.Block,
     };
     const Context = @context State;
 
@@ -336,22 +336,22 @@ const JavaScript = (
     );
 
     const Compiled = newtype {
-        .top_level :: Ast.Block,
+        .toplevel :: Ast.Block,
     };
 
     const print = (compiled :: Compiled) => (
-        Ast.Print.stmts(compiled.top_level.stmts);
+        Ast.Print.stmts(compiled.toplevel.stmts);
     );
 
     const compile = (mut program :: Ir.Program) -> Compiled => (
         let mut state :: State = {
             .next_var_id = 0,
-            .top_level = new_block(),
+            .toplevel = new_block(),
         };
         with Context = state;
         let ctx_var = new_var("ctx");
         with Scope = {
-            .block = &mut state.top_level,
+            .block = &mut state.toplevel,
             .ctx_var,
         };
         let_var(ctx_var, :Obj ArrayList.new());
@@ -374,6 +374,6 @@ const JavaScript = (
                 }
             );
         );
-        { .top_level = state.top_level }
+        { .toplevel = state.toplevel }
     );
 );
