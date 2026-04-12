@@ -1,13 +1,13 @@
-const fib = (n :: Int32) -> Int32 => (
-    if less[Int32](n, 2) then (
+const fib = [T] (n :: T) -> T => (
+    if less[T](n, 2) then (
         1
     ) else (
-        add[Int32](fib(sub[Int32](n, 1)), fib(sub[Int32](n, 2)))
+        add[T](fib[T](sub[T](n, 1)), fib[T](sub[T](n, 2)))
     )
 );
 
 const main = () -> () => (
     print_string("fib(10) = ");
-    print_int32(fib(10));
+    print_int32(fib[Int32](10));
     print_string("\n");
 );
