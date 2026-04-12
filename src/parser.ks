@@ -86,71 +86,73 @@ const Parser = (
         if starting_value is :None then (
             let peek = &ctx.token_stream^ |> TokenStream.peek;
             let peek_raw = peek.shape |> Token.Shape.raw;
-            if peek_raw == "@syntax" then (
-                let syntax_token = peek;
-                let command_raw_tokens = ctx.token_stream
-                    |> TokenStream.start_recording;
-                let recording = ctx.token_stream
-                    |> TokenStream.start_recording;
-                let ignored_tokens_before = claim_ignored_tokens();
-                ctx.token_stream |> TokenStream.advance;
-                with Diagnostic.UnwindableHandler = {
-                    .unwind_on_error = [T] () -> T => (
-                        let raw_tokens = ctx.token_stream
-                            |> TokenStream.finish_recording(recording);
-                        let mut parts = ArrayList.new();
-                        let mut span = { ...syntax_token.span };
-                        for token in raw_tokens |> ArrayList.into_iter do (
-                            &mut parts |> ArrayList.push_back(:Ignored token);
-                            span.end = token.span.end;
-                        );
-                        return :MadeProgress {
-                            .ignored_tokens_before,
-                            .shape = :Error { .parts },
-                            .span,
-                        }
-                    ),
-                };
-                let {
-                    .command,
-                    .raw_tokens = _,
-                } = SyntaxParser.parse_syntax_command(ctx.token_stream);
-                let command_raw_tokens = ctx.token_stream
-                    |> TokenStream.finish_recording(command_raw_tokens);
-                let command = match command with (
-                    | :FromScratch => (
-                        dyn_ctx.ruleset = SyntaxRuleset.new();
-                        :FromScratch
-                    )
-                    | :Rule rule => (
-                        &mut dyn_ctx.ruleset |> SyntaxRuleset.add(rule);
-                        :Rule rule
-                    )
-                );
-                let value_after = match try_parse(.priority_filter) with (
-                    | :MadeProgress ast => :Some ast
-                    | :NoProgress => :None
-                );
-                return :MadeProgress {
-                    .shape = :Syntax {
-                        .command = {
-                            .shape = command,
-                            .raw_tokens = command_raw_tokens,
-                        },
-                        .value_after,
-                    },
-                    .ignored_tokens_before,
-                    .span = {
-                        .start = syntax_token.span.start,
-                        .end = (
-                            let prev_token = &ctx.token_stream^
-                                |> TokenStream.prev
-                                |> Option.unwrap;
-                            prev_token.span.end
+            if dyn_ctx.ruleset.syntax_keyword is :Some syntax_keyword then (
+                if peek_raw == syntax_keyword then (
+                    let syntax_token = peek;
+                    let command_raw_tokens = ctx.token_stream
+                        |> TokenStream.start_recording;
+                    let recording = ctx.token_stream
+                        |> TokenStream.start_recording;
+                    let ignored_tokens_before = claim_ignored_tokens();
+                    ctx.token_stream |> TokenStream.advance;
+                    with Diagnostic.UnwindableHandler = {
+                        .unwind_on_error = [T] () -> T => (
+                            let raw_tokens = ctx.token_stream
+                                |> TokenStream.finish_recording(recording);
+                            let mut parts = ArrayList.new();
+                            let mut span = { ...syntax_token.span };
+                            for token in raw_tokens |> ArrayList.into_iter do (
+                                &mut parts |> ArrayList.push_back(:Ignored token);
+                                span.end = token.span.end;
+                            );
+                            return :MadeProgress {
+                                .ignored_tokens_before,
+                                .shape = :Error { .parts },
+                                .span,
+                            }
                         ),
-                        .path = syntax_token.span.path,
+                    };
+                    let {
+                        .command,
+                        .raw_tokens = _,
+                    } = SyntaxParser.parse_syntax_command(ctx.token_stream);
+                    let command_raw_tokens = ctx.token_stream
+                        |> TokenStream.finish_recording(command_raw_tokens);
+                    let command = match command with (
+                        | :FromScratch => (
+                            dyn_ctx.ruleset = SyntaxRuleset.new();
+                            :FromScratch
+                        )
+                        | :Rule rule => (
+                            &mut dyn_ctx.ruleset |> SyntaxRuleset.add(rule);
+                            :Rule rule
+                        )
+                    );
+                    let value_after = match try_parse(.priority_filter) with (
+                        | :MadeProgress ast => :Some ast
+                        | :NoProgress => :None
+                    );
+                    return :MadeProgress {
+                        .shape = :Syntax {
+                            .command = {
+                                .shape = command,
+                                .raw_tokens = command_raw_tokens,
+                            },
+                            .value_after,
+                        },
+                        .ignored_tokens_before,
+                        .span = {
+                            .start = syntax_token.span.start,
+                            .end = (
+                                let prev_token = &ctx.token_stream^
+                                    |> TokenStream.prev
+                                    |> Option.unwrap;
+                                prev_token.span.end
+                            ),
+                            .path = syntax_token.span.path,
+                        }
                     }
-                }
+                );
             );
             if try_parse_single_token() is :MadeProgress ast then (
                 return :MadeProgress ast;

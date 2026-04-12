@@ -13,6 +13,7 @@ const SyntaxRuleset = (
     const t = newtype {
         .keywords :: OrdSet.t[String],
         .root :: Node,
+        .syntax_keyword :: Option.t[String],
     };
 
     const EdgeKey = newtype (
@@ -56,6 +57,7 @@ const SyntaxRuleset = (
     const new = () -> SyntaxRuleset.t => {
         .keywords = OrdSet.new(),
         .root = new_node(),
+        .syntax_keyword = :Some "@syntax",
     };
 
     const Context = @context type {
