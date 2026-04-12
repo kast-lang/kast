@@ -208,11 +208,12 @@ const C = (
 
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
         let mut ctx = @current Context;
+        let span = ir_expr^.span;
         let expr :: Ast.Expr = match ir_expr^.shape with (
-            | :Unit => return void(ir_expr^.span)
+            | :Unit => return void(span)
             | :Uninitialized => (
                 if ir_expr^.ty is :Unit then (
-                    return void(ir_expr^.span);
+                    return void(span);
                 );
                 let mut block = new_block();
                 with Scope = {
@@ -232,7 +233,7 @@ const C = (
             | :Claim ref place => return calculate_place(place).get()
             | :Ref ref place => return {
                 .expr = :Some :Ref pure(calculate_place(place).get()),
-                .span = ir_expr^.span,
+                .span = span,
             }
             | :Native { .parts = ref parts } => (
                 let mut raw_parts = ArrayList.new();
@@ -255,7 +256,7 @@ const C = (
                             );
                             if String.strip_prefix(s, .prefix = "#include ") is :Some @"include" then (
                                 &mut ctx.result.includes |> OrdSet.add(@"include");
-                                return void(ir_expr^.span);
+                                return void(span);
                             );
                             &mut raw_parts |> ArrayList.push_back(:Raw s);
                         )
@@ -274,24 +275,42 @@ const C = (
                 );
                 if stmt then (
                     insert_stmt(:RawParts raw_parts);
-                    return void(ir_expr^.span);
+                    return void(span);
                 );
                 :RawParts raw_parts
             )
             | :Literal ref literal => (
-                return calculate_literal(literal, ir_expr^.span)
+                return calculate_literal(literal, span)
             )
             # | :Variant String
             | :Stmt ref expr => (
                 calculate(expr);
-                return void(ir_expr^.span)
+                return void(span)
             )
             | :Then ref exprs => (
-                let mut result = void(ir_expr^.span);
+                let mut result = void(span);
                 for expr in exprs |> ArrayList.iter do (
                     result = calculate(expr);
                 );
                 return result
+            )
+            | :Loop ref body_expr => (
+                let mut body = new_block();
+                (
+                    with Scope = {
+                        .block = &mut body,
+                    };
+                    calculate(body_expr);
+                );
+                insert_stmt(
+                    :For {
+                        .init = :None,
+                        .test = :None,
+                        .incr = :None,
+                        .body,
+                    }
+                );
+                return void(span)
             )
             | :If { .cond = ref cond, .then_case = ref then_case, .else_case = ref else_case } => (
                 let ident = new_ident("if_result");
@@ -332,7 +351,7 @@ const C = (
                 insert_stmt(:If { .cond, .then_case, .else_case });
                 return {
                     .expr = if is_void then :None else :Some :Ident ident,
-                    .span = ir_expr^.span,
+                    .span = span,
                 }
             )
             | :Let { .name, .value = ref value } => (
@@ -347,13 +366,13 @@ const C = (
                 ) else (
                     let_var(&value^.ty, ident(name), pure(calculate(value)));
                 );
-                return void(ir_expr^.span)
+                return void(span)
             )
             | :Assign { .assignee = ref assignee, .value = ref value } => (
                 let assignee = calculate_place(assignee);
                 let value = pure(calculate(value));
                 assignee.set(value);
-                return void(ir_expr^.span)
+                return void(span)
             )
             # | :Fn FnDef
             | :Scope ref expr => (
@@ -390,13 +409,13 @@ const C = (
         );
         if ir_expr^.ty is :Unit then (
             insert_stmt(:Expr expr);
-            void(ir_expr^.span)
+            void(span)
         ) else (
             let ident = new_ident("value");
             let_var(&ir_expr^.ty, ident, expr);
             {
                 .expr = :Some :Ident ident,
-                .span = ir_expr^.span,
+                .span = span,
             }
         )
     );
@@ -478,6 +497,8 @@ const C = (
             | :Ref ref inner => (
                 # type can be forward declared for pointers
                 # make_sure_all_are_defined(inner)
+
+
             )
             | :Unit => ()
             | :Int32 => ()

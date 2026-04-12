@@ -38,6 +38,19 @@
             '';
           };
           default = kast;
+          raylib-web = stdenv.mkDerivation {
+            name = "raylib-web";
+            src = raylib.src;
+            buildInputs = [ emscripten ];
+            buildPhase = ''
+              cd src
+              make PLATFORM=PLATFORM_WEB -B
+            '';
+            installPhase = ''
+              mkdir $out
+              cp libraylib.web.a $out/libraylib.web.a
+            '';
+          };
         };
         devShells.default = mkShell {
           packages = [
@@ -57,6 +70,9 @@
             inotify-tools
             hyperfine
             clang
+            raylib
+            emscripten
+            caddy
           ];
           shellHook = ''
             echo Hello from Kast dev shell
@@ -65,6 +81,8 @@
           CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";
           KAST_JS_RUNTIME =
             "${inputs.kast.packages.${system}.js-runtime}/runtime.js";
+          RAYLIB = "${raylib}";
+          RAYLIB_WEB = "${inputs.self.packages.${system}.raylib-web}/libraylib.web.a";
         };
       });
 }

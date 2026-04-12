@@ -106,6 +106,7 @@ const Compiler = (
                     .setup_contexts = :None,
                 };
                 add_toplevel_item(toplevel_item);
+                return;
             );
         );
         let name = name_ast |> AstHelpers.expect_ident;
@@ -897,6 +898,13 @@ const Compiler = (
                         let expr = parse_expr_impl(:Some ty, expr);
                         return { .shape = expr.shape, .ty = expr.ty };
                     );
+                    if rule.name == "loop" then (
+                        let body = root |> AstHelpers.expect_single_child(:None);
+                        return {
+                            .shape = :Expr :Loop parse_expr(:Some :Unit, body),
+                            .ty = :Unit,
+                        };
+                    );
                     if rule.name == "if" then (
                         return parse_if(expected_ty, root);
                     );
@@ -1375,7 +1383,7 @@ const Compiler = (
             |> AstHelpers.expect_two_children(:Some { "name", "value" });
         let { name, ty } = name_and_type
             |> AstHelpers.expect_rule("type ascribe")
-            |> AstHelpers.expect_two_children(:Some { "value", "type" });
+            |> AstHelpers.expect_two_children(:Some { "expr", "type" });
         {
             .ty = parse_type(ty),
             .value,

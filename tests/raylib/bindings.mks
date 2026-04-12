@@ -1,0 +1,66 @@
+const Int = type Int32;
+
+const raylibInitWindow = (
+    width :: Int,
+    height :: Int,
+    title :: String,
+) -> () => (
+    @native "#include <raylib.h>";
+    @native "InitWindow(\(width), \(height), \(title.contents))";
+);
+
+const raylibTexture2D = type @native "Texture2D";
+
+const raylibLoadTexture = (
+    path :: String,
+) -> raylibTexture2D => (
+    @native "LoadTexture(\(path.contents))"
+);
+
+const raylibWindowShouldClose = () -> Bool => (
+    @native "WindowShouldClose()"
+);
+
+const raylibBeginDrawing = () -> () => (
+    @native "BeginDrawing()"
+);
+
+const raylibEndDrawing = () -> () => (
+    @native "EndDrawing()"
+);
+
+const raylibColor = type @native "Color";
+
+const raylibClearBackground = (color :: raylibColor) -> () => (
+    @native "ClearBackground(\(color))"
+);
+
+const raylibDrawTexture = (
+    texture :: raylibTexture2D,
+    pos_x :: Int,
+    pos_y :: Int,
+    tint :: raylibColor,
+) -> () => (
+    @native "DrawTexture(\(texture), \(pos_x), \(pos_y), \(tint))"
+);
+
+const raylibCloseWindow = () -> () => (
+    @native "CloseWindow()";
+);
+
+const raylibUnloadTexture = (texture :: raylibTexture2D) -> () => (
+    @native "UnloadTexture(\(texture))";
+);
+
+const raylibIsKeyDown = (key :: Int) -> Bool => (
+    @native "IsKeyDown(\(key))"
+);
+
+const raylibSetTargetFPS = (fps :: Int) -> () => (
+    @native "SetTargetFPS(\(fps))";
+);
+
+const RAYLIB_KEY_RIGHT :: Int = @native "KEY_RIGHT";
+const RAYLIB_KEY_LEFT :: Int = @native "KEY_LEFT";
+const RAYLIB_KEY_UP :: Int = @native "KEY_UP";
+const RAYLIB_KEY_DOWN :: Int = @native "KEY_DOWN";

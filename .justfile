@@ -15,6 +15,37 @@ build continuous="":
         --output target/kast.mjs \
         src/cli/_main.ks
 
+raylib-to-c:
+    kast mini \
+        compile --target c \
+        src/mini/backends/c/runtime.mks \
+        tests/raylib/bindings.mks \
+        tests/raylib/main.mks \
+        > target/compiled.c
+
+raylib *args:
+    just raylib-to-c
+    clang target/compiled.c -o target/compiled -lraylib
+    ./target/compiled {{args}}
+
+raylib-web *args:
+    just raylib-to-c
+    emcc target/compiled.c \
+        $RAYLIB_WEB \
+        -o target/index.html \
+        -I. -I $RAYLIB/include \
+        -Os \
+        -s USE_GLFW=3 \
+        -s ASYNCIFY \
+        --preload-file logo.png \
+        -s TOTAL_STACK=64MB \
+        -s INITIAL_MEMORY=128MB \
+        -s ASSERTIONS \
+        -DPLATFORM_WEB
+    caddy file-server --listen 127.0.0.1:8081 --root target
+
+#--shell-file ../shell.html \
+
 c path *args:
     kast mini \
         compile --target c \

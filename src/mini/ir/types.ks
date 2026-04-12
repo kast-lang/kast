@@ -36,7 +36,6 @@ const Type = newtype (
     | :Fn FnType
     | :Native String
 );
-
 # TODO derive
 const compare_type = (
     a :: &Type,
@@ -135,6 +134,7 @@ const ExprShape = newtype (
         .enum :: Expr,
         .variant :: String,
     }
+    | :Loop Expr
 );
 
 const Field = newtype {

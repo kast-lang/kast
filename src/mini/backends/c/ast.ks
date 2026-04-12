@@ -96,6 +96,12 @@ const Ast = (
             .then_case :: Block,
             .else_case :: Option.t[Block],
         }
+        | :For {
+            .init :: Option.t[Stmt],
+            .test :: Option.t[Expr],
+            .incr :: Option.t[Stmt],
+            .body :: Block,
+        }
     );
 
     const Block = newtype {
@@ -308,7 +314,11 @@ const Ast = (
                     write(" = ");
                     Print.expr(value);
                 )
-                | :If { .cond = ref cond, .then_case = ref then_case, .else_case = ref else_case } => (
+                | :If {
+                    .cond = ref cond,
+                    .then_case = ref then_case,
+                    .else_case = ref else_case,
+                } => (
                     write_keyword("if");
                     write(" (");
                     Print.expr(cond);
@@ -318,6 +328,30 @@ const Ast = (
                         write_keyword(" else ");
                         Print.block(else_case);
                     );
+                )
+                | :For {
+                    .init = ref init,
+                    .test = ref test,
+                    .incr = ref incr,
+                    .body = ref body,
+                } => (
+                    write_keyword("for");
+                    write(" (");
+                    if init^ is :Some ref init then (
+                        Print.stmt(init);
+                    );
+                    write(";");
+                    if test^ is :Some ref test then (
+                        write(" ");
+                        Print.expr(test);
+                    );
+                    write(";");
+                    if incr^ is :Some ref incr then (
+                        write(" ");
+                        Print.stmt(incr);
+                    );
+                    write(") ");
+                    Print.block(body);
                 )
             );
         );
