@@ -44,6 +44,10 @@ const Type = newtype (
     | :Named String
     | :Fn FnType
     | :Native String
+    | :UnwindToken {
+        .instantiated_token_ty :: Type,
+        .result_ty :: Type,
+    }
 );
 # TODO derive
 const compare_type = (
@@ -89,9 +93,14 @@ const compare_type = (
         | { :Native a, :Native b } => std.cmp.default_compare[String](a, b)
         | { :Native _, _ } => :Less
         | { _, :Native _ } => :Greater
-        | { :Fn ref ty, :Fn ref ty } => panic("TODO compare fn types")
+        | { :Fn ref a, :Fn ref ty } => panic("TODO compare fn types")
         | { :Fn _, _ } => :Less
         | { _, :Fn _ } => :Greater
+        | { :UnwindToken ref a, :UnwindToken ref b } => (
+            compare_type(&a^.result_ty, &b^.result_ty)
+        )
+        | { :UnwindToken _, _ } => :Less
+        | { _, :UnwindToken _ } => :Greater
     )
 );
 
@@ -151,6 +160,15 @@ const ExprShape = newtype (
         .variant :: String,
     }
     | :Loop Expr
+    | :Unwindable {
+        .instantiated_token_ty :: Type,
+        .token :: String,
+        .body :: Expr,
+    }
+    | :Unwind {
+        .token :: Expr,
+        .value :: Expr,
+    }
 );
 
 const Field = newtype {

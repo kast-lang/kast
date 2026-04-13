@@ -1,5 +1,6 @@
 module:
 
+use (import "../../util.ks").*;
 use (import "../../log.ks").*;
 use (import "../../output.ks").*;
 use (import "../../diagnostic.ks").*;
@@ -102,9 +103,3 @@ const CompilerT = newtype {
 };
 
 const Compiler = @context CompilerT;
-
-const single_element_list = [T] (x :: T) -> ArrayList.t[T] => (
-    let mut result = ArrayList.new();
-    &mut result |> ArrayList.push_back(x);
-    result
-);

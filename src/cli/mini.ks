@@ -70,7 +70,7 @@ const Mini = (
 
             const t = newtype {
                 .target :: Option.t[String],
-                .js_runtime :: Option.t[String],
+                .prepend :: Option.t[String],
                 .paths :: ArrayList.t[String],
             };
 
@@ -78,7 +78,7 @@ const Mini = (
                 start_index :: Int32,
             ) -> t => (
                 let mut target = :None;
-                let mut js_runtime = :None;
+                let mut prepend = :None;
                 let mut paths = ArrayList.new();
                 let mut i = start_index;
                 while i < std.sys.argc() do (
@@ -88,8 +88,8 @@ const Mini = (
                         i += 2;
                         continue;
                     );
-                    if arg == "--js-runtime" then (
-                        js_runtime = :Some std.sys.argv_at(i + 1);
+                    if arg == "--prepend" then (
+                        prepend = :Some std.sys.argv_at(i + 1);
                         i += 2;
                         continue;
                     );
@@ -98,7 +98,7 @@ const Mini = (
                 );
                 {
                     .target,
-                    .js_runtime,
+                    .prepend,
                     .paths,
                 }
             );
@@ -126,12 +126,12 @@ const Mini = (
                 &mut compiler |> Mini.Compiler.add_source(source);
             );
             let program = compiler |> Mini.Compiler.compile;
+            if args.prepend is :Some path then (
+                print(std.fs.read_file(path));
+            );
             match target with (
                 | :JavaScript => (
                     let compiled = Mini.Backends.JavaScript.compile(program);
-                    if args.js_runtime is :Some path then (
-                        print(std.fs.read_file(path));
-                    );
                     Mini.Backends.JavaScript.print(compiled);
                 )
                 | :C => (

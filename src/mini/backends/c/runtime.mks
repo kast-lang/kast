@@ -148,3 +148,22 @@ const StringView = struct {
     .length :: SizeT,
 };
 const String = type StringView;
+
+@native
+const RawUnwindToken = struct {
+    .id :: Int,
+};
+
+const newRawUnwindToken = () -> RawUnwindToken => (
+    let next_raw_id :: &Int = @native "&next_raw_unwind_token_id";
+    let result :: RawUnwindToken = {
+        .id = next_raw_id^,
+    };
+    next_raw_id^ = add[Int](next_raw_id^, 1);
+    result
+);
+
+const UnwindToken = [T] struct {
+    .raw :: RawUnwindToken,
+    .value :: T,
+};

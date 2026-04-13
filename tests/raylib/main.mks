@@ -1,37 +1,50 @@
-const main = () -> () => (
+const print_string = (s :: String) -> () => (
+    @native "#include <stdio.h>";
+    @native "printf(\"%s\", \(s.contents))";
+);
+
+const not_so_special_main = () -> () => (
     rInitWindow(512, 512, "Hello, raylib!");
     SetTargetFPS(60);
     let texture = rLoadTexture("logo.png");
     let x :: Int = 0;
     let y :: Int = 0;
-    @loop (
-        if WindowShouldClose() then (
-            # TODO
-            @native "stmt: break";
+    let result :: Int = unwindable main_loop (
+        @loop (
+            if WindowShouldClose() then (
+                unwind main_loop with 123 :: ();
+            );
+            if IsKeyDown(KEY_RIGHT) then (
+                x = add[Int](x, 1);
+            );
+            if IsKeyDown(KEY_LEFT) then (
+                x = sub[Int](x, 1);
+            );
+            if IsKeyDown(KEY_UP) then (
+                y = sub[Int](y, 1);
+            );
+            if IsKeyDown(KEY_DOWN) then (
+                y = add[Int](y, 1);
+            );
+            BeginDrawing();
+            let background_color :: Color = {
+                .r = 10,
+                .g = 10,
+                .b = 30,
+                .a = 0xff,
+            };
+            ClearBackground(background_color);
+            DrawTexture(texture, x, y, WHITE);
+            EndDrawing();
         );
-        if IsKeyDown(KEY_RIGHT) then (
-            x = add[Int](x, 1);
-        );
-        if IsKeyDown(KEY_LEFT) then (
-            x = sub[Int](x, 1);
-        );
-        if IsKeyDown(KEY_UP) then (
-            y = sub[Int](y, 1);
-        );
-        if IsKeyDown(KEY_DOWN) then (
-            y = add[Int](y, 1);
-        );
-        BeginDrawing();
-        let background_color :: Color = {
-            .r = 10,
-            .g = 10,
-            .b = 30,
-            .a = 0xff,
-        };
-        ClearBackground(background_color);
-        DrawTexture(texture, x, y, WHITE);
-        EndDrawing();
+        456
     );
     UnloadTexture(texture);
     CloseWindow();
+    print_string("end of not so special main\n");
+);
+
+const main = () -> () => (
+    not_so_special_main();
+    print_string("end of main\n");
 );

@@ -80,6 +80,7 @@ const Ast = (
         | :RawParts ArrayList.t[Expr]
         | :Expr Expr
         | :Return Expr
+        | :ReturnVoid
         | :LetVar {
             .ty :: Ty,
             .ident :: Ident,
@@ -289,6 +290,9 @@ const Ast = (
                 | :Return ref expr => (
                     write_keyword("return ");
                     Print.expr(expr);
+                )
+                | :ReturnVoid => (
+                    write_keyword("return");
                 )
                 | :LetVar { .ty = ref ty, .ident = ref ident, .value = ref value } => (
                     Print.ty(ty);

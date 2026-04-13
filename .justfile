@@ -18,6 +18,7 @@ build continuous="":
 raylib-to-c:
     kast mini \
         compile --target c \
+        --prepend src/mini/backends/c/runtime.c \
         src/mini/backends/c/runtime.mks \
         tests/raylib/bindings.mks \
         tests/raylib/main.mks \
@@ -59,7 +60,7 @@ c path *args:
 js path *args:
     kast mini \
         compile --target js \
-        --js-runtime tests/mini/runtime/js.js \
+        --prepend tests/mini/runtime/js.js \
         tests/mini/runtime/js.mks \
         src/mini/backends/javascript/runtime.mks \
         {{path}} \

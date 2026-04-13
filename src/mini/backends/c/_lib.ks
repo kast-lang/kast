@@ -1,3 +1,4 @@
+use (import "../../../util.ks").*;
 use (import "../../ir/_lib.ks").*;
 use (import "../../../diagnostic.ks").*;
 use (import "../../../output.ks").*;
@@ -25,6 +26,10 @@ const C = (
         .next_id :: Int32,
     };
     const Context = @context ContextT;
+
+    const FunctionContext = @context newtype {
+        .result_ty :: Ast.Ty,
+    };
 
     const ScopeT = newtype {
         .block :: &mut Ast.Block,
@@ -421,6 +426,75 @@ const C = (
                     .fields = field_initializers,
                 }
             )
+            | :Unwind {
+                .token = ref token,
+                .value = ref value,
+            } => (
+                let token = pure(calculate(token));
+                let value = pure(calculate(value));
+                insert_stmt(
+                    :Assign {
+                        .assignee = :Field {
+                            .obj = :Deref token,
+                            .field = ident("value"),
+                        },
+                        .value,
+                    }
+                );
+                insert_stmt(
+                    :Assign {
+                        .assignee = :Raw "unwinding",
+                        .value = :Field {
+                            .obj = :Deref token,
+                            .field = ident("raw"),
+                        },
+                    }
+                );
+                # TODO cleanup before return
+                match (@current FunctionContext).result_ty with (
+                    | :Void => (
+                        insert_stmt(:ReturnVoid);
+                    )
+                    | result_ty => (
+                        let result_var = new_ident("return_uninitialized");
+                        insert_stmt(
+                            :LetVar {
+                                .ty = (@current FunctionContext).result_ty,
+                                .ident = result_var,
+                                .value = :None,
+                            }
+                        );
+                        insert_stmt(:Expr :Ref :Ident result_var); # This prevents UB (i think)
+                        insert_stmt(:Return :Ident result_var);
+                    )
+                );
+                # TODO what if its not void?
+                return void(span)
+            )
+            | :Unwindable {
+                .instantiated_token_ty = ref instantiated_token_ty,
+                .token,
+                .body = ref body,
+            } => (
+                let token_own_var = new_ident("token_own");
+                let_var(
+                    instantiated_token_ty,
+                    token_own_var,
+                    :CompoundLiteral {
+                        .ty = convert_ty(instantiated_token_ty),
+                        .fields = single_element_list(
+                            { .name = ident("raw"), .value = :Raw "newRawUnwindToken()" }
+                        ),
+                    },
+                );
+                let token_var = ident(token);
+                let_var(
+                    &(:Ref instantiated_token_ty^),
+                    token_var,
+                    :Ref :Ident token_own_var,
+                );
+                return calculate(body)
+            )
         );
         if ir_expr^.ty is :Unit then (
             insert_stmt(:Expr expr);
@@ -466,6 +540,9 @@ const C = (
             };
             &mut args |> ArrayList.push_back(arg);
         );
+        with FunctionContext = {
+            .result_ty = convert_ty(&def^.result_ty),
+        };
         let fn :: Ast.Fn = {
             .signature = {
                 .name = ident(name),

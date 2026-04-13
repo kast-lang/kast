@@ -954,6 +954,68 @@ const Compiler = (
                         let expr = parse_expr_impl(:Some ty, expr);
                         return { .shape = expr.shape, .ty = expr.ty };
                     );
+                    if rule.name == "unwind" then (
+                        let { token_ast, value } = root
+                            |> AstHelpers.expect_two_children(:Some { "token", "value" });
+                        let token = parse_expr(:None, token_ast);
+                        if token.ty is :UnwindToken { .result_ty, ... } then (
+                            let value = parse_expr(:Some result_ty, value);
+                            let unwind_expr_ty = expect_known_type(
+                                expected_ty,
+                                .span = ast.span,
+                            );
+                            return {
+                                .shape = :Expr :Unwind {
+                                    .token,
+                                    .value,
+                                },
+                                .ty = unwind_expr_ty,
+                            };
+                        ) else (
+                            let diagnostic = {
+                                .severity = :Error,
+                                .source = :Compiler,
+                                .message = () => (
+                                    (@current Output).write("Expected an unwind token, got ");
+                                    Ir.Print.type_name(&token.ty);
+                                ),
+                                .span = token_ast.span,
+                                .related = ArrayList.new(),
+                            };
+                            Diagnostic.report_and_unwind(diagnostic)
+                        );
+                    );
+                    if rule.name == "unwindable" then (
+                        let { token_ast, body } = root
+                            |> AstHelpers.expect_two_children(:Some { "token", "body" });
+                        let token = token_ast
+                            |> AstHelpers.expect_ident;
+                        with ScopeContext = {
+                            .parent = :Some (@current ScopeContext),
+                            .vars = OrdMap.new(),
+                        };
+                        let result_ty = expect_known_type(expected_ty, .span = ast.span);
+                        let instantiated_token_ty = instantiate_ty(
+                            "UnwindToken",
+                            single_element_list(result_ty),
+                            .span = token_ast.span,
+                        );
+                        let token_ty = :UnwindToken {
+                            .instantiated_token_ty,
+                            .result_ty,
+                        };
+                        &mut (@current ScopeContext).vars
+                            |> OrdMap.add(token, token_ty);
+                        let body = parse_expr(:Some result_ty, body);
+                        return {
+                            .shape = :Expr :Unwindable {
+                                .instantiated_token_ty,
+                                .token,
+                                .body,
+                            },
+                            .ty = result_ty,
+                        };
+                    );
                     if rule.name == "loop" then (
                         let body = root |> AstHelpers.expect_single_child(:None);
                         return {
