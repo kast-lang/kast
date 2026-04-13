@@ -32,8 +32,12 @@ const Type = newtype (
     | :Any
     | :Ref Type
     | :Unit
-    | :Int32
-    | :Int64
+    | :Int
+    | :UInt
+    | :IntSpecific {
+        .signed :: Bool,
+        .bits :: Int32,
+    }
     | :Float64
     | :Bool
     | :Char
@@ -45,7 +49,7 @@ const Type = newtype (
 const compare_type = (
     a :: &Type,
     b :: &Type,
-) -> std.cmp.Ordering => (
+) -> std.cmp.Ordering => with_return (
     match { a^, b^ } with (
         | { :Any, :Any } => :Equal
         | { :Any, _ } => :Less
@@ -56,12 +60,20 @@ const compare_type = (
         | { :Bool, :Bool } => :Equal
         | { :Bool, _ } => :Less
         | { _, :Bool } => :Greater
-        | { :Int32, :Int32 } => :Equal
-        | { :Int32, _ } => :Less
-        | { _, :Int32 } => :Greater
-        | { :Int64, :Int64 } => :Equal
-        | { :Int64, _ } => :Less
-        | { _, :Int64 } => :Greater
+        | { :Int, :Int } => :Equal
+        | { :Int, _ } => :Less
+        | { _, :Int } => :Greater
+        | { :UInt, :UInt } => :Equal
+        | { :UInt, _ } => :Less
+        | { _, :UInt } => :Greater
+        | { :IntSpecific a, :IntSpecific b } => (
+            if a.signed != b.signed then (
+                return std.cmp.default_compare[Bool](a.signed, b.signed);
+            );
+            std.cmp.default_compare[Int32](a.bits, b.bits)
+        )
+        | { :IntSpecific _, _ } => :Less
+        | { _, :IntSpecific _ } => :Greater
         | { :Float64, :Float64 } => :Equal
         | { :Float64, _ } => :Less
         | { _, :Float64 } => :Greater
@@ -94,8 +106,7 @@ const NativeExpr = newtype {
 
 const Literal = newtype (
     | :Bool Bool
-    | :Int32 Int32
-    | :Int64 Int64
+    | :Int String
     | :Float64 Float64
     | :Char Char
     | :String String

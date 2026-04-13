@@ -502,8 +502,9 @@ const Compiler = (
         match ty with (
             | :Any => :Any
             | :Unit => :Unit
-            | :Int32 => :Int32
-            | :Int64 => :Int64
+            | :Int => ty
+            | :UInt => ty
+            | :IntSpecific _ => ty
             | :Float64 => :Float64
             | :Char => :Char
             | :Bool => :Bool
@@ -1167,8 +1168,17 @@ const Compiler = (
                             let ty = expect_known_type(expected_ty, .span = token.span);
                             # TODO catch parse errors
                             let literal = match resolve_type_aliases(ty) with (
-                                | :Int32 => :Int32 parse(raw)
-                                | :Int64 => :Int64 parse(raw)
+                                | :Int => (
+                                    # TODO check that its within range
+                                    :Int raw
+                                )
+                                | :IntSpecific {
+                                    .signed,
+                                    .bits,
+                                } => (
+                                    # TODO check that its within range
+                                    :Int raw
+                                )
                                 | :Float64 => :Float64 parse(raw)
                                 | _ => (
                                     let diagnostic = {
@@ -1375,8 +1385,20 @@ const Compiler = (
                     if name == "Any" then return :Any;
                     if name == "Unit" then return :Unit;
                     if name == "Bool" then return :Bool;
-                    if name == "Int32" then return :Int32;
-                    if name == "Int64" then return :Int64;
+                    if name == "Int" then return :Int;
+                    if name == "UInt" then return :UInt;
+                    if name |> String.strip_prefix(.prefix = "UInt") is :Some bits then (
+                        return :IntSpecific {
+                            .signed = false,
+                            .bits = parse(bits),
+                        };
+                    );
+                    if name |> String.strip_prefix(.prefix = "Int") is :Some bits then (
+                        return :IntSpecific {
+                            .signed = true,
+                            .bits = parse(bits),
+                        };
+                    );
                     if name == "Float64" then return :Float64;
                     if name == "Char" then return :Char;
                     return lookup_type(name, .span = token.span);

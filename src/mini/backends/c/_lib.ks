@@ -51,8 +51,24 @@ const C = (
             | :Any => :Void
             | :Ref ref t => :Pointer convert_ty(t)
             | :Unit => :Void
-            | :Int32 => :Int32
-            | :Int64 => :Int64
+            | :Int => :Int
+            | :UInt => :SizeT
+            | :IntSpecific {
+                .signed,
+                .bits,
+            } => (
+                :Raw output_to_string(
+                    () => (
+                        let output = @current Output;
+                        if not signed then (
+                            output.write("u_");
+                        );
+                        output.write("int");
+                        output.write(to_string(bits));
+                        output.write("_t");
+                    )
+                )
+            )
             | :Float64 => :Float64
             | :Bool => :Bool
             | :Char => :Char
@@ -175,8 +191,7 @@ const C = (
     ) -> Pure => with_return (
         let literal :: Ast.Literal = match literal^ with (
             | :Bool x => :Bool x
-            | :Int32 x => :Int32 x
-            | :Int64 x => :Int64 x
+            | :Int x => :Int x
             | :Float64 x => :Float64 x
             | :Char x => :Char x
             | :String s => return {
@@ -191,7 +206,7 @@ const C = (
                         &mut fields |> ArrayList.push_back(contents);
                         let length = {
                             .name = ident("length"),
-                            .value = :Literal :Int String.length(s),
+                            .value = :Literal :Int to_string(String.length(s)),
                         };
                         &mut fields |> ArrayList.push_back(length);
                         fields
@@ -483,7 +498,7 @@ const C = (
                     insert_stmt(:Return expr);
                 );
                 if name == "main" then (
-                    insert_stmt(:Return :Literal :Int 0);
+                    insert_stmt(:Return :Literal :Int "0");
                 );
                 block
             ),
@@ -501,8 +516,9 @@ const C = (
 
             )
             | :Unit => ()
-            | :Int32 => ()
-            | :Int64 => ()
+            | :Int => ()
+            | :UInt => ()
+            | :IntSpecific _ => ()
             | :Float64 => ()
             | :Bool => ()
             | :Char => ()
@@ -603,6 +619,8 @@ const C = (
         # for int32_t and similar
         &mut ctx.result.includes
             |> OrdSet.add("<stdint.h>");
+        &mut ctx.result.includes
+            |> OrdSet.add("<sys/types.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdbool.h>");
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
             type_def(name, ty_def);

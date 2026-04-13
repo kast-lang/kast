@@ -43,9 +43,7 @@ const Ast = (
 
     const Literal = newtype (
         | :Bool Bool
-        | :Int Int32
-        | :Int32 Int32
-        | :Int64 Int64
+        | :Int String
         | :Float64 Float64
         | :Char Char
         | :String String
@@ -162,15 +160,7 @@ const Ast = (
                 )
                 | :Int x => ansi.with_mode(
                     :Italic,
-                    () => write(to_string(x)),
-                )
-                | :Int32 x => ansi.with_mode(
-                    :Italic,
-                    () => write(to_string(x)),
-                )
-                | :Int64 x => ansi.with_mode(
-                    :Italic,
-                    () => write(to_string(x)),
+                    () => write(x),
                 )
                 | :Float64 x => ansi.with_mode(
                     :Italic,

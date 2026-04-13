@@ -29,8 +29,15 @@ const Print = (
             | :Any => output.write("Any")
             | :Unit => output.write("()")
             | :Bool => output.write("Bool")
-            | :Int32 => output.write("Int32")
-            | :Int64 => output.write("Int64")
+            | :Int => output.write("Int")
+            | :UInt => output.write("UInt")
+            | :IntSpecific { .signed, .bits } => (
+                if not signed then (
+                    output.write("U");
+                );
+                output.write("Int");
+                output.write(to_string(bits));
+            )
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)
@@ -73,8 +80,9 @@ const Print = (
             | :Any => output.write("Any")
             | :Unit => output.write("Unit")
             | :Bool => output.write("Bool")
-            | :Int32 => output.write("Int32")
-            | :Int64 => output.write("Int64")
+            | :Int => output.write("Int")
+            | :UInt => output.write("UInt")
+            | :IntSpecific _ => Print.type_name(self)
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)

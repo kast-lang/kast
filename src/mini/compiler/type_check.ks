@@ -69,8 +69,9 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
         | :Any => "Any"
         | :Ref _ => "a reference"
         | :Unit => "()"
-        | :Int32 => "Int32"
-        | :Int64 => "Int64"
+        | :Int => "Int"
+        | :UInt => "UInt"
+        | :IntSpecific _ => output_to_string(() => Ir.Print.type_name(ty))
         | :Float64 => "Float64"
         | :Bool => "Bool"
         | :Char => "Char"
@@ -123,8 +124,13 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             type_check_impl(a, b);
         )
         | { :Unit, :Unit } => ()
-        | { :Int32, :Int32 } => ()
-        | { :Int64, :Int64 } => ()
+        | { :Int, :Int } => ()
+        | { :UInt, :UInt } => ()
+        | { :IntSpecific _, :IntSpecific _ } => (
+            if Ir.compare_type(expected, actual) is :Equal then () else (
+                fail()
+            );
+        )
         | { :Float64, :Float64 } => ()
         | { :Bool, :Bool } => ()
         | { :Char, :Char } => ()
