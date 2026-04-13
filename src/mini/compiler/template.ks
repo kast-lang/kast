@@ -199,11 +199,6 @@ const parse_instantiate = (root :: Ast.Group) -> Instantiation => (
     instantiate(template_name, args, .span = root.span)
 );
 
-const parse_instantiate_expr = (root :: Ast.Group) -> ParsedExpr => (
-    parse_instantiate(root)
-        |> instantiation_to_expr(.span = root.span)
-);
-
 const parse_instantiate_ty = (root :: Ast.Group) -> Ir.Type => (
     parse_instantiate(root)
         |> instantiation_to_type(.span = root.span)
