@@ -6,7 +6,7 @@ const type_def = (
     name :: String,
     kind :: TypeKind,
     root :: Ast.Group,
-) -> Ir.TypeDef => (
+) -> Ir.TypeDefShape => (
     match kind with (
         | :Alias => (
             let def = root |> AstHelpers.expect_single_child(:None);
@@ -37,7 +37,7 @@ const type_def = (
 const process_enum = (
     .name :: String,
     .def :: Ast.t,
-) -> Ir.TypeDef => (
+) -> Ir.TypeDefShape => (
     let mut variants = OrdSet.new();
     for variant in Ast.iter_list(
         def,
@@ -57,7 +57,7 @@ const process_struct_or_union = (
     .name :: String,
     .kind :: TypeKind,
     .def :: Ast.t,
-) -> Ir.TypeDef => (
+) -> Ir.TypeDefShape => (
     let mut fields = OrdMap.new();
     for field in Ast.iter_list(
         def,

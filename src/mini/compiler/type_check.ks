@@ -11,7 +11,7 @@ const expect_ty_enum = (
             let def = &(@current Compiler).program.types
                 |> OrdMap.get(name)
                 |> Option.unwrap;
-            match def^ with (
+            match def^.shape with (
                 | :Enum { .variants = ref variants } => (
                     return variants;
                 )
@@ -79,7 +79,7 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
             let def = &(@current Compiler).program.types
                 |> OrdMap.get(name)
                 |> Option.unwrap;
-            let short_def = match def^ with (
+            let short_def = match def^.shape with (
                 | :Opaque => "opaque"
                 | :Enum _ => "enum"
                 | :Union _ => "union"

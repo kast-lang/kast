@@ -150,7 +150,7 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
             let def = &ctx.program.types
                 |> OrdMap.get(name)
                 |> Option.unwrap;
-            match def^ with (
+            match def^.shape with (
                 | :Struct { .fields = ref fields } => (
                     { "Object", details_members(fields) }
                 )

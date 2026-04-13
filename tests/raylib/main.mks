@@ -1,31 +1,37 @@
 const main = () -> () => (
-    raylibInitWindow(512, 512, "Hello, raylib!");
-    raylibSetTargetFPS(60);
-    let texture = raylibLoadTexture("logo.png");
+    rInitWindow(512, 512, "Hello, raylib!");
+    SetTargetFPS(60);
+    let texture = rLoadTexture("logo.png");
     let x :: Int = 0;
     let y :: Int = 0;
     @loop (
-        if raylibWindowShouldClose() then (
+        if WindowShouldClose() then (
             # TODO
             @native "stmt: break";
         );
-        if raylibIsKeyDown(@native "KEY_RIGHT") then (
+        if IsKeyDown(KEY_RIGHT) then (
             x = add[Int](x, 1);
         );
-        if raylibIsKeyDown(@native "KEY_LEFT") then (
+        if IsKeyDown(KEY_LEFT) then (
             x = sub[Int](x, 1);
         );
-        if raylibIsKeyDown(@native "KEY_UP") then (
+        if IsKeyDown(KEY_UP) then (
             y = sub[Int](y, 1);
         );
-        if raylibIsKeyDown(@native "KEY_DOWN") then (
+        if IsKeyDown(KEY_DOWN) then (
             y = add[Int](y, 1);
         );
-        raylibBeginDrawing();
-        raylibClearBackground(@native "BLACK");
-        raylibDrawTexture(texture, x, y, @native "WHITE");
-        raylibEndDrawing();
+        BeginDrawing();
+        let green :: Color = {
+            .r = @native "0",
+            .g = @native "0xff",
+            .b = @native "0",
+            .a = @native "0xff",
+        };
+        ClearBackground(green);
+        DrawTexture(texture, x, y, WHITE);
+        EndDrawing();
     );
-    raylibUnloadTexture(texture);
-    raylibCloseWindow();
+    UnloadTexture(texture);
+    CloseWindow();
 );

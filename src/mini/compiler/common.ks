@@ -60,13 +60,14 @@ const ParsedExpr = newtype {
 
 const ConstDeclaration = newtype {
     .ty :: Ty,
-    .value :: Ast.t,
+    .value :: Option.t[Ast.t],
 };
 
 const TopLevelItemDef = newtype {
     .name :: String,
     .span :: Span,
     .ast :: Ast.t,
+    .native :: Bool,
     .setup_contexts :: Option.t[type ((() -> ()) -> ())],
 };
 
@@ -82,6 +83,7 @@ const TopLevelImpl = newtype (
     | :Template Template
     | :Type Ir.TypeDef
     | :Const Ir.Expr
+    | :NativeConst
     | :Fn Ir.FnDef
     | :Context Ty
 );

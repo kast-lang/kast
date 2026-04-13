@@ -4,7 +4,7 @@ use std.collections.OrdSet;
 
 module:
 
-const TypeDef = newtype (
+const TypeDefShape = newtype (
     | :Opaque
     | :Enum {
         .variants :: OrdSet.t[String],
@@ -17,6 +17,11 @@ const TypeDef = newtype (
     }
     | :Alias Type
 );
+
+const TypeDef = newtype {
+    .shape :: TypeDefShape,
+    .native :: Bool,
+};
 
 const FnType = newtype {
     .args :: ArrayList.t[Type],

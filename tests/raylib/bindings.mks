@@ -1,66 +1,92 @@
+const Byte = type @native "unsigned char";
 const Int = type Int32;
 
-const raylibInitWindow = (
+const String_to_C_String = (s :: String) -> C_String => (
+    # TODO
+    s.contents
+);
+
+@native
+const InitWindow :: (
+    width :: Int,
+    height :: Int,
+    title :: C_String
+) -> ();
+
+const rInitWindow = (
     width :: Int,
     height :: Int,
     title :: String,
 ) -> () => (
     @native "#include <raylib.h>";
-    @native "InitWindow(\(width), \(height), \(title.contents))";
+    InitWindow(width, height, String_to_C_String(title));
 );
 
-const raylibTexture2D = type @native "Texture2D";
+@native
+const Texture2D = @opaque_type;
 
-const raylibLoadTexture = (
+@native
+const LoadTexture :: (path :: C_String) -> Texture2D;
+
+const rLoadTexture = (
     path :: String,
-) -> raylibTexture2D => (
-    @native "LoadTexture(\(path.contents))"
+) -> Texture2D => (
+    LoadTexture(String_to_C_String(path))
 );
 
-const raylibWindowShouldClose = () -> Bool => (
-    @native "WindowShouldClose()"
-);
+@native
+const WindowShouldClose :: () -> Bool;
 
-const raylibBeginDrawing = () -> () => (
-    @native "BeginDrawing()"
-);
+@native
+const BeginDrawing :: () -> ();
 
-const raylibEndDrawing = () -> () => (
-    @native "EndDrawing()"
-);
+@native
+const EndDrawing :: () -> ();
 
-const raylibColor = type @native "Color";
+@native
+const Color = struct {
+    .r :: Byte,
+    .g :: Byte,
+    .b :: Byte,
+    .a :: Byte,
+};
 
-const raylibClearBackground = (color :: raylibColor) -> () => (
-    @native "ClearBackground(\(color))"
-);
+@native
+const ClearBackground :: (color :: Color) -> ();
 
-const raylibDrawTexture = (
-    texture :: raylibTexture2D,
+@native
+const DrawTexture :: (
+    texture :: Texture2D,
     pos_x :: Int,
     pos_y :: Int,
-    tint :: raylibColor,
-) -> () => (
-    @native "DrawTexture(\(texture), \(pos_x), \(pos_y), \(tint))"
-);
+    tint :: Color,
+) -> ();
 
-const raylibCloseWindow = () -> () => (
-    @native "CloseWindow()";
-);
+@native
+const CloseWindow :: () -> ();
 
-const raylibUnloadTexture = (texture :: raylibTexture2D) -> () => (
-    @native "UnloadTexture(\(texture))";
-);
+@native
+const UnloadTexture :: (texture :: Texture2D) -> ();
 
-const raylibIsKeyDown = (key :: Int) -> Bool => (
-    @native "IsKeyDown(\(key))"
-);
+@native
+const IsKeyDown :: (key :: Int) -> Bool;
 
-const raylibSetTargetFPS = (fps :: Int) -> () => (
-    @native "SetTargetFPS(\(fps))";
-);
+@native
+const SetTargetFPS :: (fps :: Int) -> ();
 
-const RAYLIB_KEY_RIGHT :: Int = @native "KEY_RIGHT";
-const RAYLIB_KEY_LEFT :: Int = @native "KEY_LEFT";
-const RAYLIB_KEY_UP :: Int = @native "KEY_UP";
-const RAYLIB_KEY_DOWN :: Int = @native "KEY_DOWN";
+@native
+const KEY_RIGHT :: Int;
+
+@native
+const KEY_LEFT :: Int;
+
+@native
+const KEY_UP :: Int;
+
+@native
+const KEY_DOWN :: Int;
+
+@native
+const BLACK :: Color;
+@native
+const WHITE :: Color;

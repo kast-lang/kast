@@ -83,6 +83,36 @@ const Compiler = (
 
     const parse_toplevel_item = (ast :: Ast.t) => with_return (
         let mut ctx = @current Context;
+        if ast.shape is :Rule { .rule, .root } then (
+            if rule.name == "native const" then (
+                let { name_ast, ty } = root
+                    |> AstHelpers.expect_two_children(:Some { "name", "type" });
+                let name = name_ast |> AstHelpers.expect_ident;
+                let toplevel_item = {
+                    .name,
+                    .span = name_ast.span,
+                    .ast,
+                    .native = true,
+                    .setup_contexts = :None,
+                };
+                add_toplevel_item(toplevel_item);
+                return;
+            );
+            if rule.name == "native const value" then (
+                let { name_ast, value } = root
+                    |> AstHelpers.expect_two_children(:Some { "name", "value" });
+                let name = name_ast |> AstHelpers.expect_ident;
+                let toplevel_item = {
+                    .name,
+                    .span = name_ast.span,
+                    .ast = value,
+                    .native = true,
+                    .setup_contexts = :None,
+                };
+                add_toplevel_item(toplevel_item);
+                return;
+            );
+        );
         let root = ast |> AstHelpers.expect_rule("const");
         let name_ast = (
             &root.children
@@ -103,6 +133,7 @@ const Compiler = (
                     .name,
                     .span = name_ast.span,
                     .ast,
+                    .native = false,
                     .setup_contexts = :None,
                 };
                 add_toplevel_item(toplevel_item);
@@ -114,6 +145,7 @@ const Compiler = (
             .name,
             .span = name_ast.span,
             .ast = value,
+            .native = false,
             .setup_contexts = :None,
         };
         add_toplevel_item(toplevel_item);
@@ -162,6 +194,7 @@ const Compiler = (
         let item = () => &mut ctx.toplevel_items
             |> OrdMap.get_mut(name)
             |> Option.unwrap;
+        let native = item()^.def.native;
         item()^.declaration = :Processing;
         item()^.implementation = :Processing;
         if item()^.def.ast.shape is :Rule { .rule, .root } then (
@@ -172,6 +205,12 @@ const Compiler = (
                 item()^.implementation = :Processed :Const value;
                 return;
             );
+            if rule.name == "native const" then (
+                let decl = process_const_declaration(name, item()^.def.ast);
+                item()^.declaration = :Processed :Const decl;
+                item()^.implementation = :Processed :NativeConst;
+                return;
+            );
             if rule.name == "template" then (
                 item()^.declaration = :Processed :Template;
                 let template = parse_template(name, root);
@@ -180,31 +219,46 @@ const Compiler = (
             );
             if rule.name == "type alias" then (
                 item()^.declaration = :Processed :Type;
-                let def = type_def(name, :Alias, root);
+                let def = {
+                    .shape = type_def(name, :Alias, root),
+                    .native,
+                };
                 item()^.implementation = :Processed :Type def;
                 return;
             );
             if rule.name == "enum" then (
                 item()^.declaration = :Processed :Type;
-                let def = type_def(name, :Enum, root);
+                let def = {
+                    .shape = type_def(name, :Enum, root),
+                    .native,
+                };
                 item()^.implementation = :Processed :Type def;
                 return;
             );
             if rule.name == "struct" then (
                 item()^.declaration = :Processed :Type;
-                let def = type_def(name, :Struct, root);
+                let def = {
+                    .shape = type_def(name, :Struct, root),
+                    .native,
+                };
                 item()^.implementation = :Processed :Type def;
                 return;
             );
             if rule.name == "union" then (
                 item()^.declaration = :Processed :Type;
-                let def = type_def(name, :Union, root);
+                let def = {
+                    .shape = type_def(name, :Union, root),
+                    .native,
+                };
                 item()^.implementation = :Processed :Type def;
                 return;
             );
             if rule.name == "opaque_type" then (
                 item()^.declaration = :Processed :Type;
-                let def = type_def(name, :Opaque, root);
+                let def = {
+                    .shape = type_def(name, :Opaque, root),
+                    .native,
+                };
                 item()^.implementation = :Processed :Type def;
                 return;
             );
@@ -295,6 +349,7 @@ const Compiler = (
                     &mut ctx.program.consts |> OrdMap.add(name, expr);
                     &mut ctx.program.consts_order |> ArrayList.push_back(name);
                 )
+                | :NativeConst => ()
                 | :Type def => (
                     &mut ctx.program.types |> OrdMap.add(name, def);
                 )
@@ -457,7 +512,7 @@ const Compiler = (
                 let def = &(@current Context).program.types
                     |> OrdMap.get(name)
                     |> Option.unwrap;
-                match def^ with (
+                match def^.shape with (
                     | :Alias ty => (
                         Log.trace(
                             () => (
@@ -538,7 +593,7 @@ const Compiler = (
             let type_def = &ctx.program.types
                 |> OrdMap.get(name)
                 |> Option.unwrap;
-            let field_ty = match type_def^ with (
+            let field_ty = match type_def^.shape with (
                 | :Union { .variants = ref variants } => (
                     variants |> OrdMap.get(field)
                 )
@@ -752,7 +807,7 @@ const Compiler = (
                             match resolve_type_aliases(ty) with (
                                 | :Named name => (
                                     let def = &ctx.program.types |> OrdMap.get(name) |> Option.unwrap;
-                                    match def^ with (
+                                    match def^.shape with (
                                         | :Struct { .fields } => return { :Struct, fields }
                                         | :Union { .variants } => return { :Union, variants }
                                         | _ => ()
@@ -1294,6 +1349,15 @@ const Compiler = (
                         .binary_rule_name = "comma",
                         .trailing_or_leading_rule_name = :Some "trailing comma",
                     ) do (
+                        if arg_ast.shape is :Rule { .rule, .root } then (
+                            if rule.name == "type ascribe" then (
+                                let { name, ty } = root
+                                    |> AstHelpers.expect_two_children(:Some { "expr", "type" });
+                                let name = name |> AstHelpers.expect_ident;
+                                &mut args |> ArrayList.push_back(parse_type(ty));
+                                continue;
+                            );
+                        );
                         &mut args |> ArrayList.push_back(parse_type(arg_ast));
                     );
                     let result = parse_type(result);
@@ -1377,7 +1441,17 @@ const Compiler = (
     const process_const_declaration = (
         name :: String,
         ast :: Ast.t,
-    ) -> ConstDeclaration => (
+    ) -> ConstDeclaration => with_return (
+        if ast.shape is :Rule { .rule, .root } then (
+            if rule.name == "native const" then (
+                let { name, ty } = root
+                    |> AstHelpers.expect_two_children(:Some { "name", "type" });
+                return {
+                    .ty = parse_type(ty),
+                    .value = :None,
+                };
+            );
+        );
         let { name_and_type, value } = ast
             |> AstHelpers.expect_rule("const")
             |> AstHelpers.expect_two_children(:Some { "name", "value" });
@@ -1386,7 +1460,7 @@ const Compiler = (
             |> AstHelpers.expect_two_children(:Some { "expr", "type" });
         {
             .ty = parse_type(ty),
-            .value,
+            .value = :Some value,
         }
     );
 
@@ -1394,7 +1468,11 @@ const Compiler = (
         name :: String,
         decl :: ConstDeclaration,
     ) -> Ir.Expr => (
-        parse_expr(:Some decl.ty, decl.value)
+        if decl.value is :Some value then (
+            parse_expr(:Some decl.ty, value)
+        ) else (
+            panic("Const decl has no value (native const), we aren't supposed to process it")
+        )
     );
 
     const parse_fn_def = (

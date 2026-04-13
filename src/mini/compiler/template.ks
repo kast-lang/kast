@@ -157,6 +157,7 @@ const instantiate = (
             .name,
             .span,
             .ast = template^.def,
+            .native = false,
             .setup_contexts = :Some (
                 f => (
                     with TemplateArgsContext = args;

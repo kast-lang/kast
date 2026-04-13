@@ -60,7 +60,7 @@ const C = (
                 let def = &ctx.program.types
                     |> OrdMap.get(name)
                     |> Option.unwrap;
-                if def^ is :Struct _ then (
+                if def^.shape is :Struct _ then (
                     :Struct ident(name)
                 ) else (
                     :Named ident(name)
@@ -528,7 +528,10 @@ const C = (
             return;
         );
         &mut ctx.defined_types |> OrdSet.add(name);
-        match def^ with (
+        if def^.native then (
+            return;
+        );
+        match def^.shape with (
             | :Opaque => ()
             | :Enum _ => ()
             | :Union { .variants = ref variants } => (
@@ -545,7 +548,7 @@ const C = (
                 make_sure_all_are_defined(ty);
             )
         );
-        let def :: Ast.TyDefShape = match def^ with (
+        let def :: Ast.TyDefShape = match def^.shape with (
             | :Opaque => :Alias :Pointer :Void
             | :Enum { .variants = ref variants } => :Enum (
                 let mut idents = ArrayList.new();

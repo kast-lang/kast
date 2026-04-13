@@ -2,6 +2,8 @@
 @syntax "then" 0 @wrap always = _ ";" "\n" _ ->;
 @syntax "stmt" 0 @wrap always = _ ";";
 @syntax "assign" 2 @wrap never = assignee " " "=" " " value;
+@syntax "native const value" 2 @wrap never = "@native" "\n" "const" " " name " " "=" " " value;
+@syntax "native const" 2 @wrap never = "@native" "\n" "const" " " name " " "::" " " type;
 @syntax "const" 2 @wrap never = "const" " " name " " "=" " " value;
 @syntax "template" 2.2 @wrap never = "[" args:any "]" " " def;
 @syntax "enum" 2.5 @wrap never = "enum" " " def;
