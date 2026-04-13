@@ -80,6 +80,17 @@ const TopLevelDecl = newtype (
     | :Context
 );
 
+const print_toplevel_kind = (decl :: TopLevelDecl) => (
+    let kind = match decl with (
+        | :Fn _ => "function"
+        | :Type => "type"
+        | :Template => "template"
+        | :Const _ => "constant"
+        | :Context => "context"
+    );
+    (@current Output).write(kind);
+);
+
 const TopLevelImpl = newtype (
     | :Template Template
     | :Type Ir.TypeDef
@@ -91,8 +102,8 @@ const TopLevelImpl = newtype (
 
 const CompilerT = newtype {
     .program :: Ir.Program,
+    .parse_expr :: (Option.t[Ty], Ast.t) -> Ir.Expr,
     .parse_type :: Ast.t -> Ty,
-    .register_type_def :: (String, Ir.TypeDef) -> (),
     .find_ident_ty :: (String, .span :: Span) -> Ty,
     .lookup_type :: (String, .span :: Span) -> Ty,
     .add_toplevel_item :: TopLevelItemDef -> (),

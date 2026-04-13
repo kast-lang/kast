@@ -1,4 +1,4 @@
-use (import "./common.ks").*;
+use (import "../common.ks").*;
 
 module:
 

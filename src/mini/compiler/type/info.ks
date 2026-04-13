@@ -1,5 +1,5 @@
-use (import "./common.ks").*;
-use (import "./template.ks").*;
+use (import "../common.ks").*;
+use (import "../template.ks").*;
 
 module:
 
