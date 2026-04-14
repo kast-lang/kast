@@ -7,12 +7,12 @@ const State = struct {
     .x :: Int,
     .y :: Int,
     .texture :: Texture2D,
-    .main_loop :: &UnwindToken[Int],
+    .main_loop :: &UnwindToken[()],
 };
 
 const frame = (state :: &State) -> () => (
     if WindowShouldClose() then (
-        unwind (state^.main_loop) with 123 :: ();
+        unwind (state^.main_loop) with () :: ();
     );
     if IsKeyDown(KEY_RIGHT) then (
         state^.x = add[Int](state^.x, 1);
@@ -42,7 +42,7 @@ const main = () -> () => (
     rInitWindow(512, 512, "Hello, raylib!");
     SetTargetFPS(60);
     let texture = rLoadTexture("logo.png");
-    let result :: Int = unwindable main_loop (
+    unwindable main_loop (
         let state :: State = {
             .x = 0,
             .y = 0,
@@ -52,10 +52,7 @@ const main = () -> () => (
         @loop (
             frame(&state);
         );
-        456
-    );
-    @native "printf(\"%d\\n\", \(result))";
+    ) :: ();
     UnloadTexture(texture);
     CloseWindow();
-    print_string("end of main\n");
 );

@@ -111,6 +111,10 @@ const C = (
         .span,
     };
 
+    const ExprContext = @context newtype {
+        .span :: Span,
+    };
+
     const pure = (pure :: Pure) -> Ast.Expr => (
         match pure.expr with (
             | :Some expr => expr
@@ -123,7 +127,15 @@ const C = (
                         output.write("This expression is void, and can't be used as a value");
                     ),
                     .span = pure.span,
-                    .related = ArrayList.new(),
+                    .related = single_element_list(
+                        {
+                            .message = () => (
+                                let output = @current Output;
+                                output.write("While compiling this expr");
+                            ),
+                            .span = (@current ExprContext).span,
+                        }
+                    ),
                 };
                 Diagnostic.report_and_unwind(diagnostic)
             )
@@ -137,6 +149,7 @@ const C = (
 
     const calculate_place = (ir_expr :: &Ir.PlaceExpr) -> Place => with_return (
         let span = ir_expr^.span;
+        with ExprContext = { .span };
         match ir_expr^.shape with (
             | :Ident name => {
                 .get = () => {
@@ -255,6 +268,7 @@ const C = (
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
         let mut ctx = @current Context;
         let span = ir_expr^.span;
+        with ExprContext = { .span };
         let expr :: Ast.Expr = match ir_expr^.shape with (
             | :Unit => return void(span)
             | :Uninitialized => (
@@ -312,10 +326,15 @@ const C = (
                                 .block = &mut block,
                             };
                             let result = calculate(expr);
-                            if result.expr is :Some expr then (
-                                insert_stmt(:Expr expr);
+                            let part = if &block.stmts |> ArrayList.length == 0 then (
+                                pure(result)
+                            ) else (
+                                if result.expr is :Some expr then (
+                                    insert_stmt(:Expr expr);
+                                );
+                                :Stmt block
                             );
-                            &mut raw_parts |> ArrayList.push_back(:Stmt block);
+                            &mut raw_parts |> ArrayList.push_back(part);
                         )
                     )
                 );
@@ -450,11 +469,14 @@ const C = (
             | :Record ref fields => (
                 let mut field_initializers = ArrayList.new();
                 for field in fields |> ArrayList.iter do (
-                    let field = {
-                        .name = ident(field^.name),
-                        .value = pure(calculate(&field^.value)),
-                    };
-                    &mut field_initializers |> ArrayList.push_back(field);
+                    let value = calculate(&field^.value);
+                    if value.expr is :Some value then (
+                        let field = {
+                            .name = ident(field^.name),
+                            .value,
+                        };
+                        &mut field_initializers |> ArrayList.push_back(field);
+                    );
                 );
                 :CompoundLiteral {
                     .ty = convert_ty(&ir_expr^.ty),
@@ -466,15 +488,17 @@ const C = (
                 .value = ref value,
             } => (
                 let token = pure(calculate(token));
-                let value = pure(calculate(value));
-                insert_stmt(
-                    :Assign {
-                        .assignee = :Field {
-                            .obj = :Deref token,
-                            .field = ident("value"),
-                        },
-                        .value,
-                    }
+                let value = calculate(value);
+                if value.expr is :Some value then (
+                    insert_stmt(
+                        :Assign {
+                            .assignee = :Field {
+                                .obj = :Deref token,
+                                .field = ident("value"),
+                            },
+                            .value,
+                        }
+                    );
                 );
                 insert_stmt(
                     :Assign {
@@ -514,13 +538,19 @@ const C = (
                     token_var,
                     :Ref :Ident token_own_var,
                 );
+                let have_result_value = match ir_expr^.ty with (
+                    | :Unit => false
+                    | _ => true
+                );
                 let result_var = new_ident("unwindable_result");
-                insert_stmt(
-                    :LetVar {
-                        .ty = convert_ty(&ir_expr^.ty),
-                        .ident = result_var,
-                        .value = :None,
-                    }
+                if have_result_value then (
+                    insert_stmt(
+                        :LetVar {
+                            .ty = convert_ty(&ir_expr^.ty),
+                            .ident = result_var,
+                            .value = :None,
+                        }
+                    );
                 );
                 let handle_unwind_label = new_ident("handle_unwind");
                 let unwindable_body_label = new_ident("unwindable_body");
@@ -549,14 +579,16 @@ const C = (
                                     .value = :Raw "NO_UNWIND",
                                 }
                             );
-                            insert_stmt(
-                                :Assign {
-                                    .assignee = :Ident result_var,
-                                    .value = :Field {
-                                        .obj = :Ident token_own_var,
-                                        .field = ident("value"),
-                                    },
-                                }
+                            if have_result_value then (
+                                insert_stmt(
+                                    :Assign {
+                                        .assignee = :Ident result_var,
+                                        .value = :Field {
+                                            .obj = :Ident token_own_var,
+                                            .field = ident("value"),
+                                        },
+                                    }
+                                );
                             );
                             insert_stmt(:Goto after_unwindable_label);
                             block
@@ -578,11 +610,13 @@ const C = (
                     ),
                 };
                 let result = calculate(body);
-                insert_stmt(
-                    :Assign {
-                        .assignee = :Ident result_var,
-                        .value = pure(result),
-                    }
+                if have_result_value then (
+                    insert_stmt(
+                        :Assign {
+                            .assignee = :Ident result_var,
+                            .value = pure(result),
+                        }
+                    );
                 );
                 insert_stmt(:GotoLabel after_unwindable_label);
                 return {
@@ -754,6 +788,9 @@ const C = (
             | :Union { .variants = ref variants } => :Union (
                 let mut ast_fields = ArrayList.new();
                 for &{ .key = name, .value = ref ty } in variants |> OrdMap.iter do (
+                    if ty^ is :Unit then (
+                        continue;
+                    );
                     let field = {
                         .name = ident(name),
                         .ty = convert_ty(ty),
@@ -765,6 +802,9 @@ const C = (
             | :Struct { .fields = ref fields } => :Struct (
                 let mut ast_fields = ArrayList.new();
                 for &{ .key = name, .value = ref ty } in fields |> OrdMap.iter do (
+                    if ty^ is :Unit then (
+                        continue;
+                    );
                     let field = {
                         .name = ident(name),
                         .ty = convert_ty(ty),
