@@ -12,11 +12,12 @@ const C = (
     module:
 
     use (import "./ast.ks").*;
+    use (import "./print.ks").*;
 
     const Compiled = Ast.Program;
 
     const print = (compiled :: Compiled) => (
-        Ast.Print.program(&compiled);
+        Print.program(&compiled);
     );
 
     const ContextT = newtype {
