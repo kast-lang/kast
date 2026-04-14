@@ -59,12 +59,34 @@ const Print = (
         ansi.with_mode(:Cyan, () => write(s));
     );
 
-    const expr = (expr :: &Ast.Expr) => with_return (
+    const expr_priority = (expr :: &Ast.Expr) -> Int32 => (
+        match expr^ with (
+            | :Stmt _ => -1000
+            | :Raw _ => 0
+            | :RawParts _ => 0
+            | :Ref _ => 100
+            | :Deref _ => 100
+            | :Apply _ => 200
+            | :Field _ => 200
+            | :Ident _ => 1000
+            | :Literal _ => 1000
+            | :CompoundLiteral _ => 1000
+        )
+    );
+
+    const expr = (
+        expr :: &Ast.Expr,
+        .min_priority :: Int32,
+    ) => with_return (
         if expr^ is :Literal ref literal then (
             Print.literal(literal);
             return;
         );
-        write("(");
+        let priority = expr_priority(expr);
+        let need_surround_parens = priority < min_priority;
+        if need_surround_parens then (
+            write("(");
+        );
         match expr^ with (
             | :Raw s => Print.raw(s)
             | :RawParts ref parts => (
@@ -72,18 +94,18 @@ const Print = (
                     if part^ is :Raw s then (
                         Print.raw(s)
                     ) else (
-                        Print.expr(part)
+                        Print.expr(part, .min_priority = 1000)
                     );
                 );
             )
             | :Stmt ref block => Print.block(block)
             | :Ref ref referenced => (
                 write("&");
-                Print.expr(referenced);
+                Print.expr(referenced, .min_priority = 100);
             )
             | :Deref ref pointer => (
                 write("*");
-                Print.expr(pointer);
+                Print.expr(pointer, .min_priority = 100);
             )
             | :Ident ref ident => Print.ident(ident)
             | :Literal ref literal => Print.literal(literal)
@@ -97,28 +119,30 @@ const Print = (
                     write(".");
                     Print.ident(&field^.name);
                     write(" = ");
-                    Print.expr(&field^.value);
+                    Print.expr(&field^.value, .min_priority = 0);
                     write(",\n");
                 );
                 dec_indentation();
                 write("}")
             )
             | :Apply { .f = ref f, .args = ref args } => (
-                Print.expr(f);
+                Print.expr(f, .min_priority = 200);
                 write("(");
                 for { i, arg } in args |> ArrayList.iter |> std.iter.enumerate do (
                     if i != 0 then write(", ");
-                    Print.expr(arg);
+                    Print.expr(arg, .min_priority = 0);
                 );
                 write(")");
             )
             | :Field { .obj = ref obj, .field = ref field } => (
-                Print.expr(obj);
+                Print.expr(obj, .min_priority = 200);
                 write(".");
                 Print.ident(field);
             )
         );
-        write(")");
+        if need_surround_parens then (
+            write(")");
+        );
     );
 
     const ty = (ty :: &Ast.Ty) => (
@@ -151,14 +175,14 @@ const Print = (
                     if part^ is :Raw s then (
                         Print.raw(s)
                     ) else (
-                        Print.expr(part)
+                        Print.expr(part, .min_priority = 1000)
                     );
                 );
             )
-            | :Expr ref expr => Print.expr(expr)
+            | :Expr ref expr => Print.expr(expr, .min_priority = 0)
             | :Return ref expr => (
                 write_keyword("return ");
-                Print.expr(expr);
+                Print.expr(expr, .min_priority = 0);
             )
             | :ReturnVoid => (
                 write_keyword("return");
@@ -169,13 +193,13 @@ const Print = (
                 Print.ident(ident);
                 if value^ is :Some ref value then (
                     write(" = ");
-                    Print.expr(value);
+                    Print.expr(value, .min_priority = 0);
                 );
             )
             | :Assign { .assignee = ref assignee, .value = ref value } => (
-                Print.expr(assignee);
+                Print.expr(assignee, .min_priority = 0);
                 write(" = ");
-                Print.expr(value);
+                Print.expr(value, .min_priority = 0);
             )
             | :If {
                 .cond = ref cond,
@@ -184,7 +208,7 @@ const Print = (
             } => (
                 write_keyword("if");
                 write(" (");
-                Print.expr(cond);
+                Print.expr(cond, .min_priority = 0);
                 write(") ");
                 Print.block(then_case);
                 if else_case^ is :Some ref else_case then (
@@ -206,7 +230,7 @@ const Print = (
                 write(";");
                 if test^ is :Some ref test then (
                     write(" ");
-                    Print.expr(test);
+                    Print.expr(test, .min_priority = 0);
                 );
                 write(";");
                 if incr^ is :Some ref incr then (
