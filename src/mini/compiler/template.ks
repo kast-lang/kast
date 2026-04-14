@@ -45,19 +45,27 @@ const parse_template = (name :: String, root :: Ast.Group) -> Template => (
 );
 
 const instantiation_to_type = (
-    { .name } :: Instantiation,
+    instantiation :: Instantiation,
     .span :: Span,
 ) -> Ty => (
-    (@current Compiler).lookup_type(name, .span)
+    let ty = (@current Compiler).lookup_type(instantiation.name, .span);
+    if instantiation.template_name == "UnwindToken" then (
+        :UnwindToken {
+            .instantiated_token_ty = ty,
+            .result_ty = ArrayList.at(&instantiation.template_args, 0)^,
+        }
+    ) else (
+        ty
+    )
 );
 
 const instantiation_to_expr = (
-    { .name } :: Instantiation,
+    instantiation :: Instantiation,
     .span :: Span,
 ) -> ParsedExpr => (
     {
-        .shape = :Place :Ident name,
-        .ty = (@current Compiler).find_ident_ty(name, .span),
+        .shape = :Place :Ident instantiation.name,
+        .ty = (@current Compiler).find_ident_ty(instantiation.name, .span),
     }
 );
 
@@ -166,7 +174,7 @@ const instantiate = (
             ),
         };
         (@current Compiler).add_toplevel_item(toplevel_item);
-        { .name }
+        { .template_name, .template_args = args.args, .name }
     );
     let instantiation = &mut template^.instantiations
         |> OrdMap.get_or_init(args, do_instantiate);

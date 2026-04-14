@@ -40,6 +40,8 @@ const TemplateArgs = newtype {
 };
 
 const Instantiation = newtype {
+    .template_name :: String,
+    .template_args :: ArrayList.t[Ty],
     .name :: String,
 };
 

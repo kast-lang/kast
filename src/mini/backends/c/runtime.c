@@ -5,6 +5,6 @@ typedef struct RawUnwindToken
 
 const RawUnwindToken NO_UNWIND = {.id = 0};
 
-RawUnwindToken unwinding = NO_UNWIND;
+RawUnwindToken current_unwinding_raw_token = NO_UNWIND;
 
-int next_raw_unwind_token_id;
+int next_raw_unwind_token_id = 1;

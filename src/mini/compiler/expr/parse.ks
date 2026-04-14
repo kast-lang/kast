@@ -377,7 +377,7 @@ const parse_unwind = (
     let { token_ast, value } = root
         |> AstHelpers.expect_two_children(:Some { "token", "value" });
     let token = parse_expr(:None, token_ast);
-    if token.ty is :UnwindToken { .result_ty, ... } then (
+    if token.ty is :Ref :UnwindToken { .result_ty, ... } then (
         let value = parse_expr(:Some result_ty, value);
         let unwind_expr_ty = expect_known_type(
             expected_ty,
@@ -395,7 +395,7 @@ const parse_unwind = (
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                (@current Output).write("Expected an unwind token, got ");
+                (@current Output).write("Expected an reference to unwind token, got ");
                 Ir.Print.type_name(&token.ty);
             ),
             .span = token_ast.span,
@@ -424,7 +424,7 @@ const parse_unwindable = (
         single_element_list(result_ty),
         .span = token_ast.span,
     );
-    let token_ty = :UnwindToken {
+    let token_ty = :Ref :UnwindToken {
         .instantiated_token_ty,
         .result_ty,
     };

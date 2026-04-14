@@ -167,3 +167,8 @@ const UnwindToken = [T] struct {
     .raw :: RawUnwindToken,
     .value :: T,
 };
+
+const is_unwinding_with = (raw :: RawUnwindToken) -> Bool => (
+    let unwinding :: RawUnwindToken = @native "current_unwinding_raw_token";
+    equal[Int](raw.id, unwinding.id)
+)

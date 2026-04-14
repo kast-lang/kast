@@ -101,6 +101,8 @@ const Ast = (
             .incr :: Option.t[Stmt],
             .body :: Block,
         }
+        | :Goto Ident
+        | :GotoLabel Ident
     );
 
     const Block = newtype {
@@ -347,6 +349,14 @@ const Ast = (
                     write(") ");
                     Print.block(body);
                 )
+                | :Goto ref label => (
+                    write_keyword("goto ");
+                    Print.ident(label);
+                )
+                | :GotoLabel ref label => (
+                    Print.ident(label);
+                    write(":");
+                )
             );
         );
 
@@ -354,8 +364,15 @@ const Ast = (
             write("{\n");
             inc_indentation();
             for stmt in &block^.stmts |> ArrayList.iter do (
-                Print.stmt(stmt);
-                write(";\n");
+                if stmt^ is :GotoLabel _ then (
+                    dec_indentation();
+                    Print.stmt(stmt);
+                    write("\n");
+                    inc_indentation();
+                ) else (
+                    Print.stmt(stmt);
+                    write(";\n");
+                );
             );
             dec_indentation();
             write("}");
@@ -441,6 +458,7 @@ const Ast = (
                 );
                 write("\n");
             );
+            write("#define main minikast_main\n");
             write("\n");
             for ty in &program^.types |> ArrayList.iter do (
                 Print.ty_def(ty);
@@ -454,6 +472,7 @@ const Ast = (
             for fn in &program^.fns |> ArrayList.iter do (
                 Print.fn(fn);
             );
+            write("\n#undef main\nint main() { minikast_main(); return 0; }\n");
         );
     );
 );

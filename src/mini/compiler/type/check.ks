@@ -90,6 +90,7 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
             name + " (" + short_def + ")"
         )
         | :Fn _ => "a function"
+        | :UnwindToken _ => "unwind token"
     )
 );
 
@@ -137,6 +138,24 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
         | { :Named a, :Named b } => (
             if a != b then (
                 fail();
+            );
+        )
+        | { :UnwindToken ref a, :UnwindToken ref b } => (
+            let parent_ctx = @current TypeCheckContext;
+            with TypeCheckContext = {
+                .fail = [T] msg -> T => (
+                    parent_ctx.fail(
+                        () => (
+                            let output = @current Output;
+                            output.write("unwind result type is different\n");
+                            msg()
+                        )
+                    )
+                ),
+            };
+            type_check_impl(
+                &a^.result_ty,
+                &b^.result_ty,
             );
         )
         | { :Fn ref a, :Fn ref b } => (

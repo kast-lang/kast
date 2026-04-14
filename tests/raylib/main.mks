@@ -3,48 +3,59 @@ const print_string = (s :: String) -> () => (
     @native "printf(\"%s\", \(s.contents))";
 );
 
-const not_so_special_main = () -> () => (
-    rInitWindow(512, 512, "Hello, raylib!");
-    SetTargetFPS(60);
-    let texture = rLoadTexture("logo.png");
-    let x :: Int = 0;
-    let y :: Int = 0;
-    let result :: Int = unwindable main_loop (
-        @loop (
-            if WindowShouldClose() then (
-                unwind main_loop with 123 :: ();
-            );
-            if IsKeyDown(KEY_RIGHT) then (
-                x = add[Int](x, 1);
-            );
-            if IsKeyDown(KEY_LEFT) then (
-                x = sub[Int](x, 1);
-            );
-            if IsKeyDown(KEY_UP) then (
-                y = sub[Int](y, 1);
-            );
-            if IsKeyDown(KEY_DOWN) then (
-                y = add[Int](y, 1);
-            );
-            BeginDrawing();
-            let background_color :: Color = {
-                .r = 10,
-                .g = 10,
-                .b = 30,
-                .a = 0xff,
-            };
-            ClearBackground(background_color);
-            DrawTexture(texture, x, y, WHITE);
-            EndDrawing();
-        );
-        456
+const State = struct {
+    .x :: Int,
+    .y :: Int,
+    .texture :: Texture2D,
+    .main_loop :: &UnwindToken[Int],
+};
+
+const frame = (state :: &State) -> () => (
+    if WindowShouldClose() then (
+        unwind (state^.main_loop) with 123 :: ();
     );
-    UnloadTexture(texture);
-    CloseWindow();
-    print_string("end of not so special main\n");
+    if IsKeyDown(KEY_RIGHT) then (
+        state^.x = add[Int](state^.x, 1);
+    );
+    if IsKeyDown(KEY_LEFT) then (
+        state^.x = sub[Int](state^.x, 1);
+    );
+    if IsKeyDown(KEY_UP) then (
+        state^.y = sub[Int](state^.y, 1);
+    );
+    if IsKeyDown(KEY_DOWN) then (
+        state^.y = add[Int](state^.y, 1);
+    );
+    BeginDrawing();
+    let background_color :: Color = {
+        .r = 10,
+        .g = 10,
+        .b = 30,
+        .a = 0xff,
+    };
+    ClearBackground(background_color);
+    DrawTexture(state^.texture, state^.x, state^.y, WHITE);
+    EndDrawing();
 );
 
 const main = () -> () => (
-    not_so_special_main();
+    rInitWindow(512, 512, "Hello, raylib!");
+    SetTargetFPS(60);
+    let texture = rLoadTexture("logo.png");
+    let result :: Int = unwindable main_loop (
+        let state :: State = {
+            .x = 0,
+            .y = 0,
+            .texture = texture,
+            .main_loop = main_loop,
+        };
+        @loop (
+            frame(&state);
+        );
+        456
+    );
+    @native "printf(\"%d\\n\", \(result))";
+    UnloadTexture(texture);
+    CloseWindow();
     print_string("end of main\n");
 );

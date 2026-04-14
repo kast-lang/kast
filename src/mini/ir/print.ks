@@ -47,6 +47,14 @@ const Print = (
                 Print.type_name(referenced);
             )
             | :Native s => output.write(s)
+            | :UnwindToken {
+                .instantiated_token_ty = _,
+                .result_ty = ref result_ty,
+            } => (
+                output.write("UnwindToken[");
+                Print.type_name(result_ty);
+                output.write("]");
+            )
         )
     );
 
@@ -94,6 +102,12 @@ const Print = (
             | :Native s => (
                 output.write("Native_");
                 Print.raw_string_as_ident(s);
+            )
+            | :UnwindToken {
+                .instantiated_token_ty = ref instantiated_token_ty,
+                .result_ty = _,
+            } => (
+                Print.type_name_as_ident(instantiated_token_ty);
             )
         )
     );

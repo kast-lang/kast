@@ -431,7 +431,6 @@ const Compiler = (
         );
         state.program
     );
-
     # TODO should take &
     const resolve_type_aliases = (ty :: Ir.Type) -> Ir.Type => with_return (
         match ty with (
@@ -475,6 +474,13 @@ const Compiler = (
                     .result = resolve_type_aliases(result),
                 }
             )
+            | :UnwindToken {
+                .instantiated_token_ty,
+                .result_ty,
+            } => :UnwindToken {
+                .instantiated_token_ty = resolve_type_aliases(instantiated_token_ty),
+                .result_ty = resolve_type_aliases(result_ty),
+            }
         )
     );
 );

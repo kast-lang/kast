@@ -31,6 +31,10 @@ const C = (
         .result_ty :: Ast.Ty,
     };
 
+    const UnwindContext = @context newtype {
+        .insert_unwind :: () -> (),
+    };
+
     const ScopeT = newtype {
         .block :: &mut Ast.Block,
     };
@@ -88,6 +92,10 @@ const C = (
                 )
             )
             | :Native s => :Raw s
+            | :UnwindToken {
+                .instantiated_token_ty = ref instantiated_token_ty,
+                .result_ty = _,
+            } => convert_ty(instantiated_token_ty)
         # | :Fn FnType
         )
     );
@@ -224,6 +232,23 @@ const C = (
             .expr = :Some :Literal literal,
             .span,
         }
+    );
+
+    const check_unwind = () => (
+        insert_stmt(
+            :If {
+                .cond = :Raw "current_unwinding_raw_token.id",
+                .then_case = (
+                    let mut block = new_block();
+                    with Scope = {
+                        .block = &mut block,
+                    };
+                    (@current UnwindContext).insert_unwind();
+                    block
+                ),
+                .else_case = :None,
+            }
+        );
     );
 
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
@@ -408,7 +433,16 @@ const C = (
                     let arg = pure(calculate(arg));
                     &mut args |> ArrayList.push_back(arg);
                 );
-                :Apply { .f, .args }
+                if ir_expr^.ty is :Unit then (
+                    insert_stmt(:Expr :Apply { .f, .args });
+                    check_unwind();
+                    return void(span)
+                ) else (
+                    let result_var = new_ident("apply_result");
+                    let_var(&ir_expr^.ty, result_var, :Apply { .f, .args });
+                    check_unwind();
+                    return { .expr = :Some :Ident result_var, .span }
+                )
             )
             # | :InjectContext
             # | :EnumIs
@@ -443,7 +477,7 @@ const C = (
                 );
                 insert_stmt(
                     :Assign {
-                        .assignee = :Raw "unwinding",
+                        .assignee = :Raw "current_unwinding_raw_token",
                         .value = :Field {
                             .obj = :Deref token,
                             .field = ident("raw"),
@@ -451,23 +485,9 @@ const C = (
                     }
                 );
                 # TODO cleanup before return
-                match (@current FunctionContext).result_ty with (
-                    | :Void => (
-                        insert_stmt(:ReturnVoid);
-                    )
-                    | result_ty => (
-                        let result_var = new_ident("return_uninitialized");
-                        insert_stmt(
-                            :LetVar {
-                                .ty = (@current FunctionContext).result_ty,
-                                .ident = result_var,
-                                .value = :None,
-                            }
-                        );
-                        insert_stmt(:Expr :Ref :Ident result_var); # This prevents UB (i think)
-                        insert_stmt(:Return :Ident result_var);
-                    )
-                );
+                (
+                    @current UnwindContext
+                ).insert_unwind();
                 # TODO what if its not void?
                 return void(span)
             )
@@ -493,7 +513,81 @@ const C = (
                     token_var,
                     :Ref :Ident token_own_var,
                 );
-                return calculate(body)
+                let result_var = new_ident("unwindable_result");
+                insert_stmt(
+                    :LetVar {
+                        .ty = convert_ty(&ir_expr^.ty),
+                        .ident = result_var,
+                        .value = :None,
+                    }
+                );
+                let handle_unwind_label = new_ident("handle_unwind");
+                let unwindable_body_label = new_ident("unwindable_body");
+                let after_unwindable_label = new_ident("after_unwindable");
+                insert_stmt(:Goto unwindable_body_label);
+                insert_stmt(:GotoLabel handle_unwind_label);
+                insert_stmt(
+                    :If {
+                        .cond = :Apply {
+                            .f = :Raw "is_unwinding_with",
+                            .args = single_element_list(
+                                :Field {
+                                    .obj = :Ident token_own_var,
+                                    .field = ident("raw"),
+                                }
+                            ),
+                        },
+                        .then_case = (
+                            let mut block = new_block();
+                            with Scope = {
+                                .block = &mut block,
+                            };
+                            insert_stmt(
+                                :Assign {
+                                    .assignee = :Raw "current_unwinding_raw_token",
+                                    .value = :Raw "NO_UNWIND",
+                                }
+                            );
+                            insert_stmt(
+                                :Assign {
+                                    .assignee = :Ident result_var,
+                                    .value = :Field {
+                                        .obj = :Ident token_own_var,
+                                        .field = ident("value"),
+                                    },
+                                }
+                            );
+                            insert_stmt(:Goto after_unwindable_label);
+                            block
+                        ),
+                        .else_case = :Some (
+                            let mut block = new_block();
+                            with Scope = {
+                                .block = &mut block,
+                            };
+                            (@current UnwindContext).insert_unwind();
+                            block
+                        ),
+                    }
+                );
+                insert_stmt(:GotoLabel unwindable_body_label);
+                with UnwindContext = {
+                    .insert_unwind = () => (
+                        insert_stmt(:Goto handle_unwind_label);
+                    ),
+                };
+                let result = calculate(body);
+                insert_stmt(
+                    :Assign {
+                        .assignee = :Ident result_var,
+                        .value = pure(result),
+                    }
+                );
+                insert_stmt(:GotoLabel after_unwindable_label);
+                return {
+                    .expr = :Some :Ident result_var,
+                    .span,
+                }
             )
         );
         if ir_expr^.ty is :Unit then (
@@ -543,29 +637,32 @@ const C = (
         with FunctionContext = {
             .result_ty = convert_ty(&def^.result_ty),
         };
+        with UnwindContext = {
+            .insert_unwind = () => (
+                match (@current FunctionContext).result_ty with (
+                    | :Void => (
+                        insert_stmt(:ReturnVoid);
+                    )
+                    | result_ty => (
+                        let result_var = new_ident("return_uninitialized");
+                        insert_stmt(
+                            :LetVar {
+                                .ty = (@current FunctionContext).result_ty,
+                                .ident = result_var,
+                                .value = :None,
+                            }
+                        );
+                        insert_stmt(:Expr :Ref :Ident result_var); # This prevents UB (i think)
+                        insert_stmt(:Return :Ident result_var);
+                    )
+                );
+            ),
+        };
         let fn :: Ast.Fn = {
             .signature = {
                 .name = ident(name),
                 .args,
-                .result_ty = if name == "main" then (
-                    if def^.result_ty is :Unit then (
-                        :Int
-                    ) else (
-                        let diagnostic = {
-                            .severity = :Error,
-                            .source = :Compiler,
-                            .message = () => (
-                                let output = @current Output;
-                                output.write("main must return ()");
-                            ),
-                            .span = def^.span,
-                            .related = ArrayList.new(),
-                        };
-                        Diagnostic.report_and_unwind(diagnostic)
-                    )
-                ) else (
-                    convert_ty(&def^.result_ty)
-                ),
+                .result_ty = convert_ty(&def^.result_ty),
             },
             .body = (
                 let mut block = new_block();
@@ -573,9 +670,6 @@ const C = (
                 let result = calculate(&def^.body);
                 if result.expr is :Some expr then (
                     insert_stmt(:Return expr);
-                );
-                if name == "main" then (
-                    insert_stmt(:Return :Literal :Int "0");
                 );
                 block
             ),
@@ -612,6 +706,12 @@ const C = (
                 make_sure_all_are_defined(result);
             )
             | :Native String => ()
+            | :UnwindToken {
+                .instantiated_token_ty = ref instantiated_token_ty,
+                .result_ty = _,
+            } => (
+                make_sure_all_are_defined(instantiated_token_ty);
+            )
         )
     );
 
