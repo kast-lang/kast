@@ -379,16 +379,12 @@ const parse_unwind = (
     let token = parse_expr(:None, token_ast);
     if token.ty is :Ref :UnwindToken { .result_ty, ... } then (
         let value = parse_expr(:Some result_ty, value);
-        let unwind_expr_ty = expect_known_type(
-            expected_ty,
-            .span = ast.span,
-        );
         {
             .shape = :Expr :Unwind {
                 .token,
                 .value,
             },
-            .ty = unwind_expr_ty,
+            .ty = expected_ty |> Option.unwrap_or(:Unit),
         }
     ) else (
         let diagnostic = {
@@ -418,7 +414,7 @@ const parse_unwindable = (
         .parent = :Some (@current ScopeContext),
         .vars = OrdMap.new(),
     };
-    let result_ty = expect_known_type(expected_ty, .span = ast.span);
+    let result_ty = expected_ty |> Option.unwrap_or(:Unit);
     let instantiated_token_ty = instantiate_ty(
         "UnwindToken",
         single_element_list(result_ty),

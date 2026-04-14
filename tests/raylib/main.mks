@@ -12,7 +12,7 @@ const State = struct {
 
 const frame = (state :: &State) -> () => (
     if WindowShouldClose() then (
-        unwind (state^.main_loop) with () :: ();
+        unwind (state^.main_loop) with ();
     );
     if IsKeyDown(KEY_RIGHT) then (
         state^.x = add[Int](state^.x, 1);
@@ -52,7 +52,7 @@ const main = () -> () => (
         @loop (
             frame(&state);
         );
-    ) :: ();
+    );
     UnloadTexture(texture);
     CloseWindow();
 );
