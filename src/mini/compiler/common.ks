@@ -23,7 +23,6 @@ use std.collections.OrdSet;
 
 use (import "../ir/_lib.ks").*;
 use (import "../ast_helpers.ks").*;
-
 # TODO allow custom targets
 const CompilationTarget = newtype (
     | :C
@@ -123,3 +122,11 @@ const CompilerT = newtype {
 };
 
 const Compiler = @context CompilerT;
+# TODO should already be stored in Ty
+const ty_repr = (ty :: Ty) -> Ty => (
+    match (@current Compiler).resolve_type_aliases(ty) with (
+        | :UnwindToken { .repr, ... } => repr
+        | :List { .repr, ... } => repr
+        | ty => ty
+    )
+);

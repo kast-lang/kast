@@ -54,6 +54,11 @@ const instantiation_to_type = (
             .repr = ty,
             .result_ty = ArrayList.at(&instantiation.template_args, 0)^,
         }
+    ) else if instantiation.template_name == "List" then (
+        :List {
+            .repr = ty,
+            .element_ty = ArrayList.at(&instantiation.template_args, 0)^,
+        }
     ) else (
         ty
     )

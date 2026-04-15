@@ -91,6 +91,7 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
         )
         | :Fn _ => "a function"
         | :UnwindToken _ => "unwind token"
+        | :List _ => "list"
     )
 );
 
@@ -138,6 +139,24 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
         | { :Named a, :Named b } => (
             if a != b then (
                 fail();
+            );
+        )
+        | { :List ref a, :List ref b } => (
+            let parent_ctx = @current TypeCheckContext;
+            with TypeCheckContext = {
+                .fail = [T] msg -> T => (
+                    parent_ctx.fail(
+                        () => (
+                            let output = @current Output;
+                            output.write("list element type is different\n");
+                            msg()
+                        )
+                    )
+                ),
+            };
+            type_check_impl(
+                &a^.element_ty,
+                &b^.element_ty,
             );
         )
         | { :UnwindToken ref a, :UnwindToken ref b } => (

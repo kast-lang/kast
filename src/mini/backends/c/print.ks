@@ -70,6 +70,7 @@ const Print = (
             | :Field _ => 200
             | :Ident _ => 1000
             | :Literal _ => 1000
+            | :ArrayLiteral _ => 1000
             | :CompoundLiteral _ => 1000
         )
     );
@@ -109,6 +110,19 @@ const Print = (
             )
             | :Ident ref ident => Print.ident(ident)
             | :Literal ref literal => Print.literal(literal)
+            | :ArrayLiteral { .ty = ref ty, .elements = ref elements } => (
+                write("(");
+                Print.ty(ty);
+                write(")");
+                write("{\n");
+                inc_indentation();
+                for element in elements |> ArrayList.iter do (
+                    Print.expr(element, .min_priority = 0);
+                    write(",\n");
+                );
+                dec_indentation();
+                write("}")
+            )
             | :CompoundLiteral { .ty = ref ty, .fields = ref fields } => (
                 write("(");
                 Print.ty(ty);
@@ -340,13 +354,17 @@ const Print = (
         write(";\n");
     );
 
-    const @"const" = (@"const" :: &Ast.Const) => (
-        write_keyword("const ");
-        Print.ty(&@"const"^.ty);
+    const static = (static :: &Ast.Static) => (
+        if static^.@"const" then (
+            write_keyword("const ");
+        );
+        Print.ty(&static^.ty);
         write(" ");
-        Print.ident(&@"const"^.name);
-        write(" = ");
-        Print.expr(&@"const"^.value, .min_priority = 0);
+        Print.ident(&static^.name);
+        if static^.value is :Some ref value then (
+            write(" = ");
+            Print.expr(value, .min_priority = 0);
+        );
     );
 
     const program = (program :: &Ast.Program) => (
@@ -369,8 +387,8 @@ const Print = (
             write(";\n");
         );
         write("\n");
-        for @"const" in &program^.consts |> ArrayList.iter do (
-            Print.@"const"(@"const");
+        for static in &program^.statics |> ArrayList.iter do (
+            Print.static(static);
             write(";\n");
         );
         for fn in &program^.fns |> ArrayList.iter do (

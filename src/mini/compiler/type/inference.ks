@@ -29,7 +29,7 @@ const field_ty = (
     field :: String,
     .field_span :: Span,
 ) -> Ir.Type => with_return (
-    let obj_ty = (@current Compiler).resolve_type_aliases(obj_ty);
+    let obj_ty = ty_repr(obj_ty);
     if obj_ty is :Named name then (
         let type_def = &(@current Compiler).program.types
             |> OrdMap.get(name)

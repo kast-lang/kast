@@ -49,6 +49,7 @@
 @syntax "loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\n\\" ")";
 @syntax "scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\n\\" ")";
 @syntax "record" 1000 @wrap if_any = "{" " "/"\n\t" _:any " "/"\n\\" "}";
+@syntax "list" 1000 @wrap if_any = "[" " "/"\n\t" _:any " "/"\n\\" "]";
 @syntax "target_dependent" 1000 @wrap always = "@cfg" " " "(" ""/"\n\t" branches:any ""/"\n\\" ")";
 @syntax "__FILE__" 1000 @wrap never = "__FILE__";
 @syntax "uninitialized" 1000 @wrap never = "uninitialized";

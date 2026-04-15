@@ -162,11 +162,63 @@ const parse_ref = (
     }
 );
 
-const parse_record = (
+const parse_list = (
     expected_ty :: Option.t[Ir.Type],
     ast :: Ast.t,
     root :: Ast.Group,
 ) -> ParsedExpr => (
+    let element_ty = match expected_ty with (
+        | :Some :List { .element_ty, ... } => element_ty
+        | :Some other => (
+            let diagnostic = {
+                .severity = :Error,
+                .source = :Compiler,
+                .message = () => (
+                    Ir.Print.type_name(&other);
+                    (@current Output).write(" is not a list");
+                ),
+                .span = ast.span,
+                .related = ArrayList.new(),
+            };
+            Diagnostic.report_and_unwind(diagnostic)
+        )
+        | :None => (
+            let diagnostic = {
+                .severity = :Error,
+                .source = :Compiler,
+                .message = () => (
+                    (@current Output).write("Couldn't figure out the type of this list");
+                ),
+                .span = ast.span,
+                .related = ArrayList.new(),
+            };
+            Diagnostic.report_and_unwind(diagnostic)
+        )
+    );
+    let mut elements = ArrayList.new();
+    for element in Ast.iter_list(
+        root |> AstHelpers.expect_single_child(:None),
+        .binary_rule_name = "comma",
+        .trailing_or_leading_rule_name = :Some "trailing comma",
+    ) do (
+        let element = parse_expr(:Some element_ty, element);
+        &mut elements |> ArrayList.push_back(element);
+    );
+    {
+        .shape = :Expr :List elements,
+        .ty = instantiate_ty(
+            "List",
+            single_element_list(element_ty),
+            .span = ast.span,
+        ),
+    }
+);
+
+const parse_record = (
+    expected_ty :: Option.t[Ir.Type],
+    ast :: Ast.t,
+    root :: Ast.Group,
+) -> ParsedExpr => with_return (
     let ty = match expected_ty with (
         | :Some ty => ty
         | :None => (
@@ -190,7 +242,7 @@ const parse_record = (
         kind :: Kind,
         field_types :: OrdMap.t[String, Ir.Type],
     } = with_return (
-        match (@current Compiler).resolve_type_aliases(ty) with (
+        match ty_repr(ty) with (
             | :Named name => (
                 let def = &(@current Compiler).program.types
                     |> OrdMap.get(name)
@@ -699,6 +751,7 @@ const parsers = (
     &mut map |> OrdMap.add("deref", parse_deref);
     &mut map |> OrdMap.add("ref", parse_ref);
     &mut map |> OrdMap.add("record", parse_record);
+    &mut map |> OrdMap.add("list", parse_list);
     &mut map |> OrdMap.add("fn", parse_fn);
     &mut map |> OrdMap.add("field", parse_field);
     &mut map |> OrdMap.add("assign", parse_assign);

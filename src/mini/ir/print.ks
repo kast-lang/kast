@@ -60,6 +60,14 @@ const Print = (
                 Print.type_name(result_ty);
                 output.write("]");
             )
+            | :List {
+                .repr = _,
+                .element_ty = ref element_ty,
+            } => (
+                output.write("List[");
+                Print.type_name(element_ty);
+                output.write("]");
+            )
         )
     );
 
@@ -111,6 +119,12 @@ const Print = (
             | :UnwindToken {
                 .repr = ref repr,
                 .result_ty = _,
+            } => (
+                Print.type_name_as_ident(repr);
+            )
+            | :List {
+                .repr = ref repr,
+                .element_ty = _,
             } => (
                 Print.type_name_as_ident(repr);
             )

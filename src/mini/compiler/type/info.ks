@@ -54,13 +54,56 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
 );
 
 const type_info_c = (ty :: &Ir.Type) -> Ir.ExprShape => (
+    # const MemberInfo = struct {
+    #     .offset_or_name :: MemberOffsetOrName,
+    #     .ty :: &TypeInfo,
+    # };
+    # const TypeInfo = struct {
+    #     .members :: List[MemberInfo],
+    #     .stride :: UInt,
+    #     .size :: UInt,
+    #     .alignment :: UInt,
+    # };
     let ctx = @current Compiler;
     let span :: Span = {
         .start = Position.beginning(),
         .end = Position.beginning(),
         .path = :Special __FILE__
     };
-    :Uninitialized
+    let ty = ty_repr(ty^);
+    # TODO
+    let stride :: Int32 = 4;
+    let size :: Int32 = 4;
+    let alignment :: Int32 = 4;
+    let mut fields = ArrayList.new();
+    let stride_field = {
+        .name = "stride",
+        .value = {
+            .shape = :Literal :Int to_string(stride),
+            .ty = :UInt,
+            .span,
+        },
+    };
+    &mut fields |> ArrayList.push_back(stride_field);
+    let size_field = {
+        .name = "size",
+        .value = {
+            .shape = :Literal :Int to_string(size),
+            .ty = :UInt,
+            .span,
+        },
+    };
+    &mut fields |> ArrayList.push_back(size_field);
+    let alignment_field = {
+        .name = "alignment",
+        .value = {
+            .shape = :Literal :Int to_string(alignment),
+            .ty = :UInt,
+            .span,
+        },
+    };
+    &mut fields |> ArrayList.push_back(alignment_field);
+    :Record fields
 );
 
 const type_info_js = (ty :: &Ir.Type) -> Ir.ExprShape => (

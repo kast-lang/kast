@@ -485,6 +485,13 @@ const Compiler = (
                 .repr = resolve_type_aliases(repr),
                 .result_ty = resolve_type_aliases(result_ty),
             }
+            | :List {
+                .repr,
+                .element_ty,
+            } => :List {
+                .repr = resolve_type_aliases(repr),
+                .element_ty = resolve_type_aliases(element_ty),
+            }
         )
     );
 );

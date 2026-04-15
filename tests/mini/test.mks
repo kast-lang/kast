@@ -28,20 +28,31 @@ const push_vector = [T] (v :: &Vector[T], element :: T) -> () => (
         let T_TypeInfo = @TypeInfo(T);
         let data_size = mul[UInt](T_TypeInfo.stride, v^.buffer.length);
         @native "memcpy(\(new_buffer.data), \(v^.buffer.data), \(data_size))";
+        free_list[T](v^.buffer);
+        v^.buffer = new_buffer;
     );
     list_index[T](v^.buffer, v^.length)^ = element;
     v^.length = add[UInt](v^.length, 1);
 );
 
 const main = () -> () => (
+    print("start of main");
     let v = new_vector[Int]();
+    print("created vec");
     push_vector[Int](&v, 1);
+    print("added 1");
     push_vector[Int](&v, 2);
+    print("added 2");
     push_vector[Int](&v, 3);
+    print("added 3");
     push_vector[Int](&v, 4);
+    print("added 4");
     push_vector[Int](&v, 5);
+    print("added 5");
     push_vector[Int](&v, 6);
+    print("added 6");
     push_vector[Int](&v, 7);
+    print("added 7");
 
     with Ctx = "outside";
     (

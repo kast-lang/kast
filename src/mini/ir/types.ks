@@ -45,6 +45,10 @@ const Type = newtype (
     | :Named String
     | :Fn FnType
     | :Native String
+    | :List {
+        .repr :: Type,
+        .element_ty :: Type,
+    }
     | :UnwindToken {
         .repr :: Type,
         .result_ty :: Type,
@@ -97,6 +101,11 @@ const compare_type = (
         | { :Fn ref a, :Fn ref ty } => panic("TODO compare fn types")
         | { :Fn _, _ } => :Less
         | { _, :Fn _ } => :Greater
+        | { :List ref a, :List ref b } => (
+            compare_type(&a^.element_ty, &b^.element_ty)
+        )
+        | { :List _, _ } => :Less
+        | { _, :List _ } => :Greater
         | { :UnwindToken ref a, :UnwindToken ref b } => (
             compare_type(&a^.result_ty, &b^.result_ty)
         )
@@ -171,6 +180,7 @@ const ExprShape = newtype (
         .value :: Expr,
     }
     | :Defer Expr
+    | :List ArrayList.t[Expr]
 );
 
 const Field = newtype {

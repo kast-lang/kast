@@ -62,6 +62,10 @@ const Ast = (
         | :Deref Expr
         | :Ident Ident
         | :Literal Literal
+        | :ArrayLiteral {
+            .ty :: Ty,
+            .elements :: ArrayList.t[Expr],
+        }
         | :CompoundLiteral {
             .ty :: Ty,
             .fields :: ArrayList.t[FieldInitializer],
@@ -132,16 +136,17 @@ const Ast = (
         .def :: TyDefShape,
     };
 
-    const Const = newtype {
+    const Static = newtype {
+        .@"const" :: Bool,
         .ty :: Ty,
         .name :: Ident,
-        .value :: Expr,
+        .value :: Option.t[Expr],
     };
 
     const Program = newtype {
         .includes :: OrdSet.t[String],
         .types :: ArrayList.t[TyDef],
         .fns :: ArrayList.t[Fn],
-        .consts :: ArrayList.t[Const],
+        .statics :: ArrayList.t[Static],
     };
 );

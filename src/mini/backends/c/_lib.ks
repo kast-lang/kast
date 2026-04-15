@@ -102,6 +102,10 @@ const C = (
                 .repr = ref repr,
                 .result_ty = _,
             } => convert_ty(repr)
+            | :List {
+                .repr = ref repr,
+                .element_ty = _,
+            } => convert_ty(repr)
         # | :Fn FnType
         )
     );
@@ -316,6 +320,38 @@ const C = (
         with ExprContext = { .span };
         let expr :: Ast.Expr = match ir_expr^.shape with (
             | :Unit => return void(span)
+            | :List ref ir_elements => (
+                let element_ty = match ir_expr^.ty with (
+                    | :List { .element_ty = ref element_ty, ... } => element_ty
+                    | _ => panic("List expr is not list type???")
+                );
+                let data = (
+                    let mut elements = ArrayList.new();
+                    for element in ir_elements |> ArrayList.iter do (
+                        let element = pure(calculate(element));
+                        &mut elements |> ArrayList.push_back(element);
+                    );
+                    :Ref :ArrayLiteral {
+                        .ty = convert_ty(element_ty),
+                        .elements,
+                    }
+                );
+                let mut fields = ArrayList.new();
+                let data_field = {
+                    .name = ident("data"),
+                    .value = data,
+                };
+                &mut fields |> ArrayList.push_back(data_field);
+                let length_field = {
+                    .name = ident("length"),
+                    .value = :Literal :Int to_string(ir_elements |> ArrayList.length),
+                };
+                &mut fields |> ArrayList.push_back(length_field);
+                :CompoundLiteral {
+                    .ty = convert_ty(&ir_expr^.ty),
+                    .fields,
+                }
+            )
             | :Uninitialized => (
                 if ir_expr^.ty is :Unit then (
                     return void(span);
@@ -758,12 +794,13 @@ const C = (
         let mut args = ArrayList.new();
         let ctx_var = new_ident("ctx");
         if def^.call_convention is :None then (
-            &mut args |> ArrayList.push_back(
-                {
-                    .name = ctx_var,
-                    .ty = :Pointer :Struct ident("Context"),
-                }
-            );
+            &mut args
+                |> ArrayList.push_back(
+                    {
+                        .name = ctx_var,
+                        .ty = :Pointer :Struct ident("Context"),
+                    }
+                );
         );
         for arg in &def^.args |> ArrayList.iter do (
             let arg :: Ast.FnArg = {
@@ -824,6 +861,8 @@ const C = (
             | :Ref ref inner => (
                 # type can be forward declared for pointers
                 # make_sure_all_are_defined(inner)
+
+
             )
             | :Unit => ()
             | :Int => ()
@@ -848,6 +887,12 @@ const C = (
             | :UnwindToken {
                 .repr = ref repr,
                 .result_ty = _,
+            } => (
+                make_sure_all_are_defined(repr);
+            )
+            | :List {
+                .repr = ref repr,
+                .element_ty = _,
             } => (
                 make_sure_all_are_defined(repr);
             )
@@ -933,7 +978,7 @@ const C = (
             .result = {
                 .includes = OrdSet.new(),
                 .types = ArrayList.new(),
-                .consts = ArrayList.new(),
+                .statics = ArrayList.new(),
                 .fns = ArrayList.new(),
             },
             .next_id = 0,
@@ -964,27 +1009,66 @@ const C = (
         for &{ .key = name, .value = ref def } in &ctx.program.fns |> OrdMap.iter do (
             add_fn(name, def);
         );
-        for &name in &ctx.program.consts_order |> ArrayList.iter do (
-            let value = &ctx.program.consts |> OrdMap.get(name) |> Option.unwrap;
-            # with FunctionContext = {
-            #     .result_ty = convert_ty(:Unit),
-            # };
-            # with UnwindContext = {
-            #     .insert_unwind = () => (),
-            #     .cleanup_scope_without_unwind = () => (),
-            # };
-            # with Scope = { .block = &mut block };
-            # with ScopeContextVar = ctx_var;
-            let ty = &value^.ty;
-            let value = calculate(value);
-            if value.expr is :Some value then (
-                let @"const" = {
-                    .ty = convert_ty(ty),
-                    .name = ident(name),
-                    .value,
-                };
-                &mut ctx.result.consts |> ArrayList.push_back(@"const");
+
+        (
+            # consts
+            let mut args = ArrayList.new();
+            let ctx_var = new_ident("ctx");
+            &mut args
+                |> ArrayList.push_back(
+                    {
+                        .name = ctx_var,
+                        .ty = :Pointer :Struct ident("Context"),
+                    }
+                );
+            with FunctionContext = {
+                .result_ty = :Void,
+            };
+            with UnwindContext = {
+                .insert_unwind = () => (
+                    # TODO this would mean we didnt finish initializing all consts
+                    insert_stmt(:ReturnVoid);
+                ),
+                .cleanup_scope_without_unwind = () => (),
+            };
+
+            let mut body = new_block();
+            with Scope = { .block = &mut body };
+            with ScopeContextVar = ctx_var;
+            for &name in &ctx.program.consts_order |> ArrayList.iter do (
+                let value = &ctx.program.consts |> OrdMap.get(name) |> Option.unwrap;
+                # with FunctionContext = {
+                #     .result_ty = convert_ty(:Unit),
+                # };
+                # with UnwindContext = {
+                #     .insert_unwind = () => (),
+                #     .cleanup_scope_without_unwind = () => (),
+                # };
+                # with Scope = { .block = &mut block };
+                # with ScopeContextVar = ctx_var;
+                let ty = &value^.ty;
+                let value = calculate(value);
+                if value.expr is :Some value then (
+                    let static = {
+                        .@"const" = false,
+                        .ty = convert_ty(ty),
+                        .name = ident(name),
+                        .value = :None,
+                    };
+                    &mut ctx.result.statics |> ArrayList.push_back(static);
+                    insert_stmt(:Assign { .assignee = :Ident ident(name), .value });
+                );
             );
+            let fn :: Ast.Fn = {
+                .signature = {
+                    .name = ident("init_consts"),
+                    .args,
+                    .result_ty = :Void,
+                },
+                .body,
+            };
+            (@current UnwindContext).cleanup_scope_without_unwind();
+            &mut ctx.result.fns |> ArrayList.push_back(fn);
         );
         ctx.result
     );
