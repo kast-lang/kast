@@ -24,6 +24,7 @@ const TypeDef = newtype {
 };
 
 const FnType = newtype {
+    .call_convention :: Option.t[String],
     .args :: ArrayList.t[Type],
     .result :: Type,
 };
@@ -169,6 +170,7 @@ const ExprShape = newtype (
         .token :: Expr,
         .value :: Expr,
     }
+    | :Defer Expr
 );
 
 const Field = newtype {
@@ -209,6 +211,7 @@ const FnArg = newtype {
 };
 
 const FnDef = newtype {
+    .call_convention :: Option.t[String],
     .args :: ArrayList.t[FnArg],
     .result_ty :: Type,
     .body :: Expr,

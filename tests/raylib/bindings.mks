@@ -4,7 +4,7 @@ const String_to_C_String = (s :: String) -> C_String => (
 );
 
 @native
-const InitWindow :: (
+const InitWindow :: @call "C" (
     width :: Int,
     height :: Int,
     title :: C_String,
@@ -16,14 +16,14 @@ const rInitWindow = (
     title :: String,
 ) -> () => (
     @native "#include <raylib.h>";
-    InitWindow(width, height, String_to_C_String(title));
+    @native "InitWindow(\(width), \(height), \(String_to_C_String(title)))";
 );
 
 @native
 const Texture2D = @opaque_type;
 
 @native
-const LoadTexture :: (path :: C_String) -> Texture2D;
+const LoadTexture :: @call "C" (path :: C_String) -> Texture2D;
 
 const rLoadTexture = (
     path :: String,
@@ -32,13 +32,13 @@ const rLoadTexture = (
 );
 
 @native
-const WindowShouldClose :: () -> Bool;
+const WindowShouldClose :: @call "C" () -> Bool;
 
 @native
-const BeginDrawing :: () -> ();
+const BeginDrawing :: @call "C" () -> ();
 
 @native
-const EndDrawing :: () -> ();
+const EndDrawing :: @call "C" () -> ();
 
 @native
 const Color = struct {
@@ -49,10 +49,10 @@ const Color = struct {
 };
 
 @native
-const ClearBackground :: (color :: Color) -> ();
+const ClearBackground :: @call "C" (color :: Color) -> ();
 
 @native
-const DrawTexture :: (
+const DrawTexture :: @call "C" (
     texture :: Texture2D,
     pos_x :: Int,
     pos_y :: Int,
@@ -60,16 +60,16 @@ const DrawTexture :: (
 ) -> ();
 
 @native
-const CloseWindow :: () -> ();
+const CloseWindow :: @call "C" () -> ();
 
 @native
-const UnloadTexture :: (texture :: Texture2D) -> ();
+const UnloadTexture :: @call "C" (texture :: Texture2D) -> ();
 
 @native
-const IsKeyDown :: (key :: Int) -> Bool;
+const IsKeyDown :: @call "C" (key :: Int) -> Bool;
 
 @native
-const SetTargetFPS :: (fps :: Int) -> ();
+const SetTargetFPS :: @call "C" (fps :: Int) -> ();
 
 @native
 const KEY_RIGHT :: Int;

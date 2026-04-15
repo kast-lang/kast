@@ -20,13 +20,14 @@
 @syntax "field def" 6 @wrap never = "." label " " "::" " " type;
 @syntax "field init" 6 @wrap never = "." label " " "=" " " value;
 @syntax "type ascribe" 6.2 @wrap never = expr " " "::" " " type;
-@syntax "fn_type" 6.5 @wrap never = args " " "->" " " result;
-@syntax "fn" 7 @wrap never = args " " "->" " " result_ty " " "=>" " " body;
+@syntax "fn_type" 6.5 @wrap never = call_convention=("@call" " " _: >= 5000 " ")? args " " "->" " " result;
+@syntax "fn" 7 @wrap never = call_convention=("@call" " " _: >= 5000 " ")? args " " "->" " " result_ty " " "=>" " " body;
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 # @syntax "for" 7.5 @wrap never = "for" " " ident " " "in" " " start ".." end " " "do" " " body;
 @syntax "unwindable" 7.7 @wrap never = "unwindable" " " token: >=1000 " " body;
 @syntax "unwind" 7.7 @wrap never = "unwind" " " token: >=1000 " " "with" " " value;
+@syntax "defer" 7.7 @wrap never = "defer" " " _;
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;
 @syntax "native" 9 @wrap never = "@native" " " _;
 @syntax "inject_context" 9.5 @wrap never = "with" " " context_type " " "=" " " value;

@@ -10,7 +10,10 @@ const State = struct {
     .main_loop :: &UnwindToken[()],
 };
 
-const frame = (state :: &State) -> () => (
+const StateContext = @context State;
+
+const frame = () -> () => (
+    let state = &(@current StateContext);
     if WindowShouldClose() then (
         unwind (state^.main_loop) with ();
     );
@@ -43,14 +46,14 @@ const main = () -> () => (
     SetTargetFPS(60);
     let texture = rLoadTexture("logo.png");
     unwindable main_loop (
-        let state :: State = {
+        with StateContext = {
             .x = 0,
             .y = 0,
             .texture = texture,
             .main_loop = main_loop,
         };
         @loop (
-            frame(&state);
+            frame();
         );
     );
     UnloadTexture(texture);

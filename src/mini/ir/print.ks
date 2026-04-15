@@ -12,6 +12,11 @@ const Print = (
 
     const fn_type = (self :: &FnType) => (
         let output = @current Output;
+        if self^.call_convention is :Some s then (
+            output.write("@call ");
+            output.write(String.escape(s));
+            output.write(" ");
+        );
         output.write("(");
         for { i, arg_ty } in &self^.args |> ArrayList.iter |> std.iter.enumerate do (
             if i != 0 then (

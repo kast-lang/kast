@@ -50,6 +50,7 @@ raylib-web *args:
 c path *args:
     kast mini \
         compile --target c \
+        --prepend src/mini/backends/c/runtime.c \
         tests/mini/runtime/c.mks \
         src/mini/backends/c/runtime.mks \
         {{path}} \

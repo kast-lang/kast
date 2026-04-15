@@ -1,6 +1,6 @@
 const MemberOffsetOrName = type SizeT;
 
-const initialize_offset_or_name = (
+const initialize_offset_or_name = @call "C" (
     name :: String,
 ) -> MemberOffsetOrName => (
     @native "0"
@@ -17,66 +17,66 @@ const TypeInfo = struct {
     .alignment :: SizeT,
 };
 
-const get_type_members = (ty :: &TypeInfo) -> List[MemberInfo] => (
+const get_type_members = @call "C" (ty :: &TypeInfo) -> List[MemberInfo] => (
     ty^.members
 );
 
-const get_member = (
+const get_member = @call "C" (
     obj :: &Any,
     member :: &MemberInfo,
 ) -> &Any => (
     @native "\(obj) + \(member^.offset_or_name)"
 );
-const allocate_type_on_stack = (
+const allocate_type_on_stack = @call "C" (
     T :: &TypeInfo,
 ) -> &Any => (
     # TODO this fn must be inlined
     @native "alloca(\(T^.size))"
 );
-const allocate_type_on_heap = (
+const allocate_type_on_heap = @call "C" (
     T :: &TypeInfo,
 ) -> &Any => (
     @native "#include <stdlib.h>";
     @native "malloc(\(T^.size))"
 );
 
-const add = [T] (a :: T, b :: T) -> T => (
+const add = [T] @call "C" (a :: T, b :: T) -> T => (
     @native "\(a) + \(b)"
 );
 
-const sub = [T] (a :: T, b :: T) -> T => (
+const sub = [T] @call "C" (a :: T, b :: T) -> T => (
     @native "\(a) - \(b)"
 );
 
-const mul = [T] (a :: T, b :: T) -> T => (
+const mul = [T] @call "C" (a :: T, b :: T) -> T => (
     @native "\(a) * \(b)"
 );
 
-const less = [T] (a :: T, b :: T) -> Bool => (
+const less = [T] @call "C" (a :: T, b :: T) -> Bool => (
     @native "\(a) < \(b)"
 );
 
-const less_or_equal = [T] (a :: T, b :: T) -> Bool => (
+const less_or_equal = [T] @call "C" (a :: T, b :: T) -> Bool => (
     @native "\(a) <= \(b)"
 );
 
-const equal = [T] (a :: T, b :: T) -> Bool => (
+const equal = [T] @call "C" (a :: T, b :: T) -> Bool => (
     @native "\(a) == \(b)"
 );
 
-const not_equal = [T] (a :: T, b :: T) -> Bool => (
+const not_equal = [T] @call "C" (a :: T, b :: T) -> Bool => (
     @native "\(a) != \(b)"
 );
 
-const greater_or_equal = [T] (a :: T, b :: T) -> Bool => (
+const greater_or_equal = [T] @call "C" (a :: T, b :: T) -> Bool => (
     @native "\(a) >= \(b)"
 );
 
-const greater = [T] (a :: T, b :: T) -> Bool => (
+const greater = [T] @call "C" (a :: T, b :: T) -> Bool => (
     @native "\(a) > \(b)"
 );
 
-const div_round_up = [T] (a :: T, b :: T) -> T => (
+const div_round_up = [T] @call "C" (a :: T, b :: T) -> T => (
     @native "(\(a) + \(b) - 1) / \(b)"
 );
 
@@ -154,7 +154,7 @@ const RawUnwindToken = struct {
     .id :: Int,
 };
 
-const newRawUnwindToken = () -> RawUnwindToken => (
+const newRawUnwindToken = @call "C" () -> RawUnwindToken => (
     let next_raw_id :: &Int = @native "&next_raw_unwind_token_id";
     let result :: RawUnwindToken = {
         .id = next_raw_id^,
@@ -168,7 +168,7 @@ const UnwindToken = [T] struct {
     .value :: T,
 };
 
-const is_unwinding_with = (raw :: RawUnwindToken) -> Bool => (
+const is_unwinding_with = @call "C" (raw :: RawUnwindToken) -> Bool => (
     let unwinding :: RawUnwindToken = @native "current_unwinding_raw_token";
     equal[Int](raw.id, unwinding.id)
 )

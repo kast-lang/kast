@@ -363,6 +363,7 @@ const Print = (
         for fn in &program^.fns |> ArrayList.iter do (
             Print.fn(fn);
         );
-        write("\n#undef main\nint main() { minikast_main(); return 0; }\n");
+        write("\n");
+        write(@eval std.fs.read_file(std.path.dirname(__FILE__) + "/main.c"));
     );
 );

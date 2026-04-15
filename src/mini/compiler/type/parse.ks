@@ -59,8 +59,28 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                 return :Ref parse_type(referenced);
             );
             if rule.name == "fn_type" then (
-                let { arg_asts, result } = root
-                    |> AstHelpers.expect_two_children(:Some { "args", "result" });
+                let call_convention = match (
+                    &root.children
+                        |> Tuple.get_named_opt("call_convention")
+                ) with (
+                    | :None => :None
+                    | :Some &child => :Some (
+                        child
+                            |> Ast.unwrap_child_group
+                            |> AstHelpers.expect_single_child(:None)
+                            |> AstHelpers.expect_string
+                    )
+                );
+                let arg_asts = (
+                    &root.children
+                        |> Tuple.get_named("args")
+                )^
+                    |> Ast.unwrap_child_value;
+                let result = (
+                    &root.children
+                        |> Tuple.get_named("result")
+                )^
+                    |> Ast.unwrap_child_value;
                 let arg_asts = arg_asts
                     |> AstHelpers.expect_rule("scope")
                     |> AstHelpers.expect_single_child(:None);
@@ -82,7 +102,7 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                     &mut args |> ArrayList.push_back(parse_type(arg_ast));
                 );
                 let result = parse_type(result);
-                return :Fn { .args, .result };
+                return :Fn { .call_convention, .args, .result };
             );
             if rule.name == "scope" then (
                 let inner = root

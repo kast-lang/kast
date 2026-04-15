@@ -293,6 +293,7 @@ const parse_fn = (
         .parent_scope = :Some (@current ScopeContext),
     );
     let fn_ty = {
+        .call_convention = :None,
         .args = (
             let mut args = ArrayList.new();
             for arg in &fn.args |> ArrayList.iter do (
@@ -367,6 +368,19 @@ const parse_type_ascribe = (
     let ty = parse_type(ty);
     let expr = parse_expr_impl(:Some ty, expr);
     { .shape = expr.shape, .ty = expr.ty }
+);
+
+const parse_defer = (
+    expected_ty :: Option.t[Ir.Type],
+    ast :: Ast.t,
+    root :: Ast.Group,
+) -> ParsedExpr => (
+    let expr = root
+        |> AstHelpers.expect_single_child(:None);
+    {
+        .shape = :Expr :Defer parse_expr(:Some :Unit, expr),
+        .ty = :Unit,
+    }
 );
 
 const parse_unwind = (
@@ -703,6 +717,7 @@ const parsers = (
     &mut map |> OrdMap.add("current_context", parse_current_context);
     &mut map |> OrdMap.add("then", parse_then);
     &mut map |> OrdMap.add("apply", parse_apply);
+    &mut map |> OrdMap.add("defer", parse_defer);
     map
 );
 

@@ -34,12 +34,15 @@ const C = (
 
     const UnwindContext = @context newtype {
         .insert_unwind :: () -> (),
+        .cleanup_scope_without_unwind :: () -> (),
     };
 
     const ScopeT = newtype {
         .block :: &mut Ast.Block,
     };
     const Scope = @context ScopeT;
+
+    const ScopeContextVar = @context Ast.Ident;
 
     const ident = (name :: String) -> Ast.Ident => (
         # TODO make sure its valid C identifier
@@ -147,6 +150,25 @@ const C = (
         .set :: Ast.Expr -> (),
     };
 
+    const current_context_place = (
+        name :: String,
+        .span :: Span,
+    ) -> Place => (
+        let place_expr = :Field {
+            .obj = :Deref :Ident (@current ScopeContextVar),
+            .field = ident(name),
+        };
+        {
+            .get = () => {
+                .expr = :Some place_expr,
+                .span,
+            },
+            .set = value => (
+                insert_stmt(:Assign { .assignee = place_expr, .value });
+            ),
+        }
+    );
+
     const calculate_place = (ir_expr :: &Ir.PlaceExpr) -> Place => with_return (
         let span = ir_expr^.span;
         with ExprContext = { .span };
@@ -176,7 +198,9 @@ const C = (
                     ),
                 }
             )
-            # | :CurrentContext String
+            | :CurrentContext name => (
+                current_context_place(name, .span)
+            )
             | :Deref ref reference => (
                 let reference = pure(calculate(reference));
                 let deref_expr = :Deref reference;
@@ -262,6 +286,25 @@ const C = (
                 ),
                 .else_case = :None,
             }
+        );
+    );
+
+    const defer = (f :: () -> ()) => (
+        let mut unwind_ctx = @current UnwindContext;
+        let handle_unwind_label = new_ident("handle_unwind");
+        let after_defer_label = new_ident("after_defer");
+        insert_stmt(:Goto after_defer_label);
+        insert_stmt(:GotoLabel handle_unwind_label);
+        f();
+        unwind_ctx.insert_unwind();
+        insert_stmt(:GotoLabel after_defer_label);
+        unwind_ctx.insert_unwind = () => (
+            insert_stmt(:Goto handle_unwind_label);
+        );
+        let prev_cleanup_scope_without_unwind = unwind_ctx.cleanup_scope_without_unwind;
+        unwind_ctx.cleanup_scope_without_unwind = () => (
+            f();
+            prev_cleanup_scope_without_unwind();
         );
     );
 
@@ -444,27 +487,66 @@ const C = (
                 with Scope = {
                     .block = (@current Scope).block,
                 };
-                return calculate(expr)
+                with UnwindContext = {
+                    .insert_unwind = (@current UnwindContext).insert_unwind,
+                    .cleanup_scope_without_unwind = () => (),
+                };
+                let result = calculate(expr);
+                (@current UnwindContext).cleanup_scope_without_unwind();
+                return result
             )
             | :Apply { .f = ref f, .args = ref ir_args } => (
+                let f_ty = match f^.ty with (
+                    | :Fn ty => ty
+                    | _ => (
+                        let diagnostic = {
+                            .severity = :Error,
+                            .source = :Internal,
+                            .message = () => (
+                                let output = @current Output;
+                                output.write("Expected a fn type");
+                            ),
+                            .span = f^.span,
+                            .related = ArrayList.new(),
+                        };
+                        Diagnostic.report_and_unwind(diagnostic)
+                    )
+                );
                 let f = pure(calculate(f));
                 let mut args = ArrayList.new();
+                if f_ty.call_convention is :None then (
+                    &mut args |> ArrayList.push_back(:Ident (@current ScopeContextVar));
+                );
                 for arg in ir_args |> ArrayList.iter do (
                     let arg = pure(calculate(arg));
                     &mut args |> ArrayList.push_back(arg);
                 );
                 if ir_expr^.ty is :Unit then (
                     insert_stmt(:Expr :Apply { .f, .args });
-                    check_unwind();
+                    if f_ty.call_convention is :None then (
+                        check_unwind();
+                    );
                     return void(span)
                 ) else (
                     let result_var = new_ident("apply_result");
                     let_var(&ir_expr^.ty, result_var, :Apply { .f, .args });
-                    check_unwind();
+                    if f_ty.call_convention is :None then (
+                        check_unwind();
+                    );
                     return { .expr = :Some :Ident result_var, .span }
                 )
             )
-            # | :InjectContext
+            | :InjectContext { .name, .value = ref value_expr } => (
+                let value = calculate(value_expr);
+                if value.expr is :Some value then (
+                    let ctx = current_context_place(name, .span);
+                    let old_value_var = new_ident("old_ctx");
+                    let_var(&value_expr^.ty, old_value_var, pure(ctx.get()));
+                    ctx.set(value);
+                    defer(() => ctx.set(:Ident old_value_var));
+                );
+                return void(span)
+            )
             # | :EnumIs
             | :Record ref fields => (
                 let mut field_initializers = ArrayList.new();
@@ -482,6 +564,14 @@ const C = (
                     .ty = convert_ty(&ir_expr^.ty),
                     .fields = field_initializers,
                 }
+            )
+            | :Defer ref expr => (
+                defer(
+                    () => (
+                        calculate(expr);
+                    )
+                );
+                return void(span)
             )
             | :Unwind {
                 .token = ref token,
@@ -560,7 +650,7 @@ const C = (
                 insert_stmt(
                     :If {
                         .cond = :Apply {
-                            .f = :Raw "is_unwinding_with",
+                            .f = :Ident ident("is_unwinding_with"),
                             .args = single_element_list(
                                 :Field {
                                     .obj = :Ident token_own_var,
@@ -575,8 +665,8 @@ const C = (
                             };
                             insert_stmt(
                                 :Assign {
-                                    .assignee = :Raw "current_unwinding_raw_token",
-                                    .value = :Raw "NO_UNWIND",
+                                    .assignee = :Ident ident("current_unwinding_raw_token"),
+                                    .value = :Ident ident("NO_UNWIND"),
                                 }
                             );
                             if have_result_value then (
@@ -608,8 +698,10 @@ const C = (
                     .insert_unwind = () => (
                         insert_stmt(:Goto handle_unwind_label);
                     ),
+                    .cleanup_scope_without_unwind = () => (),
                 };
                 let result = calculate(body);
+                (@current UnwindContext).cleanup_scope_without_unwind();
                 if have_result_value then (
                     insert_stmt(
                         :Assign {
@@ -662,6 +754,15 @@ const C = (
     ) => (
         let mut ctx = @current Context;
         let mut args = ArrayList.new();
+        let ctx_var = new_ident("ctx");
+        if def^.call_convention is :None then (
+            &mut args |> ArrayList.push_back(
+                {
+                    .name = ctx_var,
+                    .ty = :Pointer :Struct ident("Context"),
+                }
+            );
+        );
         for arg in &def^.args |> ArrayList.iter do (
             let arg :: Ast.FnArg = {
                 .name = ident(arg^.name),
@@ -692,6 +793,7 @@ const C = (
                     )
                 );
             ),
+            .cleanup_scope_without_unwind = () => (),
         };
         let fn :: Ast.Fn = {
             .signature = {
@@ -702,7 +804,9 @@ const C = (
             .body = (
                 let mut block = new_block();
                 with Scope = { .block = &mut block };
+                with ScopeContextVar = ctx_var;
                 let result = calculate(&def^.body);
+                (@current UnwindContext).cleanup_scope_without_unwind();
                 if result.expr is :Some expr then (
                     insert_stmt(:Return expr);
                 );
@@ -718,8 +822,6 @@ const C = (
             | :Ref ref inner => (
                 # type can be forward declared for pointers
                 # make_sure_all_are_defined(inner)
-
-
             )
             | :Unit => ()
             | :Int => ()
@@ -734,7 +836,7 @@ const C = (
                     |> Option.unwrap;
                 type_def(name, def);
             )
-            | :Fn { .args = ref args, .result = ref result } => (
+            | :Fn { .call_convention = _, .args = ref args, .result = ref result } => (
                 for arg in args |> ArrayList.iter do (
                     make_sure_all_are_defined(arg);
                 );
@@ -843,6 +945,19 @@ const C = (
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
             type_def(name, ty_def);
         );
+        let mut ctx_fields = ArrayList.new();
+        for &{ .key = name, .value = ref ty } in &ctx.program.contexts |> OrdMap.iter do (
+            let field = {
+                .name = ident(name),
+                .ty = convert_ty(ty),
+            };
+            &mut ctx_fields |> ArrayList.push_back(field);
+        );
+        let ctx_def = {
+            .name = ident("Context"),
+            .def = :Struct { .fields = ctx_fields },
+        };
+        &mut ctx.result.types |> ArrayList.push_back(ctx_def);
         for &{ .key = name, .value = ref def } in &ctx.program.fns |> OrdMap.iter do (
             add_fn(name, def);
         );

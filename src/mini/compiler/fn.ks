@@ -3,13 +3,31 @@ use (import "./scope.ks").*;
 
 module:
 
+const parse_call_convention = (
+    root :: Ast.Group
+) -> Option.t[String] => (
+    match (
+        &root.children
+            |> Tuple.get_named_opt("call_convention")
+    ) with (
+        | :None => :None
+        | :Some &child => :Some (
+            child
+                |> Ast.unwrap_child_group
+                |> AstHelpers.expect_single_child(:None)
+                |> AstHelpers.expect_string
+        )
+    )
+);
+
 const process_toplevel_fn_declaration = (
     name :: String,
     def :: Ast.t,
 ) -> Ir.FnType => (
-    let { args, result_ty, body } = def
-        |> AstHelpers.expect_rule("fn")
+    let root = def |> AstHelpers.expect_rule("fn");
+    let { args, result_ty, body } = root
         |> AstHelpers.expect_three_children("args", "result_ty", "body");
+    let call_convention = parse_call_convention(root);
     let args = args
         |> AstHelpers.expect_rule("scope")
         |> AstHelpers.expect_single_child(:None);
@@ -27,6 +45,7 @@ const process_toplevel_fn_declaration = (
     );
     let result_ty = (@current Compiler).parse_type(result_ty);
     let fn_type = {
+        .call_convention,
         .args = arg_types,
         .result = result_ty,
     };
@@ -46,9 +65,10 @@ const parse_fn_def = (
     def :: Ast.t,
     .parent_scope :: Option.t[Scope],
 ) -> Ir.FnDef => (
-    let { args_ast, result_ty, body } = def
-        |> AstHelpers.expect_rule("fn")
+    let root = def |> AstHelpers.expect_rule("fn");
+    let { args_ast, result_ty, body } = root
         |> AstHelpers.expect_three_children("args", "result_ty", "body");
+    let call_convention = parse_call_convention(root);
     let args_ast = args_ast
         |> AstHelpers.expect_rule("scope")
         |> AstHelpers.expect_single_child(:None);
@@ -76,6 +96,7 @@ const parse_fn_def = (
     with ScopeContext = scope;
     let body = (@current Compiler).parse_expr(:Some result_ty, body);
     {
+        .call_convention,
         .args,
         .result_ty = result_ty,
         .body,

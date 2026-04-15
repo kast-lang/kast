@@ -1,97 +1,18 @@
-const add = (a :: Int32, b :: Int32) -> Int32 => (
-    @native "\(a) + \(b)"
+const print = @call "C" (s :: String) -> () => (
+    @native "#include <stdio.h>";
+    @native "printf(\"%s\\n\", \(s.contents))";
 );
-
-const sub = (a :: Int32, b :: Int32) -> Int32 => (
-    @native "\(a) - \(b)"
-);
-
-const less = (a :: Int32, b :: Int32) -> Bool => (
-    @native "\(a) < \(b)"
-);
-
-const fib = (n :: Int32) -> Int32 => (
-    if less(n, 2) then (
-        1
-    ) else (
-        add(fib(sub(n, 1)), fib(sub(n, 2)))
-    )
-);
-
-const OptionTag = enum {
-    | :Some
-    | :None
-};
-
-const OptionData = union {
-    .Some :: Int32,
-    .None :: (),
-};
-
-const print = (s :: String) -> () => (
-    @native "console.log(\(s))";
-);
-
-const int32_to_string = (x :: Int32) -> String => (
-    @native "\(x).toString()"
-);
-
-const Foo = struct {
-    .f :: (Int32) -> (),
-    .g :: (Int32) -> (),
-};
-# const Parse = struct {
-#     .parse :: String -> Any,
-# };
-# const parse = (T :: Type) -> (String -> Any) => (
-#     (s :: String) -> Any => (
-#         (T as Parse).parse(s)
-#     )
-# );
 
 const Ctx = @context String;
 
-const S = struct {
-    .a :: Int32,
-    .b :: String,
-};
-
-const U = union {
-    .a :: String,
-    .b :: (),
-};
-
-const dbg_print_S = (s :: S) -> () => (
-    @native "console.log(\(s))"
-);
-const dbg_print_U = (u :: U) -> () => (
-    @native "console.log(\(u))"
-);
-
 const main = () -> () => (
-    let s :: S = { .a = 1, .b = "2" };
-    dbg_print_S(s);
-    print(s.b);
-    let u :: U = { .b = () };
-    dbg_print_U(u);
-    print(u.a);
     with Ctx = "outside";
     (
+        defer print("exited scope");
         print(@current Ctx);
         with Ctx = "inside";
         print(@current Ctx);
     );
     print(@current Ctx);
-    # print(int32_to_string(fib(@native "10")));
-    let foo :: Foo = uninitialized;
-    foo.f = (depth :: Int32) -> () => (
-        print(int32_to_string(depth));
-        if less(depth, 10) then (
-            foo.g(add(depth, 1));
-        );
-    );
-    foo.g = (depth :: Int32) -> () => foo.f(depth);
-    foo.g(0);
-    print("Hello, world!");
-# let x :: Int32 = parse(Type_Int32)("123");
+    print("exited main");
 );

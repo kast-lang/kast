@@ -159,6 +159,9 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             );
         )
         | { :Fn ref a, :Fn ref b } => (
+            if not std.repr.structurally_equal(a^.call_convention, b^.call_convention) then (
+                fail();
+            );
             if &a^.args |> ArrayList.length != &b^.args |> ArrayList.length then (
                 (@current TypeCheckContext).fail(
                     () => (
