@@ -102,6 +102,22 @@ const allocate_list = [T] @call "C" (length :: UInt) -> List[T] => (
     }
 );
 
+const copy_list = [T] @call "C" (
+    target :: List[T],
+    target_offset :: UInt,
+    source :: List[T],
+    source_offset :: UInt,
+    length :: UInt,
+) -> () => (
+    @native ''
+        stmt:
+        memcpy(
+            \(target.data)+ \(target_offset),
+            \(source.data)+ \(source_offset),
+            \(length)* \(@TypeInfo(T).stride)
+        )'';
+);
+
 const free_list = [T] @call "C" (list :: List[T]) -> () => (
     if not_equal[&T](list.data, @native "NULL") then (
         @native "free(\(list.data))";

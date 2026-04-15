@@ -3,7 +3,7 @@ use (import "../template.ks").*;
 
 module:
 
-const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
+const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
     let ty = (@current Compiler).resolve_type_aliases(ty^);
     let ty = &ty;
     let span :: Span = {
@@ -17,14 +17,9 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
             (@current Output).write("_TypeInfo");
         )
     );
-    let place_of_result :: Ir.PlaceExpr = {
-        .shape = :Ident name,
-        .ty = :Named "TypeInfo",
-        .span,
-    };
     let mut ctx = @current Compiler;
     if &ctx.program.consts |> OrdMap.get(name) is :Some _ then (
-        return place_of_result;
+        return name;
     );
     # Temporarily add as uninitialized to prevent cycles
     &mut ctx.program.consts
@@ -36,237 +31,211 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
                 .span,
             }
         );
-    let expr_shape = match (@current Compiler).target with (
-        | :JavaScript => type_info_js(ty)
-        | :C => type_info_c(ty)
+    let mut members = ArrayList.new();
+    let add_members = (map :: &OrdMap.t[String, Ir.Type]) => (
+        for &{ .key = name, .value = ty } in map |> OrdMap.iter do (
+            let member = {
+                .name,
+                .type_info_const_name = type_info_const_name(&ty),
+                .ty,
+            };
+            &mut members |> ArrayList.push_back(member);
+        );
+    );
+    match ty_repr(ty^) with (
+        | :Named name => (
+            let def = &(@current Compiler).program.types
+                |> OrdMap.get(name)
+                |> Option.unwrap;
+            match def^.shape with (
+                | :Struct { .fields = ref fields } => (
+                    add_members(fields);
+                )
+                | :Union { .variants = ref variants } => (
+                    add_members(variants);
+                )
+                | _ => ()
+            )
+        )
+        | _ => ()
     );
     &mut ctx.program.consts
         |> OrdMap.add(
             name,
             {
-                .shape = expr_shape,
+                .shape = :ConstructTypeInfo {
+                    .ty = ty^,
+                    .members,
+                },
                 .ty = :Named "TypeInfo",
                 .span,
             }
         );
     &mut ctx.program.consts_order |> ArrayList.push_back(name);
-    place_of_result
+    name
 );
+# const type_info_js = (ty :: &Ir.Type) -> Ir.ExprShape => (
+#     let ctx = @current Compiler;
+#     let span :: Span = {
+#         .start = Position.beginning(),
+#         .end = Position.beginning(),
+#         .path = :Special __FILE__
+#     };
+#     let details_members = (
+#         members_map :: &OrdMap.t[String, Ir.Type],
+#     ) -> Ir.Expr => (
+#         let mut members = ArrayList.new();
+#         for &{
+#             .key = name,
+#             .value = ref ty,
+#         } in members_map |> OrdMap.iter do (
+#             let mut fields = ArrayList.new();
+#             let offset_or_name = {
+#                 .name = "offset_or_name",
+#                 .value = {
+#                     .shape = :Literal :String name,
+#                     .ty = :Named "StringView",
+#                     .span,
+#                 },
+#             };
+#             &mut fields |> ArrayList.push_back(offset_or_name);
+#             let ty = {
+#                 .name = "ty",
+#                 .value = {
+#                     .shape = :Ref type_info(ty),
+#                     .ty = :Ref :Named "TypeInfo",
+#                     .span,
+#                 },
+#             };
+#             &mut fields |> ArrayList.push_back(ty);
+#             &mut members
+#                 |> ArrayList.push_back(
+#                     {
+#                         .shape = :Record fields,
+#                         .ty = :Named "MemberInfo",
+#                         .span,
+#                     }
+#                 );
+#         );
+#         let mut details = ArrayList.new();
+#         &mut details
+#             |> ArrayList.push_back(
+#                 {
+#                     .name = "members",
+#                     .value = {
+#                         .shape = :Native (
+#                             let mut parts = ArrayList.new();
+#                             &mut parts |> ArrayList.push_back(:Raw "[");
+#                             for member in members |> ArrayList.into_iter do (
+#                                 &mut parts |> ArrayList.push_back(:Interpolated member);
+#                                 &mut parts
+#                                     |> ArrayList.push_back(:Raw ", ");
+#                             );
+#                             &mut parts |> ArrayList.push_back(:Raw "]");
+#                             { .parts }
+#                         ),
+#                         .ty = instantiate_ty(
+#                             "List",
+#                             single_element_list(:Named "MemberInfo"),
+#                             .span,
+#                         ),
+#                         .span,
+#                     },
+#                 }
+#             );
+#         {
+#             .shape = :Record details,
+#             .ty = :Named "TypeInfoDetails",
+#             .span,
+#         }
+#     );
+#     let details_primitive = () -> Ir.Expr => {
+#         .shape = :Record (
+#             let mut fields = ArrayList.new();
+#             &mut fields
+#                 |> ArrayList.push_back(
+#                     {
+#                         .name = "primitive",
+#                         .value = {
+#                             .shape = :Unit,
+#                             .ty = :Unit,
+#                             .span,
+#                         },
+#                     }
+#                 );
+#             fields
+#         ),
+#         .ty = :Named "TypeInfoDetails",
+#         .span,
+#     };
+#     let details_inner_ty = (
+#         inner_ty :: &Ir.Type,
+#     ) -> Ir.Expr => {
+#         .shape = :Record (
+#             let mut fields = ArrayList.new();
+#             &mut fields
+#                 |> ArrayList.push_back(
+#                     {
+#                         .name = "inner_ty",
+#                         .value = {
+#                             .shape = :Ref type_info(inner_ty),
+#                             .ty = :Unit,
+#                             .span,
+#                         },
+#                     }
+#                 );
+#             fields
+#         ),
+#         .ty = :Named "TypeInfoDetails",
+#         .span,
+#     };
+#     let { kind, details } = match ty^ with (
+#         | :Named name => (
+#             let def = &ctx.program.types
+#                 |> OrdMap.get(name)
+#                 |> Option.unwrap;
+#             match def^.shape with (
+#                 | :Struct { .fields = ref fields } => (
+#                     { "Object", details_members(fields) }
+#                 )
+#                 | :Union { .variants = ref variants } => (
+#                     { "Object", details_members(variants) }
+#                 )
+#                 | :Enum _ => { "Primitive", details_primitive() }
+#                 | :Opaque => { "Primitive", details_primitive() }
+#                 | :Alias _ => (
+#                     let diagnostic = {
+#                         .severity = :Error,
+#                         .source = :Internal,
+#                         .message = () => (
+#                             let output = @current Output;
+#                             output.write("type info is supposed to get alias-resolved type, got ");
+#                             Ir.Print.type_name(ty);
+#                         ),
+#                         .span,
+#                         .related = ArrayList.new(),
+#                     };
+#                     Diagnostic.report_and_unwind(diagnostic)
+#                 )
+#             )
+#         )
+#         | _ => { "Primitive", details_primitive() }
+#     );
+#     let mut fields = ArrayList.new();
+#     let details = {
+#         .name = "details",
+#         .value = details,
+#     };
+#     &mut fields |> ArrayList.push_back(details);
+#     let kind = {
+#         .name = "kind",
+#         .value = {
+#             .shape = :Variant kind,
+#             .ty = :Named "TypeKind",
+#             .span,
+#         },
+#     };
+#     &mut fields |> ArrayList.push_back(kind);
+#     :Record fields
+# );
 
-const type_info_c = (ty :: &Ir.Type) -> Ir.ExprShape => (
-    # const MemberInfo = struct {
-    #     .offset_or_name :: MemberOffsetOrName,
-    #     .ty :: &TypeInfo,
-    # };
-    # const TypeInfo = struct {
-    #     .members :: List[MemberInfo],
-    #     .stride :: UInt,
-    #     .size :: UInt,
-    #     .alignment :: UInt,
-    # };
-    let ctx = @current Compiler;
-    let span :: Span = {
-        .start = Position.beginning(),
-        .end = Position.beginning(),
-        .path = :Special __FILE__
-    };
-    let ty = ty_repr(ty^);
-    # TODO
-    let stride :: Int32 = 4;
-    let size :: Int32 = 4;
-    let alignment :: Int32 = 4;
-    let mut fields = ArrayList.new();
-    let stride_field = {
-        .name = "stride",
-        .value = {
-            .shape = :Literal :Int to_string(stride),
-            .ty = :UInt,
-            .span,
-        },
-    };
-    &mut fields |> ArrayList.push_back(stride_field);
-    let size_field = {
-        .name = "size",
-        .value = {
-            .shape = :Literal :Int to_string(size),
-            .ty = :UInt,
-            .span,
-        },
-    };
-    &mut fields |> ArrayList.push_back(size_field);
-    let alignment_field = {
-        .name = "alignment",
-        .value = {
-            .shape = :Literal :Int to_string(alignment),
-            .ty = :UInt,
-            .span,
-        },
-    };
-    &mut fields |> ArrayList.push_back(alignment_field);
-    :Record fields
-);
-
-const type_info_js = (ty :: &Ir.Type) -> Ir.ExprShape => (
-    let ctx = @current Compiler;
-    let span :: Span = {
-        .start = Position.beginning(),
-        .end = Position.beginning(),
-        .path = :Special __FILE__
-    };
-    let details_members = (
-        members_map :: &OrdMap.t[String, Ir.Type],
-    ) -> Ir.Expr => (
-        let mut members = ArrayList.new();
-        for &{
-            .key = name,
-            .value = ref ty,
-        } in members_map |> OrdMap.iter do (
-            let mut fields = ArrayList.new();
-            let offset_or_name = {
-                .name = "offset_or_name",
-                .value = {
-                    .shape = :Literal :String name,
-                    .ty = :Named "StringView",
-                    .span,
-                },
-            };
-            &mut fields |> ArrayList.push_back(offset_or_name);
-            let ty = {
-                .name = "ty",
-                .value = {
-                    .shape = :Ref type_info(ty),
-                    .ty = :Ref :Named "TypeInfo",
-                    .span,
-                },
-            };
-            &mut fields |> ArrayList.push_back(ty);
-            &mut members
-                |> ArrayList.push_back(
-                    {
-                        .shape = :Record fields,
-                        .ty = :Named "MemberInfo",
-                        .span,
-                    }
-                );
-        );
-        let mut details = ArrayList.new();
-        &mut details
-            |> ArrayList.push_back(
-                {
-                    .name = "members",
-                    .value = {
-                        .shape = :Native (
-                            let mut parts = ArrayList.new();
-                            &mut parts |> ArrayList.push_back(:Raw "[");
-                            for member in members |> ArrayList.into_iter do (
-                                &mut parts |> ArrayList.push_back(:Interpolated member);
-                                &mut parts
-                                    |> ArrayList.push_back(:Raw ", ");
-                            );
-                            &mut parts |> ArrayList.push_back(:Raw "]");
-                            { .parts }
-                        ),
-                        .ty = instantiate_ty(
-                            "List",
-                            single_element_list(:Named "MemberInfo"),
-                            .span,
-                        ),
-                        .span,
-                    },
-                }
-            );
-        {
-            .shape = :Record details,
-            .ty = :Named "TypeInfoDetails",
-            .span,
-        }
-    );
-    let details_primitive = () -> Ir.Expr => {
-        .shape = :Record (
-            let mut fields = ArrayList.new();
-            &mut fields
-                |> ArrayList.push_back(
-                    {
-                        .name = "primitive",
-                        .value = {
-                            .shape = :Unit,
-                            .ty = :Unit,
-                            .span,
-                        },
-                    }
-                );
-            fields
-        ),
-        .ty = :Named "TypeInfoDetails",
-        .span,
-    };
-    let details_inner_ty = (
-        inner_ty :: &Ir.Type,
-    ) -> Ir.Expr => {
-        .shape = :Record (
-            let mut fields = ArrayList.new();
-            &mut fields
-                |> ArrayList.push_back(
-                    {
-                        .name = "inner_ty",
-                        .value = {
-                            .shape = :Ref type_info(inner_ty),
-                            .ty = :Unit,
-                            .span,
-                        },
-                    }
-                );
-            fields
-        ),
-        .ty = :Named "TypeInfoDetails",
-        .span,
-    };
-    let { kind, details } = match ty^ with (
-        | :Named name => (
-            let def = &ctx.program.types
-                |> OrdMap.get(name)
-                |> Option.unwrap;
-            match def^.shape with (
-                | :Struct { .fields = ref fields } => (
-                    { "Object", details_members(fields) }
-                )
-                | :Union { .variants = ref variants } => (
-                    { "Object", details_members(variants) }
-                )
-                | :Enum _ => { "Primitive", details_primitive() }
-                | :Opaque => { "Primitive", details_primitive() }
-                | :Alias _ => (
-                    let diagnostic = {
-                        .severity = :Error,
-                        .source = :Internal,
-                        .message = () => (
-                            let output = @current Output;
-                            output.write("type info is supposed to get alias-resolved type, got ");
-                            Ir.Print.type_name(ty);
-                        ),
-                        .span,
-                        .related = ArrayList.new(),
-                    };
-                    Diagnostic.report_and_unwind(diagnostic)
-                )
-            )
-        )
-        | _ => { "Primitive", details_primitive() }
-    );
-    let mut fields = ArrayList.new();
-    let details = {
-        .name = "details",
-        .value = details,
-    };
-    &mut fields |> ArrayList.push_back(details);
-    let kind = {
-        .name = "kind",
-        .value = {
-            .shape = :Variant kind,
-            .ty = :Named "TypeKind",
-            .span,
-        },
-    };
-    &mut fields |> ArrayList.push_back(kind);
-    :Record fields
-);

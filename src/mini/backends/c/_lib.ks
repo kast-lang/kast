@@ -314,6 +314,106 @@ const C = (
         );
     );
 
+    const construct_type_info = (info :: &Ir.ConstructTypeInfo) -> Ast.Expr => (
+        let ctx = @current Context;
+        let ty = output_to_string(
+            () => (
+                Print.ty(&convert_ty(&info^.ty))
+            )
+        );
+        let size = :Raw ("sizeof(" + ty + ")");
+        let stride = size;
+        let alignment = :Raw ("alignof(" + ty + ")");
+        let mut members = ArrayList.new();
+        let members_var = new_ident("members");
+        # TODO instead of allocating at runtime we should have const array
+        insert_stmt(
+            :LetVar {
+                .ty = :Named ident("List_MemberInfo"),
+                .ident = members_var,
+                .value = :Some :CompoundLiteral {
+                    .ty = :Named ident("List_MemberInfo"),
+                    .fields = (
+                        let mut fields = ArrayList.new();
+                        let length = &info^.members |> ArrayList.length;
+                        let length_field = {
+                            .name = ident("length"),
+                            .value = :Literal :Int to_string(length),
+                        };
+                        &mut fields |> ArrayList.push_back(length_field);
+                        let data_field = {
+                            .name = ident("data"),
+                            .value = :Raw ("malloc(" + to_string(length) + " * sizeof(MemberInfo))"),
+                        };
+                        &mut fields |> ArrayList.push_back(data_field);
+                        fields
+                    ),
+                },
+            }
+        );
+        for { i, member } in &info^.members |> ArrayList.iter |> std.iter.enumerate do (
+            let mut fields = ArrayList.new();
+            let offset_or_name_field = {
+                .name = ident("offset_or_name"),
+                .value = :Raw ("offsetof(" + ty + ", " + ident(member^.name).name + ")")
+            };
+            &mut fields |> ArrayList.push_back(offset_or_name_field);
+            let ty_field = {
+                .name = ident("ty"),
+                .value = :Ref :Ident ident(member^.type_info_const_name)
+            };
+            &mut fields |> ArrayList.push_back(ty_field);
+            insert_stmt(
+                :Assign {
+                    .assignee = :RawParts (
+                        let mut parts = ArrayList.new();
+                        &mut parts
+                            |> ArrayList.push_back(
+                                :Field {
+                                    .obj = :Ident members_var,
+                                    .field = ident("data"),
+                                }
+                            );
+                        &mut parts
+                            |> ArrayList.push_back(
+                                :Raw ("[" + to_string(i) + "]")
+                            );
+                        parts
+                    ),
+                    .value = :CompoundLiteral {
+                        .ty = :Named ident("MemberInfo"),
+                        .fields,
+                    },
+                }
+            );
+        );
+        let mut fields = ArrayList.new();
+        let members_field = {
+            .name = ident("members"),
+            .value = :Ident members_var,
+        };
+        &mut fields |> ArrayList.push_back(members_field);
+        let stride_field = {
+            .name = ident("stride"),
+            .value = stride,
+        };
+        &mut fields |> ArrayList.push_back(stride_field);
+        let size_field = {
+            .name = ident("size"),
+            .value = size,
+        };
+        &mut fields |> ArrayList.push_back(size_field);
+        let alignment_field = {
+            .name = ident("alignment"),
+            .value = alignment,
+        };
+        &mut fields |> ArrayList.push_back(alignment_field);
+        :CompoundLiteral {
+            .ty = :Named ident("TypeInfo"),
+            .fields,
+        }
+    );
+
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
         let mut ctx = @current Context;
         let span = ir_expr^.span;
@@ -754,6 +854,7 @@ const C = (
                     .span,
                 }
             )
+            | :ConstructTypeInfo ref ty => construct_type_info(ty)
         );
         if ir_expr^.ty is :Unit then (
             insert_stmt(:Expr expr);
@@ -987,8 +1088,10 @@ const C = (
         # for int32_t and similar
         &mut ctx.result.includes
             |> OrdSet.add("<stdint.h>");
-        &mut ctx.result.includes
-            |> OrdSet.add("<sys/types.h>");
+        &mut ctx.result.includes |> OrdSet.add("<sys/types.h>");
+        &mut ctx.result.includes |> OrdSet.add("<sys/types.h>");
+        &mut ctx.result.includes |> OrdSet.add("<stdalign.h>");
+        &mut ctx.result.includes |> OrdSet.add("<stddef.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdbool.h>");
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
             type_def(name, ty_def);

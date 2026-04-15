@@ -53,7 +53,7 @@
 @syntax "target_dependent" 1000 @wrap always = "@cfg" " " "(" ""/"\n\t" branches:any ""/"\n\\" ")";
 @syntax "__FILE__" 1000 @wrap never = "__FILE__";
 @syntax "uninitialized" 1000 @wrap never = "uninitialized";
-@syntax "type_info" 1000 @wrap never = "@TypeInfo" "(" type ")";
+@syntax "type_info" 1000 @wrap never = "@TypeInfo" "(" type:any ")";
 # this one is needed for structural find & replace
 @syntax "core:unquote" 1000 @wrap never = "$" _ ->;
 

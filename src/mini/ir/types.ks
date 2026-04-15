@@ -181,7 +181,19 @@ const ExprShape = newtype (
     }
     | :Defer Expr
     | :List ArrayList.t[Expr]
+    | :ConstructTypeInfo ConstructTypeInfo
 );
+
+const ConstructTypeInfo = newtype {
+    .ty :: Type,
+    .members :: ArrayList.t[ConstructTypeInfoMember],
+};
+
+const ConstructTypeInfoMember = newtype {
+    .name :: String,
+    .ty :: Type,
+    .type_info_const_name :: String,
+};
 
 const Field = newtype {
     .name :: String,

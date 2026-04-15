@@ -90,10 +90,10 @@ const parse_type_info = (
     let ty = root
         |> AstHelpers.expect_single_child(:Some "type")
         |> parse_type;
-    let type_info = type_info(&ty);
+    let type_info_const_name = type_info_const_name(&ty);
     {
-        .shape = :Place type_info.shape,
-        .ty = type_info.ty,
+        .shape = :Place :Ident type_info_const_name,
+        .ty = :Named "TypeInfo",
     }
 );
 
