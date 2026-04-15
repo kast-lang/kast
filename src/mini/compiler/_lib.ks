@@ -479,10 +479,10 @@ const Compiler = (
                 }
             )
             | :UnwindToken {
-                .instantiated_token_ty,
+                .repr,
                 .result_ty,
             } => :UnwindToken {
-                .instantiated_token_ty = resolve_type_aliases(instantiated_token_ty),
+                .repr = resolve_type_aliases(repr),
                 .result_ty = resolve_type_aliases(result_ty),
             }
         )

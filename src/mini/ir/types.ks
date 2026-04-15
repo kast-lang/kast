@@ -46,7 +46,7 @@ const Type = newtype (
     | :Fn FnType
     | :Native String
     | :UnwindToken {
-        .instantiated_token_ty :: Type,
+        .repr :: Type,
         .result_ty :: Type,
     }
 );
@@ -162,7 +162,7 @@ const ExprShape = newtype (
     }
     | :Loop Expr
     | :Unwindable {
-        .instantiated_token_ty :: Type,
+        .token_ty_repr :: Type,
         .token :: String,
         .body :: Expr,
     }

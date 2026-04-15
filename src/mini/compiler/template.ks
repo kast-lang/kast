@@ -51,7 +51,7 @@ const instantiation_to_type = (
     let ty = (@current Compiler).lookup_type(instantiation.name, .span);
     if instantiation.template_name == "UnwindToken" then (
         :UnwindToken {
-            .instantiated_token_ty = ty,
+            .repr = ty,
             .result_ty = ArrayList.at(&instantiation.template_args, 0)^,
         }
     ) else (

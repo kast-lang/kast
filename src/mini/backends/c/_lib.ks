@@ -99,9 +99,9 @@ const C = (
             )
             | :Native s => :Raw s
             | :UnwindToken {
-                .instantiated_token_ty = ref instantiated_token_ty,
+                .repr = ref repr,
                 .result_ty = _,
-            } => convert_ty(instantiated_token_ty)
+            } => convert_ty(repr)
         # | :Fn FnType
         )
     );
@@ -609,16 +609,16 @@ const C = (
                 return void(span)
             )
             | :Unwindable {
-                .instantiated_token_ty = ref instantiated_token_ty,
+                .token_ty_repr = ref token_ty_repr,
                 .token,
                 .body = ref body,
             } => (
                 let token_own_var = new_ident("token_own");
                 let_var(
-                    instantiated_token_ty,
+                    token_ty_repr,
                     token_own_var,
                     :CompoundLiteral {
-                        .ty = convert_ty(instantiated_token_ty),
+                        .ty = convert_ty(token_ty_repr),
                         .fields = single_element_list(
                             { .name = ident("raw"), .value = :Raw "newRawUnwindToken()" }
                         ),
@@ -626,7 +626,7 @@ const C = (
                 );
                 let token_var = ident(token);
                 let_var(
-                    &(:Ref instantiated_token_ty^),
+                    &(:Ref token_ty_repr^),
                     token_var,
                     :Ref :Ident token_own_var,
                 );
@@ -846,10 +846,10 @@ const C = (
             )
             | :Native String => ()
             | :UnwindToken {
-                .instantiated_token_ty = ref instantiated_token_ty,
+                .repr = ref repr,
                 .result_ty = _,
             } => (
-                make_sure_all_are_defined(instantiated_token_ty);
+                make_sure_all_are_defined(repr);
             )
         )
     );

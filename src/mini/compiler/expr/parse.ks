@@ -429,13 +429,13 @@ const parse_unwindable = (
         .vars = OrdMap.new(),
     };
     let result_ty = expected_ty |> Option.unwrap_or(:Unit);
-    let instantiated_token_ty = instantiate_ty(
+    let token_ty_repr = instantiate_ty(
         "UnwindToken",
         single_element_list(result_ty),
         .span = token_ast.span,
     );
     let token_ty = :Ref :UnwindToken {
-        .instantiated_token_ty,
+        .repr = token_ty_repr,
         .result_ty,
     };
     &mut (@current ScopeContext).vars
@@ -443,7 +443,7 @@ const parse_unwindable = (
     let body = parse_expr(:Some result_ty, body);
     {
         .shape = :Expr :Unwindable {
-            .instantiated_token_ty,
+            .token_ty_repr,
             .token,
             .body,
         },
