@@ -132,9 +132,16 @@ const Ast = (
         .def :: TyDefShape,
     };
 
+    const Const = newtype {
+        .ty :: Ty,
+        .name :: Ident,
+        .value :: Expr,
+    };
+
     const Program = newtype {
         .includes :: OrdSet.t[String],
         .types :: ArrayList.t[TyDef],
         .fns :: ArrayList.t[Fn],
+        .consts :: ArrayList.t[Const],
     };
 );

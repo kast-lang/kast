@@ -24,6 +24,12 @@ use std.collections.OrdSet;
 use (import "../ir/_lib.ks").*;
 use (import "../ast_helpers.ks").*;
 
+# TODO allow custom targets
+const CompilationTarget = newtype (
+    | :C
+    | :JavaScript
+);
+
 const TypeKind = newtype (
     | :Opaque
     | :Enum
@@ -103,6 +109,7 @@ const TopLevelImpl = newtype (
 );
 
 const CompilerT = newtype {
+    .target :: CompilationTarget,
     .program :: Ir.Program,
     .parse_expr :: (Option.t[Ty], Ast.t) -> Ir.Expr,
     .parse_type :: Ast.t -> Ty,

@@ -752,6 +752,10 @@ const parse_expr_impl = (
                                 # TODO check that its within range
                                 :Int raw
                             )
+                            | :UInt => (
+                                # TODO check that its within range
+                                :Int raw
+                            )
                             | :IntSpecific {
                                 .signed,
                                 .bits,

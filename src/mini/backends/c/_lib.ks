@@ -88,7 +88,9 @@ const C = (
             | :Named name => (
                 let def = &ctx.program.types
                     |> OrdMap.get(name)
-                    |> Option.unwrap;
+                    |> Option.unwrap_or_else(
+                        () => panic("Failed to find type " + String.escape(name))
+                    );
                 if def^.shape is :Struct _ then (
                     :Struct ident(name)
                 ) else (
@@ -931,6 +933,7 @@ const C = (
             .result = {
                 .includes = OrdSet.new(),
                 .types = ArrayList.new(),
+                .consts = ArrayList.new(),
                 .fns = ArrayList.new(),
             },
             .next_id = 0,
@@ -960,6 +963,28 @@ const C = (
         &mut ctx.result.types |> ArrayList.push_back(ctx_def);
         for &{ .key = name, .value = ref def } in &ctx.program.fns |> OrdMap.iter do (
             add_fn(name, def);
+        );
+        for &name in &ctx.program.consts_order |> ArrayList.iter do (
+            let value = &ctx.program.consts |> OrdMap.get(name) |> Option.unwrap;
+            # with FunctionContext = {
+            #     .result_ty = convert_ty(:Unit),
+            # };
+            # with UnwindContext = {
+            #     .insert_unwind = () => (),
+            #     .cleanup_scope_without_unwind = () => (),
+            # };
+            # with Scope = { .block = &mut block };
+            # with ScopeContextVar = ctx_var;
+            let ty = &value^.ty;
+            let value = calculate(value);
+            if value.expr is :Some value then (
+                let @"const" = {
+                    .ty = convert_ty(ty),
+                    .name = ident(name),
+                    .value,
+                };
+                &mut ctx.result.consts |> ArrayList.push_back(@"const");
+            );
         );
         ctx.result
     );

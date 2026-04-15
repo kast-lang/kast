@@ -6,8 +6,10 @@ const fib = [T] (n :: T) -> T => (
     )
 );
 
+const TEN :: Int32 = 10;
+
 const main = () -> () => (
     print_string("fib(10) = ");
-    print_int32(fib[Int32](10));
+    print_int32(fib[Int32](TEN));
     print_string("\n");
 );

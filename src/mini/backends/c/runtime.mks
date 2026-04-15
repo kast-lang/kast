@@ -1,4 +1,4 @@
-const MemberOffsetOrName = type SizeT;
+const MemberOffsetOrName = type UInt;
 
 const initialize_offset_or_name = @call "C" (
     name :: String,
@@ -12,9 +12,9 @@ const MemberInfo = struct {
 };
 const TypeInfo = struct {
     .members :: List[MemberInfo],
-    .stride :: SizeT,
-    .size :: SizeT,
-    .alignment :: SizeT,
+    .stride :: UInt,
+    .size :: UInt,
+    .alignment :: UInt,
 };
 
 const get_type_members = @call "C" (ty :: &TypeInfo) -> List[MemberInfo] => (
@@ -80,16 +80,21 @@ const div_round_up = [T] @call "C" (a :: T, b :: T) -> T => (
     @native "(\(a) + \(b) - 1) / \(b)"
 );
 
-const align = (x :: SizeT, alignment :: SizeT) -> SizeT => (
-    mul[SizeT](div_round_up[SizeT](x, alignment), alignment)
+const align = @call "C" (x :: UInt, alignment :: UInt) -> UInt => (
+    mul[UInt](div_round_up[UInt](x, alignment), alignment)
 );
 
 const List = [T] struct {
     .data :: &T,
-    .length :: SizeT,
+    .length :: UInt,
 };
 
-const allocate_list = [T] (length :: SizeT) -> List[T] => (
+const empty_list = [T] @call "C" () -> List[T] => {
+    .data = @native "NULL",
+    .length = @native "0",
+};
+
+const allocate_list = [T] @call "C" (length :: UInt) -> List[T] => (
     let T_TypeInfo = @TypeInfo(T);
     {
         .data = @native "malloc(\(length) * \(T_TypeInfo.stride))",
@@ -97,7 +102,13 @@ const allocate_list = [T] (length :: SizeT) -> List[T] => (
     }
 );
 
-const list_index = [T] (list :: List[T], idx :: Int32) -> &T => (
+const free_list = [T] @call "C" (list :: List[T]) -> () => (
+    if not_equal[&T](list.data, @native "NULL") then (
+        @native "free(\(list.data))";
+    );
+);
+
+const list_index = [T] (list :: List[T], idx :: UInt) -> &T => (
     @native "&\(list.data)[\(idx)]"
 );
 
@@ -112,11 +123,11 @@ const initialize_type_info_for_struct = (
         for (size_t i = 0; i < \(members.length); i++) {
             \(
                 let member = list_index[MemberInfo](members, @native "i");
-                if greater[SizeT](member^.ty^.alignment, T^.alignment) then (
+                if greater[UInt](member^.ty^.alignment, T^.alignment) then (
                     T^.alignment = member^.ty^.alignment;
                 );
                 member^.offset_or_name = align(T^.size, member^.ty^.alignment);
-                T^.size = add[SizeT](member^.offset_or_name, member^.ty^.size);
+                T^.size = add[UInt](member^.offset_or_name, member^.ty^.size);
             );
         }'';
     T^.stride = align(T^.size, T^.alignment);
@@ -140,12 +151,11 @@ const move = (
     @native "memcpy(\(target), \(source), \(T^.size))"
 );
 
-const SizeT = type @native "size_t";
 const C_String = type @native "char*";
 
 const StringView = struct {
     .contents :: C_String,
-    .length :: SizeT,
+    .length :: UInt,
 };
 const String = type StringView;
 

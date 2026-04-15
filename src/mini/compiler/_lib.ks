@@ -31,6 +31,7 @@ const Compiler = (
     };
 
     const State = newtype {
+        .target :: CompilationTarget,
         .toplevel_items :: OrdMap.t[String, TopLevelItem],
         .toplevel_items_unprocessed :: Queue.t[String],
         .program :: Ir.Program,
@@ -38,7 +39,8 @@ const Compiler = (
 
     const Context = @context State;
 
-    const init = () -> State => {
+    const init = (target :: CompilationTarget) -> State => {
+        .target,
         .toplevel_items = OrdMap.new(),
         .toplevel_items_unprocessed = Queue.new(),
         .program = {
@@ -404,6 +406,7 @@ const Compiler = (
     const compile = (mut state :: State) -> Ir.Program => (
         with Context = state;
         with root_scope.Compiler = {
+            .target = state.target,
             # TODO we have to copies now, only works because we do js
             .program = state.program,
             .parse_expr,

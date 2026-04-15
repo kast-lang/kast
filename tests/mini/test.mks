@@ -5,7 +5,44 @@ const print = @call "C" (s :: String) -> () => (
 
 const Ctx = @context String;
 
+const Vector = [T] struct {
+    .buffer :: List[T],
+    .length :: UInt,
+};
+
+const new_vector = [T] () -> Vector[T] => (
+    {
+        .buffer = empty_list[T](),
+        .length = 0,
+    }
+);
+
+const push_vector = [T] (v :: &Vector[T], element :: T) -> () => (
+    if equal[UInt](v^.length, v^.buffer.length) then (
+        let new_capacity :: UInt = if equal[UInt](v^.buffer.length, 0) then (
+            4
+        ) else (
+            mul[UInt](v^.buffer.length, 2)
+        );
+        let new_buffer = allocate_list[T](new_capacity);
+        let T_TypeInfo = @TypeInfo(T);
+        let data_size = mul[UInt](T_TypeInfo.stride, v^.buffer.length);
+        @native "memcpy(\(new_buffer.data), \(v^.buffer.data), \(data_size))";
+    );
+    list_index[T](v^.buffer, v^.length)^ = element;
+    v^.length = add[UInt](v^.length, 1);
+);
+
 const main = () -> () => (
+    let v = new_vector[Int]();
+    push_vector[Int](&v, 1);
+    push_vector[Int](&v, 2);
+    push_vector[Int](&v, 3);
+    push_vector[Int](&v, 4);
+    push_vector[Int](&v, 5);
+    push_vector[Int](&v, 6);
+    push_vector[Int](&v, 7);
+
     with Ctx = "outside";
     (
         defer print("exited scope");

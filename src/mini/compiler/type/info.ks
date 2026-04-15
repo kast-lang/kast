@@ -36,7 +36,40 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
                 .span,
             }
         );
-    # TODO make work with other targets than JavaScript
+    let expr_shape = match (@current Compiler).target with (
+        | :JavaScript => type_info_js(ty)
+        | :C => type_info_c(ty)
+    );
+    &mut ctx.program.consts
+        |> OrdMap.add(
+            name,
+            {
+                .shape = expr_shape,
+                .ty = :Named "TypeInfo",
+                .span,
+            }
+        );
+    &mut ctx.program.consts_order |> ArrayList.push_back(name);
+    place_of_result
+);
+
+const type_info_c = (ty :: &Ir.Type) -> Ir.ExprShape => (
+    let ctx = @current Compiler;
+    let span :: Span = {
+        .start = Position.beginning(),
+        .end = Position.beginning(),
+        .path = :Special __FILE__
+    };
+    :Uninitialized
+);
+
+const type_info_js = (ty :: &Ir.Type) -> Ir.ExprShape => (
+    let ctx = @current Compiler;
+    let span :: Span = {
+        .start = Position.beginning(),
+        .end = Position.beginning(),
+        .path = :Special __FILE__
+    };
     let details_members = (
         members_map :: &OrdMap.t[String, Ir.Type],
     ) -> Ir.Expr => (
@@ -101,7 +134,7 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
             );
         {
             .shape = :Record details,
-            .ty = :Named "TypeInfoDefails",
+            .ty = :Named "TypeInfoDetails",
             .span,
         }
     );
@@ -121,7 +154,7 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
                 );
             fields
         ),
-        .ty = :Named "TypeInfoDefails",
+        .ty = :Named "TypeInfoDetails",
         .span,
     };
     let details_inner_ty = (
@@ -142,7 +175,7 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
                 );
             fields
         ),
-        .ty = :Named "TypeInfoDefails",
+        .ty = :Named "TypeInfoDetails",
         .span,
     };
     let { kind, details } = match ty^ with (
@@ -192,15 +225,5 @@ const type_info = (ty :: &Ir.Type) -> Ir.PlaceExpr => with_return (
         },
     };
     &mut fields |> ArrayList.push_back(kind);
-    &mut ctx.program.consts
-        |> OrdMap.add(
-            name,
-            {
-                .shape = :Record fields,
-                .ty = :Named name,
-                .span,
-            }
-        );
-    &mut ctx.program.consts_order |> ArrayList.push_back(name);
-    place_of_result
+    :Record fields
 );

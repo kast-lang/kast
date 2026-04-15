@@ -120,7 +120,7 @@ const Mini = (
             if &args.paths |> ArrayList.length == 0 then (
                 Diagnostic.abort("Expected at least 1 path");
             );
-            let mut compiler = Mini.Compiler.init();
+            let mut compiler = Mini.Compiler.init(target);
             for path in args.paths |> ArrayList.into_iter do (
                 let source = Source.read(SourcePath.file(path));
                 &mut compiler |> Mini.Compiler.add_source(source);

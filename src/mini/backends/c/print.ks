@@ -340,6 +340,15 @@ const Print = (
         write(";\n");
     );
 
+    const @"const" = (@"const" :: &Ast.Const) => (
+        write_keyword("const ");
+        Print.ty(&@"const"^.ty);
+        write(" ");
+        Print.ident(&@"const"^.name);
+        write(" = ");
+        Print.expr(&@"const"^.value, .min_priority = 0);
+    );
+
     const program = (program :: &Ast.Program) => (
         for &@"include" in &program^.includes |> OrdSet.iter do (
             write_keyword("#include ");
@@ -360,6 +369,10 @@ const Print = (
             write(";\n");
         );
         write("\n");
+        for @"const" in &program^.consts |> ArrayList.iter do (
+            Print.@"const"(@"const");
+            write(";\n");
+        );
         for fn in &program^.fns |> ArrayList.iter do (
             Print.fn(fn);
         );
