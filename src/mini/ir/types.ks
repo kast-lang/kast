@@ -98,7 +98,7 @@ const compare_type = (
         | { :Native a, :Native b } => std.cmp.default_compare[String](a, b)
         | { :Native _, _ } => :Less
         | { _, :Native _ } => :Greater
-        | { :Fn ref a, :Fn ref ty } => panic("TODO compare fn types")
+        | { :Fn ref a, :Fn ref b } => compare_fn_type(a, b)
         | { :Fn _, _ } => :Less
         | { _, :Fn _ } => :Greater
         | { :List ref a, :List ref b } => (
@@ -112,6 +112,42 @@ const compare_type = (
         | { :UnwindToken _, _ } => :Less
         | { _, :UnwindToken _ } => :Greater
     )
+);
+
+const compare_fn_type = (
+    a :: &FnType,
+    b :: &FnType,
+) -> std.cmp.Ordering => with_return (
+    match { a^.call_convention, b^.call_convention } with (
+        | { :None, :None } => ()
+        | { :None, _ } => return :Less
+        | { _, :None } => return :Greater
+        | { :Some a, :Some b } => (
+            let cmp = std.cmp.default_compare[String](a, b);
+            if cmp is :Equal then () else (
+                return cmp;
+            );
+        )
+    );
+    let a_args_len = &a^.args |> ArrayList.length;
+    let b_args_len = &b^.args |> ArrayList.length;
+    let cmp = std.cmp.default_compare(a_args_len, b_args_len);
+    if cmp is :Equal then () else (
+        return cmp;
+    );
+    let cmp = compare_type(&a^.result, &b^.result);
+    if cmp is :Equal then () else (
+        return cmp;
+    );
+    for i in 0..a_args_len do (
+        let arg_a = &a^.args |> ArrayList.at(i);
+        let arg_b = &b^.args |> ArrayList.at(i);
+        let cmp = compare_type(arg_a, arg_b);
+        if cmp is :Equal then () else (
+            return cmp;
+        );
+    );
+    :Equal
 );
 
 const NativeExprPart = newtype (

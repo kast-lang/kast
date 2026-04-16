@@ -55,7 +55,7 @@
         devShells.default = mkShell {
           packages = [
             (pkgs.writeShellScriptBin "kast-bootstrap" ''
-              systemd-run --quiet --user --scope -p MemoryMax=10G \
+              systemd-run --quiet --user --scope -p MemoryMax=15G \
                 ${kast-bootstrap}/bin/kast "$@"
             '')
             (pkgs.writeShellScriptBin "kast" ''

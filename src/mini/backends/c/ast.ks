@@ -129,6 +129,10 @@ const Ast = (
         | :Enum {
             .variants :: ArrayList.t[Ident],
         }
+        | :FnPointer {
+            .args :: ArrayList.t[Ty],
+            .result_ty :: Ty,
+        }
         | :Alias Ty
     );
 

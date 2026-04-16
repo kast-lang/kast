@@ -312,7 +312,7 @@ const Print = (
         write("\n");
     );
 
-    const ty_def = (def :: &Ast.TyDef) => (
+    const ty_def = (def :: &Ast.TyDef) => with_return (
         write_keyword("typedef ");
         match def^.def with (
             | :Alias ref ty => Print.ty(ty)
@@ -353,6 +353,20 @@ const Print = (
                 );
                 dec_indentation();
                 write("}");
+            )
+            | :FnPointer { .args = ref args, .result_ty = ref result_ty } => (
+                Print.ty(result_ty);
+                write(" (*");
+                Print.ident(&def^.name);
+                write(") (");
+                for { i, arg } in args |> ArrayList.iter |> std.iter.enumerate do (
+                    if i != 0 then (
+                        write(", ");
+                    );
+                    Print.ty(arg);
+                );
+                write(");\n");
+                return;
             )
         );
         write(" ");

@@ -23,6 +23,7 @@ const C = (
     const ContextT = newtype {
         .program :: Ir.Program,
         .defined_types :: OrdSet.t[String],
+        .fn_types :: OrdMap.t[Ir.Type, Ast.Ident],
         .result :: Ast.Program,
         .next_id :: Int32,
     };
@@ -59,7 +60,7 @@ const C = (
     );
 
     const convert_ty = (ty :: &Ir.Type) -> Ast.Ty => (
-        let ctx = @current Context;
+        let mut ctx = @current Context;
         match ty^ with (
             | :Any => :Void
             | :Ref ref t => :Pointer convert_ty(t)
@@ -106,8 +107,45 @@ const C = (
                 .repr = ref repr,
                 .element_ty = _,
             } => convert_ty(repr)
-        # | :Fn FnType
+            | :Fn _ => (
+                let &ident = &ctx.fn_types
+                    |> OrdMap.get(ty^)
+                    |> Option.unwrap_or_else(
+                        () => panic("fn type was not defined???")
+                    );
+                :Named ident
+            )
         )
+    );
+
+    const init_fn_type = (f_ty :: Ir.FnType) -> Ast.Ident => (
+        let mut ctx = @current Context;
+        let {
+            .call_convention,
+            .args = ref args,
+            .result = ref result,
+        } = f_ty;
+        let mut c_args = ArrayList.new();
+        if call_convention is :None then (
+            &mut c_args
+                |> ArrayList.push_back(
+                    :Pointer :Struct ident("Context")
+                );
+        );
+        for arg in args |> ArrayList.iter do (
+            &mut c_args
+                |> ArrayList.push_back(convert_ty(arg));
+        );
+        let ident = new_ident("fn_type");
+        let ty_def = {
+            .name = ident,
+            .def = :FnPointer {
+                .args = c_args,
+                .result_ty = convert_ty(result),
+            },
+        };
+        &mut ctx.result.types |> ArrayList.push_back(ty_def);
+        ident
     );
 
     const Pure = newtype {
@@ -863,7 +901,11 @@ const C = (
                 );
                 insert_stmt(:GotoLabel after_unwindable_label);
                 return {
-                    .expr = :Some :Ident result_var,
+                    .expr = if have_result_value then (
+                        :Some :Ident result_var
+                    ) else (
+                        :None
+                    ),
                     .span,
                 }
             )
@@ -917,12 +959,14 @@ const C = (
                 );
         );
         for arg in &def^.args |> ArrayList.iter do (
+            make_sure_all_are_defined(&arg^.ty);
             let arg :: Ast.FnArg = {
                 .name = ident(arg^.name),
                 .ty = convert_ty(&arg^.ty),
             };
             &mut args |> ArrayList.push_back(arg);
         );
+        make_sure_all_are_defined(&def^.result_ty);
         with FunctionContext = {
             .result_ty = convert_ty(&def^.result_ty),
         };
@@ -975,8 +1019,6 @@ const C = (
             | :Ref ref inner => (
                 # type can be forward declared for pointers
                 # make_sure_all_are_defined(inner)
-
-
             )
             | :Unit => ()
             | :Int => ()
@@ -991,11 +1033,18 @@ const C = (
                     |> Option.unwrap;
                 type_def(name, def);
             )
-            | :Fn { .call_convention = _, .args = ref args, .result = ref result } => (
+            | :Fn fn_ty => (
+                let {
+                    .call_convention = _,
+                    .args = ref args,
+                    .result = ref result,
+                } = fn_ty;
                 for arg in args |> ArrayList.iter do (
                     make_sure_all_are_defined(arg);
                 );
                 make_sure_all_are_defined(result);
+                &mut (@current Context).fn_types
+                    |> OrdMap.get_or_init(ty^, () => init_fn_type(fn_ty));
             )
             | :Native String => ()
             | :UnwindToken {
@@ -1100,6 +1149,9 @@ const C = (
     const compile = (program :: Ir.Program) -> Compiled => (
         with Context = {
             .defined_types = OrdSet.new(),
+            .fn_types = OrdMap.new_with_compare(
+                (a, b) => Ir.compare_type(&a, &b),
+            ),
             .program,
             .result = {
                 .includes = OrdSet.new(),
