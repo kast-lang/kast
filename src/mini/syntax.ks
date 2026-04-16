@@ -21,7 +21,7 @@
 @syntax "field init" 6 @wrap never = "." label " " "=" " " value;
 @syntax "type ascribe" 6.2 @wrap never = expr " " "::" " " type;
 @syntax "fn_type" 6.5 @wrap never = call_convention=("@call" " " _: >= 5000 " ")? args " " "->" " " result;
-@syntax "fn" 7 @wrap never = call_convention=("@call" " " _: >= 5000 " ")? args " " "->" " " result_ty " " "=>" " " body;
+@syntax "fn" 7 @wrap never = call_convention=("@call" " " _: >= 5000 " ")? args " " result_ty=("->" " " _ " ")? "=>" " " body;
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 # @syntax "for" 7.5 @wrap never = "for" " " ident " " "in" " " start ".." end " " "do" " " body;

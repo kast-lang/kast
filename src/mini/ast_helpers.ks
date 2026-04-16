@@ -119,6 +119,27 @@ const AstHelpers = (
         }
     );
 
+    const get_child_ast = (
+        group :: Ast.Group,
+        name :: String,
+    ) -> Ast.t => (
+        match &group.children |> Tuple.get_named_opt(name) with (
+            | :Some &child => child |> Ast.unwrap_child_value
+            | :None => (
+                let diagnostic = {
+                    .severity = :Error,
+                    .source = :Internal,
+                    .message = () => (
+                        (@current Output).write("Failed to find child named " + String.escape(name));
+                    ),
+                    .span = group.span,
+                    .related = ArrayList.new(),
+                };
+                Diagnostic.report_and_unwind(diagnostic)
+            )
+        )
+    );
+
     const expect_single_child = (
         group :: Ast.Group,
         child_name :: Option.t[String],
@@ -133,7 +154,6 @@ const AstHelpers = (
         );
         child |> Ast.unwrap_child_value
     );
-
     # TODO not catch panics but instead use Tuple.get_*_opt or smth
     const handle_panics = (group :: &Ast.Group) -> std.PanicHandlerT => {
         .handle = [T] (message :: String) -> T => (

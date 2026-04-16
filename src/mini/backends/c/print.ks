@@ -64,6 +64,7 @@ const Print = (
             | :Stmt _ => -1000
             | :Raw _ => 0
             | :RawParts _ => 0
+            | :Equal _ => 50
             | :Ref _ => 100
             | :Deref _ => 100
             | :Apply _ => 200
@@ -98,6 +99,11 @@ const Print = (
                         Print.expr(part, .min_priority = 1000)
                     );
                 );
+            )
+            | :Equal { ref a, ref b } => (
+                Print.expr(a, .min_priority = 51);
+                write(" == ");
+                Print.expr(b, .min_priority = 51);
             )
             | :Stmt ref block => Print.block(block)
             | :Ref ref referenced => (
@@ -325,7 +331,7 @@ const Print = (
                 write("}");
             )
             | :Union { .fields = ref fields } => (
-                write_keyword("union ");
+                write_keyword("union");
                 write(" {\n");
                 inc_indentation();
                 for field in fields |> ArrayList.iter do (
@@ -338,7 +344,7 @@ const Print = (
                 write("}");
             )
             | :Enum { .variants = ref variants } => (
-                write_keyword("enum ");
+                write_keyword("enum");
                 write(" {\n");
                 inc_indentation();
                 for variant in variants |> ArrayList.iter do (

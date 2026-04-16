@@ -62,6 +62,7 @@ const Ast = (
         | :Deref Expr
         | :Ident Ident
         | :Literal Literal
+        | :Equal { Expr, Expr }
         | :ArrayLiteral {
             .ty :: Ty,
             .elements :: ArrayList.t[Expr],

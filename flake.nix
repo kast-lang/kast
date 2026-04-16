@@ -70,6 +70,8 @@
             inotify-tools
             hyperfine
             clang
+            gcc
+            boehmgc
             raylib
             emscripten
             caddy

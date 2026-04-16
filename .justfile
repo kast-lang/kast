@@ -55,7 +55,13 @@ c path *args:
         src/mini/backends/c/runtime.mks \
         {{path}} \
         > target/compiled.c
-    clang target/compiled.c -o target/compiled
+    gcc target/compiled.c \
+        -lgc \
+        -o target/compiled \
+        -ggdb \
+        -fanalyzer \
+        -fsanitize=address \
+        -fsanitize=undefined 
     ./target/compiled {{args}}
 
 js path *args:

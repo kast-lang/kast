@@ -25,10 +25,19 @@ const process_toplevel_fn_declaration = (
     def :: Ast.t,
 ) -> Ir.FnType => (
     let root = def |> AstHelpers.expect_rule("fn");
-    let { args, result_ty, body } = root
-        |> AstHelpers.expect_three_children("args", "result_ty", "body");
+    let args_ast = root
+        |> AstHelpers.get_child_ast("args");
+    let result_ty = &root.children
+        |> Tuple.get_named_opt("result_ty")
+        |> Option.map(
+            &child => child
+                |> Ast.unwrap_child_group
+                |> AstHelpers.expect_single_child(:None)
+        );
+    let body = root
+        |> AstHelpers.get_child_ast("body");
     let call_convention = parse_call_convention(root);
-    let args = args
+    let args = args_ast
         |> AstHelpers.expect_rule("scope")
         |> AstHelpers.expect_single_child(:None);
     let mut arg_types = ArrayList.new();
@@ -43,7 +52,10 @@ const process_toplevel_fn_declaration = (
         let ty = (@current Compiler).parse_type(ty);
         &mut arg_types |> ArrayList.push_back(ty);
     );
-    let result_ty = (@current Compiler).parse_type(result_ty);
+    let result_ty = match result_ty with (
+        | :None => :Unit
+        | :Some ast => (@current Compiler).parse_type(ast)
+    );
     let fn_type = {
         .call_convention,
         .args = arg_types,
@@ -66,8 +78,17 @@ const parse_fn_def = (
     .parent_scope :: Option.t[Scope],
 ) -> Ir.FnDef => (
     let root = def |> AstHelpers.expect_rule("fn");
-    let { args_ast, result_ty, body } = root
-        |> AstHelpers.expect_three_children("args", "result_ty", "body");
+    let args_ast = root
+        |> AstHelpers.get_child_ast("args");
+    let result_ty = &root.children
+        |> Tuple.get_named_opt("result_ty")
+        |> Option.map(
+            &child => child
+                |> Ast.unwrap_child_group
+                |> AstHelpers.expect_single_child(:None)
+        );
+    let body = root
+        |> AstHelpers.get_child_ast("body");
     let call_convention = parse_call_convention(root);
     let args_ast = args_ast
         |> AstHelpers.expect_rule("scope")
@@ -85,7 +106,10 @@ const parse_fn_def = (
         let ty = (@current Compiler).parse_type(ty);
         &mut args |> ArrayList.push_back({ .name, .ty });
     );
-    let result_ty = (@current Compiler).parse_type(result_ty);
+    let result_ty = match result_ty with (
+        | :None => :Unit
+        | :Some ast => (@current Compiler).parse_type(ast)
+    );
     let mut scope = {
         .parent = parent_scope,
         .vars = OrdMap.new(),

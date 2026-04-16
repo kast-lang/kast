@@ -771,6 +771,8 @@ const parsers = (
     &mut map |> OrdMap.add("then", parse_then);
     &mut map |> OrdMap.add("apply", parse_apply);
     &mut map |> OrdMap.add("defer", parse_defer);
+    &mut map |> OrdMap.add("true", (...) => { .shape = :Expr :Literal :Bool true, .ty = :Bool });
+    &mut map |> OrdMap.add("false", (...) => { .shape = :Expr :Literal :Bool false, .ty = :Bool });
     map
 );
 

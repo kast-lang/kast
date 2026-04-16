@@ -343,7 +343,7 @@ const C = (
                         &mut fields |> ArrayList.push_back(length_field);
                         let data_field = {
                             .name = ident("data"),
-                            .value = :Raw ("malloc(" + to_string(length) + " * sizeof(MemberInfo))"),
+                            .value = :Raw ("malloc(sizeof(MemberInfo) * " + to_string(length) + ")"),
                         };
                         &mut fields |> ArrayList.push_back(data_field);
                         fields
@@ -528,7 +528,12 @@ const C = (
             | :Literal ref literal => (
                 return calculate_literal(literal, span)
             )
-            # | :Variant String
+            | :Variant name => (
+                return {
+                    .expr = :Some :Ident enum_variant_name(&ir_expr^.ty, name),
+                    .span,
+                }
+            )
             | :Stmt ref expr => (
                 calculate(expr);
                 return void(span)
@@ -685,7 +690,15 @@ const C = (
                 );
                 return void(span)
             )
-            # | :EnumIs
+            | :EnumIs { .enum = ref enum_expr, .variant } => (
+                return {
+                    .expr = :Some :Equal {
+                        pure(calculate(enum_expr)),
+                        :Ident enum_variant_name(&enum_expr^.ty, variant)
+                    },
+                    .span,
+                }
+            )
             | :Record ref fields => (
                 let mut field_initializers = ArrayList.new();
                 for field in fields |> ArrayList.iter do (
@@ -1000,6 +1013,18 @@ const C = (
         )
     );
 
+    const enum_variant_name = (enum_ty :: &Ir.Type, variant :: String) -> Ast.Ident => (
+        let s = output_to_string(
+            () => (
+                let output = @current Output;
+                Ir.Print.type_name(enum_ty);
+                output.write("_");
+                output.write(variant);
+            )
+        );
+        ident(s)
+    );
+
     const type_def = (name :: String, def :: &Ir.TypeDef) => with_return (
         let mut ctx = @current Context;
         if &ctx.defined_types |> OrdSet.contains(name) then (
@@ -1031,7 +1056,7 @@ const C = (
             | :Enum { .variants = ref variants } => :Enum (
                 let mut idents = ArrayList.new();
                 for &variant in variants |> OrdSet.iter do (
-                    &mut idents |> ArrayList.push_back(ident(variant));
+                    &mut idents |> ArrayList.push_back(enum_variant_name(&(:Named name), variant));
                 );
                 { .variants = idents }
             )
