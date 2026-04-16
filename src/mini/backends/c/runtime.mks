@@ -30,6 +30,7 @@ const get_member = @call "C" (
 const allocate_type_on_stack = @call "C" (
     T :: &TypeInfo,
 ) -> &Any => (
+    @native "#include <stdlib.h>";
     # TODO this fn must be inlined
     @native "alloca(\(T^.size))"
 );
