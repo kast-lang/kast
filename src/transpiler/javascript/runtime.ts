@@ -195,7 +195,7 @@ interface Kast<isNode> extends Backend<isNode> {
     add_impl: (args: { value: Value; target: Value; impl: Value }) => void;
     get_impl: (args: { value: Value; target: Value }) => Value;
   };
-  gen_symbol: (name: string) => number;
+  gen_symbol: (name: string) => string;
   structurally_equal: Fn<[Value, Value], boolean>;
   physically_equal: Fn<[Value, Value], boolean>;
 }
@@ -710,7 +710,8 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
   let next_symbol = 0;
   function gen_symbol(name: string) {
     // actual Symbol(name) is slow af
-    return next_symbol++;
+    // return next_symbol++;
+    return name + "_" + next_symbol++;
   }
   return {
     ...backend,

@@ -18,12 +18,10 @@ type async_mode =
 let async_fns = ref Always
 let use_numbers_instead_of_symbols = ref true
 let ref_vars_enabled = ref false
-
-let gen_symbol name =
-  if !use_numbers_instead_of_symbols
+let gen_symbol name = make_string "Kast.gen_symbol(%a)" String.print_debug name
+(* if !use_numbers_instead_of_symbols
   then make_string "Kast.gen_symbol(%a)" String.print_debug name
-  else make_string "Symbol(%a)" String.print_debug name
-;;
+  else make_string "Symbol(%a)" String.print_debug name *)
 
 type ref_var =
   { name : JsAst.name
@@ -949,7 +947,11 @@ module Impl = struct
         [ { shape =
               Let
                 { var = name
-                ; value = { shape = Raw (gen_symbol (Label.get_name label)); span = None }
+                ; value =
+                    { shape =
+                        Raw (make_string "%a" String.print_debug (Label.get_name label))
+                    ; span = None
+                    }
                 ; usage = { can_be_deleted = false }
                 }
           ; span = None
