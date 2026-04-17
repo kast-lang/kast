@@ -1,3 +1,7 @@
+#include <gc.h>
+
+#define malloc GC_MALLOC
+
 typedef struct RawUnwindToken
 {
     int id;

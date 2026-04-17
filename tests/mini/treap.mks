@@ -278,5 +278,5 @@ const main = () => (
     String_print("Left:\n");
     Treap_print_as_tree[Int](split.left, Int_print);
     String_print("Right:\n");
-    Treap_print_as_tree[Int](split.right, Int_print);
+    Treap_print_as_tree[Int](split.right, (x :: Int) => Int_print(x));
 );

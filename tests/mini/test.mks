@@ -1,9 +1,42 @@
-const Tree = [T] struct {
-    .value :: T,
-    .left :: &Tree[T],
-    .right :: &Tree[T],
+const String_print = (s :: String) => (
+    @native "#include <stdio.h>";
+    @native "printf(\"%s\", \(s.contents))";
+);
+
+const Int_print = (x :: Int) => (
+    @native "#include <stdio.h>";
+    @native "printf(\"%d\", \(x))";
+);
+
+const Counter = struct {
+    .value :: () -> Int,
+    .inc :: () -> (),
+    .dec :: () -> (),
 };
 
-const main = () -> () => (
-    @TypeInfo(Tree[Int32]);
+const Counter_new = (init_value :: Int) -> Counter => (
+    let value = allocate_type_on_heap[Int]();
+    value^ = init_value;
+    {
+        .value = move () -> Int => value^,
+        .inc = move () => (
+            value^ = add[Int](value^, 1);
+        ),
+        .dec = move () => (
+            value^ = sub[Int](value^, 1);
+        ),
+    }
+);
+
+const main = () => (
+    let counter = Counter_new(0);
+
+    counter.inc();
+    counter.inc();
+    counter.inc();
+    counter.inc();
+    counter.dec();
+
+    Int_print(counter.value());
+    String_print("\n");
 );

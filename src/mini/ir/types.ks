@@ -167,6 +167,11 @@ const Literal = newtype (
     | :String String
 );
 
+const CaptureMode = newtype (
+    | :ByRef
+    | :Move
+);
+
 const ExprShape = newtype (
     | :Unit
     | :Uninitialized
@@ -269,6 +274,8 @@ const FnArg = newtype {
 };
 
 const FnDef = newtype {
+    .capture_mode :: CaptureMode,
+    .captures :: OrdMap.t[String, Type],
     .call_convention :: Option.t[String],
     .args :: ArrayList.t[FnArg],
     .result_ty :: Type,

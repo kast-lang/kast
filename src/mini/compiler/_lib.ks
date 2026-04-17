@@ -422,6 +422,7 @@ const Compiler = (
         let mut scope = {
             .parent = :None,
             .vars = OrdMap.new(),
+            .found_in_parent = (...) => (),
         };
         with ScopeContext = scope;
         # Outside of template instantiations

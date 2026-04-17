@@ -401,6 +401,14 @@ const Print = (
         write("#define main minikast_main\n");
         write("\n");
         for ty in &program^.types |> ArrayList.iter do (
+            if ty^.def is :Struct _ then (
+                write_keyword("struct ");
+                Print.ident(&ty^.name);
+                write(";\n");
+            );
+        );
+        write("\n");
+        for ty in &program^.types |> ArrayList.iter do (
             Print.ty_def(ty);
         );
         write("\n");

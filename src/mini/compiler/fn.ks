@@ -78,6 +78,12 @@ const parse_fn_def = (
     .parent_scope :: Option.t[Scope],
 ) -> Ir.FnDef => (
     let root = def |> AstHelpers.expect_rule("fn");
+    let capture_mode = match (
+        &root.children |> Tuple.get_named_opt("move")
+    ) with (
+        | :Some _ => :Move
+        | :None => :ByRef
+    );
     let args_ast = root
         |> AstHelpers.get_child_ast("args");
     let result_ty = &root.children
@@ -110,9 +116,13 @@ const parse_fn_def = (
         | :None => :Unit
         | :Some ast => (@current Compiler).parse_type(ast)
     );
+    let mut captures = OrdMap.new();
     let mut scope = {
         .parent = parent_scope,
         .vars = OrdMap.new(),
+        .found_in_parent = (name, ty) => (
+            &mut captures |> OrdMap.add(name, ty);
+        ),
     };
     for arg in &args |> ArrayList.iter do (
         &mut scope.vars |> OrdMap.add(arg^.name, arg^.ty);
@@ -120,6 +130,8 @@ const parse_fn_def = (
     with ScopeContext = scope;
     let body = (@current Compiler).parse_expr(:Some result_ty, body);
     {
+        .capture_mode,
+        .captures,
         .call_convention,
         .args,
         .result_ty = result_ty,

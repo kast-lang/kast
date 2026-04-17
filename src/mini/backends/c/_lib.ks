@@ -24,12 +24,15 @@ const C = (
         .program :: Ir.Program,
         .defined_types :: OrdSet.t[String],
         .fn_types :: OrdMap.t[Ir.Type, Ast.Ident],
+        .fn_capture_types :: OrdMap.t[String, Ast.Ident],
         .result :: Ast.Program,
         .next_id :: Int32,
     };
     const Context = @context ContextT;
 
     const FunctionContext = @context newtype {
+        .capture_mode :: Ir.CaptureMode,
+        .captures :: OrdMap.t[String, Ir.Type],
         .result_ty :: Ast.Ty,
     };
 
@@ -126,6 +129,7 @@ const C = (
             .result = ref result,
         } = f_ty;
         let mut c_args = ArrayList.new();
+        &mut c_args |> ArrayList.push_back(:Pointer :Void);
         if call_convention is :None then (
             &mut c_args
                 |> ArrayList.push_back(
@@ -136,16 +140,41 @@ const C = (
             &mut c_args
                 |> ArrayList.push_back(convert_ty(arg));
         );
-        let ident = new_ident("fn_type");
-        let ty_def = {
-            .name = ident,
+        let raw_fn_type_name = new_ident("raw_fn_type");
+        let raw_ty_def = {
+            .name = raw_fn_type_name,
             .def = :FnPointer {
                 .args = c_args,
                 .result_ty = convert_ty(result),
             },
         };
+        &mut ctx.result.types |> ArrayList.push_back(raw_ty_def);
+        let fn_type_name = new_ident("fn_type");
+        let ty_def = {
+            .name = fn_type_name,
+            .def = :Struct {
+                .fields = (
+                    let mut fields = ArrayList.new();
+                    &mut fields
+                        |> ArrayList.push_back(
+                            {
+                                .name = ident("captured"),
+                                .ty = :Pointer :Void,
+                            }
+                        );
+                    &mut fields
+                        |> ArrayList.push_back(
+                            {
+                                .name = ident("f"),
+                                .ty = :Named raw_fn_type_name,
+                            }
+                        );
+                    fields
+                )
+            },
+        };
         &mut ctx.result.types |> ArrayList.push_back(ty_def);
-        ident
+        fn_type_name
     );
 
     const Pure = newtype {
@@ -217,15 +246,7 @@ const C = (
         let span = ir_expr^.span;
         with ExprContext = { .span };
         match ir_expr^.shape with (
-            | :Ident name => {
-                .get = () => {
-                    .expr = :Some :Ident ident(name),
-                    .span,
-                },
-                .set = value => (
-                    insert_stmt(:Assign { .assignee = :Ident ident(name), .value });
-                ),
-            }
+            | :Ident name => find_ident(name, .span)
             | :Field { .obj = ref obj, .field } => (
                 let obj = calculate_place(obj);
                 let field_expr = :Field {
@@ -452,6 +473,33 @@ const C = (
         }
     );
 
+    const find_ident = (name :: String, .span :: Span) -> Place => (
+        let ident_expr = match (
+            &(@current FunctionContext).captures |> OrdMap.get(name) 
+        ) with (
+            | :Some _ => (
+                let captured_field = :Field {
+                    .obj = :Deref :Ident ident("captured"),
+                    .field = ident(name),
+                };
+                match (@current FunctionContext).capture_mode with (
+                    | :Move => captured_field
+                    | :ByRef => :Deref captured_field
+                )
+            )
+            | :None => :Ident ident(name)
+        );
+        {
+            .get = () => {
+                .expr = :Some ident_expr,
+                .span,
+            },
+            .set = value => (
+                insert_stmt(:Assign { .assignee = ident_expr, .value });
+            ),
+        }
+    );
+
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
         let mut ctx = @current Context;
         let span = ir_expr^.span;
@@ -663,7 +711,6 @@ const C = (
                 assignee.set(value);
                 return void(span)
             )
-            # | :Fn FnDef
             | :Scope ref expr => (
                 with Scope = {
                     .block = (@current Scope).block,
@@ -695,6 +742,17 @@ const C = (
                 );
                 let f = pure(calculate(f));
                 let mut args = ArrayList.new();
+                &mut args
+                    |> ArrayList.push_back(
+                        :Field {
+                            .obj = f,
+                            .field = ident("captured"),
+                        }
+                    );
+                let f = :Field {
+                    .obj = f,
+                    .field = ident("f"),
+                };
                 if f_ty.call_convention is :None then (
                     &mut args |> ArrayList.push_back(:Ident (@current ScopeContextVar));
                 );
@@ -703,7 +761,8 @@ const C = (
                     &mut args |> ArrayList.push_back(arg);
                 );
                 if ir_expr^.ty is :Unit then (
-                    insert_stmt(:Expr :Apply { .f, .args });
+                    insert_stmt(:Expr :Apply { .f, .args }
+                    );
                     if f_ty.call_convention is :None then (
                         check_unwind();
                     );
@@ -910,6 +969,82 @@ const C = (
                 }
             )
             | :ConstructTypeInfo ref ty => construct_type_info(ty)
+            | :Fn ref fn_def => (
+                make_sure_all_types_are_defined(&ir_expr^.ty);
+                let name = new_ident("closure");
+                add_fn(name.name, fn_def);
+                let { f :: Ast.Expr, captured :: Ast.Expr } = if (
+                    &fn_def^.captures |> OrdMap.length != 0
+                ) then (
+                    let captured_var = new_ident("captured");
+                    let captured_ty = :Named (
+                        &ctx.fn_capture_types
+                            |> OrdMap.get(name.name)
+                            |> Option.unwrap_or_else(() => panic("captured ty not initialized for fn"))
+                    )^;
+                    insert_stmt(
+                        :LetVar {
+                            .ty = :Pointer captured_ty,
+                            .ident = captured_var,
+                            .value = :Some :Raw output_to_string(
+                                () => (
+                                    let output = @current Output;
+                                    output.write("malloc(sizeof(");
+                                    Print.ty(&captured_ty);
+                                    output.write("))");
+                                )
+                            ),
+                        }
+                    );
+                    insert_stmt(
+                        :Assign {
+                            .assignee = :Deref :Ident captured_var,
+                            .value = :CompoundLiteral {
+                                .ty = captured_ty,
+                                .fields = (
+                                    let mut fields = ArrayList.new();
+                                    for &{ .key = name, .value = _ty } in &fn_def^.captures |> OrdMap.iter do (
+                                        let value = pure(find_ident(name, .span).get());
+                                        let value = match fn_def^.capture_mode with (
+                                            | :Move => value
+                                            | :ByRef => :Ref value
+                                        );
+                                        let field = {
+                                            .name = ident(name),
+                                            .value = value,
+                                        };
+                                        &mut fields |> ArrayList.push_back(field);
+                                    );
+                                    fields
+                                )
+                            }
+                        }
+                    );
+                    { :Ident ident(name.name + "_fn"), :Ident captured_var }
+                ) else (
+                    { :Ident ident(name.name + "_as_closure"), :Ident ident("NULL") }
+                );
+                return {
+                    .expr = :Some :CompoundLiteral {
+                        .ty = convert_ty(&ir_expr^.ty),
+                        .fields = (
+                            let mut fields = ArrayList.new();
+                            let captured_field = {
+                                .name = ident("captured"),
+                                .value = captured,
+                            };
+                            &mut fields |> ArrayList.push_back(captured_field);
+                            let f_field = {
+                                .name = ident("f"),
+                                .value = f,
+                            };
+                            &mut fields |> ArrayList.push_back(f_field);
+                            fields
+                        )
+                    },
+                    .span,
+                }
+            )
         );
         if ir_expr^.ty is :Unit then (
             insert_stmt(:Expr expr);
@@ -946,8 +1081,42 @@ const C = (
         name :: String,
         def :: &Ir.FnDef,
     ) => (
+        let fn_name = name + "_fn";
         let mut ctx = @current Context;
         let mut args = ArrayList.new();
+        if &def^.captures |> OrdMap.length != 0 then (
+            let ty_def = {
+                .name = ident(fn_name + "_captured"),
+                .def = :Struct {
+                    .fields = (
+                        let mut fields = ArrayList.new();
+                        for &{ .key = name, .value = ref ty } in &def^.captures |> OrdMap.iter do (
+                            make_sure_all_types_are_defined(ty);
+                            let ty = convert_ty(ty);
+                            let ty = match def^.capture_mode with (
+                                | :Move => ty
+                                | :ByRef => :Pointer ty
+                            );
+                            let field = {
+                                .name = ident(name),
+                                .ty,
+                            };
+                            &mut fields |> ArrayList.push_back(field);
+                        );
+                        fields
+                    ),
+                },
+            };
+            &mut ctx.fn_capture_types |> OrdMap.add(name, ty_def.name);
+            &mut ctx.result.types |> ArrayList.push_back(ty_def);
+            &mut args
+                |> ArrayList.push_back(
+                    {
+                        .name = ident("captured_void"),
+                        .ty = :Pointer :Void,
+                    }
+                );
+        );
         let ctx_var = new_ident("ctx");
         if def^.call_convention is :None then (
             &mut args
@@ -959,15 +1128,17 @@ const C = (
                 );
         );
         for arg in &def^.args |> ArrayList.iter do (
-            make_sure_all_are_defined(&arg^.ty);
+            make_sure_all_types_are_defined(&arg^.ty);
             let arg :: Ast.FnArg = {
                 .name = ident(arg^.name),
                 .ty = convert_ty(&arg^.ty),
             };
             &mut args |> ArrayList.push_back(arg);
         );
-        make_sure_all_are_defined(&def^.result_ty);
+        make_sure_all_types_are_defined(&def^.result_ty);
         with FunctionContext = {
+            .capture_mode = def^.capture_mode,
+            .captures = def^.captures,
             .result_ty = convert_ty(&def^.result_ty),
         };
         with UnwindContext = {
@@ -994,7 +1165,7 @@ const C = (
         };
         let fn :: Ast.Fn = {
             .signature = {
-                .name = ident(name),
+                .name = ident(fn_name),
                 .args,
                 .result_ty = convert_ty(&def^.result_ty),
             },
@@ -1002,6 +1173,15 @@ const C = (
                 let mut block = new_block();
                 with Scope = { .block = &mut block };
                 with ScopeContextVar = ctx_var;
+                if &ctx.fn_capture_types |> OrdMap.get(name) is :Some &captured_ty then (
+                    insert_stmt(
+                        :LetVar {
+                            .ty = :Pointer :Named captured_ty,
+                            .ident = ident("captured"),
+                            .value = :Some :Ident ident("captured_void"),
+                        }
+                    );
+                );
                 let result = calculate(&def^.body);
                 (@current UnwindContext).cleanup_scope_without_unwind();
                 if result.expr is :Some expr then (
@@ -1011,14 +1191,93 @@ const C = (
             ),
         };
         &mut ctx.result.fns |> ArrayList.push_back(fn);
+        if &def^.captures |> OrdMap.length == 0 then (
+            let fn_as_closure :: Ast.Fn = {
+                .signature = {
+                    .name = ident(name + "_as_closure"),
+                    .args = (
+                        let mut args_as_closure = ArrayList.new();
+                        &mut args_as_closure
+                            |> ArrayList.push_back(
+                                {
+                                    .name = ident("captured_nothing"),
+                                    .ty = :Pointer :Void,
+                                }
+                            );
+                        for &arg in &args |> ArrayList.iter do (
+                            &mut args_as_closure |> ArrayList.push_back(arg);
+                        );
+                        args_as_closure
+                    ),
+                    .result_ty = convert_ty(&def^.result_ty),
+                },
+                .body = (
+                    let mut block = new_block();
+                    with Scope = { .block = &mut block };
+                    with ScopeContextVar = ctx_var;
+                    insert_stmt(
+                        :Return :Apply {
+                            .f = :Ident ident(fn_name),
+                            .args = (
+                                let mut call_args = ArrayList.new();
+                                for arg in &args |> ArrayList.iter do (
+                                    &mut call_args |> ArrayList.push_back(:Ident arg^.name);
+                                );
+                                call_args
+                            )
+                        }
+                    );
+                    block
+                ),
+            };
+            &mut ctx.result.fns |> ArrayList.push_back(fn_as_closure);
+            let fn_ty :: Ir.FnType = {
+                .call_convention = def^.call_convention,
+                .args = (
+                    let mut args = ArrayList.new();
+                    for arg in &def^.args |> ArrayList.iter do (
+                        &mut args |> ArrayList.push_back(arg^.ty);
+                    );
+                    args
+                ),
+                .result = def^.result_ty,
+            };
+            let fn_ty :: Ir.Type = :Fn fn_ty;
+            make_sure_all_types_are_defined(&fn_ty);
+            let static = {
+                .@"const" = true,
+                .ty = convert_ty(&fn_ty),
+                .name = ident(name),
+                .value = :Some :CompoundLiteral {
+                    .ty = convert_ty(&fn_ty),
+                    .fields = (
+                        let mut fields = ArrayList.new();
+                        let captured_field = {
+                            .name = ident("captured"),
+                            .value = :Ident ident("NULL"),
+                        };
+                        &mut fields |> ArrayList.push_back(captured_field);
+                        let f_field = {
+                            .name = ident("f"),
+                            .value = :Ident fn_as_closure.signature.name,
+                        };
+                        &mut fields |> ArrayList.push_back(f_field);
+                        fields
+                    )
+                },
+            };
+            &mut ctx.result.statics |> ArrayList.push_back(static);
+        );
     );
 
-    const make_sure_all_are_defined = (ty :: &Ir.Type) => (
+    const make_sure_all_types_are_defined = (ty :: &Ir.Type) => (
         match ty^ with (
             | :Any => ()
             | :Ref ref inner => (
                 # type can be forward declared for pointers
-                # make_sure_all_are_defined(inner)
+                # make_sure_all_types_are_defined(inner)
+
+
             )
             | :Unit => ()
             | :Int => ()
@@ -1040,9 +1299,9 @@ const C = (
                     .result = ref result,
                 } = fn_ty;
                 for arg in args |> ArrayList.iter do (
-                    make_sure_all_are_defined(arg);
+                    make_sure_all_types_are_defined(arg);
                 );
-                make_sure_all_are_defined(result);
+                make_sure_all_types_are_defined(result);
                 &mut (@current Context).fn_types
                     |> OrdMap.get_or_init(ty^, () => init_fn_type(fn_ty));
             )
@@ -1051,13 +1310,13 @@ const C = (
                 .repr = ref repr,
                 .result_ty = _,
             } => (
-                make_sure_all_are_defined(repr);
+                make_sure_all_types_are_defined(repr);
             )
             | :List {
                 .repr = ref repr,
                 .element_ty = _,
             } => (
-                make_sure_all_are_defined(repr);
+                make_sure_all_types_are_defined(repr);
             )
         )
     );
@@ -1088,16 +1347,16 @@ const C = (
             | :Enum _ => ()
             | :Union { .variants = ref variants } => (
                 for &{ .key = _, .value = ref ty } in variants |> OrdMap.iter do (
-                    make_sure_all_are_defined(ty);
+                    make_sure_all_types_are_defined(ty);
                 );
             )
             | :Struct { .fields = ref fields } => (
                 for &{ .key = _, .value = ref ty } in fields |> OrdMap.iter do (
-                    make_sure_all_are_defined(ty);
+                    make_sure_all_types_are_defined(ty);
                 );
             )
             | :Alias ref ty => (
-                make_sure_all_are_defined(ty);
+                make_sure_all_types_are_defined(ty);
             )
         );
         let def :: Ast.TyDefShape = match def^.shape with (
@@ -1152,6 +1411,7 @@ const C = (
             .fn_types = OrdMap.new_with_compare(
                 (a, b) => Ir.compare_type(&a, &b),
             ),
+            .fn_capture_types = OrdMap.new(),
             .program,
             .result = {
                 .includes = OrdSet.new(),
@@ -1170,6 +1430,7 @@ const C = (
         &mut ctx.result.includes |> OrdSet.add("<stdalign.h>");
         &mut ctx.result.includes |> OrdSet.add("<stddef.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdbool.h>");
+        &mut ctx.result.includes |> OrdSet.add("<stdlib.h>");
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
             type_def(name, ty_def);
         );
@@ -1202,6 +1463,8 @@ const C = (
                     }
                 );
             with FunctionContext = {
+                .capture_mode = :ByRef,
+                .captures = OrdMap.new(),
                 .result_ty = :Void,
             };
             with UnwindContext = {
@@ -1217,15 +1480,6 @@ const C = (
             with ScopeContextVar = ctx_var;
             for &name in &ctx.program.consts_order |> ArrayList.iter do (
                 let value = &ctx.program.consts |> OrdMap.get(name) |> Option.unwrap;
-                # with FunctionContext = {
-                #     .result_ty = convert_ty(:Unit),
-                # };
-                # with UnwindContext = {
-                #     .insert_unwind = () => (),
-                #     .cleanup_scope_without_unwind = () => (),
-                # };
-                # with Scope = { .block = &mut block };
-                # with ScopeContextVar = ctx_var;
                 let ty = &value^.ty;
                 let value = calculate(value);
                 if value.expr is :Some value then (

@@ -479,6 +479,7 @@ const parse_unwindable = (
     with ScopeContext = {
         .parent = :Some (@current ScopeContext),
         .vars = OrdMap.new(),
+        .found_in_parent = (...) => (),
     };
     let result_ty = expected_ty |> Option.unwrap_or(:Unit);
     let token_ty_repr = instantiate_ty(
@@ -605,6 +606,7 @@ const parse_scope = (
     with ScopeContext = {
         .parent = :Some (@current ScopeContext),
         .vars = OrdMap.new(),
+        .found_in_parent = (...) => (),
     };
     let inner = root |> AstHelpers.expect_single_child(:None);
     let inner = parse_expr(expected_ty, inner);

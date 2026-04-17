@@ -5,6 +5,7 @@ module:
 const Scope = newtype {
     .parent :: Option.t[Scope],
     .vars :: OrdMap.t[String, Ir.Type],
+    .found_in_parent :: (String, Ir.Type) -> (),
 };
 const ScopeContext = @context Scope;
 
@@ -12,7 +13,13 @@ const find_in_scope = (scope :: &Scope, name :: String) -> Option.t[Ir.Type] => 
     match &scope^.vars |> OrdMap.get(name) with (
         | :Some &result => :Some result
         | :None => match scope^.parent with (
-            | :Some ref parent => find_in_scope(parent, name)
+            | :Some ref parent => (
+                let result = find_in_scope(parent, name);
+                if result is :Some ty then (
+                    scope^.found_in_parent(name, ty);
+                );
+                result
+            )
             | :None => :None
         )
     )
