@@ -53,12 +53,12 @@ const Parse = (
     );
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
-        let ruleset_path = args.ruleset_path |> Option.unwrap_or("std/syntax.ks");
+        let ruleset_path = args.ruleset_path |> Option.unwrap_or("kast:///std/syntax.ks");
         ansi.with_mode(
             :Bold,
             () => (@current Output).write("Parsing syntax rules from " + ruleset_path + "\n\n"),
         );
-        let mut lexer = Lexer.new(Source.read(SourcePath.file(ruleset_path)));
+        let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         let ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
         let process = (path :: SourcePath) => (
@@ -83,7 +83,7 @@ const Parse = (
             process(:Stdin);
         );
         for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.file(path));
+            process(SourcePath.parse(path));
         );
     );
 );

@@ -101,8 +101,8 @@ const Json = (
     };
 
     const ruleset = () => (
-        const path = "src/json/syntax.ks";
-        const source = Source.read(SourcePath.file(path));
+        let path = "kast:///json/syntax.ks";
+        let source = Source.read(SourcePath.parse(path));
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         SyntaxParser.parse_syntax_ruleset(&mut token_stream)

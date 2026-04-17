@@ -76,8 +76,8 @@ const Format = (
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
         # TODO because we mutate ruleset when parsing actually but should not be the case
         let get_ruleset = () => (
-            let ruleset_path = args.ruleset |> Option.unwrap_or("std/syntax.ks");
-            let mut lexer = Lexer.new(Source.read(SourcePath.file(ruleset_path)));
+            let ruleset_path = args.ruleset |> Option.unwrap_or("kast:///std/syntax.ks");
+            let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             SyntaxParser.parse_syntax_ruleset(&mut token_stream)
         );
@@ -123,7 +123,7 @@ const Format = (
             process(:Stdin);
         );
         for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.file(path));
+            process(SourcePath.parse(path));
         );
     );
 );

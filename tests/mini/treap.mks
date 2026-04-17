@@ -262,7 +262,7 @@ const main = () => (
     let i :: Int = 0;
     unwindable loop (
         @loop (
-            if less[Int](i, 10) then (
+            if less[Int](i, 30) then (
                 let element = rem[Int](random_int(), 10);
                 a = Treap_join[Int](a, Treap_singleton[Int](element));
             ) else (

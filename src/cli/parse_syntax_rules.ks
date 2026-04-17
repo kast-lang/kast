@@ -44,7 +44,7 @@ const ParseSyntaxRules = (
             process(:Stdin);
         );
         for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.file(path));
+            process(SourcePath.parse(path));
         );
     )
 );

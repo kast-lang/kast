@@ -18,15 +18,15 @@ build continuous="":
 raylib-to-c:
     kast mini \
         compile --target c \
-        --prepend src/mini/backends/c/runtime.c \
-        src/mini/backends/c/runtime.mks \
+        --prepend kast_path/mini/backends/c/runtime.c \
+        kast_path/mini/backends/c/runtime.mks \
         tests/raylib/bindings.mks \
         tests/raylib/main.mks \
         > target/compiled.c
 
 raylib *args:
     just raylib-to-c
-    clang target/compiled.c -o target/compiled -lraylib
+    clang target/compiled.c -o target/compiled -lraylib -lgc
     ./target/compiled {{args}}
 
 raylib-web *args:
@@ -50,9 +50,9 @@ raylib-web *args:
 c path *args:
     kast mini \
         compile --target c \
-        --prepend src/mini/backends/c/runtime.c \
+        --prepend kast_path/mini/backends/c/runtime.c \
         tests/mini/runtime/c.mks \
-        src/mini/backends/c/runtime.mks \
+        kast_path/mini/backends/c/runtime.mks \
         {{path}} \
         > target/compiled.c
     gcc target/compiled.c \

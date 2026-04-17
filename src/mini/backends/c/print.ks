@@ -1,4 +1,6 @@
 use (import "../../../output.ks").*;
+use (import "../../../source.ks").*;
+use (import "../../../source_path.ks").*;
 use (import "./ast.ks").*;
 use std.collections.OrdSet;
 use std.collections.OrdMap;
@@ -415,6 +417,6 @@ const Print = (
             Print.fn(fn);
         );
         write("\n");
-        write(@eval std.fs.read_file(std.path.dirname(__FILE__) + "/main.c"));
+        write(Source.read(SourcePath.parse("kast:///mini/backends/c/main.c")).contents);
     );
 );

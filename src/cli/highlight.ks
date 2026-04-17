@@ -60,8 +60,8 @@ const Highlight = (
     );
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
-        let ruleset_path = args.ruleset |> Option.unwrap_or("std/syntax.ks");
-        let mut lexer = Lexer.new(Source.read(SourcePath.file(ruleset_path)));
+        let ruleset_path = args.ruleset |> Option.unwrap_or("kast:///std/syntax.ks");
+        let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         let ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
 
@@ -98,7 +98,7 @@ const Highlight = (
             process(:Stdin);
         );
         for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.file(path));
+            process(SourcePath.parse(path));
         );
     );
 );

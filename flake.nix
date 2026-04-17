@@ -19,7 +19,7 @@
             name = "kast-js";
             src = filter {
               root = ./.;
-              include = [ ".justfile" "src" "deps" "std" ];
+              include = [ ".justfile" "src" "deps" ];
             };
             buildInputs = [ kast-bootstrap just ];
             buildPhase = ''
@@ -34,7 +34,7 @@
             name = "kast";
             runtimeInputs = [ nodejs ];
             text = ''
-              node ${kast-js}/kast.mjs "$@"
+              KAST_PATH=${./kast_path} node ${kast-js}/kast.mjs "$@"
             '';
           };
           default = kast;
@@ -78,6 +78,7 @@
           ];
           shellHook = ''
             echo Hello from Kast dev shell
+            export KAST_PATH=$(pwd)/kast_path
           '';
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";

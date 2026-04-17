@@ -122,7 +122,7 @@ const Mini = (
             );
             let mut compiler = Mini.Compiler.init(target);
             for path in args.paths |> ArrayList.into_iter do (
-                let source = Source.read(SourcePath.file(path));
+                let source = Source.read(SourcePath.parse(path));
                 &mut compiler |> Mini.Compiler.add_source(source);
             );
             let program = compiler |> Mini.Compiler.compile;

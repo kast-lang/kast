@@ -381,11 +381,11 @@ const Compiler = (
     );
 
     const ruleset_path = () -> String => (
-        "src/mini/syntax.ks"
+        "kast:///mini/syntax.ks"
     );
 
     const ruleset = () -> SyntaxRuleset.t => (
-        let mut lexer = Lexer.new(Source.read(SourcePath.file(ruleset_path())));
+        let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path())));
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         SyntaxParser.parse_syntax_ruleset(&mut token_stream)
     );
