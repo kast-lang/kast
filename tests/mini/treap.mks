@@ -48,7 +48,7 @@ const Treap_empty = [T] () -> Treap[T] => {
 const Treap_singleton = [T] (value :: T) -> Treap[T] => {
     .is_empty = false,
     .node = (
-        let node :: &Treap_Node[T] = allocate_type_on_heap(&@TypeInfo(Treap_Node[T]));
+        let node :: &Treap_Node[T] = allocate_type_on_heap[Treap_Node[T]]();
         node^ = {
             .value = value,
             .total_nodes = 1,

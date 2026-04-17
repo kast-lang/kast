@@ -866,7 +866,7 @@ const C = (
                     :CompoundLiteral {
                         .ty = convert_ty(token_ty_repr),
                         .fields = single_element_list(
-                            { .name = ident("raw"), .value = :Raw "newRawUnwindToken()" }
+                            { .name = ident("raw"), .value = :Raw "newRawUnwindToken_fn()" }
                         ),
                     },
                 );
@@ -898,7 +898,7 @@ const C = (
                 insert_stmt(
                     :If {
                         .cond = :Apply {
-                            .f = :Ident ident("is_unwinding_with"),
+                            .f = :Ident ident("is_unwinding_with_fn"),
                             .args = single_element_list(
                                 :Field {
                                     .obj = :Ident token_own_var,
