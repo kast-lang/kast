@@ -28,6 +28,10 @@ const remove = [T] (self :: &mut OrdSet.t[T], x :: T) -> Bool => (
     )
 );
 
+const length = [T] (self :: &OrdSet.t[T]) -> Int32 => (
+    &self^.inner |> OrdMap.length
+);
+
 const add = [T] (self :: &mut OrdSet.t[T], x :: T) => (
     &mut self^.inner |> OrdMap.add(x, ());
 );
