@@ -153,7 +153,7 @@ const JavaScript = (
             | :Uninitialized => :Obj ArrayList.new()
             | :Literal literal => match literal with (
                 | :Int x => :NumberLiteral parse(x)
-                | :Float64 x => :NumberLiteral x
+                | :Float x => :NumberLiteral parse(x)
                 | :Char c => :StringLiteral to_string(c)
                 | :String s => :StringLiteral s
             )

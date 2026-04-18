@@ -86,6 +86,7 @@ const C = (
                     )
                 )
             )
+            | :Float32 => :Float32
             | :Float64 => :Float64
             | :Bool => :Bool
             | :Char => :Char
@@ -308,7 +309,7 @@ const C = (
         let literal :: Ast.Literal = match literal^ with (
             | :Bool x => :Bool x
             | :Int x => :Int x
-            | :Float64 x => :Float64 x
+            | :Float x => :Float x
             | :Char x => :Char x
             | :String s => return {
                 .expr = :Some :CompoundLiteral {
@@ -1283,6 +1284,7 @@ const C = (
             | :Int => ()
             | :UInt => ()
             | :IntSpecific _ => ()
+            | :Float32 => ()
             | :Float64 => ()
             | :Bool => ()
             | :Char => ()

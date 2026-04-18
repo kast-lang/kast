@@ -34,9 +34,9 @@ const Print = (
                 :Italic,
                 () => write(x),
             )
-            | :Float64 x => ansi.with_mode(
+            | :Float x => ansi.with_mode(
                 :Italic,
-                () => write(to_string(x)),
+                () => write(x),
             )
             | :Char c => ansi.with_mode(
                 :Green,
@@ -176,6 +176,7 @@ const Print = (
             | :Bool => write_keyword("bool")
             | :Int32 => write_keyword("int32_t")
             | :Int64 => write_keyword("int64_t")
+            | :Float32 => write_keyword("float")
             | :Float64 => write_keyword("double")
             | :Pointer ref t => (
                 Print.ty(t);

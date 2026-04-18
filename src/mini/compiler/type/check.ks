@@ -72,6 +72,7 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
         | :Int => "Int"
         | :UInt => "UInt"
         | :IntSpecific _ => output_to_string(() => Ir.Print.type_name(ty))
+        | :Float32 => "Float32"
         | :Float64 => "Float64"
         | :Bool => "Bool"
         | :Char => "Char"
@@ -133,6 +134,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 fail()
             );
         )
+        | { :Float32, :Float32 } => ()
         | { :Float64, :Float64 } => ()
         | { :Bool, :Bool } => ()
         | { :Char, :Char } => ()

@@ -820,7 +820,8 @@ const parse_expr_impl = (
                                 # TODO check that its within range
                                 :Int raw
                             )
-                            | :Float64 => :Float64 parse(raw)
+                            | :Float32 => :Float raw
+                            | :Float64 => :Float raw
                             | _ => (
                                 let diagnostic = {
                                     .severity = :Error,

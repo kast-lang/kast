@@ -16,6 +16,7 @@ const Ast = (
         | :Int
         | :Int32
         | :Int64
+        | :Float32
         | :Float64
         | :Bool
         | :Void
@@ -44,7 +45,7 @@ const Ast = (
     const Literal = newtype (
         | :Bool Bool
         | :Int String
-        | :Float64 Float64
+        | :Float String
         | :Char Char
         | :String String
     );

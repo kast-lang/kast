@@ -130,6 +130,7 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                         .bits = parse(bits),
                     };
                 );
+                if name == "Float32" then return :Float32;
                 if name == "Float64" then return :Float64;
                 if name == "Char" then return :Char;
                 return lookup_type(name, .span = token.span);

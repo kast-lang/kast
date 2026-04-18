@@ -43,6 +43,7 @@ const Print = (
                 output.write("Int");
                 output.write(to_string(bits));
             )
+            | :Float32 => output.write("Float32")
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)
@@ -104,6 +105,7 @@ const Print = (
             | :Int => output.write("Int")
             | :UInt => output.write("UInt")
             | :IntSpecific _ => Print.type_name(self)
+            | :Float32 => output.write("Float32")
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)

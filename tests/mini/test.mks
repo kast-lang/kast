@@ -1,29 +1,31 @@
+const Float = type Float32;
+
 const String_print = (s :: String) => (
     @native "#include <stdio.h>";
     @native "printf(\"%s\", \(s.contents))";
 );
 
-const Int_print = (x :: Int) => (
+const Float_print = (x :: Float) => (
     @native "#include <stdio.h>";
-    @native "printf(\"%d\", \(x))";
+    @native "printf(\"%f\", \(x))";
 );
 
 const Counter = struct {
-    .value :: () -> Int,
+    .value :: () -> Float,
     .inc :: () -> (),
     .dec :: () -> (),
 };
 
-const Counter_new = (init_value :: Int) -> Counter => (
-    let value = allocate_type_on_heap[Int]();
+const Counter_new = (init_value :: Float) -> Counter => (
+    let value = allocate_type_on_heap[Float]();
     value^ = init_value;
     {
-        .value = move () -> Int => value^,
+        .value = move () -> Float => value^,
         .inc = move () => (
-            value^ = add[Int](value^, 1);
+            value^ = add[Float](value^, 1);
         ),
         .dec = move () => (
-            value^ = sub[Int](value^, 1);
+            value^ = sub[Float](value^, 1);
         ),
     }
 );
@@ -37,6 +39,6 @@ const main = () => (
     counter.inc();
     counter.dec();
 
-    Int_print(counter.value());
+    Float_print(counter.value());
     String_print("\n");
 );

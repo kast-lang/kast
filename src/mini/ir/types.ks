@@ -39,6 +39,7 @@ const Type = newtype (
         .signed :: Bool,
         .bits :: Int32,
     }
+    | :Float32
     | :Float64
     | :Bool
     | :Char
@@ -83,6 +84,9 @@ const compare_type = (
         )
         | { :IntSpecific _, _ } => :Less
         | { _, :IntSpecific _ } => :Greater
+        | { :Float32, :Float32 } => :Equal
+        | { :Float32, _ } => :Less
+        | { _, :Float32 } => :Greater
         | { :Float64, :Float64 } => :Equal
         | { :Float64, _ } => :Less
         | { _, :Float64 } => :Greater
@@ -162,7 +166,7 @@ const NativeExpr = newtype {
 const Literal = newtype (
     | :Bool Bool
     | :Int String
-    | :Float64 Float64
+    | :Float String
     | :Char Char
     | :String String
 );
