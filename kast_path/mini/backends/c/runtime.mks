@@ -97,7 +97,7 @@ const allocate_array = [T] (length :: UInt) -> &T => (
 );
 
 const allocate_list = [T] @call "C" (length :: UInt) -> List[T] => {
-    .data = allocate_array(length),
+    .data = allocate_array[T](length),
     .length = length,
 };
 
