@@ -91,7 +91,7 @@ const empty_list = [T] @call "C" () -> List[T] => {
     .length = @native "0",
 };
 
-const allocate_array = [T] (length :: UInt) -> &T => (
+const allocate_array = [T] @call "C" (length :: UInt) -> &T => (
     let T_TypeInfo = @TypeInfo(T);
     @native "malloc(\(T_TypeInfo.stride) * \(length))"
 );
