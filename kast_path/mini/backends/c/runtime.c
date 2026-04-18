@@ -1,10 +1,9 @@
-#include <gc.h>
+// #include <gc.h>
+//
+// #define malloc GC_MALLOC
 
-#define malloc GC_MALLOC
-
-typedef struct RawUnwindToken
-{
-    int id;
+typedef struct RawUnwindToken {
+  int id;
 } RawUnwindToken;
 
 const RawUnwindToken NO_UNWIND = {.id = 0};

@@ -33,10 +33,8 @@ const allocate_type_on_stack = [T] @call "C" () -> &T => (
     @native "alloca(\(@TypeInfo(T).size))"
 );
 const allocate_type_on_heap = [T] @call "C" () -> &T => (
-    # @native "#include <stdlib.h>";
-    # @native "malloc(\(T^.size))"
-    @native "#include <gc.h>";
-    @native "GC_MALLOC(\(@TypeInfo(T).size))"
+    @native "#include <stdlib.h>";
+    @native "malloc(\(@TypeInfo(T).size))"
 );
 
 const add = [T] @call "C" (a :: T, b :: T) -> T => (
@@ -95,7 +93,7 @@ const empty_list = [T] @call "C" () -> List[T] => {
 
 const allocate_array = [T] (length :: UInt) -> &T => (
     let T_TypeInfo = @TypeInfo(T);
-    @native "GC_MALLOC(\(T_TypeInfo.stride) * \(length))"
+    @native "malloc(\(T_TypeInfo.stride) * \(length))"
 );
 
 const allocate_list = [T] @call "C" (length :: UInt) -> List[T] => {
