@@ -13,7 +13,8 @@
         pkgs = import inputs.nixpkgs { inherit system overlays; };
         kast-bootstrap = inputs.kast.packages.${system}.default;
         filter = inputs.nix-filter.lib;
-      in with pkgs; {
+      in
+      with pkgs; {
         packages = rec {
           kast-js = stdenv.mkDerivation {
             name = "kast-js";
@@ -37,6 +38,7 @@
               KAST_PATH=${./kast_path} node ${kast-js}/kast.mjs "$@"
             '';
           };
+          kast-path = ./kast_path;
           default = kast;
           raylib-web = stdenv.mkDerivation {
             name = "raylib-web";
