@@ -70,7 +70,7 @@ const Mini = (
 
             const t = newtype {
                 .target :: Option.t[String],
-                .prepend :: Option.t[String],
+                .prepend :: ArrayList.t[String],
                 .paths :: ArrayList.t[String],
             };
 
@@ -78,7 +78,7 @@ const Mini = (
                 start_index :: Int32,
             ) -> t => (
                 let mut target = :None;
-                let mut prepend = :None;
+                let mut prepend = ArrayList.new();
                 let mut paths = ArrayList.new();
                 let mut i = start_index;
                 while i < std.sys.argc() do (
@@ -89,7 +89,7 @@ const Mini = (
                         continue;
                     );
                     if arg == "--prepend" then (
-                        prepend = :Some std.sys.argv_at(i + 1);
+                        ArrayList.push_back(&mut prepend, std.sys.argv_at(i + 1));
                         i += 2;
                         continue;
                     );
@@ -126,7 +126,7 @@ const Mini = (
                 &mut compiler |> Mini.Compiler.add_source(source);
             );
             let program = compiler |> Mini.Compiler.compile;
-            if args.prepend is :Some path then (
+            for path in args.prepend |> ArrayList.into_iter do (
                 print(std.fs.read_file(path));
             );
             match target with (
