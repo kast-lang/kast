@@ -31,6 +31,7 @@
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;
 @syntax "native" 9 @wrap never = "@native" " " _;
 @syntax "inject_context" 9.5 @wrap never = "with" " " context_type " " "=" " " value;
+# TODO unnecessary since can do `@context.context_type` now
 @syntax "current_context" 9.5 @wrap never = "@current" " " context_type;
 @syntax "or" 10 @wrap if_any_assoc = <- _ " "/"\n" "or" " " _;
 @syntax "and" 11 @wrap if_any_assoc = <- _ " "/"\n" "and" " " _;
@@ -56,4 +57,5 @@
 @syntax "type_info" 1000 @wrap never = "@TypeInfo" "(" type:any ")";
 # this one is needed for structural find & replace
 @syntax "core:unquote" 1000 @wrap never = "$" _ ->;
-
+@syntax "context_obj" 1000 @wrap never = "@context";
+@syntax "context_obj_type" 1000 @wrap never = "@Context";

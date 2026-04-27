@@ -744,6 +744,17 @@ const parse_apply = (
     }
 );
 
+const parse_context_obj = (
+    expected_ty :: Option.t[Ir.Type],
+    ast :: Ast.t,
+    root :: Ast.Group,
+) -> ParsedExpr => (
+    {
+        .shape = :Place :ContextObject,
+        .ty = :ContextObject,
+    }
+);
+
 const parsers = (
     let mut map = OrdMap.new();
     &mut map |> OrdMap.add("instantiate", parse_instantiate_expr);
@@ -773,6 +784,7 @@ const parsers = (
     &mut map |> OrdMap.add("then", parse_then);
     &mut map |> OrdMap.add("apply", parse_apply);
     &mut map |> OrdMap.add("defer", parse_defer);
+    &mut map |> OrdMap.add("context_obj", parse_context_obj);
     &mut map |> OrdMap.add("true", (...) => { .shape = :Expr :Literal :Bool true, .ty = :Bool });
     &mut map |> OrdMap.add("false", (...) => { .shape = :Expr :Literal :Bool false, .ty = :Bool });
     map

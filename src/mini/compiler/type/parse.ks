@@ -45,6 +45,9 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
     match ast.shape with (
         | :Empty => return :Unit
         | :Rule { .rule, .root } => (
+            if rule.name == "context_obj_type" then (
+                return :ContextObject;
+            );
             if rule.name == "instantiate" then (
                 return parse_instantiate_ty(root);
             );

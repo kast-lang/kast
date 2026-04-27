@@ -69,6 +69,7 @@ const Print = (
                 Print.type_name(element_ty);
                 output.write("]");
             )
+            | :ContextObject => output.write("@Context")
         )
     );
 
@@ -130,6 +131,7 @@ const Print = (
             } => (
                 Print.type_name_as_ident(repr);
             )
+            | :ContextObject => output.write("Context")
         )
     );
 

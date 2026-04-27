@@ -119,6 +119,7 @@ const C = (
                     );
                 :Named ident
             )
+            | :ContextObject => :Struct ident("Context")
         )
     );
 
@@ -299,6 +300,18 @@ const C = (
                     ),
                 }
             )
+            | :ContextObject => (
+                let ctx_expr = :Deref :Ident (@current ScopeContextVar);
+                {
+                    .get = () => {
+                        .expr = :Some ctx_expr,
+                        .span,
+                    },
+                    .set = value => (
+                        insert_stmt(:Assign { .assignee = ctx_expr, .value });
+                    ),
+                }
+            )
         )
     );
 
@@ -384,7 +397,6 @@ const C = (
         let size = :Raw ("sizeof(" + ty + ")");
         let stride = size;
         let alignment = :Raw ("alignof(" + ty + ")");
-        let mut members = ArrayList.new();
         let members_var = new_ident("members");
         # TODO instead of allocating at runtime we should have const array
         insert_stmt(
@@ -1320,6 +1332,23 @@ const C = (
             } => (
                 make_sure_all_types_are_defined(repr);
             )
+            | :ContextObject => (
+                let mut ctx = @current Context;
+                let mut ctx_fields = ArrayList.new();
+                for &{ .key = name, .value = ref ty } in &ctx.program.contexts |> OrdMap.iter do (
+                    make_sure_all_types_are_defined(ty);
+                    let field = {
+                        .name = ident(name),
+                        .ty = convert_ty(ty),
+                    };
+                    &mut ctx_fields |> ArrayList.push_back(field);
+                );
+                let ctx_def = {
+                    .name = ident("Context"),
+                    .def = :Struct { .fields = ctx_fields },
+                };
+                &mut ctx.result.types |> ArrayList.push_back(ctx_def);
+            )
         )
     );
 
@@ -1433,22 +1462,10 @@ const C = (
         &mut ctx.result.includes |> OrdSet.add("<stddef.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdbool.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdlib.h>");
+        make_sure_all_types_are_defined(&(:ContextObject));
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
             type_def(name, ty_def);
         );
-        let mut ctx_fields = ArrayList.new();
-        for &{ .key = name, .value = ref ty } in &ctx.program.contexts |> OrdMap.iter do (
-            let field = {
-                .name = ident(name),
-                .ty = convert_ty(ty),
-            };
-            &mut ctx_fields |> ArrayList.push_back(field);
-        );
-        let ctx_def = {
-            .name = ident("Context"),
-            .def = :Struct { .fields = ctx_fields },
-        };
-        &mut ctx.result.types |> ArrayList.push_back(ctx_def);
         for &{ .key = name, .value = ref def } in &ctx.program.fns |> OrdMap.iter do (
             add_fn(name, def);
         );

@@ -494,6 +494,7 @@ const Compiler = (
                 .repr = resolve_type_aliases(repr),
                 .element_ty = resolve_type_aliases(element_ty),
             }
+            | :ContextObject => ty
         )
     );
 );

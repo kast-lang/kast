@@ -1,44 +1,18 @@
-const Float = type Float32;
-
-const String_print = (s :: String) => (
-    @native "#include <stdio.h>";
+const print_String = (s :: String) => (
     @native "printf(\"%s\", \(s.contents))";
 );
 
-const Float_print = (x :: Float) => (
-    @native "#include <stdio.h>";
-    @native "printf(\"%f\", \(x))";
-);
+const SomeContext = @context String;
 
-const Counter = struct {
-    .value :: () -> Float,
-    .inc :: () -> (),
-    .dec :: () -> (),
-};
-
-const Counter_new = (init_value :: Float) -> Counter => (
-    let value = allocate_type_on_heap[Float]();
-    value^ = init_value;
-    {
-        .value = move () -> Float => value^,
-        .inc = move () => (
-            value^ = add[Float](value^, 1);
-        ),
-        .dec = move () => (
-            value^ = sub[Float](value^, 1);
-        ),
-    }
+const foo = (ctx :: &@Context) => (
+    print_String(@current SomeContext);
+    print_String(@context.SomeContext);
+    print_String(ctx^.SomeContext);
 );
 
 const main = () => (
-    let counter = Counter_new(0);
-
-    counter.inc();
-    counter.inc();
-    counter.inc();
-    counter.inc();
-    counter.dec();
-
-    Float_print(counter.value());
-    String_print("\n");
+    with SomeContext = "Hello, world!\n";
+    let ctx = &@context;
+    with SomeContext = "overriden\n";
+    foo(ctx);
 );

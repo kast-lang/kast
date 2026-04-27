@@ -54,6 +54,7 @@ const Type = newtype (
         .repr :: Type,
         .result_ty :: Type,
     }
+    | :ContextObject
 );
 # TODO derive
 const compare_type = (
@@ -115,6 +116,9 @@ const compare_type = (
         )
         | { :UnwindToken _, _ } => :Less
         | { _, :UnwindToken _ } => :Greater
+        | { :ContextObject, :ContextObject } => :Equal
+        | { :ContextObject, _ } => :Less
+        | { _, :ContextObject } => :Greater
     )
 );
 
@@ -264,6 +268,7 @@ const PlaceExprShape = newtype (
     | :CurrentContext String
     | :Deref Expr
     | :Temp Expr
+    | :ContextObject
 );
 
 const PlaceExpr = newtype {

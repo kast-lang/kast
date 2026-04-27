@@ -93,6 +93,7 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
         | :Fn _ => "a function"
         | :UnwindToken _ => "unwind token"
         | :List _ => "list"
+        | :ContextObject => "@Context"
     )
 );
 
@@ -236,6 +237,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 fail();
             );
         )
+        | { :ContextObject, :ContextObject } => ()
         | _ => fail()
     );
 );

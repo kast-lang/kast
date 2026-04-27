@@ -1,4 +1,5 @@
 use (import "../common.ks").*;
+use (import "../context.ks").*;
 
 module:
 
@@ -29,6 +30,9 @@ const field_ty = (
     field :: String,
     .field_span :: Span,
 ) -> Ir.Type => with_return (
+    if obj_ty is :ContextObject then (
+        return find_context_type(field, .span = field_span);
+    );
     let obj_ty = ty_repr(obj_ty);
     if obj_ty is :Named name then (
         let type_def = &(@current Compiler).program.types
