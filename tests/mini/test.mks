@@ -13,6 +13,8 @@ const foo = (ctx :: &@Context) => (
 const main = () => (
     with SomeContext = "Hello, world!\n";
     let ctx = &@context;
+    let new_ctx :: @Context = uninitialized;
+    let &@context = &new_ctx;
     with SomeContext = "overriden\n";
     foo(ctx);
 );

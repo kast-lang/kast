@@ -10,6 +10,7 @@
 @syntax "union" 2.5 @wrap never = "union" " " def;
 @syntax "struct" 2.5 @wrap never = "struct" " " def;
 @syntax "let" 3 @wrap never = "let" " " pattern " " "=" " " value;
+@syntax "let context" 3 @wrap never = "let" " " "&" "@context" " " "=" " " _;
 @syntax "type alias" 3.5 @wrap never = "type" " " _;
 @syntax "leading union" 3.99 @wrap never = "|" " " _;
 @syntax "union" 4 @wrap if_any_assoc = <- _ " "/"\n" "|" " " _;

@@ -193,6 +193,7 @@ const ExprShape = newtype (
         .name :: String,
         .value :: Expr,
     }
+    | :LetContextRef Expr
     | :Assign {
         .assignee :: PlaceExpr,
         .value :: Expr,

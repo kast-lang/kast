@@ -755,6 +755,19 @@ const parse_context_obj = (
     }
 );
 
+const parse_let_context = (
+    expected_ty :: Option.t[Ir.Type],
+    ast :: Ast.t,
+    root :: Ast.Group,
+) -> ParsedExpr => (
+    let value = root |> AstHelpers.expect_single_child(:None);
+    let value = parse_expr(:Some :Ref :ContextObject, value);
+    {
+        .shape = :Expr :LetContextRef value,
+        .ty = :Unit,
+    }
+);
+
 const parsers = (
     let mut map = OrdMap.new();
     &mut map |> OrdMap.add("instantiate", parse_instantiate_expr);
@@ -776,6 +789,7 @@ const parsers = (
     &mut map |> OrdMap.add("if", parse_if);
     &mut map |> OrdMap.add("if_without_else", parse_if);
     &mut map |> OrdMap.add("let", parse_let);
+    &mut map |> OrdMap.add("let context", parse_let_context);
     &mut map |> OrdMap.add("native", parse_native);
     &mut map |> OrdMap.add("stmt", parse_stmt);
     &mut map |> OrdMap.add("scope", parse_scope);

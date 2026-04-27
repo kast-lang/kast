@@ -46,7 +46,9 @@ const C = (
     };
     const Scope = @context ScopeT;
 
-    const ScopeContextVar = @context Ast.Ident;
+    const ScopeContextVar = @context newtype {
+        .ident :: Ast.Ident,
+    };
 
     const ident = (name :: String) -> Ast.Ident => (
         # TODO make sure its valid C identifier
@@ -230,7 +232,7 @@ const C = (
         .span :: Span,
     ) -> Place => (
         let place_expr = :Field {
-            .obj = :Deref :Ident (@current ScopeContextVar),
+            .obj = :Deref :Ident (@current ScopeContextVar).ident,
             .field = ident(name),
         };
         {
@@ -301,7 +303,7 @@ const C = (
                 }
             )
             | :ContextObject => (
-                let ctx_expr = :Deref :Ident (@current ScopeContextVar);
+                let ctx_expr = :Deref :Ident (@current ScopeContextVar).ident;
                 {
                     .get = () => {
                         .expr = :Some ctx_expr,
@@ -718,6 +720,12 @@ const C = (
                 );
                 return void(span)
             )
+            | :LetContextRef ref new_ctx_ptr => (
+                let ctx_var = new_ident("ctx");
+                let_var(&(:Ref :ContextObject), ctx_var, pure(calculate(new_ctx_ptr)));
+                (@current ScopeContextVar).ident = ctx_var;
+                return void(span)
+            )
             | :Assign { .assignee = ref assignee, .value = ref value } => (
                 let assignee = calculate_place(assignee);
                 let value = pure(calculate(value));
@@ -767,7 +775,7 @@ const C = (
                     .field = ident("f"),
                 };
                 if f_ty.call_convention is :None then (
-                    &mut args |> ArrayList.push_back(:Ident (@current ScopeContextVar));
+                    &mut args |> ArrayList.push_back(:Ident (@current ScopeContextVar).ident);
                 );
                 for arg in ir_args |> ArrayList.iter do (
                     let arg = pure(calculate(arg));
@@ -1185,7 +1193,7 @@ const C = (
             .body = (
                 let mut block = new_block();
                 with Scope = { .block = &mut block };
-                with ScopeContextVar = ctx_var;
+                with ScopeContextVar = { .ident = ctx_var };
                 if &ctx.fn_capture_types |> OrdMap.get(name) is :Some &captured_ty then (
                     insert_stmt(
                         :LetVar {
@@ -1227,7 +1235,7 @@ const C = (
                 .body = (
                     let mut block = new_block();
                     with Scope = { .block = &mut block };
-                    with ScopeContextVar = ctx_var;
+                    with ScopeContextVar = { .ident = ctx_var };
                     insert_stmt(
                         :Return :Apply {
                             .f = :Ident ident(fn_name),
@@ -1496,7 +1504,7 @@ const C = (
 
             let mut body = new_block();
             with Scope = { .block = &mut body };
-            with ScopeContextVar = ctx_var;
+            with ScopeContextVar = { .ident = ctx_var };
             for &name in &ctx.program.consts_order |> ArrayList.iter do (
                 let value = &ctx.program.consts |> OrdMap.get(name) |> Option.unwrap;
                 let ty = &value^.ty;
