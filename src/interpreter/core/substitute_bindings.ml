@@ -683,8 +683,8 @@ module Impl = struct
         let subbed_temp_var = subbed_temp |> get_var in
         ctx |> remember_sub ~state var (Obj.repr subbed_temp);
         ctx |> remember_sub ~state subbed_temp_var (Obj.repr subbed_temp);
-        var
-        |> Inference.Var.once_inferred (fun shape ->
+        let once_inferred =
+          fun shape ->
           Log.trace (fun log -> log "var %a was inferred, resuming subbing" Id.print id);
           with_ctx (go_deeper ctx) (fun () ->
             let subbed = sub_shape ~state original_value shape in
@@ -695,7 +695,12 @@ module Impl = struct
               ~span
               subbed_temp_var
               subbed_var
-            |> ignore));
+            |> ignore)
+        in
+        (* var *)
+        (* |> Inference.Var.await_inferred ~error_shape:(fun _ -> failwith __LOC__) *)
+        (* |> once_inferred; *)
+        var |> Inference.Var.once_inferred once_inferred;
         subbed_temp
       | Some sub -> sub |> Obj.obj)
   ;;

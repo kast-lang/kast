@@ -669,7 +669,7 @@ let generic : core_syntax =
           let (module C : Compiler.S) =
             Compiler.update_module
               (module C)
-              (C.state |> State.enter_scope ~span ~recursive:false)
+              (C.state |> State.enter_scope ~new_result_scope:true ~span ~recursive:false)
           in
           let args = tuple_impl ~allow_toplevel_parens:false (module C) Pattern args in
           C.state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
@@ -693,7 +693,7 @@ let generic : core_syntax =
           let (module C : Compiler.S) =
             Compiler.update_module
               (module C)
-              (C.state |> State.enter_scope ~span ~recursive:false)
+              (C.state |> State.enter_scope ~new_result_scope:true ~span ~recursive:false)
           in
           let args = tuple_impl ~allow_toplevel_parens:false (module C) Pattern args in
           C.state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
