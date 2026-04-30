@@ -102,61 +102,70 @@ let run : Args.t -> unit =
       |> Compiler.handle_parser_imports (fun () ->
         Parser.parse source Kast_default_syntax.ruleset)
     in
-    let out : out_channel =
-      match output with
-      | None -> stdout
-      | Some path ->
-        create_dir_all (Filename.dirname path);
-        open_out path
+    let expr : expr =
+      timed "compile to ir" (fun () ->
+        let ast = parsed.ast |> Kast_ast_init.init_ast in
+        let expr : expr = Compiler.compile ~prelude:(not no_std) compiler Expr ast in
+        expr)
     in
-    let fmt = Format.formatter_of_out_channel out in
-    Format.setup_tty_if_needed fmt out;
-    let ast = parsed.ast |> Kast_ast_init.init_ast in
-    let expr : expr = Compiler.compile ~prelude:(not no_std) compiler Expr ast in
-    (match target with
-     | Ir -> fprintf fmt "%a" Expr.print_with_types expr
-     | Minikast minitarget ->
-       (match minitarget with
-        | JavaScript ->
-          let transpiled =
-            Kast_transpiler_minikast.transpile_expr
-              { name = "javascript" }
-              compiler.interpreter
-              expr
-          in
-          Kast_transpiler_minikast.MiniAst.Print.print_program transpiled
-        | _ -> fail "not supported minitarget")
-     | JavaScript ->
-       let transpiled : Kast_transpiler_javascript.result =
-         Kast_transpiler_javascript.transpile_expr
-           ~state:compiler.interpreter
-           ~span:ast.data.span
-           expr
-       in
-       let source_map_path =
-         match output with
-         | None -> "target/source.map"
-         | Some path -> path ^ ".map"
-       in
-       let writer = Kast_transpiler_javascript.Writer.init fmt source_map_path in
-       transpiled.print writer;
-       writer |> Kast_transpiler_javascript.Writer.finish);
-    close_out out;
-    run_formatter_if_needed args;
-    match save_dependency_graph with
-    | None -> ()
-    | Some path ->
-      let out = open_out path in
+    timed "codegen" (fun () ->
+      let out : out_channel =
+        match output with
+        | None -> stdout
+        | Some path ->
+          create_dir_all (Filename.dirname path);
+          open_out path
+      in
       let fmt = Format.formatter_of_out_channel out in
-      fprintf fmt "digraph {\n";
-      fprintf fmt [%include_file "dep_graph_styling.dot"];
-      compiler.cache.dependents
-      |> UriMap.iter (fun dependency dependents ->
-        dependents
-        |> List.iter (fun dependent ->
-          fprintf fmt "  %S -> %S;\n" (Uri.to_string dependent) (Uri.to_string dependency)));
-      fprintf fmt "}\n";
-      close_out out
+      Format.setup_tty_if_needed fmt out;
+      (match target with
+       | Ir -> fprintf fmt "%a" Expr.print_with_types expr
+       | Minikast minitarget ->
+         (match minitarget with
+          | JavaScript ->
+            let transpiled =
+              Kast_transpiler_minikast.transpile_expr
+                { name = "javascript" }
+                compiler.interpreter
+                expr
+            in
+            Kast_transpiler_minikast.MiniAst.Print.print_program transpiled
+          | _ -> fail "not supported minitarget")
+       | JavaScript ->
+         let transpiled : Kast_transpiler_javascript.result =
+           Kast_transpiler_javascript.transpile_expr
+             ~state:compiler.interpreter
+             ~span:expr.data.span
+             expr
+         in
+         let source_map_path =
+           match output with
+           | None -> "target/source.map"
+           | Some path -> path ^ ".map"
+         in
+         let writer = Kast_transpiler_javascript.Writer.init fmt source_map_path in
+         transpiled.print writer;
+         writer |> Kast_transpiler_javascript.Writer.finish);
+      close_out out;
+      run_formatter_if_needed args;
+      match save_dependency_graph with
+      | None -> ()
+      | Some path ->
+        let out = open_out path in
+        let fmt = Format.formatter_of_out_channel out in
+        fprintf fmt "digraph {\n";
+        fprintf fmt [%include_file "dep_graph_styling.dot"];
+        compiler.cache.dependents
+        |> UriMap.iter (fun dependency dependents ->
+          dependents
+          |> List.iter (fun dependent ->
+            fprintf
+              fmt
+              "  %S -> %S;\n"
+              (Uri.to_string dependent)
+              (Uri.to_string dependency)));
+        fprintf fmt "}\n";
+        close_out out)
   in
   let do_compile () =
     try do_compile () with
