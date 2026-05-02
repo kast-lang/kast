@@ -1534,6 +1534,8 @@ end = struct
   let empty = { entries = [] }
 
   let find_opt (key : key) (map : 'a t) : 'a option =
+    profile "find_opt valuemap"
+    <| fun () ->
     let values =
       map.entries
       |> List.to_seq
@@ -1545,6 +1547,8 @@ end = struct
   ;;
 
   let update (key : key) (f : 'a option -> 'a option) (map : 'a t) : 'a t =
+    profile "update valuemap"
+    <| fun () ->
     let existed = ref false in
     let updated_if_existed =
       map.entries
@@ -1568,6 +1572,8 @@ end = struct
   let iter f map = map.entries |> List.iter (fun (key, value) -> f key value)
 
   let union f a b =
+    profile "union valuemap"
+    <| fun () ->
     let result = ref a in
     b
     |> iter (fun key value ->

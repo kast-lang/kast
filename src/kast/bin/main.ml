@@ -30,6 +30,7 @@ let main () =
     | _ -> args.stop_on_error
   in
   Kast.handle_effects ~stop_on_error (fun () -> run args);
+  report_profile ();
   Kast_profiling.deinit ()
 ;;
 

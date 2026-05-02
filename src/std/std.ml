@@ -78,10 +78,33 @@ let read_from_filesystem path =
   Fun.protect (fun () -> In_channel.input_all ch) ~finally:(fun () -> In_channel.close ch)
 ;;
 
+let times = ref StringMap.empty
+
+let profile name f =
+  let start = Sys.time () in
+  let result = f () in
+  let finish = Sys.time () in
+  let time = finish -. start in
+  times
+  := !times
+     |> StringMap.update name (fun cur ->
+       let cur = cur |> Option.value ~default:0.0 in
+       Some (cur +. time));
+  result
+;;
+
+let report_profile () =
+  !times
+  |> StringMap.iter (fun name time ->
+    Log.info (fun log -> log "time for %a = %f s" String.print_debug name time));
+  times := StringMap.empty
+;;
+
 let timed name f =
   let start = Sys.time () in
   let result = f () in
   let time = Sys.time () -. start in
   Log.info (fun log -> log "time for %a = %f s" String.print_debug name time);
+  report_profile ();
   result
 ;;
