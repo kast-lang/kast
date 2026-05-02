@@ -1493,17 +1493,22 @@ and ValueImpl : sig
 
   val equal : t -> t -> bool
   val compare : t -> t -> int
+  val is_fully_inferred : (t -> bool) option ref
 end = struct
   type t = TypesImpl.value
 
-  module RecurseCache = Inference.CompareRecurseCache
+  module CompareRecurseCache = Inference.CompareRecurseCache
+  module RecurseCache = RecurseCache.Make (Id)
+
+  let is_fully_inferred : (t -> bool) option ref = ref None
 
   let equal a b =
-    RecurseCache.with_cache (RecurseCache.create ()) (fun () -> TypesImpl.equal_value a b)
+    CompareRecurseCache.with_cache (CompareRecurseCache.create ()) (fun () ->
+      TypesImpl.equal_value a b)
   ;;
 
   let compare a b =
-    RecurseCache.with_cache (RecurseCache.create ()) (fun () ->
+    CompareRecurseCache.with_cache (CompareRecurseCache.create ()) (fun () ->
       TypesImpl.compare_value a b)
   ;;
 end
@@ -1521,6 +1526,9 @@ and ValueMap : sig
   val size : 'a t -> int
 end = struct
   type key = ValueImpl.t
+
+  module CompareMap = Map.Make (ValueImpl)
+
   type 'a t = { entries : (key * 'a) list }
 
   let empty = { entries = [] }

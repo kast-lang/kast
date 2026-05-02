@@ -4,6 +4,8 @@ module Error = Error
 
 type 'a unite = span:span -> 'a -> 'a -> 'a
 
+exception ComparingNotInferred
+
 module CompareRecurseCache = RecurseCache.Make (Id.Pair)
 
 module type Scope = sig
@@ -308,7 +310,8 @@ module Var = struct
     else (
       match a.inferred, b.inferred with
       | Some a, Some b -> compare_inferred a b
-      | Some _, None | None, Some _ | None, None -> Id.compare a.recurse_id b.recurse_id)
+      | Some _, None | None, Some _ | None, None ->
+        raise ComparingNotInferred (* Id.compare a.recurse_id b.recurse_id *))
   ;;
 
   let equal
