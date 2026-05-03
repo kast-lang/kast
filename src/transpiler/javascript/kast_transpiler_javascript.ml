@@ -37,7 +37,7 @@ type transpiled_place =
   | Js of no_effect_expr
 
 type mutable_ctx =
-  { mutable captured_values : JsAst.name ValueMap.t
+  { mutable captured_values_by_recurse_id : JsAst.name Id.Map.t
   ; mutable captured_places : transpiled_place Id.Map.t
   ; mutable symbols : JsAst.name Id.Map.t
   ; mutable prepend_early : JsAst.stmt list
@@ -431,9 +431,9 @@ module Impl = struct
     | _ ->
       let value_name = ref None in
       let do_prepend = ref false in
-      ctx.mut.captured_values
-      <- ctx.mut.captured_values
-         |> ValueMap.update value (fun name ->
+      ctx.mut.captured_values_by_recurse_id
+      <- ctx.mut.captured_values_by_recurse_id
+         |> Id.Map.update (Inference.Var.recurse_id value.var) (fun name ->
            let name =
              match name with
              | Some name -> name
@@ -1511,7 +1511,7 @@ let with_ctx ~state ~span f =
     ; global_ctx_var = JsAst.gen_name ~original:None "ctx"
     ; captured = state.scope
     ; mut =
-        { captured_values = ValueMap.empty
+        { captured_values_by_recurse_id = Id.Map.empty
         ; captured_places = Id.Map.empty
         ; symbols = Id.Map.empty
         ; prepend_early = []
