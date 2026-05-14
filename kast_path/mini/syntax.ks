@@ -28,7 +28,7 @@
 # @syntax "for" 7.5 @wrap never = "for" " " ident " " "in" " " start ".." end " " "do" " " body;
 @syntax "unwindable" 7.7 @wrap never = "unwindable" " " token: >=1000 " " body;
 @syntax "unwind" 7.7 @wrap never = "unwind" " " token: >=1000 " " "with" " " value;
-@syntax "delimited_continuation" 7.7 @wrap never = "@delimited_continuation" " " token: >=1000 " " body;
+@syntax "delimited_continuation" 7.7 @wrap never = move=("move" " ")? "@delimited_continuation" " " token: >=1000 " " body;
 @syntax "capture_continuation" 7.7 @wrap never = "@capture_continuation" " " token: >=1000 " " continuation: >=1000 " " body;
 @syntax "defer" 7.7 @wrap never = "defer" " " _;
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;

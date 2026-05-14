@@ -213,7 +213,7 @@ const resume_delimited_continuation_token = [T] @call "C" (token :: DelimitedCon
     let res :: mco_result = uninitialized;
     res = @native "mco_resume(\(token.coro))";
     @native "assert(\(res) == MCO_SUCCESS)";
-    res = @native "mco_pop(\(token.coro), \(&result), sizeof(\(result)))";
+    res = @native "mco_pop(\(token.coro), \(&result), \(@TypeInfo(T).size))";
     @native "assert(\(res) == MCO_SUCCESS)";
     result
 );

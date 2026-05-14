@@ -61,6 +61,14 @@ const Print = (
                 Print.type_name(result_ty);
                 output.write("]");
             )
+            | :DelimitedContinuationToken {
+                .repr = _,
+                .result_ty = ref result_ty,
+            } => (
+                output.write("DelimitedContinuationToken[");
+                Print.type_name(result_ty);
+                output.write("]");
+            )
             | :List {
                 .repr = _,
                 .element_ty = ref element_ty,

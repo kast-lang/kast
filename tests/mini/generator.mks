@@ -29,11 +29,11 @@ const Iterator = [T] struct {
 
 const GeneratorToIteratorResumeResult = [T] struct {
     .value :: Option[T],
-    .new_resume :: () -> GeneratorToIteratorResumeResult[T],
+    .new_resume :: Continuation[GeneratorToIteratorResumeResult[T]],
 };
 
 const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
-    let init :: GeneratorToIteratorResumeResult[T] = @delimited_continuation delim (
+    let init :: GeneratorToIteratorResumeResult[T] = move @delimited_continuation delim (
         @capture_continuation delim resume (
             {
                 .value = uninitialized,
@@ -41,7 +41,7 @@ const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
             }
         );
         with GeneratorContext[T] = {
-            .yield = (x :: T) => (
+            .yield = move (x :: T) => (
                 @capture_continuation delim resume (
                     {
                         .value = Some[T](x),
@@ -59,7 +59,7 @@ const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
     let resume = init.new_resume;
     {
         .next = move () -> Option[T] => (
-            let result = resume();
+            let result = resume_continuation[GeneratorToIteratorResumeResult[T]](resume);
             resume = result.new_resume;
             result.value
         ),
@@ -78,7 +78,7 @@ const gen_10 = () => (
         yield(i);
         i = add[Int](i, 1);
     );
-    print_String("Done yielding");
+    print_String("Done yielding\n");
 );
 
 const main = () => (
@@ -93,5 +93,5 @@ const main = () => (
             unwind loop with ();
         )
     );
-    print_String("DONE");
+    print_String("DONE\n");
 );

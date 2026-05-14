@@ -513,7 +513,7 @@ const parse_capture_continuation = (
     let { token_ast, continuation, body } = root
         |> AstHelpers.expect_three_children("token", "continuation", "body");
     let token = parse_expr(:None, token_ast);
-    if token.ty is :Ref :DelimitedContinuationToken { .result_ty, ... } then (
+    if token.ty is :DelimitedContinuationToken { .result_ty, ... } then (
         let continuation_ty :: Ir.Type = instantiate_ty(
             "Continuation",
             single_element_list(result_ty),
@@ -547,7 +547,7 @@ const parse_capture_continuation = (
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                (@current Output).write("Expected an reference to delimited continuation token, got ");
+                (@current Output).write("Expected a delimited continuation token, got ");
                 Ir.Print.type_name(&token.ty);
             ),
             .span = token_ast.span,
@@ -562,7 +562,14 @@ const parse_delimited_continuation = (
     ast :: Ast.t,
     root :: Ast.Group,
 ) -> ParsedExpr => (
-    let capture_mode = :ByRef; # TODO
+    let capture_mode = match (
+        &root.children |> Tuple.get_named_opt("move")
+    ) with (
+        | :Some _ => :Move
+        | :None => :ByRef
+    );
+    let token_ast = root |> AstHelpers.get_child_ast("token");
+    let body = root |> AstHelpers.get_child_ast("body");
     let { token_ast, body } = root
         |> AstHelpers.expect_two_children(:Some { "token", "body" });
     let token = token_ast
@@ -581,7 +588,7 @@ const parse_delimited_continuation = (
         single_element_list(result_ty),
         .span = token_ast.span,
     );
-    let token_ty = :Ref :DelimitedContinuationToken {
+    let token_ty = :DelimitedContinuationToken {
         .repr = token_ty_repr,
         .result_ty,
     };

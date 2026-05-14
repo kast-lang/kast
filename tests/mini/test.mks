@@ -1,20 +1,10 @@
-const print_String = (s :: String) => (
-    @native "printf(\"%s\", \(s.contents))";
-);
-
-const SomeContext = @context String;
-
-const foo = (ctx :: &@Context) => (
-    print_String(@current SomeContext);
-    print_String(@context.SomeContext);
-    print_String(ctx^.SomeContext);
-);
-
 const main = () => (
-    with SomeContext = "Hello, world!\n";
-    let ctx = &@context;
-    let new_ctx :: @Context = uninitialized;
-    let &@context = &new_ctx;
-    with SomeContext = "overriden\n";
-    foo(ctx);
+    let hello = "Hello\n";
+    @delimited_continuation delim (
+        let f = move () => (
+            @capture_continuation delim k ();
+        );
+        f();
+        free_closure[()](f);
+    );
 );

@@ -122,6 +122,18 @@ const parse_fn_def = (
         .parent = parent_scope,
         .vars = OrdMap.new(),
         .found_in_parent = (name, ty) => (
+            Log.debug(
+                () => (
+                    let output = @current Output;
+                    output.write("capturing ");
+                    output.write(name);
+                    output.write(" :: ");
+                    Ir.Print.type_name(&ty);
+                    output.write(" at ");
+                    Span.print(def.span);
+                    output.write("\n");
+                )
+            );
             &mut captures |> OrdMap.add(name, ty);
         ),
     };

@@ -109,6 +109,10 @@ const C = (
                 .repr = ref repr,
                 .result_ty = _,
             } => convert_ty(repr)
+            | :DelimitedContinuationToken {
+                .repr = ref repr,
+                .result_ty = _,
+            } => convert_ty(repr)
             | :List {
                 .repr = ref repr,
                 .element_ty = _,
@@ -266,7 +270,7 @@ const C = (
         let span = ir_expr^.span;
         with ExprContext = { .span };
         match ir_expr^.shape with (
-            | :Ident name => find_ident(name, .span)
+            | :Ident name => find_ident(&ir_expr^.ty, name, .span)
             | :Field { .obj = ref obj, .field } => (
                 let obj = calculate_place(obj);
                 let field_expr = :Field {
@@ -412,9 +416,15 @@ const C = (
                 Print.ty(&convert_ty(&info^.ty))
             )
         );
-        let size = :Raw ("sizeof(" + ty + ")");
-        let stride = size;
-        let alignment = :Raw ("alignof(" + ty + ")");
+        let { size, stride, alignment } = if info^.ty is :Unit then {
+            :Raw "0",
+            :Raw "0",
+            :Raw "1",
+        } else {
+            :Raw ("sizeof(" + ty + ")"),
+            :Raw ("sizeof(" + ty + ")"),
+            :Raw ("alignof(" + ty + ")"),
+        };
         let members_var = new_ident("members");
         # TODO instead of allocating at runtime we should have const array
         insert_stmt(
@@ -504,7 +514,7 @@ const C = (
         }
     );
 
-    const find_ident = (name :: String, .span :: Span) -> Place => (
+    const find_ident = (ty :: &Ir.Type, name :: String, .span :: Span) -> Place => (
         let ident_expr = match (
             &(@current FunctionContext).captures |> OrdMap.get(name)
         ) with (
@@ -522,11 +532,19 @@ const C = (
         );
         {
             .get = () => {
-                .expr = :Some ident_expr,
+                .expr = if ty^ is :Unit then (
+                    :None
+                ) else (
+                    :Some ident_expr
+                ),
                 .span,
             },
             .set = value => (
-                insert_stmt(:Assign { .assignee = ident_expr, .value });
+                if ty^ is :Unit then (
+                    insert_stmt(:Expr value);
+                ) else (
+                    insert_stmt(:Assign { .assignee = ident_expr, .value });
+                );
             ),
         }
     );
@@ -589,10 +607,17 @@ const C = (
                 :Stmt block
             )
             | :Claim ref place => return calculate_place(place).get()
-            | :Ref ref place => return {
-                .expr = :Some :Ref pure(calculate_place(place).get()),
-                .span = span,
-            }
+            | :Ref ref place_expr => (
+                let place = calculate_place(place_expr);
+                if place_expr^.ty is :Unit then (
+                    return { .expr = :Some :Raw "NULL", .span }
+                ) else (
+                    return {
+                        .expr = :Some :Ref pure(place.get()),
+                        .span,
+                    }
+                )
+            )
             | :Native { .parts = ref parts } => (
                 let mut raw_parts = ArrayList.new();
                 let mut stmt = false;
@@ -723,6 +748,10 @@ const C = (
                 }
             )
             | :Let { .name, .value = ref value } => (
+                if value^.ty is :Unit then (
+                    calculate(value);
+                    return void(span);
+                );
                 if value^.shape is :Uninitialized then (
                     insert_stmt(
                         :LetVar {
@@ -1022,7 +1051,7 @@ const C = (
                 let captured_ty_name = new_ident("delimited_captures");
                 let mut captured_ty_fields = (
                     let mut fields = captured_to_field_defs(capture_mode, captures);
-                    make_sure_all_types_are_defined(token_ty_repr);
+                    make_sure_all_type_dependencies_are_complete_if_needed(token_ty_repr);
                     let token_field = {
                         .name = token_name,
                         .ty = convert_ty(token_ty_repr),
@@ -1209,7 +1238,7 @@ const C = (
                 .resume_fn,
                 .body = ref body,
             } => (
-                make_sure_all_types_are_defined(continuation_ty_repr);
+                make_sure_all_type_dependencies_are_complete_if_needed(continuation_ty_repr);
                 let continuation_name = ident(continuation_name);
                 let token = pure(calculate(token));
                 let coro :: Ast.Expr = :Field {
@@ -1274,7 +1303,7 @@ const C = (
             )
             | :ConstructTypeInfo ref ty => construct_type_info(ty)
             | :Fn ref fn_def => (
-                make_sure_all_types_are_defined(&ir_expr^.ty);
+                make_sure_all_type_dependencies_are_complete_if_needed(&ir_expr^.ty);
                 let name = new_ident("closure");
                 add_fn(name.name, fn_def);
                 let { f :: Ast.Expr, captured :: Ast.Expr } = if (
@@ -1403,8 +1432,8 @@ const C = (
                     .ty = captured_ty,
                     .fields = (
                         let mut fields = ArrayList.new();
-                        for &{ .key = name, .value = _ty } in captures |> OrdMap.iter do (
-                            let value = pure(find_ident(name, .span).get());
+                        for &{ .key = name, .value = ref ty } in captures |> OrdMap.iter do (
+                            let value = pure(find_ident(ty, name, .span).get());
                             let value = match capture_mode with (
                                 | :Move => value
                                 | :ByRef => :Ref value
@@ -1428,7 +1457,7 @@ const C = (
     ) -> ArrayList.t[Ast.FieldDef] => (
         let mut fields = ArrayList.new();
         for &{ .key = name, .value = ref ty } in captures |> OrdMap.iter do (
-            make_sure_all_types_are_defined(ty);
+            make_sure_all_type_dependencies_are_complete_if_needed(ty);
             let ty = convert_ty(ty);
             let ty = match capture_mode with (
                 | :Move => ty
@@ -1532,14 +1561,14 @@ const C = (
                 );
         );
         for arg in &def^.args |> ArrayList.iter do (
-            make_sure_all_types_are_defined(&arg^.ty);
+            make_sure_all_type_dependencies_are_complete_if_needed(&arg^.ty);
             let arg :: Ast.FnArg = {
                 .name = ident(arg^.name),
                 .ty = convert_ty(&arg^.ty),
             };
             &mut args |> ArrayList.push_back(arg);
         );
-        make_sure_all_types_are_defined(&def^.result_ty);
+        make_sure_all_type_dependencies_are_complete_if_needed(&def^.result_ty);
         add_fn_impl(
             .ctx_var,
             .capture_mode = def^.capture_mode,
@@ -1615,7 +1644,7 @@ const C = (
                 .result = def^.result_ty,
             };
             let fn_ty :: Ir.Type = :Fn fn_ty;
-            make_sure_all_types_are_defined(&fn_ty);
+            make_sure_all_type_dependencies_are_complete_if_needed(&fn_ty);
             let static = {
                 .@"const" = true,
                 .ty = convert_ty(&fn_ty),
@@ -1642,15 +1671,10 @@ const C = (
         );
     );
 
-    const make_sure_all_types_are_defined = (ty :: &Ir.Type) => (
+    const make_sure_all_type_dependencies_are_complete_if_needed = (ty :: &Ir.Type) => (
         match ty^ with (
             | :Any => ()
-            | :Ref ref inner => (
-                # type can be forward declared for pointers
-                # make_sure_all_types_are_defined(inner)
-
-
-            )
+            | :Ref _ => ()
             | :Unit => ()
             | :Int => ()
             | :UInt => ()
@@ -1666,16 +1690,6 @@ const C = (
                 type_def(name, def);
             )
             | :Fn fn_ty => (
-                let {
-                    .is_closure = _,
-                    .call_convention = _,
-                    .args = ref args,
-                    .result = ref result,
-                } = fn_ty;
-                for arg in args |> ArrayList.iter do (
-                    make_sure_all_types_are_defined(arg);
-                );
-                make_sure_all_types_are_defined(result);
                 &mut (@current Context).fn_types
                     |> OrdMap.get_or_init(ty^, () => init_fn_type(fn_ty));
             )
@@ -1684,19 +1698,25 @@ const C = (
                 .repr = ref repr,
                 .result_ty = _,
             } => (
-                make_sure_all_types_are_defined(repr);
+                make_sure_all_type_dependencies_are_complete_if_needed(repr);
+            )
+            | :DelimitedContinuationToken {
+                .repr = ref repr,
+                .result_ty = _,
+            } => (
+                make_sure_all_type_dependencies_are_complete_if_needed(repr);
             )
             | :List {
                 .repr = ref repr,
                 .element_ty = _,
             } => (
-                make_sure_all_types_are_defined(repr);
+                make_sure_all_type_dependencies_are_complete_if_needed(repr);
             )
             | :ContextObject => (
                 let mut ctx = @current Context;
                 let mut ctx_fields = ArrayList.new();
                 for &{ .key = name, .value = ref ty } in &ctx.program.contexts |> OrdMap.iter do (
-                    make_sure_all_types_are_defined(ty);
+                    make_sure_all_type_dependencies_are_complete_if_needed(ty);
                     let field = {
                         .name = ident(name),
                         .ty = convert_ty(ty),
@@ -1738,16 +1758,16 @@ const C = (
             | :Enum _ => ()
             | :Union { .variants = ref variants } => (
                 for &{ .key = _, .value = ref ty } in variants |> OrdMap.iter do (
-                    make_sure_all_types_are_defined(ty);
+                    make_sure_all_type_dependencies_are_complete_if_needed(ty);
                 );
             )
             | :Struct { .fields = ref fields } => (
                 for &{ .key = _, .value = ref ty } in fields |> OrdMap.iter do (
-                    make_sure_all_types_are_defined(ty);
+                    make_sure_all_type_dependencies_are_complete_if_needed(ty);
                 );
             )
             | :Alias ref ty => (
-                make_sure_all_types_are_defined(ty);
+                make_sure_all_type_dependencies_are_complete_if_needed(ty);
             )
         );
         let def :: Ast.TyDefShape = match def^.shape with (
@@ -1823,7 +1843,7 @@ const C = (
         &mut ctx.result.includes |> OrdSet.add("<stdbool.h>");
         &mut ctx.result.includes |> OrdSet.add("<assert.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdlib.h>");
-        make_sure_all_types_are_defined(&(:ContextObject));
+        make_sure_all_type_dependencies_are_complete_if_needed(&(:ContextObject));
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
             type_def(name, ty_def);
         );
