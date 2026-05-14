@@ -73,10 +73,12 @@
             hyperfine
             clang
             gcc
+            gdb
             boehmgc
             raylib
             emscripten
             caddy
+            valgrind
           ];
           shellHook = ''
             echo Hello from Kast dev shell

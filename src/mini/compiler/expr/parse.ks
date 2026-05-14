@@ -345,6 +345,7 @@ const parse_fn = (
         .parent_scope = :Some (@current ScopeContext),
     );
     let fn_ty = {
+        .is_closure = true, # TODO
         .call_convention = :None,
         .args = (
             let mut args = ArrayList.new();
@@ -513,11 +514,11 @@ const parse_capture_continuation = (
         |> AstHelpers.expect_three_children("token", "continuation", "body");
     let token = parse_expr(:None, token_ast);
     if token.ty is :Ref :DelimitedContinuationToken { .result_ty, ... } then (
-        let continuation_ty :: Ir.Type = :Fn {
-            .call_convention = :None,
-            .args = ArrayList.new(), # TODO
-            .result = result_ty,
-        };
+        let continuation_ty :: Ir.Type = instantiate_ty(
+            "Continuation",
+            single_element_list(result_ty),
+            .span = ast.span,
+        );
         let continuation = continuation |> AstHelpers.expect_ident;
         with ScopeContext = {
             .parent = :Some (@current ScopeContext),
@@ -530,7 +531,13 @@ const parse_capture_continuation = (
         {
             .shape = :Expr :CaptureContinuation {
                 .token,
+                .continuation_ty_repr = continuation_ty,
                 .continuation,
+                .resume_fn = instantiate(
+                    "resume_delimited_continuation_token", 
+                    single_element_list(result_ty),
+                    .span = ast.span,
+                ).name,
                 .body,
             },
             .ty = :Unit,
@@ -586,7 +593,7 @@ const parse_delimited_continuation = (
             .capture_mode,
             .captures,
             .resume_fn = instantiate(
-                "resume_delimited_continuation", 
+                "resume_delimited_continuation_token", 
                 single_element_list(result_ty),
                 .span = ast.span,
             ).name,

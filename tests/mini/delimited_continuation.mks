@@ -3,11 +3,17 @@ const foo = () -> Int => 67; # TODO this is enforcing the type for closure to ex
 const main = () => (
     let resume :: () -> Int = uninitialized;
 
+    let ffs :: Int = 456;
+
     let x :: Int = @delimited_continuation a (
         print_String("capturing continuation\n");
         @capture_continuation a k (
-            resume = k;
-            456
+            resume = move () -> Int => (
+                print_String("resuming continuation\n");
+                resume_continuation[Int](k)
+            );
+            print_String("resume assigned\n");
+            ffs
         );
         print_String("resumed\n");
         123
@@ -15,6 +21,7 @@ const main = () => (
     print_Int(x);
     print_String("\n");
     x = resume();
+    free_closure[Int](resume);
     print_Int(x);
     print_String("\n");
 );

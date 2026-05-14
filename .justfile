@@ -47,7 +47,7 @@ raylib-web *args:
 
 #--shell-file ../shell.html \
 
-c path *args:
+compile-c path:
     kast mini \
         compile --target c \
         --prepend kast_path/mini/backends/c/runtime.c \
@@ -63,6 +63,9 @@ c path *args:
         -fanalyzer \
         -fsanitize=address \
         -fsanitize=undefined 
+
+c path *args:
+    just compile-c {{path}}
     ./target/compiled {{args}}
 
 js path *args:

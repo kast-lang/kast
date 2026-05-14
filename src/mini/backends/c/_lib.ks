@@ -135,15 +135,18 @@ const C = (
         )
     );
 
-    const init_fn_type = (f_ty :: Ir.FnType) -> Ast.Ident => (
+    const init_fn_type = (f_ty :: Ir.FnType) -> Ast.Ident => with_return (
         let mut ctx = @current Context;
         let {
+            .is_closure,
             .call_convention,
             .args = ref args,
             .result = ref result,
         } = f_ty;
         let mut c_args = ArrayList.new();
-        &mut c_args |> ArrayList.push_back(:Pointer :Void);
+        if is_closure then (
+            &mut c_args |> ArrayList.push_back(:Pointer :Void);
+        );
         if call_convention is :None then (
             &mut c_args
                 |> ArrayList.push_back(
@@ -163,6 +166,9 @@ const C = (
             },
         };
         &mut ctx.result.types |> ArrayList.push_back(raw_ty_def);
+        if not is_closure then (
+            return raw_fn_type_name;
+        );
         let fn_type_name = new_ident("fn_type");
         let ty_def = {
             .name = fn_type_name,
@@ -773,6 +779,7 @@ const C = (
                 );
                 let f = pure(calculate(f));
                 let mut args = ArrayList.new();
+                if f_ty.is_closure then (
                 &mut args
                     |> ArrayList.push_back(
                         :Field {
@@ -780,10 +787,13 @@ const C = (
                             .field = ident("captured"),
                         }
                     );
-                let f = :Field {
-                    .obj = f,
-                    .field = ident("f"),
-                };
+                );
+                let f = if f_ty.is_closure then (
+                    :Field {
+                        .obj = f,
+                        .field = ident("f"),
+                    }
+                ) else f;
                 if f_ty.call_convention is :None then (
                     &mut args |> ArrayList.push_back(:Ident (@current ScopeContextVar).ident);
                 );
@@ -1060,51 +1070,62 @@ const C = (
                             ctx_var,
                             :Field { .obj = :Deref :Ident ident("captured"), .field = ctx_var },
                         );
+                        let_var(
+                            token_ty_repr,
+                            token_name,
+                            :Field { .obj = :Deref :Ident ident("captured"), .field = token_name },
+                        );
                     ),
                     .body,
                 );
-                &mut ctx.result.fns |> ArrayList.push_back({
-                    .signature = {
-                        .name = coro_fn,
-                        .args = single_element_list({ .name = ident("co"), .ty = :Raw "mco_coro*" }),
-                        .result_ty = :Void,
-                    },
-                    .body = (
-                        let mut block = new_block();
-                        with Scope = { .block = &mut block };
-                        let call :: Ast.Expr = :Apply {
-                            .f = :Ident body_fn_ident,
-                            .args = single_element_list(:Ident ident("co")),
-                        };
-                        if ir_expr^.ty is :Unit then (
-                            insert_stmt(:Expr call);
-                        ) else (
-                            insert_stmt(
-                                :LetVar {
-                                    .ty = convert_ty(&ir_expr^.ty),
-                                    .ident = ident("result"),
-                                    .value = :Some call,
-                                }
-                            );
-                            insert_mco_stmt(
-                                :Apply {
-                                    .f = :Ident ident("mco_push"),
-                                    .args = (
-                                        let mut args = ArrayList.new();
-                                        &mut args |> ArrayList.push_back(:Ident ident("co"));
-                                        &mut args |> ArrayList.push_back(:Ref :Ident ident("result"));
-                                        &mut args |> ArrayList.push_back(:Apply {
-                                            .f = :Ident ident("sizeof"),
-                                            .args = single_element_list(:Ident ident("result")),
-                                        });
-                                        args
-                                    ),
-                                }
-                            );
-                        );
-                        block
-                    ),
-                });
+                &mut ctx.result.fns
+                    |> ArrayList.push_back(
+                        {
+                            .signature = {
+                                .name = coro_fn,
+                                .args = single_element_list({ .name = ident("co"), .ty = :Raw "mco_coro*" }),
+                                .result_ty = :Void,
+                            },
+                            .body = (
+                                let mut block = new_block();
+                                with Scope = { .block = &mut block };
+                                let call :: Ast.Expr = :Apply {
+                                    .f = :Ident body_fn_ident,
+                                    .args = single_element_list(:Ident ident("co")),
+                                };
+                                if ir_expr^.ty is :Unit then (
+                                    insert_stmt(:Expr call);
+                                ) else (
+                                    insert_stmt(
+                                        :LetVar {
+                                            .ty = convert_ty(&ir_expr^.ty),
+                                            .ident = ident("result"),
+                                            .value = :Some call,
+                                        }
+                                    );
+                                    insert_mco_stmt(
+                                        :Apply {
+                                            .f = :Ident ident("mco_push"),
+                                            .args = (
+                                                let mut args = ArrayList.new();
+                                                &mut args |> ArrayList.push_back(:Ident ident("co"));
+                                                &mut args |> ArrayList.push_back(:Ref :Ident ident("result"));
+                                                &mut args
+                                                    |> ArrayList.push_back(
+                                                        :Apply {
+                                                            .f = :Ident ident("sizeof"),
+                                                            .args = single_element_list(:Ident ident("result")),
+                                                        }
+                                                    );
+                                                args
+                                            ),
+                                        }
+                                    );
+                                );
+                                block
+                            ),
+                        }
+                    );
                 let desc = new_ident("desc");
                 insert_stmt(
                     :LetVar {
@@ -1183,9 +1204,69 @@ const C = (
             )
             | :CaptureContinuation {
                 .token = ref token,
+                .continuation_ty_repr = ref continuation_ty_repr,
                 .continuation = continuation_name,
+                .resume_fn,
                 .body = ref body,
             } => (
+                make_sure_all_types_are_defined(continuation_ty_repr);
+                let continuation_name = ident(continuation_name);
+                let token = pure(calculate(token));
+                let coro :: Ast.Expr = :Field {
+                    .obj = token,
+                    .field = ident("coro"),
+                };
+                let_var(
+                    continuation_ty_repr,
+                    continuation_name,
+                    :CompoundLiteral {
+                        .ty = convert_ty(continuation_ty_repr),
+                        .fields = (
+                            let mut fields = ArrayList.new();
+                            let token_field = {
+                                .name = ident("token"),
+                                .value = token,
+                            };
+                            &mut fields |> ArrayList.push_back(token_field);
+                            let f_field = {
+                                .name = ident("f"),
+                                .value = :Ident ident(resume_fn + "_fn"),
+                            };
+                            &mut fields |> ArrayList.push_back(f_field);
+                            fields
+                        ),
+                    },
+                );
+                if body^.ty is :Unit then (
+                    calculate(body);
+                ) else (
+                    let result_var = new_ident("result");
+                    let_var(&body^.ty, result_var, pure(calculate(body)));
+                    insert_mco_stmt(
+                        :Apply {
+                            .f = :Ident ident("mco_push"),
+                            .args = (
+                                let mut args = ArrayList.new();
+                                &mut args |> ArrayList.push_back(coro);
+                                &mut args |> ArrayList.push_back(:Ref :Ident result_var);
+                                &mut args
+                                    |> ArrayList.push_back(
+                                        :Apply {
+                                            .f = :Ident ident("sizeof"),
+                                            .args = single_element_list(:Ident result_var),
+                                        }
+                                    );
+                                args
+                            ),
+                        }
+                    );
+                );
+                insert_mco_stmt(
+                    :Apply {
+                        .f = :Ident ident("mco_yield"),
+                        .args = single_element_list(coro),
+                    }
+                );
                 return {
                     .span,
                     .expr = :Some :Ident ident("TODO")
@@ -1522,6 +1603,7 @@ const C = (
             };
             &mut ctx.result.fns |> ArrayList.push_back(fn_as_closure);
             let fn_ty :: Ir.FnType = {
+                .is_closure = true, # TODO
                 .call_convention = def^.call_convention,
                 .args = (
                     let mut args = ArrayList.new();
@@ -1585,6 +1667,7 @@ const C = (
             )
             | :Fn fn_ty => (
                 let {
+                    .is_closure = _,
                     .call_convention = _,
                     .args = ref args,
                     .result = ref result,

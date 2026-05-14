@@ -55,6 +55,16 @@ const Tuple = (
         )
     );
 
+    const has_named = [T] (
+        self :: &Tuple.t[T],
+        name :: String,
+    ) -> Bool => (
+        match &self^.named |> OrdMap.get(name) with (
+            | :Some _ => true
+            | :None => false
+        )
+    );
+
     const get_opt = [T] (
         self :: &Tuple.t[T],
         member :: Member,

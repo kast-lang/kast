@@ -57,6 +57,7 @@ const process_toplevel_fn_declaration = (
         | :Some ast => (@current Compiler).parse_type(ast)
     );
     let fn_type = {
+        .is_closure = true, # TODO
         .call_convention,
         .args = arg_types,
         .result = result_ty,

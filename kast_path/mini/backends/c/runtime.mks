@@ -208,7 +208,7 @@ const DelimitedContinuationToken = [T] struct {
     .coro :: &mco_coro,
 };
 
-const resume_delimited_continuation = [T] @call "C" (token :: DelimitedContinuationToken[T]) -> T => (
+const resume_delimited_continuation_token = [T] @call "C" (token :: DelimitedContinuationToken[T]) -> T => (
     let result :: T = uninitialized;
     let res :: mco_result = uninitialized;
     res = @native "mco_resume(\(token.coro))";
@@ -216,4 +216,17 @@ const resume_delimited_continuation = [T] @call "C" (token :: DelimitedContinuat
     res = @native "mco_pop(\(token.coro), \(&result), sizeof(\(result)))";
     @native "assert(\(res) == MCO_SUCCESS)";
     result
+);
+
+const Continuation = [R] struct {
+    .token :: DelimitedContinuationToken[R],
+    .f :: fn @call "C" (DelimitedContinuationToken[R]) -> R,
+};
+
+const resume_continuation = [R] (continuation :: Continuation[R]) -> R => (
+    continuation.f(continuation.token)
+);
+
+const free_closure = [R] (f :: () -> R) => (
+    @native "stmt: if (\(f).captured) free(\(f).captured)";
 );

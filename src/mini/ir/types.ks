@@ -24,6 +24,7 @@ const TypeDef = newtype {
 };
 
 const FnType = newtype {
+    .is_closure :: Bool,
     .call_convention :: Option.t[String],
     .args :: ArrayList.t[Type],
     .result :: Type,
@@ -135,6 +136,10 @@ const compare_fn_type = (
     a :: &FnType,
     b :: &FnType,
 ) -> std.cmp.Ordering => with_return (
+    let cmp = std.cmp.default_compare[Bool](a^.is_closure, b^.is_closure);
+    if cmp is :Equal then () else (
+        return cmp;
+    );
     match { a^.call_convention, b^.call_convention } with (
         | { :None, :None } => ()
         | { :None, _ } => return :Less
@@ -248,7 +253,9 @@ const ExprShape = newtype (
     }
     | :CaptureContinuation {
         .token :: Expr,
+        .continuation_ty_repr :: Type,
         .continuation :: String,
+        .resume_fn :: String,
         .body :: Expr,
     }
     | :Defer Expr

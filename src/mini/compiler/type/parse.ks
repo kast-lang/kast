@@ -74,6 +74,7 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                             |> AstHelpers.expect_string
                     )
                 );
+                let is_closure = not (&root.children |> Tuple.has_named("raw_fn"));
                 let arg_asts = (
                     &root.children
                         |> Tuple.get_named("args")
@@ -105,7 +106,12 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                     &mut args |> ArrayList.push_back(parse_type(arg_ast));
                 );
                 let result = parse_type(result);
-                return :Fn { .call_convention, .args, .result };
+                return :Fn {
+                    .is_closure,
+                    .call_convention,
+                    .args,
+                    .result,
+                };
             );
             if rule.name == "scope" then (
                 let inner = root

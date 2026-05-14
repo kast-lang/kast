@@ -468,13 +468,14 @@ const Compiler = (
                 )
             )
             | :Ref referenced => :Ref resolve_type_aliases(referenced)
-            | :Fn { .call_convention, .args, .result } => (
+            | :Fn { .is_closure, .call_convention, .args, .result } => (
                 let mut resolved_args = ArrayList.new();
                 for &arg in &args |> ArrayList.iter do (
                     &mut resolved_args |> ArrayList.push_back(resolve_type_aliases(arg));
                 );
                 let result = resolve_type_aliases(result);
                 :Fn {
+                    .is_closure,
                     .call_convention,
                     .args = resolved_args,
                     .result = resolve_type_aliases(result),
