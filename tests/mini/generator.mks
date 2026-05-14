@@ -28,7 +28,8 @@ const Iterator = [T] struct {
 };
 
 const GeneratorToIteratorResumeResult = [T] struct {
-    .value :: Option[T],
+    .finished :: Bool,
+    .value :: T,
     .new_resume :: Continuation[GeneratorToIteratorResumeResult[T]],
 };
 
@@ -36,6 +37,7 @@ const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
     let init :: GeneratorToIteratorResumeResult[T] = move @delimited_continuation delim (
         @capture_continuation delim resume (
             {
+                .finished = uninitialized,
                 .value = uninitialized,
                 .new_resume = resume,
             }
@@ -44,7 +46,8 @@ const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
             .yield = move (x :: T) => (
                 @capture_continuation delim resume (
                     {
-                        .value = Some[T](x),
+                        .finished = false,
+                        .value = x,
                         .new_resume = resume,
                     }
                 );
@@ -52,7 +55,8 @@ const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
         };
         gen();
         {
-            .value = None[T](),
+            .finished = true,
+            .value = uninitialized,
             .new_resume = uninitialized,
         }
     );
@@ -61,7 +65,11 @@ const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
         .next = move () -> Option[T] => (
             let result = resume_continuation[GeneratorToIteratorResumeResult[T]](resume);
             resume = result.new_resume;
-            result.value
+            if result.finished then (
+                None[T]()
+            ) else (
+                Some[T](result.value)
+            )
         ),
     }
 );
