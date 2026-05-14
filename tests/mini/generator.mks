@@ -4,8 +4,8 @@ const GeneratorHandler = [T] struct {
     .yield :: (x :: T) -> (),
 };
 
-const yield = (x :: Int) => (
-    (@current GeneratorContext[Int]).yield(x)
+const yield = [T] (x :: T) => (
+    (@current GeneratorContext[T]).yield(x)
 );
 
 const Option = [T] struct {
@@ -83,7 +83,7 @@ const gen_10 = () => (
         print_String("yielding ");
         print_Int(i);
         print_String("\n");
-        yield(i);
+        yield[Int](i);
         i = add[Int](i, 1);
     );
     print_String("Done yielding\n");
