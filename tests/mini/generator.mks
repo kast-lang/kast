@@ -1,0 +1,97 @@
+const GeneratorContext = [T] @context GeneratorHandler[T];
+
+const GeneratorHandler = [T] struct {
+    .yield :: (x :: T) -> (),
+};
+
+const yield = (x :: Int) => (
+    (@current GeneratorContext[Int]).yield(x)
+);
+
+const Option = [T] struct {
+    .is_some :: Bool,
+    .value :: T,
+};
+
+const None = [T] () -> Option[T] => {
+    .is_some = false,
+    .value = uninitialized,
+};
+
+const Some = [T] (value :: T) -> Option[T] => {
+    .is_some = true,
+    .value = value,
+};
+
+const Iterator = [T] struct {
+    .next :: () -> Option[T],
+};
+
+const GeneratorToIteratorResumeResult = [T] struct {
+    .value :: Option[T],
+    .new_resume :: () -> GeneratorToIteratorResumeResult[T],
+};
+
+const generator_to_iterator = [T] (gen :: () -> ()) -> Iterator[T] => (
+    let init :: GeneratorToIteratorResumeResult[T] = @delimited_continuation delim (
+        @capture_continuation delim resume (
+            {
+                .value = uninitialized,
+                .new_resume = resume,
+            }
+        );
+        with GeneratorContext[T] = {
+            .yield = (x :: T) => (
+                @capture_continuation delim resume (
+                    {
+                        .value = Some[T](x),
+                        .new_resume = resume,
+                    }
+                );
+            ),
+        };
+        gen();
+        {
+            .value = None[T](),
+            .new_resume = uninitialized,
+        }
+    );
+    let resume = init.new_resume;
+    {
+        .next = move () -> Option[T] => (
+            let result = resume();
+            resume = result.new_resume;
+            result.value
+        ),
+    }
+);
+
+const gen_10 = () => (
+    let i :: Int = 0;
+    unwindable loop @loop (
+        if greater_or_equal[Int](i, 10) then (
+            unwind loop with ();
+        );
+        print_String("yielding ");
+        print_Int(i);
+        print_String("\n");
+        yield(i);
+        i = add[Int](i, 1);
+    );
+    print_String("Done yielding");
+);
+
+const main = () => (
+    let iter = generator_to_iterator[Int](gen_10);
+    unwindable loop @loop (
+        let next = iter.next();
+        if next.is_some then (
+            print_String("iter next = ");
+            print_Int(next.value);
+            print_String("\n");
+        ) else (
+            unwind loop with ();
+        )
+    );
+    print_String("DONE");
+);

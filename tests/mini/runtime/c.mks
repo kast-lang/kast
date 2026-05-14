@@ -1,9 +1,14 @@
-const print_string = (s :: StringView) -> () => (
+const print_String = (s :: StringView) -> () => (
     @native "#include <stdio.h>";
     @native "fwrite(\(s.contents), sizeof(char), \(s.length), stdout)";
 );
 
-const print_int32 = (x :: Int32) -> () => (
+const print_Int = (x :: Int) -> () => (
+    @native "#include <stdio.h>";
+    @native "printf(\"%d\", \(x))";
+);
+
+const print_Int32 = (x :: Int32) -> () => (
     @native "#include <stdio.h>";
     @native "printf(\"%d\", \(x))";
 );

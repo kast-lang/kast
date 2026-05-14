@@ -1,0 +1,20 @@
+const foo = () -> Int => 67; # TODO this is enforcing the type for closure to exist
+
+const main = () => (
+    let resume :: () -> Int = uninitialized;
+
+    let x :: Int = @delimited_continuation a (
+        print_String("capturing continuation\n");
+        @capture_continuation a k (
+            resume = k;
+            456
+        );
+        print_String("resumed\n");
+        123
+    );
+    print_Int(x);
+    print_String("\n");
+    x = resume();
+    print_Int(x);
+    print_String("\n");
+);

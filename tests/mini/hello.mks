@@ -9,8 +9,8 @@ const fib = [T] (n :: T) -> T => (
 const TEN :: Int32 = 10;
 
 const main = () -> () => (
-    print_string("fib(10) = ");
-    print_int32(fib[Int32](TEN));
+    print_String("fib(10) = ");
+    print_Int32(fib[Int32](TEN));
     let arr :: List[Int] = [ 1, 2, 3, 4, 5 ];
-    print_string("\n");
+    print_String("\n");
 );

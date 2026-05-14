@@ -504,6 +504,100 @@ const parse_unwindable = (
     }
 );
 
+const parse_capture_continuation = (
+    expected_ty :: Option.t[Ir.Type],
+    ast :: Ast.t,
+    root :: Ast.Group,
+) -> ParsedExpr => (
+    let { token_ast, continuation, body } = root
+        |> AstHelpers.expect_three_children("token", "continuation", "body");
+    let token = parse_expr(:None, token_ast);
+    if token.ty is :Ref :DelimitedContinuationToken { .result_ty, ... } then (
+        let continuation_ty :: Ir.Type = :Fn {
+            .call_convention = :None,
+            .args = ArrayList.new(), # TODO
+            .result = result_ty,
+        };
+        let continuation = continuation |> AstHelpers.expect_ident;
+        with ScopeContext = {
+            .parent = :Some (@current ScopeContext),
+            .vars = OrdMap.new(),
+            .found_in_parent = (...) => (),
+        };
+        &mut (@current ScopeContext).vars
+            |> OrdMap.add(continuation, continuation_ty);
+        let body = parse_expr(:Some result_ty, body);
+        {
+            .shape = :Expr :CaptureContinuation {
+                .token,
+                .continuation,
+                .body,
+            },
+            .ty = :Unit,
+        }
+    ) else (
+        let diagnostic = {
+            .severity = :Error,
+            .source = :Compiler,
+            .message = () => (
+                (@current Output).write("Expected an reference to delimited continuation token, got ");
+                Ir.Print.type_name(&token.ty);
+            ),
+            .span = token_ast.span,
+            .related = ArrayList.new(),
+        };
+        Diagnostic.report_and_unwind(diagnostic)
+    )
+);
+
+const parse_delimited_continuation = (
+    expected_ty :: Option.t[Ir.Type],
+    ast :: Ast.t,
+    root :: Ast.Group,
+) -> ParsedExpr => (
+    let capture_mode = :ByRef; # TODO
+    let { token_ast, body } = root
+        |> AstHelpers.expect_two_children(:Some { "token", "body" });
+    let token = token_ast
+        |> AstHelpers.expect_ident;
+    let mut captures = OrdMap.new();
+    with ScopeContext = {
+        .parent = :Some (@current ScopeContext),
+        .vars = OrdMap.new(),
+        .found_in_parent = (name, ty) => (
+            &mut captures |> OrdMap.add(name, ty);
+        ),
+    };
+    let result_ty = expected_ty |> Option.unwrap_or(:Unit);
+    let token_ty_repr = instantiate_ty(
+        "DelimitedContinuationToken",
+        single_element_list(result_ty),
+        .span = token_ast.span,
+    );
+    let token_ty = :Ref :DelimitedContinuationToken {
+        .repr = token_ty_repr,
+        .result_ty,
+    };
+    &mut (@current ScopeContext).vars
+        |> OrdMap.add(token, token_ty);
+    let body = parse_expr(:Some result_ty, body);
+    {
+        .shape = :Expr :DelimitedContinuation {
+            .capture_mode,
+            .captures,
+            .resume_fn = instantiate(
+                "resume_delimited_continuation", 
+                single_element_list(result_ty),
+                .span = ast.span,
+            ).name,
+            .token_ty_repr,
+            .token,
+            .body,
+        },
+        .ty = result_ty,
+    }
+);
+
 const parse_loop = (
     expected_ty :: Option.t[Ir.Type],
     ast :: Ast.t,
@@ -801,6 +895,8 @@ const parsers = (
     &mut map |> OrdMap.add("context_obj", parse_context_obj);
     &mut map |> OrdMap.add("true", (...) => { .shape = :Expr :Literal :Bool true, .ty = :Bool });
     &mut map |> OrdMap.add("false", (...) => { .shape = :Expr :Literal :Bool false, .ty = :Bool });
+    &mut map |> OrdMap.add("delimited_continuation", parse_delimited_continuation);
+    &mut map |> OrdMap.add("capture_continuation", parse_capture_continuation);
     map
 );
 

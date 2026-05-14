@@ -56,6 +56,7 @@ c path *args:
         {{path}} \
         > target/compiled.c
     gcc target/compiled.c \
+        -Ideps/minicoro \
         -lgc \
         -o target/compiled \
         -ggdb \

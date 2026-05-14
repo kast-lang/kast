@@ -3,7 +3,7 @@ const MemberOffsetOrName = type UInt;
 const initialize_offset_or_name = @call "C" (
     name :: String,
 ) -> MemberOffsetOrName => (
-    @native "0"
+    0
 );
 
 const MemberInfo = struct {
@@ -196,4 +196,24 @@ const UnwindToken = [T] struct {
 const is_unwinding_with = @call "C" (raw :: RawUnwindToken) -> Bool => (
     let unwinding :: RawUnwindToken = @native "current_unwinding_raw_token";
     equal[Int](raw.id, unwinding.id)
-)
+);
+
+@native
+const mco_coro = @opaque_type;
+
+@native
+const mco_result = @opaque_type;
+
+const DelimitedContinuationToken = [T] struct {
+    .coro :: &mco_coro,
+};
+
+const resume_delimited_continuation = [T] @call "C" (token :: DelimitedContinuationToken[T]) -> T => (
+    let result :: T = uninitialized;
+    let res :: mco_result = uninitialized;
+    res = @native "mco_resume(\(token.coro))";
+    @native "assert(\(res) == MCO_SUCCESS)";
+    res = @native "mco_pop(\(token.coro), \(&result), sizeof(\(result)))";
+    @native "assert(\(res) == MCO_SUCCESS)";
+    result
+);

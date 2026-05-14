@@ -2,7 +2,11 @@
 //
 // #define malloc GC_MALLOC
 
-typedef struct RawUnwindToken {
+#define MINICORO_IMPL
+#include "minicoro.h"
+
+typedef struct RawUnwindToken
+{
   int id;
 } RawUnwindToken;
 

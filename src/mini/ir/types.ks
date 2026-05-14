@@ -54,6 +54,10 @@ const Type = newtype (
         .repr :: Type,
         .result_ty :: Type,
     }
+    | :DelimitedContinuationToken {
+        .repr :: Type,
+        .result_ty :: Type,
+    }
     | :ContextObject
 );
 # TODO derive
@@ -116,6 +120,11 @@ const compare_type = (
         )
         | { :UnwindToken _, _ } => :Less
         | { _, :UnwindToken _ } => :Greater
+        | { :DelimitedContinuationToken ref a, :DelimitedContinuationToken ref b } => (
+            compare_type(&a^.result_ty, &b^.result_ty)
+        )
+        | { :DelimitedContinuationToken _, _ } => :Less
+        | { _, :DelimitedContinuationToken _ } => :Greater
         | { :ContextObject, :ContextObject } => :Equal
         | { :ContextObject, _ } => :Less
         | { _, :ContextObject } => :Greater
@@ -228,6 +237,19 @@ const ExprShape = newtype (
     | :Unwind {
         .token :: Expr,
         .value :: Expr,
+    }
+    | :DelimitedContinuation {
+        .capture_mode :: CaptureMode,
+        .captures :: OrdMap.t[String, Type],
+        .token_ty_repr :: Type,
+        .resume_fn :: String,
+        .token :: String,
+        .body :: Expr,
+    }
+    | :CaptureContinuation {
+        .token :: Expr,
+        .continuation :: String,
+        .body :: Expr,
     }
     | :Defer Expr
     | :List ArrayList.t[Expr]
