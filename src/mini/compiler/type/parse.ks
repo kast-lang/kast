@@ -128,16 +128,20 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                 if name == "Int" then return :Int;
                 if name == "UInt" then return :UInt;
                 if name |> String.strip_prefix(.prefix = "UInt") is :Some bits then (
-                    return :IntSpecific {
-                        .signed = false,
-                        .bits = parse(bits),
-                    };
+                    if bits |> String.iter |> std.iter.all(Char.is_ascii_digit) then (
+                        return :IntSpecific {
+                            .signed = false,
+                            .bits = parse(bits),
+                        };
+                    );
                 );
                 if name |> String.strip_prefix(.prefix = "Int") is :Some bits then (
-                    return :IntSpecific {
-                        .signed = true,
-                        .bits = parse(bits),
-                    };
+                    if bits |> String.iter |> std.iter.all(Char.is_ascii_digit) then (
+                        return :IntSpecific {
+                            .signed = true,
+                            .bits = parse(bits),
+                        };
+                    );
                 );
                 if name == "Float32" then return :Float32;
                 if name == "Float64" then return :Float64;
