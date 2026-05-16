@@ -30,7 +30,11 @@ const Print = (
 
     const type_name = (self :: &Type) => (
         let output = @current Output;
-        match self^ with (
+        if self^.alias_name is :Some name then (
+            output.write(name);
+            output.write(" (aka");
+        );
+        match self^.shape with (
             | :Any => output.write("Any")
             | :Unit => output.write("()")
             | :Bool => output.write("Bool")
@@ -47,7 +51,6 @@ const Print = (
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)
-            | :Alias { .name, ... } => output.write(name)
             | :Fn ref ty => Print.fn_type(ty)
             | :Ref ref referenced => (
                 output.write("&");
@@ -79,7 +82,10 @@ const Print = (
                 output.write("]");
             )
             | :ContextObject => output.write("@Context")
-        )
+        );
+        if self^.alias_name is :Some _ then (
+            output.write(")");
+        );
     );
 
     const fn_type_as_ident = (self :: &FnType) => (
@@ -106,9 +112,9 @@ const Print = (
         );
     );
 
-    const type_name_as_ident = (self :: &Type) => (
+    const type_name_as_ident = (self :: &Type) => with_return (
         let output = @current Output;
-        match self^ with (
+        match self^.shape with (
             | :Any => output.write("Any")
             | :Unit => output.write("Unit")
             | :Bool => output.write("Bool")
@@ -119,7 +125,6 @@ const Print = (
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)
-            | :Alias { .name, ... } => output.write(name)
             | :Fn ref ty => Print.fn_type_as_ident(ty)
             | :Ref ref referenced => (
                 output.write("Ref_");

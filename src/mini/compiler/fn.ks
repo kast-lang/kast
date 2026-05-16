@@ -52,7 +52,7 @@ const process_toplevel_fn_declaration = (
         &mut arg_types |> ArrayList.push_back(ty);
     );
     let result_ty = match result_ty with (
-        | :None => :Unit
+        | :None => { .shape = :Unit, .alias_name = :None }
         | :Some ast => (@current Compiler).parse_type(ast)
     );
     let fn_type = {
@@ -112,7 +112,7 @@ const parse_fn_def = (
         &mut args |> ArrayList.push_back({ .name, .ty });
     );
     let result_ty = match result_ty with (
-        | :None => :Unit
+        | :None => { .shape = :Unit, .alias_name = :None }
         | :Some ast => (@current Compiler).parse_type(ast)
     );
     let mut captures = OrdMap.new();

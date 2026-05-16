@@ -6,7 +6,7 @@ const expect_ty_enum = (
     ty :: &Ir.Type,
     .span :: Span,
 ) -> &OrdSet.t[String] => with_return (
-    match Ir.resolve_type_alias(ty)^ with (
+    match ty^.shape with (
         | :Named name => (
             let def = &(@current Compiler).program.types
                 |> OrdMap.get(name)
@@ -65,7 +65,7 @@ const TypeCheckContext = @context newtype {
 };
 
 const short_type_name = (ty :: &Ir.Type) -> String => (
-    match ty^ with (
+    match ty^.shape with (
         | :Any => "Any"
         | :Ref _ => "a reference"
         | :Unit => "()"
@@ -109,7 +109,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             )
         );
     );
-    match { Ir.resolve_type_alias(expected)^, Ir.resolve_type_alias(actual)^ } with (
+    match { expected^.shape, actual^.shape } with (
         | { :Any, _ } => ()
         | { _, :Any } => ()
         | { :Ref ref a, :Ref ref b } => (

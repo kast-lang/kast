@@ -22,7 +22,7 @@ const parse_if = (
     let else_case = &root.children
         |> Tuple.get_named_opt("else_case")
         |> Option.map(child => child^ |> Ast.unwrap_child_value);
-    let cond = parse_expr(:Some :Bool, cond);
+    let cond = parse_expr(:Some { .shape = :Bool, .alias_name = :None }, cond);
     let then_case = parse_expr(expected_ty, then_case);
     let else_case = else_case
         |> Option.map(ast => parse_expr(:Some then_case.ty, ast));
@@ -78,7 +78,7 @@ const parse_equals = (
     );
     {
         .shape = :Expr :EnumIs { .enum, .variant },
-        .ty = :Bool,
+        .ty = { .shape = :Bool, .alias_name = :None },
     }
 );
 
@@ -93,7 +93,7 @@ const parse_type_info = (
     let type_info_const_name = type_info_const_name(&ty);
     {
         .shape = :Place :Ident type_info_const_name,
-        .ty = :Named "TypeInfo",
+        .ty = { .shape = :Named "TypeInfo", .alias_name = :None },
     }
 );
 
@@ -105,10 +105,10 @@ const parse_deref = (
     let reference_ast = root |> AstHelpers.expect_single_child(:None);
     let expected_reference_ty = match expected_ty with (
         | :None => :None
-        | :Some ty => :Some :Ref ty
+        | :Some ty => :Some { .shape = :Ref ty, .alias_name = :None }
     );
     let reference = parse_expr(expected_reference_ty, reference_ast);
-    let ty = match Ir.resolve_type_alias(&reference.ty)^ with (
+    let ty = match reference.ty.shape with (
         | :Ref referenced => referenced
         | _ => (
             let diagnostic = {
@@ -138,7 +138,7 @@ const parse_ref = (
     let referenced = root |> AstHelpers.expect_single_child(:None);
     let expected_referenced_ty = match expected_ty with (
         | :None => :None
-        | :Some ty => match Ir.resolve_type_alias(&ty)^ with (
+        | :Some ty => match ty.shape with (
             | :Ref referenced => :Some referenced
             | _ => (
                 let diagnostic = {
@@ -158,7 +158,7 @@ const parse_ref = (
     let referenced = parse_place_expr(expected_referenced_ty, referenced);
     {
         .shape = :Expr :Ref referenced,
-        .ty = :Ref referenced.ty
+        .ty = { .shape = :Ref referenced.ty, .alias_name = :None },
     }
 );
 
@@ -168,7 +168,7 @@ const parse_list = (
     root :: Ast.Group,
 ) -> ParsedExpr => (
     let element_ty = match expected_ty with (
-        | :Some :List { .element_ty, ... } => element_ty
+        | :Some { .shape = :List { .element_ty, ... }, ... } => element_ty
         | :Some other => (
             let diagnostic = {
                 .severity = :Error,
@@ -242,7 +242,7 @@ const parse_record = (
         kind :: Kind,
         field_types :: OrdMap.t[String, Ir.Type],
     } = with_return (
-        match Ir.resolve_type_alias(Ir.type_repr(&ty))^ with (
+        match Ir.type_repr(&ty)^.shape with (
             | :Named name => (
                 let def = &(@current Compiler).program.types
                     |> OrdMap.get(name)
@@ -402,7 +402,7 @@ const parse_fn = (
     };
     {
         .shape = :Expr :Fn fn,
-        .ty = :Fn fn_ty,
+        .ty = { .shape = :Fn fn_ty, .alias_name = :None },
     }
 );
 
@@ -440,7 +440,7 @@ const parse_assign = (
             .assignee,
             .value,
         },
-        .ty = :Unit,
+        .ty = { .shape = :Unit, .alias_name = :None },
     }
 );
 
@@ -475,8 +475,11 @@ const parse_defer = (
     let expr = root
         |> AstHelpers.expect_single_child(:None);
     {
-        .shape = :Expr :Defer parse_expr(:Some :Unit, expr),
-        .ty = :Unit,
+        .shape = :Expr :Defer parse_expr(
+            :Some { .shape = :Unit, .alias_name = :None },
+            expr,
+        ),
+        .ty = { .shape = :Unit, .alias_name = :None },
     }
 );
 
@@ -488,14 +491,15 @@ const parse_unwind = (
     let { token_ast, value } = root
         |> AstHelpers.expect_two_children(:Some { "token", "value" });
     let token = parse_expr(:None, token_ast);
-    if token.ty is :Ref :UnwindToken { .result_ty, ... } then (
+    if token.ty.shape is :Ref { .shape = :UnwindToken { .result_ty, ... }, ... } then (
         let value = parse_expr(:Some result_ty, value);
         {
             .shape = :Expr :Unwind {
                 .token,
                 .value,
             },
-            .ty = expected_ty |> Option.unwrap_or(:Unit),
+            .ty = expected_ty
+                |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None }),
         }
     ) else (
         let diagnostic = {
@@ -526,15 +530,22 @@ const parse_unwindable = (
         .vars = OrdMap.new(),
         .found_in_parent = (...) => (),
     };
-    let result_ty = expected_ty |> Option.unwrap_or(:Unit);
+    let result_ty = expected_ty
+        |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None });
     let token_ty_repr = instantiate_ty(
         "UnwindToken",
         single_element_list(result_ty),
         .span = token_ast.span,
     );
-    let token_ty = :Ref :UnwindToken {
-        .repr = token_ty_repr,
-        .result_ty,
+    let token_ty = {
+        .shape = :Ref {
+            .shape = :UnwindToken {
+                .repr = token_ty_repr,
+                .result_ty,
+            },
+            .alias_name = :None,
+        },
+        .alias_name = :None,
     };
     &mut (@current ScopeContext).vars
         |> OrdMap.add(token, token_ty);
@@ -557,7 +568,7 @@ const parse_capture_continuation = (
     let { token_ast, continuation, body } = root
         |> AstHelpers.expect_three_children("token", "continuation", "body");
     let token = parse_expr(:None, token_ast);
-    if token.ty is :DelimitedContinuationToken { .result_ty, ... } then (
+    if token.ty.shape is :DelimitedContinuationToken { .result_ty, ... } then (
         let continuation_ty :: Ir.Type = instantiate_ty(
             "Continuation",
             single_element_list(result_ty),
@@ -584,7 +595,7 @@ const parse_capture_continuation = (
                 ).name,
                 .body,
             },
-            .ty = :Unit,
+            .ty = { .shape = :Unit, .alias_name = :None },
         }
     ) else (
         let diagnostic = {
@@ -626,15 +637,19 @@ const parse_delimited_continuation = (
             &mut captures |> OrdMap.add(name, ty);
         ),
     };
-    let result_ty = expected_ty |> Option.unwrap_or(:Unit);
+    let result_ty = expected_ty
+        |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None });
     let token_ty_repr = instantiate_ty(
         "DelimitedContinuationToken",
         single_element_list(result_ty),
         .span = token_ast.span,
     );
-    let token_ty = :DelimitedContinuationToken {
-        .repr = token_ty_repr,
-        .result_ty,
+    let token_ty = {
+        .shape = :DelimitedContinuationToken {
+            .repr = token_ty_repr,
+            .result_ty,
+        },
+        .alias_name = :None,
     };
     &mut (@current ScopeContext).vars
         |> OrdMap.add(token, token_ty);
@@ -663,8 +678,11 @@ const parse_loop = (
 ) -> ParsedExpr => (
     let body = root |> AstHelpers.expect_single_child(:None);
     {
-        .shape = :Expr :Loop parse_expr(:Some :Unit, body),
-        .ty = :Unit,
+        .shape = :Expr :Loop parse_expr(
+            :Some { .shape = :Unit, .alias_name = :None },
+            body,
+        ),
+        .ty = { .shape = :Unit, .alias_name = :None },
     }
 );
 
@@ -691,7 +709,7 @@ const parse_let = (
     &mut (@current ScopeContext).vars |> OrdMap.add(name, value.ty);
     {
         .shape = :Expr :Let { .name, .value },
-        .ty = :Unit,
+        .ty = { .shape = :Unit, .alias_name = :None },
     }
 );
 
@@ -734,7 +752,10 @@ const parse_native = (
     );
     {
         .shape = :Expr :Native { .parts = native_parts },
-        .ty = expected_ty |> Option.unwrap_or(:Unit),
+        .ty = expected_ty
+            |> Option.unwrap_or(
+                { .shape = :Unit, .alias_name = :None }
+            ),
     }
 );
 
@@ -746,7 +767,7 @@ const parse_stmt = (
     let inner = root |> AstHelpers.expect_single_child(:None);
     {
         .shape = :Expr :Stmt parse_expr(:None, inner),
-        .ty = :Unit,
+        .ty = { .shape = :Unit, .alias_name = :None },
     }
 );
 
@@ -781,7 +802,7 @@ const parse_inject_context = (
             .name = context_name,
             .value = parse_expr(:Some context_ty, value),
         },
-        .ty = :Unit,
+        .ty = { .shape = :Unit, .alias_name = :None },
     }
 );
 
@@ -804,7 +825,7 @@ const parse_then = (
     ast :: Ast.t,
     root :: Ast.Group,
 ) -> ParsedExpr => (
-    let mut last_expr_ty = :Unit;
+    let mut last_expr_ty = { .shape = :Unit, .alias_name = :None };
     let mut expr_asts = ArrayList.new();
     for expr in Ast.iter_list(
         ast,
@@ -841,7 +862,7 @@ const parse_apply = (
         |> Ast.unwrap_child_group;
     let args_ast = args_ast |> AstHelpers.expect_single_child(:Some "args");
     let f = parse_expr(:None, f_ast);
-    let f_type = match Ir.resolve_type_alias(&f.ty)^ with (
+    let f_type = match f.ty.shape with (
         | :Fn ty => ty
         | _ => (
             let diagnostic = {
@@ -903,7 +924,7 @@ const parse_context_obj = (
 ) -> ParsedExpr => (
     {
         .shape = :Place :ContextObject,
-        .ty = :ContextObject,
+        .ty = { .shape = :ContextObject, .alias_name = :None },
     }
 );
 
@@ -913,10 +934,17 @@ const parse_let_context = (
     root :: Ast.Group,
 ) -> ParsedExpr => (
     let value = root |> AstHelpers.expect_single_child(:None);
-    let value = parse_expr(:Some :Ref :ContextObject, value);
+    let expected_ty = {
+        .shape = :Ref {
+            .shape = :ContextObject,
+            .alias_name = :None,
+        },
+        .alias_name = :None,
+    };
+    let value = parse_expr(:Some expected_ty, value);
     {
         .shape = :Expr :LetContextRef value,
-        .ty = :Unit,
+        .ty = { .shape = :Unit, .alias_name = :None },
     }
 );
 
@@ -951,8 +979,22 @@ const parsers = (
     &mut map |> OrdMap.add("apply", parse_apply);
     &mut map |> OrdMap.add("defer", parse_defer);
     &mut map |> OrdMap.add("context_obj", parse_context_obj);
-    &mut map |> OrdMap.add("true", (...) => { .shape = :Expr :Literal :Bool true, .ty = :Bool });
-    &mut map |> OrdMap.add("false", (...) => { .shape = :Expr :Literal :Bool false, .ty = :Bool });
+    &mut map
+        |> OrdMap.add(
+            "true",
+            (...) => {
+                .shape = :Expr :Literal :Bool true,
+                .ty = { .shape = :Bool, .alias_name = :None },
+            }
+        );
+    &mut map
+        |> OrdMap.add(
+            "false",
+            (...) => {
+                .shape = :Expr :Literal :Bool false,
+                .ty = { .shape = :Bool, .alias_name = :None },
+            }
+        );
     &mut map |> OrdMap.add("delimited_continuation", parse_delimited_continuation);
     &mut map |> OrdMap.add("capture_continuation", parse_capture_continuation);
     map
@@ -966,7 +1008,7 @@ const parse_expr_impl = (
         match ast.shape with (
             | :Empty => return {
                 .shape = :Expr :Unit,
-                .ty = :Unit,
+                .ty = { .shape = :Unit, .alias_name = :None },
             }
             | :Rule { .rule, .root } => (
                 if &parsers |> OrdMap.get(rule.name) is :Some parser then (
@@ -984,7 +1026,7 @@ const parse_expr_impl = (
                     | :Number { .raw, ... } => (
                         let ty = expect_known_type(expected_ty, .span = token.span);
                         # TODO catch parse errors
-                        let literal = match Ir.resolve_type_alias(&ty)^ with (
+                        let literal = match ty.shape with (
                             | :Int => (
                                 # TODO check that its within range
                                 :Int raw
@@ -1024,7 +1066,10 @@ const parse_expr_impl = (
                     | :String str => (
                         let open_raw = Token.raw(str.open);
                         let { ty, literal } = if open_raw == "\"" then (
-                            { :Named "StringView", :String str.contents }
+                            {
+                                { .shape = :Named "StringView", .alias_name = :None },
+                                :String str.contents,
+                            }
                         ) else if open_raw == "'" then (
                             if String.length(str.contents) == 0 then (
                                 let diagnostic = {
@@ -1051,7 +1096,10 @@ const parse_expr_impl = (
                                 };
                                 Diagnostic.report_and_unwind(diagnostic)
                             );
-                            { :Char, :Char c }
+                            {
+                                { .shape = :Char, .alias_name = :None },
+                                :Char c,
+                            }
                         ) else (
                             panic("Unkown string delimeter")
                         );

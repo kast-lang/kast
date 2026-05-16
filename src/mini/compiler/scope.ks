@@ -31,7 +31,7 @@ const find_ident_ty = (name :: String, .span :: Span) -> Ir.Type => with_return 
     );
     if (@current Compiler).get_toplevel_decl(name) is :Some decl then (
         match decl with (
-            | :Fn fn_type => return :Fn fn_type
+            | :Fn fn_type => return { .shape = :Fn fn_type, .alias_name = :None }
             | :Const decl => return decl.ty
             | _ => ()
         );

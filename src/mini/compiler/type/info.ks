@@ -4,7 +4,6 @@ use (import "../template.ks").*;
 module:
 
 const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
-    let ty = Ir.resolve_type_alias(ty);
     let span :: Span = {
         .start = Position.beginning(),
         .end = Position.beginning(),
@@ -20,13 +19,17 @@ const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
     if &ctx.program.consts |> OrdMap.get(name) is :Some _ then (
         return name;
     );
+    let type_info_ty :: Ir.Type = {
+        .shape = :Named "TypeInfo",
+        .alias_name = :None,
+    };
     # Temporarily add as uninitialized to prevent cycles
     &mut ctx.program.consts
         |> OrdMap.add(
             name,
             {
                 .shape = :Uninitialized,
-                .ty = :Named name,
+                .ty = type_info_ty,
                 .span,
             }
         );
@@ -41,7 +44,7 @@ const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
             &mut members |> ArrayList.push_back(member);
         );
     );
-    match Ir.type_repr(ty)^ with (
+    match Ir.type_repr(ty)^.shape with (
         | :Named name => (
             let def = &(@current Compiler).program.types
                 |> OrdMap.get(name)
@@ -66,7 +69,7 @@ const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
                     .ty = ty^,
                     .members,
                 },
-                .ty = :Named "TypeInfo",
+                .ty = type_info_ty,
                 .span,
             }
         );
@@ -102,7 +105,7 @@ const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
 #                 .name = "ty",
 #                 .value = {
 #                     .shape = :Ref type_info(ty),
-#                     .ty = :Ref :Named "TypeInfo",
+#                     .ty = :Ref type_info_ty,
 #                     .span,
 #                 },
 #             };

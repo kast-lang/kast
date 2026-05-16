@@ -10,15 +10,18 @@ const lookup_type = (name :: String, .span :: Span) -> Ir.Type => with_return (
     if (@current Compiler).get_toplevel_decl(name) is :Some decl then (
         if decl is :Type { .is_alias } then (
             if is_alias then (
-                return :Alias {
-                    .name = name,
-                    .resolved = match (@current Compiler).get_toplevel_impl(name) with (
-                        | :Some :Type { .shape = :Alias ref aliased, ... } => Ir.resolve_type_alias(aliased)^
+                return {
+                    .shape = match (@current Compiler).get_toplevel_impl(name) with (
+                        | :Some :Type { .shape = :Alias ref aliased, ... } => aliased^.shape
                         | _ => panic("unreachable")
                     ),
+                    .alias_name = :Some name,
                 };
             ) else (
-                return :Named name;
+                return {
+                    .shape = :Named name,
+                    .alias_name = :None,
+                };
             );
         );
         let diagnostic = {
@@ -53,10 +56,10 @@ const lookup_type = (name :: String, .span :: Span) -> Ir.Type => with_return (
 
 const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
     match ast.shape with (
-        | :Empty => return :Unit
+        | :Empty => return { .shape = :Unit, .alias_name = :None }
         | :Rule { .rule, .root } => (
             if rule.name == "context_obj_type" then (
-                return :ContextObject;
+                return { .shape = :ContextObject, .alias_name = :None };
             );
             if rule.name == "instantiate" then (
                 return parse_instantiate_ty(root);
@@ -65,11 +68,11 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                 let raw = root
                     |> AstHelpers.expect_single_child(:None)
                     |> AstHelpers.expect_string;
-                return :Native raw;
+                return { .shape = :Native raw, .alias_name = :None };
             );
             if rule.name == "ref" then (
                 let referenced = root |> AstHelpers.expect_single_child(:None);
-                return :Ref parse_type(referenced);
+                return { .shape = :Ref parse_type(referenced), .alias_name = :None };
             );
             if rule.name == "fn_type" then (
                 let call_convention = match (
@@ -115,11 +118,14 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                     &mut args |> ArrayList.push_back(parse_type(arg_ast));
                 );
                 let result = parse_type(result);
-                return :Fn {
-                    .is_closure,
-                    .call_convention,
-                    .args,
-                    .result,
+                return {
+                    .shape = :Fn {
+                        .is_closure,
+                        .call_convention,
+                        .args,
+                        .result,
+                    },
+                    .alias_name = :None,
                 };
             );
             if rule.name == "scope" then (
@@ -131,30 +137,36 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
         | :Token token => match token.shape with (
             | :Ident ident => (
                 let name = ident.name;
-                if name == "Any" then return :Any;
-                if name == "Unit" then return :Unit;
-                if name == "Bool" then return :Bool;
-                if name == "Int" then return :Int;
-                if name == "UInt" then return :UInt;
+                if name == "Any" then return { .shape = :Any, .alias_name = :None };
+                if name == "Unit" then return { .shape = :Unit, .alias_name = :None };
+                if name == "Bool" then return { .shape = :Bool, .alias_name = :None };
+                if name == "Int" then return { .shape = :Int, .alias_name = :None };
+                if name == "UInt" then return { .shape = :UInt, .alias_name = :None };
                 if name |> String.strip_prefix(.prefix = "UInt") is :Some bits then (
                     if bits |> String.iter |> std.iter.all(Char.is_ascii_digit) then (
-                        return :IntSpecific {
-                            .signed = false,
-                            .bits = parse(bits),
+                        return {
+                            .shape = :IntSpecific {
+                                .signed = false,
+                                .bits = parse(bits),
+                            },
+                            .alias_name = :None,
                         };
                     );
                 );
                 if name |> String.strip_prefix(.prefix = "Int") is :Some bits then (
                     if bits |> String.iter |> std.iter.all(Char.is_ascii_digit) then (
-                        return :IntSpecific {
-                            .signed = true,
-                            .bits = parse(bits),
+                        return {
+                            .shape = :IntSpecific {
+                                .signed = true,
+                                .bits = parse(bits),
+                            },
+                            .alias_name = :None,
                         };
                     );
                 );
-                if name == "Float32" then return :Float32;
-                if name == "Float64" then return :Float64;
-                if name == "Char" then return :Char;
+                if name == "Float32" then return { .shape = :Float32, .alias_name = :None };
+                if name == "Float64" then return { .shape = :Float64, .alias_name = :None };
+                if name == "Char" then return { .shape = :Char, .alias_name = :None };
                 return lookup_type(name, .span = token.span);
             )
             | _ => ()

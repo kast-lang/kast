@@ -50,14 +50,20 @@ const instantiation_to_type = (
 ) -> Ty => (
     let ty = (@current Compiler).lookup_type(instantiation.name, .span);
     if instantiation.template_name == "UnwindToken" then (
-        :UnwindToken {
-            .repr = ty,
-            .result_ty = ArrayList.at(&instantiation.template_args, 0)^,
+        {
+            .shape = :UnwindToken {
+                .repr = ty,
+                .result_ty = ArrayList.at(&instantiation.template_args, 0)^,
+            },
+            .alias_name = :None,
         }
     ) else if instantiation.template_name == "List" then (
-        :List {
-            .repr = ty,
-            .element_ty = ArrayList.at(&instantiation.template_args, 0)^,
+        {
+            .shape = :List {
+                .repr = ty,
+                .element_ty = ArrayList.at(&instantiation.template_args, 0)^,
+            },
+            .alias_name = :None,
         }
     ) else (
         ty

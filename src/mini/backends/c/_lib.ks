@@ -64,9 +64,12 @@ const C = (
         ident
     );
 
-    const convert_ty = (ty :: &Ir.Type) -> Ast.Ty => (
+    const convert_ty = (ty :: &Ir.Type) -> Ast.Ty => with_return (
         let mut ctx = @current Context;
-        match ty^ with (
+        if ty^.alias_name is :Some name then (
+            return :Named ident(name)
+        );
+        match ty^.shape with (
             | :Any => :Void
             | :Ref ref t => :Pointer convert_ty(t)
             | :Unit => :Void
@@ -92,7 +95,6 @@ const C = (
             | :Float64 => :Float64
             | :Bool => :Bool
             | :Char => :Char
-            | :Alias { .name, ... } => :Named ident(name)
             | :Named name => (
                 let def = &ctx.program.types
                     |> OrdMap.get(name)
@@ -427,7 +429,7 @@ const C = (
                 Print.ty(&convert_ty(&info^.ty))
             )
         );
-        let { size, stride, alignment } = if info^.ty is :Unit then {
+        let { size, stride, alignment } = if info^.ty.shape is :Unit then {
             :Raw "0",
             :Raw "0",
             :Raw "1",
@@ -543,7 +545,7 @@ const C = (
         );
         {
             .get = () => {
-                .expr = if ty^ is :Unit then (
+                .expr = if ty^.shape is :Unit then (
                     :None
                 ) else (
                     :Some ident_expr
@@ -551,7 +553,7 @@ const C = (
                 .span,
             },
             .set = value => (
-                if ty^ is :Unit then (
+                if ty^.shape is :Unit then (
                     insert_stmt(:Expr value);
                 ) else (
                     insert_stmt(:Assign { .assignee = ident_expr, .value });
@@ -578,7 +580,7 @@ const C = (
         let expr :: Ast.Expr = match ir_expr^.shape with (
             | :Unit => return void(span)
             | :List ref ir_elements => (
-                let element_ty = match ir_expr^.ty with (
+                let element_ty = match ir_expr^.ty.shape with (
                     | :List { .element_ty = ref element_ty, ... } => element_ty
                     | _ => panic("List expr is not list type???")
                 );
@@ -610,7 +612,7 @@ const C = (
                 }
             )
             | :Uninitialized => (
-                if ir_expr^.ty is :Unit then (
+                if ir_expr^.ty.shape is :Unit then (
                     return void(span);
                 );
                 let mut block = new_block();
@@ -631,7 +633,7 @@ const C = (
             | :Claim ref place => return calculate_place(place).get()
             | :Ref ref place_expr => (
                 let place = calculate_place(place_expr);
-                if place_expr^.ty is :Unit then (
+                if place_expr^.ty.shape is :Unit then (
                     return { .expr = :Some :Raw "NULL", .span }
                 ) else (
                     return {
@@ -727,7 +729,7 @@ const C = (
             )
             | :If { .cond = ref cond, .then_case = ref then_case, .else_case = ref else_case } => (
                 let ident = new_ident("if_result");
-                let is_void = if ir_expr^.ty is :Unit then true else false;
+                let is_void = if ir_expr^.ty.shape is :Unit then true else false;
                 if not is_void then (
                     insert_stmt(
                         :LetVar {
@@ -768,7 +770,7 @@ const C = (
                 }
             )
             | :Let { .name, .value = ref value } => (
-                if value^.ty is :Unit then (
+                if value^.ty.shape is :Unit then (
                     calculate(value);
                     return void(span);
                 );
@@ -787,7 +789,17 @@ const C = (
             )
             | :LetContextRef ref new_ctx_ptr => (
                 let ctx_var = new_ident("ctx");
-                let_var(&(:Ref :ContextObject), ctx_var, pure(calculate(new_ctx_ptr)));
+                let_var(
+                    &{
+                        .shape = :Ref {
+                            .shape = :ContextObject,
+                            .alias_name = :None,
+                        },
+                        .alias_name = :None,
+                    },
+                    ctx_var,
+                    pure(calculate(new_ctx_ptr)),
+                );
                 (@current ScopeContextVar).ident = ctx_var;
                 return void(span)
             )
@@ -804,7 +816,7 @@ const C = (
                 )
             )
             | :Apply { .f = ref f, .args = ref ir_args } => (
-                let f_ty = match f^.ty with (
+                let f_ty = match f^.ty.shape with (
                     | :Fn ty => ty
                     | _ => (
                         let diagnostic = {
@@ -844,7 +856,7 @@ const C = (
                     let arg = pure(calculate(arg));
                     &mut args |> ArrayList.push_back(arg);
                 );
-                if ir_expr^.ty is :Unit then (
+                if ir_expr^.ty.shape is :Unit then (
                     insert_stmt(:Expr :Apply { .f, .args });
                     if f_ty.call_convention is :None then (
                         check_unwind();
@@ -955,11 +967,14 @@ const C = (
                 );
                 let token_var = ident(token);
                 let_var(
-                    &(:Ref token_ty_repr^),
+                    &{
+                        .shape = :Ref token_ty_repr^,
+                        .alias_name = :None,
+                    },
                     token_var,
                     :Ref :Ident token_own_var,
                 );
-                let have_result_value = match ir_expr^.ty with (
+                let have_result_value = match ir_expr^.ty.shape with (
                     | :Unit => false
                     | _ => true
                 );
@@ -1109,7 +1124,13 @@ const C = (
                             }
                         );
                         let_var(
-                            &(:Ref :ContextObject),
+                            &{
+                                .shape = :Ref {
+                                    .shape = :ContextObject,
+                                    .alias_name = :None,
+                                },
+                                .alias_name = :None,
+                            },
                             ctx_var,
                             :Field { .obj = :Deref :Ident ident("captured"), .field = ctx_var },
                         );
@@ -1136,7 +1157,7 @@ const C = (
                                     .f = :Ident body_fn_ident,
                                     .args = single_element_list(:Ident ident("co")),
                                 };
-                                if ir_expr^.ty is :Unit then (
+                                if ir_expr^.ty.shape is :Unit then (
                                     insert_stmt(:Expr call);
                                 ) else (
                                     insert_stmt(
@@ -1280,7 +1301,7 @@ const C = (
                         ),
                     },
                 );
-                if body^.ty is :Unit then (
+                if body^.ty.shape is :Unit then (
                     calculate(body);
                 ) else (
                     let result_var = new_ident("result");
@@ -1362,7 +1383,7 @@ const C = (
                 }
             )
         );
-        if ir_expr^.ty is :Unit then (
+        if ir_expr^.ty.shape is :Unit then (
             insert_stmt(:Expr expr);
             void(span)
         ) else (
@@ -1657,7 +1678,7 @@ const C = (
                 ),
                 .result = def^.result_ty,
             };
-            let fn_ty :: Ir.Type = :Fn fn_ty;
+            let fn_ty :: Ir.Type = { .shape = :Fn fn_ty, .alias_name = :None };
             make_sure_all_type_dependencies_are_complete_if_needed(&fn_ty);
             let static = {
                 .@"const" = true,
@@ -1686,7 +1707,13 @@ const C = (
     );
 
     const make_sure_all_type_dependencies_are_complete_if_needed = (ty :: &Ir.Type) => (
-        match ty^ with (
+        if ty^.alias_name is :Some name then (
+            let def = &(@current Context).program.types
+                |> OrdMap.get(name)
+                |> Option.unwrap;
+            type_def(name, def);
+        );
+        match ty^.shape with (
             | :Any => ()
             | :Ref _ => ()
             | :Unit => ()
@@ -1698,15 +1725,6 @@ const C = (
             | :Bool => ()
             | :Char => ()
             | :Named name => (
-                let def = &(@current Context).program.types
-                    |> OrdMap.get(name)
-                    |> Option.unwrap;
-                type_def(name, def);
-            )
-            | :Alias {
-                .name,
-                .resolved = _,
-            } => (
                 let def = &(@current Context).program.types
                     |> OrdMap.get(name)
                     |> Option.unwrap;
@@ -1797,14 +1815,23 @@ const C = (
             | :Enum { .variants = ref variants } => :Enum (
                 let mut idents = ArrayList.new();
                 for &variant in variants |> OrdSet.iter do (
-                    &mut idents |> ArrayList.push_back(enum_variant_name(&(:Named name), variant));
+                    &mut idents
+                        |> ArrayList.push_back(
+                            enum_variant_name(
+                                &{
+                                    .shape = :Named name,
+                                    .alias_name = :None,
+                                },
+                                variant,
+                            )
+                        );
                 );
                 { .variants = idents }
             )
             | :Union { .variants = ref variants } => :Union (
                 let mut ast_fields = ArrayList.new();
                 for &{ .key = name, .value = ref ty } in variants |> OrdMap.iter do (
-                    if ty^ is :Unit then (
+                    if ty^.shape is :Unit then (
                         continue;
                     );
                     let field = {
@@ -1818,7 +1845,7 @@ const C = (
             | :Struct { .fields = ref fields } => :Struct (
                 let mut ast_fields = ArrayList.new();
                 for &{ .key = name, .value = ref ty } in fields |> OrdMap.iter do (
-                    if ty^ is :Unit then (
+                    if ty^.shape is :Unit then (
                         continue;
                     );
                     let field = {
@@ -1865,7 +1892,9 @@ const C = (
         &mut ctx.result.includes |> OrdSet.add("<stdbool.h>");
         &mut ctx.result.includes |> OrdSet.add("<assert.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdlib.h>");
-        make_sure_all_type_dependencies_are_complete_if_needed(&(:ContextObject));
+        make_sure_all_type_dependencies_are_complete_if_needed(
+            &{ .shape = :ContextObject, .alias_name = :None }
+        );
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
             type_def(name, ty_def);
         );
