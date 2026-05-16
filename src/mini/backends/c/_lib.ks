@@ -118,6 +118,7 @@ const C = (
                 .element_ty = _,
             } => convert_ty(repr)
             | :Fn _ => (
+                make_sure_all_type_dependencies_are_complete_if_needed(ty);
                 let &ident = &ctx.fn_types
                     |> OrdMap.get(ty^)
                     |> Option.unwrap_or_else(
