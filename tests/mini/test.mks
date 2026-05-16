@@ -3,5 +3,6 @@ const Ctx = @context Int;
 const main = () => (
     @loop (
         with Ctx = 1;
+        print_String("Hi\n");
     );
 );

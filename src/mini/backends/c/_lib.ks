@@ -710,11 +710,9 @@ const C = (
             )
             | :Loop ref body_expr => (
                 let mut body = new_block();
-                (
-                    with Scope = {
-                        .block = &mut body,
-                    };
-                    calculate(body_expr);
+                with_scope(
+                    { .block = &mut body },
+                    () => calculate(body_expr),
                 );
                 insert_stmt(
                     :For {
