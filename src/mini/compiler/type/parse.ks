@@ -96,8 +96,7 @@ const parse_type = (ast :: Ast.t) -> Ir.Type => with_return (
                 )^
                     |> Ast.unwrap_child_value;
                 let arg_asts = arg_asts
-                    |> AstHelpers.expect_rule("scope")
-                    |> AstHelpers.expect_single_child(:None);
+                    |> AstHelpers.unwrap_optional_scope;
                 let mut args = ArrayList.new();
                 for arg_ast in Ast.iter_list(
                     arg_asts,

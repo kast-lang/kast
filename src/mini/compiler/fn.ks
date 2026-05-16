@@ -38,8 +38,7 @@ const process_toplevel_fn_declaration = (
         |> AstHelpers.get_child_ast("body");
     let call_convention = parse_call_convention(root);
     let args = args_ast
-        |> AstHelpers.expect_rule("scope")
-        |> AstHelpers.expect_single_child(:None);
+        |> AstHelpers.unwrap_optional_scope;
     let mut arg_types = ArrayList.new();
     for arg in Ast.iter_list(
         args,
@@ -98,8 +97,7 @@ const parse_fn_def = (
         |> AstHelpers.get_child_ast("body");
     let call_convention = parse_call_convention(root);
     let args_ast = args_ast
-        |> AstHelpers.expect_rule("scope")
-        |> AstHelpers.expect_single_child(:None);
+        |> AstHelpers.unwrap_optional_scope;
     let mut args :: ArrayList.t[Ir.FnArg] = ArrayList.new();
     for arg in Ast.iter_list(
         args_ast,

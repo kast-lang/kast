@@ -4,6 +4,6 @@ const Foo = union {
 };
 
 const main = () => (
-    let s :: (String) -> () = print_String;
+    let s :: String -> () = print_String;
     let f :: Foo = { .a = 2 };
 );

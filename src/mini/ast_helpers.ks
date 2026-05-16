@@ -154,6 +154,15 @@ const AstHelpers = (
         );
         child |> Ast.unwrap_child_value
     );
+
+    const unwrap_optional_scope = (ast :: Ast.t) => with_return (
+        if ast.shape is :Rule { .rule, .root } then (
+            if rule.name == "scope" then (
+                return root |> expect_single_child(:None);
+            );
+        );
+        ast
+    );
     # TODO not catch panics but instead use Tuple.get_*_opt or smth
     const handle_panics = (group :: &Ast.Group) -> std.PanicHandlerT => {
         .handle = [T] (message :: String) -> T => (
