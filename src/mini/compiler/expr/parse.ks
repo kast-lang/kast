@@ -290,7 +290,7 @@ const parse_record = (
                         let output = @current Output;
                         output.write("Type ");
                         Ir.Print.type_name(&ty);
-                        output.write("doesn't have field ");
+                        output.write(" doesn't have field ");
                         output.write(String.escape(name));
                     ),
                     .span = name_ast.span,
