@@ -329,6 +329,50 @@ const parse_record = (
         let value = parse_expr(:Some field_ty, value);
         &mut fields |> ArrayList.push_back({ .name, .value });
     );
+    match kind with (
+        | :Union => (
+            if &fields |> ArrayList.length != 1 then (
+                let diagnostic = {
+                    .severity = :Error,
+                    .source = :Compiler,
+                    .message = () => (
+                        let output = @current Output;
+                        output.write("Unions must initialize exactly one field");
+                    ),
+                    .span = ast.span,
+                    .related = ArrayList.new(),
+                };
+                Diagnostic.report(diagnostic);
+            );
+        )
+        | :Struct => (
+            if &field_types |> OrdMap.length != &fields |> ArrayList.length then (
+                let diagnostic = {
+                    .severity = :Error,
+                    .source = :Compiler,
+                    .message = () => (
+                        let output = @current Output;
+                        output.write("Not all fields have been initialized: missing ");
+                        let mut first = true;
+                        for &{ .key = name, ... } in &field_types |> OrdMap.iter do (
+                            if &fields_initialized |> OrdMap.get(name) is :None then (
+                                if first then (
+                                    first = false;
+                                ) else (
+                                    output.write(", ");
+                                );
+                                output.write(".");
+                                output.write(name);
+                            );
+                        );
+                    ),
+                    .span = ast.span,
+                    .related = ArrayList.new(),
+                };
+                Diagnostic.report(diagnostic);
+            );
+        )
+    );
     {
         .shape = :Expr :Record fields,
         .ty,

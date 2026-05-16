@@ -1,6 +1,9 @@
+const Foo = union {
+    .a :: Int,
+    .b :: String,
+};
+
 const main = () => (
     let s :: (String) -> () = print_String;
-    let s2 :: String = {
-        .contents = uninitialized,
-    };
+    let f :: Foo = { .a = 2 };
 );
