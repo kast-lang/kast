@@ -1,10 +1,7 @@
-const ErrorHandler = struct {
-    .error_at :: (() -> ()) -> (),
-};
+const Ctx = @context Int;
 
-const error_at = (message :: () -> ()) => (
-
-
+const main = () => (
+    @loop (
+        with Ctx = 1;
+    );
 );
-
-const main = () => ();

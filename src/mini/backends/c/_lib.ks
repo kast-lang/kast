@@ -559,6 +559,17 @@ const C = (
         }
     );
 
+    const with_scope = [T] (scope :: ScopeT, f :: () -> T) -> T => (
+        with Scope = scope;
+        with UnwindContext = {
+            .insert_unwind = (@current UnwindContext).insert_unwind,
+            .cleanup_scope_without_unwind = () => (),
+        };
+        let result = f();
+        (@current UnwindContext).cleanup_scope_without_unwind();
+        result
+    );
+
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
         let mut ctx = @current Context;
         let span = ir_expr^.span;
@@ -788,16 +799,10 @@ const C = (
                 return void(span)
             )
             | :Scope ref expr => (
-                with Scope = {
-                    .block = (@current Scope).block,
-                };
-                with UnwindContext = {
-                    .insert_unwind = (@current UnwindContext).insert_unwind,
-                    .cleanup_scope_without_unwind = () => (),
-                };
-                let result = calculate(expr);
-                (@current UnwindContext).cleanup_scope_without_unwind();
-                return result
+                with_scope(
+                    { .block = (@current Scope).block },
+                    () => return calculate(expr)
+                )
             )
             | :Apply { .f = ref f, .args = ref ir_args } => (
                 let f_ty = match f^.ty with (
