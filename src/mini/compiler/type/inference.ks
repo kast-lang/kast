@@ -34,7 +34,7 @@ const field_ty = (
         return find_context_type(field, .span = field_span);
     );
     let obj_ty = Ir.type_repr(&obj_ty);
-    if obj_ty^ is :Named name then (
+    if Ir.resolve_type_alias(obj_ty)^ is :Named name then (
         let type_def = &(@current Compiler).program.types
             |> OrdMap.get(name)
             |> Option.unwrap;

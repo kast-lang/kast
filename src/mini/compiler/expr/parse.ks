@@ -242,7 +242,7 @@ const parse_record = (
         kind :: Kind,
         field_types :: OrdMap.t[String, Ir.Type],
     } = with_return (
-        match Ir.type_repr(&ty)^ with (
+        match Ir.resolve_type_alias(Ir.type_repr(&ty))^ with (
             | :Named name => (
                 let def = &(@current Compiler).program.types
                     |> OrdMap.get(name)
