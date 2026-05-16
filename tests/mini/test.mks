@@ -1,3 +1,10 @@
-const main = () => (
-    let f :: () -> () = uninitialized;
+const ErrorHandler = struct {
+    .error_at :: (() -> ()) -> (),
+};
+
+const error_at = (message :: () -> ()) => (
+
+
 );
+
+const main = () => ();

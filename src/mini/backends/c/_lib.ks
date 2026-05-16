@@ -23,7 +23,7 @@ const C = (
     const ContextT = newtype {
         .program :: Ir.Program,
         .defined_types :: OrdSet.t[String],
-        .fn_types :: OrdMap.t[Ir.Type, Ast.Ident],
+        .fn_types :: OrdMap.t[Ir.FnType, Ast.Ident],
         .fn_capture_types :: OrdMap.t[String, Ast.Ident],
         .result :: Ast.Program,
         .next_id :: Int32,
@@ -117,37 +117,32 @@ const C = (
                 .repr = ref repr,
                 .element_ty = _,
             } => convert_ty(repr)
-            | :Fn _ => (
-                make_sure_all_type_dependencies_are_complete_if_needed(ty);
-                let &ident = &ctx.fn_types
-                    |> OrdMap.get(ty^)
-                    |> Option.unwrap_or_else(
-                        () => (
-                            panic(
-                                output_to_string(
-                                    () => (
-                                        let output = @current Output;
-                                        output.write("fn type was not defined???");
-                                        Ir.Print.type_name(ty);
-                                    )
-                                )
-                            )
-                        )
-                    );
+            | :Fn ref f_ty => (
+                let ident = fn_type_ident(f_ty);
                 :Named ident
             )
             | :ContextObject => :Struct ident("Context")
         )
     );
 
-    const init_fn_type = (f_ty :: Ir.FnType) -> Ast.Ident => with_return (
+    const fn_type_ident = (f_ty :: &Ir.FnType) -> Ast.Ident => with_return (
+        let mut ctx = @current Context;
+        if &ctx.fn_types |> OrdMap.get(f_ty^) is :Some ident then (
+            return ident^;
+        );
+        let ident = init_fn_type_ident(f_ty);
+        &mut ctx.fn_types |> OrdMap.add(f_ty^, ident);
+        ident
+    );
+
+    const init_fn_type_ident = (f_ty :: &Ir.FnType) -> Ast.Ident => with_return (
         let mut ctx = @current Context;
         let {
             .is_closure,
             .call_convention,
             .args = ref args,
             .result = ref result,
-        } = f_ty;
+        } = f_ty^;
         let mut c_args = ArrayList.new();
         if is_closure then (
             &mut c_args |> ArrayList.push_back(:Pointer :Void);
@@ -162,7 +157,15 @@ const C = (
             &mut c_args
                 |> ArrayList.push_back(convert_ty(arg));
         );
-        let raw_fn_type_name = new_ident("raw_fn_type");
+        let raw_fn_type_name = new_ident(
+            output_to_string(
+                () => (
+                    let output = @current Output;
+                    output.write("raw_");
+                    Ir.Print.fn_type_as_ident(f_ty);
+                )
+            )
+        );
         let raw_ty_def = {
             .name = raw_fn_type_name,
             .def = :FnPointer {
@@ -174,7 +177,13 @@ const C = (
         if not is_closure then (
             return raw_fn_type_name;
         );
-        let fn_type_name = new_ident("fn_type");
+        let fn_type_name = new_ident(
+            output_to_string(
+                () => (
+                    Ir.Print.fn_type_as_ident(f_ty);
+                )
+            )
+        );
         let ty_def = {
             .name = fn_type_name,
             .def = :Struct {
@@ -810,13 +819,13 @@ const C = (
                 let f = pure(calculate(f));
                 let mut args = ArrayList.new();
                 if f_ty.is_closure then (
-                &mut args
-                    |> ArrayList.push_back(
-                        :Field {
-                            .obj = f,
-                            .field = ident("captured"),
-                        }
-                    );
+                    &mut args
+                        |> ArrayList.push_back(
+                            :Field {
+                                .obj = f,
+                                .field = ident("captured"),
+                            }
+                        );
                 );
                 let f = if f_ty.is_closure then (
                     :Field {
@@ -1690,9 +1699,8 @@ const C = (
                     |> Option.unwrap;
                 type_def(name, def);
             )
-            | :Fn fn_ty => (
-                &mut (@current Context).fn_types
-                    |> OrdMap.get_or_init(ty^, () => init_fn_type(fn_ty));
+            | :Fn ref fn_ty => (
+                fn_type_ident(fn_ty);
             )
             | :Native String => ()
             | :UnwindToken {
@@ -1821,7 +1829,7 @@ const C = (
         with Context = {
             .defined_types = OrdSet.new(),
             .fn_types = OrdMap.new_with_compare(
-                (a, b) => Ir.compare_type(&a, &b),
+                (a, b) => Ir.compare_fn_type(&a, &b),
             ),
             .fn_capture_types = OrdMap.new(),
             .program,
