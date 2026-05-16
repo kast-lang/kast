@@ -1,8 +1,3 @@
-const Ctx = @context Int;
-
 const main = () => (
-    @loop (
-        with Ctx = 1;
-        print_String("Hi\n");
-    );
+    let s :: (String) -> () = print_String;
 );

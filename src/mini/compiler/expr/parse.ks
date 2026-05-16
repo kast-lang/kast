@@ -108,7 +108,7 @@ const parse_deref = (
         | :Some ty => :Some :Ref ty
     );
     let reference = parse_expr(expected_reference_ty, reference_ast);
-    let ty = match (@current Compiler).resolve_type_aliases(reference.ty) with (
+    let ty = match Ir.resolve_type_alias(&reference.ty)^ with (
         | :Ref referenced => referenced
         | _ => (
             let diagnostic = {
@@ -138,7 +138,7 @@ const parse_ref = (
     let referenced = root |> AstHelpers.expect_single_child(:None);
     let expected_referenced_ty = match expected_ty with (
         | :None => :None
-        | :Some ty => match (@current Compiler).resolve_type_aliases(ty) with (
+        | :Some ty => match Ir.resolve_type_alias(&ty)^ with (
             | :Ref referenced => :Some referenced
             | _ => (
                 let diagnostic = {
@@ -242,7 +242,7 @@ const parse_record = (
         kind :: Kind,
         field_types :: OrdMap.t[String, Ir.Type],
     } = with_return (
-        match ty_repr(ty) with (
+        match Ir.type_repr(&ty)^ with (
             | :Named name => (
                 let def = &(@current Compiler).program.types
                     |> OrdMap.get(name)
@@ -534,7 +534,7 @@ const parse_capture_continuation = (
                 .continuation_ty_repr = continuation_ty,
                 .continuation,
                 .resume_fn = instantiate(
-                    "resume_delimited_continuation_token", 
+                    "resume_delimited_continuation_token",
                     single_element_list(result_ty),
                     .span = ast.span,
                 ).name,
@@ -600,7 +600,7 @@ const parse_delimited_continuation = (
             .capture_mode,
             .captures,
             .resume_fn = instantiate(
-                "resume_delimited_continuation_token", 
+                "resume_delimited_continuation_token",
                 single_element_list(result_ty),
                 .span = ast.span,
             ).name,
@@ -797,7 +797,7 @@ const parse_apply = (
         |> Ast.unwrap_child_group;
     let args_ast = args_ast |> AstHelpers.expect_single_child(:Some "args");
     let f = parse_expr(:None, f_ast);
-    let f_type = match (@current Compiler).resolve_type_aliases(f.ty) with (
+    let f_type = match Ir.resolve_type_alias(&f.ty)^ with (
         | :Fn ty => ty
         | _ => (
             let diagnostic = {
@@ -940,7 +940,7 @@ const parse_expr_impl = (
                     | :Number { .raw, ... } => (
                         let ty = expect_known_type(expected_ty, .span = token.span);
                         # TODO catch parse errors
-                        let literal = match (@current Compiler).resolve_type_aliases(ty) with (
+                        let literal = match Ir.resolve_type_alias(&ty)^ with (
                             | :Int => (
                                 # TODO check that its within range
                                 :Int raw

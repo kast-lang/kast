@@ -221,7 +221,7 @@ const Compiler = (
                 return;
             );
             if rule.name == "type alias" then (
-                item()^.declaration = :Processed :Type;
+                item()^.declaration = :Processed :Type { .is_alias = true };
                 let def = {
                     .shape = type_def(name, :Alias, root),
                     .native,
@@ -230,7 +230,7 @@ const Compiler = (
                 return;
             );
             if rule.name == "enum" then (
-                item()^.declaration = :Processed :Type;
+                item()^.declaration = :Processed :Type { .is_alias = false };
                 let def = {
                     .shape = type_def(name, :Enum, root),
                     .native,
@@ -239,7 +239,7 @@ const Compiler = (
                 return;
             );
             if rule.name == "struct" then (
-                item()^.declaration = :Processed :Type;
+                item()^.declaration = :Processed :Type { .is_alias = false };
                 let def = {
                     .shape = type_def(name, :Struct, root),
                     .native,
@@ -248,7 +248,7 @@ const Compiler = (
                 return;
             );
             if rule.name == "union" then (
-                item()^.declaration = :Processed :Type;
+                item()^.declaration = :Processed :Type { .is_alias = false };
                 let def = {
                     .shape = type_def(name, :Union, root),
                     .native,
@@ -257,7 +257,7 @@ const Compiler = (
                 return;
             );
             if rule.name == "opaque_type" then (
-                item()^.declaration = :Processed :Type;
+                item()^.declaration = :Processed :Type { .is_alias = false };
                 let def = {
                     .shape = type_def(name, :Opaque, root),
                     .native,
@@ -414,7 +414,6 @@ const Compiler = (
             .find_ident_ty,
             .lookup_type,
             .add_toplevel_item,
-            .resolve_type_aliases,
             .get_toplevel_decl,
             .get_toplevel_impl,
         };
@@ -434,68 +433,5 @@ const Compiler = (
             process_toplevel_item(name);
         );
         state.program
-    );
-    # TODO should take &
-    const resolve_type_aliases = (ty :: Ir.Type) -> Ir.Type => with_return (
-        match ty with (
-            | :Any => :Any
-            | :Unit => :Unit
-            | :Int => ty
-            | :UInt => ty
-            | :IntSpecific _ => ty
-            | :Float32 => ty
-            | :Float64 => ty
-            | :Char => :Char
-            | :Bool => :Bool
-            | :Native s => :Native s
-            | :Named name => (
-                let def = &(@current Context).program.types
-                    |> OrdMap.get(name)
-                    |> Option.unwrap;
-                match def^.shape with (
-                    | :Alias ty => (
-                        Log.trace(
-                            () => (
-                                let output = @current Output;
-                                output.write(name);
-                                output.write(" is alias to ");
-                                Ir.Print.type_name(&ty);
-                            )
-                        );
-                        resolve_type_aliases(ty)
-                    )
-                    | _ => :Named name
-                )
-            )
-            | :Ref referenced => :Ref resolve_type_aliases(referenced)
-            | :Fn { .is_closure, .call_convention, .args, .result } => (
-                let mut resolved_args = ArrayList.new();
-                for &arg in &args |> ArrayList.iter do (
-                    &mut resolved_args |> ArrayList.push_back(resolve_type_aliases(arg));
-                );
-                let result = resolve_type_aliases(result);
-                :Fn {
-                    .is_closure,
-                    .call_convention,
-                    .args = resolved_args,
-                    .result = resolve_type_aliases(result),
-                }
-            )
-            | :UnwindToken {
-                .repr,
-                .result_ty,
-            } => :UnwindToken {
-                .repr = resolve_type_aliases(repr),
-                .result_ty = resolve_type_aliases(result_ty),
-            }
-            | :List {
-                .repr,
-                .element_ty,
-            } => :List {
-                .repr = resolve_type_aliases(repr),
-                .element_ty = resolve_type_aliases(element_ty),
-            }
-            | :ContextObject => ty
-        )
     );
 );

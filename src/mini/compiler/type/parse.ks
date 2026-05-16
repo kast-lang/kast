@@ -8,8 +8,18 @@ const lookup_type = (name :: String, .span :: Span) -> Ir.Type => with_return (
         return ty^;
     );
     if (@current Compiler).get_toplevel_decl(name) is :Some decl then (
-        if decl is :Type then (
-            return :Named name;
+        if decl is :Type { .is_alias } then (
+            if is_alias then (
+                return :Alias {
+                    .name = name,
+                    .resolved = match (@current Compiler).get_toplevel_impl(name) with (
+                        | :Some :Type { .shape = :Alias ref aliased, ... } => Ir.resolve_type_alias(aliased)^
+                        | _ => panic("unreachable")
+                    ),
+                };
+            ) else (
+                return :Named name;
+            );
         );
         let diagnostic = {
             .severity = :Error,

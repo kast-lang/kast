@@ -81,7 +81,7 @@ const TopLevelItemDef = newtype {
 
 const TopLevelDecl = newtype (
     | :Template
-    | :Type
+    | :Type { .is_alias :: Bool }
     | :Const ConstDeclaration
     | :Fn Ir.FnType
     | :Context
@@ -90,7 +90,7 @@ const TopLevelDecl = newtype (
 const print_toplevel_kind = (decl :: TopLevelDecl) => (
     let kind = match decl with (
         | :Fn _ => "function"
-        | :Type => "type"
+        | :Type { .is_alias } => if is_alias then "type alias" else "type"
         | :Template => "template"
         | :Const _ => "constant"
         | :Context => "context"
@@ -117,16 +117,6 @@ const CompilerT = newtype {
     .add_toplevel_item :: TopLevelItemDef -> (),
     .get_toplevel_decl :: String -> Option.t[TopLevelDecl],
     .get_toplevel_impl :: String -> Option.t[TopLevelImpl],
-    # TODO Ty = { .alias_resolved :: Ir.Ty, .local_name :: Ir.Ty }
-    .resolve_type_aliases :: Ty -> Ty,
 };
 
 const Compiler = @context CompilerT;
-# TODO should already be stored in Ty
-const ty_repr = (ty :: Ty) -> Ty => (
-    match (@current Compiler).resolve_type_aliases(ty) with (
-        | :UnwindToken { .repr, ... } => repr
-        | :List { .repr, ... } => repr
-        | ty => ty
-    )
-);

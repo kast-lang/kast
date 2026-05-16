@@ -33,8 +33,8 @@ const field_ty = (
     if obj_ty is :ContextObject then (
         return find_context_type(field, .span = field_span);
     );
-    let obj_ty = ty_repr(obj_ty);
-    if obj_ty is :Named name then (
+    let obj_ty = Ir.type_repr(&obj_ty);
+    if obj_ty^ is :Named name then (
         let type_def = &(@current Compiler).program.types
             |> OrdMap.get(name)
             |> Option.unwrap;
@@ -50,7 +50,7 @@ const field_ty = (
                     .severity = :Error,
                     .source = :Compiler,
                     .message = () => (
-                        Ir.Print.type_name(&obj_ty);
+                        Ir.Print.type_name(obj_ty);
                         (@current Output).write(" doesn't have fields");
                     ),
                     .span = field_span,
@@ -67,7 +67,7 @@ const field_ty = (
                     .source = :Compiler,
                     .message = () => (
                         let output = @current Output;
-                        Ir.Print.type_name(&obj_ty);
+                        Ir.Print.type_name(obj_ty);
                         output.write(" doesn't have field ");
                         output.write(String.escape(field));
                     ),
@@ -82,7 +82,7 @@ const field_ty = (
         .severity = :Error,
         .source = :Compiler,
         .message = () => (
-            Ir.Print.type_name(&obj_ty);
+            Ir.Print.type_name(obj_ty);
             (@current Output).write(" doesn't have fields");
         ),
         .span = field_span,

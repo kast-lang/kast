@@ -45,6 +45,10 @@ const Type = newtype (
     | :Bool
     | :Char
     | :Named String
+    | :Alias {
+        .name :: String,
+        .resolved :: Type,
+    }
     | :Fn FnType
     | :Native String
     | :List {
@@ -61,11 +65,29 @@ const Type = newtype (
     }
     | :ContextObject
 );
+
+const resolve_type_alias = (ty :: &Type) -> &Type => (
+    match ty^ with (
+        | :Alias { .name = _, .resolved = ref resolved } => resolved
+        | _ => ty
+    )
+);
+
+const type_repr = (ty :: &Type) -> &Type => (
+    match resolve_type_alias(ty)^ with (
+        | :UnwindToken { .repr = ref repr, ... } => repr
+        | :List { .repr = ref repr, ... } => repr
+        | _ => ty
+    )
+);
+
 # TODO derive
 const compare_type = (
     a :: &Type,
     b :: &Type,
 ) -> std.cmp.Ordering => with_return (
+    let a = resolve_type_alias(a);
+    let b = resolve_type_alias(b);
     match { a^, b^ } with (
         | { :Any, :Any } => :Equal
         | { :Any, _ } => :Less

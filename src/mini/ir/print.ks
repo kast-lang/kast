@@ -47,6 +47,7 @@ const Print = (
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)
+            | :Alias { .name, ... } => output.write(name)
             | :Fn ref ty => Print.fn_type(ty)
             | :Ref ref referenced => (
                 output.write("&");
@@ -118,6 +119,7 @@ const Print = (
             | :Float64 => output.write("Float64")
             | :Char => output.write("Char")
             | :Named name => output.write(name)
+            | :Alias { .name, ... } => output.write(name)
             | :Fn ref ty => Print.fn_type_as_ident(ty)
             | :Ref ref referenced => (
                 output.write("Ref_");

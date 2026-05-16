@@ -6,7 +6,7 @@ const expect_ty_enum = (
     ty :: &Ir.Type,
     .span :: Span,
 ) -> &OrdSet.t[String] => with_return (
-    match (@current Compiler).resolve_type_aliases(ty^) with (
+    match Ir.resolve_type_alias(ty)^ with (
         | :Named name => (
             let def = &(@current Compiler).program.types
                 |> OrdMap.get(name)
@@ -109,7 +109,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             )
         );
     );
-    match { expected^, actual^ } with (
+    match { Ir.resolve_type_alias(expected)^, Ir.resolve_type_alias(actual)^ } with (
         | { :Any, _ } => ()
         | { _, :Any } => ()
         | { :Ref ref a, :Ref ref b } => (
@@ -268,7 +268,7 @@ const type_check = (
         )
     };
     type_check_impl(
-        &(@current Compiler).resolve_type_aliases(expected),
-        &(@current Compiler).resolve_type_aliases(actual),
+        &expected,
+        &actual,
     );
 );

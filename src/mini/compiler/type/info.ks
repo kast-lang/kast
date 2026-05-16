@@ -4,8 +4,7 @@ use (import "../template.ks").*;
 module:
 
 const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
-    let ty = (@current Compiler).resolve_type_aliases(ty^);
-    let ty = &ty;
+    let ty = Ir.resolve_type_alias(ty);
     let span :: Span = {
         .start = Position.beginning(),
         .end = Position.beginning(),
@@ -42,7 +41,7 @@ const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
             &mut members |> ArrayList.push_back(member);
         );
     );
-    match ty_repr(ty^) with (
+    match Ir.type_repr(ty)^ with (
         | :Named name => (
             let def = &(@current Compiler).program.types
                 |> OrdMap.get(name)

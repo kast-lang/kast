@@ -92,6 +92,7 @@ const C = (
             | :Float64 => :Float64
             | :Bool => :Bool
             | :Char => :Char
+            | :Alias { .name, ... } => :Named ident(name)
             | :Named name => (
                 let def = &ctx.program.types
                     |> OrdMap.get(name)
@@ -1697,6 +1698,15 @@ const C = (
             | :Bool => ()
             | :Char => ()
             | :Named name => (
+                let def = &(@current Context).program.types
+                    |> OrdMap.get(name)
+                    |> Option.unwrap;
+                type_def(name, def);
+            )
+            | :Alias {
+                .name,
+                .resolved = _,
+            } => (
                 let def = &(@current Context).program.types
                     |> OrdMap.get(name)
                     |> Option.unwrap;
