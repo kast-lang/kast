@@ -55,10 +55,12 @@ compile-c path:
         kast_path/mini/backends/c/runtime.mks \
         {{path}} \
         > target/compiled.c
-    gcc target/compiled.c \
+    just gcc target/compiled.c -o target/compiled
+
+gcc *args:
+    gcc {{args}} \
         -Ideps/minicoro \
         -lgc \
-        -o target/compiled \
         -ggdb \
         -fanalyzer \
         -fsanitize=address \
