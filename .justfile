@@ -93,11 +93,11 @@ test:
     just build
     fd --type file --extension ks --exec-batch kast tokenize > /dev/null
     kast parse-syntax-rules tests/syntax/simple.ks > /dev/null
-    kast parse-syntax-rules src/*/syntax.ks > /dev/null
-    kast parse-syntax-rules std/syntax.ks > /dev/null
+    kast parse-syntax-rules kast_path/*/syntax.ks > /dev/null
     kast parse-json tests/json/*.json > /dev/null
     kast parse-json --use-kast-parser tests/json/*.json > /dev/null
     fd --exclude '**/doesnt-parse/*' --type file --extension ks --exec-batch kast parse > /dev/null
+    fd --exclude '**/doesnt-parse/*' --type file --extension ks --exec-batch kast mini parse > /dev/null
 
 lsp-stress-test:
     kast-bootstrap --target js lsp-stress-test/main.ks | kast lsp

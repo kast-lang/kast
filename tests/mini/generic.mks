@@ -29,7 +29,7 @@ const generic_fn = (
         result,
         list_index[MemberInfo](members, @native "0"),
     );
-    move(T, result_field, field);
+    @"move"(T, result_field, field);
 );
 
 const const_123 :: Int32 = 123;

@@ -127,7 +127,7 @@ const copy = (
     target^ = copy_impl(T, source^);
 );
 
-const move = (
+const @"move" = (
     T :: &TypeInfo,
     target :: &Any,
     source :: &Any,
