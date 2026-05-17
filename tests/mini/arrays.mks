@@ -1,3 +1,17 @@
+const print_Array = [T] (
+    a :: &Array[T],
+    print_element :: &T -> (),
+) => (
+    let i :: UInt = 0;
+    unwindable loop (
+        if greater_or_equal[UInt](i, a^.length) then (
+            unwind loop with ();
+        );
+        inc[UInt](&i);
+    );
+);
+
 const main = () => (
     let arr :: Array[Int] = [ 1, 2, 3, 4, 5 ];
+    print_Array[Int](&arr, print_Int);
 );
