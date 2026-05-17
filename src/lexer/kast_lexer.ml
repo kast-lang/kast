@@ -232,6 +232,7 @@ module DefaultRules = struct
               let result =
                 match c with
                 | '\\' -> '\\'
+                | '0' -> '\x00'
                 | 'n' -> '\n'
                 | 'r' -> '\r'
                 | 'b' -> '\b'

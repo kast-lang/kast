@@ -19,6 +19,7 @@ module Uchar = struct
     if Stdlib.Uchar.is_char c
     then (
       match Stdlib.Uchar.to_char c with
+      | '\x00' -> true
       | '\\' -> true
       | '\n' -> true
       | '\t' -> true
@@ -35,6 +36,7 @@ module Uchar = struct
     if Stdlib.Uchar.is_char c
     then (
       match Stdlib.Uchar.to_char c with
+      | '\x00' -> fprintf fmt "\\0"
       | '\\' -> fprintf fmt "\\\\"
       | '\n' -> fprintf fmt "\\n"
       | '\t' -> fprintf fmt "\\t"
