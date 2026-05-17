@@ -44,6 +44,14 @@ const allocate_type_on_heap = [T] @call "C" () -> Box[T] => (
     malloc(@TypeInfo(T).size)
 );
 
+const inc = [T] @call "C" (x :: &T) => (
+    @native "*\(x)++";
+);
+
+const dec = [T] @call "C" (x :: &T) => (
+    @native "*\(x)--";
+);
+
 const add = [T] @call "C" (a :: T, b :: T) -> T => (
     @native "\(a) + \(b)"
 );
