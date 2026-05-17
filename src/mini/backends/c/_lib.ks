@@ -468,7 +468,11 @@ const C = (
             let mut fields = ArrayList.new();
             let offset_or_name_field = {
                 .name = ident("offset_or_name"),
-                .value = :Raw ("offsetof(" + ty + ", " + ident(member^.name).name + ")")
+                .value = if member^.ty.shape is :Unit then (
+                    :Literal :Int "0"
+                ) else (
+                    :Raw ("offsetof(" + ty + ", " + ident(member^.name).name + ")")
+                )
             };
             &mut fields |> ArrayList.push_back(offset_or_name_field);
             let ty_field = {
