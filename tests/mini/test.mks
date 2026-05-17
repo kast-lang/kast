@@ -3,8 +3,10 @@ const Foo = union {
     .b :: String,
 };
 
+const foo = () -> Foo => uninitialized;
+
 const main = () => (
     let s :: String -> () = print_String;
     let f :: Foo = { .a = () };
-    @TypeInfo(Foo);
+    # @TypeInfo(Foo);
 );

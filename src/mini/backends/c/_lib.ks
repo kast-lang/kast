@@ -579,51 +579,34 @@ const C = (
     );
 
     const uninitialized = (ty :: &Ir.Type, .span :: Span) -> Pure => with_return (
-        let actually_dont_initialize = () => (
-            let mut block = new_block();
-            with Scope = {
-                .block = &mut block,
-            };
-            let ident = new_ident("uninitialized");
-            insert_stmt(
-                :LetVar {
-                    .ty = convert_ty(ty),
-                    .ident,
-                    .value = :None,
-                }
-            );
-            insert_stmt(:Expr :Ident ident);
-            :Stmt block
+        if ty^.shape is :Unit then (
+            return void(span);
         );
-        let expr = match Ir.type_repr(ty)^.shape with (
-            | :Unit => return void(span)
-            | :Any => (
-                let diagnostic = {
-                    .severity = :Error,
-                    .source = :Internal,
-                    .message = () => (
-                        let output = @current Output;
-                        output.write("Can't create uninitialized Any");
-                    ),
-                    .span,
-                    .related = ArrayList.new(),
-                };
-                Diagnostic.report_and_unwind(diagnostic)
+        let mut block = new_block();
+        with Scope = {
+            .block = &mut block,
+        };
+        let ident = new_ident("uninitialized");
+        insert_stmt(
+            :LetVar {
+                .ty = convert_ty(ty),
+                .ident,
+                .value = :None,
+            }
+        );
+        insert_stmt(
+            :RawParts (
+                let mut parts = ArrayList.new();
+                &mut parts |> ArrayList.push_back(:Raw "memset(");
+                &mut parts |> ArrayList.push_back(:Ref :Ident ident);
+                &mut parts |> ArrayList.push_back(:Raw ", 0, sizeof(");
+                &mut parts |> ArrayList.push_back(:Ident ident);
+                &mut parts |> ArrayList.push_back(:Raw "))");
+                parts
             )
-            | :Ref _ => :Raw "NULL"
-            | :Int => :Literal :Int "0"
-            | :UInt => :Literal :Int "0"
-            | :IntSpecific _ => :Literal :Int "0"
-            | :Float32 => :Literal :Float "0"
-            | :Float64 => :Literal :Float "0"
-            | :Bool => :Literal :Bool false
-            | :Char => :Literal :Char '\0'
-            | :Named name => actually_dont_initialize() # TODO enum
-            | :Fn f_ty => actually_dont_initialize() # TODO raw/closure
-            | :Native _ => actually_dont_initialize() # TODO
-            | :ContextObject => actually_dont_initialize()
         );
-        { .expr = :Some expr, .span }
+        insert_stmt(:Expr :Ident ident);
+        { .expr = :Some :Stmt block, .span }
     );
 
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
