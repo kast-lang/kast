@@ -17,11 +17,11 @@ const Array_allocate = [T] (size :: Int32) -> Array[T] => (
     @native "[]"
 );
 
-const Array_index = [T] (array :: Array[T], idx :: Int32) -> &T => (
+const Array_index = [T] (array :: &Array[T], idx :: Int32) -> &T => (
     @native ''
         {
-            get: () => \(array)[\(idx)],
-            set: value => \(array)[\(idx)] = value,
+            get: () => \(array^)[\(idx)],
+            set: value => \(array^)[\(idx)] = value,
         }
     ''
 );

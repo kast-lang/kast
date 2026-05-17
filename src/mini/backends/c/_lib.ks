@@ -586,7 +586,7 @@ const C = (
             | :Array ref ir_elements => (
                 let element_ty = match ir_expr^.ty.shape with (
                     | :Array { .element_ty = ref element_ty, ... } => element_ty
-                    | _ => panic("List expr is not list type???")
+                    | _ => panic("Array expr is not array type???")
                 );
                 let data = (
                     let mut elements = ArrayList.new();
@@ -594,7 +594,7 @@ const C = (
                         let element = pure(calculate(element));
                         &mut elements |> ArrayList.push_back(element);
                     );
-                    :Ref :ArrayLiteral {
+                    :ArrayLiteral {
                         .ty = convert_ty(element_ty),
                         .elements,
                     }

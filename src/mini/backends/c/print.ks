@@ -121,7 +121,7 @@ const Print = (
             | :ArrayLiteral { .ty = ref ty, .elements = ref elements } => (
                 write("(");
                 Print.ty(ty);
-                write(")");
+                write("[])");
                 write("{\n");
                 inc_indentation();
                 for element in elements |> ArrayList.iter do (

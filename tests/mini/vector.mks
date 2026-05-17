@@ -31,7 +31,7 @@ const push_vector = [T] (v :: &Vector[T], element :: T) -> () => (
         Array_free[T](v^.buffer);
         v^.buffer = new_buffer;
     );
-    Array_index[T](v^.buffer, v^.length)^ = element;
+    Array_index[T](&v^.buffer, v^.length)^ = element;
     v^.length = add[UInt](v^.length, 1);
 );
 

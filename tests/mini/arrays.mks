@@ -3,15 +3,24 @@ const print_Array = [T] (
     print_element :: &T -> (),
 ) => (
     let i :: UInt = 0;
-    unwindable loop (
+    print_String("[");
+    unwindable loop @loop (
         if greater_or_equal[UInt](i, a^.length) then (
             unwind loop with ();
         );
+        if not_equal[UInt](i, 0) then (
+            print_String(", ");
+        );
+        print_element(Array_index[T](a, i));
         inc[UInt](&i);
     );
+    print_String("]");
 );
 
 const main = () => (
     let arr :: Array[Int] = [ 1, 2, 3, 4, 5 ];
-    print_Array[Int](&arr, print_Int);
+    print_UInt(arr.length);
+    print_String("\n");
+    print_Array[Int](&arr, (x :: &Int) => print_Int(x^));
+    print_String("\n");
 );

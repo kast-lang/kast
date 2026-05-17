@@ -45,11 +45,11 @@ const allocate_type_on_heap = [T] @call "C" () -> Box[T] => (
 );
 
 const inc = [T] @call "C" (x :: &T) => (
-    @native "*\(x)++";
+    @native "\(x^)++";
 );
 
 const dec = [T] @call "C" (x :: &T) => (
-    @native "*\(x)--";
+    @native "\(x^)--";
 );
 
 const add = [T] @call "C" (a :: T, b :: T) -> T => (
@@ -138,8 +138,8 @@ const Array_free = [T] @call "C" (array :: Array[T]) -> () => (
     );
 );
 
-const Array_index = [T] (array :: Array[T], idx :: UInt) -> &T => (
-    @native "&\(array.data)[\(idx)]"
+const Array_index = [T] (array :: &Array[T], idx :: UInt) -> &T => (
+    @native "&\(array^.data)[\(idx)]"
 );
 
 const TypeInfo_init_for_struct = (
@@ -152,7 +152,7 @@ const TypeInfo_init_for_struct = (
         stmt:
         for (size_t i = 0; i < \(members.length); i++) {
             \(
-                let member = Array_index[MemberInfo](members, @native "i");
+                let member = Array_index[MemberInfo](&members, @native "i");
                 if greater[UInt](member^.ty^.alignment, T^.alignment) then (
                     T^.alignment = member^.ty^.alignment;
                 );
