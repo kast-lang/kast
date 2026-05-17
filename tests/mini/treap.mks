@@ -43,6 +43,15 @@ const Treap_empty = [T] () -> Treap[T] => {
     .node = uninitialized,
 };
 
+const drop_Treap = [T] (treap :: Treap[T], drop_T :: T -> ()) => (
+    if not(treap.is_empty) then (
+        drop_T(treap.node^.value);
+        drop_Treap[T](treap.node^.left, drop_T);
+        drop_Treap[T](treap.node^.right, drop_T);
+        free_Box[Treap_Node[T]](treap.node);
+    );
+);
+
 const Treap_singleton = [T] (value :: T) -> Treap[T] => {
     .is_empty = false,
     .node = (
@@ -72,7 +81,7 @@ const Treap_split_at_index = [T] (
         .left = treap,
         .right = treap,
     } else (
-        let total_nodes_left = Treap_total_nodes[T](treap.node^.left);
+        let total_nodes_left = Treap_total_nodes[T](&treap.node^.left);
         if less_or_equal[Int](index, total_nodes_left) then (
             let split = Treap_split_at_index[T](
                 treap.node^.left,
@@ -97,30 +106,30 @@ const Treap_split_at_index = [T] (
     )
 );
 
-const Treap_total_nodes = [T] (treap :: Treap[T]) -> Int => (
-    if treap.is_empty then (
+const Treap_total_nodes = [T] (treap :: &Treap[T]) -> Int => (
+    if treap^.is_empty then (
         0
     ) else (
-        treap.node^.total_nodes
+        treap^.node^.total_nodes
     )
 );
 
-const Treap_max_depth = [T] (treap :: Treap[T]) -> Int => (
-    if treap.is_empty then (
+const Treap_max_depth = [T] (treap :: &Treap[T]) -> Int => (
+    if treap^.is_empty then (
         0
     ) else (
-        treap.node^.max_depth
+        treap^.node^.max_depth
     )
 );
 
 const Treap_recalculate = [T] (treap :: Treap[T]) => (
     if not(treap.is_empty) then (
-        let total_nodes_left = Treap_total_nodes[T](treap.node^.left);
-        let total_nodes_right = Treap_total_nodes[T](treap.node^.right);
+        let total_nodes_left = Treap_total_nodes[T](&treap.node^.left);
+        let total_nodes_right = Treap_total_nodes[T](&treap.node^.right);
         treap.node^.total_nodes = add[Int](add[Int](total_nodes_left, total_nodes_right), 1);
 
-        let max_depth_left = Treap_max_depth[T](treap.node^.left);
-        let max_depth_right = Treap_max_depth[T](treap.node^.right);
+        let max_depth_left = Treap_max_depth[T](&treap.node^.left);
+        let max_depth_right = Treap_max_depth[T](&treap.node^.right);
         treap.node^.max_depth = add[Int](max[Int](max_depth_left, max_depth_right), 1);
     );
 );
@@ -148,24 +157,24 @@ const Treap_join = [T] (
 
 const print_Treap_as_list_impl = [T] (
     first :: &Bool,
-    treap :: Treap[T],
-    print_T :: (T) -> (),
+    treap :: &Treap[T],
+    print_T :: &T -> (),
 ) => (
-    if not(treap.is_empty) then (
-        print_Treap_as_list_impl[T](first, treap.node^.left, print_T);
+    if not(treap^.is_empty) then (
+        print_Treap_as_list_impl[T](first, &treap^.node^.left, print_T);
         if first^ then (
             first^ = false;
         ) else (
             print_String(", ");
         );
-        print_T(treap.node^.value);
-        print_Treap_as_list_impl[T](first, treap.node^.right, print_T);
+        print_T(&treap^.node^.value);
+        print_Treap_as_list_impl[T](first, &treap^.node^.right, print_T);
     )
 );
 
 const print_Treap_as_list = [T] (
-    treap :: Treap[T],
-    print_T :: (T) -> (),
+    treap :: &Treap[T],
+    print_T :: &T -> (),
 ) => (
     print_String("[");
     let first = true;
@@ -188,52 +197,52 @@ const print_blanks = (n :: Int) => (
 );
 
 const print_Treap_left_branch_from_parent = [T] (
-    treap :: Treap[T],
+    treap :: &Treap[T],
 ) => unwindable f (
-    if treap.is_empty then (
+    if treap^.is_empty then (
         unwind f with ();
     );
-    print_blanks(Treap_total_nodes[T](treap.node^.left));
+    print_blanks(Treap_total_nodes[T](&treap^.node^.left));
     print_String(" ╭─");
-    print_string_times("───", Treap_total_nodes[T](treap.node^.right));
+    print_string_times("───", Treap_total_nodes[T](&treap^.node^.right));
 );
 
 const print_Treap_right_branch_from_parent = [T] (
-    treap :: Treap[T],
+    treap :: &Treap[T],
 ) => unwindable f (
-    if treap.is_empty then (
+    if treap^.is_empty then (
         unwind f with ();
     );
-    print_string_times("───", Treap_total_nodes[T](treap.node^.left));
+    print_string_times("───", Treap_total_nodes[T](&treap^.node^.left));
     print_String("─╮ ");
-    print_blanks(Treap_total_nodes[T](treap.node^.right));
+    print_blanks(Treap_total_nodes[T](&treap^.node^.right));
 );
 
 const print_Treap_as_tree_at_depth = [T] (
     depth :: Int,
-    treap :: Treap[T],
-    print_T :: (T) -> (),
+    treap :: &Treap[T],
+    print_T :: &T -> (),
 ) => unwindable f (
-    if treap.is_empty then (
+    if treap^.is_empty then (
         unwind f with ();
     );
     if equal[Int](depth, 1) then (
-        print_Treap_left_branch_from_parent[T](treap.node^.left);
+        print_Treap_left_branch_from_parent[T](&treap^.node^.left);
         print_String(" ");
-        print_T(treap.node^.value);
+        print_T(&treap^.node^.value);
         print_String(" ");
-        print_Treap_right_branch_from_parent[T](treap.node^.right);
+        print_Treap_right_branch_from_parent[T](&treap^.node^.right);
     ) else (
         let depth = sub[Int](depth, 1);
-        print_Treap_as_tree_at_depth[T](depth, treap.node^.left, print_T);
+        print_Treap_as_tree_at_depth[T](depth, &treap^.node^.left, print_T);
         print_blanks(1);
-        print_Treap_as_tree_at_depth[T](depth, treap.node^.right, print_T);
+        print_Treap_as_tree_at_depth[T](depth, &treap^.node^.right, print_T);
     );
 );
 
 const print_Treap_as_tree = [T] (
-    treap :: Treap[T],
-    print_T :: (T) -> (),
+    treap :: &Treap[T],
+    print_T :: &T -> (),
 ) => unwindable f (
     let depth :: Int = 1;
     let max_depth = Treap_max_depth[T](treap);
@@ -246,6 +255,8 @@ const print_Treap_as_tree = [T] (
         depth = add[Int](depth, 1);
     );
 );
+
+const print_Int_by_ref = (x :: &Int) => print_Int(x^);
 
 const main = () => (
     let a = Treap_empty[Int]();
@@ -261,12 +272,14 @@ const main = () => (
             i = add[Int](i, 1);
         );
     );
-    print_Treap_as_list[Int](a, print_Int);
+    print_Treap_as_list[Int](&a, print_Int_by_ref);
     print_String("\n");
-    print_Treap_as_tree[Int](a, print_Int);
+    print_Treap_as_tree[Int](&a, print_Int_by_ref);
     let split = Treap_split_at_index[Int](a, 7);
     print_String("Left:\n");
-    print_Treap_as_tree[Int](split.left, print_Int);
+    print_Treap_as_tree[Int](&split.left, print_Int_by_ref);
     print_String("Right:\n");
-    print_Treap_as_tree[Int](split.right, (x :: Int) => print_Int(x));
+    print_Treap_as_tree[Int](&split.right, print_Int_by_ref);
+    drop_Treap[Int](split.left, drop_noop[Int]);
+    drop_Treap[Int](split.right, drop_noop[Int]);
 );

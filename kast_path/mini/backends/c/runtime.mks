@@ -34,7 +34,16 @@ const allocate_type_on_stack = [T] @call "C" () -> &T => (
     @native "alloca(\(@TypeInfo(T).size))"
 );
 
+const drop_noop = [T] (value :: T) => ();
+
 const Box = [T] type &T;
+
+@native
+const free :: fn @call "C" (&Any) -> ();
+
+const free_Box = [T] (box :: Box[T]) => (
+    free(box);
+);
 
 @native
 const malloc :: fn @call "C" (UInt) -> Box[Any];

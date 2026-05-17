@@ -32,7 +32,7 @@ const Print = (
         let output = @current Output;
         if self^.alias_name is :Some name then (
             output.write(name);
-            output.write(" (aka");
+            output.write(" (aka ");
         );
         match self^.shape with (
             | :Any => output.write("Any")
