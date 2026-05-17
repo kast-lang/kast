@@ -45,8 +45,22 @@ const free_Box = [T] (box :: Box[T]) => (
     free(box);
 );
 
+const panic = (message :: StringView) => (
+    print_String(message);
+    @native "exit(-1)";
+);
+
 @native
 const malloc :: fn @call "C" (UInt) -> Box[Any];
+
+const malloc_or_panic = @call "C" (size :: UInt) -> Box[Any] => (
+    let &@context = uninitialized; # to call non @call "C" fns
+    let result = malloc(size);
+    if @native "!\(result)" then (
+        panic("Malloc failed");
+    );
+    result
+);
 
 const allocate_type_on_heap = [T] @call "C" () -> Box[T] => (
     @native "#include <stdlib.h>";

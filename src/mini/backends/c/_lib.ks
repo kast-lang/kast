@@ -457,7 +457,7 @@ const C = (
                         &mut fields |> ArrayList.push_back(length_field);
                         let data_field = {
                             .name = ident("data"),
-                            .value = :Raw ("malloc(sizeof(MemberInfo) * " + to_string(length) + ")"),
+                            .value = :Raw ("malloc_or_panic_fn(sizeof(MemberInfo) * " + to_string(length) + ")"),
                         };
                         &mut fields |> ArrayList.push_back(data_field);
                         fields
@@ -1473,7 +1473,7 @@ const C = (
                 .value = :Some :Raw output_to_string(
                     () => (
                         let output = @current Output;
-                        output.write("malloc(sizeof(");
+                        output.write("malloc_or_panic_fn(sizeof(");
                         Print.ty(&captured_ty);
                         output.write("))");
                     )
