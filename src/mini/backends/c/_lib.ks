@@ -371,7 +371,7 @@ const C = (
                         &mut fields |> ArrayList.push_back(contents);
                         let length = {
                             .name = ident("length"),
-                            .value = :Literal :Int to_string(String.length(s)),
+                            .value = :Literal :Int to_string(String.utf8_length(s)),
                         };
                         &mut fields |> ArrayList.push_back(length);
                         fields
