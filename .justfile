@@ -78,17 +78,6 @@ js path *args:
         > target/compiled.mjs
     node target/compiled.mjs {{args}}
 
-watch:
-    #!/usr/bin/env bash
-    trap 'kill $(jobs -p); exit' INT
-    inotifywait -m -r -e modify,create,delete,moved_to src |
-    while read -r directory events filename; do
-        echo "Change detected: $filename ($events). Rebuilding..."
-        just build
-    done &
-    just build
-    wait
-
 test:
     just build
     fd --type file --extension ks --exec-batch kast tokenize > /dev/null
