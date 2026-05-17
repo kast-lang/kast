@@ -965,7 +965,7 @@ const C = (
                     :CompoundLiteral {
                         .ty = convert_ty(token_ty_repr),
                         .fields = single_element_list(
-                            { .name = ident("raw"), .value = :Raw "newRawUnwindToken_fn()" }
+                            { .name = ident("raw"), .value = :Raw "RawUnwindToken_new_fn()" }
                         ),
                     },
                 );

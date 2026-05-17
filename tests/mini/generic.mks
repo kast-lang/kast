@@ -14,7 +14,7 @@ const GenericType = (T :: &TypeInfo) -> &TypeInfo => (
     };
     let members = allocate_list[MemberInfo](@native "1");
     list_index[MemberInfo](members, @native "0")^ = member_field;
-    initialize_type_info_for_struct(result, members);
+    TypeInfo_init_for_struct(result, members);
     result
 );
 

@@ -12,7 +12,7 @@ const Vector = [T] struct {
 
 const new_vector = [T] () -> Vector[T] => (
     {
-        .buffer = empty_array[T](),
+        .buffer = Array_empty[T](),
         .length = 0,
     }
 );
@@ -24,14 +24,14 @@ const push_vector = [T] (v :: &Vector[T], element :: T) -> () => (
         ) else (
             mul[UInt](v^.buffer.length, 2)
         );
-        let new_buffer = allocate_array[T](new_capacity);
+        let new_buffer = Array_allocate[T](new_capacity);
         let T_TypeInfo = @TypeInfo(T);
         let data_size = mul[UInt](T_TypeInfo.stride, v^.buffer.length);
-        copy_array[T](new_buffer, 0, v^.buffer, 0, v^.buffer.length);
-        free_array[T](v^.buffer);
+        Array_copy[T](new_buffer, 0, v^.buffer, 0, v^.buffer.length);
+        Array_free[T](v^.buffer);
         v^.buffer = new_buffer;
     );
-    array_index[T](v^.buffer, v^.length)^ = element;
+    Array_index[T](v^.buffer, v^.length)^ = element;
     v^.length = add[UInt](v^.length, 1);
 );
 

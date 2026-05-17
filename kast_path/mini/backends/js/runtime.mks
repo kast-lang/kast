@@ -13,11 +13,11 @@ const MemberInfo = struct {
 
 const Array = [T] type @native "Array<any>";
 
-const allocate_array = [T] (size :: Int32) -> Array[T] => (
+const Array_allocate = [T] (size :: Int32) -> Array[T] => (
     @native "[]"
 );
 
-const array_index = [T] (array :: Array[T], idx :: Int32) -> &T => (
+const Array_index = [T] (array :: Array[T], idx :: Int32) -> &T => (
     @native ''
         {
             get: () => \(array)[\(idx)],
@@ -78,7 +78,7 @@ const allocate_type_on_stack = (T :: &TypeInfo) -> &Any => (
     allocate_type_on_heap(T)
 );
 
-const initialize_type_info_for_struct = (
+const TypeInfo_init_for_struct = (
     T :: &TypeInfo,
     members :: Array[MemberInfo],
 ) -> () => (

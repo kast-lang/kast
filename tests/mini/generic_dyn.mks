@@ -1,4 +1,4 @@
- # const GenericType = [T] newtype {
+# const GenericType = [T] newtype {
 #     .field :: T,
 # };
 # const generic_fn = [T] (field :: T) -> GenericType[T] => (
@@ -12,7 +12,7 @@ const GenericType = (T :: &TypeInfo) -> &TypeInfo => (
     let member_field :: MemberInfo = {
         .offset_or_name = initialize_offset_or_name("field"),
     };
-    initialize_type_info_for_struct(result, Array[member_field]);
+    TypeInfo_init_for_struct(result, Array[member_field]);
     result
 );
 

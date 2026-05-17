@@ -93,12 +93,12 @@ const Array = [T] struct {
     .length :: UInt,
 };
 
-const empty_array = [T] @call "C" () -> Array[T] => {
+const Array_empty = [T] @call "C" () -> Array[T] => {
     .data = @native "NULL",
     .length = @native "0",
 };
 
-const allocate_array = [T] @call "C" (length :: UInt) -> Array[T] => {
+const Array_allocate = [T] @call "C" (length :: UInt) -> Array[T] => {
     .data = (
         let T_TypeInfo = @TypeInfo(T);
         malloc(mul[UInt](T_TypeInfo.stride, length))
@@ -106,33 +106,35 @@ const allocate_array = [T] @call "C" (length :: UInt) -> Array[T] => {
     .length = length,
 };
 
-const copy_array = [T] @call "C" (
+const Array_copy = [T] @call "C" (
     target :: Array[T],
     target_offset :: UInt,
     source :: Array[T],
     source_offset :: UInt,
     length :: UInt,
 ) -> () => (
-    @native ''
-        stmt:
-        memcpy(
-            \(target.data)+ \(target_offset),
-            \(source.data)+ \(source_offset),
-            \(length)* \(@TypeInfo(T).stride)
-        )'';
+    if not_equal[UInt](length, 0) then (
+        @native ''
+            stmt:
+            memcpy(
+                \(target.data)+ \(target_offset),
+                \(source.data)+ \(source_offset),
+                \(length)* \(@TypeInfo(T).stride)
+            )'';
+    );
 );
 
-const free_array = [T] @call "C" (array :: Array[T]) -> () => (
+const Array_free = [T] @call "C" (array :: Array[T]) -> () => (
     if not_equal[&T](array.data, @native "NULL") then (
         @native "free(\(array.data))";
     );
 );
 
-const array_index = [T] (array :: Array[T], idx :: UInt) -> &T => (
+const Array_index = [T] (array :: Array[T], idx :: UInt) -> &T => (
     @native "&\(array.data)[\(idx)]"
 );
 
-const initialize_type_info_for_struct = (
+const TypeInfo_init_for_struct = (
     T :: &TypeInfo,
     members :: Array[MemberInfo],
 ) -> () => (
@@ -142,7 +144,7 @@ const initialize_type_info_for_struct = (
         stmt:
         for (size_t i = 0; i < \(members.length); i++) {
             \(
-                let member = array_index[MemberInfo](members, @native "i");
+                let member = Array_index[MemberInfo](members, @native "i");
                 if greater[UInt](member^.ty^.alignment, T^.alignment) then (
                     T^.alignment = member^.ty^.alignment;
                 );
@@ -184,7 +186,7 @@ const RawUnwindToken = struct {
     .id :: Int,
 };
 
-const newRawUnwindToken = @call "C" () -> RawUnwindToken => (
+const RawUnwindToken_new = @call "C" () -> RawUnwindToken => (
     let next_raw_id :: &Int = @native "&next_raw_unwind_token_id";
     let result :: RawUnwindToken = {
         .id = next_raw_id^,
