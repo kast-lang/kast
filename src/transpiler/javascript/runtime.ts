@@ -168,6 +168,7 @@ interface Kast<isNode> extends Backend<isNode> {
     iteri_rev: Fn<[string, Fn<[{ 0: number; 1: Char }], void>], void>;
     at: Fn<[string, number], Char>;
     length: Fn<[string], number>;
+    utf8_length: Fn<[string], number>;
     to_string: Fn<[Value], string>;
   };
   parse: {
@@ -798,6 +799,9 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       },
       length: (ctx, s: string) => {
         return s.length;
+      },
+      utf8_length : (ctx, s: string) => {
+        return Buffer.byteLength(s, "utf-8");
       },
       to_string: (ctx, x: Value) => {
         return x.toString();

@@ -4,6 +4,10 @@ impl String as module = (
         | target.name == "interpreter" => (@native "string.length")(s)
         | target.name == "javascript" => (@native "Kast.String.length")(s)
     );
+    const utf8_length = (s :: String) -> Int32 => @cfg (
+        | target.name == "interpreter" => (@native "string.length")(s)
+        | target.name == "javascript" => (@native "Kast.String.utf8_length")(s)
+    );
     const at = (s :: String, idx :: Int32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "string.at")(s, idx)
         | target.name == "javascript" => (@native "Kast.String.at")(s, idx)
