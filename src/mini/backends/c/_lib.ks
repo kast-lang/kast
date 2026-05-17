@@ -2,6 +2,7 @@ use (import "../../../util.ks").*;
 use (import "../../ir/_lib.ks").*;
 use (import "../../../diagnostic.ks").*;
 use (import "../../../output.ks").*;
+use (import "../../../position.ks").*;
 use (import "../../../span.ks").*;
 use std.collections.OrdMap;
 use std.collections.OrdSet;
@@ -33,7 +34,7 @@ const C = (
     const FunctionContext = @context newtype {
         .capture_mode :: Ir.CaptureMode,
         .captures :: OrdMap.t[String, Ir.Type],
-        .result_ty :: Ast.Ty,
+        .result_ty :: Ir.Type,
     };
 
     const UnwindContext = @context newtype {
@@ -577,6 +578,54 @@ const C = (
         result
     );
 
+    const uninitialized = (ty :: &Ir.Type, .span :: Span) -> Pure => with_return (
+        let actually_dont_initialize = () => (
+            let mut block = new_block();
+            with Scope = {
+                .block = &mut block,
+            };
+            let ident = new_ident("uninitialized");
+            insert_stmt(
+                :LetVar {
+                    .ty = convert_ty(ty),
+                    .ident,
+                    .value = :None,
+                }
+            );
+            insert_stmt(:Expr :Ident ident);
+            :Stmt block
+        );
+        let expr = match Ir.type_repr(ty)^.shape with (
+            | :Unit => return void(span)
+            | :Any => (
+                let diagnostic = {
+                    .severity = :Error,
+                    .source = :Internal,
+                    .message = () => (
+                        let output = @current Output;
+                        output.write("Can't create uninitialized Any");
+                    ),
+                    .span,
+                    .related = ArrayList.new(),
+                };
+                Diagnostic.report_and_unwind(diagnostic)
+            )
+            | :Ref _ => :Raw "NULL"
+            | :Int => :Literal :Int "0"
+            | :UInt => :Literal :Int "0"
+            | :IntSpecific _ => :Literal :Int "0"
+            | :Float32 => :Literal :Float "0"
+            | :Float64 => :Literal :Float "0"
+            | :Bool => :Literal :Bool false
+            | :Char => :Literal :Char '\0'
+            | :Named name => actually_dont_initialize() # TODO enum
+            | :Fn f_ty => actually_dont_initialize() # TODO raw/closure
+            | :Native _ => actually_dont_initialize() # TODO
+            | :ContextObject => actually_dont_initialize()
+        );
+        { .expr = :Some expr, .span }
+    );
+
     const calculate = (ir_expr :: &Ir.Expr) -> Pure => with_return (
         let mut ctx = @current Context;
         let span = ir_expr^.span;
@@ -616,23 +665,7 @@ const C = (
                 }
             )
             | :Uninitialized => (
-                if ir_expr^.ty.shape is :Unit then (
-                    return void(span);
-                );
-                let mut block = new_block();
-                with Scope = {
-                    .block = &mut block,
-                };
-                let ident = new_ident("uninitialized");
-                insert_stmt(
-                    :LetVar {
-                        .ty = convert_ty(&ir_expr^.ty),
-                        .ident,
-                        .value = :None,
-                    }
-                );
-                insert_stmt(:Expr :Ident ident);
-                :Stmt block
+                return uninitialized(&ir_expr^.ty, .span)
             )
             | :Claim ref place => return calculate_place(place).get()
             | :Ref ref place_expr => (
@@ -1523,26 +1556,20 @@ const C = (
         with FunctionContext = {
             .capture_mode,
             .captures = captures^, # TODO
-            .result_ty = signature.result_ty,
+            .result_ty = body^.ty,
         };
         with UnwindContext = {
             .insert_unwind = () => (
-                match (@current FunctionContext).result_ty with (
-                    | :Void => (
-                        insert_stmt(:ReturnVoid);
-                    )
-                    | result_ty => (
-                        let result_var = new_ident("return_uninitialized");
-                        insert_stmt(
-                            :LetVar {
-                                .ty = (@current FunctionContext).result_ty,
-                                .ident = result_var,
-                                .value = :None,
-                            }
-                        );
-                        insert_stmt(:Expr :Ref :Ident result_var); # This prevents UB (i think)
-                        insert_stmt(:Return :Ident result_var);
-                    )
+                match uninitialized(
+                    &body^.ty,
+                    .span = {
+                        .start = Position.beginning(),
+                        .end = Position.beginning(),
+                        .path = :Special __FILE__
+                    },
+                ).expr with (
+                    | :Some expr => insert_stmt(:Return expr)
+                    | :None => insert_stmt(:ReturnVoid)
                 );
             ),
             .cleanup_scope_without_unwind = () => (),
@@ -1920,7 +1947,7 @@ const C = (
             with FunctionContext = {
                 .capture_mode = :ByRef,
                 .captures = OrdMap.new(),
-                .result_ty = :Void,
+                .result_ty = { .shape = :Unit, .alias_name = :None },
             };
             with UnwindContext = {
                 .insert_unwind = () => (

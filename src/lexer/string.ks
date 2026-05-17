@@ -231,7 +231,9 @@ const read_string_impl = (
                 )
             );
             Reader.advance(reader);
-            let c = if c == '\\' then (
+            let c = if c == '0' then (
+                '\0'
+            ) else if c == '\\' then (
                 '\\'
             ) else if c == 'n' then (
                 '\n'
