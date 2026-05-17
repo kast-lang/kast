@@ -12,7 +12,7 @@ const GenericType = (T :: &TypeInfo) -> &TypeInfo => (
     let member_field :: MemberInfo = {
         .offset_or_name = initialize_offset_or_name("field"),
     };
-    initialize_type_info_for_struct(result, List[member_field]);
+    initialize_type_info_for_struct(result, Array[member_field]);
     result
 );
 

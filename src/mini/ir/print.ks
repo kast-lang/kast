@@ -73,11 +73,11 @@ const Print = (
                 Print.type_name(result_ty);
                 output.write("]");
             )
-            | :List {
+            | :Array {
                 .repr = _,
                 .element_ty = ref element_ty,
             } => (
-                output.write("List[");
+                output.write("Array[");
                 Print.type_name(element_ty);
                 output.write("]");
             )
@@ -140,7 +140,7 @@ const Print = (
             } => (
                 Print.type_name_as_ident(repr);
             )
-            | :List {
+            | :Array {
                 .repr = ref repr,
                 .element_ty = _,
             } => (

@@ -11,17 +11,17 @@ const MemberInfo = struct {
     .ty :: &TypeInfo,
 };
 
-const List = [T] type @native "Array<any>";
+const Array = [T] type @native "Array<any>";
 
-const allocate_list = [T] (size :: Int32) -> List[T] => (
+const allocate_array = [T] (size :: Int32) -> Array[T] => (
     @native "[]"
 );
 
-const list_index = [T] (list :: List[T], idx :: Int32) -> &T => (
+const array_index = [T] (array :: Array[T], idx :: Int32) -> &T => (
     @native ''
         {
-            get: () => \(list)[\(idx)],
-            set: value => \(list)[\(idx)] = value,
+            get: () => \(array)[\(idx)],
+            set: value => \(array)[\(idx)] = value,
         }
     ''
 );
@@ -33,7 +33,7 @@ const TypeKind = enum {
 };
 
 const TypeInfoDetails = union {
-    .members :: List[MemberInfo],
+    .members :: Array[MemberInfo],
     .inner_ty :: &TypeInfo,
     .primitive :: (),
 };
@@ -43,7 +43,7 @@ const TypeInfo = struct {
     .kind :: TypeKind,
 };
 
-const get_type_members = (ty :: &TypeInfo) -> List[MemberInfo] => (
+const get_type_members = (ty :: &TypeInfo) -> Array[MemberInfo] => (
     ty^.details.members
 );
 
@@ -80,7 +80,7 @@ const allocate_type_on_stack = (T :: &TypeInfo) -> &Any => (
 
 const initialize_type_info_for_struct = (
     T :: &TypeInfo,
-    members :: List[MemberInfo],
+    members :: Array[MemberInfo],
 ) -> () => (
     T^.kind = :Object;
     T^.details.members = members;

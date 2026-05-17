@@ -47,7 +47,7 @@ const TypeShape = newtype (
     | :Named String
     | :Fn FnType
     | :Native String
-    | :List {
+    | :Array {
         .repr :: Type,
         .element_ty :: Type,
     }
@@ -70,7 +70,7 @@ const Type = newtype {
 const type_repr = (ty :: &Type) -> &Type => (
     match ty^.shape with (
         | :UnwindToken { .repr = ref repr, ... } => repr
-        | :List { .repr = ref repr, ... } => repr
+        | :Array { .repr = ref repr, ... } => repr
         | _ => ty
     )
 );
@@ -125,11 +125,11 @@ const compare_type = (
         | { :Fn ref a, :Fn ref b } => compare_fn_type(a, b)
         | { :Fn _, _ } => :Less
         | { _, :Fn _ } => :Greater
-        | { :List ref a, :List ref b } => (
+        | { :Array ref a, :Array ref b } => (
             compare_type(&a^.element_ty, &b^.element_ty)
         )
-        | { :List _, _ } => :Less
-        | { _, :List _ } => :Greater
+        | { :Array _, _ } => :Less
+        | { _, :Array _ } => :Greater
         | { :UnwindToken ref a, :UnwindToken ref b } => (
             compare_type(&a^.result_ty, &b^.result_ty)
         )
@@ -273,7 +273,7 @@ const ExprShape = newtype (
         .body :: Expr,
     }
     | :Defer Expr
-    | :List ArrayList.t[Expr]
+    | :Array ArrayList.t[Expr]
     | :ConstructTypeInfo ConstructTypeInfo
 );
 

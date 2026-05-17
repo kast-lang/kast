@@ -116,7 +116,7 @@ const C = (
                 .repr = ref repr,
                 .result_ty = _,
             } => convert_ty(repr)
-            | :List {
+            | :Array {
                 .repr = ref repr,
                 .element_ty = _,
             } => convert_ty(repr)
@@ -442,10 +442,10 @@ const C = (
         # TODO instead of allocating at runtime we should have const array
         insert_stmt(
             :LetVar {
-                .ty = :Named ident("List_MemberInfo"),
+                .ty = :Named ident("Array_MemberInfo"),
                 .ident = members_var,
                 .value = :Some :CompoundLiteral {
-                    .ty = :Named ident("List_MemberInfo"),
+                    .ty = :Named ident("Array_MemberInfo"),
                     .fields = (
                         let mut fields = ArrayList.new();
                         let length = &info^.members |> ArrayList.length;
@@ -583,9 +583,9 @@ const C = (
         with ExprContext = { .span };
         let expr :: Ast.Expr = match ir_expr^.shape with (
             | :Unit => return void(span)
-            | :List ref ir_elements => (
+            | :Array ref ir_elements => (
                 let element_ty = match ir_expr^.ty.shape with (
-                    | :List { .element_ty = ref element_ty, ... } => element_ty
+                    | :Array { .element_ty = ref element_ty, ... } => element_ty
                     | _ => panic("List expr is not list type???")
                 );
                 let data = (
@@ -1750,7 +1750,7 @@ const C = (
             } => (
                 make_sure_all_type_dependencies_are_complete_if_needed(repr);
             )
-            | :List {
+            | :Array {
                 .repr = ref repr,
                 .element_ty = _,
             } => (

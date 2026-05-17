@@ -24,8 +24,6 @@ const Option = [T] struct {
     .value :: T,
 };
 
-const Box = [T] type &T;
-
 const Treap_Node = [T] struct {
     .value :: T,
     .priority :: Int,
@@ -130,12 +128,12 @@ const Treap_recalculate = [T] (treap :: Treap[T]) => (
 const Treap_join = [T] (
     left :: Treap[T],
     right :: Treap[T],
-) -> Treap[T] => unwindable fn (
+) -> Treap[T] => unwindable f (
     if left.is_empty then (
-        unwind fn with right;
+        unwind f with right;
     );
     if right.is_empty then (
-        unwind fn with left;
+        unwind f with left;
     );
     let result = if greater[Int](left.node^.priority, right.node^.priority) then (
         left.node^.right = Treap_join[T](left.node^.right, right);
@@ -183,10 +181,10 @@ const Treap_print_as_list = [T] (
     String_print("]");
 );
 
-const print_string_times = (s :: String, n :: Int) => unwindable fn (
+const print_string_times = (s :: String, n :: Int) => unwindable f (
     @loop (
         if equal[Int](n, 0) then (
-            unwind fn with ();
+            unwind f with ();
         );
         String_print(s);
         n = sub[Int](n, 1);
@@ -199,9 +197,9 @@ const print_blanks = (n :: Int) => (
 
 const Treap_print_left_branch_from_parent = [T] (
     treap :: Treap[T],
-) => unwindable fn (
+) => unwindable f (
     if treap.is_empty then (
-        unwind fn with ();
+        unwind f with ();
     );
     print_blanks(Treap_total_nodes[T](treap.node^.left));
     String_print(" ╭─");
@@ -210,9 +208,9 @@ const Treap_print_left_branch_from_parent = [T] (
 
 const Treap_print_right_branch_from_parent = [T] (
     treap :: Treap[T],
-) => unwindable fn (
+) => unwindable f (
     if treap.is_empty then (
-        unwind fn with ();
+        unwind f with ();
     );
     print_string_times("───", Treap_total_nodes[T](treap.node^.left));
     String_print("─╮ ");
@@ -223,9 +221,9 @@ const Treap_print_as_tree_at_depth = [T] (
     depth :: Int,
     treap :: Treap[T],
     T_print :: (T) -> (),
-) => unwindable fn (
+) => unwindable f (
     if treap.is_empty then (
-        unwind fn with ();
+        unwind f with ();
     );
     if equal[Int](depth, 1) then (
         Treap_print_left_branch_from_parent[T](treap.node^.left);
@@ -244,12 +242,12 @@ const Treap_print_as_tree_at_depth = [T] (
 const Treap_print_as_tree = [T] (
     treap :: Treap[T],
     T_print :: (T) -> (),
-) => unwindable fn (
+) => unwindable f (
     let depth :: Int = 1;
     let max_depth = Treap_max_depth[T](treap);
     @loop (
         if greater[Int](depth, max_depth) then (
-            unwind fn with ();
+            unwind f with ();
         );
         Treap_print_as_tree_at_depth[T](depth, treap, T_print);
         String_print("\n");

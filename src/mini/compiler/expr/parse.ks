@@ -168,7 +168,7 @@ const parse_list = (
     root :: Ast.Group,
 ) -> ParsedExpr => (
     let element_ty = match expected_ty with (
-        | :Some { .shape = :List { .element_ty, ... }, ... } => element_ty
+        | :Some { .shape = :Array { .element_ty, ... }, ... } => element_ty
         | :Some other => (
             let diagnostic = {
                 .severity = :Error,
@@ -205,9 +205,9 @@ const parse_list = (
         &mut elements |> ArrayList.push_back(element);
     );
     {
-        .shape = :Expr :List elements,
+        .shape = :Expr :Array elements,
         .ty = instantiate_ty(
-            "List",
+            "Array",
             single_element_list(element_ty),
             .span = ast.span,
         ),

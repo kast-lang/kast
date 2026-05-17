@@ -11,13 +11,13 @@ const MemberInfo = struct {
     .ty :: &TypeInfo,
 };
 const TypeInfo = struct {
-    .members :: List[MemberInfo],
+    .members :: Array[MemberInfo],
     .stride :: UInt,
     .size :: UInt,
     .alignment :: UInt,
 };
 
-const get_type_members = @call "C" (ty :: &TypeInfo) -> List[MemberInfo] => (
+const get_type_members = @call "C" (ty :: &TypeInfo) -> Array[MemberInfo] => (
     ty^.members
 );
 
@@ -27,14 +27,21 @@ const get_member = @call "C" (
 ) -> &Any => (
     @native "\(obj) + \(member^.offset_or_name)"
 );
+
 const allocate_type_on_stack = [T] @call "C" () -> &T => (
     @native "#include <stdlib.h>";
     # TODO this fn must be inlined
     @native "alloca(\(@TypeInfo(T).size))"
 );
-const allocate_type_on_heap = [T] @call "C" () -> &T => (
+
+const Box = [T] type &T;
+
+@native
+const malloc :: fn @call "C" (UInt) -> Box[Any];
+
+const allocate_type_on_heap = [T] @call "C" () -> Box[T] => (
     @native "#include <stdlib.h>";
-    @native "malloc(\(@TypeInfo(T).size))"
+    malloc(@TypeInfo(T).size)
 );
 
 const add = [T] @call "C" (a :: T, b :: T) -> T => (
@@ -81,30 +88,28 @@ const align = @call "C" (x :: UInt, alignment :: UInt) -> UInt => (
     mul[UInt](div_round_up[UInt](x, alignment), alignment)
 );
 
-const List = [T] struct {
+const Array = [T] struct {
     .data :: &T,
     .length :: UInt,
 };
 
-const empty_list = [T] @call "C" () -> List[T] => {
+const empty_array = [T] @call "C" () -> Array[T] => {
     .data = @native "NULL",
     .length = @native "0",
 };
 
-const allocate_array = [T] @call "C" (length :: UInt) -> &T => (
-    let T_TypeInfo = @TypeInfo(T);
-    @native "malloc(\(T_TypeInfo.stride) * \(length))"
-);
-
-const allocate_list = [T] @call "C" (length :: UInt) -> List[T] => {
-    .data = allocate_array[T](length),
+const allocate_array = [T] @call "C" (length :: UInt) -> Array[T] => {
+    .data = (
+        let T_TypeInfo = @TypeInfo(T);
+        malloc(mul[UInt](T_TypeInfo.stride, length))
+    ),
     .length = length,
 };
 
-const copy_list = [T] @call "C" (
-    target :: List[T],
+const copy_array = [T] @call "C" (
+    target :: Array[T],
     target_offset :: UInt,
-    source :: List[T],
+    source :: Array[T],
     source_offset :: UInt,
     length :: UInt,
 ) -> () => (
@@ -117,19 +122,19 @@ const copy_list = [T] @call "C" (
         )'';
 );
 
-const free_list = [T] @call "C" (list :: List[T]) -> () => (
-    if not_equal[&T](list.data, @native "NULL") then (
-        @native "free(\(list.data))";
+const free_array = [T] @call "C" (array :: Array[T]) -> () => (
+    if not_equal[&T](array.data, @native "NULL") then (
+        @native "free(\(array.data))";
     );
 );
 
-const list_index = [T] (list :: List[T], idx :: UInt) -> &T => (
-    @native "&\(list.data)[\(idx)]"
+const array_index = [T] (array :: Array[T], idx :: UInt) -> &T => (
+    @native "&\(array.data)[\(idx)]"
 );
 
 const initialize_type_info_for_struct = (
     T :: &TypeInfo,
-    members :: List[MemberInfo],
+    members :: Array[MemberInfo],
 ) -> () => (
     T^.alignment = @native "1";
     T^.size = @native "0";
@@ -137,7 +142,7 @@ const initialize_type_info_for_struct = (
         stmt:
         for (size_t i = 0; i < \(members.length); i++) {
             \(
-                let member = list_index[MemberInfo](members, @native "i");
+                let member = array_index[MemberInfo](members, @native "i");
                 if greater[UInt](member^.ty^.alignment, T^.alignment) then (
                     T^.alignment = member^.ty^.alignment;
                 );

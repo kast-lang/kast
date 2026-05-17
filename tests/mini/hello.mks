@@ -11,6 +11,6 @@ const TEN :: Int32 = 10;
 const main = () -> () => (
     print_String("fib(10) = ");
     print_Int32(fib[Int32](TEN));
-    let arr :: List[Int] = [ 1, 2, 3, 4, 5 ];
+    let arr :: Array[Int] = [ 1, 2, 3, 4, 5 ];
     print_String("\n");
 );

@@ -92,7 +92,7 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
         )
         | :Fn _ => "a function"
         | :UnwindToken _ => "unwind token"
-        | :List _ => "list"
+        | :Array _ => "array"
         | :ContextObject => "@Context"
     )
 );
@@ -144,7 +144,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 fail();
             );
         )
-        | { :List ref a, :List ref b } => (
+        | { :Array ref a, :Array ref b } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = [T] msg -> T => (

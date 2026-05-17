@@ -57,9 +57,9 @@ const instantiation_to_type = (
             },
             .alias_name = :None,
         }
-    ) else if instantiation.template_name == "List" then (
+    ) else if instantiation.template_name == "Array" then (
         {
-            .shape = :List {
+            .shape = :Array {
                 .repr = ty,
                 .element_ty = ArrayList.at(&instantiation.template_args, 0)^,
             },

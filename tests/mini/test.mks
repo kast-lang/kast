@@ -1,9 +1,10 @@
 const Foo = union {
-    .a :: Int,
+    .a :: (),
     .b :: String,
 };
 
 const main = () => (
     let s :: String -> () = print_String;
-    let f :: Foo = { .a = 2 };
+    let f :: Foo = { .a = () };
+    @TypeInfo(Foo);
 );
