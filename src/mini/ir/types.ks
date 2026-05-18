@@ -70,6 +70,7 @@ const Type = newtype {
 const type_repr = (ty :: &Type) -> &Type => (
     match ty^.shape with (
         | :UnwindToken { .repr = ref repr, ... } => repr
+        | :DelimitedContinuationToken { .repr = ref repr, ... } => repr
         | :Array { .repr = ref repr, ... } => repr
         | _ => ty
     )
