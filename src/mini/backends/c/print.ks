@@ -346,7 +346,8 @@ const Print = (
                 write("}");
             )
             | :Union { .fields = ref fields } => (
-                write_keyword("union");
+                write_keyword("union ");
+                Print.ident(&def^.name);
                 write(" {\n");
                 inc_indentation();
                 for field in fields |> ArrayList.iter do (
@@ -359,7 +360,8 @@ const Print = (
                 write("}");
             )
             | :Enum { .variants = ref variants } => (
-                write_keyword("enum");
+                write_keyword("enum ");
+                Print.ident(&def^.name);
                 write(" {\n");
                 inc_indentation();
                 for variant in variants |> ArrayList.iter do (
@@ -384,7 +386,6 @@ const Print = (
                 write(")");
             )
         );
-        write(";\n");
     );
 
     const static = (static :: &Ast.Static) => (
@@ -421,6 +422,7 @@ const Print = (
         write("\n");
         for ty in &program^.types |> ArrayList.iter do (
             Print.ty_def(ty);
+            write(";\n");
         );
         write("\n");
         for fn in &program^.fns |> ArrayList.iter do (

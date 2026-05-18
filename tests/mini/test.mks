@@ -1,3 +1,8 @@
+const Foo = union {
+    .a :: Int,
+    .b :: String,
+};
+
 const main = () => (
-    let s :: (&String -> ()) -> () = uninitialized;
+    let foo :: Foo = { .a = 123 };
 );
