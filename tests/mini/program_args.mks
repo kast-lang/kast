@@ -1,0 +1,16 @@
+const main = () => (
+    let program_args = &@context.program_args;
+    let i :: UInt = 0;
+    unwindable loop @loop (
+        if greater_or_equal[UInt](i, program_args^.length) then (
+            unwind loop with ();
+        );
+        let arg = Array_index[C_String](program_args, i)^;
+        print_String("Arg #");
+        print_UInt(i);
+        print_String(" = ");
+        print_C_String(arg);
+        print_String("\n");
+        inc[UInt](&i);
+    );
+);

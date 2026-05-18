@@ -268,3 +268,5 @@ const resume_continuation = [R] (continuation :: Continuation[R]) -> R => (
 const free_closure = [R] (f :: () -> R) => (
     @native "stmt: if (\(f).captured) free(\(f).captured)";
 );
+
+const program_args = @context Array[C_String];

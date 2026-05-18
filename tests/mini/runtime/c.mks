@@ -1,3 +1,7 @@
+const print_C_String = (s :: C_String) => (
+    @native "printf(\"%s\", \(s))"
+);
+
 const print_String = (s :: StringView) => (
     @native "#include <stdio.h>";
     @native "fwrite(\(s.contents), sizeof(char), \(s.length), stdout)";
