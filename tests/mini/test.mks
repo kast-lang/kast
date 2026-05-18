@@ -1,12 +1,3 @@
-const Foo = union {
-    .a :: (),
-    .b :: String,
-};
-
-const foo = () -> Foo => uninitialized;
-
 const main = () => (
-    let s :: String -> () = print_String;
-    let f :: Foo = { .a = () };
-    # @TypeInfo(Foo);
+    let s :: (&String -> ()) -> () = uninitialized;
 );

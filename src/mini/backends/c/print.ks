@@ -187,6 +187,14 @@ const Print = (
                 write_keyword("struct ");
                 Print.ident(ident);
             )
+            | :Enum ref ident => (
+                write_keyword("enum ");
+                Print.ident(ident);
+            )
+            | :Union ref ident => (
+                write_keyword("union ");
+                Print.ident(ident);
+            )
             | :Raw s => Print.raw(s)
         )
     );
@@ -316,9 +324,13 @@ const Print = (
     );
 
     const ty_def = (def :: &Ast.TyDef) => with_return (
-        write_keyword("typedef ");
         match def^.def with (
-            | :Alias ref ty => Print.ty(ty)
+            | :Alias ref ty => (
+                write_keyword("typedef ");
+                Print.ty(ty);
+                write(" ");
+                Print.ident(&def^.name);
+            )
             | :Struct { .fields = ref fields } => (
                 write_keyword("struct ");
                 Print.ident(&def^.name);
@@ -358,6 +370,7 @@ const Print = (
                 write("}");
             )
             | :FnPointer { .args = ref args, .result_ty = ref result_ty } => (
+                write_keyword("typedef ");
                 Print.ty(result_ty);
                 write(" (*");
                 Print.ident(&def^.name);
@@ -368,12 +381,9 @@ const Print = (
                     );
                     Print.ty(arg);
                 );
-                write(");\n");
-                return;
+                write(")");
             )
         );
-        write(" ");
-        Print.ident(&def^.name);
         write(";\n");
     );
 

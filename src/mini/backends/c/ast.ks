@@ -23,6 +23,8 @@ const Ast = (
         | :Pointer Ty
         | :Named Ident
         | :Struct Ident
+        | :Enum Ident
+        | :Union Ident
         | :Raw String
     );
 

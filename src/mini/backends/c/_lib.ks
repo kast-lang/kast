@@ -23,6 +23,7 @@ const C = (
 
     const ContextT = newtype {
         .program :: Ir.Program,
+        .declared_types :: OrdSet.t[String],
         .defined_types :: OrdSet.t[String],
         .fn_types :: OrdMap.t[Ir.FnType, Ast.Ident],
         .fn_capture_types :: OrdMap.t[String, Ast.Ident],
@@ -67,6 +68,7 @@ const C = (
 
     const convert_ty = (ty :: &Ir.Type) -> Ast.Ty => with_return (
         let mut ctx = @current Context;
+        make_sure_type_is_declared(ty);
         if ty^.alias_name is :Some name then (
             return :Named ident(name)
         );
@@ -96,18 +98,7 @@ const C = (
             | :Float64 => :Float64
             | :Bool => :Bool
             | :Char => :Char
-            | :Named name => (
-                let def = &ctx.program.types
-                    |> OrdMap.get(name)
-                    |> Option.unwrap_or_else(
-                        () => panic("Failed to find type " + String.escape(name))
-                    );
-                if def^.shape is :Struct _ then (
-                    :Struct ident(name)
-                ) else (
-                    :Named ident(name)
-                )
-            )
+            | :Named name => :Named ident(name)
             | :Native s => :Raw s
             | :UnwindToken {
                 .repr = ref repr,
@@ -188,6 +179,11 @@ const C = (
                 )
             )
         );
+        let ty_decl = {
+            .name = fn_type_name,
+            .def = :Alias :Struct fn_type_name,
+        };
+        &mut ctx.result.types |> ArrayList.push_back(ty_decl);
         let ty_def = {
             .name = fn_type_name,
             .def = :Struct {
@@ -1100,7 +1096,7 @@ const C = (
                 let captured_ty_name = new_ident("delimited_captures");
                 let mut captured_ty_fields = (
                     let mut fields = captured_to_field_defs(capture_mode, captures);
-                    make_sure_all_type_dependencies_are_complete_if_needed(token_ty_repr);
+                    make_sure_type_is_complete(token_ty_repr);
                     let token_field = {
                         .name = token_name,
                         .ty = convert_ty(token_ty_repr),
@@ -1293,7 +1289,7 @@ const C = (
                 .resume_fn,
                 .body = ref body,
             } => (
-                make_sure_all_type_dependencies_are_complete_if_needed(continuation_ty_repr);
+                make_sure_type_is_complete(continuation_ty_repr);
                 let continuation_name = ident(continuation_name);
                 let token = pure(calculate(token));
                 let coro :: Ast.Expr = :Field {
@@ -1358,7 +1354,7 @@ const C = (
             )
             | :ConstructTypeInfo ref ty => construct_type_info(ty)
             | :Fn ref fn_def => (
-                make_sure_all_type_dependencies_are_complete_if_needed(&ir_expr^.ty);
+                make_sure_type_is_complete(&ir_expr^.ty);
                 let name = new_ident("closure");
                 add_fn(name.name, fn_def);
                 let { f :: Ast.Expr, captured :: Ast.Expr } = if (
@@ -1512,7 +1508,7 @@ const C = (
     ) -> ArrayList.t[Ast.FieldDef] => (
         let mut fields = ArrayList.new();
         for &{ .key = name, .value = ref ty } in captures |> OrdMap.iter do (
-            make_sure_all_type_dependencies_are_complete_if_needed(ty);
+            make_sure_type_is_complete(ty);
             let ty = convert_ty(ty);
             let ty = match capture_mode with (
                 | :Move => ty
@@ -1610,14 +1606,14 @@ const C = (
                 );
         );
         for arg in &def^.args |> ArrayList.iter do (
-            make_sure_all_type_dependencies_are_complete_if_needed(&arg^.ty);
+            make_sure_type_is_complete(&arg^.ty);
             let arg :: Ast.FnArg = {
                 .name = ident(arg^.name),
                 .ty = convert_ty(&arg^.ty),
             };
             &mut args |> ArrayList.push_back(arg);
         );
-        make_sure_all_type_dependencies_are_complete_if_needed(&def^.result_ty);
+        make_sure_type_is_complete(&def^.result_ty);
         add_fn_impl(
             .ctx_var,
             .capture_mode = def^.capture_mode,
@@ -1693,7 +1689,7 @@ const C = (
                 .result = def^.result_ty,
             };
             let fn_ty :: Ir.Type = { .shape = :Fn fn_ty, .alias_name = :None };
-            make_sure_all_type_dependencies_are_complete_if_needed(&fn_ty);
+            make_sure_type_is_complete(&fn_ty);
             let static = {
                 .@"const" = true,
                 .ty = convert_ty(&fn_ty),
@@ -1720,14 +1716,54 @@ const C = (
         );
     );
 
-    const make_sure_all_type_dependencies_are_complete_if_needed = (ty :: &Ir.Type) => (
+    const make_sure_type_is_declared = (ty :: &Ir.Type) => with_return (
+        if ty^.alias_name is :Some name then (
+            let def = &(@current Context).program.types
+                |> OrdMap.get(name)
+                |> Option.unwrap;
+            type_def(name, def);
+            return;
+        );
+        match Ir.type_repr(ty)^.shape with (
+            | :Any => ()
+            | :Ref _ => ()
+            | :Unit => ()
+            | :Int => ()
+            | :UInt => ()
+            | :IntSpecific _ => ()
+            | :Float32 => ()
+            | :Float64 => ()
+            | :Bool => ()
+            | :Char => ()
+            | :Named name => (
+                let def = &(@current Context).program.types
+                    |> OrdMap.get(name)
+                    |> Option.unwrap;
+                type_decl(name, def);
+            )
+            | :Fn ref fn_ty => (
+                fn_type_ident(fn_ty);
+            )
+            | :Native String => ()
+            | :ContextObject => (
+                let ctx_decl = {
+                    .name = ident("Context"),
+                    .def = :Alias :Struct ident("Context"),
+                };
+                &mut (@current Context).result.types
+                    |> ArrayList.push_back(ctx_decl);
+            )
+        )
+    );
+
+    const make_sure_type_is_complete = (ty :: &Ir.Type) => (
         if ty^.alias_name is :Some name then (
             let def = &(@current Context).program.types
                 |> OrdMap.get(name)
                 |> Option.unwrap;
             type_def(name, def);
         );
-        match ty^.shape with (
+        match Ir.type_repr(ty)^.shape with (
             | :Any => ()
             | :Ref _ => ()
             | :Unit => ()
@@ -1748,29 +1784,11 @@ const C = (
                 fn_type_ident(fn_ty);
             )
             | :Native String => ()
-            | :UnwindToken {
-                .repr = ref repr,
-                .result_ty = _,
-            } => (
-                make_sure_all_type_dependencies_are_complete_if_needed(repr);
-            )
-            | :DelimitedContinuationToken {
-                .repr = ref repr,
-                .result_ty = _,
-            } => (
-                make_sure_all_type_dependencies_are_complete_if_needed(repr);
-            )
-            | :Array {
-                .repr = ref repr,
-                .element_ty = _,
-            } => (
-                make_sure_all_type_dependencies_are_complete_if_needed(repr);
-            )
             | :ContextObject => (
                 let mut ctx = @current Context;
                 let mut ctx_fields = ArrayList.new();
                 for &{ .key = name, .value = ref ty } in &ctx.program.contexts |> OrdMap.iter do (
-                    make_sure_all_type_dependencies_are_complete_if_needed(ty);
+                    make_sure_type_is_complete(ty);
                     let field = {
                         .name = ident(name),
                         .ty = convert_ty(ty),
@@ -1798,7 +1816,34 @@ const C = (
         ident(s)
     );
 
+    const type_decl = (name :: String, def :: &Ir.TypeDef) => with_return (
+        let mut ctx = @current Context;
+        if &ctx.declared_types |> OrdSet.contains(name) then (
+            return;
+        );
+        &mut ctx.declared_types |> OrdSet.add(name);
+        if def^.native then (
+            return;
+        );
+        let def :: Ast.TyDefShape = match def^.shape with (
+            | :Opaque => panic("opaque type can only be native?")
+            | :Enum _ => :Alias :Enum ident(name)
+            | :Union _ => :Alias :Union ident(name)
+            | :Struct _ => :Alias :Struct ident(name)
+            | :Alias _ => (
+                type_def(name, def);
+                return
+            )
+        );
+        let def :: Ast.TyDef = {
+            .name = ident(name),
+            .def,
+        };
+        &mut ctx.result.types |> ArrayList.push_back(def);
+    );
+
     const type_def = (name :: String, def :: &Ir.TypeDef) => with_return (
+        type_decl(name, def);
         let mut ctx = @current Context;
         if &ctx.defined_types |> OrdSet.contains(name) then (
             return;
@@ -1812,16 +1857,16 @@ const C = (
             | :Enum _ => ()
             | :Union { .variants = ref variants } => (
                 for &{ .key = _, .value = ref ty } in variants |> OrdMap.iter do (
-                    make_sure_all_type_dependencies_are_complete_if_needed(ty);
+                    make_sure_type_is_complete(ty);
                 );
             )
             | :Struct { .fields = ref fields } => (
                 for &{ .key = _, .value = ref ty } in fields |> OrdMap.iter do (
-                    make_sure_all_type_dependencies_are_complete_if_needed(ty);
+                    make_sure_type_is_complete(ty);
                 );
             )
             | :Alias ref ty => (
-                make_sure_all_type_dependencies_are_complete_if_needed(ty);
+                make_sure_type_is_complete(ty);
             )
         );
         let def :: Ast.TyDefShape = match def^.shape with (
@@ -1881,6 +1926,7 @@ const C = (
 
     const compile = (program :: Ir.Program) -> Compiled => (
         with Context = {
+            .declared_types = OrdSet.new(),
             .defined_types = OrdSet.new(),
             .fn_types = OrdMap.new_with_compare(
                 (a, b) => Ir.compare_fn_type(&a, &b),
@@ -1906,7 +1952,7 @@ const C = (
         &mut ctx.result.includes |> OrdSet.add("<stdbool.h>");
         &mut ctx.result.includes |> OrdSet.add("<assert.h>");
         &mut ctx.result.includes |> OrdSet.add("<stdlib.h>");
-        make_sure_all_type_dependencies_are_complete_if_needed(
+        make_sure_type_is_complete(
             &{ .shape = :ContextObject, .alias_name = :None }
         );
         for &{ .key = name, .value = ref ty_def } in &ctx.program.types |> OrdMap.iter do (
@@ -1924,7 +1970,7 @@ const C = (
                 |> ArrayList.push_back(
                     {
                         .name = ctx_var,
-                        .ty = :Pointer :Struct ident("Context"),
+                        .ty = :Pointer :Named ident("Context"),
                     }
                 );
             with FunctionContext = {
