@@ -966,16 +966,16 @@ const C = (
                 return void(span)
             )
             | :Unwindable {
-                .token_ty_repr = ref token_ty_repr,
+                .token_ty = ref token_ty,
                 .token,
                 .body = ref body,
             } => (
                 let token_own_var = new_ident("token_own");
                 let_var(
-                    token_ty_repr,
+                    token_ty,
                     token_own_var,
                     :CompoundLiteral {
-                        .ty = convert_ty(token_ty_repr),
+                        .ty = convert_ty(token_ty),
                         .fields = single_element_list(
                             { .name = ident("raw"), .value = :Raw "RawUnwindToken_new_fn()" }
                         ),
@@ -984,7 +984,7 @@ const C = (
                 let token_var = ident(token);
                 let_var(
                     &{
-                        .shape = :Ref token_ty_repr^,
+                        .shape = :Ref token_ty^,
                         .alias_name = :None,
                     },
                     token_var,
@@ -1085,7 +1085,7 @@ const C = (
             | :DelimitedContinuation {
                 .capture_mode,
                 .captures = ref captures,
-                .token_ty_repr = ref token_ty_repr,
+                .token_ty = ref token_ty,
                 .resume_fn,
                 .token = token_name,
                 .body = ref body,
@@ -1096,10 +1096,10 @@ const C = (
                 let captured_ty_name = new_ident("delimited_captures");
                 let mut captured_ty_fields = (
                     let mut fields = captured_to_field_defs(capture_mode, captures);
-                    make_sure_type_is_complete(token_ty_repr);
+                    make_sure_type_is_complete(token_ty);
                     let token_field = {
                         .name = token_name,
-                        .ty = convert_ty(token_ty_repr),
+                        .ty = convert_ty(token_ty),
                     };
                     &mut fields |> ArrayList.push_back(token_field);
                     let ctx_field = {
@@ -1113,6 +1113,11 @@ const C = (
                     .name = captured_ty_name,
                     .def = :Struct { .fields = captured_ty_fields },
                 };
+                let captured_decl = {
+                    .name = captured_ty_name,
+                    .def = :Alias :Struct captured_ty_name,
+                };
+                &mut ctx.result.types |> ArrayList.push_back(captured_decl);
                 &mut ctx.result.types |> ArrayList.push_back(captured_ty);
                 let captured_var = new_ident("captured");
                 let captured_ty = :Named captured_ty_name;
@@ -1151,7 +1156,7 @@ const C = (
                             :Field { .obj = :Deref :Ident ident("captured"), .field = ctx_var },
                         );
                         let_var(
-                            token_ty_repr,
+                            token_ty,
                             token_name,
                             :Field { .obj = :Deref :Ident ident("captured"), .field = token_name },
                         );
@@ -1259,7 +1264,7 @@ const C = (
                             .field = token_name,
                         },
                         .value = :CompoundLiteral {
-                            .ty = convert_ty(token_ty_repr),
+                            .ty = convert_ty(token_ty),
                             .fields = (
                                 let mut fields = ArrayList.new();
                                 let coro_field = {
@@ -1585,6 +1590,11 @@ const C = (
                     .fields = captured_to_field_defs(def^.capture_mode, &def^.captures),
                 },
             };
+            let ty_decl = {
+                .name = ty_def.name,
+                .def = :Alias :Struct ty_def.name,
+            };
+            &mut ctx.result.types |> ArrayList.push_back(ty_decl);
             &mut ctx.fn_capture_types |> OrdMap.add(name, ty_def.name);
             &mut ctx.result.types |> ArrayList.push_back(ty_def);
             &mut args

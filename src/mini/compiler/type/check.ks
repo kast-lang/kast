@@ -92,6 +92,7 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
         )
         | :Fn _ => "a function"
         | :UnwindToken _ => "unwind token"
+        | :DelimitedContinuationToken _ => "delimited continuation token"
         | :Array _ => "array"
         | :ContextObject => "@Context"
     )
@@ -163,6 +164,24 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             );
         )
         | { :UnwindToken ref a, :UnwindToken ref b } => (
+            let parent_ctx = @current TypeCheckContext;
+            with TypeCheckContext = {
+                .fail = [T] msg -> T => (
+                    parent_ctx.fail(
+                        () => (
+                            let output = @current Output;
+                            output.write("unwind result type is different\n");
+                            msg()
+                        )
+                    )
+                ),
+            };
+            type_check_impl(
+                &a^.result_ty,
+                &b^.result_ty,
+            );
+        )
+        | { :DelimitedContinuationToken ref a, :DelimitedContinuationToken ref b } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = [T] msg -> T => (

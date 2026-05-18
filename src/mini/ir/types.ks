@@ -250,7 +250,7 @@ const ExprShape = newtype (
     }
     | :Loop Expr
     | :Unwindable {
-        .token_ty_repr :: Type,
+        .token_ty :: Type,
         .token :: String,
         .body :: Expr,
     }
@@ -261,7 +261,7 @@ const ExprShape = newtype (
     | :DelimitedContinuation {
         .capture_mode :: CaptureMode,
         .captures :: OrdMap.t[String, Type],
-        .token_ty_repr :: Type,
+        .token_ty :: Type,
         .resume_fn :: String,
         .token :: String,
         .body :: Expr,

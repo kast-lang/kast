@@ -65,6 +65,14 @@ const instantiation_to_type = (
             },
             .alias_name = :None,
         }
+    ) else if instantiation.template_name == "DelimitedContinuationToken" then (
+        {
+            .shape = :DelimitedContinuationToken {
+                .repr = ty,
+                .result_ty = ArrayList.at(&instantiation.template_args, 0)^,
+            },
+            .alias_name = :None,
+        }
     ) else (
         ty
     )

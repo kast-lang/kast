@@ -114,7 +114,7 @@ const Print = (
 
     const type_name_as_ident = (self :: &Type) => with_return (
         let output = @current Output;
-        match self^.shape with (
+        match type_repr(self)^.shape with (
             | :Any => output.write("Any")
             | :Unit => output.write("Unit")
             | :Bool => output.write("Bool")
@@ -133,18 +133,6 @@ const Print = (
             | :Native s => (
                 output.write("Native_");
                 Print.raw_string_as_ident(s);
-            )
-            | :UnwindToken {
-                .repr = ref repr,
-                .result_ty = _,
-            } => (
-                Print.type_name_as_ident(repr);
-            )
-            | :Array {
-                .repr = ref repr,
-                .element_ty = _,
-            } => (
-                Print.type_name_as_ident(repr);
             )
             | :ContextObject => output.write("Context")
         )

@@ -532,27 +532,21 @@ const parse_unwindable = (
     };
     let result_ty = expected_ty
         |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None });
-    let token_ty_repr = instantiate_ty(
+    let token_ty = instantiate_ty(
         "UnwindToken",
         single_element_list(result_ty),
         .span = token_ast.span,
     );
-    let token_ty = {
-        .shape = :Ref {
-            .shape = :UnwindToken {
-                .repr = token_ty_repr,
-                .result_ty,
-            },
-            .alias_name = :None,
-        },
+    let ref_token_ty = {
+        .shape = :Ref token_ty,
         .alias_name = :None,
     };
     &mut (@current ScopeContext).vars
-        |> OrdMap.add(token, token_ty);
+        |> OrdMap.add(token, ref_token_ty);
     let body = parse_expr(:Some result_ty, body);
     {
         .shape = :Expr :Unwindable {
-            .token_ty_repr,
+            .token_ty,
             .token,
             .body,
         },
@@ -639,18 +633,11 @@ const parse_delimited_continuation = (
     };
     let result_ty = expected_ty
         |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None });
-    let token_ty_repr = instantiate_ty(
+    let token_ty = instantiate_ty(
         "DelimitedContinuationToken",
         single_element_list(result_ty),
         .span = token_ast.span,
     );
-    let token_ty = {
-        .shape = :DelimitedContinuationToken {
-            .repr = token_ty_repr,
-            .result_ty,
-        },
-        .alias_name = :None,
-    };
     &mut (@current ScopeContext).vars
         |> OrdMap.add(token, token_ty);
     let body = parse_expr(:Some result_ty, body);
@@ -663,7 +650,7 @@ const parse_delimited_continuation = (
                 single_element_list(result_ty),
                 .span = ast.span,
             ).name,
-            .token_ty_repr,
+            .token_ty,
             .token,
             .body,
         },
