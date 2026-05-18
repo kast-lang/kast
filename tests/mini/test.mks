@@ -4,5 +4,7 @@ const Foo = union {
 };
 
 const main = () => (
-    let foo :: Foo = { .a = 123 };
+    defer (
+        print_String("exit\n");
+    );
 );

@@ -826,9 +826,9 @@ const C = (
                 return void(span)
             )
             | :Scope ref expr => (
-                with_scope(
+                return with_scope(
                     { .block = (@current Scope).block },
-                    () => return calculate(expr)
+                    () => calculate(expr)
                 )
             )
             | :Apply { .f = ref f, .args = ref ir_args } => (
