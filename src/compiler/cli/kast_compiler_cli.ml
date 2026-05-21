@@ -15,6 +15,7 @@ module Args = struct
     ; no_std : bool
     ; save_dependency_graph : string option
     ; continuous : bool
+    ; post_compile_cmd : string option
     }
 
   type t = args
@@ -29,6 +30,7 @@ module Args = struct
     ; formatter = None
     ; save_dependency_graph = None
     ; continuous = false
+    ; post_compile_cmd = None
     }
   ;;
 
@@ -45,6 +47,9 @@ module Args = struct
     | "--save-dependency-graph" :: path :: rest ->
       let parsed, ~rest = parse rest in
       { parsed with save_dependency_graph = Some path }, ~rest
+    | "--post-compile-cmd" :: cmd :: rest ->
+      let parsed, ~rest = parse rest in
+      { parsed with post_compile_cmd = Some cmd }, ~rest
     | "--format" :: formatter :: rest ->
       let parsed, ~rest = parse rest in
       { parsed with formatter = Some formatter }, ~rest
@@ -91,8 +96,15 @@ let run_formatter_if_needed : Args.t -> unit =
 ;;
 
 let run : Args.t -> unit =
-  fun ({ path; target; no_std; output; save_dependency_graph; continuous; formatter = _ }
-       as args) ->
+  fun ({ path
+       ; target
+       ; no_std
+       ; output
+       ; save_dependency_graph
+       ; continuous
+       ; post_compile_cmd
+       ; formatter = _
+       } as args) ->
   let cache = Compiler.Cache.init () in
   let do_compile () =
     let source = Source.read path in
@@ -148,6 +160,11 @@ let run : Args.t -> unit =
          writer |> Kast_transpiler_javascript.Writer.finish);
       close_out out;
       run_formatter_if_needed args;
+      (match post_compile_cmd with
+       | Some cmd ->
+         let code = Sys.command cmd in
+         if code <> 0 then fail "postcompile command returned code %d" code
+       | None -> ());
       match save_dependency_graph with
       | None -> ()
       | Some path ->

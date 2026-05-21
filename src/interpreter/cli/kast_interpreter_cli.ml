@@ -56,6 +56,7 @@ let eval_and : 'a. (evaled option -> 'a) -> Args.t -> 'a =
          ; output = _
          ; formatter = _
          ; continuous = _
+         ; post_compile_cmd = _
          }
      ; argv_except_program = _
      ; enable_source_maps = _
@@ -114,6 +115,7 @@ let repl
            ; output = _
            ; formatter = _
            ; continuous = _
+           ; post_compile_cmd = _
            }
        ; argv_except_program = _
        ; enable_source_maps = _
