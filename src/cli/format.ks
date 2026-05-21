@@ -99,7 +99,7 @@ const Format = (
                     | :None => Diagnostic.abort("Inplace formatting is only available given file path")
                 );
                 # TODO std.fs.write_file
-                @native "(await import('fs')).writeFileSync(\(path), \(formatted))";
+                @native "fs.writeFileSync(\(path), \(formatted))";
             ) else match args.highlight with (
                 | :None => root_scope.Format.format(&parsed, @current Output)
                 | :Some highlight_mode => (

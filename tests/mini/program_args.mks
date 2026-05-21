@@ -1,16 +1,33 @@
+impl syntax (for ident :: ty in start..end do body) = `(
+    let \ident :: \ty = \start;
+    let __for_end = \end;
+    unwindable __for_loop @loop (
+        if greater_or_equal[\ty](\ident, __for_end) then (
+            break;
+        );
+        unwindable __for_loop_body (
+            \body;
+        );
+        inc[\ty](&\ident);
+    )
+);
+
+impl syntax (break) = `(
+    unwind __for_loop with ();
+);
+
+impl syntax (continue) = `(
+    unwind __for_loop_body with ();
+);
+
 const main = () => (
     let program_args = &@context.program_args;
-    let i :: UInt = 0;
-    unwindable loop @loop (
-        if greater_or_equal[UInt](i, program_args^.length) then (
-            unwind loop with ();
-        );
+    for i :: UInt in 1..program_args^.length do (
         let arg = Array_index[C_String](program_args, i)^;
         print_String("Arg #");
         print_UInt(i);
         print_String(" = ");
         print_C_String(arg);
         print_String("\n");
-        inc[UInt](&i);
     );
 );

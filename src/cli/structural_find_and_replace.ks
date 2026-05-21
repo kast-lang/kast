@@ -175,7 +175,7 @@ const StructuralFindAndReplace = (
                             | :None => Diagnostic.abort("Inplace is only available given file path")
                         );
                         # TODO std.fs.write_file
-                        @native "(await import('fs')).writeFileSync(\(path), \(result))";
+                        @native "fs.writeFileSync(\(path), \(result))";
                     ) else (
                         Highlight.highlight(&parsed, output);
                     );

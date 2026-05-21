@@ -176,7 +176,7 @@ const tty = (
 
     const read_more_stdin_data = () => (
         let mut ctx = @current Context;
-        let data = @native "await new Promise(resolve => {const on_data = data => {resolve(data.toString());process.stdin.removeListener('data', on_data);};process.stdin.addListener('data', on_data);})";
+        let data = @native "(() => {const buffer = Buffer.alloc(1024);const bytesRead = fs.readFileSync(process.stdin.fd,buffer,0,buffer.length,null);return buffer.toString('utf8', 0, bytesRead);})()";
         ctx.last_read += data;
         while ctx.last_read |> String.length > 40 do (
             let c = ctx.last_read |> String.at(0);
@@ -369,6 +369,6 @@ const tty = (
             result
         );
         enter_raw_mode();
-        @native "await (async ()=>{try { return \(f()) } finally { \(exit_raw_mode()) }})()"
+        @native "(()=>{try { return \(f()) } finally { \(exit_raw_mode()) }})()"
     );
 );

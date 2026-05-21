@@ -1,6 +1,7 @@
 @syntax from_scratch;
 @syntax "then" 0 @wrap always = _ ";" "\n" _ ->;
 @syntax "stmt" 0 @wrap always = _ ";";
+@syntax "impl syntax" 1 @wrap never = "impl" " " "syntax" " " name " " "=" " " "`" _=(@wrap always "(" " "/"\n\t" impl:any " "/"\n\\" ")");
 @syntax "assign" 2 @wrap never = assignee " " "=" " " value;
 @syntax "native const value" 2 @wrap never = "@native" "\n" "const" " " name " " "=" " " value;
 @syntax "native const" 2 @wrap never = "@native" "\n" "const" " " name " " "::" " " type;
@@ -23,6 +24,7 @@
 @syntax "type ascribe" 6.2 @wrap never = expr " " "::" " " type;
 @syntax "fn_type" 6.5 @wrap never = raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? args " " "->" " " result;
 @syntax "fn" 7 @wrap never = move=("move" " ")? call_convention=("@call" " " _: >= 5000 " ")? args " " result_ty=("->" " " _ " ")? "=>" " " body;
+@syntax "for" 7.5 @wrap never = "for" " " ident " " "::" " " type " " "in" " " start ".." end " " "do" " " body;
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 # @syntax "for" 7.5 @wrap never = "for" " " ident " " "in" " " start ".." end " " "do" " " body;
@@ -31,6 +33,8 @@
 @syntax "delimited_continuation" 7.7 @wrap never = move=("move" " ")? "@delimited_continuation" " " token: >=1000 " " body;
 @syntax "capture_continuation" 7.7 @wrap never = "@capture_continuation" " " token: >=1000 " " continuation: >=1000 " " body;
 @syntax "defer" 7.7 @wrap never = "defer" " " _;
+@syntax "break" 7.7 @wrap never = "break";
+@syntax "continue" 7.7 @wrap never = "continue";
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;
 @syntax "native" 9 @wrap never = "@native" " " _;
 @syntax "inject_context" 9.5 @wrap never = "with" " " context_type " " "=" " " value;
@@ -59,6 +63,6 @@
 @syntax "uninitialized" 1000 @wrap never = "uninitialized";
 @syntax "type_info" 1000 @wrap never = "@TypeInfo" "(" type:any ")";
 # this one is needed for structural find & replace
-@syntax "core:unquote" 1000 @wrap never = "$" _ ->;
+@syntax "core:unquote" 1000 @wrap never = "\\" _ ->;
 @syntax "context_obj" 1000 @wrap never = "@context";
 @syntax "context_obj_type" 1000 @wrap never = "@Context";

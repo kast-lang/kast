@@ -9,11 +9,19 @@ build continuous="":
     time ${KAST_BIN:-kast-bootstrap} compile \
         {{continuous}} \
         --js-ref-vars false \
-        --async always \
+        --async never \
         --use-numbers-instead-of-symbols false \
         --target js \
-        --output target/kast.mjs \
+        --output target/kast-tmp.mjs \
+        --post-compile-cmd 'just post-build' \
         src/cli/_main.ks
+
+post-build:
+    #!/usr/bin/env bash
+    (
+        echo 'const fs = await import("node:fs");'
+        cat target/kast-tmp.mjs | tail -n +3
+    ) > target/kast.mjs
 
 raylib-to-c:
     kast mini \

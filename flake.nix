@@ -1,7 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    kast.url = "github:kast-lang/kast/bootstrap-ocaml";
+    kast.url = "github:kast-lang/kast/bootstrap-no-async-js";
     nix-filter.url = "github:numtide/nix-filter";
     flake-utils.url = "github:numtide/flake-utils";
   };
