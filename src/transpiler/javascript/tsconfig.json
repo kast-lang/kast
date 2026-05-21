@@ -1,7 +1,10 @@
 {
 	"compilerOptions": {
-		"module": "esnext",
-		"moduleResolution": "node",
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"types": [
+			"node"
+		],
 		"target": "ES2022",
 		"lib": [
 			"ES2022",

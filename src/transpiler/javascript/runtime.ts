@@ -20,10 +20,8 @@ function deep_equal(a: any, b: any): boolean {
   return a === b;
 }
 
-type MaybePromise<T> = Promise<T> | T;
-
 type Context = unknown;
-type Fn<A extends any[], R> = (ctx: Context, ...args: A) => MaybePromise<R>;
+type Fn<A extends any[], R> = (ctx: Context, ...args: A) => R; // MaybePromise<R>;
 
 interface Ref<T> {
   get: () => T;
@@ -65,7 +63,6 @@ interface Backend<isNode> {
   io: {
     print: Fn<[string], void>;
     eprint: Fn<[string], void>;
-    input: Fn<[string], string>;
     stdout: isNode extends true
       ? {
           write: Fn<[string], void>;
@@ -100,32 +97,6 @@ interface Backend<isNode> {
         exec: Fn<[string], number>;
         get_env: Fn<[string], Option<string>>;
         exit: Fn<[number], never>;
-      }
-    : undefined;
-  net: isNode extends true
-    ? {
-        tcp: {
-          connect: Fn<[string], TcpStream>;
-          stream: {
-            read_line: Fn<[RefMut<TcpStream>], string>;
-            write: Fn<[RefMut<TcpStream>, Ref<string>], void>;
-            close: Fn<[TcpStream], void>;
-          };
-          bind: Fn<[string], TcpListener>;
-          listener: {
-            listen: Fn<[RefMut<TcpListener>, number], void>;
-            accept: Fn<
-              [
-                RefMut<TcpListener>,
-                {
-                  close_on_exec: boolean;
-                },
-              ],
-              { stream: TcpStream; addr: string }
-            >;
-            close: Fn<[TcpListener], void>;
-          };
-        };
       }
     : undefined;
   cleanup(): Promise<void>;
@@ -212,7 +183,6 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       const util = await import("node:util");
       const readline = await import("node:readline/promises");
       const fs = await import("node:fs");
-      const net = await import("node:net");
       const tty = await import("node:tty");
       const child_process = await import("node:child_process");
 
@@ -320,9 +290,6 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
           eprint(ctx: Context, s: string) {
             console.error(s);
           },
-          async input(ctx, prompt: string) {
-            return await ensure_readline_interface().question(prompt);
-          },
           stdout: {
             isatty(ctx) {
               return tty.isatty(STDOUT);
@@ -410,116 +377,8 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
           },
         },
         fs: {
-          async read_file(ctx, path: string) {
-            return await new Promise((resolve, reject) => {
-              fs.readFile(path, "utf8", (err, data) => {
-                if (err) reject(err);
-                else resolve(data);
-              });
-            });
-          },
-        },
-        net: {
-          tcp: {
-            async connect(ctx, addr: string): Promise<TcpStream> {
-              const colon_idx = addr.lastIndexOf(":");
-              if (colon_idx < 0) {
-                throw Error("no : in tcp.connect");
-              }
-              const host = addr.substring(0, colon_idx);
-              const port = parseInt(addr.substring(colon_idx + 1));
-              const socket = net.connect({ host, port });
-              const stream = setup_tcp_stream(socket);
-              await waitForSocketEvent(stream, "connect");
-              return stream;
-            },
-            stream: {
-              async read_line(
-                ctx: Context,
-                stream_ref: RefMut<TcpStream>,
-              ): Promise<string> {
-                const stream = stream_ref.get();
-                while (true) {
-                  let newline_idx = stream.buffer.indexOf("\n");
-                  if (newline_idx < 0) {
-                    await waitForSocketEvent(stream, "data");
-                  } else {
-                    const line = stream.buffer.substring(0, newline_idx);
-                    stream.buffer = stream.buffer.substring(newline_idx + 1);
-                    return line;
-                  }
-                }
-              },
-              async write(
-                ctx: Context,
-                stream_ref: RefMut<TcpStream>,
-                data_ref: Ref<string>,
-              ): Promise<void> {
-                const stream = stream_ref.get();
-                const data = data_ref.get();
-                return new Promise((resolve, reject) => {
-                  stream.socket.write(data, (err) => {
-                    if (err) {
-                      reject(err);
-                    } else {
-                      resolve();
-                    }
-                  });
-                });
-              },
-              async close(ctx: Context, stream: TcpStream): Promise<void> {
-                stream.socket.destroy();
-              },
-            },
-            async bind(ctx: Context, addr: string): Promise<TcpListener> {
-              const colon_idx = addr.lastIndexOf(":");
-              if (colon_idx < 0) {
-                throw Error("no : in tcp.bind");
-              }
-              const host = addr.substring(0, colon_idx);
-              const port = parseInt(addr.substring(colon_idx + 1));
-
-              const server = new net.Server();
-              server.listen(port, host);
-              const listener: TcpListener = { server };
-              await waitForServerEvent(listener, "listening");
-              return listener;
-            },
-            listener: {
-              async listen(
-                ctx: Context,
-                listener: RefMut<TcpListener>,
-                max_pending: number,
-              ): Promise<void> {
-                // Don't need to do anything?
-              },
-              async accept(
-                ctx: Context,
-                listener_ref: RefMut<TcpListener>,
-                { close_on_exec },
-              ): Promise<{ stream: TcpStream; addr: string }> {
-                const listener = listener_ref.get();
-                const [socket] = await waitForServerEvent(
-                  listener,
-                  "connection",
-                );
-                return {
-                  stream: setup_tcp_stream(socket),
-                  addr: JSON.stringify(socket.address()),
-                };
-              },
-              async close(ctx: Context, listener: TcpListener): Promise<void> {
-                return new Promise((resolve, reject) => {
-                  listener.server.close((err) => {
-                    if (err) {
-                      reject(err);
-                    } else {
-                      resolve();
-                    }
-                  });
-                });
-              },
-            },
+          read_file(ctx, path: string) {
+            return fs.readFileSync(path, "utf8");
           },
         },
         sys: {
@@ -532,20 +391,15 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
           argv_at(ctx: Context, i: number): string {
             return process.argv[i + 1];
           },
-          async exec(ctx: Context, cmd: string): Promise<number> {
-            return new Promise((resolve, reject) => {
-              const child = child_process.spawn("/bin/sh", ["-c", cmd], {
-                stdio: "inherit",
-              });
-              child.on("exit", (code, signal) => {
-                if (code !== null) {
-                  resolve(code);
-                } else {
-                  reject(new Error(`Process exited with signal ${signal}`));
-                }
-              });
-              child.on("error", reject);
+          exec(ctx: Context, cmd: string): number {
+            const child = child_process.spawnSync("/bin/sh", ["-c", cmd], {
+              stdio: "inherit",
             });
+            if (child.status !== null) {
+              return child.status;
+            } else {
+              throw new Error(`Process exited with signal ${child.signal}`);
+            }
           },
           get_env(ctx: Context, name: string): Option<string> {
             const value = process.env[name];
@@ -577,13 +431,6 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
           eprint(ctx: Context, s: string) {
             console.error(s);
           },
-          async input(ctx: Context, p: string) {
-            const result = prompt(p);
-            if (result === null) {
-              throw Error("No input was provided");
-            }
-            return result;
-          },
           stdout: undefined,
           stderr: undefined,
           stdin: undefined,
@@ -596,11 +443,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     }
   })();
 
-  function call<A extends any[], R>(
-    f: Fn<A, R>,
-    ctx: Context,
-    ...args: A
-  ): MaybePromise<R> {
+  function call<A extends any[], R>(f: Fn<A, R>, ctx: Context, ...args: A): R {
     return f(ctx, ...args);
   }
 
@@ -769,25 +612,25 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       substring: (ctx, s, start, len) => {
         return s.substring(start, start + len);
       },
-      iter: async (ctx, s, f) => {
+      iter: (ctx, s, f) => {
         for (let c of s) {
-          await call(f, ctx, c);
+          call(f, ctx, c);
         }
       },
-      iteri: async (ctx, s, f) => {
+      iteri: (ctx, s, f) => {
         let i = 0;
         for (let c of s) {
-          await call(f, ctx, { 0: i, 1: c });
+          call(f, ctx, { 0: i, 1: c });
           i += c.length;
         }
       },
-      iteri_rev: async (ctx, s, f) => {
+      iteri_rev: (ctx, s, f) => {
         for (let i = s.length - 1; i >= 0; i--) {
           const c = s.codePointAt(i)!;
           if (0xdc00 <= c && c <= 0xdfff) {
             continue;
           }
-          await call(f, ctx, { 0: i, 1: String.fromCodePoint(c) });
+          call(f, ctx, { 0: i, 1: String.fromCodePoint(c) });
         }
       },
       at: (ctx, s, i) => {
@@ -800,7 +643,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       length: (ctx, s: string) => {
         return s.length;
       },
-      utf8_length : (ctx, s: string) => {
+      utf8_length: (ctx, s: string) => {
         return Buffer.byteLength(s, "utf-8");
       },
       to_string: (ctx, x: Value) => {
