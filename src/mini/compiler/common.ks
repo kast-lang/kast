@@ -108,7 +108,6 @@ const TopLevelImpl = newtype (
 );
 
 const CompilerT = newtype {
-    .target :: CompilationTarget,
     .program :: Ir.Program,
     .parse_expr :: (Option.t[Ty], Ast.t) -> Ir.Expr,
     .parse_type :: Ast.t -> Ty,
