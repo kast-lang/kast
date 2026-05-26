@@ -31,9 +31,7 @@ const field_ty = (
     .field_span :: Span,
 ) -> Ir.Type => with_return (
     let obj_ty = Ir.type_repr(&obj_ty);
-    if obj_ty^.shape is :ContextObject then (
-        return find_context_type(field, .span = field_span);
-    );
+    # TODO fields of @context
     if obj_ty^.shape is :Named name then (
         let type_def = &(@current Compiler).program.types
             |> OrdMap.get(name)

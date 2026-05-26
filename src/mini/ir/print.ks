@@ -137,26 +137,4 @@ const Print = (
             | :ContextObject => output.write("Context")
         )
     );
-
-    const program = (self :: &Program) => (
-        let output = @current Output;
-        ansi.with_mode(
-            :Bold,
-            () => output.write("Types:\n"),
-        );
-        for &{ .key = name, .value = def } in &self^.types |> OrdMap.iter do (
-            output.write("- ");
-            output.write(name);
-            output.write("\n");
-        );
-        ansi.with_mode(
-            :Bold,
-            () => output.write("Functions:\n"),
-        );
-        for &{ .key = name, .value = def } in &self^.fns |> OrdMap.iter do (
-            output.write("- ");
-            output.write(name);
-            output.write("\n");
-        );
-    );
 );

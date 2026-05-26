@@ -73,10 +73,7 @@ const process_toplevel_fn_declaration = (
     fn_type
 );
 
-const parse_fn_def = (
-    def :: Ast.t,
-    .parent_scope :: Option.t[Scope],
-) -> Ir.FnDef => (
+const parse_fn_def = (def :: Ast.t) -> Ir.FnDef => (
     let root = def |> AstHelpers.expect_rule("fn");
     let capture_mode = match (
         &root.children |> Tuple.get_named_opt("move")
@@ -117,8 +114,8 @@ const parse_fn_def = (
     );
     let mut captures = OrdMap.new();
     let mut scope = {
-        .parent = parent_scope,
-        .vars = OrdMap.new(),
+        .parent = :Some (@current ScopeContext),
+        .locals = OrdMap.new(),
         .found_in_parent = (name, ty) => (
             Log.debug(
                 () => (
@@ -136,7 +133,10 @@ const parse_fn_def = (
         ),
     };
     for arg in &args |> ArrayList.iter do (
-        &mut scope.vars |> OrdMap.add(arg^.name, arg^.ty);
+        let arg_binding :: Binding = {
+            .ty = arg^.ty,
+        };
+        &mut scope.locals |> OrdMap.add(arg^.name, :Binding arg_binding);
     );
     with ScopeContext = scope;
     let body = (@current Compiler).parse_expr(:Some result_ty, body);
@@ -149,11 +149,4 @@ const parse_fn_def = (
         .body,
         .span = def.span,
     }
-);
-
-const process_toplevel_fn = (
-    name :: String,
-    def :: Ast.t,
-) -> Ir.FnDef => (
-    parse_fn_def(def, .parent_scope = :None)
 );

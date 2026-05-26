@@ -1,6 +1,5 @@
 use (import "./common.ks").*;
 
-use (import "./const.ks").*;
 use (import "./scope.ks").*;
 use (import "./fn.ks").*;
 use (import "./template.ks").*;
@@ -10,6 +9,7 @@ use (import "./type/def.ks").*;
 use (import "./type/inference.ks").*;
 use (import "./type/info.ks").*;
 use (import "./type/parse.ks").*;
+use (import "../interpreter/_lib.ks").*;
 
 const root_scope = @current_scope;
 
@@ -31,56 +31,14 @@ const Compiler = (
     };
 
     const State = newtype {
-        .toplevel_items :: OrdMap.t[String, TopLevelItem],
-        .toplevel_items_unprocessed :: Queue.t[String],
-        .program :: Ir.Program,
+        .iterpreter :: Interpreter.State,
     };
 
     const Context = @context State;
 
     const init = () -> State => {
-        .toplevel_items = OrdMap.new(),
-        .toplevel_items_unprocessed = Queue.new(),
-        .program = {
-            .types = OrdMap.new(),
-            .contexts = OrdMap.new(),
-            .consts = OrdMap.new(),
-            .consts_order = ArrayList.new(),
-            .fns = OrdMap.new(),
-        },
+        .interpreter = Interpreter.init(),
     };
-
-    const get_toplevel_decl = (
-        name :: String,
-    ) -> Option.t[TopLevelDecl] => with_return (
-        let ctx = @current Context;
-        let item = &ctx.toplevel_items
-            |> OrdMap.get(name)
-            |> Option.unwrap_or_else(() => return :None);
-        match item^.declaration with (
-            | :Processed value => :Some value
-            | _ => (
-                process_toplevel_item(name);
-                get_toplevel_decl(name)
-            )
-        )
-    );
-
-    const get_toplevel_impl = (
-        name :: String,
-    ) -> Option.t[TopLevelImpl] => with_return (
-        let ctx = @current Context;
-        let item = &ctx.toplevel_items
-            |> OrdMap.get(name)
-            |> Option.unwrap_or_else(() => return :None);
-        match item^.implementation with (
-            | :Processed value => :Some value
-            | _ => (
-                process_toplevel_item(name);
-                get_toplevel_impl(name)
-            )
-        )
-    );
 
     const parse_toplevel_item = (ast :: Ast.t) => with_return (
         let mut ctx = @current Context;
@@ -388,7 +346,7 @@ const Compiler = (
         SyntaxParser.parse_syntax_ruleset(&mut token_stream)
     );
 
-    const add_source = (state :: &mut State, source :: Source) => (
+    const compile_source = (state :: &mut State, source :: Source) -> Ir.Expr => (
         let ruleset = ruleset();
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
@@ -398,37 +356,23 @@ const Compiler = (
             .path = source.path,
             .token_stream = &mut token_stream,
         );
-        add_source_ast(state, parsed.ast)
+        compile_ast(state, parsed.ast);
     );
 
-    const compile = (mut state :: State) -> Ir.Program => (
+    const compile_ast = (state :: &mut State, ast :: Ast.t) -> Ir.Expr => (
         with Context = state;
+        with ScopeContext = state^.global_scope;
         with root_scope.Compiler = {
-            # TODO we have to copies now, only works because we do js
-            .program = state.program,
             .parse_expr,
             .parse_type,
             .find_ident_ty,
             .lookup_type,
-            .add_toplevel_item,
-            .get_toplevel_decl,
-            .get_toplevel_impl,
         };
-        # Empty scope is need for initializing consts (they do name lookups)
-        let mut scope = {
-            .parent = :None,
-            .vars = OrdMap.new(),
-            .found_in_parent = (...) => (),
-        };
-        with ScopeContext = scope;
         # Outside of template instantiations
         with TemplateArgsContext = {
             .args = ArrayList.new(),
             .by_name = OrdMap.new(),
         };
-        while &mut state.toplevel_items_unprocessed |> Queue.pop is :Some name do (
-            process_toplevel_item(name);
-        );
-        state.program
+        parse_expr(:None, ast)
     );
 );

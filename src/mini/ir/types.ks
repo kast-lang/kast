@@ -1,10 +1,11 @@
 use (import "../../span.ks").*;
+use (import "../../ast.ks").*;
 use std.collections.OrdMap;
 use std.collections.OrdSet;
 
 module:
 
-const TypeDefShape = newtype (
+const CustomType = newtype (
     | :Opaque
     | :Enum {
         .variants :: OrdSet.t[String],
@@ -15,7 +16,6 @@ const TypeDefShape = newtype (
     | :Struct {
         .fields :: OrdMap.t[String, Type],
     }
-    | :Alias Type
 );
 
 const TypeDef = newtype {
@@ -31,6 +31,8 @@ const FnType = newtype {
 };
 
 const TypeShape = newtype (
+    | :Type
+    | :ContextType
     | :Any
     | :Ref Type
     | :Unit
@@ -44,7 +46,7 @@ const TypeShape = newtype (
     | :Float64
     | :Bool
     | :Char
-    | :Named String
+    | :Custom CustomType
     | :Fn FnType
     | :Native String
     | :Array {
@@ -75,13 +77,18 @@ const type_repr = (ty :: &Type) -> &Type => (
         | _ => ty
     )
 );
-
 # TODO derive
 const compare_type = (
     a :: &Type,
     b :: &Type,
 ) -> std.cmp.Ordering => with_return (
     match { a^.shape, b^.shape } with (
+        | { :Type, :Type } => :Equal
+        | { :Type, _ } => :Less
+        | { _, :Type } => :Greater
+        | { :ContextType, :ContextType } => :Equal
+        | { :ContextType, _ } => :Less
+        | { _, :ContextType } => :Greater
         | { :Any, :Any } => :Equal
         | { :Any, _ } => :Less
         | { _, :Any } => :Greater
@@ -210,6 +217,7 @@ const CaptureMode = newtype (
 );
 
 const ExprShape = newtype (
+    | :Const Value
     | :Unit
     | :Uninitialized
     | :Claim PlaceExpr
@@ -337,10 +345,77 @@ const FnDef = newtype {
     .span :: Span,
 };
 
-const Program = newtype {
-    .types :: OrdMap.t[String, TypeDef],
-    .contexts :: OrdMap.t[String, Type],
-    .consts :: OrdMap.t[String, Expr],
-    .consts_order :: ArrayList.t[String],
-    .fns :: OrdMap.t[String, FnDef],
+const Binding = newtype {
+    .ty :: Type,
+};
+
+const CompilerScope = (
+    module:
+
+    const Local = newtype (
+        | :Binding Binding
+        | :Const Value
+    );
+
+    const t = newtype {
+        .parent :: Option.t[t],
+        .locals :: OrdMap.t[String, Local],
+        .found_in_parent :: (String, Type) -> (),
+    };
+);
+
+const Template = newtype {
+    .captured_scope :: CompilerScope.t,
+    .arg_names :: ArrayList.t[String],
+    .def :: Ast.t,
+    .instantiations :: OrdMap.t[TemplateArgs, Instantiation],
+};
+
+const TemplateArgs = newtype {
+    .args :: ArrayList.t[Type],
+    .by_name :: OrdMap.t[String, Type],
+};
+
+const compare_template_args = (
+    a :: TemplateArgs,
+    b :: TemplateArgs,
+) -> std.cmp.Ordering => with_return (
+    let len_a = &a.args |> ArrayList.length;
+    let len_b = &b.args |> ArrayList.length;
+    let len_ord = std.cmp.default_compare(len_a, len_b);
+    if len_ord is :Equal then () else (
+        return len_ord;
+    );
+    for i in 0..len_a do (
+        let ty_a = &a.args |> ArrayList.at(i);
+        let ty_b = &b.args |> ArrayList.at(i);
+        let ty_ord = compare_type(ty_a, ty_b);
+        if ty_ord is :Equal then () else (
+            return ty_ord;
+        );
+    );
+    :Equal
+);
+
+const Instantiation = newtype {
+    .template :: &Template,
+    .template_args :: ArrayList.t[Type],
+    .result :: Value,
+};
+
+const ContextType = newtype {
+    .name :: String,
+    .ty :: Type,
+};
+
+const ValueShape = newtype (
+    | :ContextType ContextType
+    | :Type Type
+    | :Fn FnDef
+    | :Template Template
+);
+
+const Value = newtype {
+    .shape :: ValueShape,
+    .ty :: Type,
 };

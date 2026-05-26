@@ -51,6 +51,7 @@ const Diagnostic = (
         | :Lexer
         | :Parser
         | :Compiler
+        | :Interpreter
         ## Internal error is a bug in the implementation of kast
         | :Internal
         | :Other

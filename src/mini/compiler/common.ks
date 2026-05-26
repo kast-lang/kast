@@ -21,7 +21,9 @@ use (import "../../queue.ks").*;
 use std.collections.OrdMap;
 use std.collections.OrdSet;
 
+use (import "../interpreter/_lib.ks").*;
 use (import "../ir/_lib.ks").*;
+use Ir.Types.*;
 use (import "../ast_helpers.ks").*;
 # TODO allow custom targets
 const CompilationTarget = newtype (
@@ -29,32 +31,7 @@ const CompilationTarget = newtype (
     | :JavaScript
 );
 
-const TypeKind = newtype (
-    | :Opaque
-    | :Enum
-    | :Struct
-    | :Union
-    | :Alias
-);
-
 const Ty = Ir.Type;
-
-const TemplateArgs = newtype {
-    .args :: ArrayList.t[Ir.Type],
-    .by_name :: OrdMap.t[String, Ir.Type],
-};
-
-const Instantiation = newtype {
-    .template_name :: String,
-    .template_args :: ArrayList.t[Ty],
-    .name :: String,
-};
-
-const Template = newtype {
-    .arg_names :: ArrayList.t[String],
-    .def :: Ast.t,
-    .instantiations :: OrdMap.t[TemplateArgs, Instantiation],
-};
 
 const ParsedExprShape = newtype (
     | :Expr Ir.ExprShape
@@ -66,56 +43,16 @@ const ParsedExpr = newtype {
     .ty :: Ir.Type,
 };
 
-const ConstDeclaration = newtype {
-    .ty :: Ty,
-    .value :: Option.t[Ast.t],
-};
-
-const TopLevelItemDef = newtype {
-    .name :: String,
-    .span :: Span,
-    .ast :: Ast.t,
-    .native :: Bool,
-    .setup_contexts :: Option.t[type ((() -> ()) -> ())],
-};
-
-const TopLevelDecl = newtype (
-    | :Template
-    | :Type { .is_alias :: Bool }
-    | :Const ConstDeclaration
-    | :Fn Ir.FnType
-    | :Context
-);
-
-const print_toplevel_kind = (decl :: TopLevelDecl) => (
-    let kind = match decl with (
-        | :Fn _ => "function"
-        | :Type { .is_alias } => if is_alias then "type alias" else "type"
-        | :Template => "template"
-        | :Const _ => "constant"
-        | :Context => "context"
-    );
-    (@current Output).write(kind);
-);
-
-const TopLevelImpl = newtype (
-    | :Template Template
-    | :Type Ir.TypeDef
-    | :Const Ir.Expr
-    | :NativeConst
-    | :Fn Ir.FnDef
-    | :Context Ty
-);
-
 const CompilerT = newtype {
-    .program :: Ir.Program,
     .parse_expr :: (Option.t[Ty], Ast.t) -> Ir.Expr,
     .parse_type :: Ast.t -> Ty,
     .find_ident_ty :: (String, .span :: Span) -> Ty,
     .lookup_type :: (String, .span :: Span) -> Ty,
-    .add_toplevel_item :: TopLevelItemDef -> (),
-    .get_toplevel_decl :: String -> Option.t[TopLevelDecl],
-    .get_toplevel_impl :: String -> Option.t[TopLevelImpl],
 };
 
 const Compiler = @context CompilerT;
+
+const eval_ast = (expected_ty :: Option.t[Ir.Type], ast :: Ast.t) -> Ir.Value => (
+    let expr = (@current Compiler).parse_expr(expected_ty, ast);
+    Interpreter.eval(&expr)
+);

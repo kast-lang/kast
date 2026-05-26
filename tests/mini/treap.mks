@@ -283,3 +283,5 @@ const main = () => (
     drop_Treap[Int](split.left, drop_noop[Int]);
     drop_Treap[Int](split.right, drop_noop[Int]);
 );
+
+main();
