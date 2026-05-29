@@ -176,7 +176,7 @@ const tty = (
 
     const read_more_stdin_data = () => (
         let mut ctx = @current Context;
-        let data = @native "(() => {const buffer = Buffer.alloc(1024);const bytesRead = fs.readFileSync(process.stdin.fd,buffer,0,buffer.length,null);return buffer.toString('utf8', 0, bytesRead);})()";
+        let data = @native "(() => {const buffer = Buffer.alloc(1024);const bytesRead = fs.readSync(process.stdin.fd,buffer,0,buffer.length,null);return buffer.toString('utf8', 0, bytesRead);})()";
         ctx.last_read += data;
         while ctx.last_read |> String.length > 40 do (
             let c = ctx.last_read |> String.at(0);
@@ -349,7 +349,8 @@ const tty = (
     ) -> T => (
         const enter_raw_mode = () => (
             @native "process.stdin.setRawMode(true)";
-            @native "process.stdin.resume()";
+            # @native "process.stdin.resume()";
+            @native "process.stdin._handle.setBlocking(true)";
         );
         const exit_raw_mode = () => (
             @native "process.stdin.setRawMode(false)";
