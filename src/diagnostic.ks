@@ -51,6 +51,7 @@ const Diagnostic = (
         | :Lexer
         | :Parser
         | :Compiler
+        | :Interpreter
         ## Internal error is a bug in the implementation of kast
         | :Internal
         | :Other
@@ -67,48 +68,53 @@ const Diagnostic = (
         .unwind_on_error :: [T] () -> T,
     };
 
+    const print = (diagnostic :: Diagnostic.t) => (
+        with Output = (@current Stderr);
+        let output = @current Output;
+        ansi.with_mode(
+            :Red,
+            () => (
+                let source_name = match diagnostic.source with (
+                    | :Internal => :Some "Internal"
+                    | :Lexer => :Some "Lexer"
+                    | :Parser => :Some "Parser"
+                    | :Compiler => :Some "Compiler"
+                    | :Interpreter => :Some "Interpreter"
+                    | :Other => :None
+                );
+                match source_name with (
+                    | :Some source_name => (
+                        output.write(source_name);
+                        output.write(" error at ");
+                    )
+                    | :None => (
+                        output.write("Error at ");
+                    )
+                );
+                diagnostic.span |> Span.print;
+                output.write(":\n");
+                diagnostic.message();
+                for info in diagnostic.related |> ArrayList.into_iter do (
+                    output.write("\n");
+                    ansi.with_mode(
+                        :Dim,
+                        () => (
+                            output.write("Note: at ");
+                            Span.print(info.span);
+                            output.write("\n");
+                        ),
+                    );
+                    info.message();
+                );
+                output.write("\n\n");
+            ),
+        );
+    );
+
     const default_handler = (.stop_on_error :: Bool) -> Handler => {
         .stop_on_error,
         .handle = (diagnostic :: Diagnostic.t) => (
-            with Output = (@current Stderr);
-            let output = @current Output;
-            ansi.with_mode(
-                :Red,
-                () => (
-                    let source_name = match diagnostic.source with (
-                        | :Internal => :Some "Internal"
-                        | :Lexer => :Some "Lexer"
-                        | :Parser => :Some "Parser"
-                        | :Compiler => :Some "Compiler"
-                        | :Other => :None
-                    );
-                    match source_name with (
-                        | :Some source_name => (
-                            output.write(source_name);
-                            output.write(" error at ");
-                        )
-                        | :None => (
-                            output.write("Error at ");
-                        )
-                    );
-                    diagnostic.span |> Span.print;
-                    output.write(":\n");
-                    diagnostic.message();
-                    for info in diagnostic.related |> ArrayList.into_iter do (
-                        output.write("\n");
-                        ansi.with_mode(
-                            :Dim,
-                            () => (
-                                output.write("Note: at ");
-                                Span.print(info.span);
-                                output.write("\n");
-                            ),
-                        );
-                        info.message();
-                    );
-                    output.write("\n\n");
-                ),
-            );
+            print(diagnostic);
             if stop_on_error then (
                 std.sys.exit(-1);
             );

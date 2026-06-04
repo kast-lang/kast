@@ -13,6 +13,10 @@ use (import "../highlight.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../readline.ks").*;
 
+use (import "../hir/_lib.ks").*;
+use (import "../compiler/_lib.ks").*;
+use (import "../interpreter/_lib.ks").*;
+
 module:
 
 const Repl = (
@@ -147,8 +151,25 @@ const Repl = (
         let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         let ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
-        let eval = (line :: Line) => (
-            Ast.print(&line.parsed.ast);
+        let eval = (line :: Line) => with_return (
+            with Diagnostic.UnwindableHandler = {
+                .unwind_on_error = [T] () -> T => (
+                    return
+                ),
+            };
+            with Diagnostic.HandlerContext = {
+                .stop_on_error = false,
+                .handle = diagnostic => (
+                    Diagnostic.print(diagnostic);
+                ),
+            };
+            let { .compiler, .state = compiler_state, .scope } = Compiler.init();
+            with Compiler.Context = compiler;
+            with Compiler.StateContext = compiler_state;
+            with Compiler.Scope.Context = scope;
+            let expr = Compiler.compile[Expr](&line.parsed.ast, .expected_ty = :None);
+            let value = Interpreter.eval(&expr);
+            Value.print(&value);
             (@current Output).write("\n");
         );
         run_with(.ruleset, .eval);

@@ -1,6 +1,7 @@
 use (import "../diagnostic.ks").*;
 use (import "../log.ks").*;
 use (import "../output.ks").*;
+use (import "../id.ks").*;
 use (import "../lsp/_lib.ks").*;
 use (import "./common.ks").*;
 use (import "./format.ks").*;
@@ -13,6 +14,8 @@ use (import "./repl.ks").*;
 use (import "./structural_find_and_replace.ks").*;
 use (import "./tokenize.ks").*;
 use (import "./mini.ks").*;
+
+with IdGenCtx = IdGen.new();
 
 with Stdout = new_std_output(
     std.io.stdout.write,

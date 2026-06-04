@@ -63,6 +63,10 @@ const Token = (
         .stripped_indentation :: String,
     };
 
+    const NumberToken = newtype {
+        .raw :: String,
+    };
+
     const StringToken = newtype {
         .raw :: String,
         .open :: Token.t,
@@ -94,9 +98,7 @@ const Token = (
             }
             | :String StringToken
             | :InterpolatedString InterpolatedStringShape
-            | :Number {
-                .raw :: String,
-            }
+            | :Number NumberToken
             | :Eof
             | :Error {
                 .raw :: String,
