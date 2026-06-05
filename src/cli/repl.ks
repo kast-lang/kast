@@ -79,13 +79,13 @@ const Repl = (
             );
             ranges
         );
-        let parse = contents => (
+        let parse = (contents, .on_error :: Diagnostic.t -> ()) => (
             with Diagnostic.HandlerContext = {
                 .stop_on_error = false,
                 .handle = diagnostic => (
                     # TODO show diagnostics under the repl line
                     # &mut diagnostics |> ArrayList.push_back(diagnostic);
-                    let () = ();
+                    on_error(diagnostic);
                 ),
             };
             let source = {
@@ -102,7 +102,7 @@ const Repl = (
             )
         );
         let highlight = contents => (
-            let parsed = parse(contents);
+            let parsed = parse(contents, .on_error = _ => ());
             let mut result = "";
             with Output = new_output(
                 .write = s => (
@@ -141,7 +141,13 @@ const Repl = (
             );
             # reset if Ctrl-C was not pressed
             ctrl_c_pressed_times = 0;
-            let parsed = parse(line);
+            let parsed = parse(
+                line,
+                .on_error = diagnostic => (
+                    Diagnostic.print(diagnostic);
+                    continue;
+                ),
+            );
             eval({ .raw = line, .parsed });
         );
     );
