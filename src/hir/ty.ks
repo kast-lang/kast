@@ -6,6 +6,7 @@ const TyShape = newtype (
         .args :: ArrayList.t[Ty],
         .result :: Ty,
     }
+    | :Ast
 );
 
 impl TyShape as module = (
@@ -33,6 +34,7 @@ impl TyShape as module = (
                 output.write(" -> ");
                 Ty.print(result);
             )
+            | :Ast => output.write("Ast")
         );
     );
 );
@@ -47,6 +49,7 @@ impl Ty as module = (
     const UNIT :: Ty = { .shape = :Unit };
     const INT :: Ty = { .shape = :Int };
     const TYPE :: Ty = { .shape = :Type };
+    const AST :: Ty = { .shape = :Ast };
 
     const print = (self :: &Ty) => (
         TyShape.print(&self^.shape);

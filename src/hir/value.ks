@@ -5,6 +5,7 @@ const ValueShape = newtype (
     | :Int Int
     | :Type Ty
     | :NativeFn NativeFn
+    | :Ast Ast.t
 );
 
 const NativeFn = newtype {
@@ -28,6 +29,9 @@ impl ValueShape as module = (
                 output.write("<native ");
                 output.write(f^.name);
                 output.write(">")
+            )
+            | :Ast ref ast => (
+                Ast.print(ast);
             )
         );
     );
