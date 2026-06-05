@@ -1,6 +1,7 @@
 module:
 
 use (import "../id.ks").*;
+use (import "../tuple.ks").*;
 use (import "../token.ks").*;
 use (import "../ast.ks").*;
 use (import "../span.ks").*;
@@ -36,7 +37,19 @@ const any_expr_to_expr = (expr :: AnyExpr, .span :: Span) -> Expr => (
     )
 );
 
+const any_expr_to_type_expr = (expr :: AnyExpr, .span :: Span) -> TyExpr => {
+    .shape = :Expr any_expr_to_expr(expr, .span),
+    .span,
+};
+
+const type_expr_to_expr = (expr :: TyExpr) -> Expr => {
+    .shape = :Type expr,
+    .ty = Ty.TYPE,
+    .span = expr.span,
+};
+
 const CompilerContextT = newtype {
+    .inject_assignee_bindings :: &Assignee -> (),
     .compile :: [K] (&Ast.t, .expected_ty :: Option.t[Ty]) -> K,
 };
 

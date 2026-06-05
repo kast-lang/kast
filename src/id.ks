@@ -21,6 +21,10 @@ const IdGenCtx = @context IdGen;
 impl Id as module = (
     module:
 
+    const compare = (a :: Id, b :: Id) -> std.cmp.Ordering => (
+        std.cmp.default_compare(a.raw, b.raw)
+    );
+
     const gen = () -> Id => (
         let next_id = &mut (@current IdGenCtx).next_id;
         let raw = next_id^;

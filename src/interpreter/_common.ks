@@ -37,9 +37,16 @@ const impl_expect_value = (
 
 module:
 
+use (import "../id.ks").*;
 use (import "../span.ks").*;
 use (import "../output.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../hir/_lib.ks").*;
+use std.collections.OrdMap;
 
-const expect_value_type = include_ast impl_expect_value("type", Ty, `(Type));
+const expect_value = (
+    module:
+
+    const expect_int = include_ast impl_expect_value("Int", Int, `(Int));
+    const expect_type = include_ast impl_expect_value("Type", Ty, `(Type));
+);

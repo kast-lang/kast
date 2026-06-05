@@ -32,11 +32,11 @@
 @syntax "core:type ascribe" 6.2 @wrap never = expr " " "::" " " type;
 @syntax "prefix type ascribe" 6.2 @wrap never = _=(@wrap if_any "(" "::" " "/"\n\t" type:any ""/"\n\\" ")") " " expr;
 
-@syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\n\\" "]" " " body ->;
-@syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\n\\" "]" " " "->" " " body ->;
-@syntax "core:fn_type" 6.5 @wrap never = async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
+@syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" args:any ""/"\n\\" "]" " " body ->;
+@syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" args:any ""/"\n\\" "]" " " "->" " " body ->;
+@syntax "core:fn_type" 6.5 @wrap never = async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
 
-@syntax "core:fn" 7 @wrap never = async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
+@syntax "core:fn" 7 @wrap never = async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
 
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
@@ -94,13 +94,14 @@
 @syntax "core:cast" 60.5 @wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 @wrap never = "&" _ ->;
 @syntax "core:ref_mut" 61 @wrap never = "&" "mut" " " _ ->;
-@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\n\\" "]");
+@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" args:any ""/"\n\\" "]");
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
-@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" arg:any ""/"\n\\" ")");
+@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" args:any ""/"\n\\" ")");
 @syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\n\\" ")");
 @syntax "core:mut" 500 @wrap never = "mut" " " _;
 @syntax "core:type expr" 500 @wrap never = "type" " " _;
+@syntax "core:type" 500 @wrap never = "type";
 @syntax "core:newtype" 500 @wrap never = "newtype" " " _;
 @syntax "core:typeof" 500 @wrap never = "typeof" " " _;
 # @syntax "core:type" 500 @wrap never = "type";

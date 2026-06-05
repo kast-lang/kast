@@ -9,6 +9,7 @@ const compile_assign = (
         |> AstHelpers.expect_two_children(:Some { "assignee", "value" });
     let assignee = compile[Assignee](&assignee, .expected_ty = :None);
     let value = compile[PlaceExpr](&value, .expected_ty = :Some assignee.ty);
+    (@current CompilerContext).inject_assignee_bindings(&assignee);
     {
         .shape = :Expr :Assign {
             .assignee,

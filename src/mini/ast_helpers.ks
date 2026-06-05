@@ -155,9 +155,9 @@ const AstHelpers = (
         child |> Ast.unwrap_child_value
     );
 
-    const unwrap_optional_scope = (ast :: Ast.t) => with_return (
+    const unwrap_optional = (ast :: Ast.t, rule_name :: String) -> Ast.t => with_return (
         if ast.shape is :Rule { .rule, .root } then (
-            if rule.name == "scope" then (
+            if rule.name == rule_name then (
                 return root |> expect_single_child(:None);
             );
         );

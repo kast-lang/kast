@@ -22,6 +22,7 @@ const Compiler = (
         .scope :: Scope.t,
     } => {
         .compiler = {
+            .inject_assignee_bindings = Scope.inject_assignee_bindings,
             .compile,
         },
         .state = {
@@ -64,18 +65,6 @@ const Compiler = (
             }
         ),
         .ident = (name, .span, .expected_ty) => with_return (
-            # TODO
-            if name == "Int" then (
-                let ty = Ty.TYPE;
-                let value :: Value = {
-                    .shape = :Type Ty.INT,
-                    .ty,
-                };
-                return {
-                    .shape = :Expr :Const Place.init(value),
-                    .ty,
-                };
-            );
             let local = Scope.lookup(name, .span);
             match local^ with (
                 | :Binding binding => {
@@ -207,6 +196,7 @@ const Compiler = (
             );
             let binding :: Binding = {
                 .id = Id.gen(),
+                .name,
                 .ty,
             };
             {

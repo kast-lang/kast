@@ -1,11 +1,16 @@
 const ExprShape = newtype (
     | :Unit
     | :Read PlaceExpr
+    | :Type TyExpr
     | :Const Place
     | :Assign {
         .assignee :: Assignee,
         .value :: PlaceExpr,
     }
+    | :Native String
+    | :Stmt Expr
+    | :Then ArrayList.t[Expr]
+    | :Apply { .f :: Expr, .args :: ArrayList.t[Expr] }
 );
 
 const Expr = newtype {
@@ -27,6 +32,10 @@ const PlaceExpr = newtype {
 
 const TyExprShape = newtype (
     | :Expr Expr
+    | :Fn {
+        .args :: ArrayList.t[TyExpr],
+        .result :: TyExpr,
+    }
 );
 
 const TyExpr = newtype {

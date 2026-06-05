@@ -2,6 +2,10 @@ const TyShape = newtype (
     | :Unit
     | :Int
     | :Type
+    | :Fn {
+        .args :: ArrayList.t[Ty],
+        .result :: Ty,
+    }
 );
 
 impl TyShape as module = (
@@ -13,6 +17,22 @@ impl TyShape as module = (
             | :Unit => output.write("()")
             | :Int => output.write("Int")
             | :Type => output.write("Type")
+            | :Fn { .args = ref args, .result = ref result } => (
+                if args |> ArrayList.length != 1 then (
+                    output.write("(");
+                );
+                for { i, arg } in args |> ArrayList.iter |> std.iter.enumerate do (
+                    if i != 0 then (
+                        output.write(", ");
+                    );
+                    Ty.print(arg);
+                );
+                if args |> ArrayList.length != 1 then (
+                    output.write(")");
+                );
+                output.write(" -> ");
+                Ty.print(result);
+            )
         );
     );
 );

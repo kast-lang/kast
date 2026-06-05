@@ -4,7 +4,13 @@ const ValueShape = newtype (
     | :Unit
     | :Int Int
     | :Type Ty
+    | :NativeFn NativeFn
 );
+
+const NativeFn = newtype {
+    .name :: String,
+    .@"impl" :: (ArrayList.t[Value], .caller :: Span) -> Value,
+};
 
 impl ValueShape as module = (
     module:
@@ -17,6 +23,11 @@ impl ValueShape as module = (
             | :Type ref ty => (
                 output.write("type ");
                 Ty.print(ty)
+            )
+            | :NativeFn ref f => (
+                output.write("<native ");
+                output.write(f^.name);
+                output.write(">")
             )
         );
     );
