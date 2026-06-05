@@ -291,6 +291,7 @@ module Cache = struct
     { (* TODO parsed & compiled not used *)
       mutable parsed : Kast_parser.result UriMap.t
     ; mutable compiled : compiled UriMap.t
+    ; mutable known : unit UriMap.t
     ; mutable imported : import UriMap.t
     ; mutable dependents : Uri.t list UriMap.t
     }
@@ -299,6 +300,7 @@ module Cache = struct
     cache.imported <- cache.imported |> UriMap.remove uri;
     cache.compiled <- cache.compiled |> UriMap.remove uri;
     cache.parsed <- cache.parsed |> UriMap.remove uri;
+    cache.known <- cache.known |> UriMap.remove uri;
     match cache.dependents |> UriMap.find_opt uri with
     | None -> ()
     | Some dependents ->
@@ -307,6 +309,7 @@ module Cache = struct
   ;;
 
   let add_dependency ~dependent ~dependency cache =
+    cache.known <- cache.known |> UriMap.add dependent () |> UriMap.add dependency ();
     cache.dependents
     <- cache.dependents
        |> UriMap.update dependency (fun cur ->
@@ -315,6 +318,7 @@ module Cache = struct
 
   let init () : t =
     { parsed = UriMap.empty
+    ; known = UriMap.empty
     ; compiled = UriMap.empty
     ; imported = UriMap.empty
     ; dependents = UriMap.empty

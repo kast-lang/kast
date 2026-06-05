@@ -219,7 +219,7 @@ let run : Args.t -> unit =
     then (
       print_string "Press enter to recompile";
       ignore <| read_line ();
-      cache.imported
+      cache.known
       |> UriMap.iter (fun uri _ ->
         if file_was_changed uri
         then (
