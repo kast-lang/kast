@@ -153,34 +153,7 @@ const Repl = (
     );
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
-        let ruleset_path = "kast:///std/syntax.ks";
-        let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
-        let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
-        let ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
-
-        let { .compiler, .state = compiler_state, .scope } = Compiler.init();
-        with Compiler.Context = compiler;
-        with Compiler.StateContext = compiler_state;
-        with Compiler.Scope.Context = scope;
-        let { .state = interpreter_state, .scope } = Interpreter.init();
-        with Interpreter.StateContext = interpreter_state;
-        with Interpreter.Scope.Context = scope;
-
-        (
-            # Prelude
-            let prelude_path = "kast:///std/prelude.ks";
-            let source = Source.read(SourcePath.parse(prelude_path));
-            let mut lexer = Lexer.new(source);
-            let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
-            let parsed = Parser.parse(
-                .ruleset,
-                .entire_source_span = Source.entire_span(&source),
-                .path = source.path,
-                .token_stream = &mut token_stream,
-            );
-            Compiler.compile[Expr](&parsed.ast, .expected_ty = :None);
-        );
-
+        let ruleset = Common.default_syntax_ruleset();
         let eval = (line :: Line) => with_return (
             with Diagnostic.UnwindableHandler = {
                 .unwind_on_error = [T] () -> T => (
@@ -200,6 +173,8 @@ const Repl = (
                 (@current Output).write("\n");
             );
         );
-        run_with(.ruleset, .eval);
+        Common.with_compiler_interpreter(
+            () => run_with(.ruleset, .eval),
+        );
     );
 );

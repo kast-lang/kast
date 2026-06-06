@@ -11,6 +11,7 @@ use (import "./parse_syntax_rules.ks").*;
 use (import "./parse_syntax_ruleset.ks").*;
 use (import "./parse.ks").*;
 use (import "./repl.ks").*;
+use (import "./run.ks").*;
 use (import "./structural_find_and_replace.ks").*;
 use (import "./tokenize.ks").*;
 use (import "./mini.ks").*;
@@ -42,6 +43,7 @@ const Args = (
         | :Lsp Lsp.CliArgs.t
         | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
         | :Repl Repl.Args.t
+        | :Run Run.Args.t
         | :Mini Mini.Args.t
     );
 
@@ -86,6 +88,9 @@ const Args = (
                 if arg == "repl" then (
                     unwind subcommand (:Repl Repl.Args.parse(i + 1));
                 );
+                if arg == "run" then (
+                    unwind subcommand (:Run Run.Args.parse(i + 1));
+                );
                 if arg == "mini" then (
                     unwind subcommand (:Mini Mini.Args.parse(i + 1));
                 );
@@ -124,5 +129,6 @@ match subcommand with (
     | :Lsp args => Lsp.run(args)
     | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
     | :Repl args => Repl.run(common_args, args)
+    | :Run args => Run.run(common_args, args)
     | :Mini args => Mini.run(common_args, args)
 );

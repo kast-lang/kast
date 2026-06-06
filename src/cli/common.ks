@@ -1,4 +1,14 @@
 use (import "../diagnostic.ks").*;
+use (import "../token_stream.ks").*;
+use (import "../source.ks").*;
+use (import "../source_path.ks").*;
+use (import "../lexer/_lib.ks").*;
+use (import "../syntax_parser.ks").*;
+use (import "../syntax_ruleset.ks").*;
+use (import "../parser.ks").*;
+use (import "../compiler/_lib.ks").*;
+use (import "../interpreter/_lib.ks").*;
+use (import "../hir/_lib.ks").*;
 
 module:
 
@@ -109,5 +119,38 @@ const Common = (
             | :Never => false
             | :Auto => isatty
         )
+    );
+
+    const default_syntax_ruleset = () -> SyntaxRuleset.t => (
+        let ruleset_path = "kast:///std/syntax.ks";
+        let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
+        let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
+        SyntaxParser.parse_syntax_ruleset(&mut token_stream)
+    );
+
+    const with_compiler_interpreter = [R] (f :: () -> R) -> R => (
+        let ruleset = default_syntax_ruleset();
+        let { .compiler, .state = compiler_state, .scope } = Compiler.init();
+        with Compiler.Context = compiler;
+        with Compiler.StateContext = compiler_state;
+        with Compiler.Scope.Context = scope;
+        let { .state = interpreter_state, .scope } = Interpreter.init();
+        with Interpreter.StateContext = interpreter_state;
+        with Interpreter.Scope.Context = scope;
+        (
+            # Prelude
+            let prelude_path = "kast:///std/prelude.ks";
+            let source = Source.read(SourcePath.parse(prelude_path));
+            let mut lexer = Lexer.new(source);
+            let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
+            let parsed = Parser.parse(
+                .ruleset,
+                .entire_source_span = Source.entire_span(&source),
+                .path = source.path,
+                .token_stream = &mut token_stream,
+            );
+            Compiler.compile[Expr](&parsed.ast, .expected_ty = :None);
+        );
+        f()
     );
 );

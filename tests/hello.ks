@@ -1,7 +1,1 @@
-print(
-    ''
-        def foo():
-            return \(2 + 2)
-        foo()
-    ''
-);
+print("Hello from Kast!\n");
