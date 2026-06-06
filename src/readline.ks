@@ -20,8 +20,11 @@ const Readline = (
         .prompt :: String,
     };
 
-    const read_line_impl = (prompt :: String) -> String => (
+    const read_line_impl = () -> String => (
         let ctx = @current Context;
+        if tty.read_cursor_position().1 != 1 then (
+            tty.write("\x1b[7m%\x1b[27m\n");
+        );
         tty.write(ctx.prompt);
         tty.flush();
         let mut begin_pos = tty.read_cursor_position();
@@ -239,7 +242,7 @@ const Readline = (
                     .highlight,
                     .prompt,
                 };
-                read_line_impl(prompt)
+                read_line_impl()
             ),
             .handle_ctrl_c,
         )
