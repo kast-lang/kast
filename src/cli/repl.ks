@@ -195,8 +195,10 @@ const Repl = (
             };
             let expr = Compiler.compile[Expr](&line.parsed.ast, .expected_ty = :None);
             let value = Interpreter.eval(&expr);
-            Value.print(&value);
-            (@current Output).write("\n");
+            if value.shape is :Unit then () else (
+                Value.print(&value);
+                (@current Output).write("\n");
+            );
         );
         run_with(.ruleset, .eval);
     );
