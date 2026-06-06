@@ -35,6 +35,7 @@ const Compiler = (
         .unit :: (.span :: Span) -> Self,
         .number :: (Token.NumberToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
         .ident :: (String, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
+        .string :: (Token.StringToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
     };
 
     impl AnyExpr as Compilable = {
@@ -51,6 +52,31 @@ const Compiler = (
                         .message = () => (
                             let output = @current Output;
                             output.write("Number literal can not be ");
+                            Ty.print(&ty);
+                        ),
+                        .related = ArrayList.new(),
+                    };
+                    Diagnostic.report_and_unwind(diagnostic)
+                )
+            );
+            let place = Place.init({ .shape = value_shape, .ty });
+            {
+                .shape = :Expr :Const place,
+                .ty,
+            }
+        ),
+        .string = ({ .contents, ... }, .span, .expected_ty) => (
+            let ty = expected_ty |> Option.unwrap_or(Ty.STRING);
+            let value_shape :: ValueShape = match ty.shape with (
+                | :String => :String contents
+                | _ => (
+                    let diagnostic = {
+                        .severity = :Error,
+                        .source = :Compiler,
+                        .span,
+                        .message = () => (
+                            let output = @current Output;
+                            output.write("String literal can not be ");
                             Ty.print(&ty);
                         ),
                         .related = ArrayList.new(),
@@ -88,6 +114,10 @@ const Compiler = (
             (AnyExpr as Compilable).number(...args),
             .span = args.span,
         ),
+        .string = (...args) => any_expr_to_expr(
+            (AnyExpr as Compilable).string(...args),
+            .span = args.span,
+        ),
         .ident = (...args) => any_expr_to_expr(
             (AnyExpr as Compilable).ident(...args),
             .span = args.span,
@@ -103,6 +133,10 @@ const Compiler = (
             (AnyExpr as Compilable).number(...args),
             .span = args.span,
         ),
+        .string = (...args) => any_expr_to_place_expr(
+            (AnyExpr as Compilable).string(...args),
+            .span = args.span,
+        ),
         .ident = (...args) => any_expr_to_place_expr(
             (AnyExpr as Compilable).ident(...args),
             .span = args.span,
@@ -110,7 +144,10 @@ const Compiler = (
     };
 
     impl TyExpr as Compilable = {
-        .unit = (.span) => panic("TODO unit ty expr"),
+        .unit = (.span) => {
+            .shape = :Const Ty.UNIT,
+            .span,
+        },
         .number = (.span, ...) => (
             let diagnostic = {
                 .severity = :Error,
@@ -119,6 +156,19 @@ const Compiler = (
                 .message = () => (
                     let output = @current Output;
                     output.write("Expected a type, got number literal");
+                ),
+                .related = ArrayList.new(),
+            };
+            Diagnostic.report_and_unwind(diagnostic)
+        ),
+        .string = (...args) => (
+            let diagnostic = {
+                .severity = :Error,
+                .source = :Compiler,
+                .span = args.span,
+                .message = () => (
+                    let output = @current Output;
+                    output.write("Expected a type, got string literal");
                 ),
                 .related = ArrayList.new(),
             };
@@ -141,7 +191,20 @@ const Compiler = (
                 .span,
                 .message = () => (
                     let output = @current Output;
-                    output.write("Can't assign to a number");
+                    output.write("Can't assign to a number literal");
+                ),
+                .related = ArrayList.new(),
+            };
+            Diagnostic.report_and_unwind(diagnostic)
+        ),
+        .string = (..., .span) => (
+            let diagnostic = {
+                .severity = :Error,
+                .source = :Compiler,
+                .span,
+                .message = () => (
+                    let output = @current Output;
+                    output.write("Can't assign to a string literal");
                 ),
                 .related = ArrayList.new(),
             };
@@ -177,6 +240,7 @@ const Compiler = (
     impl Pattern as Compilable = {
         .unit = (.span) => panic("TODO unit pattern"),
         .number = (...) => panic("TODO number pattern"),
+        .string = (...) => panic("TODO string pattern"),
         .ident = (name, .span, .expected_ty) => (
             let ty = match expected_ty with (
                 | :Some ty => ty
@@ -215,6 +279,7 @@ const Compiler = (
             | :Token { .shape = token_shape, .span = _ } => match token_shape with (
                 | :Ident { .name, ... } => (K as Compilable).ident(name, .span, .expected_ty)
                 | :Number number => (K as Compilable).number(number, .span, .expected_ty)
+                | :String s => (K as Compilable).string(s, .span, .expected_ty)
             )
             | :Rule {
                 .rule,

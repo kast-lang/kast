@@ -3,6 +3,7 @@ const Int = Int32;
 const ValueShape = newtype (
     | :Unit
     | :Int Int
+    | :String String
     | :Type Ty
     | :NativeFn NativeFn
     | :Ast Ast.t
@@ -21,6 +22,7 @@ impl ValueShape as module = (
         match self^ with (
             | :Unit => output.write("()")
             | :Int x => output.write(to_string(x))
+            | :String s => output.write(String.escape(s))
             | :Type ref ty => (
                 output.write("type ");
                 Ty.print(ty)

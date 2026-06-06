@@ -18,7 +18,7 @@ const Native = (
     );
 
     const init_ty = (name :: String, ty :: Ty) => (
-        init_value(name, { .shape = :Type ty, .ty = Ty.TYPE });
+        init_value("type " + name, { .shape = :Type ty, .ty = Ty.TYPE });
     );
 
     const init_op = (name :: String, f :: (Int, Int) -> Int) => (
@@ -45,15 +45,40 @@ const Native = (
         init_value(name, { .shape = :NativeFn { .name, .@"impl" }, .ty })
     );
 
+    const init_print = () => (
+        let name = "print";
+        let @"impl" = (args :: ArrayList.t[Value], .caller :: Span) -> Value => (
+            if &args |> ArrayList.length != 1 then (
+                panic("Expected 1 arg");
+            );
+            let s = (&args |> ArrayList.at(0))^ |> expect_value.expect_string(.span = caller);
+            (@current Output).write(s);
+            Value.UNIT
+        );
+        let ty = {
+            .shape = :Fn {
+                .args = (
+                    let mut args = ArrayList.new();
+                    &mut args |> ArrayList.push_back(Ty.STRING);
+                    args
+                ),
+                .result = Ty.UNIT,
+            }
+        };
+        init_value(name, { .shape = :NativeFn { .name, .@"impl" }, .ty })
+    );
+
     const init = () -> Map => (
         let mut map = OrdMap.new();
         with InitContext = &mut map;
         init_ty("Int", Ty.INT);
+        init_ty("String", Ty.STRING);
         init_ty("Type", Ty.TYPE);
         init_op("+", (a, b) => a + b);
         init_op("-", (a, b) => a - b);
         init_op("*", (a, b) => a * b);
         init_op("/", (a, b) => a / b);
+        init_print();
         map
     );
 

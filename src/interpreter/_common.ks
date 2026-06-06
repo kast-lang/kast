@@ -48,5 +48,6 @@ const expect_value = (
     module:
 
     const expect_int = include_ast impl_expect_value("Int", Int, `(Int));
+    const expect_string = include_ast impl_expect_value("String", String, `(String));
     const expect_type = include_ast impl_expect_value("Type", Ty, `(Type));
 );

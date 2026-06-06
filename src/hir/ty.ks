@@ -1,6 +1,7 @@
 const TyShape = newtype (
     | :Unit
     | :Int
+    | :String
     | :Type
     | :Fn {
         .args :: ArrayList.t[Ty],
@@ -17,6 +18,7 @@ impl TyShape as module = (
         match self^ with (
             | :Unit => output.write("()")
             | :Int => output.write("Int")
+            | :String => output.write("String")
             | :Type => output.write("Type")
             | :Fn { .args = ref args, .result = ref result } => (
                 if args |> ArrayList.length != 1 then (
@@ -48,6 +50,7 @@ impl Ty as module = (
 
     const UNIT :: Ty = { .shape = :Unit };
     const INT :: Ty = { .shape = :Int };
+    const STRING :: Ty = { .shape = :String };
     const TYPE :: Ty = { .shape = :Type };
     const AST :: Ty = { .shape = :Ast };
 

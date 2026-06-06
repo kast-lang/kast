@@ -179,6 +179,10 @@ const Interpreter = (
                 );
                 apply(f, args, .caller = span)
             )
+            | :Scope ref body => (
+                with Scope.Context = Scope.new(.parent = :Some &(@current Scope.Context));
+                eval(body)
+            )
         );
         result
     );
@@ -186,6 +190,7 @@ const Interpreter = (
     const eval_type = (expr :: &TyExpr) -> Ty => (
         let span = expr^.span;
         let result = match expr^.shape with (
+            | :Const ty => ty
             | :Expr ref expr => (
                 eval(expr) |> expect_value.expect_type(.span)
             )
