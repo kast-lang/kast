@@ -63,6 +63,8 @@ const CompilerContextT = newtype {
 
 const CompilerContext = @context CompilerContextT;
 
+const InMut = @context Bool;
+
 const compile = [K] (ast :: &Ast.t, .expected_ty :: Option.t[Ty]) -> K => (
     (@current CompilerContext).compile[K](ast, .expected_ty)
 );

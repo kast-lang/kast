@@ -1,6 +1,8 @@
 use (import "./_common.ks").*;
 use (import "./type_check.ks").*;
 
+const super = @current_scope;
+
 module:
 
 const Compiler = (
@@ -17,6 +19,7 @@ const Compiler = (
 
     const StateContext = @context State;
     const Context = CompilerContext;
+    const InMut = super.InMut;
 
     const init = () -> {
         .compiler :: CompilerContextT,
@@ -218,6 +221,20 @@ const Compiler = (
             let local = Scope.lookup(name, .span);
             match local^ with (
                 | :Binding binding => (
+                    if not binding.mutable then (
+                        let diagnostic = {
+                            .severity = :Error,
+                            .source = :Compiler,
+                            .span,
+                            .message = () => (
+                                let output = @current Output;
+                                output.write(binding.name);
+                                output.write(" is not mutable");
+                            ),
+                            .related = ArrayList.new(),
+                        };
+                        Diagnostic.report_and_unwind(diagnostic)
+                    );
                     {
                         .shape = :Binding binding,
                         .ty = binding.ty,
@@ -266,6 +283,7 @@ const Compiler = (
                 .id = Id.gen(),
                 .name,
                 .ty,
+                .mutable = @current InMut,
             };
             {
                 .shape = :Binding binding,
