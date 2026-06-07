@@ -1,0 +1,31 @@
+const main = () => (
+    let sum :: Int = 0;
+
+    let is_prime = (x :: Int) -> Bool => unwindable f (
+        let i :: Int = 2;
+        @loop (
+            if greater_or_equal[Int](i, x) then (
+                unwind f with true;
+            );
+            if equal[Int](rem[Int](x, i), 0) then (
+                unwind f with false;
+            );
+            inc[Int](&i);
+        );
+        true # unreachable
+    );
+
+    let x :: Int = 2;
+    unwindable loop @loop (
+        if greater_or_equal[Int](x, 1000) then (
+            unwind loop with ();
+        );
+        if is_prime(x) then (
+            sum = add[Int](sum, x);
+        );
+        inc[Int](&x);
+    );
+
+    print_Int(sum);
+    print_String("\n");
+);

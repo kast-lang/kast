@@ -87,6 +87,14 @@ const mul = [T] @call "C" (a :: T, b :: T) -> T => (
     @native "\(a) * \(b)"
 );
 
+const div = [T] @call "C" (a :: T, b :: T) -> T => (
+    @native "\(a) / \(b)"
+);
+
+const rem = [T] @call "C" (a :: T, b :: T) -> T => (
+    @native "\(a) % \(b)"
+);
+
 const less = [T] @call "C" (a :: T, b :: T) -> Bool => (
     @native "\(a) < \(b)"
 );
