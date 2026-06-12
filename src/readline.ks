@@ -45,7 +45,7 @@ const Readline = (
                     tty.write(to_string(c));
                     let end = tty.read_cursor_position();
                     &mut display_widths |> OrdMap.add(c, end.1 - start.1);
-                    tty.reset_cursor_position();
+                    tty.move_cursor_to(...start);
                 );
             );
         );
