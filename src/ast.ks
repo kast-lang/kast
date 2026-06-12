@@ -3,14 +3,18 @@ use (import "./span.ks").*;
 use (import "./token.ks").*;
 use (import "./syntax_rule.ks").*;
 use (import "./tuple.ks").*;
+
 module:
+
 const Ast = (
     module:
+
     const t = newtype {
         .shape :: Shape.t,
         .ignored_tokens_before :: ArrayList.t[Token.t],
         .span :: Span,
     };
+
     const InterpolatedStringPart = newtype (
         | :Content {
             .raw :: String,
@@ -25,8 +29,10 @@ const Ast = (
             .close :: Token.t,
         }
     );
+
     const Shape = (
         module:
+
         const t = newtype (
             | :Empty
             | :Token Token.t
@@ -50,52 +56,63 @@ const Ast = (
             }
         );
     );
+
     const SyntaxCommandShape = newtype (
         | :FromScratch
         | :Rule SyntaxRule.t
     );
+
     const SyntaxCommand = newtype {
         .shape :: SyntaxCommandShape,
         .raw_tokens :: ArrayList.t[Token.t],
     };
+
     const Group = newtype {
         .parts :: ArrayList.t[Part],
         .children :: Tuple.t[Child],
         .span :: Span,
     };
+
     const Part = newtype (
         | :Ignored Token.t
         | :Keyword Token.t
         | :Value Ast.t
         | :Group Group
     );
+
     const part_span = (self :: &Part) -> Span => match self^ with (
         | :Ignored token => token.span
         | :Keyword token => token.span
         | :Value ast => ast.span
         | :Group group => group.span
     );
+
     const Child = newtype (
         | :Value Ast.t
         | :Group Group
     );
+
     const unwrap_child_group = (self :: Child) -> Ast.Group => match self with (
         | :Value _ => panic("expected group ast child, got value")
         | :Group group => group
     );
+
     const unwrap_child_value = (self :: Child) -> Ast.t => match self with (
         | :Value value => value
         | :Group _ => panic("expected value ast child, got group")
     );
+
     const print_child = (self :: &Child) => (
         match self^ with (
             | :Value ref ast => print(ast)
             | :Group ref group => print_group(group)
         );
     );
+
     const print_group = (self :: &Group) => (
         print_children(&self^.children);
     );
+
     const print_children = (children :: &Tuple.t[Child]) => (
         Tuple.print(
             children,
@@ -107,6 +124,7 @@ const Ast = (
             .close = "}",
         );
     );
+
     const print = (self :: &Ast.t) => (
         let output = @current Output;
         match self^.shape with (
@@ -240,6 +258,7 @@ const Ast = (
             ),
         );
     );
+
     const iter_list = (
         ast :: Ast.t,
         .binary_rule_name :: String,
