@@ -88,12 +88,11 @@ const Readline = (
             reset_selection();
             calculate_display_widths(s);
         );
-        let redraw_and_place_cursor_on_new_line = () => (
+        let redraw_and_place_cursor_at_end = () => (
             recalculate_pos();
             tty.move_cursor_to(...begin_pos);
             tty.clear_after_cursor();
             tty.write(ctx.highlight(result.before_cursor + result.after_cursor));
-            tty.write("\n");
         );
         loop (
             let input = tty.input();
@@ -215,7 +214,7 @@ const Readline = (
                 )
                 | _ => ()
             );
-            redraw_and_place_cursor_on_new_line();
+            redraw_and_place_cursor_at_end();
             (
                 # highlight selection
                 tty.save_cursor_position();
@@ -245,7 +244,8 @@ const Readline = (
             tty.move_cursor_to(...cursor_pos);
             tty.flush();
         );
-        redraw_and_place_cursor_on_new_line();
+        redraw_and_place_cursor_at_end();
+        tty.write("\n");
         tty.flush();
         let result = result.before_cursor + result.after_cursor;
         &mut ctx.history |> History.push(result);
