@@ -1,3 +1,5 @@
+use (import "./stdext/_lib.ks").*;
+
 module:
 
 const History = newtype {
@@ -10,10 +12,21 @@ impl History as module = (
     module:
 
     const new_file = (path :: String) -> History => (
+        let mut entries = ArrayList.new();
+        if stdext.fs.exists(path) then (
+            let contents = std.fs.read_file(path);
+            for line in contents |> String.lines do (
+                &mut entries |> ArrayList.push_back(line);
+            );
+        );
+        let f :: @opaque_type = @native "fs.openSync(\(path), 'a')";
         {
-            .entries = ArrayList.new(),
-            .selected_index = 0,
-            .save_push = _ => (),
+            .selected_index = &entries |> ArrayList.length,
+            .entries,
+            .save_push = line => (
+                @native "fs.writeSync(\(f), \(line))";
+                @native "fs.writeSync(\(f), '\\n')";
+            ),
         }
     );
 
