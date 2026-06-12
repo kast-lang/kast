@@ -231,9 +231,9 @@ const Readline = (
                     screen_pos.1 += display_width(c);
                 );
                 tty.move_cursor_to(...screen_pos);
-                tty.invert_colors();
+                tty.invert_colors(true);
                 tty.write(s |> String.substring(start, end - start));
-                tty.invert_colors();
+                tty.invert_colors(false);
                 tty.reset_cursor_position();
             );
             if DEBUG then (

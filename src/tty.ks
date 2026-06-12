@@ -287,8 +287,12 @@ const tty = (
         write("\b");
     );
 
-    const invert_colors = () => (
-        write("\x1b[7m");
+    const invert_colors = (invert :: Bool) => (
+        if invert then (
+            write("\x1b[7m");
+        ) else (
+            write("\x1b[27m");
+        );
     );
 
     const CursorType = newtype (
