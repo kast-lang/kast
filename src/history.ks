@@ -16,7 +16,9 @@ impl History as module = (
         if stdext.fs.exists(path) then (
             let contents = std.fs.read_file(path);
             for line in contents |> String.lines do (
-                &mut entries |> ArrayList.push_back(line);
+                if line != "" then (
+                    &mut entries |> ArrayList.push_back(line);
+                );
             );
         );
         let f :: @opaque_type = @native "fs.openSync(\(path), 'a')";
@@ -31,9 +33,11 @@ impl History as module = (
     );
 
     const push = (self :: &mut History, entry :: String) => (
-        &mut self^.entries |> ArrayList.push_back(entry);
-        self^.selected_index = &self^.entries |> ArrayList.length;
-        self^.save_push(entry);
+        if entry != "" and entry != currently_selected(&self^) then (
+            &mut self^.entries |> ArrayList.push_back(entry);
+            self^.selected_index = &self^.entries |> ArrayList.length;
+            self^.save_push(entry);
+        );
     );
 
     const currently_selected = (self :: &History) -> String => (
