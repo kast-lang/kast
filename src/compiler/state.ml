@@ -242,8 +242,16 @@ module Scopes = struct
   ;;
 
   let bindings scopes =
-    scopes.call_site.locals |> StringMap.map Scope.Local.binding |> StringMap.to_list
+    scopes.call_site :: (scopes.def_sites |> Id.Map.to_list |> List.map snd)
+    |> List.fold_left
+         (fun acc (scope : Scope.t) ->
+            StringMap.union (fun _name a b -> Some a) acc scope.locals)
+         StringMap.empty
+    |> StringMap.map Scope.Local.binding
+    |> StringMap.to_list
   ;;
+
+  (* |> StringMap.map Scope.Local.binding |> StringMap.to_list *)
 
   (* TODO maybe def sites too? *)
 
