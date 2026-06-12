@@ -74,6 +74,7 @@ const Native = (
         init_ty("Int", Ty.INT);
         init_ty("String", Ty.STRING);
         init_ty("Type", Ty.TYPE);
+        init_ty("Ast", Ty.AST);
         init_op("+", (a, b) => a + b);
         init_op("-", (a, b) => a - b);
         init_op("*", (a, b) => a * b);
