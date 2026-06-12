@@ -33,7 +33,14 @@ impl History as module = (
     );
 
     const push = (self :: &mut History, entry :: String) => (
-        if entry != "" and entry != currently_selected(&self^) then (
+        let entries_len = &self^.entries |> ArrayList.length;
+        if (
+            entry != ""
+            and (
+                entries_len == 0
+                or entry != (&self^.entries |> ArrayList.at(entries_len - 1))^
+            )
+        ) then (
             &mut self^.entries |> ArrayList.push_back(entry);
             self^.save_push(entry);
         );
