@@ -35,9 +35,9 @@ impl History as module = (
     const push = (self :: &mut History, entry :: String) => (
         if entry != "" and entry != currently_selected(&self^) then (
             &mut self^.entries |> ArrayList.push_back(entry);
-            self^.selected_index = &self^.entries |> ArrayList.length;
             self^.save_push(entry);
         );
+        self^.selected_index = &self^.entries |> ArrayList.length;
     );
 
     const currently_selected = (self :: &History) -> String => (
