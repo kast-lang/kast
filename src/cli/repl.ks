@@ -12,6 +12,7 @@ use (import "../ast.ks").*;
 use (import "../highlight.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../readline.ks").*;
+use (import "../history.ks").*;
 
 use (import "../hir/_lib.ks").*;
 use (import "../compiler/_lib.ks").*;
@@ -123,8 +124,10 @@ const Repl = (
             )
         );
         let mut ctrl_c_pressed_times = 0;
+        let history = History.new_file(".kast_history");
         loop (
             let line = Readline.read_line(
+                .history,
                 .prompt,
                 .tokenize,
                 .highlight,

@@ -1,4 +1,5 @@
 use (import "./tty.ks").*;
+use (import "./history.ks").*;
 use std.collections.OrdMap;
 
 module:
@@ -15,13 +16,14 @@ const Readline = (
     };
 
     const Context = @context newtype {
+        .history :: History,
         .highlight :: String -> String,
         .tokenize :: String -> ArrayList.t[Range],
         .prompt :: String,
     };
 
     const read_line_impl = () -> String => (
-        let ctx = @current Context;
+        let mut ctx = @current Context;
         if tty.read_cursor_position().1 != 1 then (
             tty.write("\x1b[7m%\x1b[27m\n");
         );
@@ -35,6 +37,18 @@ const Readline = (
         };
         let mut selection_start = 0;
         let mut display_widths = OrdMap.new();
+        let calculate_display_widths = s => (
+            for c in s |> String.iter do (
+                if &display_widths |> OrdMap.get(c) is :None then (
+                    # we clear them afterwards anyway
+                    let start = tty.read_cursor_position();
+                    tty.write(to_string(c));
+                    let end = tty.read_cursor_position();
+                    &mut display_widths |> OrdMap.add(c, end.1 - start.1);
+                    tty.reset_cursor_position();
+                );
+            );
+        );
         let display_width = c => (
             (&display_widths |> OrdMap.get(c) |> Option.unwrap)^
         );
@@ -64,6 +78,15 @@ const Readline = (
                 .after_cursor = s |> String.substring_from(end),
             };
             true
+        );
+        let move_history = f => (
+            let s = &mut ctx.history |> f;
+            result = {
+                .before_cursor = s,
+                .after_cursor = "",
+            };
+            reset_selection();
+            calculate_display_widths(s);
         );
         loop (
             let input = tty.input();
@@ -95,16 +118,13 @@ const Readline = (
                 | :Content content => (
                     result.before_cursor += content;
                     reset_selection();
-                    for c in content |> String.iter do (
-                        if &display_widths |> OrdMap.get(c) is :None then (
-                            # we clear them afterwards anyway
-                            let start = tty.read_cursor_position();
-                            tty.write(to_string(c));
-                            let end = tty.read_cursor_position();
-                            &mut display_widths |> OrdMap.add(c, end.1 - start.1);
-                            tty.reset_cursor_position();
-                        );
-                    );
+                    calculate_display_widths(content);
+                )
+                | :ArrowUp => (
+                    move_history(History.select_prev);
+                )
+                | :ArrowDown => (
+                    move_history(History.select_next);
                 )
                 | :ArrowLeft => (
                     if result.before_cursor != "" then (
@@ -225,10 +245,13 @@ const Readline = (
         tty.clear_after_cursor();
         tty.write("\n");
         tty.flush();
-        result.before_cursor + result.after_cursor
+        let result = result.before_cursor + result.after_cursor;
+        &mut ctx.history |> History.push(result);
+        result
     );
 
     const read_line = (
+        .history :: History,
         .prompt :: String,
         .tokenize :: String -> ArrayList.t[Range],
         .highlight :: String -> String,
@@ -238,6 +261,7 @@ const Readline = (
             () => (
                 tty.set_cursor_type(:BlinkingBar);
                 with Context = {
+                    .history,
                     .tokenize,
                     .highlight,
                     .prompt,
