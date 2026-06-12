@@ -2065,7 +2065,7 @@ let current_compiler_scope : core_syntax =
         let span = ast.data.span in
         match kind with
         | Expr ->
-          let scope = C.state.scopes |> State.Scopes.call_site in
+          let scope = C.state.scopes |> State.Scopes.def_site in
           const_shape (V_CompilerScope scope |> Value.inferred ~span)
           |> init_expr span C.state
         | _ ->
