@@ -2,7 +2,6 @@ module:
 
 use (import "../_common.ks").*;
 use (import "../scope.ks").*;
-use (import "../../mini/ast_helpers.ks").*;
 
 const CoreSyntax = newtype {
     .name :: String,

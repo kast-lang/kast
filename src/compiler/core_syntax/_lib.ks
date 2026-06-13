@@ -29,6 +29,7 @@ const CoreSyntax = (
         add(&mut map, import "./apply.ks");
         add(&mut map, import "./quote.ks");
         add(&mut map, import "./scope.ks");
+        add(&mut map, import "./impl_syntax.ks");
         map
     );
 );

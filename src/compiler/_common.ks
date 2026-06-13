@@ -5,10 +5,12 @@ use (import "../tuple.ks").*;
 use (import "../token.ks").*;
 use (import "../ast.ks").*;
 use (import "../span.ks").*;
+use (import "../syntax_rule.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../output.ks").*;
 use (import "../hir/_lib.ks").*;
 use (import "../interpreter/_lib.ks").*;
+use (import "../mini/ast_helpers.ks").*;
 use std.collections.OrdMap;
 
 const AnyExprShape = newtype (
@@ -51,6 +53,12 @@ const type_expr_to_expr = (expr :: TyExpr) -> Expr => {
 const CompilerContextT = newtype {
     .inject_assignee_bindings :: &Assignee -> (),
     .compile :: [K] (&Ast.t, .expected_ty :: Option.t[Ty]) -> K,
+    .impl_syntax :: (
+        .rule :: SyntaxRule.t,
+        .pattern_root :: Ast.Group,
+        .bindings :: OrdMap.t[String, Binding],
+        .@"impl" :: Expr,
+    ) -> (),
 };
 
 const CompilerContext = @context CompilerContextT;

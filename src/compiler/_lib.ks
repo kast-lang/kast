@@ -8,9 +8,11 @@ const Compiler = (
 
     use (import "./scope.ks").*;
     use (import "./core_syntax/_lib.ks").*;
+    use (import "./custom_syntax.ks").*;
 
     const State = newtype {
         .core_syntax :: CoreSyntax.Map,
+        .custom_syntax :: OrdMap.t[String, CustomSyntax],
     };
 
     const StateContext = @context State;
@@ -24,9 +26,11 @@ const Compiler = (
         .compiler = {
             .inject_assignee_bindings = Scope.inject_assignee_bindings,
             .compile,
+            .impl_syntax,
         },
         .state = {
             .core_syntax = CoreSyntax.init(),
+            .custom_syntax = OrdMap.new(),
         },
         .scope = Scope.new(.parent = :None),
     };
@@ -304,10 +308,41 @@ const Compiler = (
                         core_syntax^.compile[K](ast, .root, .expected_ty)
                     )
                 )
-                | :None => (
-                    panic("TODO custom syntax")
+                | :None => match &state.custom_syntax |> OrdMap.get(rule.name) with (
+                    | :Some custom_syntax => (
+                        compile[K](&CustomSyntax.expand(custom_syntax, root), .expected_ty)
+                    )
+                    | :None => (
+                        let diagnostic = {
+                            .severity = :Error,
+                            .source = :Compiler,
+                            .span,
+                            .message = () => (
+                                let output = @current Output;
+                                output.write("no impl for syntax ");
+                                output.write(String.escape(rule.name));
+                            ),
+                            .related = ArrayList.new(),
+                        };
+                        Diagnostic.report_and_unwind(diagnostic)
+                    )
                 )
             )
         )
+    );
+
+    const impl_syntax = (
+        .rule :: SyntaxRule.t,
+        .pattern_root :: Ast.Group,
+        .bindings :: OrdMap.t[String, Binding],
+        .@"impl" :: Expr,
+    ) => (
+        let custom_syntax :: CustomSyntax = {
+            .pattern_root,
+            .bindings,
+            .@"impl",
+        };
+        &mut (@current StateContext).custom_syntax
+            |> OrdMap.add(rule.name, custom_syntax);
     );
 );

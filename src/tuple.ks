@@ -192,6 +192,19 @@ const Tuple = (
         output.write(close);
     );
 
+    const into_iter = [T] (self :: Tuple.t[T]) -> std.iter.Iterable[type { Member, T }] => {
+        .iter = consumer => (
+            let mut self = self;
+            for { index, element } in self.unnamed |> ArrayList.into_iter |> std.iter.enumerate do (
+                consumer({ :Index index, element });
+            );
+            for name in self.name_order |> ArrayList.into_iter do (
+                let element = &mut self.named |> OrdMap.remove(name) |> Option.unwrap;
+                consumer({ :Name name, element });
+            );
+        ),
+    };
+
     const iter = [T] (self :: &Tuple.t[T]) -> std.iter.Iterable[type { Member, &T }] => {
         .iter = consumer => (
             for { index, element } in &self^.unnamed |> ArrayList.iter |> std.iter.enumerate do (
