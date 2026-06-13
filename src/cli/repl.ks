@@ -50,6 +50,7 @@ const Repl = (
         .ruleset :: SyntaxRuleset.t,
         .eval :: Line -> (),
     ) => (
+        let mut repl_number :: Int32 = 0;
         let tokenize = contents => (
             with Diagnostic.HandlerContext = {
                 .stop_on_error = false,
@@ -61,7 +62,7 @@ const Repl = (
             };
             let source = {
                 .contents,
-                .path = :Special "repl"
+                .path = :Special ("repl" + to_string(repl_number))
             };
             let mut lexer = Lexer.new(source);
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
@@ -126,6 +127,7 @@ const Repl = (
         let mut ctrl_c_pressed_times = 0;
         let history = History.new_file(".kast_history");
         loop (
+            repl_number += 1;
             let line = Readline.read_line(
                 .history,
                 .prompt,
