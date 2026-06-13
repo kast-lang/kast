@@ -518,7 +518,7 @@ module Impl = struct
       | V_Generic { name = _; fn = { def; captured; _ }; ty = _ } ->
         fn ~captured:(Some captured) def
       | V_NativeFn { name; _ } -> todo_value name
-      | V_Ast _ -> failwith __LOC__
+      | V_Ast _ -> todo_value "ast"
       | V_UnwindToken _ -> failwith __LOC__
       | V_Target _ -> failwith __LOC__
       | V_ContextTy _ -> NoEffect { shape = JsAst.Null; span = None }
