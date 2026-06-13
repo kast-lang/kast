@@ -2,6 +2,7 @@ use (import "../span.ks").*;
 use (import "../ast.ks").*;
 use (import "../output.ks").*;
 use (import "../id.ks").*;
+use (import "../token.ks").*;
 
 module:
 

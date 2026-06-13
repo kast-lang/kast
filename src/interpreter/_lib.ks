@@ -1,6 +1,7 @@
 use (import "./_common.ks").*;
 use (import "./scope.ks").*;
 use (import "./native.ks").*;
+use (import "./quote.ks").*;
 
 const super = @current_scope;
 
@@ -17,11 +18,16 @@ const Interpreter = (
     };
 
     const StateContext = @context State;
+    const Context = InterpreterContext;
 
     const init = () -> {
+        .interpreter :: InterpreterContextT,
         .state :: State,
         .scope :: Scope.t,
     } => {
+        .interpreter = {
+            .eval,
+        },
         .state = {
             .natives = Native.init(),
         },
@@ -183,6 +189,10 @@ const Interpreter = (
                 with Scope.Context = Scope.new(.parent = :Some &(@current Scope.Context));
                 eval(body)
             )
+            | :Quote ref quote_expr => {
+                .shape = :Ast quote(quote_expr),
+                .ty = Ty.AST,
+            }
         );
         result
     );

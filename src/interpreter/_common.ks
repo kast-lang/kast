@@ -41,6 +41,9 @@ use (import "../id.ks").*;
 use (import "../span.ks").*;
 use (import "../output.ks").*;
 use (import "../diagnostic.ks").*;
+use (import "../ast.ks").*;
+use (import "../token.ks").*;
+use (import "../tuple.ks").*;
 use (import "../hir/_lib.ks").*;
 use std.collections.OrdMap;
 
@@ -50,4 +53,15 @@ const expect_value = (
     const expect_int = include_ast impl_expect_value("Int", Int, `(Int));
     const expect_string = include_ast impl_expect_value("String", String, `(String));
     const expect_type = include_ast impl_expect_value("Type", Ty, `(Type));
+    const expect_ast = include_ast impl_expect_value("Ast", Ast.t, `(Ast));
+);
+
+const InterpreterContextT = newtype {
+    .eval :: &Expr -> Value,
+};
+
+const InterpreterContext = @context InterpreterContextT;
+
+const eval = (expr :: &Expr) -> Value => (
+    (@current InterpreterContext).eval(expr)
 );
