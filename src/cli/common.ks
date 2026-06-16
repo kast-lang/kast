@@ -134,10 +134,9 @@ const Common = (
         with Compiler.Context = compiler;
         with Compiler.StateContext = compiler_state;
         with Compiler.Scope.Context = scope;
+        with Compiler.InMut = false;
         let { .interpreter, .state = interpreter_state, .scope } = Interpreter.init();
         with Interpreter.Context = interpreter;
-        with Compiler.InMut = false;
-        let { .state = interpreter_state, .scope } = Interpreter.init();
         with Interpreter.StateContext = interpreter_state;
         with Interpreter.Scope.Context = scope;
         (
