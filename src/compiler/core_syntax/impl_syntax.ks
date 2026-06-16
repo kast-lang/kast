@@ -17,6 +17,7 @@ const M = (
                     .id = Id.gen(),
                     .name = name,
                     .ty = Ty.AST,
+                    .mutable = false,
                 };
                 Scope.inject_binding(&binding);
                 &mut (@current Context).bindings |> OrdMap.add(name, binding);
