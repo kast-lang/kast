@@ -21,8 +21,23 @@ const tty = (
         | :PageDown
         | :ClearScreen
         | :Escape
+        | :Mouse MouseInput
         | :Unknown
     );
+
+    const MouseButton = Int32;
+
+    const MouseEvent = newtype (
+        | :Move
+        | :Press MouseButton
+        | :Release MouseButton
+    );
+
+    const MouseInput = newtype {
+        .event :: MouseEvent,
+        .row :: Int32,
+        .col :: Int32,
+    };
 
     const Modifiers = newtype { Int32 };
 
@@ -168,6 +183,27 @@ const tty = (
             ) else (
                 :Unknown
             )
+        ) else if final == 'M' or final == 'm' then with_return (
+            let parameters = String.strip_prefix(parameters, .prefix = "<")
+                |> Option.unwrap;
+            let { Cb, coords } = String.split_once(parameters, ';');
+            let { Cx, Cy } = String.split_once(coords, ';');
+            let button :: Int32 = parse(Cb);
+            let x = parse(Cx);
+            let y = parse(Cy);
+            :Mouse {
+                .event = if button == 35 then (
+                    :Move
+                ) else (
+                    if final == 'M' then (
+                        :Press button
+                    ) else if final == 'm' then (
+                        :Release button
+                    ) else panic("unreachable")
+                ),
+                .row = y,
+                .col = x,
+            }
         ) else (
             :Unknown
         );
@@ -337,6 +373,21 @@ const tty = (
         )
     );
 
+    const mouse = (
+        module:
+
+        const enable = () => (
+            write("\x1b[?1000h");
+            write("\x1b[?1006h");
+            flush();
+        );
+
+        const disable = () => (
+            write("\x1b[?1000l");
+            flush();
+        );
+    );
+
     const input = () -> Input => with_return (
         let mut ctx = @current Context;
         @loop (
@@ -361,19 +412,21 @@ const tty = (
             @native "process.stdin.pause()";
         );
 
-        let f = () => (
-            with Context = {
-                .handle_ctrl_c,
-                .last_read = "",
-                .read_buffer = Queue.new(),
-                .write_buffer = "",
-                .cursor_position_report = :None,
-            };
-            let result = f();
+        const cleanup = () => (
+            mouse.disable();
             set_cursor_type(:Default);
-            result
+            exit_raw_mode();
         );
         enter_raw_mode();
-        @native "(()=>{try { return \(f()) } finally { \(exit_raw_mode()) }})()"
+        with Context = {
+            .handle_ctrl_c,
+            .last_read = "",
+            .read_buffer = Queue.new(),
+            .write_buffer = "",
+            .cursor_position_report = :None,
+        };
+        mouse.enable();
+        let result :: T = @native "(()=>{try { return \(f()) } finally { \(cleanup()) }})()";
+        result
     );
 );

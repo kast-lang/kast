@@ -3,7 +3,7 @@ default:
     just --list
 
 [arg("continuous", long="continuous", value="--continuous")]
-build continuous="":
+build continuous="" main="src/cli/_main.ks":
     mkdir -p target
     # flock --exclusive target 
     time ${KAST_BIN:-kast-bootstrap} compile \
@@ -14,7 +14,7 @@ build continuous="":
         --target js \
         --output target/kast-tmp.mjs \
         --post-compile-cmd 'just post-build' \
-        src/cli/_main.ks
+        {{main}}
 
 post-build:
     #!/usr/bin/env bash
