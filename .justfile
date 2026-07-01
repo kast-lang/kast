@@ -3,7 +3,7 @@ default:
     just --list
 
 [arg("continuous", long="continuous", value="--continuous")]
-build continuous="" main="src/cli/_main.ks":
+build continuous="" main="src/cli/_main.ks" name="kast":
     mkdir -p target
     # flock --exclusive target 
     time ${KAST_BIN:-kast-bootstrap} compile \
@@ -12,16 +12,16 @@ build continuous="" main="src/cli/_main.ks":
         --async never \
         --use-numbers-instead-of-symbols false \
         --target js \
-        --output target/kast-tmp.mjs \
-        --post-compile-cmd 'just post-build' \
+        --output target/{{name}}-tmp.mjs \
+        --post-compile-cmd 'just post-build target/{{name}}-tmp.mjs target/{{name}}.mjs' \
         {{main}}
 
-post-build:
+post-build src out:
     #!/usr/bin/env bash
     (
         echo 'const fs = await import("node:fs");'
-        cat target/kast-tmp.mjs | tail -n +3
-    ) > target/kast.mjs
+        cat {{src}} | tail -n +3
+    ) > {{out}}
 
 raylib-to-c:
     kast mini \
