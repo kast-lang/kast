@@ -83,6 +83,7 @@
           shellHook = ''
             echo Hello from Kast dev shell
             export KAST_PATH=$(pwd)/kast_path
+            export KAST_STD=$(pwd)/deps/bootstrap/std
           '';
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";

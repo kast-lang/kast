@@ -7,3 +7,7 @@
 [submodule "deps/minicoro"]
 	path = deps/minicoro
 	url = https://github.com/edubart/minicoro
+[submodule "deps/bootstrap"]
+	path = deps/bootstrap
+	url = https://github.com/kast-lang/kast
+	branch = bootstrap-ocaml

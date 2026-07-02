@@ -244,6 +244,7 @@ const Tui = (
                         );
                         if compare_pos(pos, handler^.end_pos) is :Less then (
                             handler^.on_click();
+                            break;
                         );
                     );
                 )

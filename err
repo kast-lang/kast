@@ -1,0 +1,482 @@
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m9[39m },
+      value: {
+        start_pos: { row: [33m2[39m, col: [33m1[39m },
+        end_pos: { row: [33m2[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m779108745[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m6[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m7[39m },
+            end_pos: { row: [33m1[39m, col: [33m10[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m446352430[39m,
+        left: {
+          tag: [32m'Node'[39m,
+          data: {
+            value: {
+              key: { raw: [33m3[39m },
+              value: {
+                start_pos: { row: [33m1[39m, col: [33m1[39m },
+                end_pos: { row: [33m1[39m, col: [33m4[39m },
+                on_click: [36m[Function: var_353885][39m
+              }
+            },
+            priority: [33m312591545[39m,
+            left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+            right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+            count: [33m1[39m
+          }
+        },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m2[39m
+      }
+    },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m3[39m
+  }
+}
+[32m'LEFT'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m6[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m7[39m },
+        end_pos: { row: [33m1[39m, col: [33m10[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m446352430[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m3[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m1[39m },
+            end_pos: { row: [33m1[39m, col: [33m4[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m312591545[39m,
+        left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m1[39m
+      }
+    },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m2[39m
+  }
+}
+[32m'LEFT'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m3[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m1[39m },
+        end_pos: { row: [33m1[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m312591545[39m,
+    left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m1[39m
+  }
+}
+[32m'LEFT'[39m
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'VALUE'[39m
+[32m'RIGHT'[39m
+[32m'!!!'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m3[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m1[39m },
+        end_pos: { row: [33m1[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m312591545[39m,
+    left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m1[39m
+  }
+}
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'NODE END'[39m
+[32m'VALUE'[39m
+[32m'RIGHT'[39m
+[32m'!!!'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m6[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m7[39m },
+        end_pos: { row: [33m1[39m, col: [33m10[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m446352430[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m3[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m1[39m },
+            end_pos: { row: [33m1[39m, col: [33m4[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m312591545[39m,
+        left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m1[39m
+      }
+    },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m2[39m
+  }
+}
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'NODE END'[39m
+[32m'VALUE'[39m
+[32m'RIGHT'[39m
+[32m'!!!'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m11[39m },
+      value: {
+        start_pos: { row: [33m2[39m, col: [33m1[39m },
+        end_pos: { row: [33m2[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m814640808[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m6[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m7[39m },
+            end_pos: { row: [33m1[39m, col: [33m10[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m446352430[39m,
+        left: {
+          tag: [32m'Node'[39m,
+          data: {
+            value: {
+              key: { raw: [33m3[39m },
+              value: {
+                start_pos: { row: [33m1[39m, col: [33m1[39m },
+                end_pos: { row: [33m1[39m, col: [33m4[39m },
+                on_click: [36m[Function: var_353885][39m
+              }
+            },
+            priority: [33m312591545[39m,
+            left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+            right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+            count: [33m1[39m
+          }
+        },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m2[39m
+      }
+    },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m3[39m
+  }
+}
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'NODE END'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m11[39m },
+      value: {
+        start_pos: { row: [33m2[39m, col: [33m1[39m },
+        end_pos: { row: [33m2[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m814640808[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m6[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m7[39m },
+            end_pos: { row: [33m1[39m, col: [33m10[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m446352430[39m,
+        left: {
+          tag: [32m'Node'[39m,
+          data: {
+            value: {
+              key: { raw: [33m3[39m },
+              value: {
+                start_pos: { row: [33m1[39m, col: [33m1[39m },
+                end_pos: { row: [33m1[39m, col: [33m4[39m },
+                on_click: [36m[Function: var_353885][39m
+              }
+            },
+            priority: [33m312591545[39m,
+            left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+            right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+            count: [33m1[39m
+          }
+        },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m2[39m
+      }
+    },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m3[39m
+  }
+}
+[32m'LEFT'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m6[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m7[39m },
+        end_pos: { row: [33m1[39m, col: [33m10[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m446352430[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m3[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m1[39m },
+            end_pos: { row: [33m1[39m, col: [33m4[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m312591545[39m,
+        left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m1[39m
+      }
+    },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m2[39m
+  }
+}
+[32m'LEFT'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m3[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m1[39m },
+        end_pos: { row: [33m1[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m312591545[39m,
+    left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m1[39m
+  }
+}
+[32m'LEFT'[39m
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'VALUE'[39m
+[32m'RIGHT'[39m
+[32m'!!!'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m3[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m1[39m },
+        end_pos: { row: [33m1[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m312591545[39m,
+    left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m1[39m
+  }
+}
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'NODE END'[39m
+[32m'VALUE'[39m
+[32m'RIGHT'[39m
+[32m'!!!'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m6[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m7[39m },
+        end_pos: { row: [33m1[39m, col: [33m10[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m446352430[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m3[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m1[39m },
+            end_pos: { row: [33m1[39m, col: [33m4[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m312591545[39m,
+        left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m1[39m
+      }
+    },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    count: [33m2[39m
+  }
+}
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'NODE END'[39m
+[32m'VALUE'[39m
+[32m'RIGHT'[39m
+[32m'!!!'[39m
+{
+  tag: [32m'Node'[39m,
+  data: {
+    value: {
+      key: { raw: [33m6[39m },
+      value: {
+        start_pos: { row: [33m1[39m, col: [33m7[39m },
+        end_pos: { row: [33m1[39m, col: [33m10[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    priority: [33m446352430[39m,
+    left: {
+      tag: [32m'Node'[39m,
+      data: {
+        value: {
+          key: { raw: [33m3[39m },
+          value: {
+            start_pos: { row: [33m1[39m, col: [33m1[39m },
+            end_pos: { row: [33m1[39m, col: [33m4[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        priority: [33m312591545[39m,
+        left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        count: [33m1[39m
+      }
+    },
+    right: {
+      tag: [32m'Node'[39m,
+      data: {
+        left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+        value: {
+          key: { raw: [33m12[39m },
+          value: {
+            start_pos: { row: [33m2[39m, col: [33m1[39m },
+            end_pos: { row: [33m2[39m, col: [33m4[39m },
+            on_click: [36m[Function: var_353885][39m
+          }
+        },
+        count: [33m1[39m,
+        priority: [33m213364908[39m
+      }
+    },
+    count: [33m3[39m
+  }
+}
+{
+  tag: [32m'Node'[39m,
+  data: {
+    left: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    right: { tag: [32m'Empty'[39m, data: [90mundefined[39m },
+    value: {
+      key: { raw: [33m12[39m },
+      value: {
+        start_pos: { row: [33m2[39m, col: [33m1[39m },
+        end_pos: { row: [33m2[39m, col: [33m4[39m },
+        on_click: [36m[Function: var_353885][39m
+      }
+    },
+    count: [33m1[39m,
+    priority: [33m213364908[39m
+  }
+}
+[32m'LEFT'[39m
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+[32m'VALUE'[39m
+[32m'RIGHT'[39m
+[32m'!!!'[39m
+{ tag: [32m'Empty'[39m, data: [90mundefined[39m }
+file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:6264
+              return ((((ref_338188)["get"])())["right"]);
+                                               ^
+
+TypeError: Cannot read properties of undefined (reading 'right')
+    at Object.get (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:6264:48)
+    at Object.var_338218 [as iter] (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:6005:77)
+    at Object.var_338218 [as iter] (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:6280:54)
+    at Object.var_338218 [as iter] (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:6280:54)
+    at var_353120 (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:24457:58)
+    at var_353126 (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:24912:41)
+    at var_352564 (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:24069:35)
+    at Object.var_353135 [as run] (file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:24931:39)
+    at file:///home/kuviman/projects/kast-lang/self-host/target/test.mjs:30178:43 {
+  kast_trace: [
+    '/home/kuviman/projects/kast-lang/self-host/deps/bootstrap/std/collections/treap.ks:183.9-183.22',
+    '/home/kuviman/projects/kast-lang/self-host/deps/bootstrap/std/collections/treap.ks:194.17-194.48',
+    '/home/kuviman/projects/kast-lang/self-host/deps/bootstrap/std/collections/treap.ks:194.17-194.48',
+    '/home/kuviman/projects/kast-lang/self-host/deps/bootstrap/std/syntax.ks:119.9-124.10',
+    '/home/kuviman/projects/kast-lang/self-host/test.ks:69.17-69.27',
+    '/home/kuviman/projects/kast-lang/self-host/src/tty.ks:429.57-429.60',
+    '/home/kuviman/projects/kast-lang/self-host/test.ks:45.9-72.10',
+    '/home/kuviman/projects/kast-lang/self-host/test.ks:287.1-294.2'
+  ]
+}
+
+Node.js v24.14.0
