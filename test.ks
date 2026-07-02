@@ -6,7 +6,7 @@ const Tui = (
     module:
 
     const State = newtype {
-        .click_handlers :: OrdMap.t[Id, ClickHandler],
+        .hovered_clickable :: Option.t[Id],
         .root :: Id,
         .effects :: OrdMap.t[Id, EffectState],
         .dependent :: OrdMap.t[Id, ArrayList.t[Id]],
@@ -15,7 +15,9 @@ const Tui = (
     const EffectState = newtype {
         .redraw :: () -> (),
         .drawn :: Option.t[ArrayList.t[Drawn]],
-        .click_handlers :: ArrayList.t[Id],
+        .start_pos :: Pos,
+        .end_pos :: Pos,
+        .on_click :: Option.t[type (() -> ())],
     };
 
     const Drawn = newtype (
@@ -23,22 +25,26 @@ const Tui = (
         | :Effect Id
     );
 
-    const ClickHandler = newtype {
-        .start_pos :: Pos,
-        .end_pos :: Pos,
-        .on_click :: () -> (),
-    };
-
     const Context = @context State;
+    const Visible = @context Bool;
+
+    const new_effect = (redraw :: () -> ()) -> EffectState => {
+        .redraw,
+        .drawn = :None,
+        .start_pos = { .row = 0, .col = 0 },
+        .end_pos = { .row = 0, .col = 0 },
+        .on_click = :None,
+    };
 
     const run = (f :: () -> ()) => with_return (
         let root = Id.gen();
         with Context = {
+            .hovered_clickable = :None,
             .root,
-            .click_handlers = OrdMap.new_with_compare(Id.compare),
             .effects = OrdMap.new_with_compare(Id.compare),
             .dependent = OrdMap.new_with_compare(Id.compare),
         };
+        with Visible = true;
         with Effect = {
             .id = root,
         };
@@ -46,6 +52,7 @@ const Tui = (
             () => (
                 tty.clear_screen();
                 tty.move_cursor_to(1, 1);
+                tty.set_cursor_visibility(false);
                 let redraw = () => (
                     (
                         &mut (@current Context).effects
@@ -56,15 +63,9 @@ const Tui = (
                     f();
                 );
                 &mut (@current Context).effects
-                    |> OrdMap.add(
-                        root,
-                        {
-                            .drawn = :None,
-                            .redraw,
-                            .click_handlers = ArrayList.new(),
-                        }
-                    );
+                    |> OrdMap.add(root, new_effect(redraw));
                 redraw();
+                redraw_all();
                 tty.flush();
                 mainloop();
             ),
@@ -82,11 +83,7 @@ const Tui = (
     };
 
     const add_drawn = (drawn :: Drawn) => (
-        let effect_id = (@current Effect).id;
-        let effect = &mut (@current Context).effects
-            |> OrdMap.get_mut(effect_id)
-            |> Option.unwrap;
-        let :Some ref mut effect_drawn = effect^.drawn;
+        let :Some ref mut effect_drawn = current_effect_state()^.drawn;
         effect_drawn |> ArrayList.push_back(drawn);
     );
 
@@ -111,10 +108,7 @@ const Tui = (
                             |> OrdMap.get_mut(effect_id)
                             |> Option.unwrap;
                         effect^.drawn = :None;
-                        for &handler_id in &effect^.click_handlers |> ArrayList.iter do (
-                            &mut (@current Context).click_handlers |> OrdMap.remove(handler_id);
-                        );
-                        effect^.click_handlers = ArrayList.new();
+                        effect^.on_click = :None;
                     );
                 );
                 redraw_all();
@@ -126,19 +120,29 @@ const Tui = (
         let effect = &mut (@current Context).effects
             |> OrdMap.get_mut(id)
             |> Option.unwrap;
-        match effect^.drawn with (
-            | :None => (
-                effect^.redraw();
-            )
-            | :Some ref drawn => (
-                for item in drawn |> ArrayList.iter do (
-                    match item^ with (
-                        | :String s => tty.write(s)
-                        | :Effect id => redraw_effect(id)
-                    )
-                );
+        effect^.start_pos = current_pos();
+        if effect^.drawn is :None then (
+            effect^.redraw();
+        );
+        let is_hovered = if (@current Context).hovered_clickable is :Some hovered then (
+            hovered == id
+        ) else false;
+        if is_hovered then (
+            tty.invert_colors(true);
+        );
+        for item in &effect^.drawn
+            |> Option.as_ref
+            |> Option.unwrap
+            |> ArrayList.iter do (
+            match item^ with (
+                | :String s => tty.write(s)
+                | :Effect id => redraw_effect(id)
             )
         );
+        if is_hovered then (
+            tty.invert_colors(false);
+        );
+        effect^.end_pos = current_pos();
     );
 
     const redraw_all = () => (
@@ -167,26 +171,8 @@ const Tui = (
         { .row, .col }
     );
 
-    const set_area_click_handler = (
-        start_pos :: Pos,
-        end_pos :: Pos,
-        on_click :: () -> (),
-    ) => (
-        let on_click = () => (
-            on_click();
-        );
+    const create_effect = (f :: () -> ()) -> Id => (
         let id = Id.gen();
-        &mut (@current Context).click_handlers
-            |> OrdMap.add(id, { .start_pos, .end_pos, .on_click });
-        let effect = &mut (@current Context).effects
-            |> OrdMap.get_mut((@current Effect).id)
-            |> Option.unwrap;
-        &mut effect^.click_handlers |> ArrayList.push_back(id);
-    );
-
-    const createEffect = (f :: () -> ()) => (
-        let id = Id.gen();
-        add_drawn(:Effect id);
         let redraw = () => (
             (
                 &mut (@current Context).effects
@@ -197,55 +183,102 @@ const Tui = (
             f();
         );
         &mut (@current Context).effects
-            |> OrdMap.add(
-                id,
-                {
-                    .drawn = :None,
-                    .redraw,
-                    .click_handlers = ArrayList.new(),
-                }
-            );
+            |> OrdMap.add(id, new_effect(redraw));
         redraw();
+        id
+    );
+
+    const create_and_draw_effect = (f :: () -> ()) => (
+        add_drawn(:Effect create_effect(f));
+    );
+
+    const current_effect_state = () -> &mut EffectState => (
+        let id = (@current Effect).id;
+        &mut (@current Context).effects
+            |> OrdMap.get_mut(id)
+            |> Option.unwrap
+    );
+
+    const set_on_click = (f :: () -> ()) => (
+        current_effect_state()^.on_click = :Some f;
     );
 
     const button = (text :: () -> String, on_click :: () -> ()) => (
-        createEffect(
+        create_and_draw_effect(
             () => (
-                let start_pos = current_pos();
                 write(text());
-                let end_pos = current_pos();
-                set_area_click_handler(start_pos, end_pos, on_click);
+                set_on_click(on_click);
             )
         );
     );
 
     const write = (text :: String) => (
         add_drawn(:String text);
-        tty.write(text);
     );
 
     const write_signal = [T] (signal :: Signal[T]) => (
-        createEffect(
+        create_and_draw_effect(
             () => (
                 write(to_string[T](signal.get()));
             )
         );
     );
 
+    const find_hovered_clickable = (effect_id :: Id, pos :: Pos) -> Option.t[Id] => with_return (
+        let effect :: &mut EffectState = &mut (@current Context).effects
+            |> OrdMap.get_mut(effect_id)
+            |> Option.unwrap;
+        if compare_pos(pos, effect^.start_pos) is :Less then (
+            return :None;
+        );
+        if compare_pos(pos, effect^.end_pos) is :Less then () else (
+            return :None;
+        );
+        if effect^.on_click is :Some f then (
+            return :Some effect_id;
+        );
+        if effect^.drawn is :Some ref drawn then (
+            for child in drawn |> ArrayList.iter do (
+                match child^ with (
+                    | :String _ => ()
+                    | :Effect id => (
+                        if find_hovered_clickable(id, pos) is :Some result then (
+                            return :Some result;
+                        );
+                    )
+                )
+            );
+        );
+        :None
+    );
+
     const mainloop = () => (
+        let mut ctx = @current Context;
         loop (
             let input = tty.input();
             match input.shape with (
                 | :Mouse { .row, .col, .event = :Press button } => (
-                    let pos :: Pos = { .row, .col };
-                    for &{ .key = _, .value = ref handler } in &(@current Context).click_handlers |> OrdMap.iter do (
-                        if compare_pos(pos, handler^.start_pos) is :Less then (
-                            continue;
-                        );
-                        if compare_pos(pos, handler^.end_pos) is :Less then (
-                            handler^.on_click();
-                            break;
-                        );
+                    if find_hovered_clickable(
+                        ctx.root, { .row, .col }
+                    ) is :Some id then (
+                        let effect = &mut ctx.effects
+                            |> OrdMap.get_mut(id)
+                            |> Option.unwrap;
+                        let :Some f = effect^.on_click;
+                        f();
+                    );
+                )
+                | :Mouse { .row, .col, .event = :Move } => (
+                    let new_hovered = find_hovered_clickable(ctx.root, { .row, .col });
+                    let changed = match { ctx.hovered_clickable, new_hovered } with (
+                        | { :Some a, :Some b } => a != b
+                        | { :None, :None } => false
+                        | { :Some _, :None } => true
+                        | { :None, :Some _ } => true
+                    );
+                    if changed then (
+                        ctx.hovered_clickable = new_hovered;
+                        redraw_all();
                     );
                 )
                 | _ => ()
@@ -267,17 +300,24 @@ const counter = () => (
     button(() => "[+]", () => value.set(value.get() + 1));
 );
 
-const foldable = (text :: String) => (
+const foldable = (contents :: () -> ()) => (
     let folded = signal(false);
     button(
         () => if folded.get() then "[+]" else "[-]",
         () => folded.set(not folded.get()),
     );
-    write(" ");
-    createEffect(
+    create_and_draw_effect(
         () => (
             if not folded.get() then (
-                write(text);
+                write(" ");
+            );
+        )
+    );
+    let contents = create_effect(contents);
+    create_and_draw_effect(
+        () => (
+            if not folded.get() then (
+                add_drawn(:Effect contents)
             );
         )
     );
@@ -286,10 +326,19 @@ const foldable = (text :: String) => (
 with IdGenCtx = IdGen.new();
 
 Tui.run(
-    () => (
+    () => with_return (
+        write("Hello\n");
         counter();
         write("\n");
-        foldable("Some text");
+        foldable(
+            () => (
+                write("Some text (");
+                foldable(
+                    () => write("inner foldable")
+                );
+                write(")");
+            )
+        );
         write("\n");
     )
 );

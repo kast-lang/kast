@@ -356,6 +356,16 @@ const tty = (
         write(" q");
     );
 
+    const toggle_impl = (s :: String, visible :: Bool) => (
+        write("\x1b[?");
+        write(s);
+        write(if visible then "h" else "l");
+    );
+
+    const set_cursor_visibility = (visible :: Bool) => (
+        toggle_impl("25", visible);
+    );
+
     const read_cursor_position = () -> { Int32, Int32 } => with_return (
         let mut ctx = @current Context;
         write("\x1b[6n");
@@ -378,6 +388,7 @@ const tty = (
 
         const enable = () => (
             write("\x1b[?1000h");
+            write("\x1b[?1003h");
             write("\x1b[?1006h");
             flush();
         );
@@ -415,7 +426,11 @@ const tty = (
         const cleanup = () => (
             mouse.disable();
             set_cursor_type(:Default);
+            set_cursor_visibility(true);
             exit_raw_mode();
+            write("!!!\n");
+            flush();
+            @native "console.log(123)";
         );
         enter_raw_mode();
         with Context = {
