@@ -1122,20 +1122,140 @@ module Impl = struct
       | [] -> []
       | named_args -> [ { shape = JsAst.Obj named_args; span = None } ]
     in
-    calculate
-      { shape =
-          JsAst.Call
-            { async
-            ; f
-            ; args =
-                [ ({ shape = Var (Effect.perform GetScope).ctx_var; span = None }
-                   : JsAst.expr)
-                ]
-                @ !unnamed_args
-                @ named_args
-            }
-      ; span = Some span
-      }
+    let result_var = JsAst.gen_name "apply" ~original:None in
+    let catch_var = JsAst.gen_name "e" ~original:None in
+    execute_all
+      [ { shape =
+            Let
+              { var = result_var
+              ; usage = { can_be_deleted = false }
+              ; value = { shape = Undefined; span = None }
+              }
+        ; span = None
+        }
+      ; { shape =
+            Try
+              { body =
+                  scope (fun () ->
+                    let result =
+                      calculate
+                        { shape =
+                            JsAst.Call
+                              { async
+                              ; f
+                              ; args =
+                                  [ ({ shape = Var (Effect.perform GetScope).ctx_var
+                                     ; span = None
+                                     }
+                                     : JsAst.expr)
+                                  ]
+                                  @ !unnamed_args
+                                  @ named_args
+                              }
+                        ; span = Some span
+                        }
+                    in
+                    assign_var result_var result;
+                    ())
+              ; catch_var
+              ; catch_body =
+                  scope (fun () ->
+                    execute_all
+                      [ { shape =
+                            If
+                              { condition =
+                                  { shape =
+                                      InstanceOf
+                                        { expr = { shape = Var catch_var; span = None }
+                                        ; ty = { shape = Raw "Error"; span = None }
+                                        }
+                                  ; span = None
+                                  }
+                              ; then_case =
+                                  scope (fun () ->
+                                    let kast_trace : JsAst.expr =
+                                      { shape =
+                                          Field
+                                            { obj = { shape = Var catch_var; span = None }
+                                            ; field = "kast_trace"
+                                            }
+                                      ; span = None
+                                      }
+                                    in
+                                    execute_all
+                                      [ { shape =
+                                            If
+                                              { condition =
+                                                  { shape =
+                                                      Compare
+                                                        { op = Equal
+                                                        ; lhs = kast_trace
+                                                        ; rhs =
+                                                            { shape = Undefined
+                                                            ; span = None
+                                                            }
+                                                        }
+                                                  ; span = None
+                                                  }
+                                              ; then_case =
+                                                  scope (fun () ->
+                                                    execute
+                                                      { shape =
+                                                          Assign
+                                                            { assignee = kast_trace
+                                                            ; value =
+                                                                { shape = List []
+                                                                ; span = None
+                                                                }
+                                                            }
+                                                      ; span = None
+                                                      })
+                                              ; else_case = None
+                                              }
+                                        ; span = None
+                                        }
+                                      ; { shape =
+                                            Expr
+                                              { shape =
+                                                  Call
+                                                    { async = false
+                                                    ; f =
+                                                        { shape =
+                                                            Field
+                                                              { obj = kast_trace
+                                                              ; field = "push"
+                                                              }
+                                                        ; span = None
+                                                        }
+                                                    ; args =
+                                                        [ { shape =
+                                                              String
+                                                                (make_string
+                                                                   "%a"
+                                                                   Span.print
+                                                                   span)
+                                                          ; span = None
+                                                          }
+                                                        ]
+                                                    }
+                                              ; span = None
+                                              }
+                                        ; span = None
+                                        }
+                                      ])
+                              ; else_case = None
+                              }
+                        ; span = None
+                        }
+                      ; { shape = Throw { shape = Var catch_var; span = None }
+                        ; span = None
+                        }
+                      ])
+              }
+        ; span = None
+        }
+      ];
+    NoEffect { shape = Var result_var; span = None }
 
   and transpile_expr : expr -> no_effect_expr =
     fun expr ->

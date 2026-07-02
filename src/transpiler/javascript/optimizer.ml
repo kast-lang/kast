@@ -13,6 +13,8 @@ let rec optimize_expr : expr -> expr =
   | String _ -> original
   | List list -> { shape = List (list |> List.map optimize_expr); span }
   | Var _ -> original
+  | InstanceOf { expr; ty } ->
+    { shape = InstanceOf { expr = optimize_expr expr; ty = optimize_expr ty }; span }
   | Fn { async; args; body } ->
     { shape = Fn { async; args; body = optimize_stmts body }; span }
   | Call { async; f; args } ->

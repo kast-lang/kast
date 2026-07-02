@@ -27,6 +27,10 @@ type expr_shape =
   | String of string
   | List of expr list
   | Var of name
+  | InstanceOf of
+      { expr : expr
+      ; ty : expr
+      }
   | Fn of
       { async : bool
       ; args : name list
@@ -208,6 +212,10 @@ let rec print_expr ~precedence:(_ : Precedence.t) (writer : Writer.t) (expr : ex
          print_expr ~precedence:FnArg writer x);
        writer |> write "]"
      | Var name -> print_name writer name
+     | InstanceOf { expr; ty } ->
+       print_expr ~precedence:FnArg writer expr;
+       writer |> write " instanceof";
+       print_expr ~precedence:FnArg writer ty
      | Fn { async; args; body } ->
        if async then writer |> write "async ";
        writer |> write "(";
