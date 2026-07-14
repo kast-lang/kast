@@ -36,7 +36,7 @@
 @syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" args:any ""/"\n\\" "]" " " "->" " " body ->;
 @syntax "core:fn_type" 6.5 @wrap never = async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
 
-@syntax "core:fn" 7 @wrap never = async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
+@syntax "core:fn" 7 @wrap never = async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result_type=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
 
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;

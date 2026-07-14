@@ -6,9 +6,15 @@ const ValueShape = newtype (
     | :Int Int
     | :String String
     | :Type Ty
+    | :Fn Fn
     | :NativeFn NativeFn
     | :Ast Ast.t
 );
+
+const Fn = newtype {
+    .args :: ArrayList.t[Pattern],
+    .body :: Expr,
+};
 
 const NativeFn = newtype {
     .name :: String,
@@ -28,6 +34,9 @@ impl ValueShape as module = (
             | :Type ref ty => (
                 output.write("type ");
                 Ty.print(ty)
+            )
+            | :Fn _ => (
+                output.write("<fn>");
             )
             | :NativeFn ref f => (
                 output.write("<native ");

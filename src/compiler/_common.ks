@@ -72,3 +72,8 @@ const compile = [K] (ast :: &Ast.t, .expected_ty :: Option.t[Ty]) -> K => (
 const compile_type_expr = (ast :: &Ast.t) -> TyExpr => (
     compile[TyExpr](ast, .expected_ty = :Some Ty.TYPE)
 );
+
+const eval_ast_as_type = (ast :: &Ast.t) -> Ty => (
+    let expr = compile_type_expr(ast);
+    Interpreter.eval_type(&expr)
+);

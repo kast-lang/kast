@@ -9,8 +9,7 @@ use (import "./_common.ks").*;
     ) -> K => (
         let { expr, ty } = root^
             |> AstHelpers.expect_two_children(:Some { "expr", "type" });
-        let ty = compile_type_expr(&ty);
-        let ty = Interpreter.eval_type(&ty);
+        let ty = eval_ast_as_type(&ty);
         compile[K](&expr, .expected_ty = :Some ty)
     ),
 }

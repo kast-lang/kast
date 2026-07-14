@@ -10,6 +10,7 @@ const ExprShape = newtype (
     | :Native String
     | :Stmt Expr
     | :Then ArrayList.t[Expr]
+    | :Fn { .args :: ArrayList.t[Pattern], .body :: Expr }
     | :Apply { .f :: Expr, .args :: ArrayList.t[Expr] }
     | :Scope Expr
     | :Quote QuoteExpr.t

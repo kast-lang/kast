@@ -26,6 +26,7 @@ const CoreSyntax = (
         add(&mut map, import "./then.ks");
         add(&mut map, import "./const.ks");
         add(&mut map, import "./fn_type.ks");
+        add(&mut map, import "./fn.ks");
         add(&mut map, import "./apply.ks");
         add(&mut map, import "./quote.ks");
         add(&mut map, import "./scope.ks");

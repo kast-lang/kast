@@ -123,6 +123,33 @@ const Interpreter = (
         .caller :: Span,
     ) -> Value => (
         match f.shape with (
+            | :Fn ref f => (
+                with Scope.Context = Scope.new(.parent = :Some &(@current Scope.Context));
+                let args_len = &args |> ArrayList.length;
+                let expected_args_len = &f^.args |> ArrayList.length;
+                if args_len != expected_args_len then (
+                    let diagnostic = {
+                        .severity = :Error,
+                        .source = :Interpreter,
+                        .span = caller,
+                        .message = () => (
+                            let output = @current Output;
+                            output.write("Expected ");
+                            output.write(to_string(expected_args_len));
+                            output.write(" args, got ");
+                            output.write(to_string(args_len));
+                        ),
+                        .related = ArrayList.new(),
+                    };
+                    Diagnostic.report_and_unwind(diagnostic)
+                );
+                for i in 0..args_len do (
+                    let { arg, .span = arg_span } = (&args |> ArrayList.at(i))^;
+                    let arg_pattern = &f^.args |> ArrayList.at(i);
+                    pattern_match_and_inject_bindings(arg_pattern, Place.init(arg));
+                );
+                eval(&f^.body)
+            )
             | :NativeFn native => (
                 native.@"impl"(args, .caller)
             )
@@ -176,6 +203,16 @@ const Interpreter = (
                     result = eval(expr);
                 );
                 result
+            )
+            | :Fn { .args = ref args, .body = ref body } => (
+                {
+                    .shape = :Fn {
+                        # .captured = ...,
+                        .args = args^,
+                        .body = body^,
+                    },
+                    .ty = expr^.ty,
+                }
             )
             | :Apply { .f = ref f_expr, .args = ref args_exprs } => (
                 let f = eval(f_expr);

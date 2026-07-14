@@ -4,12 +4,14 @@ const TyShape = newtype (
     | :Int
     | :String
     | :Type
-    | :Fn {
-        .args :: ArrayList.t[Ty],
-        .result :: Ty,
-    }
+    | :Fn FnTy
     | :Ast
 );
+
+const FnTy = newtype {
+    .args :: ArrayList.t[Ty],
+    .result :: Ty,
+};
 
 impl TyShape as module = (
     module:
