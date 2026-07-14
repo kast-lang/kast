@@ -39,6 +39,7 @@ const Compiler = (
     };
 
     const Compilable = [Self] newtype {
+        .set_span :: (&mut Self, Span) -> (),
         .unit :: (.span :: Span) -> Self,
         .number :: (Token.NumberToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
         .ident :: (String, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
@@ -46,6 +47,7 @@ const Compiler = (
     };
 
     impl AnyExpr as Compilable = {
+        .set_span = (...) => (),
         .unit = (.span) => { .shape = :Expr :Unit, .ty = Ty.UNIT },
         .number = ({ .raw }, .span, .expected_ty) => (
             let ty = expected_ty |> Option.unwrap_or(Ty.INT);
@@ -113,6 +115,9 @@ const Compiler = (
     };
 
     impl Expr as Compilable = {
+        .set_span = (self, span) => (
+            self^.span = span;
+        ),
         .unit = (.span) => any_expr_to_expr(
             (AnyExpr as Compilable).unit(.span),
             .span,
@@ -132,6 +137,9 @@ const Compiler = (
     };
 
     impl PlaceExpr as Compilable = {
+        .set_span = (self, span) => (
+            self^.span = span;
+        ),
         .unit = (.span) => any_expr_to_place_expr(
             (AnyExpr as Compilable).unit(.span),
             .span,
@@ -151,6 +159,9 @@ const Compiler = (
     };
 
     impl TyExpr as Compilable = {
+        .set_span = (self, span) => (
+            self^.span = span;
+        ),
         .unit = (.span) => {
             .shape = :Const Ty.UNIT,
             .span,
@@ -190,6 +201,9 @@ const Compiler = (
     };
 
     impl Assignee as Compilable = {
+        .set_span = (self, span) => (
+            self^.span = span;
+        ),
         .unit = (.span) => panic("TODO unit assignee"),
         .number = (..., .span) => (
             let diagnostic = {
@@ -259,6 +273,9 @@ const Compiler = (
     };
 
     impl Pattern as Compilable = {
+        .set_span = (self, span) => (
+            self^.span = span;
+        ),
         .unit = (.span) => panic("TODO unit pattern"),
         .number = (...) => panic("TODO number pattern"),
         .string = (...) => panic("TODO string pattern"),
@@ -328,7 +345,9 @@ const Compiler = (
                 )
                 | :None => match &state.custom_syntax |> OrdMap.get(rule.name) with (
                     | :Some custom_syntax => (
-                        compile[K](&CustomSyntax.expand(custom_syntax, root), .expected_ty)
+                        let mut compiled = compile[K](&CustomSyntax.expand(custom_syntax, root), .expected_ty);
+                        (K as Compilable).set_span(&mut compiled, span);
+                        compiled
                     )
                     | :None => (
                         let diagnostic = {

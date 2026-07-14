@@ -428,9 +428,7 @@ const tty = (
             set_cursor_type(:Default);
             set_cursor_visibility(true);
             exit_raw_mode();
-            write("!!!\n");
             flush();
-            @native "console.log(123)";
         );
         enter_raw_mode();
         with Context = {

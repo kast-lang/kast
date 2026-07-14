@@ -119,7 +119,7 @@ const Interpreter = (
 
     const apply = (
         f :: Value,
-        args :: ArrayList.t[Value],
+        args :: ArrayList.t[ValueWithSpan],
         .caller :: Span,
     ) -> Value => (
         match f.shape with (
@@ -181,7 +181,7 @@ const Interpreter = (
                 let f = eval(f_expr);
                 let mut args = ArrayList.new();
                 for arg in args_exprs |> ArrayList.iter do (
-                    &mut args |> ArrayList.push_back(eval(arg));
+                    &mut args |> ArrayList.push_back({ eval(arg), .span = arg^.span });
                 );
                 apply(f, args, .caller = span)
             )

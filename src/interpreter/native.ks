@@ -22,12 +22,12 @@ const Native = (
     );
 
     const init_op = (name :: String, f :: (Int, Int) -> Int) => (
-        let @"impl" = (args :: ArrayList.t[Value], .caller :: Span) -> Value => (
+        let @"impl" = (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
             if &args |> ArrayList.length != 2 then (
                 panic("Expected 2 args");
             );
-            let a = (&args |> ArrayList.at(0))^ |> expect_value.expect_int(.span = caller);
-            let b = (&args |> ArrayList.at(1))^ |> expect_value.expect_int(.span = caller);
+            let a = (&args |> ArrayList.at(0))^ |> expect_value.with_span.expect_int;
+            let b = (&args |> ArrayList.at(1))^ |> expect_value.with_span.expect_int;
             let result = f(a, b);
             { .shape = :Int result, .ty = Ty.INT }
         );
@@ -47,11 +47,11 @@ const Native = (
 
     const init_print = () => (
         let name = "print";
-        let @"impl" = (args :: ArrayList.t[Value], .caller :: Span) -> Value => (
+        let @"impl" = (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
             if &args |> ArrayList.length != 1 then (
                 panic("Expected 1 arg");
             );
-            let s = (&args |> ArrayList.at(0))^ |> expect_value.expect_string(.span = caller);
+            let s = (&args |> ArrayList.at(0))^ |> expect_value.with_span.expect_string;
             (@current Output).write(s);
             Value.UNIT
         );
@@ -72,6 +72,9 @@ const Native = (
         let mut map = OrdMap.new();
         with InitContext = &mut map;
         init_ty("Int", Ty.INT);
+        init_ty("Bool", Ty.BOOL);
+        init_value("true", { .shape = :Bool true, .ty = Ty.BOOL });
+        init_value("false", { .shape = :Bool false, .ty = Ty.BOOL });
         init_ty("String", Ty.STRING);
         init_ty("Type", Ty.TYPE);
         init_ty("Ast", Ty.AST);

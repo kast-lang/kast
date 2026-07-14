@@ -1,5 +1,6 @@
 const TyShape = newtype (
     | :Unit
+    | :Bool
     | :Int
     | :String
     | :Type
@@ -17,6 +18,7 @@ impl TyShape as module = (
         let output = @current Output;
         match self^ with (
             | :Unit => output.write("()")
+            | :Bool => output.write("Bool")
             | :Int => output.write("Int")
             | :String => output.write("String")
             | :Type => output.write("Type")
@@ -49,6 +51,7 @@ impl Ty as module = (
     module:
 
     const UNIT :: Ty = { .shape = :Unit };
+    const BOOL :: Ty = { .shape = :Bool };
     const INT :: Ty = { .shape = :Int };
     const STRING :: Ty = { .shape = :String };
     const TYPE :: Ty = { .shape = :Type };

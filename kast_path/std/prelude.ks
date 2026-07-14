@@ -1,7 +1,11 @@
 const Type :: type = @native "type Type";
+const Bool :: Type = @native "type Bool";
 const Int :: Type = @native "type Int";
 const String :: Type = @native "type String";
 const Ast :: Type = @native "type Ast";
+
+impl syntax (true) = `(@native "true" :: Bool);
+impl syntax (false) = `(@native "false" :: Bool);
 
 const add :: (Int, Int) -> Int = @native "+";
 const sub :: (Int, Int) -> Int = @native "-";

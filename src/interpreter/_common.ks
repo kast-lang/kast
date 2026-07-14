@@ -32,7 +32,7 @@ const impl_expect_value = (
             )
         )
     )
-    | true => panic("runtime only pls")
+    | true => panic("comptime only pls")
 );
 
 module:
@@ -54,6 +54,26 @@ const expect_value = (
     const expect_string = include_ast impl_expect_value("String", String, `(String));
     const expect_type = include_ast impl_expect_value("Type", Ty, `(Type));
     const expect_ast = include_ast impl_expect_value("Ast", Ast.t, `(Ast));
+
+    const with_span = (
+        module:
+
+        const impl_with_span = (name :: String) -> std.Ast => @cfg (
+            | target.name == "interpreter" => `(
+                const $name = (args :: ValueWithSpan) => expect_value.$name(...args);
+            )
+            | true => panic("comptime only pls")
+        );
+
+        const expect_int = (args :: ValueWithSpan) => expect_value.expect_int(...args);
+        const expect_string = (args :: ValueWithSpan) => expect_value.expect_string(...args);
+        const expect_type = (args :: ValueWithSpan) => expect_value.expect_type(...args);
+        const expect_ast = (args :: ValueWithSpan) => expect_value.expect_ast(...args);
+    # include_ast impl_with_span(expect_int);
+    # include_ast impl_with_span(expect_string);
+    # include_ast impl_with_span(expect_type);
+    # include_ast impl_with_span(expect_ast);
+    );
 );
 
 const InterpreterContextT = newtype {

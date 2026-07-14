@@ -2,6 +2,7 @@ const Int = Int32;
 
 const ValueShape = newtype (
     | :Unit
+    | :Bool Bool
     | :Int Int
     | :String String
     | :Type Ty
@@ -11,7 +12,7 @@ const ValueShape = newtype (
 
 const NativeFn = newtype {
     .name :: String,
-    .@"impl" :: (ArrayList.t[Value], .caller :: Span) -> Value,
+    .@"impl" :: (ArrayList.t[ValueWithSpan], .caller :: Span) -> Value,
 };
 
 impl ValueShape as module = (
@@ -21,6 +22,7 @@ impl ValueShape as module = (
         let output = @current Output;
         match self^ with (
             | :Unit => output.write("()")
+            | :Bool b => output.write(to_string(b))
             | :Int x => output.write(to_string(x))
             | :String s => output.write(String.escape(s))
             | :Type ref ty => (
@@ -56,3 +58,8 @@ impl Value as module = (
         Ty.print(&value^.ty);
     );
 );
+
+const ValueWithSpan = newtype {
+    Value,
+    .span :: Span,
+};

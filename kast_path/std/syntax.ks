@@ -105,8 +105,8 @@
 @syntax "core:newtype" 500 @wrap never = "newtype" " " _;
 @syntax "core:typeof" 500 @wrap never = "typeof" " " _;
 # @syntax "core:type" 500 @wrap never = "type";
-@syntax "core:true" 500 @wrap never = "true";
-@syntax "core:false" 500 @wrap never = "false";
+@syntax "true" 500 @wrap never = "true";
+@syntax "false" 500 @wrap never = "false";
 @syntax "loop" 500 @wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\n\\" ")";
 @syntax "core:by_ref" 500 @wrap never = "ref" " " _;
 @syntax "core:by_ref_mut" 500 @wrap never = "ref" " " "mut" " " _;

@@ -1,6 +1,6 @@
-let mut sum = 0;
+let mut sum :: Int = 0;
 
-let is_prime = x => with_return (
+let is_prime :: Int -> Bool = (x :: Int) -> Bool => with_return (
     for i in 2..x do (
         if x % i == 0 then (
             return false;
@@ -14,4 +14,5 @@ for x in 2..1000 do (
         sum += x;
     );
 );
+
 std.dbg.print(sum);
