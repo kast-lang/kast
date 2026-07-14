@@ -14,6 +14,13 @@ const pop_back = [T] (a :: &mut ArrayList.t[T]) -> T => @cfg (
     | target.name == "interpreter" => (@native "List.pop_back")(a)
     | target.name == "javascript" => @native "\(a^).pop()"
 );
+const from_iter = [T] (iter :: std.iter.Iterable[T]) -> ArrayList.t[T] => (
+    let mut result = ArrayList.new();
+    for x in iter do (
+        &mut result |> ArrayList.push_back(x);
+    );
+    result
+);
 const into_iter = [T] (a :: ArrayList.t[T]) -> std.iter.Iterable[T] => {
     .iter = consumer => (
         for i in 0..length(&a) do (

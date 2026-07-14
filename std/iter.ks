@@ -19,6 +19,17 @@ const any = [T] (
     false
 );
 
+const zip_TODO = [A, B] (
+    a :: Iterable[A],
+    b :: Iterable[B],
+) -> Iterable[type { A, B }] => {
+    .iter = consume => (
+        let element_of_a = _;
+        let element_of_b = _;
+        consume({ element_of_a, element_of_b });
+    )
+};
+
 const all = [T] (
     iter :: Iterable[T],
     predicate :: T -> Bool,
@@ -55,15 +66,20 @@ const enumerate = [T] (
 );
 
 const reduce = [T] (
-    iter :: Iterable[T], 
+    iter :: Iterable[T],
     f :: (T, T) -> T,
 ) -> Option.t[T] => (
     let mut result = :None;
-    iter.iter(x => (
-        result = :Some (match result with (
-            | :None => x
-            | :Some prev => f(prev, x)
-        ));
-    ));
+    iter.iter(
+        x => (
+            result = :Some (
+                match result with (
+                    | :None => x
+                    | :Some prev => f(prev, x)
+                )
+            );
+        )
+    );
     result
 );
+
