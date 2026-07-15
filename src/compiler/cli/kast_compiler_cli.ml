@@ -132,17 +132,9 @@ let run : Args.t -> unit =
       Format.setup_tty_if_needed fmt out;
       (match target with
        | Ir -> fprintf fmt "%a" Expr.print_with_types expr
-       | Minikast minitarget ->
-         (match minitarget with
-          | JavaScript ->
-            let transpiled =
-              Kast_transpiler_minikast.transpile_expr
-                { name = "javascript" }
-                compiler.interpreter
-                expr
-            in
-            Kast_transpiler_minikast.MiniAst.Print.print_program transpiled
-          | _ -> fail "not supported minitarget")
+       | C ->
+         let transpiled = Kast_transpiler_c.transpile_expr compiler.interpreter expr in
+         Kast_transpiler_c.C_ast.Print.print_program transpiled
        | JavaScript ->
          let transpiled : Kast_transpiler_javascript.result =
            Kast_transpiler_javascript.transpile_expr

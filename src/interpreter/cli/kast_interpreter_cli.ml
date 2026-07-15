@@ -86,7 +86,7 @@ let eval =
 let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t) =
   match compiler.target with
   | Ir -> eval_and ignore args
-  | Minikast _ -> fail "minikast can't be ran"
+  | C -> fail "C can't be ran"
   | JavaScript ->
     let path =
       match compiler.output with
