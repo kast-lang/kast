@@ -1,5 +1,23 @@
 {
   "nodes": {
+    "filc": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1783374577,
+        "narHash": "sha256-uxpGhhpPwusOZf7TsrnXYXeKWnRVNqwCABybqsecOkc=",
+        "owner": "mbrock",
+        "repo": "filnix",
+        "rev": "db65632766e502e2c800a37fdb618c141eff4055",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mbrock",
+        "repo": "filnix",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -84,6 +102,23 @@
       }
     },
     "nixpkgs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1762633274,
+        "narHash": "sha256-Ygv7dtGtshVgYPWE9pNaCxA7s9V8OleD7UbFjuZr5ug=",
+        "owner": "lessrest",
+        "repo": "filnixpkgs",
+        "rev": "400439b089773d3fc593b512250e283a33485de4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lessrest",
+        "repo": "filnixpkgs",
+        "rev": "400439b089773d3fc593b512250e283a33485de4",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
       "locked": {
         "lastModified": 1770015011,
         "narHash": "sha256-7vUo0qWCl/rip+fzr6lcMlz9I0tN/8m7d5Bla/rS2kk=",
@@ -183,9 +218,10 @@
     },
     "root": {
       "inputs": {
+        "filc": "filc",
         "flake-utils": "flake-utils",
         "nix-filter": "nix-filter",
-        "nixpkgs": "nixpkgs",
+        "nixpkgs": "nixpkgs_2",
         "opam-nix": "opam-nix",
         "opam-repository": "opam-repository"
       }

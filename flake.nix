@@ -12,12 +12,14 @@
     };
     nix-filter.url = "github:numtide/nix-filter";
     flake-utils.url = "github:numtide/flake-utils";
+    filc.url = "github:mbrock/filnix";
   };
   outputs = inputs:
     let
       package = "kast";
       filter = inputs.nix-filter.lib;
-    in inputs.flake-utils.lib.eachDefaultSystem (system:
+    in
+    inputs.flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import inputs.nixpkgs { inherit system; };
         opam-nix = inputs.opam-nix.lib.${system};
@@ -46,26 +48,30 @@
             # Prevent the ocaml dependencies from leaking into dependent environments
             doNixSupport = false;
           });
-          memtrace = let
-            src = builtins.fetchGit {
-              url = "https://github.com/janestreet/memtrace";
-              rev = "c86e4fe3e8308e86f066d6c00e4dbc69003ec381";
-            };
-          in (opam-nix.buildOpamProject { } "memtrace" src {
-            ocaml-base-compiler = "*";
-          }).memtrace;
-          ppxlib = let
-            src = builtins.fetchGit {
-              url = "https://github.com/NathanReb/ppxlib";
-              rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
-            };
-          in (opam-nix.buildOpamProject { } "ppxlib" src {
-            ocaml-base-compiler = "*";
-          }).ppxlib;
+          memtrace =
+            let
+              src = builtins.fetchGit {
+                url = "https://github.com/janestreet/memtrace";
+                rev = "c86e4fe3e8308e86f066d6c00e4dbc69003ec381";
+              };
+            in
+            (opam-nix.buildOpamProject { } "memtrace" src {
+              ocaml-base-compiler = "*";
+            }).memtrace;
+          ppxlib =
+            let
+              src = builtins.fetchGit {
+                url = "https://github.com/NathanReb/ppxlib";
+                rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
+              };
+            in
+            (opam-nix.buildOpamProject { } "ppxlib" src {
+              ocaml-base-compiler = "*";
+            }).ppxlib;
         };
         createScope = src:
           (opam-nix.buildDuneProject { } package src query).overrideScope
-          overlay;
+            overlay;
         devScope = createScope (filter {
           root = ./.;
           include = [ "dune-workspace" "dune-project" ];
@@ -79,59 +85,66 @@
         # Packages from devPackagesQuery
         devPackages = builtins.attrValues
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) devScope);
-        memtrace_viewer = let
-          src = builtins.fetchGit {
-            url = "https://github.com/kuviman/memtrace_viewer";
-            rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
-          };
-        in (opam-nix.buildOpamProject { } "memtrace_viewer" src {
-          ocaml-base-compiler = "*";
-        }).memtrace_viewer;
+        memtrace_viewer =
+          let
+            src = builtins.fetchGit {
+              url = "https://github.com/kuviman/memtrace_viewer";
+              rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
+            };
+          in
+          (opam-nix.buildOpamProject { } "memtrace_viewer" src {
+            ocaml-base-compiler = "*";
+          }).memtrace_viewer;
         package_json = filter {
           root = ./.;
           include = [ "package.json" "package-lock.json" ];
         };
-      in {
+      in
+      {
         packages = rec {
-          default = let
-            npmDeps = pkgs.importNpmLock.buildNodeModules {
-              npmRoot = package_json;
-              nodejs = pkgs.nodejs;
-            };
-          in main.overrideAttrs (oa: {
-            nativeBuildInputs = [ pkgs.nodejs ];
-            buildPhase = ''
-              ln -s ${npmDeps}/node_modules ./node_modules
-              ls -la ./node_modules
-              export KAST_STD="../lib/std"
-              ${oa.buildPhase}
-            '';
-            postFixup = ''
-              rm -rf $out/lib/ocaml
-              cp -r std $out/lib/std
-            '';
-          });
+          default =
+            let
+              npmDeps = pkgs.importNpmLock.buildNodeModules {
+                npmRoot = package_json;
+                nodejs = pkgs.nodejs;
+              };
+            in
+            main.overrideAttrs (oa: {
+              nativeBuildInputs = [ pkgs.nodejs ];
+              buildPhase = ''
+                ln -s ${npmDeps}/node_modules ./node_modules
+                ls -la ./node_modules
+                export KAST_STD="../lib/std"
+                ${oa.buildPhase}
+              '';
+              postFixup = ''
+                rm -rf $out/lib/ocaml
+                cp -r std $out/lib/std
+              '';
+            });
           kast = default;
-          js-runtime = let
-            npmDeps = pkgs.importNpmLock.buildNodeModules {
-              npmRoot = package_json;
-              nodejs = pkgs.nodejs;
+          js-runtime =
+            let
+              npmDeps = pkgs.importNpmLock.buildNodeModules {
+                npmRoot = package_json;
+                nodejs = pkgs.nodejs;
+              };
+            in
+            pkgs.stdenv.mkDerivation {
+              name = "kast-js-runtime";
+              src = filter {
+                root = ./src/transpiler/javascript;
+                include = [ "runtime.ts" "tsconfig.json" ];
+              };
+              nativeBuildInputs = [ pkgs.nodejs ];
+              buildPhase = ''
+                ln -s ${npmDeps}/node_modules ./node_modules
+                cp ${package_json}/* .
+                npm exec tsc
+                mkdir $out
+                cp runtime.js $out/runtime.js
+              '';
             };
-          in pkgs.stdenv.mkDerivation {
-            name = "kast-js-runtime";
-            src = filter {
-              root = ./src/transpiler/javascript;
-              include = [ "runtime.ts" "tsconfig.json" ];
-            };
-            nativeBuildInputs = [ pkgs.nodejs ];
-            buildPhase = ''
-              ln -s ${npmDeps}/node_modules ./node_modules
-              cp ${package_json}/* .
-              npm exec tsc
-              mkdir $out
-              cp runtime.js $out/runtime.js
-            '';
-          };
         };
         devShells.default = pkgs.mkShell {
           inputsFrom = [ main ];
@@ -164,6 +177,7 @@
             valgrind
             prettier
             hyperfine
+            inputs.filc.packages.${system}.filcc
           ]);
           shellHook = ''
             echo 'Hello from Kast devshell'
