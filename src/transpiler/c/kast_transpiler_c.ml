@@ -540,7 +540,7 @@ module Impl = struct
         |> Seq.map
              (fun
                  ((member, field) : Tuple.member * Types.value_tuple_field)
-                  : (string * C_Ast.expr)
+                  : (string * C_ast.expr)
                 ->
                 ( member_name member
                 , C_ast.Claim
@@ -558,27 +558,25 @@ module Impl = struct
     | V_Target _ -> failwith __LOC__
     | V_ContextTy _ ->
       (* TODO maybe? *)
-      Uninitialized
+      Unit
     | V_CompilerScope _ -> Unit
     | V_Opaque _ -> failwith __LOC__
     | V_Blocked _ -> failwith __LOC__
     | V_Error -> failwith __LOC__
 
-  and assign (assignee : Types.assignee_expr) (pure_place_expr : C_ast.place_expr)
-    : C_ast.expr
-    =
+  and assign (assignee : Types.assignee_expr) (pure_place_expr : C_ast.place_expr) : unit =
     match assignee.shape with
-    | Types.A_Placeholder -> Unit
-    | Types.A_Unit -> Unit
+    | Types.A_Placeholder -> ()
+    | Types.A_Unit -> ()
     | Types.A_Tuple _ -> failwith __LOC__
     | Types.A_Place place ->
-      Assign { assignee = transpile_place_expr place; value = Claim pure_place_expr }
+      insert_stmt
+        (Assign { assignee = transpile_place_expr place; value = Claim pure_place_expr })
     | Types.A_Let pattern -> pattern_match pattern pure_place_expr
     | Types.A_Error -> failwith __LOC__
 
   and call_fn ~(args_is_tuple : bool) (f : expr) (arg : expr) : C_ast.expr =
     let f = transpile_expr f in
-    let exprs : C_ast.expr Dynarray.t = Dynarray.create () in
     let args =
       if args_is_tuple
       then (
@@ -598,24 +596,18 @@ module Impl = struct
                | Name name -> Some name
              in
              let var = gen_name "arg" in
-             Dynarray.add_last
-               exprs
-               (Let
-                  { var
-                  ; ty = None
-                  ; value =
-                      Claim (transpile_value (Interpreter.read_place ~span field.place))
-                  });
+             let_var
+               (transpile_ty field.ty_field.ty)
+               var
+               (Claim (transpile_value (Interpreter.read_place ~span field.place)));
              args := !args |> Tuple.add name var)
          | E_Tuple { parts; _ } ->
            parts
            |> List.iter (function
-             | (Field { label; field; _ } : _ Types.tuple_part_of) ->
+             | (Field { label; field : expr; _ } : _ Types.tuple_part_of) ->
                let name = label |> Option.map Label.get_name in
                let var = gen_name "arg" in
-               Dynarray.add_last
-                 exprs
-                 (Let { var; ty = None; value = transpile_expr field });
+               let_var (transpile_ty field.data.signature.ty) var (transpile_expr field);
                args := !args |> Tuple.add name var
              | Unpack _ -> failwith __LOC__)
          | _ -> fail "f args must be tuple");
@@ -634,16 +626,15 @@ module Impl = struct
         |> List.of_seq)
       else [ transpile_expr arg ]
     in
-    Dynarray.add_last exprs (Apply { f; args });
-    Then (exprs |> Dynarray.to_list)
+    Apply { f; args }
 
-  and context_ty_name ({ id; ty } : Types.value_context_ty) : string =
-    let name = gen_name "context" in
-    let ctx = Effect.perform GetCtx in
-    ctx.context_names <- ctx.context_names |> Id.Map.add id name;
-    let context_ty = transpile_ty ty in
-    ctx.contexts <- ctx.contexts |> StringMap.add name context_ty;
-    name
+  and context_ty_name ({ id; ty } : Types.value_context_ty) : string = failwith __LOC__
+  (* let name = gen_name "context" in *)
+  (* let ctx = Effect.perform GetCtx in *)
+  (* ctx.context_names <- ctx.context_names |> Id.Map.add id name; *)
+  (* let context_ty = transpile_ty ty in *)
+  (* ctx.contexts <- ctx.contexts |> StringMap.add name context_ty; *)
+  (* name *)
 
   and construct_pattern_value_with_bindings (pattern : pattern) : value =
     match pattern.shape with
@@ -731,7 +722,7 @@ module Impl = struct
       | Types.E_Stmt { expr } ->
         execute_expr expr;
         None
-      | Types.E_Scope { expr } -> transpile_expr expr
+      | Types.E_Scope { expr } -> eval_expr expr
       | Types.E_Fn { def; _ } ->
         failwith __LOC__ (* Fn (transpile_fn ~captured:None def) *)
       | Types.E_Generic { def; _ } ->
@@ -793,24 +784,26 @@ module Impl = struct
                    })));
         Some (Claim (Ident var_name))
       | Types.E_Variant { label; value; _ } ->
-        let name = Label.get_name label in
         let value =
           match value with
           | Some value -> transpile_expr value
           | None -> Unit
         in
-        compound_literal [ "tag", Variant name; "data", value ]
-      | Types.E_Apply { f; arg } -> call_fn ~args_is_tuple:true f arg
+        Some
+          (compound_literal
+             (transpile_ty expr.data.signature.ty)
+             [ "tag", Claim (Ident (variant_tag_name expr.data.signature.ty label))
+             ; "data", value
+             ])
+      | Types.E_Apply { f; arg } -> Some (call_fn ~args_is_tuple:true f arg)
       | Types.E_InstantiateGeneric { generic; arg } ->
-        call_fn ~args_is_tuple:true generic arg
+        Some (call_fn ~args_is_tuple:true generic arg)
       | Types.E_Assign { assignee; value } ->
         let value_var = gen_name "value" in
-        Then
-          [ Let { var = value_var; ty = None; value = Ref (transpile_place_expr value) }
-          ; assign assignee (Deref (Claim (Ident value_var)))
-          ]
-      | Types.E_Ty _ -> Obj []
-      | Types.E_Newtype _ -> Obj []
+        assign assignee (transpile_place_expr value);
+        None
+      | Types.E_Ty _ -> failwith __LOC__
+      | Types.E_Newtype _ -> failwith __LOC__
       | Types.E_Native { parts; _ } ->
         let parts =
           parts
@@ -819,7 +812,7 @@ module Impl = struct
             | Raw s -> Raw s
             | Expr e -> Interpolated (transpile_expr e))
         in
-        TypeAscribed { expr = Native { parts }; ty = transpile_ty expr.data.signature.ty }
+        Some (Native { parts })
       | Types.E_Module { def; bindings } ->
         let var = gen_name "module" in
         let binding_module_map = ref (Effect.perform GetBindingModuleMap) in
@@ -828,82 +821,92 @@ module Impl = struct
           binding_module_map := !binding_module_map |> Id.Map.add binding.id var);
         let binding_module_map = !binding_module_map in
         (try
-           Then
-             [ Let
-                 { var
-                 ; ty = Some (transpile_ty expr.data.signature.ty)
-                 ; value = Uninitialized
-                 }
-             ; transpile_expr def
-             ; Claim (Ident var)
-             ]
+           insert_stmt
+             (DeclareVar { name = var; ty = transpile_ty expr.data.signature.ty });
+           execute_expr def;
+           Some (Claim (Ident var))
          with
          | effect GetBindingModuleMap, k -> Effect.continue k binding_module_map)
       | Types.E_UseDotStar { bindings; used } ->
-        Then
-          (let stmts : C_ast.expr Dynarray.t = Dynarray.create () in
-           let used_var = gen_name "used" in
-           Dynarray.add_last
-             stmts
-             (Let { var = used_var; ty = None; value = transpile_expr used });
-           let used : C_ast.place_expr = Ident used_var in
-           bindings
-           |> List.iter (fun (binding : binding) ->
-             let stmt : C_ast.expr =
-               Let
-                 { var = binding_name binding
-                 ; ty = None
-                 ; value = Claim (Field { obj = used; field = binding.name.name })
-                 }
-             in
-             Dynarray.add_last stmts stmt);
-           stmts |> Dynarray.to_list)
+        let stmts : C_ast.expr Dynarray.t = Dynarray.create () in
+        let used_var = gen_name "used" in
+        let_var (transpile_ty used.data.signature.ty) used_var (transpile_expr used);
+        let used : C_ast.place_expr = Ident used_var in
+        bindings
+        |> List.iter (fun (binding : binding) ->
+          let_var
+            (transpile_ty binding.ty)
+            (binding_name binding)
+            (Claim (Field { obj = used; field = binding.name.name })));
+        None
       | Types.E_If { cond; then_case; else_case } ->
-        If
-          { cond = transpile_expr cond
-          ; then_case = transpile_expr then_case
-          ; else_case = Some (transpile_expr else_case)
-          }
+        let cond = transpile_expr cond in
+        let var = gen_name "if_result" in
+        let then_case =
+          new_block (fun () ->
+            insert_stmt
+              (Assign { assignee = Ident var; value = transpile_expr then_case }))
+        in
+        let else_case =
+          new_block (fun () ->
+            insert_stmt
+              (Assign { assignee = Ident var; value = transpile_expr else_case }))
+        in
+        insert_stmt (DeclareVar { name = var; ty = transpile_ty expr.data.signature.ty });
+        insert_stmt (If { cond; then_case; else_case = Some else_case });
+        Some (Claim (Ident var))
       | Types.E_And _ -> failwith __LOC__
       | Types.E_Or _ -> failwith __LOC__
       | Types.E_Match { value; branches } ->
         let value_var = gen_name "matched" in
-        let value_ref : C_ast.expr = Ref (transpile_place_expr value) in
         (* TODO panic(not exhaustive) *)
-        let non_exhaustive : C_ast.expr = Uninitialized in
-        Then
-          [ Let { var = value_var; ty = None; value = value_ref }
-          ; List.fold_right
-              (fun ({ pattern; body } : Types.expr_match_branch) acc : C_ast.expr ->
-                 If
-                   { cond = does_match pattern (Deref (Claim (Ident value_var)))
-                   ; then_case =
-                       Then
-                         [ pattern_match pattern (Deref (Claim (Ident value_var)))
-                         ; transpile_expr body
-                         ]
-                   ; else_case = Some acc
-                   })
-              branches
-              non_exhaustive
-          ]
+        let_var
+          (Ptr (transpile_ty value.data.signature.ty))
+          value_var
+          (AddrOf (transpile_place_expr value));
+        let result_var = gen_name "match_result" in
+        let end_of_match_label = gen_name "end_of_match" in
+        insert_stmt
+          (DeclareVar { name = result_var; ty = transpile_ty expr.data.signature.ty });
+        branches
+        |> List.iter (fun ({ pattern; body } : Types.expr_match_branch) ->
+          insert_stmt
+            (If
+               { cond = does_match pattern (Deref (Claim (Ident value_var)))
+               ; then_case =
+                   new_block (fun () ->
+                     pattern_match pattern (Deref (Claim (Ident value_var)));
+                     insert_stmt
+                       (Assign
+                          { assignee = Ident result_var; value = transpile_expr body });
+                     insert_stmt (Goto { label = end_of_match_label }))
+               ; else_case = None
+               }));
+        insert_stmt (GotoLabel end_of_match_label);
+        Some (Claim (Ident result_var))
       | Types.E_QuoteAst _ -> failwith __LOC__
-      | Types.E_Loop { body } -> Loop (transpile_expr body)
+      | Types.E_Loop { body } ->
+        insert_stmt (For { body = new_block (fun () -> execute_expr body) });
+        None
       | Types.E_Unwindable { token; body } ->
-        let token_ident = gen_name "token" in
-        Unwindable
-          { token_ident
-          ; body = Then [ pattern_match token (Ident token_ident); transpile_expr body ]
-          }
+        failwith __LOC__
+        (* let token_ident = gen_name "token" in *)
+        (* Unwindable *)
+        (*   { token_ident *)
+        (*   ; body = Then [ pattern_match token (Ident token_ident); transpile_expr body ] *)
+        (*   } *)
       | Types.E_Unwind { token; value } ->
-        Unwind { token = transpile_expr token; value = transpile_expr value }
+        failwith __LOC__
+        (* Unwind { token = transpile_expr token; value = transpile_expr value } *)
       | Types.E_InjectContext { context_ty; value } ->
-        InjectContext { name = context_ty_name context_ty; value = transpile_expr value }
+        failwith __LOC__
+        (* InjectContext { name = context_ty_name context_ty; value = transpile_expr value } *)
       | Types.E_CurrentContext { context_ty } ->
-        Claim (CurrentContext (context_ty_name context_ty))
+        failwith __LOC__ (* Claim (CurrentContext (context_ty_name context_ty)) *)
       | Types.E_ImplCast _ -> failwith __LOC__
       | Types.E_Cast { value; target } ->
-        Cast { value = transpile_expr value; target = cast_target target }
+        failwith __LOC__
+        (* Cast { value = transpile_expr value; target = cast_target target } *)
       | Types.E_TargetDependent target_dependent ->
         let branch =
           Kast_interpreter.find_target_dependent_branch
@@ -912,7 +915,7 @@ module Impl = struct
             ctx.target
         in
         (match branch with
-         | Some branch -> transpile_expr branch.body
+         | Some branch -> eval_expr branch.body
          | None -> fail "no C cfg branch at %a" Span.print expr.data.span)
       | Types.E_Error -> fail "transpiling error expr"
     with
@@ -939,10 +942,12 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   let current_fn_captured = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
   let main : C_ast.fn_def =
     try
-      let body = Impl.transpile_expr expr in
       { args = []
-      ; result_ty = Impl.transpile_ty expr.data.signature.ty
-      ; body = Scope body
+      ; result_ty = Raw "int"
+      ; body =
+          Impl.new_block (fun () ->
+            Impl.execute_expr expr;
+            Impl.insert_stmt (Return (Literal (Int32 (Int32.of_int 0)))))
       }
     with
     | effect CurrentFnCaptured, k -> Effect.continue k current_fn_captured

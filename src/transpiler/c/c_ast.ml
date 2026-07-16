@@ -42,6 +42,10 @@ and stmt =
       { assignee : place_expr
       ; value : expr
       }
+  | Goto of { label : string }
+  | GotoLabel of string
+  | For of { body : block }
+  | Return of expr
 
 and field =
   { name : string
@@ -78,6 +82,7 @@ and ty =
   | Raw of string
   | Named of string
   | Ptr of ty
+  | Void
 
 and block = stmt list
 
@@ -159,6 +164,7 @@ module Print = struct
     | Ptr referenced ->
       print_ty referenced;
       write "*"
+    | Void -> write "void"
 
   and maybe_surround surround f =
     if surround then write "(";
@@ -199,6 +205,18 @@ module Print = struct
     | Assign { assignee; value } ->
       print_place_expr assignee;
       write " = ";
+      print_expr value
+    | Goto { label } ->
+      write "goto ";
+      write label
+    | GotoLabel label ->
+      write label;
+      write ":"
+    | For { body } ->
+      write "for(;;) ";
+      print_block body
+    | Return value ->
+      write "return ";
       print_expr value
 
   and print_expr (expr : expr) : unit =
@@ -269,17 +287,22 @@ module Print = struct
 
   and print_fn_impl (name : string) (def : fn_def) =
     print_fn_sig ~end_with_semicolon:false name def;
+    write " ";
     print_block def.body;
     writeln ()
 
   and print_block (block : block) =
     write "{";
     if block |> List.length <> 0 then writeln ();
+    inc_indentation ();
     block
     |> List.iter (fun stmt ->
       print_stmt stmt;
-      write ";";
+      (match stmt with
+       | GotoLabel _ -> ()
+       | _ -> write ";");
       writeln ());
+    dec_indentation ();
     write "}"
 
   and print_program (program : program) =
@@ -376,7 +399,13 @@ module Print = struct
              writeln ());
            write "};";
            writeln ()
-         | Alias _ -> ());
+         | Alias ty ->
+           write "typedef ";
+           print_ty ty;
+           write " ";
+           write name;
+           write ";";
+           writeln ());
         declared_types := !declared_types |> StringMap.add name Declared
     and ensure_type_completed (ty : ty) : unit =
       match ty with
@@ -384,6 +413,7 @@ module Print = struct
       | Raw _ -> ()
       | Named name -> ensure_typedef_completed name
       | Ptr _ -> ()
+      | Void -> ()
     in
     program.types |> StringMap.iter (fun name _def -> ensure_typedef_completed name);
     program.fns |> StringMap.iter (print_fn_sig ~end_with_semicolon:true);
