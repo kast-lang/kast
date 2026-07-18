@@ -32,7 +32,9 @@ let native_fn name impl : string * (ty -> value) =
   , fun ty ->
       let scope = VarScope.of_ty ty in
       let fn_ty : Types.ty_fn =
-        { args = { ty = Ty.new_not_inferred ~scope ~span }
+        { is_closure = true
+        ; call_convention = None
+        ; args = { ty = Ty.new_not_inferred ~scope ~span }
         ; result = Ty.new_not_inferred ~scope ~span
         ; async = BoolValue.new_not_inferred ~scope ~span
         }

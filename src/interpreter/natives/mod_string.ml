@@ -207,7 +207,11 @@ let init () =
         V_String s)
       |> Value.inferred ~span)
   ; native_fn "parse" (fun ty ~caller ~state:_ args ->
-      let { args = _; result = result_ty; async = _ } : Types.ty_fn = ty in
+      let { is_closure = _; call_convention = _; args = _; result = result_ty; async = _ }
+        : Types.ty_fn
+        =
+        ty
+      in
       let arg = single_arg ~span args in
       match arg |> Value.await_inferred with
       | V_String s ->

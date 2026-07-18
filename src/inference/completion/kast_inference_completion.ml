@@ -141,7 +141,7 @@ module Impl = struct
     =
     match compiled with
     | None -> error span "Function could not be compiled"
-    | Some { args; body } ->
+    | Some { captures = _; args; body } ->
       complete_pattern_args args;
       complete_expr body
 
@@ -208,7 +208,15 @@ module Impl = struct
   and complete_ty_variant_data ({ data } : ty_variant_data) =
     complete_option complete_ty data
 
-  and complete_ty_fn ({ args; result; async } : ty_fn) =
+  and complete_ty_fn
+        ({ is_closure : bool = _
+         ; call_convention : string option = _
+         ; args
+         ; result
+         ; async
+         } :
+          ty_fn)
+    =
     complete_ty_args args;
     complete_ty result;
     complete_value async.value
@@ -430,7 +438,9 @@ module Impl = struct
     | TE_Ref { mut; referenced } ->
       complete_is_mutable mut;
       complete_ty_expr referenced
-    | TE_Fn { arg; result; async } ->
+    | TE_Fn
+        { is_closure : bool = _; call_convention : string option = _; arg; result; async }
+      ->
       complete_ty_expr arg;
       complete_ty_expr result;
       complete_expr async

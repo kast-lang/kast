@@ -446,15 +446,20 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         let f_result_ty = Ty.new_not_inferred ~scope ~span in
         let { ty = f_ty; async = f_async } : signature = f.data.signature in
         f_async |> BoolValue.implies ~span async;
-        let f_ty_async = BoolValue.new_not_inferred ~scope ~span in
-        f_ty_async |> BoolValue.implies ~span async;
-        f_ty
-        |> Inference.Ty.expect_inferred_as
-             ~span:f.data.span
-             (Ty.inferred ~span:f.data.span
-              <| T_Fn
-                   { args = { ty = f_arg_ty }; result = f_result_ty; async = f_ty_async }
-             );
+        f_ty.var
+        |> Inference.Var.once_inferred (fun f_ty ->
+          match f_ty with
+          | Types.T_Fn
+              { is_closure : bool = _
+              ; call_convention : string option = _
+              ; args = f_ty_args
+              ; result = f_ty_result
+              ; async = f_ty_async
+              } ->
+            f_arg_ty |> Inference.Ty.expect_inferred_as ~span f_ty_args.ty;
+            f_result_ty |> Inference.Ty.expect_inferred_as ~span f_ty_result;
+            f_ty_async |> BoolValue.implies ~span async
+          | _ -> error span "expected a fn, got %a" Ty.Shape.print f_ty);
         let { ty = arg_ty; async = arg_async } : signature = arg.data.signature in
         arg_async |> BoolValue.implies ~span async;
         arg_ty |> Inference.Ty.expect_inferred_as ~span:arg.data.span f_arg_ty;
@@ -756,7 +761,13 @@ let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
       match shape with
       | TE_Unit -> ()
       | TE_Ref _ -> ()
-      | TE_Fn { arg; result; async } ->
+      | TE_Fn
+          { is_closure : bool = _
+          ; call_convention : string option = _
+          ; arg
+          ; result
+          ; async
+          } ->
         let _ : Expr.ty = arg in
         let _ : Expr.ty = result in
         let type_bool = Ty.inferred ~span T_Bool in

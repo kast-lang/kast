@@ -239,7 +239,11 @@ module Impl = struct
     | None -> fprintf fmt "?mut "
 
   and print_ty_fn : formatter -> ty_fn -> unit =
-    fun fmt { args; result; async } ->
+    fun fmt { is_closure; call_convention; args; result; async } ->
+    if not is_closure then fprintf fmt "fn ";
+    (match call_convention with
+     | Some s -> fprintf fmt "@call %a" String.print_debug s
+     | None -> ());
     fprintf
       fmt
       "async=%a %a -> %a"
@@ -343,7 +347,7 @@ module Impl = struct
         (Tuple.make [ expr ] [])
     | E_Fn { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
-       | Some { args; body } ->
+       | Some { captures = _; args; body } ->
          fprintf
            fmt
            "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
@@ -354,7 +358,7 @@ module Impl = struct
        | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
     | E_Generic { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
-       | Some { args; body } ->
+       | Some { captures = _; args; body } ->
          fprintf
            fmt
            "@{<magenta>generic@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
@@ -629,7 +633,7 @@ module Impl = struct
         mut
         (Tuple.print (print_ty_expr ~options))
         (Tuple.make [ referenced ] [])
-    | TE_Fn { arg; result; async } ->
+    | TE_Fn { is_closure; call_convention; arg; result; async } ->
       fprintf
         fmt
         "@{<magenta>fn@} %a"

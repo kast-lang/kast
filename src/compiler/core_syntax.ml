@@ -460,6 +460,23 @@ let fn_type : core_syntax =
         : a ->
         let span = ast.data.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let is_closure = children |> Tuple.get_named_opt "raw_fn" |> Option.is_none in
+        let call_convention =
+          children
+          |> Tuple.get_named_opt "call_convention"
+          |> Option.map (fun cc ->
+            let cc =
+              (cc |> Ast.Child.expect_group).children
+              |> Tuple.get_unnamed 0
+              |> Ast.Child.expect_ast
+            in
+            match cc.shape with
+            | Simple { token = { shape = String { parts = [ Content s ]; _ }; _ }; _ } ->
+              s.contents
+            | _ ->
+              error span "call convention is wrong";
+              "error")
+        in
         let async : expr = fn_async span (module C) children in
         let context =
           children
@@ -497,7 +514,7 @@ let fn_type : core_syntax =
                 arg
             in
             let result = C.compile ~state TyExpr result_ty in
-            TE_Fn { arg; result; async })
+            TE_Fn { is_closure; call_convention; arg; result; async })
           |> init_ty_expr span C.state)
   }
 ;;
@@ -513,6 +530,22 @@ let fn : core_syntax =
         : a ->
         let span = ast.data.span in
         let arg = children |> Tuple.get_named "arg" |> Ast.Child.expect_ast in
+        let is_closure = children |> Tuple.get_named_opt "raw_fn" |> Option.is_none in
+        let call_convention =
+          children
+          |> Tuple.get_named_opt "call_convention"
+          |> Option.map (fun cc ->
+            let cc =
+              (cc |> Ast.Child.expect_group).children
+              |> Tuple.get_unnamed 0
+              |> Ast.Child.expect_ast
+            in
+            match cc.shape with
+            | String { parts = [ Content s ]; _ } -> s.contents
+            | _ ->
+              error span "call convention is wrong %a" Ast.print cc;
+              "error")
+        in
         let async = fn_async span (module C) children in
         let async : BoolValue.t =
           { value = Kast_interpreter.eval C.state.interpreter async }
@@ -551,7 +584,9 @@ let fn : core_syntax =
         | Expr ->
           let scope = State.var_scope C.state in
           let ty : Types.ty_fn =
-            { args = { ty = Ty.new_not_inferred ~scope ~span:arg.data.span }
+            { is_closure
+            ; call_convention
+            ; args = { ty = Ty.new_not_inferred ~scope ~span:arg.data.span }
             ; result =
                 Ty.new_not_inferred
                   ~scope
@@ -567,7 +602,15 @@ let fn : core_syntax =
           in
           let result_fn_expr = E_Fn { ty; def } |> init_expr span C.state in
           State.Scope.fork (fun () ->
-            let state = C.state |> State.enter_scope ~span ~recursive:false in
+            let captures : binding Id.Map.t ref = ref Id.Map.empty in
+            let found_in_parent (local : Types.compiler_local) =
+              match local with
+              | Const _ -> ()
+              | Binding binding -> captures := !captures |> Id.Map.add binding.id binding
+            in
+            let state =
+              C.state |> State.enter_scope ~span ~recursive:false ~found_in_parent
+            in
             Log.trace (fun log -> log "starting to compile fn at %a" Span.print span);
             let args =
               tuple_impl
@@ -633,7 +676,12 @@ let fn : core_syntax =
                result_fn_expr |> Compiler.data_append TyExpr result_ty_expr Expr);
             ty.result
             |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.signature.ty;
-            Compiler.finish_compiling def { args = { pattern = args }; body };
+            Compiler.finish_compiling
+              def
+              { captures = !captures |> Id.Map.to_list |> List.map snd
+              ; args = { pattern = args }
+              ; body
+              };
             Log.trace (fun log ->
               log
                 "finished compiling fn at %a, result ty = %a"
@@ -705,7 +753,9 @@ let generic : core_syntax =
           in
           State.Scope.fork (fun () ->
             let body = C.compile Expr body in
-            Compiler.finish_compiling def { args = { pattern = args }; body };
+            Compiler.finish_compiling
+              def
+              { captures = []; args = { pattern = args }; body };
             Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
             Log.trace (fun log -> log "body.data.ty = %a" Ty.print body.data.signature.ty);
             ty.result
@@ -1525,7 +1575,9 @@ let impl_syntax : core_syntax =
                (* TODO maybe reduce copypasta here and compiling fn *)
                let ty : Types.ty_fn =
                  let scope = State.var_scope C.state in
-                 { args =
+                 { is_closure = true
+                 ; call_convention = None
+                 ; args =
                      { ty = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__) }
                  ; result = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__)
                  ; async = BoolValue.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__)
@@ -1565,7 +1617,9 @@ let impl_syntax : core_syntax =
                  in
                  state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
                  let body = C.compile ~state Expr impl in
-                 Compiler.finish_compiling def { args = { pattern = args }; body };
+                 Compiler.finish_compiling
+                   def
+                   { captures = []; args = { pattern = args }; body };
                  ty.args.ty
                  |> Inference.Ty.expect_inferred_as
                       ~span:args.data.span

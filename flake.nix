@@ -178,7 +178,10 @@
             prettier
             hyperfine
             inputs.filc.packages.${system}.filcc
+            clang
           ]);
+          # Since I dont have cmake or whatever
+          CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";
           shellHook = ''
             echo 'Hello from Kast devshell'
             echo '  dont forget to run `just lsp-support` :)'

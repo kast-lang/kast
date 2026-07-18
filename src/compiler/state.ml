@@ -20,6 +20,7 @@ module Scope = struct
   let init ~span ~recursive : scope =
     { id = Id.gen ()
     ; span
+    ; found_in_parent = None
     ; parent = None
     ; locals = StringMap.empty
     ; recursive
@@ -30,11 +31,12 @@ module Scope = struct
 
   let print fmt (scope : scope) = Span.print_osc8 scope.span Id.print scope.id fmt
 
-  let enter ~span ~recursive (parent : scope) : scope =
+  let enter ~span ~recursive ~found_in_parent (parent : scope) : scope =
     let id = Id.gen () in
     let result : scope =
       { id
       ; span
+      ; found_in_parent
       ; parent = Some parent
       ; locals = StringMap.empty
       ; recursive
@@ -57,7 +59,15 @@ module Scope = struct
       Label.add_reference from binding.label;
       Some local
     | None ->
-      let find_in_parent () = scope.parent |> Option.and_then (find_opt ~from ident) in
+      let find_in_parent () =
+        match scope.parent |> Option.and_then (find_opt ~from ident) with
+        | None -> None
+        | Some local_in_parent ->
+          (match scope.found_in_parent with
+           | None -> ()
+           | Some f -> f local_in_parent);
+          Some local_in_parent
+      in
       if scope.recursive && not scope.closed
       then
         if Effect.perform (AwaitUpdate scope)
@@ -119,6 +129,7 @@ module Scope = struct
       let result : scope =
         { id = Id.gen ()
         ; span = binding.span
+        ; found_in_parent = None
         ; parent = scope.parent
         ; locals = scope.locals |> StringMap.add name local
         ; recursive = false
@@ -158,7 +169,9 @@ module Scopes = struct
     }
   ;;
 
-  let enter ~span ~recursive = map (Scope.enter ~span ~recursive)
+  let enter ~span ~recursive ~found_in_parent =
+    map (Scope.enter ~span ~recursive ~found_in_parent)
+  ;;
 
   let enter_def_site ~span (def_site : Scope.t) scopes =
     { call_site = scopes.call_site
@@ -179,7 +192,9 @@ module Scopes = struct
                    span);
                result
              | None ->
-               let result = def_site |> Scope.enter ~span ~recursive:false in
+               let result =
+                 def_site |> Scope.enter ~span ~recursive:false ~found_in_parent:None
+               in
                Log.trace (fun log ->
                  log
                    "Entered def site %a = %a at %a"
@@ -361,10 +376,18 @@ type t =
 
 type state = t
 
-let enter_scope : span:span -> ?new_result_scope:bool -> recursive:bool -> state -> state =
+let enter_scope
+  :  span:span
+  -> ?new_result_scope:bool
+  -> recursive:bool
+  -> ?found_in_parent:(Scope.local -> unit)
+  -> state
+  -> state
+  =
   fun ~span
     ?(new_result_scope = false)
     ~recursive
+    ?found_in_parent
     { scopes
     ; currently_compiled_file
     ; interpreter
@@ -374,7 +397,7 @@ let enter_scope : span:span -> ?new_result_scope:bool -> recursive:bool -> state
     ; bind_mode
     ; no_std
     } ->
-  { scopes = scopes |> Scopes.enter ~span ~recursive
+  { scopes = scopes |> Scopes.enter ~span ~recursive ~found_in_parent
   ; interpreter = Interpreter.enter_scope ~new_result_scope ~span ~recursive interpreter
   ; currently_compiled_file
   ; cache

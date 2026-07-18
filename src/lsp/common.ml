@@ -76,7 +76,7 @@ let inner_compiled_with_handler
       | E_Fn { def; ty = _ } | E_Generic { def; ty = _ } ->
         (match def.compiled with
          | None -> ()
-         | Some { args = { pattern = args }; body } ->
+         | Some { captures = _; args = { pattern = args }; body } ->
            handler.handle Pattern args;
            handler.handle Expr body)
       | E_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler
@@ -163,7 +163,7 @@ let inner_compiled_with_handler
         (match shape with
          | TE_Unit -> ()
          | TE_Ref { mut = _; referenced } -> handler.handle TyExpr referenced
-         | TE_Fn { arg; result; async } ->
+         | TE_Fn { is_closure = _; call_convention = _; arg; result; async } ->
            handler.handle TyExpr arg;
            handler.handle TyExpr result;
            handler.handle Expr async

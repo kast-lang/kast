@@ -198,7 +198,8 @@ module Impl = struct
       }
     in
     let state = inner_state in
-    { args = { pattern = sub_pattern_and_inject_replacements ~state f.args.pattern }
+    { captures = f.captures
+    ; args = { pattern = sub_pattern_and_inject_replacements ~state f.args.pattern }
     ; body = sub_expr ~state f.body
     }
 
@@ -479,8 +480,12 @@ module Impl = struct
     =
     { label; symbol; ty = sub_ty ~state ty }
 
-  and sub_ty_fn ~state ({ args; result; async } : ty_fn) : ty_fn =
-    { args = { ty = args.ty |> sub_ty ~state }
+  and sub_ty_fn ~state ({ is_closure; call_convention; args; result; async } : ty_fn)
+    : ty_fn
+    =
+    { is_closure
+    ; call_convention
+    ; args = { ty = args.ty |> sub_ty ~state }
     ; result = result |> sub_ty ~state
     ; async = { value = async.value |> sub_value ~state }
     }

@@ -1376,12 +1376,18 @@ and eval_ty : state -> Expr.ty -> ty =
         | TE_Ref { mut; referenced } ->
           let referenced = eval_ty state referenced in
           Ty.inferred ~span <| T_Ref { mut; referenced }
-        | TE_Fn { arg; result; async } ->
+        | TE_Fn { is_closure; call_convention; arg; result; async } ->
           let args = eval_ty state arg in
           let result = eval_ty state result in
           let async = eval state async in
           Ty.inferred ~span
-          <| T_Fn { args = { ty = args }; result; async = { value = async } }
+          <| T_Fn
+               { is_closure
+               ; call_convention
+               ; args = { ty = args }
+               ; result
+               ; async = { value = async }
+               }
         | TE_Expr expr ->
           let value = eval state expr in
           Log.trace (fun log ->

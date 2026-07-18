@@ -173,7 +173,9 @@ module rec TypesImpl : sig
   and ty_args = { ty : ty }
 
   and ty_fn =
-    { args : ty_args
+    { is_closure : bool
+    ; call_convention : string option
+    ; args : ty_args
     ; result : ty
     ; async : bool_value
     }
@@ -230,9 +232,12 @@ module rec TypesImpl : sig
 
   (* EXPR *)
   and compiled_fn =
-    { args : pattern_args
+    { captures : captures
+    ; args : pattern_args
     ; body : expr
     }
+
+  and captures = binding list
 
   and maybe_compiled_fn =
     { span : Span.t
@@ -519,7 +524,9 @@ module rec TypesImpl : sig
 
   (* TYPE EXPR *)
   and ty_expr_fn =
-    { arg : ty_expr
+    { is_closure : bool
+    ; call_convention : string option
+    ; arg : ty_expr
     ; result : ty_expr
     ; async : expr
     }
@@ -625,6 +632,8 @@ module rec TypesImpl : sig
   and compiler_scope =
     { id : Id.t
     ; span : Span.t
+    ; found_in_parent : (compiler_local -> unit) option
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; parent : compiler_scope option
     ; recursive : bool
     ; mutable locals : compiler_local StringMap.t
@@ -911,7 +920,9 @@ end = struct
   and ty_args = { ty : ty }
 
   and ty_fn =
-    { args : ty_args
+    { is_closure : bool
+    ; call_convention : string option
+    ; args : ty_args
     ; result : ty
     ; async : bool_value
     }
@@ -968,9 +979,12 @@ end = struct
 
   (* EXPR *)
   and compiled_fn =
-    { args : pattern_args
+    { captures : captures
+    ; args : pattern_args
     ; body : expr
     }
+
+  and captures = binding list
 
   and maybe_compiled_fn =
     { span : Span.t
@@ -1257,7 +1271,9 @@ end = struct
 
   (* TYPE EXPR *)
   and ty_expr_fn =
-    { arg : ty_expr
+    { is_closure : bool
+    ; call_convention : string option
+    ; arg : ty_expr
     ; result : ty_expr
     ; async : expr
     }
@@ -1363,6 +1379,8 @@ end = struct
   and compiler_scope =
     { id : Id.t
     ; span : Span.t
+    ; found_in_parent : (compiler_local -> unit) option
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; parent : compiler_scope option
     ; recursive : bool
     ; mutable locals : compiler_local StringMap.t

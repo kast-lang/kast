@@ -53,7 +53,9 @@ let init_natives () =
          ( name
          , fun ty ->
              let fn_ty : Types.ty_fn =
-               { args =
+               { is_closure = true
+               ; call_convention = None
+               ; args =
                    { ty =
                        Ty.inferred ~span
                        <| T_Tuple

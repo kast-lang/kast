@@ -113,7 +113,12 @@ module VarScope = struct
   and of_ty_unwind_token : ty_unwind_token -> var_scope = fun { result } -> of_ty result
 
   and of_ty_fn : ty_fn -> var_scope =
-    fun { args = { ty = args }; result; async } ->
+    fun { is_closure : bool = _
+        ; call_convention : string option = _
+        ; args = { ty = args }
+        ; result
+        ; async
+        } ->
     deepest (deepest (of_ty args) (of_ty result)) (of_value async.value)
 
   and of_ty_generic : ty_generic -> var_scope =
@@ -557,6 +562,14 @@ module Impl = struct
       error span "bool unite failed";
       a)
 
+  and unite_string : string Inference.unite =
+    fun ~span a b ->
+    if a = b
+    then a
+    else (
+      error span "string unite failed";
+      a)
+
   and unite_ty_variant : ty_variant Inference.unite =
     fun ~span
       ({ name = name_a; variants = variants_a } as a)
@@ -643,7 +656,10 @@ module Impl = struct
 
   and unite_ty_fn : ty_fn Inference.unite =
     fun ~span a b ->
-    { args = { ty = unite_ty ~span a.args.ty b.args.ty }
+    { is_closure = unite_bool ~span a.is_closure b.is_closure
+    ; call_convention =
+        unite_option unite_string ~span a.call_convention b.call_convention
+    ; args = { ty = unite_ty ~span a.args.ty b.args.ty }
     ; result = unite_ty ~span a.result b.result
     ; async = { value = unite_value ~span a.async.value b.async.value }
     }

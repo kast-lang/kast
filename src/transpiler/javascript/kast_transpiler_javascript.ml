@@ -199,7 +199,7 @@ module Impl = struct
     =
     let ctx = Effect.perform GetCtx in
     let compiled = def |> Kast_interpreter.await_compiled ~span:ctx.span in
-    let { args; body } =
+    let { captures = _; args; body } =
       compiled |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
     in
     let async =

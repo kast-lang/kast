@@ -100,6 +100,12 @@ let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t)
       | None -> "cc"
     in
     let cc_args = [ c_path; "-o"; exe_path ] in
+    let cc_args =
+      match Sys.getenv_opt "CFLAGS" with
+      | Some flags ->
+        (flags |> String.split_on_char ' ' |> List.filter (fun s -> s <> "")) @ cc_args
+      | None -> cc_args
+    in
     if not !quiet
     then
       Log.info (fun log ->

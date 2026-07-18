@@ -116,7 +116,7 @@ and program =
 
 and declared_state =
   | BeingDeclared
-  | Declared
+  | Completed
 
 module Print = struct
   let indentation = ref 0
@@ -348,17 +348,19 @@ module Print = struct
     let rec ensure_typedef_completed (name : string) : unit =
       match !declared_types |> StringMap.find_opt name with
       | Some BeingDeclared -> fail "recursive typedef"
-      | Some Declared -> ()
+      | Some Completed -> ()
       | None ->
         declared_types := !declared_types |> StringMap.add name BeingDeclared;
         let def = program.types |> StringMap.find name in
         (match def with
          | Fn { args; result_ty } ->
+           args |> List.iter ensure_type_declared;
+           result_ty |> ensure_type_declared;
            write "typedef ";
            print_ty result_ty;
-           write " (";
+           write " (*";
            write name;
-           write "*)(";
+           write ")(";
            args
            |> List.iteri (fun i arg ->
              if i <> 0 then write ", ";
@@ -368,21 +370,24 @@ module Print = struct
          | Enum variants ->
            write "enum ";
            write name;
-           write "{";
+           write " {";
            writeln ();
+           inc_indentation ();
            variants
            |> StringSet.iter (fun variant ->
              write variant;
              write ",";
              writeln ());
+           dec_indentation ();
            write "};";
            writeln ()
          | Struct fields ->
            fields |> StringMap.iter (fun _ field_ty -> ensure_type_completed field_ty);
            write "struct ";
            write name;
-           write "{";
+           write " {";
            writeln ();
+           inc_indentation ();
            fields
            |> StringMap.iter (fun field_name field_ty ->
              print_ty field_ty;
@@ -390,6 +395,7 @@ module Print = struct
              write field_name;
              write ";";
              writeln ());
+           dec_indentation ();
            write "};";
            writeln ()
          | Union variants ->
@@ -397,8 +403,9 @@ module Print = struct
            |> StringMap.iter (fun _ variant_ty -> ensure_type_completed variant_ty);
            write "union ";
            write name;
-           write "{";
+           write " {";
            writeln ();
+           inc_indentation ();
            variants
            |> StringMap.iter (fun variant_name variant_ty ->
              print_ty variant_ty;
@@ -406,6 +413,7 @@ module Print = struct
              write variant_name;
              write ";";
              writeln ());
+           dec_indentation ();
            write "};";
            writeln ()
          | Alias ty ->
@@ -415,13 +423,23 @@ module Print = struct
            write name;
            write ";";
            writeln ());
-        declared_types := !declared_types |> StringMap.add name Declared
+        declared_types := !declared_types |> StringMap.add name Completed
+    and ensure_type_declared (ty : ty) : unit =
+      match ty with
+      | Unit -> ()
+      | Raw _ -> ()
+      | Named name ->
+        (match program.types |> StringMap.find name with
+         | Fn _ | Alias _ -> ensure_typedef_completed name
+         | _ -> ())
+      | Ptr pointee -> ensure_type_declared pointee
+      | Void -> ()
     and ensure_type_completed (ty : ty) : unit =
       match ty with
       | Unit -> ()
       | Raw _ -> ()
       | Named name -> ensure_typedef_completed name
-      | Ptr _ -> ()
+      | Ptr pointee -> ensure_type_declared pointee
       | Void -> ()
     in
     program.types |> StringMap.iter (fun name _def -> ensure_typedef_completed name);
