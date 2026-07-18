@@ -718,7 +718,15 @@ module Impl = struct
       | Types.E_Constant { id = _; value } -> Some (Claim (transpile_value value))
       | Types.E_Ref { mut = _; place } -> Some (AddrOf (transpile_place_expr place))
       | Types.E_Claim place -> Some (Claim (transpile_place_expr place))
-      | Types.E_Then { list } -> List.fold_left (fun _ e -> eval_expr e) None list
+      | Types.E_Then { list } ->
+        List.fold_left
+          (fun acc e ->
+             (match acc with
+              | None -> ()
+              | Some prev -> insert_stmt (Expr prev));
+             eval_expr e)
+          None
+          list
       | Types.E_Stmt { expr } ->
         execute_expr expr;
         None
@@ -805,14 +813,26 @@ module Impl = struct
       | Types.E_Ty _ -> failwith __LOC__
       | Types.E_Newtype _ -> failwith __LOC__
       | Types.E_Native { parts; _ } ->
-        let parts =
-          parts
-          |> List.map (fun (part : Types.expr_native_part) : C_ast.native_expr_part ->
-            match part with
-            | Raw s -> Raw s
-            | Expr e -> Interpolated (transpile_expr e))
-        in
-        Some (Native { parts })
+        with_return (fun { return } : C_ast.expr option ->
+          (match parts with
+           | [ Raw s ] ->
+             (match s |> String.strip_prefix ~prefix:"#include <" with
+              | None -> ()
+              | Some s ->
+                (match s |> String.strip_suffix ~suffix:">" with
+                 | None -> ()
+                 | Some s ->
+                   ctx.includes <- ctx.includes |> StringSet.add s;
+                   return None))
+           | _ -> ());
+          let parts =
+            parts
+            |> List.map (fun (part : Types.expr_native_part) : C_ast.native_expr_part ->
+              match part with
+              | Raw s -> Raw s
+              | Expr e -> Interpolated (transpile_expr e))
+          in
+          Some (Native { parts }))
       | Types.E_Module { def; bindings } ->
         let var = gen_name "module" in
         let binding_module_map = ref (Effect.perform GetBindingModuleMap) in
@@ -940,21 +960,27 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     }
   in
   let current_fn_captured = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
-  let main : C_ast.fn_def =
-    try
-      { args = []
-      ; result_ty = Raw "int"
-      ; body =
-          Impl.new_block (fun () ->
-            Impl.execute_expr expr;
-            Impl.insert_stmt (Return (Literal (Int32 (Int32.of_int 0)))))
-      }
-    with
-    | effect CurrentFnCaptured, k -> Effect.continue k current_fn_captured
-    | effect GetCtx, k -> Effect.continue k ctx
-    | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty
-  in
-  ctx.fns <- ctx.fns |> StringMap.add "main" main;
+  (try
+     let main : C_ast.fn_def =
+       { args = []
+       ; result_ty = Raw "int"
+       ; body =
+           Impl.new_block (fun () ->
+             Impl.insert_stmt
+               (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));
+             Impl.execute_expr expr;
+             Impl.insert_stmt (Return (Literal (Int32 (Int32.of_int 0)))))
+       }
+     in
+     let init_statics : C_ast.fn_def =
+       { args = []; result_ty = Raw "void"; body = ctx.init_statics.stmts }
+     in
+     ctx.fns <- ctx.fns |> StringMap.add "main" main;
+     ctx.fns <- ctx.fns |> StringMap.add "KAST_init_statics" init_statics
+   with
+   | effect CurrentFnCaptured, k -> Effect.continue k current_fn_captured
+   | effect GetCtx, k -> Effect.continue k ctx
+   | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty);
   { types = ctx.types
   ; includes = ctx.includes
   ; fns = ctx.fns

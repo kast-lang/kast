@@ -1,3 +1,4 @@
 @native "#include <stdio.h>";
-let x = 456;
-@native "printf(\"%d\\n\", \(x))";
+let six = 6;
+let seven = 7;
+@native "printf(\"%d %d\\n\", \(six), \(seven))";

@@ -86,7 +86,36 @@ let eval =
 let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t) =
   match compiler.target with
   | Ir -> eval_and ignore args
-  | C -> fail "C can't be ran"
+  | C ->
+    let c_path = "target/compiled.c" in
+    Kast_compiler_cli.run { args.compiler with output = Some c_path };
+    let exe_path =
+      match compiler.output with
+      | Some path -> path
+      | None -> "target/compiled.exe"
+    in
+    let cc =
+      match Sys.getenv_opt "CC" with
+      | Some cc -> cc
+      | None -> "cc"
+    in
+    let cc_args = [ c_path; "-o"; exe_path ] in
+    if not !quiet
+    then
+      Log.info (fun log ->
+        log "Launching %s with args %a" cc (List.print String.print_maybe_escaped) cc_args);
+    let cc_exitcode = Sys.command (Filename.quote_command cc cc_args) in
+    if cc_exitcode <> 0 then fail "cc exited with exit code %d" cc_exitcode;
+    let exe_args = [] in
+    if not !quiet
+    then
+      Log.info (fun log ->
+        log
+          "Launching %s with args %a"
+          exe_path
+          (List.print String.print_maybe_escaped)
+          exe_args);
+    Unix.execvp exe_path (Array.of_list exe_args)
   | JavaScript ->
     let path =
       match compiler.output with

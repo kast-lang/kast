@@ -124,6 +124,15 @@ module Print = struct
   let inc_indentation () = indentation := !indentation + 1
   let dec_indentation () = indentation := !indentation - 1
 
+  type _ Effect.t += GetOutput : out_channel Effect.t
+
+  let print_string s =
+    let out = Effect.perform GetOutput in
+    output_string out s
+  ;;
+
+  let print_newline () = print_string "\n"
+
   let write s =
     if not !written_after_newline
     then (
@@ -416,14 +425,14 @@ module Print = struct
       | Void -> ()
     in
     program.types |> StringMap.iter (fun name _def -> ensure_typedef_completed name);
-    program.fns |> StringMap.iter (print_fn_sig ~end_with_semicolon:true);
-    program.fns |> StringMap.iter print_fn_impl;
     program.statics
     |> List.iter (fun (static : static) ->
       print_ty static.ty;
       write " ";
       write static.name;
       write ";";
-      writeln ())
+      writeln ());
+    program.fns |> StringMap.iter (print_fn_sig ~end_with_semicolon:true);
+    program.fns |> StringMap.iter print_fn_impl
   ;;
 end
