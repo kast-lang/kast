@@ -608,7 +608,7 @@ let fn : core_syntax =
               | Const _ -> ()
               | Binding binding ->
                 captures := !captures |> Id.Map.add binding.id binding;
-                Log.info (fun log ->
+                Log.trace (fun log ->
                   log "Captured %a in %a" Binding.print binding Span.print span)
             in
             let state =
