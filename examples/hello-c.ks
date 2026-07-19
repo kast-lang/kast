@@ -1,13 +1,24 @@
 const Int = @native "Int32";
 
-let print_Int = (x ::Int) => (
+let add = (a :: Int, b :: Int) -> Int => (
+    @native "\(a) + \(b)"
+);
+
+let print_Int = (x :: Int) => (
     @native "#include <stdio.h>";
     @native "printf(\"%d\", \(x))";
 );
 
-let mut x :: Int = 0;
-let print_x = () => (
-    print_Int(x);
+let foo = (a :: Int) => (
+    print_Int(0);
+);
+
+let create = (start_value :: Int) => (
+    let mut x :: Int = start_value;
+    () => (
+        print_Int(x);
+        x = add(x, 1);
+    )
 );
 
 let print_newline = fn @call "C"() => (
@@ -15,8 +26,7 @@ let print_newline = fn @call "C"() => (
     @native "printf(\"\\n\")";
 );
 
-x = 6;
-print_x();
-x = 7;
-print_x();
+let f = create(6);
+f();
+f();
 print_newline();

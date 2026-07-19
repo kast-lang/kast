@@ -26,8 +26,10 @@ and expr =
       { f : expr
       ; args : expr list
       }
+  | Block of block
 
 and stmt =
+  | Comment of string
   | DeclareVar of
       { name : string
       ; ty : ty
@@ -196,6 +198,10 @@ module Print = struct
 
   and print_stmt (stmt : stmt) : unit =
     match stmt with
+    | Comment s ->
+      write "/* ";
+      write s;
+      write " */"
     | DeclareVar { name; ty } ->
       print_ty ty;
       write " ";
@@ -275,7 +281,8 @@ module Print = struct
         |> List.iteri (fun i arg ->
           if i <> 0 then write ", ";
           print_expr arg);
-        write ")")
+        write ")"
+      | Block block -> print_block block)
 
   and print_fn_sig ~(end_with_semicolon : bool) (name : string) (def : fn_def) =
     print_ty def.result_ty;
@@ -308,7 +315,7 @@ module Print = struct
     |> List.iter (fun stmt ->
       print_stmt stmt;
       (match stmt with
-       | GotoLabel _ -> ()
+       | GotoLabel _ | Comment _ -> ()
        | _ -> write ";");
       writeln ());
     dec_indentation ();

@@ -141,17 +141,19 @@ module Impl = struct
     with
     | effect GetCurrentBlock, k -> Effect.continue k block
 
+  and lookup_binding (binding : binding) : C_ast.place_expr =
+    let captured = Effect.perform CurrentFnCaptured in
+    match captured.interpreter |> Kast_interpreter.Scope.find_opt binding.name with
+    (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
+    | Some place -> transpile_value (Interpreter.read_place ~span place)
+    | None ->
+      (match captured.bindings |> Id.Map.find_opt binding.id with
+       | Some place -> place
+       | None -> Ident (binding_name binding))
+
   and transpile_place_expr (expr : Expr.Place.t) : C_ast.place_expr =
     match expr.shape with
-    | Types.PE_Binding binding ->
-      let captured = Effect.perform CurrentFnCaptured in
-      (match captured.interpreter |> Kast_interpreter.Scope.find_opt binding.name with
-       (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
-       | Some place -> transpile_value (Interpreter.read_place ~span place)
-       | None ->
-         (match captured.bindings |> Id.Map.find_opt binding.id with
-          | Some place -> place
-          | None -> Ident (binding_name binding)))
+    | Types.PE_Binding binding -> lookup_binding binding
     | Types.PE_Field { obj; field; field_span = _ } ->
       let field =
         match field with
@@ -492,6 +494,9 @@ module Impl = struct
       let result_ty = transpile_ty def.body.data.signature.ty in
       let body : C_ast.block =
         new_block (fun () ->
+          def.captures
+          |> List.iter (fun (binding : binding) ->
+            insert_stmt (Comment (make_string "captured %a" Binding.print binding)));
           (match captured_ty_name with
            | Some captured_ty_name ->
              let_var
@@ -519,7 +524,9 @@ module Impl = struct
               in
               pattern_match field (Ident (member_name member))
             | Unpack _ -> failwith __LOC__);
-          execute_expr def.body)
+          match eval_expr def.body with
+          | None -> ()
+          | Some result -> insert_stmt (Return result))
       in
       let name = gen_name "fn" in
       ctx.fns <- ctx.fns |> StringMap.add name ({ args; result_ty; body } : C_ast.fn_def);
@@ -582,7 +589,27 @@ module Impl = struct
                let f =
                  transpile_fn ~is_closure:fn_ty.is_closure ~captured:(Some captured) def
                in
-               Some (Claim (Ident f.name))
+               if fn_ty.is_closure && f.captured_ty_name |> Option.is_none
+               then
+                 Some
+                   (Block
+                      (new_block (fun () ->
+                         let var = gen_name "fn_as_closure" in
+                         insert_stmt
+                           (DeclareVar
+                              { name = var; ty = transpile_ty (Value.ty_of value) });
+                         insert_stmt
+                           (Assign
+                              { assignee = Field { obj = Ident var; field = "captured" }
+                              ; value = Native { parts = [ Raw "NULL" ] }
+                              });
+                         insert_stmt
+                           (Assign
+                              { assignee = Field { obj = Ident var; field = "f" }
+                              ; value = Claim (Ident f.name)
+                              });
+                         insert_stmt (Expr (Claim (Ident var))))))
+               else Some (Claim (Ident f.name))
              | V_Generic { fn = { def; captured; _ }; _ } ->
                (* TODO memoize generics *)
                let f = transpile_fn ~is_closure:false ~captured:(Some captured) def in
@@ -656,7 +683,9 @@ module Impl = struct
 
   and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr =
     let f_ty =
-      f_expr.data.signature.ty |> Ty.await_inferred |> Ty.Shape.expect_fn |> Option.unwrap
+      match f_expr.data.signature.ty |> Ty.await_inferred |> Ty.Shape.expect_fn with
+      | Some ty -> ty
+      | None -> fail "Expected fn, got %a" Ty.print f_expr.data.signature.ty
     in
     let f = transpile_expr f_expr in
     let args =
@@ -844,7 +873,7 @@ module Impl = struct
                      { assignee =
                          Field
                            { obj = Ident captured_var_name; field = binding_name binding }
-                     ; value = AddrOf (Ident (binding_name binding))
+                     ; value = AddrOf (lookup_binding binding)
                      }));
               AddrOf (Ident captured_var_name)
           in

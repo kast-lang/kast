@@ -606,7 +606,10 @@ let fn : core_syntax =
             let found_in_parent (local : Types.compiler_local) =
               match local with
               | Const _ -> ()
-              | Binding binding -> captures := !captures |> Id.Map.add binding.id binding
+              | Binding binding ->
+                captures := !captures |> Id.Map.add binding.id binding;
+                Log.info (fun log ->
+                  log "Captured %a in %a" Binding.print binding Span.print span)
             in
             let state =
               C.state |> State.enter_scope ~span ~recursive:false ~found_in_parent

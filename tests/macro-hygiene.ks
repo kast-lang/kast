@@ -18,6 +18,12 @@ const dbg = {
     );
     let x = "x_global";
     macro!(x);
+
+    const ast_refering_to_local_x = () -> Ast => (
+        let x = "x_unreachable";
+        `(x)
+    );
+    include_ast macro(ast_refering_to_local_x());
 );
 
 @syntax "custom_let" 10 @wrap never = "custom_let" " " pattern " " "=" " " value;
