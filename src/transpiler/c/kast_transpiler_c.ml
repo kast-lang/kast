@@ -1008,16 +1008,17 @@ module Impl = struct
          with
          | effect GetBindingModuleMap, k -> Effect.continue k binding_module_map)
       | Types.E_UseDotStar { bindings; used } ->
-        let stmts : C_ast.expr Dynarray.t = Dynarray.create () in
-        let used_var = gen_name "used" in
-        let_var (transpile_ty used.data.signature.ty) used_var (transpile_expr used);
-        let used : C_ast.place_expr = Ident used_var in
-        bindings
-        |> List.iter (fun (binding : binding) ->
-          let_var
-            (transpile_ty binding.ty)
-            (binding_name binding)
-            (Claim (Field { obj = used; field = binding.name.name })));
+        (* TODO not needed? *)
+        (* let stmts : C_ast.expr Dynarray.t = Dynarray.create () in *)
+        (* let used_var = gen_name "used" in *)
+        (* let_var (transpile_ty used.data.signature.ty) used_var (transpile_expr used); *)
+        (* let used : C_ast.place_expr = Ident used_var in *)
+        (* bindings *)
+        (* |> List.iter (fun (binding : binding) -> *)
+        (*   let_var *)
+        (*     (transpile_ty binding.ty) *)
+        (*     (binding_name binding) *)
+        (*     (Claim (Field { obj = used; field = binding.name.name }))); *)
         None
       | Types.E_If { cond; then_case; else_case } ->
         let cond = transpile_expr cond in
