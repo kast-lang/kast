@@ -260,7 +260,7 @@ module Impl = struct
         (add_include "stdint.h";
          Raw "int64_t")
     | Types.T_Float64 -> Alias (Raw "double")
-    | Types.T_String -> failwith __LOC__
+    | Types.T_String -> Alias (Raw "String")
     | Types.T_Char ->
       Alias
         (add_include "wchar.h";
@@ -638,7 +638,11 @@ module Impl = struct
     | V_Float64 x -> Literal (Float64 x)
     | V_Char x -> Literal (Char x)
     | V_Ref _ -> failwith __LOC__
-    | V_String s -> failwith __LOC__ (* Literal (String s) *)
+    | V_String s ->
+      Apply
+        { f = Native { parts = [ Raw "String_from_C_String" ] }
+        ; args = [ Literal (String s) ]
+        }
     | V_Tuple { ty = _; tuple } ->
       let fields =
         tuple

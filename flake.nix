@@ -177,8 +177,8 @@
             valgrind
             prettier
             hyperfine
-            inputs.filc.packages.${system}.filcc
             clang
+            inputs.filc.packages.${system}.filcc
           ]);
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";

@@ -1,5 +1,7 @@
 (library
  (name kast_transpiler_c)
  (libraries kast_types kast_interpreter)
+ (preprocessor_deps
+  (file runtime.c))
  (preprocess
   (pps ppx_include_dir)))

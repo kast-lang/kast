@@ -1,4 +1,5 @@
 const Int = @native "Int32";
+const String = @native "String";
 
 let add = (a :: Int, b :: Int) -> Int => (
     @native "\(a) + \(b)"
@@ -9,6 +10,12 @@ let print_Int = (x :: Int) => (
     @native "printf(\"%d\", \(x))";
 );
 
+let print_String = (s :: String) => (
+    @native "print_String(\(s))";
+);
+
+print_String("Hello, C! From Kast 🦄\n");
+
 let foo = (a :: Int) => (
     print_Int(0);
 );
@@ -17,7 +24,7 @@ let create = (start_value :: Int) => (
     let mut x :: Int = start_value;
     () => (
         print_Int(x);
-        x = add(x, 1);
+        x = add(x, 3);
     )
 );
 
