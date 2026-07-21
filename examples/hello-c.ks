@@ -1,33 +1,38 @@
-const Int = @native "Int32";
-const String = @native "String";
+const std = (
+    module:
 
-const print_String = (s :: String) => (
-    @native "print_String(\(s))";
+    const Int = @native "Int32";
+    const String = @native "String";
+
+    const print_String = (s :: String) => (
+        @native "print_String(\(s))";
+    );
+
+    const PanicHandler = @context type (String -> ());
+
+    const default_panic_handler = (s :: String) => (
+        print_String("PANIC: ");
+        print_String(s);
+        @native "#include <stdlib.h>";
+        @native "exit(-1)";
+    );
+
+    const panic = (s :: String) => (
+        (@current PanicHandler)(s);
+    );
+
+    const add = (a :: Int, b :: Int) -> Int => (
+        @native "\(a) + \(b)"
+    );
+
+    const print_Int = (x :: Int) => (
+        @native "#include <stdio.h>";
+        @native "printf(\"%d\", \(x))";
+    );
 );
 
-const PanicHandler = @context type (String -> ());
-
-const default_panic_handler = (s :: String) => (
-    print_String("PANIC: ");
-    print_String(s);
-    @native "#include <stdlib.h>";
-    @native "exit(-1)";
-);
-
-with PanicHandler = default_panic_handler;
-
-const panic = (s :: String) => (
-    (@current PanicHandler)(s);
-);
-
-let add = (a :: Int, b :: Int) -> Int => (
-    @native "\(a) + \(b)"
-);
-
-let print_Int = (x :: Int) => (
-    @native "#include <stdio.h>";
-    @native "printf(\"%d\", \(x))";
-);
+use std.*;
+with PanicHandler = std.default_panic_handler;
 
 print_String("Hello, C! From Kast 🦄\n");
 

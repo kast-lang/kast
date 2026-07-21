@@ -134,12 +134,13 @@ module Impl = struct
     insert_stmt (Assign { assignee = Ident name; value })
 
   and compound_literal (ty : C_ast.ty) (fields : (string * C_ast.expr) list) : C_ast.expr =
-    let name = gen_name "compound" in
-    insert_stmt (DeclareVar { name; ty });
+    let result_name = gen_name "compound" in
+    insert_stmt (DeclareVar { name = result_name; ty });
     fields
     |> List.iter (fun (name, value) ->
-      insert_stmt (Assign { assignee = Field { obj = Ident name; field = name }; value }));
-    Claim (Ident name)
+      insert_stmt
+        (Assign { assignee = Field { obj = Ident result_name; field = name }; value }));
+    Claim (Ident result_name)
 
   and new_block (f : unit -> unit) : C_ast.block =
     let block = { stmts = [] } in
@@ -289,7 +290,7 @@ module Impl = struct
       in
       Struct fields
     | Types.T_List { element_ty } -> failwith __LOC__
-    | Types.T_Ty -> failwith __LOC__ (* Alias (Ref (Named "TypeInfo")) *)
+    | Types.T_Ty -> Alias Unit (* Alias (Ref (Named "TypeInfo")) *)
     | Types.T_Fn { is_closure; call_convention; args; result; async = _ } ->
       let args = args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap in
       let args =
@@ -335,7 +336,7 @@ module Impl = struct
     | Types.T_Target -> failwith __LOC__
     | Types.T_ContextTy ->
       (* TODO maybe? *)
-      failwith __LOC__
+      Alias Unit
     | Types.T_CompilerScope -> Alias Unit
     | Types.T_Opaque _ -> failwith __LOC__
     | Types.T_Blocked _ -> failwith __LOC__
@@ -596,83 +597,84 @@ module Impl = struct
     match value.var |> Inference.Var.inferred_opt with
     | Some (V_Blocked value) -> failwith __LOC__
     | _ ->
-      let value_name = ref None in
-      let do_prepend = ref false in
-      ctx.captured_values
-      <- ctx.captured_values
-         |> Types.ValueMap.update value (fun name ->
-           let name =
-             match name with
-             | Some name -> name
-             | None ->
-               let name = gen_name ~opt:(Value.name value) "const" in
-               do_prepend := true;
-               name
+      (try
+         let value_name = ref None in
+         let do_prepend = ref false in
+         ctx.captured_values
+         <- ctx.captured_values
+            |> Types.ValueMap.update value (fun name ->
+              let name =
+                match name with
+                | Some name -> name
+                | None ->
+                  let name = gen_name ~opt:(Value.name value) "const" in
+                  do_prepend := true;
+                  name
+              in
+              value_name := Some name;
+              Some name);
+         let value_name = !value_name |> Option.get in
+         if !do_prepend
+         then (
+           Log.trace (fun log -> log "prepend %a" Value.print value);
+           let value_expr =
+             match value.var |> Inference.Var.inferred_opt with
+             | None -> Some (not_inferred value.var)
+             | Some shape ->
+               (match shape with
+                | V_Fn { fn = { def; captured; _ }; ty = fn_ty } ->
+                  let f =
+                    transpile_fn
+                      ~call_convention:fn_ty.call_convention
+                      ~is_closure:fn_ty.is_closure
+                      ~captured:(Some captured)
+                      def
+                  in
+                  if fn_ty.is_closure && f.captured_ty_name |> Option.is_none
+                  then
+                    Some
+                      (Block
+                         (new_block (fun () ->
+                            let var = gen_name "fn_as_closure" in
+                            insert_stmt
+                              (DeclareVar
+                                 { name = var; ty = transpile_ty (Value.ty_of value) });
+                            insert_stmt
+                              (Assign
+                                 { assignee =
+                                     Field { obj = Ident var; field = "captured" }
+                                 ; value = Native { parts = [ Raw "NULL" ] }
+                                 });
+                            insert_stmt
+                              (Assign
+                                 { assignee = Field { obj = Ident var; field = "f" }
+                                 ; value = Claim (Ident f.name)
+                                 });
+                            insert_stmt (Expr (Claim (Ident var))))))
+                  else Some (Claim (Ident f.name))
+                | V_Generic { fn = { def; captured; _ }; _ } ->
+                  (* TODO memoize generics *)
+                  let f =
+                    transpile_fn
+                      ~call_convention:None
+                      ~is_closure:false
+                      ~captured:(Some captured)
+                      def
+                  in
+                  Some (Claim (Ident f.name))
+                | _ -> Some (transpile_value_shape shape))
            in
-           value_name := Some name;
-           Some name);
-      let value_name = !value_name |> Option.get in
-      if !do_prepend
-      then (
-        Log.trace (fun log -> log "prepend %a" Value.print value);
-        let value_expr =
-          match value.var |> Inference.Var.inferred_opt with
-          | None -> Some (not_inferred value.var)
-          | Some shape ->
-            (match shape with
-             | V_Fn { fn = { def; captured; _ }; ty = fn_ty } ->
-               let f =
-                 transpile_fn
-                   ~call_convention:fn_ty.call_convention
-                   ~is_closure:fn_ty.is_closure
-                   ~captured:(Some captured)
-                   def
-               in
-               if fn_ty.is_closure && f.captured_ty_name |> Option.is_none
-               then
-                 Some
-                   (Block
-                      (new_block (fun () ->
-                         let var = gen_name "fn_as_closure" in
-                         insert_stmt
-                           (DeclareVar
-                              { name = var; ty = transpile_ty (Value.ty_of value) });
-                         insert_stmt
-                           (Assign
-                              { assignee = Field { obj = Ident var; field = "captured" }
-                              ; value = Native { parts = [ Raw "NULL" ] }
-                              });
-                         insert_stmt
-                           (Assign
-                              { assignee = Field { obj = Ident var; field = "f" }
-                              ; value = Claim (Ident f.name)
-                              });
-                         insert_stmt (Expr (Claim (Ident var))))))
-               else Some (Claim (Ident f.name))
-             | V_Generic { fn = { def; captured; _ }; _ } ->
-               (* TODO memoize generics *)
-               let f =
-                 transpile_fn
-                   ~call_convention:None
-                   ~is_closure:false
-                   ~captured:(Some captured)
-                   def
-               in
-               Some (Claim (Ident f.name))
-             | _ -> Some (transpile_value_shape shape))
-        in
-        match value_expr with
-        | None -> ()
-        | Some value_expr ->
-          let static : C_ast.static =
-            { name = value_name; ty = transpile_ty (Value.ty_of value) }
-          in
-          (try
-             insert_stmt (Assign { assignee = Ident value_name; value = value_expr })
-           with
-           | effect GetCurrentBlock, k -> Effect.continue k ctx.init_statics);
-          Dynarray.add_last ctx.statics static);
-      Ident value_name
+           match value_expr with
+           | None -> ()
+           | Some value_expr ->
+             let static : C_ast.static =
+               { name = value_name; ty = transpile_ty (Value.ty_of value) }
+             in
+             insert_stmt (Assign { assignee = Ident value_name; value = value_expr });
+             Dynarray.add_last ctx.statics static);
+         Ident value_name
+       with
+       | effect GetCurrentBlock, k -> Effect.continue k ctx.init_statics)
 
   and transpile_value_shape (shape : Types.value_shape) : C_ast.expr =
     match shape with
@@ -705,7 +707,7 @@ module Impl = struct
       compound_literal (transpile_ty (Value.Shape.ty_of shape)) fields
     | V_List _ -> failwith __LOC__
     | V_Variant _ -> failwith __LOC__
-    | V_Ty ty -> failwith __LOC__ (* AddrOf (TypeInfo (transpile_ty ty)) *)
+    | V_Ty ty -> Unit (* AddrOf (TypeInfo (transpile_ty ty)) *)
     | V_Fn _ | V_Generic _ -> fail "unreachable, we should never compile fns as consts"
     | V_NativeFn f -> fail "transpiling native fn %S at %s" f.name __LOC__
     | V_Ast _ -> failwith __LOC__
