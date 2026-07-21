@@ -179,7 +179,7 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     Inference.Var.setup_default_if_needed ty.var;
     match ty.var |> Inference.Var.inferred_opt with
-    | Some (T_Blocked value) -> failwith __LOC__ (* Any *)
+    | Some (T_Blocked value) -> Ptr Void
     | _ ->
       let ty_name = ref None in
       let do_prepend = ref false in
@@ -656,7 +656,7 @@ module Impl = struct
                   (* TODO memoize generics *)
                   let f =
                     transpile_fn
-                      ~call_convention:None
+                      ~call_convention:(Some "C")
                       ~is_closure:false
                       ~captured:(Some captured)
                       def
@@ -733,10 +733,11 @@ module Impl = struct
     | Types.A_Error -> failwith __LOC__
 
   and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr =
-    let f_ty =
-      match f_expr.data.signature.ty |> Ty.await_inferred |> Ty.Shape.expect_fn with
-      | Some ty -> ty
-      | None -> fail "Expected fn, got %a" Ty.print f_expr.data.signature.ty
+    let ~is_closure, ~call_convention =
+      match f_expr.data.signature.ty |> Ty.await_inferred with
+      | T_Fn ty -> ~is_closure:ty.is_closure, ~call_convention:ty.call_convention
+      | T_Generic _ -> ~is_closure:false, ~call_convention:(Some "C")
+      | _ -> fail "Expected fn, got %a" Ty.print f_expr.data.signature.ty
     in
     let f = transpile_expr f_expr in
     let args =
@@ -789,7 +790,7 @@ module Impl = struct
       else [ transpile_expr arg ]
     in
     let f, args =
-      if f_ty.is_closure
+      if is_closure
       then (
         let f_name = gen_name "f" in
         let_var (transpile_ty f_expr.data.signature.ty) f_name f;
@@ -798,7 +799,7 @@ module Impl = struct
       else f, args
     in
     let args =
-      match f_ty.call_convention with
+      match call_convention with
       | None -> [ Effect.perform GetScopeCtxPtr ] @ args
       | Some "C" -> args
       | Some other -> fail "unknown conv %S" other
@@ -1058,10 +1059,11 @@ module Impl = struct
         assign assignee (transpile_place_expr value);
         None
       | Types.E_Ty _ -> failwith __LOC__
-      | Types.E_Newtype _ -> failwith __LOC__
+      | Types.E_Newtype _ -> Some Unit
       | Types.E_Native { parts; _ } ->
         with_return (fun { return } : C_ast.expr option ->
           (match parts with
+           | [ Raw "#unreachable" ] -> return None
            | [ Raw s ] ->
              (match s |> String.strip_prefix ~prefix:"#include <" with
               | None -> ()

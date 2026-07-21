@@ -4,6 +4,7 @@ open Compiler_types
 open Kast_types
 open Error
 module Inference = Kast_inference
+module Interpreter = Kast_interpreter
 
 type signature = ir_signature
 
@@ -354,6 +355,19 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         { ty = Ty.inferred ~span <| T_Fn ty; async = BoolValue.inferred ~span false }
       | E_Generic { def = _; ty } ->
         { ty = T_Generic ty |> Ty.inferred ~span; async = BoolValue.inferred ~span false }
+      | E_InstantiateGeneric { generic; arg } when false ->
+        (* TRIED monomorphization here but its not working :( *)
+        let result = Value.new_not_inferred ~scope ~span in
+        State.Scope.fork (fun () ->
+          let generic = Interpreter.eval state.interpreter generic in
+          let arg = Interpreter.eval state.interpreter arg in
+          let instantiated : value =
+            Interpreter.instantiate span state.interpreter generic arg
+          in
+          result |> Inference.Value.expect_inferred_as ~span instantiated);
+        (* let result = instantiated in *)
+        overwrite_shape := Some (E_Constant { id = Id.gen (); value = result });
+        { ty = Value.ty_of result; async = BoolValue.inferred ~span false }
       | E_InstantiateGeneric { generic; arg } ->
         let ty = Ty.new_not_inferred ~scope ~span in
         let async = BoolValue.new_not_inferred ~scope ~span in

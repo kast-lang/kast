@@ -10,15 +10,16 @@ const std = (
 
     const PanicHandler = @context type (String -> ());
 
-    const default_panic_handler = (s :: String) => (
+    const default_panic_handler = (s :: String) -> () => (
         print_String("PANIC: ");
         print_String(s);
         @native "#include <stdlib.h>";
         @native "exit(-1)";
+        @native "#unreachable"
     );
 
     const panic = (s :: String) => (
-        (@current PanicHandler)(s);
+        (@current PanicHandler)(s)
     );
 
     const add = (a :: Int, b :: Int) -> Int => (
@@ -28,6 +29,15 @@ const std = (
     const print_Int = (x :: Int) => (
         @native "#include <stdio.h>";
         @native "printf(\"%d\", \(x))";
+    );
+
+    const Option = (
+        module:
+        
+        const t = [T] newtype (
+            | :None
+            | :Some T
+        );
     );
 );
 
@@ -59,7 +69,7 @@ f();
 print_newline();
 
 (
-    with PanicHandler = print_String;
+    # with PanicHandler = [T] (s => print_String);
     panic("Not really a panic\n");
 );
 
