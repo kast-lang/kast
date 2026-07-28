@@ -4,6 +4,11 @@ open Kast_types
 open Types
 open Common
 
+type 'a printer = formatter -> 'a -> unit
+
+let no_print (fmt : formatter) _ = ()
+let print_const s fmt _ = fprintf fmt "%s" s
+
 module Impl = struct
   module Interpreter = struct
     let instantiate
@@ -87,6 +92,7 @@ module Impl = struct
     sub_var
       ~name:"value"
       ~unite_shape:Inference_impl.unite_value_shape
+      ~print_shape:Print.print_value_shape
       ~sub_shape:sub_value_shape
       ~new_not_inferred:Value.new_not_inferred
       ~get_var:(fun (value : value) -> value.var)
@@ -279,6 +285,7 @@ module Impl = struct
     sub_var
       ~name:"name"
       ~unite_shape:Inference_impl.unite_name_shape
+      ~print_shape:Print.print_name_shape
       ~sub_shape:(fun ~state (_original : name) shape ->
         sub_name_shape ~state shape |> Name.new_inferred ~span:ctx.span)
       ~new_not_inferred:Name.new_not_inferred
@@ -290,6 +297,7 @@ module Impl = struct
     sub_var
       ~name:"optional_name"
       ~unite_shape:(Inference_impl.unite_option Inference_impl.unite_name_shape)
+      ~print_shape:(Print.print_optional Print.print_name_shape)
       ~sub_shape:
         (sub_option ~new_inferred:OptionalName.new_inferred ~sub_value:sub_name_shape)
       ~new_not_inferred:OptionalName.new_not_inferred
@@ -350,6 +358,7 @@ module Impl = struct
     sub_var
       ~name:"ty"
       ~unite_shape:Inference_impl.unite_ty_shape
+      ~print_shape:Print.print_ty_shape
       ~sub_shape:sub_ty_shape
       ~new_not_inferred:Ty.new_not_inferred
       ~get_var:(fun (ty : ty) -> ty.var)
@@ -591,6 +600,7 @@ module Impl = struct
     sub_var
       ~name:"contexts"
       ~unite_shape:Inference_impl.unite_contexts_shape
+      ~print_shape:(print_const "contexts")
       ~sub_shape:sub_contexts_shape
       ~get_var:(fun ({ var } : contexts) -> var)
       ~new_not_inferred:Contexts.new_not_inferred
@@ -614,6 +624,7 @@ module Impl = struct
       ~name:"row"
       ~unite_shape:
         (Row.unite_shape (module Inference_impl.VarScope) scope_of_value unite_value)
+      ~print_shape:(print_const "row")
       ~sub_shape:(sub_row_shape ~scope_of_value ~unite_value ~sub_value)
       ~get_var:(fun (row : ('a, var_scope) Row.t) -> row.var)
       ~new_not_inferred:Row.new_not_inferred
@@ -655,6 +666,7 @@ module Impl = struct
     :  'value 'shape.
        name:string
     -> unite_shape:'shape Inference.unite
+    -> print_shape:'shape printer
     -> sub_shape:(state:sub_state -> 'value -> 'shape -> 'value)
     -> new_not_inferred:(scope:var_scope -> span:span -> 'value)
     -> get_var:('value -> 'shape var)
@@ -662,12 +674,26 @@ module Impl = struct
     -> 'value
     -> 'value
     =
-    fun ~name ~unite_shape ~sub_shape ~new_not_inferred ~get_var ~state original_value ->
+    fun ~name
+      ~unite_shape
+      ~print_shape
+      ~sub_shape
+      ~new_not_inferred
+      ~get_var
+      ~state
+      original_value ->
     let ctx = Effect.perform GetCtx in
     let span = ctx.span in
     let var = get_var original_value in
     let var_scope = var |> Inference.Var.scope in
-    Log.trace (fun log -> log "subbing %s: %a" name Print.print_var_scope var_scope);
+    Log.trace (fun log ->
+      log
+        "subbing %s: %a into %a"
+        name
+        Print.print_var_scope
+        var_scope
+        Print.print_var_scope
+        state.result_scope);
     if var_scope |> VarScope.contains state.result_scope
     then (
       Log.trace (fun log ->
@@ -681,33 +707,59 @@ module Impl = struct
     else if ctx.depth > 128
     then fail "Went too deep" ~span
     else (
-      match ctx |> find_sub ~state var with
+      match
+        state.result_scope
+        |> Option.and_then (fun (result_scope : interpreter_scope) ->
+          (Inference.Var.find_root var).sub_history |> Id.Map.find_opt result_scope.id)
+      with
+      | Some result_var ->
+        (* This is cursed, should just have new_from_var maybe?? *)
+        let result = new_not_inferred ~scope:state.result_scope ~span in
+        Inference.Var.unite unite_shape VarScope.unite ~span result_var (get_var result)
+        |> ignore;
+        result
       | None ->
-        let id = Inference.Var.recurse_id var in
-        let subbed_temp = new_not_inferred ~scope:state.result_scope ~span in
-        let subbed_temp_var = subbed_temp |> get_var in
-        ctx |> remember_sub ~state var (Obj.repr subbed_temp);
-        ctx |> remember_sub ~state subbed_temp_var (Obj.repr subbed_temp);
-        let once_inferred =
-          fun shape ->
-          Log.trace (fun log -> log "var %a was inferred, resuming subbing" Id.print id);
-          with_ctx (go_deeper ctx) (fun () ->
-            let subbed = sub_shape ~state original_value shape in
-            let subbed_var = get_var subbed in
-            Inference.Var.unite
-              unite_shape
-              VarScope.unite
-              ~span
-              subbed_temp_var
-              subbed_var
-            |> ignore)
-        in
-        (* var *)
-        (* |> Inference.Var.await_inferred ~error_shape:(fun _ -> failwith __LOC__) *)
-        (* |> once_inferred; *)
-        var |> Inference.Var.once_inferred once_inferred;
-        subbed_temp
-      | Some sub -> sub |> Obj.obj)
+        (match ctx |> find_sub ~state var with
+         | None ->
+           let id = Inference.Var.recurse_id var in
+           let subbed_temp = new_not_inferred ~scope:state.result_scope ~span in
+           let subbed_temp_var = subbed_temp |> get_var in
+           let subbed_temp_data = subbed_temp_var |> Inference.Var.find_root in
+           subbed_temp_data.sub_history <- (var |> Inference.Var.find_root).sub_history;
+           (match state.result_scope with
+            | None -> ()
+            | Some result_scope ->
+              subbed_temp_data.sub_history
+              <- subbed_temp_data.sub_history
+                 |> Id.Map.add result_scope.id subbed_temp_var);
+           ctx |> remember_sub ~state var (Obj.repr subbed_temp);
+           ctx |> remember_sub ~state subbed_temp_var (Obj.repr subbed_temp);
+           let once_inferred =
+             fun shape ->
+             Log.trace (fun log ->
+               log
+                 "var %a was inferred as %a, resuming subbing"
+                 Id.print
+                 id
+                 print_shape
+                 shape);
+             with_ctx (go_deeper ctx) (fun () ->
+               let subbed = sub_shape ~state original_value shape in
+               let subbed_var = get_var subbed in
+               Inference.Var.unite
+                 unite_shape
+                 VarScope.unite
+                 ~span
+                 subbed_temp_var
+                 subbed_var
+               |> ignore)
+           in
+           (* var *)
+           (* |> Inference.Var.await_inferred ~error_shape:(fun _ -> failwith __LOC__) *)
+           (* |> once_inferred; *)
+           var |> Inference.Var.once_inferred once_inferred;
+           subbed_temp
+         | Some sub -> sub |> Obj.obj))
   ;;
 end
 

@@ -35,6 +35,7 @@ module Var = struct
     ; mutable once_inferred : ('a -> unit) list
     ; mutable on_unite : (('a, 'scope) var_data -> unit) list
     ; mutable scope : 'scope
+    ; mutable sub_history : ('a, 'scope) var Id.Map.t
     }
 
   let new_not_inferred : 'a 'scope. span:span -> scope:'scope -> ('a, 'scope) var =
@@ -49,6 +50,7 @@ module Var = struct
               ; on_unite = []
               ; spans = SpanSet.singleton span
               ; scope
+              ; sub_history = Id.Map.empty
               }
           }
     }
@@ -66,6 +68,7 @@ module Var = struct
               ; on_unite = []
               ; spans = SpanSet.singleton span
               ; scope = inferred_scope inferred
+              ; sub_history = Id.Map.empty
               }
           }
     }
@@ -126,11 +129,12 @@ module Var = struct
         ; on_unite = _
         ; spans
         ; scope = _
+        ; sub_history = _
         }
       =
       find_root var
     in
-    if false
+    if true
     then (
       fprintf fmt "%a" Id.print recurse_id;
       (* fprintf fmt "%a" (List.print Span.print) (spans |> SpanSet.to_list); *)
@@ -140,7 +144,7 @@ module Var = struct
     | Some inferred -> print_inferred fmt inferred
   ;;
 
-  let unite_data =
+  let rec unite_data =
     fun ~span
       unite_inferred
       unite_scope
@@ -151,6 +155,7 @@ module Var = struct
        ; on_unite = _
        ; spans = spans_a
        ; scope = scope_a
+       ; sub_history = sub_history_a
        } as data_a)
       ({ recurse_id = recurse_id_b
        ; inferred = inferred_b
@@ -159,12 +164,21 @@ module Var = struct
        ; on_unite = _
        ; spans = spans_b
        ; scope = scope_b
+       ; sub_history = sub_history_b
        } as data_b) ->
     let inferred =
       match inferred_a, inferred_b with
       | None, None -> None
       | Some inferred, None | None, Some inferred -> Some inferred
       | Some a, Some b -> Some (unite_inferred ~span a b)
+    in
+    let sub_history =
+      Id.Map.union
+        (fun _id a b ->
+           let _ : ('a, 'scope) var = unite unite_inferred unite_scope ~span a b in
+           Some a)
+        sub_history_a
+        sub_history_b
     in
     let once_inferred = data_a.once_inferred @ data_b.once_inferred in
     data_a.once_inferred <- [];
@@ -182,19 +196,18 @@ module Var = struct
       ; on_unite = []
       ; spans = SpanSet.union spans_a spans_b
       ; scope = unite_scope scope_a scope_b
+      ; sub_history
       }
     in
     on_unite |> List.iter (fun f -> f data);
     data
-  ;;
 
-  let scope : 'a 'scope. ('a, 'scope) var -> 'scope =
+  and scope : 'a 'scope. ('a, 'scope) var -> 'scope =
     fun var ->
     let root = find_root var in
     root.scope
-  ;;
 
-  let unite
+  and unite
     : 'a 'scope. 'a unite -> ('scope -> 'scope -> 'scope) -> ('a, 'scope) var unite
     =
     fun unite_inferred unite_scope ~span a b ->

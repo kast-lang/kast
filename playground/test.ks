@@ -1,22 +1,38 @@
-# const range = mut n => {
-#     .iter = consumer => (
-#         unwindable foo (
-#             @loop (
-#                 unwindable foo_body (
-#                     if n > 0 then (
-#                         consumer(n);
-#                         n -= 1;
-#                     ) else (
-#                         unwind foo ();
-#                     )
-#                 )
-#             )
-#         );
-#     ),
-# };
+const std = (
+    module:
 
-# for x in range(10) do (
-#     dbg.print(x);
-# );
+    const Type = @native "Type";
 
-dbg.print(std.sys.get_env("FOO") |> Option.unwrap);
+    const String :: Type = @native "String";
+    const Int :: Type = @native "Int32";
+
+    const dbg = [T] (x :: T) -> () => (@native "dbg.print")(x);
+
+    const Tree = (
+        module:
+
+        const Node = [T] type {
+            .left :: Tree.t[T],
+        };
+        
+        const t = [U] type (
+            | :Empty
+            | :Node Node[U]
+        );
+    );
+);
+
+use std.*;
+
+dbg(123 :: Int);
+dbg("Hello, world!");
+
+let tree :: Tree.t[Int] = :Node {
+    .left = :Empty,
+    .right = :Node {
+        .left = Tree.empty(),
+        .right = :Empty,
+    },
+};
+dbg(tree);
+

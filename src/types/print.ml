@@ -847,3 +847,8 @@ let print_ty_tuple = with_cache (Impl.print_ty_tuple ~always_print_shape:false)
 let print_ty_variant = with_cache (Impl.print_ty_variant ~always_print_shape:false)
 let print_ty_generic = with_cache Impl.print_ty_generic
 let print_args ~open_ ~close = with_cache (Impl.print_args ~open_ ~close)
+
+let print_optional f fmt = function
+  | None -> fprintf fmt "<None>"
+  | Some value -> f fmt value
+;;

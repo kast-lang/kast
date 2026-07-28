@@ -21,8 +21,9 @@ type ctx =
   }
 
 type current_captured =
-  { interpreter : Interpreter.Scope.t
+  { interpreter_scope : Interpreter.Scope.t
   ; bindings : C_ast.place_expr Id.Map.t
+  ; interpreter_state : Interpreter.state
   }
 
 type unwind_ctx =
@@ -152,7 +153,7 @@ module Impl = struct
 
   and lookup_binding (binding : binding) : C_ast.place_expr =
     let captured = Effect.perform CurrentFnCaptured in
-    match captured.interpreter |> Kast_interpreter.Scope.find_opt binding.name with
+    match captured.interpreter_scope |> Kast_interpreter.Scope.find_opt binding.name with
     (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
     | Some place -> transpile_value (Interpreter.read_place ~span place)
     | None ->
@@ -177,6 +178,12 @@ module Impl = struct
 
   and transpile_ty (ty : ty) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
+    let ty =
+      Interpreter.Substitute_bindings.sub_ty
+        ~span
+        ~state:(Interpreter.sub_here (Effect.perform CurrentFnCaptured).interpreter_state)
+        ty
+    in
     Inference.Var.setup_default_if_needed ty.var;
     match ty.var |> Inference.Var.inferred_opt with
     | Some (T_Blocked value) -> Ptr Void
@@ -315,6 +322,7 @@ module Impl = struct
          ctx.types <- ctx.types |> StringMap.add raw_fn_ty (C_ast.Fn { args; result_ty });
          Struct (StringMap.of_list [ "captured", C_ast.Ptr Void; "f", Named raw_fn_ty ])
        | false -> Fn { args; result_ty })
+    | Types.T_Generic _ when true -> Alias Unit
     | Types.T_Generic { args; result } ->
       let args =
         args.pattern.data.signature.ty
@@ -453,14 +461,32 @@ module Impl = struct
       Interpreter.await_compiled ~span def
       |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
     in
-    let captured_interpreter : Interpreter.Scope.t =
+    let captured_interpreter_scope : Interpreter.Scope.t =
       captured
-      |> Option.unwrap_or_else (fun () -> (Effect.perform CurrentFnCaptured).interpreter)
+      |> Option.unwrap_or_else (fun () ->
+        (Effect.perform CurrentFnCaptured).interpreter_scope)
+    in
+    let captured_interpreter =
+      { ctx.interpreter with
+        scope =
+          Interpreter.Scope.init
+            ~span:def.body.data.span
+            ~recursive:false
+            ~parent:(Some captured_interpreter_scope)
+      ; monomorphization_state = Types.init_monomorphization_state ()
+      }
     in
     let captured_arg_name = gen_name "captured_void" in
     let typed_captured_arg_name = gen_name "captured" in
+    let captured_bindings =
+      def.captures
+      |> List.filter (fun (binding : binding) ->
+        captured_interpreter_scope
+        |> Interpreter.Scope.find_opt binding.name
+        |> Option.is_none)
+    in
     let captured_ty_name, captured_bindings =
-      match def.captures with
+      match captured_bindings with
       | [] -> None, Id.Map.empty
       | captures ->
         let name = gen_name "captured" in
@@ -485,89 +511,96 @@ module Impl = struct
           |> Id.Map.of_list )
     in
     let captured : current_captured =
-      { interpreter = captured_interpreter; bindings = captured_bindings }
-    in
-    let result_ty = transpile_ty def.body.data.signature.ty in
-    let unwind_ctx : unwind_ctx =
-      { insert_unwind =
-          (fun () ->
-            let var = gen_name "unwind_return" in
-            insert_stmt (DeclareVar { name = var; ty = result_ty });
-            insert_stmt (Return (Claim (Ident var))))
-      ; cleanup_scope_without_unwind = (fun () -> ())
+      { interpreter_scope = captured_interpreter_scope
+      ; bindings = captured_bindings
+      ; interpreter_state = captured_interpreter
       }
     in
     try
-      let args =
-        match def.args.pattern.data.signature.ty |> Ty.await_inferred with
-        | T_Tuple { name = _; tuple } ->
-          tuple
-          |> Tuple.to_seq
-          |> Seq.map
-               (fun
-                   ((member, field) : Tuple.member * Types.ty_tuple_field)
-                    : C_ast.fn_arg
-                  -> { name = member_name member; ty = transpile_ty field.ty })
-          |> List.of_seq
-        | _ -> fail "fn args are not tuple"
+      let result_ty = transpile_ty def.body.data.signature.ty in
+      let unwind_ctx : unwind_ctx =
+        { insert_unwind =
+            (fun () ->
+              let var = gen_name "unwind_return" in
+              insert_stmt (DeclareVar { name = var; ty = result_ty });
+              insert_stmt (Return (Claim (Ident var))))
+        ; cleanup_scope_without_unwind = (fun () -> ())
+        }
       in
-      let args =
-        if is_closure
-        then [ ({ name = captured_arg_name; ty = Ptr Void } : C_ast.fn_arg) ] @ args
-        else args
-      in
-      let ctx_var = gen_name "ctx" in
-      let args =
-        match call_convention with
-        | None -> [ ({ name = ctx_var; ty = Ptr (Raw "Context") } : C_ast.fn_arg) ] @ args
-        | Some "C" -> args
-        | Some other -> fail "unknown call convension %S" other
-      in
-      let body : C_ast.block =
-        new_block (fun () ->
-          try
-            def.captures
-            |> List.iter (fun (binding : binding) ->
-              insert_stmt (Comment (make_string "captured %a" Binding.print binding)));
-            (match captured_ty_name with
-             | Some captured_ty_name ->
-               let_var
-                 (Ptr (Named captured_ty_name))
-                 typed_captured_arg_name
-                 (Claim (Ident captured_arg_name))
-             | None -> ());
-            let arg_parts =
-              match def.args.pattern.shape with
-              | P_Tuple { parts; _ } -> parts
-              | _ -> fail "fn args must be tuple"
-            in
-            let unnamed_idx = ref 0 in
-            arg_parts
-            |> List.iter (fun (part : pattern Types.tuple_part_of) ->
-              match part with
-              | Field { label; field; _ } ->
-                let member =
-                  match label with
-                  | None ->
-                    let result = Tuple.Member.Index !unnamed_idx in
-                    unnamed_idx := !unnamed_idx + 1;
-                    result
-                  | Some label -> Tuple.Member.Name (Label.get_name label)
-                in
-                pattern_match field (Ident (member_name member))
-              | Unpack _ -> failwith __LOC__);
-            unwind_ctx.cleanup_scope_without_unwind ();
-            match eval_expr def.body with
-            | None -> ()
-            | Some result -> insert_stmt (Return result)
-          with
-          | effect GetScopeCtxPtr, k -> Effect.continue k (Claim (Ident ctx_var)))
-      in
-      let name = gen_name "fn" in
-      ctx.fns <- ctx.fns |> StringMap.add name ({ args; result_ty; body } : C_ast.fn_def);
-      { captured_ty_name; name; def }
+      try
+        let args =
+          match def.args.pattern.data.signature.ty |> Ty.await_inferred with
+          | T_Tuple { name = _; tuple } ->
+            tuple
+            |> Tuple.to_seq
+            |> Seq.map
+                 (fun
+                     ((member, field) : Tuple.member * Types.ty_tuple_field)
+                      : C_ast.fn_arg
+                    -> { name = member_name member; ty = transpile_ty field.ty })
+            |> List.of_seq
+          | _ -> fail "fn args are not tuple"
+        in
+        let args =
+          if is_closure
+          then [ ({ name = captured_arg_name; ty = Ptr Void } : C_ast.fn_arg) ] @ args
+          else args
+        in
+        let ctx_var = gen_name "ctx" in
+        let args =
+          match call_convention with
+          | None ->
+            [ ({ name = ctx_var; ty = Ptr (Raw "Context") } : C_ast.fn_arg) ] @ args
+          | Some "C" -> args
+          | Some other -> fail "unknown call convension %S" other
+        in
+        let body : C_ast.block =
+          new_block (fun () ->
+            try
+              def.captures
+              |> List.iter (fun (binding : binding) ->
+                insert_stmt (Comment (make_string "captured %a" Binding.print binding)));
+              (match captured_ty_name with
+               | Some captured_ty_name ->
+                 let_var
+                   (Ptr (Named captured_ty_name))
+                   typed_captured_arg_name
+                   (Claim (Ident captured_arg_name))
+               | None -> ());
+              let arg_parts =
+                match def.args.pattern.shape with
+                | P_Tuple { parts; _ } -> parts
+                | _ -> fail "fn args must be tuple"
+              in
+              let unnamed_idx = ref 0 in
+              arg_parts
+              |> List.iter (fun (part : pattern Types.tuple_part_of) ->
+                match part with
+                | Field { label; field; _ } ->
+                  let member =
+                    match label with
+                    | None ->
+                      let result = Tuple.Member.Index !unnamed_idx in
+                      unnamed_idx := !unnamed_idx + 1;
+                      result
+                    | Some label -> Tuple.Member.Name (Label.get_name label)
+                  in
+                  pattern_match field (Ident (member_name member))
+                | Unpack _ -> failwith __LOC__);
+              unwind_ctx.cleanup_scope_without_unwind ();
+              match eval_expr def.body with
+              | None -> ()
+              | Some result -> insert_stmt (Return result)
+            with
+            | effect GetScopeCtxPtr, k -> Effect.continue k (Claim (Ident ctx_var)))
+        in
+        let name = gen_name "fn" in
+        ctx.fns
+        <- ctx.fns |> StringMap.add name ({ args; result_ty; body } : C_ast.fn_def);
+        { captured_ty_name; name; def }
+      with
+      | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
     with
-    | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
     | effect CurrentFnCaptured, k -> Effect.continue k captured
 
   and make_correct_ident (name : string) : string =
@@ -652,6 +685,7 @@ module Impl = struct
                                  });
                             insert_stmt (Expr (Claim (Ident var))))))
                   else Some (Claim (Ident f.name))
+                | V_Generic _ when true -> Some Unit
                 | V_Generic { fn = { def; captured; _ }; _ } ->
                   (* TODO memoize generics *)
                   let f =
@@ -1215,7 +1249,21 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; contexts = Id.Map.empty
     }
   in
-  let current_fn_captured = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
+  let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
+  let captured : current_captured =
+    { interpreter_scope = captured_scope
+    ; bindings = Id.Map.empty
+    ; interpreter_state =
+        { ctx.interpreter with
+          scope =
+            Interpreter.Scope.init
+              ~span:expr.data.span
+              ~recursive:false
+              ~parent:(Some captured_scope)
+        ; monomorphization_state = Types.init_monomorphization_state ()
+        }
+    }
+  in
   let ctx_var = Impl.gen_name "ctx" in
   let context_ty_def : C_ast.ty_def option ref = ref None in
   let unwind_ctx : unwind_ctx =
@@ -1255,8 +1303,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
    with
    | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
    | effect GetScopeCtxPtr, k -> Effect.continue k (AddrOf (Ident ctx_var))
-   | effect CurrentFnCaptured, k ->
-     Effect.continue k { interpreter = current_fn_captured; bindings = Id.Map.empty }
+   | effect CurrentFnCaptured, k -> Effect.continue k captured
    | effect GetCtx, k -> Effect.continue k ctx
    | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty);
   { types = ctx.types |> StringMap.add "Context" (!context_ty_def |> Option.unwrap)

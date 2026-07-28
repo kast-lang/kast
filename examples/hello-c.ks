@@ -1,7 +1,12 @@
+impl syntax (@context ty) = `(
+    (@native "create_context_type")($ty)
+);
+
 const std = (
     module:
 
     const Int = @native "Int32";
+    const Float = @native "Float64";
     const String = @native "String";
 
     const print_String = (s :: String) => (
@@ -22,13 +27,18 @@ const std = (
         (@current PanicHandler)(s)
     );
 
-    const add = (a :: Int, b :: Int) -> Int => (
+    const add = [T] (a :: T, b :: T) -> T => (
         @native "\(a) + \(b)"
     );
 
     const print_Int = (x :: Int) => (
         @native "#include <stdio.h>";
         @native "printf(\"%d\", \(x))";
+    );
+
+    const print_Float = (x :: Float) => (
+        @native "#include <stdio.h>";
+        @native "printf(\"%lf\", \(x))";
     );
 
     const Option = (
@@ -66,6 +76,10 @@ let print_newline = fn @call "C" () => (
 let f = create(6);
 f();
 f();
+print_newline();
+
+let a :: Float = 0.123;
+print_Float(add(a, 123));
 print_newline();
 
 (
