@@ -5,6 +5,8 @@ module Inference = Kast_inference
 module Interpreter = Kast_interpreter
 module C_ast = C_ast
 
+let print_span = Span.print
+
 type block = { mutable stmts : C_ast.stmt list }
 
 type ctx =
@@ -217,7 +219,7 @@ module Impl = struct
               Log.error (fun log ->
                 log
                   "transpiling not inferred ty at %a"
-                  (List.print Span.print)
+                  (List.print print_span)
                   (Inference.Var.spans ty.var |> SpanSet.to_list));
             failwith __LOC__
           | Some shape -> transpile_ty_shape shape
@@ -233,7 +235,11 @@ module Impl = struct
       |> Row.await_inferred_to_list
       |> List.map (fun (label, _) -> make_correct_ident (Label.get_name label))
     in
-    let def : C_ast.ty_def = Enum (StringSet.of_list variant_names) in
+    let def : C_ast.ty_def =
+      { shape = Enum (StringSet.of_list variant_names)
+      ; comment = Some (make_string "Tag for %a" Print.print_ty_variant ty)
+      }
+    in
     ctx.types <- ctx.types |> StringMap.add name def;
     Named name
 
@@ -252,7 +258,11 @@ module Impl = struct
         in
         name, ty)
     in
-    let def : C_ast.ty_def = Union (StringMap.of_list variants) in
+    let def : C_ast.ty_def =
+      { shape = Union (StringMap.of_list variants)
+      ; comment = Some (make_string "Data for %a" Print.print_ty_variant ty)
+      }
+    in
     ctx.types <- ctx.types |> StringMap.add name def;
     Named name
 
@@ -261,94 +271,108 @@ module Impl = struct
     ctx.includes <- ctx.includes |> StringSet.add s
 
   and transpile_ty_shape (ty : Types.ty_shape) : C_ast.ty_def =
-    match ty with
-    | Types.T_Unit -> Alias Unit
-    | Types.T_Bool ->
-      Alias
-        (add_include "stdbool.h";
-         Raw "bool")
-    | Types.T_Int32 ->
-      Alias
-        (add_include "stdint.h";
-         Raw "int32_t")
-    | Types.T_Int64 ->
-      Alias
-        (add_include "stdint.h";
-         Raw "int64_t")
-    | Types.T_Float64 -> Alias (Raw "double")
-    | Types.T_String -> Alias (Raw "String")
-    | Types.T_Char ->
-      Alias
-        (add_include "wchar.h";
-         Raw "wchar_t")
-    | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
-    | Types.T_Variant ty ->
-      Struct (StringMap.of_list [ "tag", variant_tag_ty ty; "data", variant_data_ty ty ])
-    | Types.T_Tuple { name = _; tuple } ->
-      let fields =
-        tuple
-        |> Tuple.to_seq
-        |> Seq.map
-             (fun
-                 ((member, field) : Tuple.member * Types.ty_tuple_field)
-                  : (string * C_ast.ty)
-                -> member_name member, transpile_ty field.ty)
-        |> StringMap.of_seq
-      in
-      Struct fields
-    | Types.T_List { element_ty } -> failwith __LOC__
-    | Types.T_Ty -> Alias Unit (* Alias (Ref (Named "TypeInfo")) *)
-    | Types.T_Fn { is_closure; call_convention; args; result; async = _ } ->
-      let args = args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap in
-      let args =
-        args.tuple
-        |> Tuple.to_seq
-        |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
-          transpile_ty field.ty)
-        |> List.of_seq
-      in
-      let args = if is_closure then [ C_ast.Ptr Void ] @ args else args in
-      let args =
-        match call_convention with
-        | None -> [ C_ast.Ptr (Raw "Context") ] @ args
-        | Some "C" -> args
-        | _ -> fail "unknown call convention"
-      in
-      let result_ty = transpile_ty result in
-      (match is_closure with
-       | true ->
-         let raw_fn_ty = gen_name "raw_fn_ty" in
-         let ctx = Effect.perform GetCtx in
-         ctx.types <- ctx.types |> StringMap.add raw_fn_ty (C_ast.Fn { args; result_ty });
-         Struct (StringMap.of_list [ "captured", C_ast.Ptr Void; "f", Named raw_fn_ty ])
-       | false -> Fn { args; result_ty })
-    | Types.T_Generic _ when true -> Alias Unit
-    | Types.T_Generic { args; result } ->
-      let args =
-        args.pattern.data.signature.ty
-        |> Ty.await_inferred
-        |> Ty.Shape.expect_tuple
-        |> Option.unwrap
-      in
-      let args =
-        args.tuple
-        |> Tuple.to_seq
-        |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
-          transpile_ty field.ty)
-        |> List.of_seq
-      in
-      let result_ty = transpile_ty result in
-      Fn { args; result_ty }
-    | Types.T_Ast -> failwith __LOC__
-    | Types.T_UnwindToken { result } -> failwith __LOC__
-    | Types.T_Target -> failwith __LOC__
-    | Types.T_ContextTy ->
-      (* TODO maybe? *)
-      Alias Unit
-    | Types.T_CompilerScope -> Alias Unit
-    | Types.T_Opaque _ -> failwith __LOC__
-    | Types.T_Blocked _ -> failwith __LOC__
-    | Types.T_Error -> fail "transpiling error ty"
+    let shape : C_ast.ty_def_shape =
+      match ty with
+      | Types.T_Unit -> Alias Unit
+      | Types.T_Bool ->
+        Alias
+          (add_include "stdbool.h";
+           Raw "bool")
+      | Types.T_Int32 ->
+        Alias
+          (add_include "stdint.h";
+           Raw "int32_t")
+      | Types.T_Int64 ->
+        Alias
+          (add_include "stdint.h";
+           Raw "int64_t")
+      | Types.T_Float64 -> Alias (Raw "double")
+      | Types.T_String -> Alias (Raw "String")
+      | Types.T_Char ->
+        Alias
+          (add_include "wchar.h";
+           Raw "wchar_t")
+      | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
+      | Types.T_Variant ty ->
+        Struct
+          (StringMap.of_list [ "tag", variant_tag_ty ty; "data", variant_data_ty ty ])
+      | Types.T_Tuple { name = _; tuple } ->
+        let fields =
+          tuple
+          |> Tuple.to_seq
+          |> Seq.map
+               (fun
+                   ((member, field) : Tuple.member * Types.ty_tuple_field)
+                    : (string * C_ast.ty)
+                  -> member_name member, transpile_ty field.ty)
+          |> StringMap.of_seq
+        in
+        Struct fields
+      | Types.T_List { element_ty } -> failwith __LOC__
+      | Types.T_Ty -> Alias Unit (* Alias (Ref (Named "TypeInfo")) *)
+      | Types.T_Fn { is_closure; call_convention; args; result; async = _ } ->
+        let args =
+          args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+        in
+        let args =
+          args.tuple
+          |> Tuple.to_seq
+          |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
+            transpile_ty field.ty)
+          |> List.of_seq
+        in
+        let args = if is_closure then [ C_ast.Ptr Void ] @ args else args in
+        let args =
+          match call_convention with
+          | None -> [ C_ast.Ptr (Raw "Context") ] @ args
+          | Some "C" -> args
+          | _ -> fail "unknown call convention"
+        in
+        let result_ty = transpile_ty result in
+        (match is_closure with
+         | true ->
+           let raw_fn_ty = gen_name "raw_fn_ty" in
+           let ctx = Effect.perform GetCtx in
+           ctx.types
+           <- ctx.types
+              |> StringMap.add
+                   raw_fn_ty
+                   ({ shape = Fn { args; result_ty }
+                    ; comment =
+                        Some (make_string "raw fn type for %a" Print.print_ty_shape ty)
+                    }
+                    : C_ast.ty_def);
+           Struct (StringMap.of_list [ "captured", C_ast.Ptr Void; "f", Named raw_fn_ty ])
+         | false -> Fn { args; result_ty })
+      | Types.T_Generic _ when true -> Alias Unit
+      | Types.T_Generic { args; result } ->
+        let args =
+          args.pattern.data.signature.ty
+          |> Ty.await_inferred
+          |> Ty.Shape.expect_tuple
+          |> Option.unwrap
+        in
+        let args =
+          args.tuple
+          |> Tuple.to_seq
+          |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
+            transpile_ty field.ty)
+          |> List.of_seq
+        in
+        let result_ty = transpile_ty result in
+        Fn { args; result_ty }
+      | Types.T_Ast -> failwith __LOC__
+      | Types.T_UnwindToken { result } -> failwith __LOC__
+      | Types.T_Target -> failwith __LOC__
+      | Types.T_ContextTy ->
+        (* TODO maybe? *)
+        Alias Unit
+      | Types.T_CompilerScope -> Alias Unit
+      | Types.T_Opaque _ -> failwith __LOC__
+      | Types.T_Blocked _ -> failwith __LOC__
+      | Types.T_Error -> fail "transpiling error ty"
+    in
+    { shape; comment = Some (make_string "%a" Print.print_ty_shape ty) }
 
   and does_match (pattern : pattern) (pure_place_expr : C_ast.place_expr) : C_ast.expr =
     match pattern.shape with
@@ -457,6 +481,7 @@ module Impl = struct
     : transpiled_fn
     =
     let ctx = Effect.perform GetCtx in
+    let def_span = def.span in
     let def =
       Interpreter.await_compiled ~span def
       |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
@@ -491,11 +516,14 @@ module Impl = struct
       | captures ->
         let name = gen_name "captured" in
         let def : C_ast.ty_def =
-          Struct
-            (captures
-             |> List.map (fun (binding : binding) ->
-               binding_name binding, C_ast.Ptr (transpile_ty binding.ty))
-             |> StringMap.of_list)
+          { shape =
+              Struct
+                (captures
+                 |> List.map (fun (binding : binding) ->
+                   binding_name binding, C_ast.Ptr (transpile_ty binding.ty))
+                 |> StringMap.of_list)
+          ; comment = Some (make_string "captured of closure at %a" print_span def_span)
+          }
         in
         ctx.types <- ctx.types |> StringMap.add name def;
         ( Some name
@@ -596,7 +624,15 @@ module Impl = struct
         in
         let name = gen_name "fn" in
         ctx.fns
-        <- ctx.fns |> StringMap.add name ({ args; result_ty; body } : C_ast.fn_def);
+        <- ctx.fns
+           |> StringMap.add
+                name
+                ({ args
+                 ; result_ty
+                 ; body
+                 ; comment = Some (make_string "fn at %a" print_span def_span)
+                 }
+                 : C_ast.fn_def);
         { captured_ty_name; name; def }
       with
       | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
@@ -702,7 +738,10 @@ module Impl = struct
            | None -> ()
            | Some value_expr ->
              let static : C_ast.static =
-               { name = value_name; ty = transpile_ty (Value.ty_of value) }
+               { name = value_name
+               ; ty = transpile_ty (Value.ty_of value)
+               ; comment = Some (make_string "%a" Value.print value)
+               }
              in
              insert_stmt (Assign { assignee = Ident value_name; value = value_expr });
              Dynarray.add_last ctx.statics static);
@@ -1225,12 +1264,12 @@ module Impl = struct
         in
         (match branch with
          | Some branch -> eval_expr branch.body
-         | None -> fail "no C cfg branch at %a" Span.print expr.data.span)
+         | None -> fail "no C cfg branch at %a" print_span expr.data.span)
       | Types.E_Error -> fail "transpiling error expr"
     with
     | Cancel -> raise Cancel
     | e ->
-      Log.error (fun log -> log "while transpiling expr at %a" Span.print span);
+      Log.error (fun log -> log "while transpiling expr at %a" print_span span);
       raise e
   ;;
 end
@@ -1284,21 +1323,29 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
              Impl.execute_expr expr;
              unwind_ctx.cleanup_scope_without_unwind ();
              Impl.insert_stmt (Return (Literal (Int32 (Int32.of_int 0)))))
+       ; comment = None
        }
      in
      let init_statics : C_ast.fn_def =
-       { args = []; result_ty = Raw "void"; body = ctx.init_statics.stmts }
+       { args = []
+       ; result_ty = Raw "void"
+       ; body = ctx.init_statics.stmts
+       ; comment = None
+       }
      in
      ctx.fns <- ctx.fns |> StringMap.add "main" main;
      ctx.fns <- ctx.fns |> StringMap.add "KAST_init_statics" init_statics;
      context_ty_def
      := Some
-          (Struct
-             (ctx.contexts
-              |> Id.Map.to_list
-              |> List.map (fun ((_id, context_ty) : Id.t * Types.value_context_ty) ->
-                Impl.context_field_name context_ty, Impl.transpile_ty context_ty.ty)
-              |> StringMap.of_list)
+          ({ shape =
+               Struct
+                 (ctx.contexts
+                  |> Id.Map.to_list
+                  |> List.map (fun ((_id, context_ty) : Id.t * Types.value_context_ty) ->
+                    Impl.context_field_name context_ty, Impl.transpile_ty context_ty.ty)
+                  |> StringMap.of_list)
+           ; comment = Some "implicit context"
+           }
            : C_ast.ty_def)
    with
    | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx

@@ -73,7 +73,8 @@ module Impl = struct
       print_place_ref fmt place
     | V_Tuple tuple -> print_value_tuple fmt tuple
     | V_List list -> print_value_list fmt list
-    | V_Fn { ty; fn = _ } -> fprintf fmt "@{<italic><fn %a>@}" print_ty_fn ty
+    | V_Fn { ty; fn } ->
+      fprintf fmt "@{<italic><fn %a at %a>@}" print_ty_fn ty Span.print fn.def.span
     | V_Variant { label; data; ty = _ } ->
       fprintf fmt ":%a" Label.print label;
       (match data with
@@ -244,15 +245,8 @@ module Impl = struct
     (match call_convention with
      | Some s -> fprintf fmt "@call %a" String.print_debug s
      | None -> ());
-    fprintf
-      fmt
-      "async=%a %a -> %a"
-      print_value
-      async.value
-      (print_ty_args ~open_:"(" ~close:")")
-      args
-      print_ty
-      result
+    if false then fprintf fmt "async=%a " print_value async.value;
+    fprintf fmt "%a -> %a" (print_ty_args ~open_:"(" ~close:")") args print_ty result
 
   (* VAR *)
   and print_var : 'a. (formatter -> 'a -> unit) -> formatter -> 'a var -> unit =

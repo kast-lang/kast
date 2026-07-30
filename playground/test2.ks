@@ -2,6 +2,7 @@ module:
 
 const Type = @native "Type";
 
+const Bool :: Type
 const String :: Type = @native "String";
 const Int :: Type = @native "Int32";
 

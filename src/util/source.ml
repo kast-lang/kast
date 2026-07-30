@@ -195,14 +195,19 @@ module Span = struct
 
   let print = print_with Uri.print
 
+  let print_vscode_link : formatter -> span -> unit =
+    fun fmt { start; finish = _; uri } ->
+    fprintf fmt "vscode://file%a:%d:%d" Uri.print uri start.line start.column
+  ;;
+
+  let print_vscode_md_link fmt span = fprintf fmt "[here](%a)" print_vscode_link span
+
+  (* fprintf fmt "vscode://file%a:%d.%d-%d.%d" Uri.print uri start.line
+        start.column finish.line finish.column *)
+
   let print_osc8 : 'a. span -> (formatter -> 'a -> unit) -> 'a -> formatter -> unit =
     fun span print_value value fmt ->
-    let print_span fmt { start; finish = _; uri } =
-      fprintf fmt "vscode://file%a:%d:%d" Uri.print uri start.line start.column
-      (* fprintf fmt "vscode://file%a:%d.%d-%d.%d" Uri.print uri start.line
-        start.column finish.line finish.column *)
-    in
-    let printed_span = make_string "%a" print_span span in
+    let printed_span = make_string "%a" print_vscode_link span in
     Format.pp_open_stag fmt (Format.OSC8 printed_span);
     print_value fmt value;
     Format.pp_close_stag fmt ()

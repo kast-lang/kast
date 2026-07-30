@@ -1,38 +1,15 @@
-const std = (
-    module:
+module:
 
-    const Type = @native "Type";
-
-    const String :: Type = @native "String";
-    const Int :: Type = @native "Int32";
-
-    const dbg = [T] (x :: T) -> () => (@native "dbg.print")(x);
-
-    const Tree = (
-        module:
-
-        const Node = [T] type {
-            .left :: Tree.t[T],
-        };
-        
-        const t = [U] type (
-            | :Empty
-            | :Node Node[U]
-        );
-    );
-);
+const std = include "../examples/stripped-std.ks";
 
 use std.*;
 
-dbg(123 :: Int);
-dbg("Hello, world!");
+const g = [T] () => (
+    print_String("Im a G\n");
+);
+const f = [T] () => (
+    g[T]();
+);
 
-let tree :: Tree.t[Int] = :Node {
-    .left = :Empty,
-    .right = :Node {
-        .left = Tree.empty(),
-        .right = :Empty,
-    },
-};
-dbg(tree);
-
+f[Int]();
+print_String("Hello\n");

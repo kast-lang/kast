@@ -69,7 +69,7 @@ and native_expr_part =
   | Raw of string
   | Interpolated of expr
 
-and ty_def =
+and ty_def_shape =
   | Enum of StringSet.t
   | Struct of ty StringMap.t
   | Union of ty StringMap.t
@@ -78,6 +78,11 @@ and ty_def =
       ; result_ty : ty
       }
   | Alias of ty
+
+and ty_def =
+  { shape : ty_def_shape
+  ; comment : string option
+  }
 
 and ty =
   | Unit
@@ -94,7 +99,8 @@ and fn_ty =
   }
 
 and fn_def =
-  { args : fn_arg list
+  { comment : string option
+  ; args : fn_arg list
   ; result_ty : ty
   ; body : block
   }
@@ -107,6 +113,7 @@ and fn_arg =
 and static =
   { name : string
   ; ty : ty
+  ; comment : string option
   }
 
 and program =
@@ -163,6 +170,18 @@ module Print = struct
     | Claim expr -> need_surround_place_expr expr
     | Literal _ -> false
     | _ -> true
+  ;;
+
+  let write_comment (comment : string option) =
+    match comment with
+    | Some comment ->
+      write "/*";
+      writeln ();
+      write comment;
+      writeln ();
+      write "*/";
+      writeln ()
+    | None -> ()
   ;;
 
   let rec _unused = ()
@@ -285,6 +304,7 @@ module Print = struct
       | Block block -> print_block block)
 
   and print_fn_sig ~(end_with_semicolon : bool) (name : string) (def : fn_def) =
+    write_comment def.comment;
     print_ty def.result_ty;
     write " ";
     write name;
@@ -334,7 +354,7 @@ module Print = struct
     program.types
     |> StringMap.iter (fun name def ->
       let shape_name =
-        match def with
+        match def.shape with
         | Enum _ -> Some "enum"
         | Struct _ -> Some "struct"
         | Union _ -> Some "union"
@@ -360,7 +380,8 @@ module Print = struct
       | None ->
         declared_types := !declared_types |> StringMap.add name BeingDeclared;
         let def = program.types |> StringMap.find name in
-        (match def with
+        write_comment def.comment;
+        (match def.shape with
          | Fn { args; result_ty } ->
            args |> List.iter ensure_type_declared;
            result_ty |> ensure_type_declared;
@@ -437,7 +458,7 @@ module Print = struct
       | Unit -> ()
       | Raw _ -> ()
       | Named name ->
-        (match program.types |> StringMap.find name with
+        (match (program.types |> StringMap.find name).shape with
          | Fn _ | Alias _ -> ensure_typedef_completed name
          | _ -> ())
       | Ptr pointee -> ensure_type_declared pointee
@@ -453,6 +474,7 @@ module Print = struct
     program.types |> StringMap.iter (fun name _def -> ensure_typedef_completed name);
     program.statics
     |> List.iter (fun (static : static) ->
+      write_comment static.comment;
       print_ty static.ty;
       write " ";
       write static.name;
