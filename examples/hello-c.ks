@@ -1,5 +1,3 @@
-const std = include "./stripped-std.ks";
-
 use std.*;
 
 with PanicHandler = std.default_panic_handler;
@@ -32,21 +30,22 @@ let a :: Float = 0.123;
 print_Float(add(a, 123));
 print_newline();
 
-(
+const fib = (
     module:
 
     const fib = [T] (one :: T, two :: T, n :: T) -> T => (
         if n < two then (
             one
         ) else (
-            fib(one, two, n - one) + fib(one, two, n - two)
+            fib[_](one, two, n - one) + fib[_](one, two, n - two)
         )
     );
 
-    print_String("fib(10) = ");
-    print_Int(fib(1, 2, 10));
-    print_String("\n");
-);
+).fib;
+
+# print_String("fib(10) = ");
+# print_Int(fib(1, 2, 10));
+# print_String("\n");
 
 (
     # with PanicHandler = [T] (s => print_String);

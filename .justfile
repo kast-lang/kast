@@ -43,6 +43,10 @@ test-aoc *args:
 run-js path *args:
     kast run --format prettier --target javascript {{path}} {{args}}
 
+test-c:
+    ${CC:-gcc} -o target/test tests/test-c-runtime.c -g
+    ./target/test
+
 bench *args:
     kast compile \
         --output target/compiled.mjs \

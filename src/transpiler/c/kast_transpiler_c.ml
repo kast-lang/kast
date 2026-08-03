@@ -277,24 +277,18 @@ module Impl = struct
     let shape : C_ast.ty_def_shape =
       match ty with
       | Types.T_Unit -> Alias Unit
-      | Types.T_Bool ->
-        Alias
-          (add_include "stdbool.h";
-           Raw "bool")
+      | Types.T_Bool -> Alias (Raw "Bool")
       | Types.T_Int32 ->
         Alias
           (add_include "stdint.h";
-           Raw "int32_t")
+           Raw "Int32")
       | Types.T_Int64 ->
         Alias
           (add_include "stdint.h";
-           Raw "int64_t")
-      | Types.T_Float64 -> Alias (Raw "double")
+           Raw "Int64")
+      | Types.T_Float64 -> Alias (Raw "Float64")
       | Types.T_String -> Alias (Raw "String")
-      | Types.T_Char ->
-        Alias
-          (add_include "wchar.h";
-           Raw "wchar_t")
+      | Types.T_Char -> Alias (Raw "Char")
       | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
       | Types.T_Variant ty ->
         if variant_needs_tag ty
@@ -1136,13 +1130,9 @@ module Impl = struct
              ; "data", value
              ])
       | Types.E_Apply { f; arg } -> Some (call_fn ~args_is_tuple:true f arg)
-      | Types.E_InstantiateGeneric { generic; arg } ->
-        let generic = Interpreter.eval interpreter generic in
-        let arg = Interpreter.eval interpreter arg in
-        let instantiated =
-          Interpreter.instantiate expr.data.span interpreter generic arg
-        in
-        Some (Claim (transpile_value instantiated))
+      | Types.E_InstantiateGeneric _ ->
+        let value = Interpreter.eval interpreter expr in
+        Some (Claim (transpile_value value))
       | Types.E_Assign { assignee; value } ->
         let value_var = gen_name "value" in
         assign assignee (transpile_place_expr value);
@@ -1267,10 +1257,10 @@ module Impl = struct
           insert_stmt (Assign { assignee = ctx_place; value = Claim (Ident old_var) }));
         None
       | Types.E_CurrentContext { context_ty } -> Some (Claim (current_context context_ty))
-      | Types.E_ImplCast _ -> failwith __LOC__
-      | Types.E_Cast { value; target } ->
-        failwith __LOC__
-        (* Cast { value = transpile_expr value; target = cast_target target } *)
+      | Types.E_ImplCast _ -> None
+      | Types.E_Cast _ ->
+        let value = Interpreter.eval interpreter expr in
+        Some (Claim (transpile_value value))
       | Types.E_TargetDependent target_dependent ->
         let branch =
           Kast_interpreter.find_target_dependent_branch
@@ -1303,8 +1293,8 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; contexts = Id.Map.empty
     }
   in
-  (* let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in *)
-  let captured_scope = interpreter.scope in
+  let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
+  (* let captured_scope = interpreter.scope in *)
   let captured : current_captured =
     { interpreter_scope = captured_scope
     ; bindings = Id.Map.empty

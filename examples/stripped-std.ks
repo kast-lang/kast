@@ -37,8 +37,16 @@ const panic = (s :: String) -> Never => (
     (@current PanicHandler)(s)
 );
 
+const Add = [Self] newtype {
+    .add :: (Self, Self) -> Self,
+};
+
+impl Int as Add = {
+    .add = (a, b) => @native "\(a) + \(b)",
+};
+
 const add = [T] (a :: T, b :: T) -> T => (
-    @native "\(a) + \(b)"
+    (T as Add).add(a, b)
 );
 
 const sub = [T] (a :: T, b :: T) -> T => (

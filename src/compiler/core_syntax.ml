@@ -451,10 +451,9 @@ let fn_type : core_syntax =
               |> Ast.Child.expect_ast
             in
             match cc.shape with
-            | Simple { token = { shape = String { parts = [ Content s ]; _ }; _ }; _ } ->
-              s.contents
+            | String { parts = [ Content s ]; _ } -> s.contents
             | _ ->
-              error span "call convention is wrong";
+              error cc.data.span "call convention is wrong : %a" Ast.print cc;
               "error")
         in
         let context =
