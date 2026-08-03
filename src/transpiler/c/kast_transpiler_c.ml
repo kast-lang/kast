@@ -10,8 +10,7 @@ let print_span = Span.print
 type block = { mutable stmts : C_ast.stmt list }
 
 type ctx =
-  { interpreter : Kast_interpreter.state
-  ; target : Types.value_target
+  { target : Types.value_target
   ; mutable includes : StringSet.t
   ; mutable types : C_ast.ty_def StringMap.t
   ; mutable fns : C_ast.fn_def StringMap.t
@@ -33,6 +32,7 @@ type unwind_ctx =
   ; mutable cleanup_scope_without_unwind : unit -> unit
   }
 
+type _ Effect.t += GetInterpreter : Interpreter.state Effect.t
 type _ Effect.t += CurrentFnCaptured : current_captured Effect.t
 type _ Effect.t += GetCtx : ctx Effect.t
 type _ Effect.t += GetBindingModuleMap : string Id.Map.t Effect.t
@@ -486,13 +486,12 @@ module Impl = struct
       Interpreter.await_compiled ~span def
       |> Option.unwrap_or_else (fun () -> fail "fn not compiled")
     in
+    let current_captured = Effect.perform CurrentFnCaptured in
     let captured_interpreter_scope : Interpreter.Scope.t =
-      captured
-      |> Option.unwrap_or_else (fun () ->
-        (Effect.perform CurrentFnCaptured).interpreter_scope)
+      captured |> Option.unwrap_or_else (fun () -> current_captured.interpreter_scope)
     in
     let captured_interpreter =
-      { ctx.interpreter with
+      { current_captured.interpreter_state with
         scope =
           Interpreter.Scope.init
             ~span:def.body.data.span
@@ -941,12 +940,17 @@ module Impl = struct
     | Types.P_Error -> failwith __LOC__
 
   and cast_target (target : value) : C_ast.ty =
-    let ctx = Effect.perform GetCtx in
     match target |> Value.await_inferred with
     | V_Ty _ -> failwith __LOC__
     | V_Generic { ty; _ } ->
       let arg = construct_pattern_value_with_bindings ty.args.pattern in
-      let result = Interpreter.instantiate span ctx.interpreter target arg in
+      let result =
+        Interpreter.instantiate
+          span
+          (Effect.perform CurrentFnCaptured).interpreter_state
+          target
+          arg
+      in
       let result_ty = result |> Value.expect_ty |> Option.unwrap in
       transpile_ty result_ty
     | _ -> failwith __LOC__
@@ -972,6 +976,7 @@ module Impl = struct
 
   and eval_expr (expr : expr) : C_ast.expr option =
     let ctx = Effect.perform GetCtx in
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     let span = expr.data.span in
     try
       match expr.shape with
@@ -1126,7 +1131,12 @@ module Impl = struct
              ])
       | Types.E_Apply { f; arg } -> Some (call_fn ~args_is_tuple:true f arg)
       | Types.E_InstantiateGeneric { generic; arg } ->
-        Some (call_fn ~args_is_tuple:true generic arg)
+        let generic = Interpreter.eval interpreter generic in
+        let arg = Interpreter.eval interpreter arg in
+        let instantiated =
+          Interpreter.instantiate expr.data.span interpreter generic arg
+        in
+        Some (Claim (transpile_value instantiated))
       | Types.E_Assign { assignee; value } ->
         let value_var = gen_name "value" in
         assign assignee (transpile_place_expr value);
@@ -1258,7 +1268,7 @@ module Impl = struct
       | Types.E_TargetDependent target_dependent ->
         let branch =
           Kast_interpreter.find_target_dependent_branch
-            ctx.interpreter
+            interpreter
             target_dependent
             ctx.target
         in
@@ -1276,8 +1286,7 @@ end
 
 let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.program =
   let ctx : ctx =
-    { interpreter
-    ; target = { name = "c" }
+    { target = { name = "c" }
     ; statics = Dynarray.create ()
     ; captured_values = Types.ValueMap.empty
     ; captured_types = Types.ValueMap.empty
@@ -1288,12 +1297,13 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; contexts = Id.Map.empty
     }
   in
-  let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
+  (* let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in *)
+  let captured_scope = interpreter.scope in
   let captured : current_captured =
     { interpreter_scope = captured_scope
     ; bindings = Id.Map.empty
     ; interpreter_state =
-        { ctx.interpreter with
+        { interpreter with
           scope =
             Interpreter.Scope.init
               ~span:expr.data.span

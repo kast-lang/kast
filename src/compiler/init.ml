@@ -327,34 +327,6 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
       | E_Scope { expr } -> expr.data.signature
       | E_Fn { ty; _ } -> { ty = Ty.inferred ~span <| T_Fn ty }
       | E_Generic { def = _; ty } -> { ty = T_Generic ty |> Ty.inferred ~span }
-      | E_InstantiateGeneric { generic; arg } when false ->
-        let { ty = generic_ty } : signature = generic.data.signature in
-        let { ty = arg_ty } : signature = arg.data.signature in
-        let result = Value.new_not_inferred ~scope ~span in
-        State.Scope.fork (fun () ->
-          with_return (fun { return } ->
-            let ({ args = { pattern = arg_pattern }; result = result_ty }
-                  : Types.ty_generic)
-              =
-              match generic_ty |> Ty.await_inferred with
-              | T_Generic ty -> ty
-              | _ ->
-                Error.error span "Expected a generic";
-                return ()
-            in
-            arg_ty
-            |> Inference.Ty.expect_inferred_as
-                 ~span:arg.data.span
-                 arg_pattern.data.signature.ty;
-            let generic = Interpreter.eval state.interpreter generic in
-            let arg = Interpreter.eval state.interpreter arg in
-            let instantiated : value =
-              Interpreter.instantiate span state.interpreter generic arg
-            in
-            result |> Inference.Value.expect_inferred_as ~span instantiated));
-        (* let result = instantiated in *)
-        overwrite_shape := Some (E_Constant { id = Id.gen (); value = result });
-        { ty = Value.ty_of result }
       | E_InstantiateGeneric { generic; arg } ->
         let ty = Ty.new_not_inferred ~scope ~span in
         let { ty = generic_ty } : signature = generic.data.signature in
