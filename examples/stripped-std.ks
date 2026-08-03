@@ -4,18 +4,28 @@ impl syntax (@context ty) = `(
     (@native "create_context_type")($ty)
 );
 
+impl syntax (arg |> f) = `(
+    $f($arg)
+);
+
 const Bool = @native "Bool";
 const Int = @native "Int32";
 const Float = @native "Float64";
 const String = @native "String";
 
+const Never = newtype @empty_variant;
+
+const from_never = [T] (_ :: Never) -> T => (
+    @native "#unreachable"
+);
+
 const print_String = (s :: String) => (
     @native "print_String(\(s))";
 );
 
-const PanicHandler = @context type (String -> ());
+const PanicHandler = @context type (String -> Never);
 
-const default_panic_handler = (s :: String) -> () => (
+const default_panic_handler = (s :: String) -> Never => (
     print_String("PANIC: ");
     print_String(s);
     @native "#include <stdlib.h>";
@@ -23,7 +33,7 @@ const default_panic_handler = (s :: String) -> () => (
     @native "#unreachable"
 );
 
-const panic = (s :: String) => (
+const panic = (s :: String) -> Never => (
     (@current PanicHandler)(s)
 );
 

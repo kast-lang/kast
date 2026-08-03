@@ -2145,6 +2145,24 @@ let variant_impl =
     init_error span C.state kind
 ;;
 
+let empty_variant : core_syntax =
+  { name = "empty_variant"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        (_ : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        match kind with
+        | TyExpr -> (fun () -> TE_Variant { variants = [] }) |> init_ty_expr span C.state
+        | _ ->
+          error span "empty_variant can only be type expr";
+          init_error span C.state kind)
+  }
+;;
+
 let variant_without_value : core_syntax =
   { name = "variant_without_value"
   ; handle =
@@ -2615,6 +2633,7 @@ let core =
   ; include_ast
   ; no_hygiene
   ; record
+  ; empty_variant
   ]
 ;;
 

@@ -270,6 +270,9 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     ctx.includes <- ctx.includes |> StringSet.add s
 
+  and variant_needs_tag (ty : Types.ty_variant) : bool =
+    ty.variants |> Row.await_inferred_to_list |> List.length > 0
+
   and transpile_ty_shape (ty : Types.ty_shape) : C_ast.ty_def =
     let shape : C_ast.ty_def_shape =
       match ty with
@@ -294,8 +297,11 @@ module Impl = struct
            Raw "wchar_t")
       | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
       | Types.T_Variant ty ->
-        Struct
-          (StringMap.of_list [ "tag", variant_tag_ty ty; "data", variant_data_ty ty ])
+        if variant_needs_tag ty
+        then
+          Struct
+            (StringMap.of_list [ "tag", variant_tag_ty ty; "data", variant_data_ty ty ])
+        else Struct (StringMap.singleton "data" (variant_data_ty ty))
       | Types.T_Tuple { name = _; tuple } ->
         let fields =
           tuple
