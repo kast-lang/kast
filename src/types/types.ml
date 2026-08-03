@@ -177,7 +177,6 @@ module rec TypesImpl : sig
     ; call_convention : string option
     ; args : ty_args
     ; result : ty
-    ; async : bool_value
     }
 
   and bool_value = { value : value }
@@ -528,7 +527,6 @@ module rec TypesImpl : sig
     ; call_convention : string option
     ; arg : ty_expr
     ; result : ty_expr
-    ; async : expr
     }
 
   and ty_expr_tuple = ty_expr tuple_of
@@ -687,10 +685,7 @@ module rec TypesImpl : sig
     ; id : Id.t
     }
 
-  and ir_signature =
-    { ty : ty
-    ; async : bool_value
-    }
+  and ir_signature = { ty : ty }
 
   and ir_signature_contexts =
     { required : contexts
@@ -924,7 +919,6 @@ end = struct
     ; call_convention : string option
     ; args : ty_args
     ; result : ty
-    ; async : bool_value
     }
 
   and bool_value = { value : value }
@@ -1275,7 +1269,6 @@ end = struct
     ; call_convention : string option
     ; arg : ty_expr
     ; result : ty_expr
-    ; async : expr
     }
 
   and ty_expr_tuple = ty_expr tuple_of
@@ -1440,10 +1433,7 @@ end = struct
     ; id : Id.t
     }
 
-  and ir_signature =
-    { ty : ty
-    ; async : bool_value
-    }
+  and ir_signature = { ty : ty }
 
   and ir_signature_contexts =
     { required : contexts

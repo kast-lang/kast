@@ -240,12 +240,11 @@ module Impl = struct
     | None -> fprintf fmt "?mut "
 
   and print_ty_fn : formatter -> ty_fn -> unit =
-    fun fmt { is_closure; call_convention; args; result; async } ->
+    fun fmt { is_closure; call_convention; args; result } ->
     if not is_closure then fprintf fmt "fn ";
     (match call_convention with
      | Some s -> fprintf fmt "@call %a" String.print_debug s
      | None -> ());
-    if false then fprintf fmt "async=%a " print_value async.value;
     fprintf fmt "%a -> %a" (print_ty_args ~open_:"(" ~close:")") args print_ty result
 
   (* VAR *)
@@ -627,17 +626,14 @@ module Impl = struct
         mut
         (Tuple.print (print_ty_expr ~options))
         (Tuple.make [ referenced ] [])
-    | TE_Fn { is_closure; call_convention; arg; result; async } ->
+    | TE_Fn { is_closure; call_convention; arg; result } ->
       fprintf
         fmt
         "@{<magenta>fn@} %a"
         (Tuple.print (print_compiled ~options))
         (Tuple.make
            []
-           [ "arg", Compiled (TyExpr, arg)
-           ; "result", Compiled (TyExpr, result)
-           ; "async", Compiled (Expr, async)
-           ])
+           [ "arg", Compiled (TyExpr, arg); "result", Compiled (TyExpr, result) ])
     | TE_Expr expr -> fprintf fmt "@{<magenta>expr@} %a" (print_expr ~options) expr
     | TE_Tuple tuple -> print_ir_tuple '=' (print_ty_expr ~options) fmt tuple
     | TE_Union { elements } ->

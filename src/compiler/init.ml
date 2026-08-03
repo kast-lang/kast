@@ -33,17 +33,6 @@ let tuple_sig
     ({ guaranteed_anonymous; parts } : a Types.tuple_of)
     : signature ->
   let result_ty = Ty.new_not_inferred ~scope ~span in
-  let async = BoolValue.new_not_inferred ~scope ~span in
-  parts
-  |> List.iter (fun (part : a Types.tuple_part_of) ->
-    let e =
-      match part with
-      | Field { label = _; label_span = _; field } -> field
-      | Unpack e -> e
-    in
-    let data = get_data kind e in
-    data.signature.async |> BoolValue.implies ~span async;
-    ());
   let required_contexts = Contexts.new_not_inferred ~scope ~span in
   let produced_contexts = Contexts.new_not_inferred ~scope ~span in
   let should_infer_unpack_parts_based_on_result =
@@ -121,17 +110,13 @@ let tuple_sig
         match part with
         | Field { label; label_span = _; field = (field_expr : a) } ->
           let name = label |> Option.map Label.get_name in
-          let { ty = field_expr_ty; async = _ } : signature =
-            (get_data kind field_expr).signature
-          in
+          let { ty = field_expr_ty } : signature = (get_data kind field_expr).signature in
           let ty_field : Types.ty_tuple_field =
             { ty = field_expr_ty; label; symbol = None }
           in
           result_tuple := !result_tuple |> Tuple.add name ty_field
         | Unpack packed ->
-          let { ty = packed_ty; async = _ } : signature =
-            (get_data kind packed).signature
-          in
+          let { ty = packed_ty } : signature = (get_data kind packed).signature in
           (match packed_ty |> Ty.await_inferred |> Ty.Shape.expect_tuple with
            | Some { name = _; tuple } ->
              tuple
@@ -156,7 +141,7 @@ let tuple_sig
              }
       in
       result_ty |> Inference.Ty.expect_inferred_as ~span inferred));
-  { ty = result_ty; async }
+  { ty = result_ty }
 ;;
 
 let rec _unused () = ()
@@ -226,8 +211,7 @@ and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span (obj_ty :
       ty |> Inference.Ty.expect_inferred_as ~span field_ty);
     ty)
 
-and pure : ty -> signature =
-  fun ty -> { ty; async = BoolValue.inferred ~span:(Span.of_ocaml __POS__) false }
+and pure : ty -> signature = fun ty -> { ty }
 
 and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
   fun span state shape ->
@@ -242,20 +226,15 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
       | PE_Deref ref ->
         let mut = IsMutable.new_not_inferred ~scope ~span in
         let value_ty = Ty.new_not_inferred ~scope ~span in
-        let { ty = ref_ty; async } : signature = ref.data.signature in
+        let { ty = ref_ty } : signature = ref.data.signature in
         ref_ty
         |> Inference.Ty.expect_inferred_as
              ~span
              (Ty.inferred ~span (T_Ref { mut; referenced = value_ty }));
-        mut, { ty = value_ty; async }
+        mut, { ty = value_ty }
       | PE_Field { obj; field; field_span } ->
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        let { ty = obj_ty; async = obj_async } : signature = obj.data.signature in
-        obj_async |> BoolValue.implies ~span async;
-        (match field with
-         | Index _ | Name _ -> ()
-         | Expr e -> e.data.signature.async |> BoolValue.implies ~span async);
-        obj.mut, { ty = field_ty ~state ~span ~obj ~field_span obj_ty field; async }
+        let { ty = obj_ty } : signature = obj.data.signature in
+        obj.mut, { ty = field_ty ~state ~span ~obj ~field_span obj_ty field }
     in
     { shape
     ; mut
@@ -328,11 +307,10 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           place.mut.var
           |> Inference.Var.once_inferred (fun place_mut ->
             if not place_mut then Error.error span "not mutable");
-        let { ty = place_ty; async } : signature = place.data.signature in
+        let { ty = place_ty } : signature = place.data.signature in
         { ty =
             Ty.inferred ~span
             <| T_Ref { mut = IsMutable.new_inferred ~span mut; referenced = place_ty }
-        ; async
         }
       | E_Claim place -> place.data.signature
       | E_Then { list } ->
@@ -341,26 +319,17 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           | None -> Ty.inferred ~span T_Unit
           | Some last -> last.data.signature.ty
         in
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        list
-        |> List.iter (fun (expr : expr) ->
-          expr.data.signature.async |> BoolValue.implies ~span async);
-        { ty; async }
+        { ty }
       | E_Stmt { expr } ->
-        let { ty = expr_ty; async } : signature = expr.data.signature in
+        let { ty = expr_ty } : signature = expr.data.signature in
         ignored_ty span expr_ty;
-        { ty = Ty.inferred ~span T_Unit; async }
+        { ty = Ty.inferred ~span T_Unit }
       | E_Scope { expr } -> expr.data.signature
-      | E_Fn { ty; _ } ->
-        { ty = Ty.inferred ~span <| T_Fn ty; async = BoolValue.inferred ~span false }
-      | E_Generic { def = _; ty } ->
-        { ty = T_Generic ty |> Ty.inferred ~span; async = BoolValue.inferred ~span false }
+      | E_Fn { ty; _ } -> { ty = Ty.inferred ~span <| T_Fn ty }
+      | E_Generic { def = _; ty } -> { ty = T_Generic ty |> Ty.inferred ~span }
       | E_InstantiateGeneric { generic; arg } when false ->
-        (* TRIED monomorphization here but its not working :( *)
-        let { ty = generic_ty; async = generic_async } : signature =
-          generic.data.signature
-        in
-        let { ty = arg_ty; async = arg_async } : signature = arg.data.signature in
+        let { ty = generic_ty } : signature = generic.data.signature in
+        let { ty = arg_ty } : signature = arg.data.signature in
         let result = Value.new_not_inferred ~scope ~span in
         State.Scope.fork (fun () ->
           with_return (fun { return } ->
@@ -385,16 +354,11 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
             result |> Inference.Value.expect_inferred_as ~span instantiated));
         (* let result = instantiated in *)
         overwrite_shape := Some (E_Constant { id = Id.gen (); value = result });
-        { ty = Value.ty_of result; async = BoolValue.inferred ~span false }
+        { ty = Value.ty_of result }
       | E_InstantiateGeneric { generic; arg } ->
         let ty = Ty.new_not_inferred ~scope ~span in
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        let { ty = generic_ty; async = generic_async } : signature =
-          generic.data.signature
-        in
-        generic_async |> BoolValue.implies ~span async;
-        let { ty = arg_ty; async = arg_async } : signature = arg.data.signature in
-        arg_async |> BoolValue.implies ~span async;
+        let { ty = generic_ty } : signature = generic.data.signature in
+        let { ty = arg_ty } : signature = arg.data.signature in
         State.Scope.fork (fun () ->
           let inferred_ty =
             with_return (fun { return } ->
@@ -445,7 +409,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
               Ty.print
               inferred_ty);
           ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
-        { ty; async }
+        { ty }
       | E_Tuple tuple -> tuple_sig ~scope ~span Expr tuple
       | E_Variant { label; label_span = _; value } ->
         { ty =
@@ -465,19 +429,13 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                           ; rest = Row.new_not_inferred ~scope ~span
                           }
                  }
-        ; async =
-            value
-            |> Option.map (fun (expr : expr) -> expr.data.signature.async)
-            |> Option.unwrap_or_else (fun () -> BoolValue.inferred ~span false)
         }
       | E_Apply { f; arg } ->
-        let async = BoolValue.new_not_inferred ~scope ~span in
         let f = f |> auto_instantiate_generics f.data.span state in
         overwrite_shape := Some (E_Apply { f; arg });
         let f_arg_ty = Ty.new_not_inferred ~scope ~span in
         let f_result_ty = Ty.new_not_inferred ~scope ~span in
-        let { ty = f_ty; async = f_async } : signature = f.data.signature in
-        f_async |> BoolValue.implies ~span async;
+        let { ty = f_ty } : signature = f.data.signature in
         f_ty.var
         |> Inference.Var.once_inferred (fun f_ty ->
           match f_ty with
@@ -486,34 +444,23 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
               ; call_convention : string option = _
               ; args = f_ty_args
               ; result = f_ty_result
-              ; async = f_ty_async
               } ->
             f_arg_ty |> Inference.Ty.expect_inferred_as ~span f_ty_args.ty;
-            f_result_ty |> Inference.Ty.expect_inferred_as ~span f_ty_result;
-            f_ty_async |> BoolValue.implies ~span async
+            f_result_ty |> Inference.Ty.expect_inferred_as ~span f_ty_result
           | _ -> error span "expected a fn, got %a" Ty.Shape.print f_ty);
-        let { ty = arg_ty; async = arg_async } : signature = arg.data.signature in
-        arg_async |> BoolValue.implies ~span async;
+        let { ty = arg_ty } : signature = arg.data.signature in
         arg_ty |> Inference.Ty.expect_inferred_as ~span:arg.data.span f_arg_ty;
-        { ty = f_result_ty; async }
+        { ty = f_result_ty }
       | E_Assign { assignee; value } ->
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        let { ty = assignee_ty; async = assignee_async } : signature =
-          assignee.data.signature
-        in
-        assignee_async |> BoolValue.implies ~span async;
-        let { ty = value_ty; async = value_async } : signature = value.data.signature in
-        value_async |> BoolValue.implies ~span async;
+        let { ty = assignee_ty } : signature = assignee.data.signature in
+        let { ty = value_ty } : signature = value.data.signature in
         value_ty |> Inference.Ty.expect_inferred_as ~span:value.data.span assignee_ty;
-        { ty = Ty.inferred ~span T_Unit; async }
+        { ty = Ty.inferred ~span T_Unit }
       | E_Ty ty_expr -> ty_expr.data.signature
       | E_Newtype ty_expr -> ty_expr.data.signature
-      | E_Native _ ->
-        { ty = Ty.new_not_inferred ~scope ~span
-        ; async = BoolValue.new_not_inferred ~scope ~span
-        }
+      | E_Native _ -> { ty = Ty.new_not_inferred ~scope ~span }
       | E_Module { def; bindings = _ } ->
-        let { ty = def_ty; async } : signature = def.data.signature in
+        let { ty = def_ty } : signature = def.data.signature in
         def_ty
         |> Inference.Ty.expect_inferred_as ~span:def.data.span (Ty.inferred ~span T_Unit);
         { ty =
@@ -537,32 +484,23 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                              }
                              : Types.ty_tuple_field) )))
                  })
-        ; async
         }
-      | E_UseDotStar { used; bindings = _ } ->
-        { ty = Ty.inferred ~span T_Unit; async = used.data.signature.async }
+      | E_UseDotStar { used; bindings = _ } -> { ty = Ty.inferred ~span T_Unit }
       | E_If { cond; then_case; else_case } ->
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        let { ty = cond_ty; async = cond_async } : signature = cond.data.signature in
-        cond_async |> BoolValue.implies ~span async;
+        let { ty = cond_ty } : signature = cond.data.signature in
         cond_ty
         |> Inference.Ty.expect_inferred_as
              ~span:cond.data.span
              (Ty.inferred ~span:cond.data.span T_Bool);
         let ty = Ty.new_not_inferred ~scope ~span in
-        let { ty = then_ty; async = then_async } : signature = then_case.data.signature in
-        then_async |> BoolValue.implies ~span async;
-        let { ty = else_ty; async = else_async } : signature = else_case.data.signature in
-        else_async |> BoolValue.implies ~span async;
+        let { ty = then_ty } : signature = then_case.data.signature in
+        let { ty = else_ty } : signature = else_case.data.signature in
         then_ty |> Inference.Ty.expect_inferred_as ~span:then_case.data.span ty;
         else_ty |> Inference.Ty.expect_inferred_as ~span:else_case.data.span ty;
-        { ty; async }
+        { ty }
       | E_And { lhs; rhs } | E_Or { lhs; rhs } ->
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        let { ty = lhs_ty; async = lhs_async } : signature = lhs.data.signature in
-        lhs_async |> BoolValue.implies ~span async;
-        let { ty = rhs_ty; async = rhs_async } : signature = rhs.data.signature in
-        rhs_async |> BoolValue.implies ~span async;
+        let { ty = lhs_ty } : signature = lhs.data.signature in
+        let { ty = rhs_ty } : signature = rhs.data.signature in
         lhs_ty
         |> Inference.Ty.expect_inferred_as
              ~span:lhs.data.span
@@ -571,84 +509,66 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         |> Inference.Ty.expect_inferred_as
              ~span:lhs.data.span
              (Ty.inferred ~span:rhs.data.span T_Bool);
-        { ty = T_Bool |> Ty.inferred ~span; async }
+        { ty = T_Bool |> Ty.inferred ~span }
       | E_Match { value; branches } ->
         let result_ty = Ty.new_not_inferred ~scope ~span in
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        let { ty = value_ty; async = value_async } : signature = value.data.signature in
-        value_async |> BoolValue.implies ~span async;
+        let { ty = value_ty } : signature = value.data.signature in
         branches
         |> List.iter (fun (branch : Types.expr_match_branch) ->
-          let { ty = branch_pattern_ty; async = _ } : signature =
-            branch.pattern.data.signature
-          in
-          let { ty = branch_body_ty; async = body_async } : signature =
-            branch.body.data.signature
-          in
-          body_async |> BoolValue.implies ~span async;
+          let { ty = branch_pattern_ty } : signature = branch.pattern.data.signature in
+          let { ty = branch_body_ty } : signature = branch.body.data.signature in
           branch_pattern_ty
           |> Inference.Ty.expect_inferred_as ~span:branch.pattern.data.span value_ty;
           branch_body_ty
           |> Inference.Ty.expect_inferred_as ~span:branch.body.data.span result_ty);
-        { ty = result_ty; async }
+        { ty = result_ty }
       | E_QuoteAst _ ->
         (* TODO assert all children are ast *)
-        (* TODO async may be in children *)
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        { ty = Ty.inferred ~span T_Ast; async }
+        { ty = Ty.inferred ~span T_Ast }
       | E_Loop { body } ->
-        let { ty = body_ty; async } : signature = body.data.signature in
+        let { ty = body_ty } : signature = body.data.signature in
         ignored_ty span body_ty;
-        { ty = Ty.new_not_inferred ~scope ~span; async }
-      | E_Error ->
-        { ty = Ty.new_not_inferred ~scope ~span; async = BoolValue.inferred ~span false }
+        { ty = Ty.new_not_inferred ~scope ~span }
+      | E_Error -> { ty = Ty.new_not_inferred ~scope ~span }
       | E_Unwindable { token; body } ->
-        let { ty = token_ty; async = _ } : signature = token.data.signature in
-        let { ty = body_ty; async } : signature = body.data.signature in
+        let { ty = token_ty } : signature = token.data.signature in
+        let { ty = body_ty } : signature = body.data.signature in
         token_ty
         |> Inference.Ty.expect_inferred_as
              ~span:token.data.span
              (Ty.inferred ~span:token.data.span <| T_UnwindToken { result = body_ty });
-        { ty = body_ty; async }
+        { ty = body_ty }
       | E_TargetDependent { branches; captured = _; interpreter_branch = _ } ->
-        let async = BoolValue.new_not_inferred ~scope ~span in
         let result_ty = Ty.new_not_inferred ~scope ~span in
         branches
         |> List.iter (fun ({ cond; body } : Types.expr_target_dependent_branch) ->
-          let { ty = cond_ty; async = _ } : signature = cond.data.signature in
+          let { ty = cond_ty } : signature = cond.data.signature in
           cond_ty
           |> Inference.Ty.expect_inferred_as
                ~span:cond.data.span
                (Ty.inferred ~span:cond.data.span T_Bool);
-          let { ty = body_ty; async = body_async } : signature = body.data.signature in
-          body_async |> BoolValue.implies ~span async;
+          let { ty = body_ty } : signature = body.data.signature in
           result_ty |> Inference.Ty.expect_inferred_as ~span:body.data.span body_ty);
-        { ty = result_ty; async }
+        { ty = result_ty }
       | E_InjectContext { context_ty; value } ->
         value.data.signature.ty |> Inference.Ty.expect_inferred_as ~span context_ty.ty;
-        { ty = Ty.inferred ~span T_Unit; async = value.data.signature.async }
-      | E_CurrentContext { context_ty } ->
-        { ty = context_ty.ty; async = BoolValue.inferred ~span false }
+        { ty = Ty.inferred ~span T_Unit }
+      | E_CurrentContext { context_ty } -> { ty = context_ty.ty }
       | E_ImplCast { value; target; impl } ->
-        let { ty = impl_ty; async } : signature = impl.data.signature in
+        let { ty = impl_ty } : signature = impl.data.signature in
         impl_ty
         |> Inference.Ty.expect_inferred_as ~span (cast_result_ty ~span state value target);
-        { ty = Ty.inferred ~span T_Unit; async }
+        { ty = Ty.inferred ~span T_Unit }
       | E_Cast { value : expr; target : value } ->
-        { ty = cast_result_ty ~span state value target
-        ; async = value.data.signature.async
-        }
+        { ty = cast_result_ty ~span state value target }
       | E_Unwind { token; value } ->
-        let async = BoolValue.new_not_inferred ~scope ~span in
-        let { ty = token_ty; async = token_async } : signature = token.data.signature in
-        token_async |> BoolValue.implies ~span async;
-        let { ty = value_ty; async = value_async } : signature = value.data.signature in
-        value_async |> BoolValue.implies ~span async;
+        let { ty = token_ty } : signature = token.data.signature in
+        let { ty = value_ty } : signature = value.data.signature in
         token_ty
         |> Inference.Ty.expect_inferred_as
              ~span:token.data.span
              (Ty.inferred ~span:token.data.span (T_UnwindToken { result = value_ty }));
-        { ty = Ty.never ~scope ~span; async }
+        { ty = Ty.never ~scope ~span }
     in
     { shape = !overwrite_shape |> Option.value ~default:shape
     ; data =
@@ -672,11 +592,10 @@ let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
   fun span state shape ->
   let scope = State.var_scope state in
   try
-    let async = BoolValue.inferred ~span false in
     let signature : signature =
       match shape with
-      | A_Placeholder -> { ty = Ty.new_not_inferred ~scope ~span; async }
-      | A_Unit -> { ty = Ty.inferred ~span T_Unit; async }
+      | A_Placeholder -> { ty = Ty.new_not_inferred ~scope ~span }
+      | A_Unit -> { ty = Ty.inferred ~span T_Unit }
       | A_Tuple tuple -> tuple_sig ~scope ~span Assignee tuple
       | A_Let pattern -> pattern.data.signature
       | A_Place place ->
@@ -684,7 +603,7 @@ let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
         |> Inference.Var.once_inferred (fun mut ->
           if not mut then Error.error span "Not mutable");
         place.data.signature
-      | A_Error -> { ty = Ty.new_not_inferred ~scope ~span; async }
+      | A_Error -> { ty = Ty.new_not_inferred ~scope ~span }
     in
     { shape
     ; data =
@@ -729,7 +648,7 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
            result
          | Claim -> binding.ty)
       | P_Tuple tuple ->
-        let { ty; async = _ } : signature = tuple_sig ~scope ~span Pattern tuple in
+        let { ty } : signature = tuple_sig ~scope ~span Pattern tuple in
         ty
       | P_Variant { label; label_span = _; value } ->
         Ty.inferred ~span
@@ -753,7 +672,7 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
     { shape
     ; data =
         { span
-        ; signature = { ty; async = BoolValue.inferred ~span false }
+        ; signature = { ty }
         ; evaled = init_evaled ()
         ; included_file = None
         ; id = Id.gen ()
@@ -770,13 +689,12 @@ let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
   fun span state shape ->
   let type_ty = Ty.inferred ~span T_Ty in
   try
-    let async = BoolValue.new_not_inferred ~scope:(State.var_scope state) ~span in
     let result : Expr.ty =
       { compiled_shape = None
       ; on_compiled = []
       ; data =
           { span
-          ; signature = { ty = type_ty; async }
+          ; signature = { ty = type_ty }
           ; evaled = init_evaled ()
           ; included_file = None
           ; id = Id.gen ()
@@ -793,22 +711,14 @@ let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
       match shape with
       | TE_Unit -> ()
       | TE_Ref _ -> ()
-      | TE_Fn
-          { is_closure : bool = _
-          ; call_convention : string option = _
-          ; arg
-          ; result
-          ; async
-          } ->
+      | TE_Fn { is_closure : bool = _; call_convention : string option = _; arg; result }
+        ->
         let _ : Expr.ty = arg in
         let _ : Expr.ty = result in
         let type_bool = Ty.inferred ~span T_Bool in
-        async.data.signature.ty
-        |> Inference.Ty.expect_inferred_as ~span:async.data.span type_bool;
         ()
       | TE_Expr expr ->
-        let { ty = expr_ty; async = expr_async } : signature = expr.data.signature in
-        expr_async |> BoolValue.implies ~span async;
+        let { ty = expr_ty } : signature = expr.data.signature in
         expr_ty |> Inference.Ty.expect_inferred_as ~span:expr.data.span type_ty
       | TE_Tuple _ -> ()
       | TE_Union { elements = _ } -> ()

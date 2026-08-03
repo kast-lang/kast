@@ -117,9 +117,8 @@ module VarScope = struct
         ; call_convention : string option = _
         ; args = { ty = args }
         ; result
-        ; async
         } ->
-    deepest (deepest (of_ty args) (of_ty result)) (of_value async.value)
+    deepest (of_ty args) (of_ty result)
 
   and of_ty_generic : ty_generic -> var_scope =
     fun { args = { pattern = args }; result } ->
@@ -661,7 +660,6 @@ module Impl = struct
         unite_option unite_string ~span a.call_convention b.call_convention
     ; args = { ty = unite_ty ~span a.args.ty b.args.ty }
     ; result = unite_ty ~span a.result b.result
-    ; async = { value = unite_value ~span a.async.value b.async.value }
     }
 
   and unite_ty : ty Inference.unite =

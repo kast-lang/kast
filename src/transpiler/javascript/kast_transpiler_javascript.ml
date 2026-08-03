@@ -206,8 +206,7 @@ module Impl = struct
       match !async_fns with
       | Always -> true
       | Never -> false
-      | BasedOnInference ->
-        body.data.signature.async |> BoolValue.inferred_opt |> Option.value ~default:false
+      | BasedOnInference -> fail "async inference got removed"
     in
     let ctx =
       match captured with
@@ -1059,11 +1058,7 @@ module Impl = struct
       match !async_fns with
       | Always -> true
       | Never -> false
-      | BasedOnInference ->
-        (match f.data.signature.ty |> Ty.await_inferred with
-         | T_Fn f -> f.async |> BoolValue.inferred_opt |> Option.value ~default:false
-         | T_Generic g -> false
-         | other -> fail "calling %a???" Ty.Shape.print other)
+      | BasedOnInference -> fail "async inference got removed"
     in
     let f = pure <| transpile_expr f in
     let unnamed_args = ref [] in

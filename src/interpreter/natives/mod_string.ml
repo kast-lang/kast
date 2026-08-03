@@ -207,7 +207,7 @@ let init () =
         V_String s)
       |> Value.inferred ~span)
   ; native_fn "parse" (fun ty ~caller ~state:_ args ->
-      let { is_closure = _; call_convention = _; args = _; result = result_ty; async = _ }
+      let { is_closure = _; call_convention = _; args = _; result = result_ty }
         : Types.ty_fn
         =
         ty

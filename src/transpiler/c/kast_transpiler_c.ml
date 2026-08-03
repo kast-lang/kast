@@ -310,7 +310,7 @@ module Impl = struct
         Struct fields
       | Types.T_List { element_ty } -> failwith __LOC__
       | Types.T_Ty -> Alias Unit (* Alias (Ref (Named "TypeInfo")) *)
-      | Types.T_Fn { is_closure; call_convention; args; result; async = _ } ->
+      | Types.T_Fn { is_closure; call_convention; args; result } ->
         let args =
           args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
         in

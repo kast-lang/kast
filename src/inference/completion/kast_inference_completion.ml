@@ -209,17 +209,11 @@ module Impl = struct
     complete_option complete_ty data
 
   and complete_ty_fn
-        ({ is_closure : bool = _
-         ; call_convention : string option = _
-         ; args
-         ; result
-         ; async
-         } :
+        ({ is_closure : bool = _; call_convention : string option = _; args; result } :
           ty_fn)
     =
     complete_ty_args args;
-    complete_ty result;
-    complete_value async.value
+    complete_ty result
 
   and complete_ty_args ({ ty } : ty_args) = complete_ty ty
 
@@ -438,12 +432,9 @@ module Impl = struct
     | TE_Ref { mut; referenced } ->
       complete_is_mutable mut;
       complete_ty_expr referenced
-    | TE_Fn
-        { is_closure : bool = _; call_convention : string option = _; arg; result; async }
-      ->
+    | TE_Fn { is_closure : bool = _; call_convention : string option = _; arg; result } ->
       complete_ty_expr arg;
-      complete_ty_expr result;
-      complete_expr async
+      complete_ty_expr result
     | TE_Expr expr -> complete_expr expr
     | TE_Tuple { guaranteed_anonymous : bool = _; parts } ->
       parts |> List.iter (complete_tuple_part_of complete_ty_expr)
@@ -467,9 +458,7 @@ module Impl = struct
     =
     complete_signature signature
 
-  and complete_signature ({ ty; async } : ir_signature) : unit =
-    complete_ty ty;
-    complete_value async.value
+  and complete_signature ({ ty } : ir_signature) : unit = complete_ty ty
 
   and complete_contexts ({ var } : contexts) =
     complete_var ~name:"contexts" complete_contexts_shape var

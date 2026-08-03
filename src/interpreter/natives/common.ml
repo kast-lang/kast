@@ -36,7 +36,6 @@ let native_fn name impl : string * (ty -> value) =
         ; call_convention = None
         ; args = { ty = Ty.new_not_inferred ~scope ~span }
         ; result = Ty.new_not_inferred ~scope ~span
-        ; async = BoolValue.new_not_inferred ~scope ~span
         }
       in
       ty |> Inference.Ty.expect_inferred_as ~span (T_Fn fn_ty |> Ty.inferred ~span);
