@@ -221,7 +221,8 @@ module Impl = struct
     complete_pattern_args args;
     complete_ty result
 
-  and complete_ty_opaque ({ name } : ty_opaque) = complete_name name
+  and complete_ty_opaque ({ name; native_name : string option = _ } : ty_opaque) =
+    complete_name name
 
   and complete_ty_tuple_field ({ ty; symbol = _; label = _ } : ty_tuple_field) =
     complete_ty ty

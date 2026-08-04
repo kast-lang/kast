@@ -124,7 +124,8 @@ module VarScope = struct
     fun { args = { pattern = args }; result } ->
     deepest (of_ty args.data.signature.ty) (of_ty result)
 
-  and of_ty_opaque : ty_opaque -> var_scope = fun { name } -> of_name name
+  and of_ty_opaque : ty_opaque -> var_scope =
+    fun { name; native_name : string option = _ } -> of_name name
 
   and of_ty_variant : ty_variant -> var_scope =
     fun { name; variants } -> deepest (of_optional_name name) (Row.scope variants)
@@ -337,8 +338,12 @@ module Impl = struct
          | T_ContextTy, _ -> fail ()
          | T_CompilerScope, T_CompilerScope -> T_CompilerScope
          | T_CompilerScope, _ -> fail ()
-         | T_Opaque { name = name_a }, T_Opaque { name = name_b } ->
-           T_Opaque { name = unite_name ~span name_a name_b }
+         | ( T_Opaque { name = name_a; native_name = native_name_a }
+           , T_Opaque { name = name_b; native_name = native_name_b } ) ->
+           T_Opaque
+             { name = unite_name ~span name_a name_b
+             ; native_name = unite_option unite_string ~span native_name_a native_name_b
+             }
          | T_Opaque _, _ -> fail ()
          | T_Blocked a, T_Blocked b -> T_Blocked (unite_blocked_value ~span a b)
          | T_Blocked _, _ -> fail ())

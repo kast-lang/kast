@@ -1,8 +1,13 @@
 module:
+
 const std = @current_scope;
 include "./syntax.ks";
 
 const Type = @native "Type";
+
+const impl_native = [T] (name :: String, value :: T) => (
+    (@native "impl_native")(name, value)
+);
 
 const UnwindToken = [T :: Type] ((@native "UnwindToken")(T) :: Type);
 const UnwindUnit = UnwindToken[type ()];
@@ -20,6 +25,7 @@ const Float64 :: Type = @native "Float64";
 const Char :: Type = @native "Char";
 const String :: Type = @native "String";
 
+include "./never.ks";
 include "./ast.ks";
 
 const cmp = include "./cmp.ks";
@@ -43,6 +49,8 @@ const sys = include "./sys.ks";
 const random = include "./random.ks";
 const repr = include "./repr.ks";
 const collections = include "./collections/_mod.ks";
+
+const backend = include "./backend/_mod.ks";
 
 include "./panic.ks";
 

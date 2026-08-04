@@ -111,6 +111,7 @@
 @syntax "core:by_ref" 500 @wrap never = "ref" " " _;
 @syntax "core:by_ref_mut" 500 @wrap never = "ref" " " "mut" " " _;
 @syntax "opaque_type" 500 @wrap never = "@opaque_type";
+@syntax "opaque_type_with_arg" 500 @wrap never = "@opaque_type" " " native_name;
 @syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" _:any " "/"\\\n" "}";

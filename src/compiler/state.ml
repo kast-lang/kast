@@ -382,6 +382,7 @@ end
 type imported =
   { custom_syntax_impls : (Id.t, value) Hashtbl.t
   ; cast_impls : Types.cast_impls
+  ; set_natives : Interpreter.Natives.t
   ; parser_ruleset : Kast_parser.Ruleset.t
   ; value : value
   }

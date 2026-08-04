@@ -29,6 +29,7 @@ and expr =
   | Block of block
 
 and stmt =
+  | Native of native_expr
   | Comment of string
   | DeclareVar of
       { name : string
@@ -56,6 +57,7 @@ and field =
 
 and place_expr =
   | Ident of string
+  | Native of native_expr
   | Field of
       { obj : place_expr
       ; field : string
@@ -206,6 +208,7 @@ module Print = struct
     maybe_surround surround (fun () ->
       match expr with
       | Ident name -> write name
+      | Native native -> print_native native
       | Field { obj; field } ->
         print_place_expr obj;
         write ".";
@@ -217,6 +220,7 @@ module Print = struct
 
   and print_stmt (stmt : stmt) : unit =
     match stmt with
+    | Native native -> print_native native
     | Comment s ->
       write "/* ";
       write s;
@@ -253,6 +257,12 @@ module Print = struct
       write "return ";
       print_expr value
 
+  and print_native ({ parts } : native_expr) : unit =
+    parts
+    |> List.iter (function
+      | Raw s -> write s
+      | Interpolated expr -> print_expr expr)
+
   and print_expr (expr : expr) : unit =
     let surround = need_surround_expr expr in
     maybe_surround surround (fun () ->
@@ -283,11 +293,7 @@ module Print = struct
       | AddrOf place ->
         write "&";
         print_place_expr place
-      | Native { parts } ->
-        parts
-        |> List.iter (function
-          | Raw s -> write s
-          | Interpolated expr -> print_expr expr)
+      | Native native -> print_native native
       | Cast { value; target } ->
         write "(";
         print_ty target;
@@ -375,7 +381,7 @@ module Print = struct
     let declared_types = ref StringMap.empty in
     let rec ensure_typedef_completed (name : string) : unit =
       match !declared_types |> StringMap.find_opt name with
-      | Some BeingDeclared -> fail "recursive typedef"
+      | Some BeingDeclared -> fail "recursive typedef %s" name
       | Some Completed -> ()
       | None ->
         declared_types := !declared_types |> StringMap.add name BeingDeclared;

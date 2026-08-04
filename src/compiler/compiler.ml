@@ -172,9 +172,10 @@ and calculate_import ?(prelude : bool = true) ~(span : span) (module C : S) (uri
              ; parser_ruleset = parsed.ruleset_with_all_new_syntax
              ; custom_syntax_impls = state.custom_syntax_impls
              ; cast_impls = state.interpreter.cast_impls
+             ; set_natives = state.interpreter.natives
              }
            in
-           let { value; custom_syntax_impls; cast_impls; parser_ruleset = _ }
+           let { value; custom_syntax_impls; cast_impls; parser_ruleset = _; set_natives }
              : State.imported
              =
              imported
@@ -211,6 +212,7 @@ and calculate_import ?(prelude : bool = true) ~(span : span) (module C : S) (uri
     ; parser_ruleset = Kast_parser.Ruleset.empty
     ; custom_syntax_impls = Hashtbl.create 0
     ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
+    ; set_natives = { by_name = StringMap.empty }
     }
 ;;
 
@@ -222,6 +224,11 @@ let rec import ?(prelude : bool = true) ~(span : span) (module C : S) (uri : Uri
   Log.trace (fun log -> log "imported (maybe cached) %a" Uri.print uri);
   Hashtbl.add_seq C.state.custom_syntax_impls (Hashtbl.to_seq result.custom_syntax_impls);
   (* TODO what if its going to be evaluated in a different interpreter? *)
+  C.state.interpreter.natives.by_name
+  <- StringMap.union
+       (fun _ a _ -> Some a)
+       C.state.interpreter.natives.by_name
+       result.set_natives.by_name;
   result.cast_impls.map
   |> Types.ValueMap.iter (fun target impls ->
     impls

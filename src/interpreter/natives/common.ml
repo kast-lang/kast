@@ -27,6 +27,19 @@ let make_single_arg ~span (arg : value) (ty : Types.ty_tuple) : value =
   make_args ~span (Tuple.make [ arg ] []) ty
 ;;
 
+let make_single_arg_infer ~span (arg : value) : value =
+  let field_ty : Types.ty_tuple_field =
+    { ty = Value.ty_of arg; symbol = None; label = None }
+  in
+  make_args
+    ~span
+    (Tuple.make [ arg ] [])
+    ({ name = OptionalName.new_not_inferred ~span ~scope:(VarScope.root ())
+     ; tuple = Tuple.make [ field_ty ] []
+     }
+     : Types.ty_tuple)
+;;
+
 let native_fn name impl : string * (ty -> value) =
   ( name
   , fun ty ->

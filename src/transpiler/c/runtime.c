@@ -11,6 +11,32 @@ typedef int64_t Int64;
 typedef double Float64;
 typedef uint32_t Char;
 
+typedef struct {
+    uint64_t id;
+} RawUnwindToken;
+
+RawUnwindToken currently_unwinding = {.id = 0};
+
+bool are_we_unwinding() {
+    return currently_unwinding.id != 0;
+}
+
+bool are_we_unwinding_with(RawUnwindToken token) {
+    return currently_unwinding.id == token.id;
+}
+
+void stop_unwinding() {
+    currently_unwinding = (RawUnwindToken) {.id = 0};
+}
+
+uint64_t next_unwind_token_id = 1;
+
+RawUnwindToken RawUnwindToken_new() {
+    return (RawUnwindToken) {
+        .id = next_unwind_token_id++,
+    };
+}
+
 size_t Char_utf8_len(Char c) {
     if (c <= 0x7f) {
         return 1;
@@ -76,8 +102,12 @@ String Char_to_String(Char c) {
 
 typedef const char* C_String;
 
+void print_String_to(FILE* f, String s) {
+    fwrite(s.buf, sizeof(char), s.length, f);
+}
+
 void print_String(String s) {
-    fwrite(s.buf, sizeof(char), s.length, stdout);
+    print_String_to(stdout, s);
 }
 
 String String_from_C_String(const C_String s) {
@@ -85,4 +115,28 @@ String String_from_C_String(const C_String s) {
         .buf = s,
         .length = strlen(s),
     };
+}
+
+void default_panic_handler(const String s) {
+    fprintf(stderr, "Unhandled panic: ");
+    print_String_to(stderr, s);
+    exit(-1);
+}
+
+typedef struct {
+    int argc;
+    String* argv;
+} CliArgs;
+
+CliArgs CLI_ARGS;
+
+void init_cli_args(int argc, char* argv[]) {
+    CLI_ARGS.argc = argc;
+    CLI_ARGS.argv = malloc(argc * sizeof(String));
+    for (int i = 0; i < argc; i++) {
+        CLI_ARGS.argv[i] = (String) {
+            .buf = argv[i],
+            .length = strlen(argv[i]),
+        };
+    }
 }

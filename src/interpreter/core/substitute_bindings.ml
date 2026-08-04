@@ -410,8 +410,9 @@ module Impl = struct
         result);
     result
 
-  and sub_ty_opaque ~state ({ name } : ty_opaque) : ty_opaque =
-    { name = sub_name ~state name }
+  and sub_ty_opaque ~state ({ name; native_name : string option } : ty_opaque) : ty_opaque
+    =
+    { name = sub_name ~state name; native_name }
 
   and sub_ty_shape ~(state : sub_state) (original_ty : ty) (shape : ty_shape) : ty =
     let ctx = Effect.perform GetCtx in

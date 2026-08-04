@@ -46,6 +46,8 @@ type transpiled_fn =
   ; name : string
   }
 
+type ty_repr = C_ast.ty
+
 let span = Span.of_ocaml __POS__
 
 let c_keywords =
@@ -155,13 +157,18 @@ module Impl = struct
 
   and lookup_binding (binding : binding) : C_ast.place_expr =
     let captured = Effect.perform CurrentFnCaptured in
-    match captured.interpreter_scope |> Kast_interpreter.Scope.find_opt binding.name with
-    (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
-    | Some place -> transpile_value (Interpreter.read_place ~span place)
+    match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
+    | Some module_name -> Field { obj = Ident module_name; field = binding.name.name }
     | None ->
-      (match captured.bindings |> Id.Map.find_opt binding.id with
-       | Some place -> place
-       | None -> Ident (binding_name binding))
+      (match
+         captured.interpreter_scope |> Kast_interpreter.Scope.find_opt binding.name
+       with
+       (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
+       | Some place -> transpile_value (Interpreter.read_place ~span place)
+       | None ->
+         (match captured.bindings |> Id.Map.find_opt binding.id with
+          | Some place -> place
+          | None -> Ident (binding_name binding)))
 
   and transpile_place_expr (expr : Expr.Place.t) : C_ast.place_expr =
     match expr.shape with
@@ -273,6 +280,31 @@ module Impl = struct
   and variant_needs_tag (ty : Types.ty_variant) : bool =
     ty.variants |> Row.await_inferred_to_list |> List.length > 0
 
+  and ty_repr (ty : ty) : ty_repr = ty |> Ty.await_inferred |> ty_shape_repr
+
+  and ty_shape_repr (ty : Types.ty_shape) : ty_repr =
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    match ty with
+    | T_UnwindToken { result } ->
+      let impl =
+        interpreter.natives.by_name
+        |> StringMap.find "backend.c.UnwindToken"
+        <| Ty.new_not_inferred ~scope:(Some interpreter.scope) ~span
+      in
+      let impl =
+        Interpreter.instantiate
+          span
+          interpreter
+          impl
+          (Interpreter.Natives.make_single_arg_infer
+             ~span
+             (Value.inferred ~span (V_Ty result)))
+        |> Value.expect_ty
+        |> Option.unwrap_or_else (fun () -> fail "UnwindToken not a type???")
+      in
+      transpile_ty impl
+    | _ -> fail "no repr for %a" Ty.Shape.print ty
+
   and transpile_ty_shape (ty : Types.ty_shape) : C_ast.ty_def =
     let shape : C_ast.ty_def_shape =
       match ty with
@@ -362,13 +394,20 @@ module Impl = struct
         let result_ty = transpile_ty result in
         Fn { args; result_ty }
       | Types.T_Ast -> failwith __LOC__
-      | Types.T_UnwindToken { result } -> failwith __LOC__
+      | Types.T_UnwindToken _ -> Alias (Ptr (ty_shape_repr ty))
       | Types.T_Target -> failwith __LOC__
       | Types.T_ContextTy ->
         (* TODO maybe? *)
         Alias Unit
       | Types.T_CompilerScope -> Alias Unit
-      | Types.T_Opaque _ -> failwith __LOC__
+      | Types.T_Opaque { name = _; native_name } ->
+        (match native_name with
+         | Some native_name -> Alias (Raw native_name)
+         | None ->
+           fail
+             "native name must be set for opaque types when transpiling to C: %a"
+             Ty.Shape.print
+             ty)
       | Types.T_Blocked _ -> failwith __LOC__
       | Types.T_Error -> fail "transpiling error ty"
     in
@@ -423,17 +462,10 @@ module Impl = struct
         | Types.Claim -> Claim pure_place_expr
         | Types.ByRef { mut = _ } -> AddrOf pure_place_expr
       in
-      (match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
-       | Some module_name ->
-         insert_stmt
-           (Assign
-              { assignee = Field { obj = Ident module_name; field = binding.name.name }
-              ; value
-              })
-       | None ->
-         insert_stmt
-           (DeclareVar { name = binding_name binding; ty = transpile_ty binding.ty });
-         insert_stmt (Assign { assignee = Ident (binding_name binding); value }))
+      let place = lookup_binding binding in
+      (match place with
+       | Ident ident -> let_var (transpile_ty pattern.data.signature.ty) ident value
+       | _ -> insert_stmt (Assign { assignee = place; value }))
     | Types.P_Tuple { parts; _ } ->
       let unnamed_idx = ref 0 in
       let had_unpack = ref false in
@@ -805,10 +837,10 @@ module Impl = struct
     | Types.A_Error -> failwith __LOC__
 
   and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr =
-    let ~is_closure, ~call_convention =
+    let f_ty =
       match f_expr.data.signature.ty |> Ty.await_inferred with
-      | T_Fn ty -> ~is_closure:ty.is_closure, ~call_convention:ty.call_convention
-      | T_Generic _ -> ~is_closure:false, ~call_convention:(Some "C")
+      | T_Fn ty -> ty
+      | T_Generic _ -> failwith __LOC__
       | _ -> fail "Expected fn, got %a" Ty.print f_expr.data.signature.ty
     in
     let f = transpile_expr f_expr in
@@ -862,7 +894,7 @@ module Impl = struct
       else [ transpile_expr arg ]
     in
     let f, args =
-      if is_closure
+      if f_ty.is_closure
       then (
         let f_name = gen_name "f" in
         let_var (transpile_ty f_expr.data.signature.ty) f_name f;
@@ -871,12 +903,21 @@ module Impl = struct
       else f, args
     in
     let args =
-      match call_convention with
+      match f_ty.call_convention with
       | None -> [ Effect.perform GetScopeCtxPtr ] @ args
       | Some "C" -> args
       | Some other -> fail "unknown conv %S" other
     in
-    Apply { f; args }
+    let result_var = gen_name "apply_result" in
+    let_var (transpile_ty f_ty.result) result_var (Apply { f; args });
+    insert_stmt
+      (If
+         { cond = Native { parts = [ Raw "are_we_unwinding()" ] }
+         ; then_case =
+             new_block (fun () -> (Effect.perform GetUnwindCtx).insert_unwind ())
+         ; else_case = None
+         });
+    Claim (Ident result_var)
 
   and context_ty_name ({ id; ty } : Types.value_context_ty) : string = failwith __LOC__
   (* let name = gen_name "context" in *)
@@ -1238,15 +1279,73 @@ module Impl = struct
         insert_stmt (For { body = new_block (fun () -> execute_expr body) });
         None
       | Types.E_Unwindable { token; body } ->
-        failwith __LOC__
+        let label_on_unwind = gen_name "on_unwind" in
+        let label_result = gen_name "unwindable_result" in
+        let token_var = gen_name "unwindable_token" in
+        let token_ty = ty_repr token.data.signature.ty in
+        let_var
+          token_ty
+          token_var
+          (compound_literal
+             token_ty
+             [ "raw", C_ast.Native { parts = [ Raw "RawUnwindToken_new()" ] } ]);
+        pattern_match token (Temp (AddrOf (Ident token_var)));
+        let result_place : C_ast.place_expr =
+          Field { obj = Ident token_var; field = "value" }
+        in
+        let old_unwind_ctx = Effect.perform GetUnwindCtx in
+        let unwind_ctx : unwind_ctx =
+          { insert_unwind = (fun () -> insert_stmt (Goto { label = label_on_unwind }))
+          ; cleanup_scope_without_unwind = (fun () -> ())
+          }
+        in
+        (try
+           match eval_expr body with
+           | None -> ()
+           | Some result ->
+             insert_stmt (Assign { assignee = result_place; value = result })
+         with
+         | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx);
+        insert_stmt (Goto { label = label_result });
+        insert_stmt (GotoLabel label_on_unwind);
+        insert_stmt
+          (If
+             { cond =
+                 Apply
+                   { f = Native { parts = [ Raw "are_we_unwinding_with" ] }
+                   ; args = [ Claim (Field { obj = Ident token_var; field = "raw" }) ]
+                   }
+             ; then_case =
+                 new_block (fun () ->
+                   insert_stmt (Native { parts = [ Raw "stop_unwinding()" ] });
+                   insert_stmt (Goto { label = label_result }))
+             ; else_case = Some (new_block (fun () -> old_unwind_ctx.insert_unwind ()))
+             });
+        insert_stmt (GotoLabel label_result);
+        Some (Claim result_place)
         (* let token_ident = gen_name "token" in *)
         (* Unwindable *)
         (*   { token_ident *)
         (*   ; body = Then [ pattern_match token (Ident token_ident); transpile_expr body ] *)
         (*   } *)
       | Types.E_Unwind { token; value } ->
-        failwith __LOC__
-        (* Unwind { token = transpile_expr token; value = transpile_expr value } *)
+        let token_var = gen_name "token" in
+        let_var (transpile_ty token.data.signature.ty) token_var (transpile_expr token);
+        (* token->value = value *)
+        insert_stmt
+          (Assign
+             { assignee = Field { obj = Deref (Claim (Ident token_var)); field = "value" }
+             ; value = transpile_expr value
+             });
+        (* currently_unwinding = token->raw *)
+        insert_stmt
+          (Assign
+             { assignee = Native { parts = [ Raw "currently_unwinding" ] }
+             ; value =
+                 Claim (Field { obj = Deref (Claim (Ident token_var)); field = "raw" })
+             });
+        (Effect.perform GetUnwindCtx).insert_unwind ();
+        None
       | Types.E_InjectContext { context_ty; value } ->
         let value = transpile_expr value in
         let old_var = gen_name "old_ctx" in
@@ -1319,10 +1418,12 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   in
   (try
      let main : C_ast.fn_def =
-       { args = []
+       { args =
+           [ { name = "argc"; ty = Raw "int" }; { name = "argv"; ty = Raw "char**" } ]
        ; result_ty = Raw "int"
        ; body =
            Impl.new_block (fun () ->
+             Impl.insert_stmt (Native { parts = [ Raw "init_cli_args(argc, argv)" ] });
              Impl.insert_stmt (DeclareVar { name = ctx_var; ty = Raw "Context" });
              Impl.insert_stmt
                (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));

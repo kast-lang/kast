@@ -204,7 +204,7 @@ module Impl = struct
     | T_Target -> fprintf fmt "Target"
     | T_ContextTy -> fprintf fmt "ContextType"
     | T_CompilerScope -> fprintf fmt "<compiler scope>"
-    | T_Opaque { name } -> print_name fmt name
+    | T_Opaque { name; native_name = _ } -> print_name fmt name
     | T_Blocked blocked -> print_blocked_value fmt blocked
     | T_Error -> fprintf fmt "@{<red><error>@}"
 

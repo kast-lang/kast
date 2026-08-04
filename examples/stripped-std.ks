@@ -15,6 +15,23 @@ const String = @native "String";
 
 const Never = newtype @empty_variant;
 
+impl syntax (@opaque_type native_name) = `(
+    (@native "new_opaque_type")($native_name)
+);
+
+const impl_native = [T] (name :: String, value :: T) => (
+    (@native "impl_native")(name, value)
+);
+
+const RawUnwindToken = @opaque_type "RawUnwindToken";
+
+const UnwindTokenImpl = [T] newtype {
+    .raw :: RawUnwindToken,
+    .value :: T,
+};
+
+@eval impl_native("backend.c.UnwindToken", UnwindTokenImpl);
+
 const from_never = [T] (_ :: Never) -> T => (
     @native "#unreachable"
 );

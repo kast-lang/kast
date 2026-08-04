@@ -394,7 +394,7 @@ module Impl = struct
     | T_Target -> todo_ty __LOC__
     | T_ContextTy -> todo_ty __LOC__
     | T_CompilerScope -> todo_ty __LOC__
-    | T_Opaque { name } -> type_named (name |> Name.await_inferred)
+    | T_Opaque { name; native_name = _ } -> type_named (name |> Name.await_inferred)
     | T_Blocked _ -> todo_ty __LOC__
     | T_Error -> NoEffect { shape = JsAst.Null; span = None }
 

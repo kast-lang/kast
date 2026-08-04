@@ -195,7 +195,11 @@ module rec TypesImpl : sig
     ; variants : (ty_variant_data, var_scope) Row.t
     }
 
-  and ty_opaque = { name : name }
+  and ty_opaque =
+    { name : name
+    ; native_name : string option
+    }
+
   and is_mutable = { var : (bool, var_scope) Inference.var }
 
   and ty_ref =
@@ -642,7 +646,8 @@ module rec TypesImpl : sig
 
   (* interpreter *)
   and natives =
-    { by_name : (ty -> value) StringMap.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    { mutable by_name : (ty -> value) StringMap.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and instantiated_generics = { mutable map : value ValueMap.t Id.Map.t }
@@ -937,7 +942,11 @@ end = struct
     ; variants : (ty_variant_data, var_scope) Row.t
     }
 
-  and ty_opaque = { name : name }
+  and ty_opaque =
+    { name : name
+    ; native_name : string option
+    }
+
   and is_mutable = { var : (bool, var_scope) Inference.var }
 
   and ty_ref =
@@ -1384,7 +1393,8 @@ end = struct
 
   (* interpreter *)
   and natives =
-    { by_name : (ty -> value) StringMap.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    { mutable by_name : (ty -> value) StringMap.t
+          [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and instantiated_generics =

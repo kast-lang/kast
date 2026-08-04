@@ -1,8 +1,18 @@
 use std.*;
 
+const Int = Int32;
+const Float = Float64;
+
 with PanicHandler = std.default_panic_handler;
 
-print_String("Hello, C! From Kast 🦄\n");
+const display = [T] (value :: T) => (
+    print(to_string(value));
+);
+
+const print_Int = display[Int];
+const print_Float = display[Float];
+
+print("Hello, C! From Kast 🦄\n");
 
 let foo = (a :: Int) => (
     print_Int(0);
@@ -12,7 +22,7 @@ let create = (start_value :: Int) => (
     let mut x :: Int = start_value;
     () => (
         print_Int(x);
-        x = add(x, 3);
+        x += 3;
     )
 );
 
@@ -27,7 +37,7 @@ f();
 print_newline();
 
 let a :: Float = 0.123;
-print_Float(add(a, 123));
+print_Float(a + 123);
 print_newline();
 
 const fib = (
