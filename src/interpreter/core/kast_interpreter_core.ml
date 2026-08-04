@@ -572,6 +572,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
           Log.trace (fun log ->
             log "evaled binding %a = %a" Binding.print binding Id.print result.id);
           Place (~mut:true, result)
+        | PE_Const place -> Place (~mut:true, place)
         | PE_Temp expr ->
           let value = eval state expr in
           Place (~mut:true, Place.init ~mut:Mutable value)

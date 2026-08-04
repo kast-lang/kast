@@ -57,6 +57,7 @@ let inner_compiled_with_handler
      (match compiled.shape with
       | PE_Error -> ()
       | PE_Binding _ -> ()
+      | PE_Const _ -> ()
       | PE_Deref ref -> handler.handle Expr ref
       | PE_Temp expr -> handler.handle Expr expr
       | PE_Field { obj; field; field_span = _ } ->

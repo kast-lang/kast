@@ -1,9 +1,5 @@
-use std.*;
-
 const Int = Int32;
 const Float = Float64;
-
-with PanicHandler = std.default_panic_handler;
 
 const display = [T] (value :: T) => (
     print(to_string(value));
@@ -62,4 +58,6 @@ const fib = (
     panic("Not really a panic\n");
 );
 
-panic("I PANIKED");
+# panic("I PANIKED");
+
+let std = std;

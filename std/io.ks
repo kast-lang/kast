@@ -3,8 +3,9 @@ const print = (line :: String) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.print")(line)
         | target.name == "c" => (
-            @native "Kast_print" :: fn @call "C" String -> ()
-        )(line)
+            @native "Kast_write(stdout, \(line))";
+            @native "fprintf(stdout, \"\\n\")";
+        )
         | target.name == "javascript" => (@native "Kast.io.print")(line)
     )
 );
@@ -13,8 +14,9 @@ const eprint = (line :: String) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.eprint")(line)
         | target.name == "c" => (
-            @native "Kast_eprint" :: fn @call "C" String -> ()
-        )(line)
+            @native "Kast_write(stderr, \(line))";
+            @native "fprintf(stderr, \"\\n\")";
+        )
         | target.name == "javascript" => (@native "Kast.io.eprint")(line)
     )
 );
@@ -37,7 +39,9 @@ const stdout = (
 
     const write = (line :: String) -> () => @cfg (
         | target.name == "interpreter" => (@native "io.stdout.write")(line)
-        | target.name == "c" => @native "Kast_write(stdout, \(line))"
+        | target.name == "c" => (
+            @native "Kast_write(stdout, \(line))";
+        )
         | target.name == "javascript" => (@native "Kast.io.stdout.write")(line)
     );
 );
@@ -53,7 +57,9 @@ const stderr = (
 
     const write = (line :: String) -> () => @cfg (
         | target.name == "interpreter" => (@native "io.stderr.write")(line)
-        | target.name == "c" => @native "Kast_write_stderr(\(line))"
+        | target.name == "c" => (
+            @native "Kast_write(stderr, \(line))";
+        )
         | target.name == "javascript" => (@native "Kast.io.stderr.write")(line)
     );
 );
@@ -69,19 +75,19 @@ const stdin = (
 
     const read_until = (c :: Char) -> String => @cfg (
         | target.name == "interpreter" => (@native "io.stdin.read_until")(c)
-        | target.name == "c" => @native "Kast_stdin_read_until(\(c))"
+        | target.name == "c" => @native "Kast_read_until(stdin, \(c))"
         | target.name == "javascript" => (@native "Kast.io.stdin.read_until")(c)
     );
 
     const read_exactly = (bytes :: Int32) -> String => @cfg (
         | target.name == "interpreter" => (@native "io.stdin.read_exactly")(bytes)
-        | target.name == "c" => @native "Kast_stdin_read_exactly(\(bytes))"
+        | target.name == "c" => @native "Kast_read_exactly(stdin, \(bytes))"
         | target.name == "javascript" => (@native "Kast.io.stdin.read_exactly")(bytes)
     );
 
     const read_to_end = () -> String => @cfg (
         | target.name == "interpreter" => (@native "io.stdin.read_to_end")()
-        | target.name == "c" => @native "Kast_stdin_read_to_end()"
+        | target.name == "c" => @native "Kast_read_to_end(stdin)"
         | target.name == "javascript" => (@native "Kast.io.stdin.read_to_end")()
     );
 );

@@ -36,10 +36,6 @@ const from_never = [T] (_ :: Never) -> T => (
     @native "#unreachable"
 );
 
-const print_String = (s :: String) => (
-    @native "print_String(\(s))";
-);
-
 const PanicHandler = @context type (String -> Never);
 
 const default_panic_handler = (s :: String) -> Never => (
@@ -72,6 +68,10 @@ const sub = [T] (a :: T, b :: T) -> T => (
 
 const less_than = [T] (a :: T, b :: T) -> Bool => (
     @native "\(a) < \(b)"
+);
+
+const print_String = (s :: String) => (
+    @native "Kast_write(stdout, \(s))";
 );
 
 const print_Int = (x :: Int) => (

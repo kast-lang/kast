@@ -564,6 +564,8 @@ module Impl = struct
         (print_expr ~options)
         expr
     | PE_Binding binding -> fprintf fmt "@{<magenta>binding@} %a" print_binding binding
+    | PE_Const place ->
+      fprintf fmt "@{<magenta>const@} %a" (print_place_value_with print_value) place
     | PE_Field { obj; field; field_span = _ } ->
       fprintf
         fmt
@@ -837,6 +839,13 @@ let print_ty_tuple = with_cache (Impl.print_ty_tuple ~always_print_shape:false)
 let print_ty_variant = with_cache (Impl.print_ty_variant ~always_print_shape:false)
 let print_ty_generic = with_cache Impl.print_ty_generic
 let print_args ~open_ ~close = with_cache (Impl.print_args ~open_ ~close)
+
+let print_optionally_named ~always_print_shape fmt name f =
+  with_cache
+    (fun fmt () -> Impl.print_optionally_named ~always_print_shape fmt name f)
+    fmt
+    ()
+;;
 
 let print_optional f fmt = function
   | None -> fprintf fmt "<None>"

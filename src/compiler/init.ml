@@ -232,6 +232,12 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
              ~span
              (Ty.inferred ~span (T_Ref { mut; referenced = value_ty }));
         mut, { ty = value_ty }
+      | PE_Const place ->
+        ( inferred_mut
+            (match place.mut with
+             | Mutable | Inherit -> true
+             | Immutable -> false)
+        , pure place.ty )
       | PE_Field { obj; field; field_span } ->
         let { ty = obj_ty } : signature = obj.data.signature in
         obj.mut, { ty = field_ty ~state ~span ~obj ~field_span obj_ty field }

@@ -389,6 +389,7 @@ module Impl = struct
   and complete_place_expr_shape (shape : place_expr_shape) =
     match shape with
     | PE_Binding binding -> complete_binding binding
+    | PE_Const place -> complete_place place
     | PE_Field { obj; field; field_span = _ } ->
       complete_place_expr obj;
       (match field with

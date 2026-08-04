@@ -5,6 +5,7 @@ open Kast_types
 module Token = Kast_token
 module Interpreter = Kast_interpreter
 open Init
+module Init = Init
 module Error = Error
 module State = State
 module Scope = State.Scope

@@ -499,6 +499,7 @@ module rec TypesImpl : sig
   and place_expr_shape =
     | PE_Binding of binding
     | PE_Field of place_expr_field
+    | PE_Const of place
     | PE_Deref of expr
     | PE_Temp of expr
     | PE_Error
@@ -1246,6 +1247,7 @@ end = struct
   and place_expr_shape =
     | PE_Binding of binding
     | PE_Field of place_expr_field
+    | PE_Const of place
     | PE_Deref of expr
     | PE_Temp of expr
     | PE_Error

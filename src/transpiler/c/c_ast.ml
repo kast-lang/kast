@@ -190,7 +190,7 @@ module Print = struct
 
   and print_ty (ty : ty) =
     match ty with
-    | Unit -> write "_Unit"
+    | Unit -> write "Unit"
     | Raw s -> write s
     | Named name -> write name
     | Ptr referenced ->
@@ -267,7 +267,7 @@ module Print = struct
     let surround = need_surround_expr expr in
     maybe_surround surround (fun () ->
       match expr with
-      | Unit -> write "(_Unit){}"
+      | Unit -> write "(Unit){}"
       | Literal lit ->
         write
           (match lit with
@@ -355,7 +355,6 @@ module Print = struct
       write s;
       write ">";
       writeln ());
-    write "typedef struct {} _Unit;";
     writeln ();
     program.types
     |> StringMap.iter (fun name def ->

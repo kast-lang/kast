@@ -857,6 +857,7 @@ module Impl = struct
         (match ctx.captured |> Kast_interpreter.Scope.find_opt binding.name with
          | Some place -> transpile_place place
          | None -> transpile_binding ~span binding)
+      | PE_Const place -> transpile_place place
       | PE_Field { obj; field; field_span = _ } ->
         let member =
           match field with

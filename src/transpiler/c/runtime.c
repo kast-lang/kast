@@ -4,6 +4,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+void panic_errno() {
+    perror("ERRNO");
+    exit(-1);
+}
+
+void* try_malloc(size_t size) {
+    void* result = malloc(size);
+    if (!result) {
+        panic_errno();
+    }
+    return result;
+}
+
+typedef struct {
+} Unit;
 
 typedef bool Bool;
 typedef int32_t Int32;
@@ -94,7 +111,7 @@ typedef struct String {
 
 String Char_to_String(Char c) {
     size_t len = Char_utf8_len(c);
-    char* buf = malloc(len);
+    char* buf = try_malloc(len);
     char* encoder = buf;
     utf8_char_encode_step(&encoder, c);
     return (String) {.buf = buf, .length = len};
@@ -102,12 +119,8 @@ String Char_to_String(Char c) {
 
 typedef const char* C_String;
 
-void print_String_to(FILE* f, String s) {
+void Kast_write(FILE* f, String s) {
     fwrite(s.buf, sizeof(char), s.length, f);
-}
-
-void print_String(String s) {
-    print_String_to(stdout, s);
 }
 
 String String_from_C_String(const C_String s) {
@@ -117,9 +130,16 @@ String String_from_C_String(const C_String s) {
     };
 }
 
+char* String_to_C_String(const String s) {
+    char* result = try_malloc(s.length + 1);
+    memcpy(result, s.buf, s.length);
+    result[s.length] = 0;
+    return result;
+}
+
 void default_panic_handler(const String s) {
     fprintf(stderr, "Unhandled panic: ");
-    print_String_to(stderr, s);
+    Kast_write(stderr, s);
     exit(-1);
 }
 
@@ -132,11 +152,140 @@ CliArgs CLI_ARGS;
 
 void init_cli_args(int argc, char* argv[]) {
     CLI_ARGS.argc = argc;
-    CLI_ARGS.argv = malloc(argc * sizeof(String));
+    CLI_ARGS.argv = try_malloc(argc * sizeof(String));
     for (int i = 0; i < argc; i++) {
         CLI_ARGS.argv[i] = (String) {
             .buf = argv[i],
             .length = strlen(argv[i]),
         };
+    }
+}
+
+String Float64_to_String(Float64 x) {
+    char* buf;
+    int length = asprintf(&buf, "%f", x);
+    if (length < 0) {
+        panic_errno();
+    }
+    return (String) {
+        .buf = buf,
+        .length = length,
+    };
+}
+
+String Int32_to_String(Int32 x) {
+    char* buf;
+    int length = asprintf(&buf, "%d", x);
+    if (length < 0) {
+        panic_errno();
+    }
+    return (String) {
+        .buf = buf,
+        .length = length,
+    };
+}
+
+Int32 Int32_from_String(String s) {
+    int result = 0;
+    for (size_t i = 0; i < s.length; i++) {
+        result = result * 10 + s.buf[i] - '0';
+    }
+    return result;
+}
+
+Float64 Float64_from_String(String s) {
+    char* cs = String_to_C_String(s);
+    Float64 result = atof(cs);
+    free(cs);
+    return result;
+}
+
+void check_ferror(FILE* f) {
+    int e = ferror(f);
+    if (e) {
+        fprintf(stderr, "File error %d (%s)\n", e, strerror(e));
+        exit(-1);
+    }
+}
+
+String Kast_read_exactly(FILE* f, size_t size) {
+    char* buf = try_malloc(size);
+    size_t read = 0;
+    while (read < size) {
+        size_t new_read = fread(buf, 1, size - read, f);
+        if (!new_read) {
+            break;
+        }
+        read += new_read;
+    }
+    check_ferror(f);
+}
+
+String Kast_read_to_end(FILE* f) {
+    int res = fseek(f, 0, SEEK_END);
+    if (res < 0) {
+        panic_errno();
+    }
+    long size = ftell(f);
+    if (size < 0) {
+        panic_errno();
+    }
+    res = fseek(f, 0, SEEK_SET);
+    if (res < 0) {
+        panic_errno();
+    }
+    return Kast_read_exactly(f, size);
+}
+
+String Kast_read_file(String path) {
+    char* path_c = String_to_C_String(path);
+    FILE* f = fopen(path_c, "r");
+    free(path_c);
+    if (!f) {
+        panic_errno();
+    }
+    return Kast_read_to_end(f);
+}
+
+String Kast_read_until(FILE* f, Char c) {
+    char* buf = NULL;
+    ssize_t length = getdelim(&buf, 0, c, stdin);
+    if (length < 0) {
+        panic_errno();
+    }
+    return (String) {
+        .buf = buf,
+        .length = length,
+    };
+}
+
+String Kast_input(String prompt) {
+    Kast_write(stdout, prompt);
+    return Kast_read_until(stdin, '\n');
+}
+
+bool Kast_isatty(FILE* f) {
+    int desc = fileno(f);
+    if (desc < 0) {
+        panic_errno();
+    }
+    return isatty(desc);
+}
+
+typedef struct Context Context;
+
+#define define_fn_type(name, Ret, ...)                                         \
+    typedef struct {                                                           \
+        void* captured;                                                        \
+        Ret (*f)(Context*, void*, __VA_ARGS__);                                \
+    } name;
+
+define_fn_type(fn_Char_Unit, Unit, Char);
+
+void String_iter(Context* ctx, String s, fn_Char_Unit consumer) {
+    const char* iter = s.buf;
+    while (iter - s.buf < s.length) {
+        Char c = utf8_char_decode_step(&iter);
+        consumer.f(ctx, consumer.captured, c);
     }
 }
