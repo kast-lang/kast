@@ -36,18 +36,22 @@ impl Char as module = (
     );
     const utf16_len = (c :: Char) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "char.utf16_len")(c)
+        | target.name == "c" => @native "Char_utf16_len(\(c))"
         | target.name == "javascript" => (@native "Kast.Char.string_encoding_len")(c)
     );
     const string_encoding_len = (c :: Char) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "char.string_encoding_len")(c)
+        | target.name == "c" => @native "Char_string_encoding_len(\(c))"
         | target.name == "javascript" => (@native "Kast.Char.string_encoding_len")(c)
     );
     const code = (c :: Char) -> UInt32 => @cfg (
         | target.name == "interpreter" => (@native "char.code")(c)
+        | target.name == "c" => @native "\(c)"
         | target.name == "javascript" => (@native "Kast.Char.code")(c)
     );
     const from_code = (code :: UInt32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "char.from_code")(code)
+        | target.name == "c" => @native "\(code)"
         | target.name == "javascript" => (@native "Kast.Char.from_code")(code)
     );
     const to_digit_radix = (c :: Char, radix :: UInt32) -> UInt32 => (

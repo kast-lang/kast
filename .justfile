@@ -47,6 +47,19 @@ test-c:
     ${CC:-gcc} -o target/test tests/test-c-runtime.c -g
     ./target/test
 
+compile-tcp-client-server-c:
+    #!/usr/bin/env bash
+    export CFLAGS="-g -Wfatal-errors"
+    export CC=filcc
+    # export CC=gcc
+    kast compile --target c --output target/server.c examples/tcp/tcp-server.ks
+    kast compile --target c --output target/client.c examples/tcp/tcp-client.ks
+    $CC $CFLAGS target/server.c -o target/server.exe
+    $CC $CFLAGS target/client.c -o target/client.exe
+
+run-c path:
+    CFLAGS="-g -Wfatal-errors" CC=filcc kast run --target c {{path}}
+
 bench *args:
     kast compile \
         --output target/compiled.mjs \

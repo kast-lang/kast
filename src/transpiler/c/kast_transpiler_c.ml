@@ -9,6 +9,12 @@ let print_span = Span.print
 
 type block = { mutable stmts : C_ast.stmt list }
 
+module StringListMap = Map.Make (struct
+    type t = string list
+
+    let compare = List.compare String.compare
+  end)
+
 type ctx =
   { target : Types.value_target
   ; mutable includes : StringSet.t
@@ -18,6 +24,7 @@ type ctx =
   ; mutable captured_values : string Types.ValueMap.t
   ; mutable captured_types : string Types.ValueMap.t
   ; mutable contexts : Types.value_context_ty Id.Map.t
+  ; runtime_defined_closure_types : string StringListMap.t
   ; init_statics : block
   }
 
@@ -47,6 +54,15 @@ type transpiled_fn =
   }
 
 type ty_repr = C_ast.ty
+
+let rec ty_to_string (ty : ty_repr) : string =
+  match ty with
+  | Unit -> "Unit"
+  | Raw s -> s
+  | Named name -> name
+  | Ptr p -> ty_to_string p ^ "_Ptr"
+  | Void -> "void"
+;;
 
 let span = Span.of_ocaml __POS__
 
@@ -180,49 +196,87 @@ module Impl = struct
 
   and lookup_binding (binding : binding) : C_ast.place_expr =
     let captured = Effect.perform CurrentFnCaptured in
-    match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
-    | Some module_name ->
-      Field { obj = Deref (Claim (Ident module_name)); field = binding.name.name }
+    match captured.interpreter_scope |> Kast_interpreter.Scope.find_opt binding.name with
+    (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
+    | Some place -> transpile_value (Interpreter.read_place ~span place)
     | None ->
-      (match
-         captured.interpreter_scope |> Kast_interpreter.Scope.find_opt binding.name
-       with
-       (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
-       | Some place -> transpile_value (Interpreter.read_place ~span place)
+      (match captured.bindings |> Id.Map.find_opt binding.id with
+       | Some place -> place
        | None ->
-         (match captured.bindings |> Id.Map.find_opt binding.id with
-          | Some place -> place
+         (match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
+          | Some module_name ->
+            Field { obj = Deref (Claim (Ident module_name)); field = binding.name.name }
           | None -> Ident (binding_name binding)))
 
   and transpile_place_expr (expr : Expr.Place.t) : C_ast.place_expr =
+    match place_expr_const_propagate expr with
+    | Some place -> transpile_place place
+    | None ->
+      (match expr.shape with
+       | Types.PE_Binding binding -> lookup_binding binding
+       | Types.PE_Const place -> transpile_place place
+       | Types.PE_Field { obj; field; field_span = _ } ->
+         let field =
+           match field with
+           | Types.Index i -> member_name (Index i)
+           | Types.Name label -> member_name (Name (Label.get_name label))
+           | Types.Expr _ -> failwith __LOC__
+         in
+         Field { obj = Deref (Claim (transpile_place_expr obj)); field }
+       | Types.PE_Deref expr -> Deref (transpile_expr expr)
+       | Types.PE_Temp expr -> Temp (transpile_expr expr)
+       | Types.PE_Error -> fail "transpiling error place expr")
+
+  and place_expr_const_propagate (expr : Expr.Place.t) : place option =
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     match expr.shape with
-    | Types.PE_Binding binding -> lookup_binding binding
-    | Types.PE_Const place -> transpile_place place
-    | Types.PE_Field { obj = { shape = PE_Const _; _ }; _ } ->
-      let evaled =
-        Interpreter.eval_place (Effect.perform CurrentFnCaptured).interpreter_state expr
-      in
-      (match evaled with
-       | Place (~mut:_, field_place) -> transpile_place field_place
-       | RefBlocked _ -> failwith __LOC__)
+    | Types.PE_Const place -> Some place
     | Types.PE_Field { obj; field; field_span = _ } ->
-      let field =
+      let* obj = place_expr_const_propagate obj in
+      let member : Tuple.member =
         match field with
-        | Types.Index i -> member_name (Index i)
-        | Types.Name label -> member_name (Name (Label.get_name label))
+        | Types.Index i -> Index i
+        | Types.Name label -> Name (Label.get_name label)
         | Types.Expr _ -> failwith __LOC__
       in
-      Field { obj = Deref (Claim (transpile_place_expr obj)); field }
-    | Types.PE_Deref expr -> Deref (transpile_expr expr)
-    | Types.PE_Temp expr -> Temp (transpile_expr expr)
-    | Types.PE_Error -> fail "transpiling error place expr"
+      let field =
+        Interpreter.get_field
+          ~span
+          ~state:interpreter
+          ~result_ty:expr.data.signature.ty
+          (Interpreter.read_place ~span obj)
+          ~obj_mut:true
+          member
+      in
+      (match field with
+       | Place (~mut:_, field_place) -> Some field_place
+       | RefBlocked _ -> failwith __LOC__)
+    | _ -> None
+
+  and resolve_ty_aliases (ty : C_ast.ty) : C_ast.ty =
+    let ctx = Effect.perform GetCtx in
+    match ty with
+    | Unit -> Unit
+    | Raw s -> Raw s
+    | Ptr pointee -> Ptr (resolve_ty_aliases pointee)
+    | Void -> Void
+    | Named name ->
+      (match ctx.types |> StringMap.find_opt name with
+       | Some def ->
+         (match def.shape with
+          | RuntimeDefined -> ty
+          | Enum _ | Struct _ | Union _ -> ty
+          | Fn _ -> ty
+          | Alias ty -> resolve_ty_aliases ty)
+       | None -> ty)
 
   and transpile_ty (ty : ty) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     let ty =
       Interpreter.Substitute_bindings.sub_ty
         ~span
-        ~state:(Interpreter.sub_here (Effect.perform CurrentFnCaptured).interpreter_state)
+        ~state:(Interpreter.sub_here interpreter)
         ty
     in
     Inference.Var.setup_default_if_needed ty.var;
@@ -249,8 +303,16 @@ module Impl = struct
       let ty_name = !ty_name |> Option.get in
       if !do_prepend
       then (
+        (match
+           Interpreter.cast_as_module_opt
+             ~span
+             interpreter
+             (Value.inferred ~span (V_Ty ty))
+         with
+         | None -> ()
+         | Some ty_as_module -> transpile_value ty_as_module |> ignore);
         Log.trace (fun log -> log "prepend %a" Ty.print ty);
-        let mini_ty =
+        let ty_def =
           match ty.var |> Inference.Var.inferred_opt with
           | None ->
             if not !Kast_util.quiet
@@ -263,16 +325,16 @@ module Impl = struct
             failwith __LOC__
           | Some shape -> transpile_ty_shape ty_name shape
         in
-        ctx.types <- ctx.types |> StringMap.add ty_name mini_ty);
-      Named ty_name
+        ctx.types <- ctx.types |> StringMap.add ty_name ty_def);
+      resolve_ty_aliases (Named ty_name)
 
   and variant_tag_ty (ty_name : string) (ty : Types.ty_variant) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
-    let name = gen_name "tag" in
+    let name = ty_name ^ "_TAG" in
     let variant_names =
       ty.variants
       |> Row.await_inferred_to_list
-      |> List.map (fun (label, _) -> variant_tag_name_impl name label)
+      |> List.map (fun (label, _) -> variant_tag_name_impl ty_name label)
     in
     let def : C_ast.ty_def =
       { shape = Enum (StringSet.of_list variant_names)
@@ -282,9 +344,9 @@ module Impl = struct
     ctx.types <- ctx.types |> StringMap.add name def;
     Named name
 
-  and variant_data_ty (ty : Types.ty_variant) : C_ast.ty =
+  and variant_data_ty_impl (ty_name : string) (ty : Types.ty_variant) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
-    let name = gen_name "data" in
+    let name = ty_name ^ "_DATA" in
     let variants =
       ty.variants
       |> Row.await_inferred_to_list
@@ -360,8 +422,10 @@ module Impl = struct
         then
           Struct
             (StringMap.of_list
-               [ "tag", variant_tag_ty ty_name ty; "data", variant_data_ty ty ])
-        else Struct (StringMap.singleton "data" (variant_data_ty ty))
+               [ "tag", variant_tag_ty ty_name ty
+               ; "data", variant_data_ty_impl ty_name ty
+               ])
+        else Struct (StringMap.singleton "data" (variant_data_ty_impl ty_name ty))
       | Types.T_Tuple { name; tuple } ->
         let fields =
           tuple
@@ -401,6 +465,10 @@ module Impl = struct
             transpile_ty field.ty)
           |> List.of_seq
         in
+        let result_ty = transpile_ty result in
+        let define_macro_args =
+          ty_to_string result_ty :: (args |> List.map ty_to_string)
+        in
         let args = if is_closure then [ C_ast.Ptr Void ] @ args else args in
         let args =
           match call_convention with
@@ -408,21 +476,29 @@ module Impl = struct
           | Some "C" -> args
           | _ -> fail "unknown call convention"
         in
-        let result_ty = transpile_ty result in
         (match is_closure with
          | true ->
-           let raw_fn_ty = gen_name "raw_fn_ty" in
-           let ctx = Effect.perform GetCtx in
-           ctx.types
-           <- ctx.types
-              |> StringMap.add
-                   raw_fn_ty
-                   ({ shape = Fn { args; result_ty }
-                    ; comment =
-                        Some (make_string "raw fn type for %a" Print.print_ty_shape ty)
-                    }
-                    : C_ast.ty_def);
-           Struct (StringMap.of_list [ "captured", C_ast.Ptr Void; "f", Named raw_fn_ty ])
+           Log.trace (fun log ->
+             log "Looking for %a" (List.print String.print) define_macro_args);
+           (match
+              ctx.runtime_defined_closure_types
+              |> StringListMap.find_opt define_macro_args
+            with
+            | Some ty -> Alias (Named ty)
+            | None ->
+              let raw_fn_ty = gen_name "raw_fn_ty" in
+              let ctx = Effect.perform GetCtx in
+              ctx.types
+              <- ctx.types
+                 |> StringMap.add
+                      raw_fn_ty
+                      ({ shape = Fn { args; result_ty }
+                       ; comment =
+                           Some (make_string "raw fn type for %a" Print.print_ty_shape ty)
+                       }
+                       : C_ast.ty_def);
+              Struct
+                (StringMap.of_list [ "captured", C_ast.Ptr Void; "f", Named raw_fn_ty ]))
          | false -> Fn { args; result_ty })
       | Types.T_Generic _ when true -> Alias Unit
       | Types.T_Generic { args; result } ->
@@ -441,7 +517,7 @@ module Impl = struct
         in
         let result_ty = transpile_ty result in
         Fn { args; result_ty }
-      | Types.T_Ast -> failwith __LOC__
+      | Types.T_Ast -> Alias Unit
       | Types.T_UnwindToken _ -> Alias (Ptr (ty_shape_repr ty))
       | Types.T_Target -> failwith __LOC__
       | Types.T_ContextTy ->
@@ -484,7 +560,9 @@ module Impl = struct
               member
             | Some label -> Tuple.Member.Name (Label.get_name label)
           in
-          does_match field (Field { obj = pure_place_expr; field = member_name member })
+          does_match
+            field
+            (Field { obj = Deref (Claim pure_place_expr); field = member_name member })
         | Unpack pattern ->
           (match pattern.shape with
            | P_Placeholder -> ()
@@ -532,7 +610,7 @@ module Impl = struct
           in
           pattern_match
             field
-            (Field { obj = pure_place_expr; field = member_name member })
+            (Field { obj = Deref (Claim pure_place_expr); field = member_name member })
         | Unpack pattern ->
           (match pattern.shape with
            | P_Placeholder -> ()
@@ -541,7 +619,12 @@ module Impl = struct
     | Types.P_Variant { label; value = data; _ } ->
       (match data with
        | Some data_pattern ->
-         pattern_match data_pattern (Field { obj = pure_place_expr; field = "data" })
+         pattern_match
+           data_pattern
+           (Field
+              { obj = Field { obj = pure_place_expr; field = "data" }
+              ; field = make_correct_ident (Label.get_name label)
+              })
        | None -> ())
     | Types.P_Error -> failwith __LOC__
 
@@ -583,11 +666,12 @@ module Impl = struct
     let captured_arg_name = gen_name "captured_void" in
     let typed_captured_arg_name = gen_name "captured" in
     let captured_bindings =
-      def.captures
-      |> List.filter (fun (binding : binding) ->
-        captured_interpreter_scope
-        |> Interpreter.Scope.find_opt binding.name
-        |> Option.is_none)
+      !(def.captures)
+      |> Id.Map.to_list
+      |> List.filter_map (fun ((_id, binding) : id * binding) ->
+        match captured_interpreter_scope |> Interpreter.Scope.find_opt binding.name with
+        | None -> Some binding
+        | Some _ -> None)
     in
     let captured_ty_name, captured_bindings =
       match captured_bindings with
@@ -664,8 +748,8 @@ module Impl = struct
         let body : C_ast.block =
           new_block (fun () ->
             try
-              def.captures
-              |> List.iter (fun (binding : binding) ->
+              !(def.captures)
+              |> Id.Map.iter (fun _id (binding : binding) ->
                 insert_stmt (Comment (make_string "captured %a" Binding.print binding)));
               (match captured_ty_name with
                | Some captured_ty_name ->
@@ -862,7 +946,9 @@ module Impl = struct
       compound_literal ~kast:true (transpile_ty (Value.Shape.ty_of shape)) fields
     | V_List _ -> failwith __LOC__
     | V_Variant _ -> failwith __LOC__
-    | V_Ty ty -> Unit (* AddrOf (TypeInfo (transpile_ty ty)) *)
+    | V_Ty ty ->
+      transpile_ty ty |> ignore;
+      Unit (* AddrOf (TypeInfo (transpile_ty ty)) *)
     | V_Fn _ | V_Generic _ -> fail "unreachable, we should never compile fns as consts"
     | V_NativeFn f -> fail "transpiling native fn %S at %s" f.name __LOC__
     | V_Ast _ -> failwith __LOC__
@@ -1120,8 +1206,8 @@ module Impl = struct
               let captured_var_name = gen_name "captured" in
               insert_stmt
                 (DeclareVar { name = captured_var_name; ty = Named captured_ty_name });
-              transpiled_fn.def.captures
-              |> List.iter (fun (binding : binding) ->
+              !(transpiled_fn.def.captures)
+              |> Id.Map.iter (fun _id (binding : binding) ->
                 insert_stmt
                   (Assign
                      { assignee =
@@ -1159,6 +1245,12 @@ module Impl = struct
         let var_name = gen_name "tuple" in
         insert_stmt
           (DeclareVar { name = var_name; ty = transpile_ty expr.data.signature.ty });
+        insert_stmt
+          (Assign
+             { assignee = Ident var_name
+             ; value =
+                 Native { parts = [ Raw "try_malloc(sizeof(*"; Raw var_name; Raw "))" ] }
+             });
         let unnamed_idx = ref 0 in
         parts
         |> List.iter (fun (part : expr Types.tuple_part_of) ->
@@ -1175,7 +1267,8 @@ module Impl = struct
             let field_name = member_name member in
             insert_stmt
               (Assign
-                 { assignee = Field { obj = Ident var_name; field = field_name }
+                 { assignee =
+                     Field { obj = Deref (Claim (Ident var_name)); field = field_name }
                  ; value = transpile_expr field
                  })
           | Unpack packed ->
@@ -1203,10 +1296,16 @@ module Impl = struct
               insert_stmt
                 (Assign
                    { assignee =
-                       Field { obj = Ident var_name; field = member_name assignee_member }
+                       Field
+                         { obj = Deref (Claim (Ident var_name))
+                         ; field = member_name assignee_member
+                         }
                    ; value =
                        Claim
-                         (Field { obj = Ident packed_name; field = member_name member })
+                         (Field
+                            { obj = Deref (Claim (Ident packed_name))
+                            ; field = member_name member
+                            })
                    })));
         Some (Claim (Ident var_name))
       | Types.E_Variant { label; value; _ } ->
@@ -1216,12 +1315,24 @@ module Impl = struct
           | None -> Unit
         in
         Some
-          (compound_literal
-             ~kast:false
-             (transpile_ty expr.data.signature.ty)
-             [ "tag", Claim (Ident (variant_tag_name expr.data.signature.ty label))
-             ; "data", value
-             ])
+          (let var = gen_name "variant" in
+           insert_stmt
+             (DeclareVar { name = var; ty = transpile_ty expr.data.signature.ty });
+           insert_stmt
+             (Assign
+                { assignee = Field { obj = Ident var; field = "tag" }
+                ; value = Claim (Ident (variant_tag_name expr.data.signature.ty label))
+                });
+           insert_stmt
+             (Assign
+                { assignee =
+                    Field
+                      { obj = Field { obj = Ident var; field = "data" }
+                      ; field = make_correct_ident (Label.get_name label)
+                      }
+                ; value
+                });
+           Claim (Ident var))
       | Types.E_Apply { f; arg } -> Some (call_fn ~args_is_tuple:true f arg)
       | Types.E_InstantiateGeneric _ ->
         let value = Interpreter.eval interpreter expr in
@@ -1303,8 +1414,32 @@ module Impl = struct
         insert_stmt (DeclareVar { name = var; ty = transpile_ty expr.data.signature.ty });
         insert_stmt (If { cond; then_case; else_case = Some else_case });
         Some (Claim (Ident var))
-      | Types.E_And _ -> failwith __LOC__
-      | Types.E_Or _ -> failwith __LOC__
+      | Types.E_And { lhs; rhs } ->
+        let result = gen_name "and_result" in
+        let_var (Raw "Bool") result (transpile_expr lhs);
+        insert_stmt
+          (If
+             { cond = Claim (Ident result)
+             ; then_case =
+                 new_block (fun () ->
+                   insert_stmt
+                     (Assign { assignee = Ident result; value = transpile_expr rhs }))
+             ; else_case = None
+             });
+        Some (Claim (Ident result))
+      | Types.E_Or { lhs; rhs } ->
+        let result = gen_name "and_result" in
+        let_var (Raw "Bool") result (transpile_expr lhs);
+        insert_stmt
+          (If
+             { cond = Not (Claim (Ident result))
+             ; then_case =
+                 new_block (fun () ->
+                   insert_stmt
+                     (Assign { assignee = Ident result; value = transpile_expr rhs }))
+             ; else_case = None
+             });
+        Some (Claim (Ident result))
       | Types.E_Match { value; branches } ->
         let value_var = gen_name "matched" in
         (* TODO panic(not exhaustive) *)
@@ -1408,7 +1543,11 @@ module Impl = struct
           (Assign
              { assignee = Native { parts = [ Raw "currently_unwinding" ] }
              ; value =
-                 Claim (Field { obj = Deref (Claim (Ident token_var)); field = "raw" })
+                 Claim
+                   (Field
+                      { obj = Deref (Claim (Deref (Claim (Ident token_var))))
+                      ; field = "raw"
+                      })
              });
         (Effect.perform GetUnwindCtx).insert_unwind ();
         None
@@ -1446,6 +1585,22 @@ module Impl = struct
 end
 
 let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.program =
+  let runtime_defined_closure_types =
+    let source = [%include_file "runtime.c"] in
+    source
+    |> String.split_on_char '\n'
+    |> List.filter_map (fun s ->
+      let* s = s |> String.strip_prefix ~prefix:"define_closure_type(" in
+      let* s = s |> String.strip_suffix ~suffix:");" in
+      let args = s |> String.split_on_char ',' |> List.map String.trim in
+      match args with
+      | name :: args ->
+        Log.trace (fun log ->
+          log "Found defined closure type %a = %s" (List.print String.print) args name);
+        Some (args, name)
+      | _ -> failwith __LOC__)
+    |> StringListMap.of_list
+  in
   let ctx : ctx =
     { target = { name = "c" }
     ; statics = Dynarray.create ()
@@ -1456,6 +1611,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; init_statics = { stmts = [] }
     ; includes = StringSet.empty
     ; contexts = Id.Map.empty
+    ; runtime_defined_closure_types
     }
   in
   let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
@@ -1526,7 +1682,16 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
    | effect CurrentFnCaptured, k -> Effect.continue k captured
    | effect GetCtx, k -> Effect.continue k ctx
    | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty);
-  { types = ctx.types |> StringMap.add "Context" (!context_ty_def |> Option.unwrap)
+  { types =
+      ctx.types
+      |> StringMap.add "Context" (!context_ty_def |> Option.unwrap)
+      |> StringMap.union
+           (fun _ a _ -> Some a)
+           (ctx.runtime_defined_closure_types
+            |> StringListMap.to_list
+            |> List.map (fun (_, name) ->
+              name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+            |> StringMap.of_list)
   ; includes = ctx.includes
   ; fns = ctx.fns
   ; statics = ctx.statics |> Dynarray.to_list

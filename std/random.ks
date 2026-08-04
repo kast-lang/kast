@@ -11,6 +11,7 @@ const gen_range = [T] (.min :: T, .max :: T) with rng -> T => (
 impl Int32 as GenRange = {
     .gen = (.min, .max) => @cfg (
         | target.name == "interpreter" => (@native "random.gen_range")(.min, .max)
+        | target.name == "c" => @native "random_Int32(\(min), \(max))"
         | target.name == "javascript" => (@native "(ctx,x)=>Math.floor(x)")((@native "Math.random()") * (max - min + 1)) + min
     ),
 };
@@ -18,6 +19,7 @@ impl Int32 as GenRange = {
 impl Int64 as GenRange = {
     .gen = (.min, .max) => @cfg (
         | target.name == "interpreter" => (@native "random.gen_range")(.min, .max)
+        | target.name == "c" => @native "random_Int64(\(min), \(max))"
         | target.name == "javascript" => (@native "(ctx,x)=>Math.floor(x)")((@native "Math.random()") * (max - min + 1)) + min
     ),
 };
@@ -25,6 +27,7 @@ impl Int64 as GenRange = {
 impl Float64 as GenRange = {
     .gen = (.min, .max) => @cfg (
         | target.name == "interpreter" => (@native "random.gen_range")(.min, .max)
+        | target.name == "c" => @native "random_Float64(\(min), \(max))"
         | target.name == "javascript" => (@native "Math.random()") * (max - min) + min
     ),
 };

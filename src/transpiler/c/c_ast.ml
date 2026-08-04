@@ -19,6 +19,7 @@ and expr =
       ; target : ty
       }
   | AddrOf of place_expr
+  | Not of expr
   | And of expr * expr
   | Or of expr * expr
   | Equal of expr * expr
@@ -80,6 +81,7 @@ and ty_def_shape =
       ; result_ty : ty
       }
   | Alias of ty
+  | RuntimeDefined
 
 and ty_def =
   { shape : ty_def_shape
@@ -268,6 +270,9 @@ module Print = struct
     maybe_surround surround (fun () ->
       match expr with
       | Unit -> write "(Unit){}"
+      | Not e ->
+        write "!";
+        print_expr e
       | Literal lit ->
         write
           (match lit with
@@ -349,6 +354,7 @@ module Print = struct
 
   and print_program (program : program) =
     write [%include_file "runtime.c"];
+    writeln ();
     program.includes
     |> StringSet.iter (fun s ->
       write "#include <";
@@ -365,6 +371,7 @@ module Print = struct
         | Union _ -> Some "union"
         | Fn _ -> None
         | Alias _ -> None
+        | RuntimeDefined -> None
       in
       match shape_name with
       | Some shape_name ->
@@ -387,6 +394,7 @@ module Print = struct
         let def = program.types |> StringMap.find name in
         write_comment def.comment;
         (match def.shape with
+         | RuntimeDefined -> ()
          | Fn { args; result_ty } ->
            args |> List.iter ensure_type_declared;
            result_ty |> ensure_type_declared;

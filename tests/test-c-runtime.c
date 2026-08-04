@@ -24,13 +24,13 @@ int main() {
         char* pp = printed;
         utf8_char_encode_step(&pp, c);
         printf("%zu = ", i);
-        print_String((String) {.buf = printed, .length = pp - printed});
+        Kast_write(stdout, (String) {.buf = printed, .length = pp - printed});
         printf("\n");
         i++;
         utf8_char_encode_step(&out, c);
     }
 
-    print_String((String) {.buf = outbuf, .length = out - outbuf});
+    Kast_write(stdout, (String) {.buf = outbuf, .length = out - outbuf});
     printf("\n");
 
     free(buf);

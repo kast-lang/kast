@@ -8,12 +8,45 @@ const neg = [T] (x :: T) -> T => @cfg (
 const pos = [T] (x :: T) -> T => (
     x
 );
-const add = [T] (a :: T, b :: T) -> T => (
-    @cfg (
+
+const Add = [Self] newtype {
+    .add :: (Self, Self) -> Self,
+};
+
+impl Int32 as Add = {
+    .add = (a, b) => @cfg (
         | target.name == "interpreter" => (@native "+")(a, b)
         | target.name == "c" => @native "\(a) + \(b)"
         | target.name == "javascript" => @native "\(a)+\(b)"
     )
+};
+
+impl Int64 as Add = {
+    .add = (a, b) => @cfg (
+        | target.name == "interpreter" => (@native "+")(a, b)
+        | target.name == "c" => @native "\(a) + \(b)"
+        | target.name == "javascript" => @native "\(a)+\(b)"
+    )
+};
+
+impl Float64 as Add = {
+    .add = (a, b) => @cfg (
+        | target.name == "interpreter" => (@native "+")(a, b)
+        | target.name == "c" => @native "\(a) + \(b)"
+        | target.name == "javascript" => @native "\(a)+\(b)"
+    )
+};
+
+impl String as Add = {
+    .add = (a, b) => @cfg (
+        | target.name == "interpreter" => (@native "+")(a, b)
+        | target.name == "c" => @native "String_concat(\(a), \(b))"
+        | target.name == "javascript" => @native "\(a)+\(b)"
+    )
+};
+
+const add = [T] (a :: T, b :: T) -> T => (
+    (T as Add).add(a, b)
 );
 const sub = [T] (a :: T, b :: T) -> T => (
     @cfg (

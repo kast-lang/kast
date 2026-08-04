@@ -182,6 +182,7 @@
           ]);
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang_22}/bin/clang*";
+          # CLANGD_FLAGS = "--query-driver=${inputs.filc.packages.${system}.filcc}/bin/clang*";
           shellHook = ''
             echo 'Hello from Kast devshell'
             echo '  dont forget to run `just lsp-support` :)'

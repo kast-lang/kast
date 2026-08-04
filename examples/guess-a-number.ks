@@ -7,7 +7,7 @@ let main = () with io => (
     loop (
         let prompt = if first then "Guess: " else "Guess again: ";
         first = false;
-        let guess = input(prompt) |> String.parse;
+        let guess = input(prompt) |> String.parse[_];
         if picked < guess then (
             print("Less!")
         ) else if picked > guess then (

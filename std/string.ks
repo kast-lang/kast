@@ -2,18 +2,22 @@ impl String as module = (
     module:
     const length = (s :: String) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "string.length")(s)
+        | target.name == "c" => @native "String_length(\(s))"
         | target.name == "javascript" => (@native "Kast.String.length")(s)
     );
     const utf8_length = (s :: String) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "string.length")(s)
+        | target.name == "c" => @native "String_utf8_length(\(s))"
         | target.name == "javascript" => (@native "Kast.String.utf8_length")(s)
     );
     const at = (s :: String, idx :: Int32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "string.at")(s, idx)
+        | target.name == "c" => @native "String_at(\(s), \(idx))"
         | target.name == "javascript" => (@native "Kast.String.at")(s, idx)
     );
     const substring = (s :: String, start :: Int32, len :: Int32) -> String => @cfg (
         | target.name == "interpreter" => (@native "string.substring")(s, start, len)
+        | target.name == "c" => @native "String_substring(\(s), \(start), \(len))"
         | target.name == "javascript" => (@native "Kast.String.substring")(s, start, len)
     );
     const substring_from = (s :: String, start :: Int32) -> String => (
@@ -40,6 +44,12 @@ impl String as module = (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iter")(s, f)
         }
+        | target.name == "c" => {
+            .iter = f => (
+                let @"impl" :: fn (String, Char -> ()) -> () = @native "String_iter";
+                @"impl"(s, f);
+            ),
+        }
         | target.name == "javascript" => {
             .iter = f => (@native "Kast.String.iter")(s, f)
         }
@@ -48,6 +58,12 @@ impl String as module = (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iteri")(s, (i, c) => f({ i, c }))
         }
+        | target.name == "c" => {
+            .iter = f => (
+                let @"impl" :: fn (String, (Int32, Char) -> ()) -> () = @native "String_iteri";
+                @"impl"(s, (i, c) => f({ i, c }));
+            ),
+        }
         | target.name == "javascript" => {
             .iter = f => (@native "Kast.String.iteri")(s, f)
         }
@@ -55,6 +71,12 @@ impl String as module = (
     const iteri_rev = (s :: String) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iteri_rev")(s, (i, c) => f({ i, c }))
+        }
+        | target.name == "c" => {
+            .iter = f => (
+                let @"impl" :: fn (String, (Int32, Char) -> ()) -> () = @native "String_iteri_rev";
+                @"impl"(s, (i, c) => f({ i, c }));
+            ),
         }
         | target.name == "javascript" => {
             .iter = f => (@native "Kast.String.iteri_rev")(s, f)
@@ -228,7 +250,7 @@ impl String as module = (
     );
 
     const is_whitespace = (s :: String) -> Bool => (
-        iter(s) |> std.iter.all(Char.is_whitespace)
+        iter(s) |> std.iter.all[_](Char.is_whitespace)
     );
     
     const FromString = [Self] newtype {
@@ -279,7 +301,7 @@ impl String as module = (
     impl Char as ToString = {
         .to_string = c => @cfg (
             | target.name == "interpreter" => (@native "to_string")(c)
-            | target.name == "c" => (@native "Char_to_String")(c)
+            | target.name == "c" => @native "Char_to_String(\(c))"
             | target.name == "javascript" => (@native "Kast.String.to_string")(c)
         )
     };

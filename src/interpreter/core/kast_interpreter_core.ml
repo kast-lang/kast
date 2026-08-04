@@ -180,8 +180,8 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
            ~matched:false, Scope.Locals.empty
          | Some value, Some pattern -> pattern_match ~span value pattern)
        else ~matched:false, Scope.Locals.empty
-     | _ ->
-       Error.error pattern.data.span "Expected variant";
+     | other ->
+       Error.error pattern.data.span "Expected variant, got %a" Value.Shape.print other;
        ~matched:false, Scope.Locals.empty)
   | P_Error -> ~matched:false, Scope.Locals.empty
 

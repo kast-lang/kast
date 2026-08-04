@@ -1,6 +1,8 @@
 use std.net.tcp;
 use std.String;
 
+std.io.print <| "Listening...";
+
 # connect
 let mut listener = tcp.Listener.bind("127.0.0.1:1234");
 

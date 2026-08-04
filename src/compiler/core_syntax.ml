@@ -650,12 +650,7 @@ let fn : core_syntax =
                result_fn_expr |> Compiler.data_append TyExpr result_ty_expr Expr);
             ty.result
             |> Inference.Ty.expect_inferred_as ~span:body.data.span body.data.signature.ty;
-            Compiler.finish_compiling
-              def
-              { captures = !captures |> Id.Map.to_list |> List.map snd
-              ; args = { pattern = args }
-              ; body
-              };
+            Compiler.finish_compiling def { captures; args = { pattern = args }; body };
             Log.trace (fun log ->
               log
                 "finished compiling fn at %a, result ty = %a"
@@ -729,7 +724,7 @@ let generic : core_syntax =
             let body = C.compile Expr body in
             Compiler.finish_compiling
               def
-              { captures = []; args = { pattern = args }; body };
+              { captures = ref Id.Map.empty; args = { pattern = args }; body };
             Log.trace (fun log -> log "ty.result = %a" Ty.print ty.result);
             Log.trace (fun log -> log "body.data.ty = %a" Ty.print body.data.signature.ty);
             ty.result
@@ -1592,7 +1587,7 @@ let impl_syntax : core_syntax =
                  let body = C.compile ~state Expr impl in
                  Compiler.finish_compiling
                    def
-                   { captures = []; args = { pattern = args }; body };
+                   { captures = ref Id.Map.empty; args = { pattern = args }; body };
                  ty.args.ty
                  |> Inference.Ty.expect_inferred_as
                       ~span:args.data.span

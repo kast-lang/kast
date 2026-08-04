@@ -240,7 +240,7 @@ module rec TypesImpl : sig
     ; body : expr
     }
 
-  and captures = binding list
+  and captures = binding Id.Map.t ref
 
   and maybe_compiled_fn =
     { span : Span.t
@@ -988,7 +988,7 @@ end = struct
     ; body : expr
     }
 
-  and captures = binding list
+  and captures = binding Id.Map.t ref
 
   and maybe_compiled_fn =
     { span : Span.t
