@@ -173,8 +173,8 @@ module rec TypesImpl : sig
   and ty_args = { ty : ty }
 
   and ty_fn =
-    { is_closure : bool
-    ; call_convention : string option
+    { is_closure : bool var
+    ; call_convention : string option var
     ; args : ty_args
     ; result : ty
     }
@@ -921,8 +921,8 @@ end = struct
   and ty_args = { ty : ty }
 
   and ty_fn =
-    { is_closure : bool
-    ; call_convention : string option
+    { is_closure : bool var
+    ; call_convention : string option var
     ; args : ty_args
     ; result : ty
     }

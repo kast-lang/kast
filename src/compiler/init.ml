@@ -415,24 +415,19 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
       | E_Apply { f; arg } ->
         let f = f |> auto_instantiate_generics f.data.span state in
         overwrite_shape := Some (E_Apply { f; arg });
-        let f_arg_ty = Ty.new_not_inferred ~scope ~span in
-        let f_result_ty = Ty.new_not_inferred ~scope ~span in
-        let { ty = f_ty } : signature = f.data.signature in
-        f_ty.var
-        |> Inference.Var.once_inferred (fun f_ty ->
-          match f_ty with
-          | Types.T_Fn
-              { is_closure : bool = _
-              ; call_convention : string option = _
-              ; args = f_ty_args
-              ; result = f_ty_result
-              } ->
-            f_arg_ty |> Inference.Ty.expect_inferred_as ~span f_ty_args.ty;
-            f_result_ty |> Inference.Ty.expect_inferred_as ~span f_ty_result
-          | _ -> error span "expected a fn, got %a" Ty.Shape.print f_ty);
-        let { ty = arg_ty } : signature = arg.data.signature in
-        arg_ty |> Inference.Ty.expect_inferred_as ~span:arg.data.span f_arg_ty;
-        { ty = f_result_ty }
+        let result_ty = Ty.new_not_inferred ~scope ~span in
+        let f_ty =
+          Ty.inferred
+            ~span:f.data.span
+            (T_Fn
+               { is_closure = Inference.not_inferred_simple ~span
+               ; call_convention = Inference.not_inferred_simple ~span
+               ; args = { ty = arg.data.signature.ty }
+               ; result = result_ty
+               })
+        in
+        f.data.signature.ty |> Inference.Ty.expect_inferred_as ~span:f.data.span f_ty;
+        { ty = result_ty }
       | E_Assign { assignee; value } ->
         let { ty = assignee_ty } : signature = assignee.data.signature in
         let { ty = value_ty } : signature = value.data.signature in

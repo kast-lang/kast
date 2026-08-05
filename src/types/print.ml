@@ -241,10 +241,18 @@ module Impl = struct
 
   and print_ty_fn : formatter -> ty_fn -> unit =
     fun fmt { is_closure; call_convention; args; result } ->
-    if not is_closure then fprintf fmt "fn ";
-    (match call_convention with
-     | Some s -> fprintf fmt "@call %a" String.print_debug s
-     | None -> ());
+    print_var
+      (fun fmt -> function
+         | false -> fprintf fmt "fn "
+         | true -> ())
+      fmt
+      is_closure;
+    print_var
+      (fun fmt -> function
+         | Some s -> fprintf fmt "@call %a" String.print_debug s
+         | None -> ())
+      fmt
+      call_convention;
     fprintf fmt "%a -> %a" (print_ty_args ~open_:"(" ~close:")") args print_ty result
 
   (* VAR *)
@@ -838,6 +846,7 @@ let print_name_part = with_cache Impl.print_name_part
 let print_ty_tuple = with_cache (Impl.print_ty_tuple ~always_print_shape:false)
 let print_ty_variant = with_cache (Impl.print_ty_variant ~always_print_shape:false)
 let print_ty_generic = with_cache Impl.print_ty_generic
+let print_ty_fn = with_cache Impl.print_ty_fn
 let print_args ~open_ ~close = with_cache (Impl.print_args ~open_ ~close)
 
 let print_optionally_named ~always_print_shape fmt name f =

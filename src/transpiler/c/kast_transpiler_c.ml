@@ -456,6 +456,8 @@ module Impl = struct
       | Types.T_List { element_ty } -> failwith __LOC__
       | Types.T_Ty -> Alias Unit (* Alias (Ref (Named "TypeInfo")) *)
       | Types.T_Fn { is_closure; call_convention; args; result } ->
+        let is_closure = is_closure |> Inference.await_inferred_simple in
+        let call_convention = call_convention |> Inference.await_inferred_simple in
         let args =
           args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
         in
@@ -859,14 +861,18 @@ module Impl = struct
              | Some shape ->
                (match shape with
                 | V_Fn { fn = { def; captured; _ }; ty = fn_ty } ->
+                  let is_closure = fn_ty.is_closure |> Inference.await_inferred_simple in
+                  let call_convention =
+                    fn_ty.call_convention |> Inference.await_inferred_simple
+                  in
                   let f =
                     transpile_fn
-                      ~call_convention:fn_ty.call_convention
-                      ~is_closure:fn_ty.is_closure
+                      ~call_convention
+                      ~is_closure
                       ~captured:(Some captured)
                       def
                   in
-                  if fn_ty.is_closure && f.captured_ty_name |> Option.is_none
+                  if is_closure && f.captured_ty_name |> Option.is_none
                   then
                     Some
                       (Block
@@ -1032,7 +1038,7 @@ module Impl = struct
       else [ transpile_expr arg ]
     in
     let f, args =
-      if f_ty.is_closure
+      if f_ty.is_closure |> Inference.await_inferred_simple
       then (
         let f_name = gen_name "f" in
         let_var (transpile_ty f_expr.data.signature.ty) f_name f;
@@ -1041,7 +1047,7 @@ module Impl = struct
       else f, args
     in
     let args =
-      match f_ty.call_convention with
+      match f_ty.call_convention |> Inference.await_inferred_simple with
       | None -> [ Effect.perform GetScopeCtxPtr ] @ args
       | Some "C" -> args
       | Some other -> fail "unknown conv %S" other
@@ -1188,14 +1194,12 @@ module Impl = struct
          with
          | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx)
       | Types.E_Fn { ty = f_ty; def; _ } ->
-        if f_ty.is_closure
+        let is_closure = f_ty.is_closure |> Inference.await_inferred_simple in
+        let call_convention = f_ty.call_convention |> Inference.await_inferred_simple in
+        if is_closure
         then (
           let transpiled_fn =
-            transpile_fn
-              ~call_convention:f_ty.call_convention
-              ~is_closure:f_ty.is_closure
-              ~captured:None
-              def
+            transpile_fn ~call_convention ~is_closure ~captured:None def
           in
           let result_var = gen_name "closure" in
           insert_stmt
@@ -1231,11 +1235,7 @@ module Impl = struct
           Some (Claim (Ident result_var)))
         else (
           let transpiled_fn =
-            transpile_fn
-              ~call_convention:f_ty.call_convention
-              ~is_closure:f_ty.is_closure
-              ~captured:None
-              def
+            transpile_fn ~call_convention ~is_closure ~captured:None def
           in
           Some (Claim (Ident transpiled_fn.name)))
       | Types.E_Generic { def; _ } ->

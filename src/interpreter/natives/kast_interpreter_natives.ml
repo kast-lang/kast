@@ -55,8 +55,8 @@ let init_natives () =
          ( name
          , fun ty ->
              let fn_ty : Types.ty_fn =
-               { is_closure = true
-               ; call_convention = None
+               { is_closure = Inference.simple ~span (true : bool)
+               ; call_convention = Inference.simple ~span (None : string option)
                ; args =
                    { ty =
                        Ty.inferred ~span

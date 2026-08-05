@@ -1381,7 +1381,13 @@ and eval_ty : state -> Expr.ty -> ty =
           let args = eval_ty state arg in
           let result = eval_ty state result in
           Ty.inferred ~span
-          <| T_Fn { is_closure; call_convention; args = { ty = args }; result }
+          <| T_Fn
+               { is_closure = Inference.simple ~span (is_closure : bool)
+               ; call_convention =
+                   Inference.simple ~span (call_convention : string option)
+               ; args = { ty = args }
+               ; result
+               }
         | TE_Expr expr ->
           let value = eval state expr in
           Log.trace (fun log ->

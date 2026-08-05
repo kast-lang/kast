@@ -45,8 +45,8 @@ let native_fn name impl : string * (ty -> value) =
   , fun ty ->
       let scope = VarScope.of_ty ty in
       let fn_ty : Types.ty_fn =
-        { is_closure = true
-        ; call_convention = None
+        { is_closure = Inference.simple ~span (true : bool)
+        ; call_convention = Inference.simple ~span (None : string option)
         ; args = { ty = Ty.new_not_inferred ~scope ~span }
         ; result = Ty.new_not_inferred ~scope ~span
         }

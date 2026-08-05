@@ -558,8 +558,8 @@ let fn : core_syntax =
         | Expr ->
           let scope = State.var_scope C.state in
           let ty : Types.ty_fn =
-            { is_closure
-            ; call_convention
+            { is_closure = Inference.simple ~span is_closure
+            ; call_convention = Inference.simple ~span call_convention
             ; args = { ty = Ty.new_not_inferred ~scope ~span:arg.data.span }
             ; result =
                 Ty.new_not_inferred
@@ -1544,8 +1544,8 @@ let impl_syntax : core_syntax =
                (* TODO maybe reduce copypasta here and compiling fn *)
                let ty : Types.ty_fn =
                  let scope = State.var_scope C.state in
-                 { is_closure = true
-                 ; call_convention = None
+                 { is_closure = Inference.simple ~span true
+                 ; call_convention = Inference.simple ~span None
                  ; args =
                      { ty = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__) }
                  ; result = Ty.new_not_inferred ~scope ~span:(Span.of_ocaml __POS__)

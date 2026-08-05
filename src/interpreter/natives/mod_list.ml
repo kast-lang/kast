@@ -3,14 +3,15 @@ open Common
 let init () =
   [ native_fn "List.new" (fun ty ~caller ~state:_ _args : value ->
       with_return (fun { return } ->
-        let ty =
+        eprintln "%a" Print.print_ty_fn ty;
+        let element_ty =
           match ty.result |> Ty.await_inferred with
-          | T_List ty -> ty
+          | T_List element_ty -> element_ty
           | _ ->
             Error.error caller "List.new returns a list";
             return (V_Error |> Value.inferred ~span)
         in
-        Value.inferred ~span <| V_List { ty; elements = Dynarray.create () }))
+        Value.inferred ~span <| V_List { ty = element_ty; elements = Dynarray.create () }))
   ; native_fn "List.length" (fun _ty ~caller ~state:_ args : value ->
       let arg = single_arg ~span args in
       with_return (fun { return } ->

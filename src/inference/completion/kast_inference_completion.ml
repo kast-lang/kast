@@ -208,10 +208,9 @@ module Impl = struct
   and complete_ty_variant_data ({ data } : ty_variant_data) =
     complete_option complete_ty data
 
-  and complete_ty_fn
-        ({ is_closure : bool = _; call_convention : string option = _; args; result } :
-          ty_fn)
-    =
+  and complete_ty_fn ({ is_closure; call_convention; args; result } : ty_fn) =
+    complete_var ~name:"bool" (fun (_ : bool) -> ()) is_closure;
+    complete_var ~name:"string option" (fun (_ : string option) -> ()) call_convention;
     complete_ty_args args;
     complete_ty result
 

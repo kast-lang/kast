@@ -16,3 +16,15 @@ module Value = struct
     expect ~span Inference_impl.unite_value expected value
   ;;
 end
+
+let not_inferred_simple : 'a. span:span -> ('a, VarScope.t) var =
+  fun ~span -> Var.new_not_inferred ~span ~scope:(VarScope.root ())
+;;
+
+let simple : 'a. span:span -> 'a -> ('a, VarScope.t) var =
+  fun ~span value -> Var.new_inferred (fun _ -> VarScope.root ()) ~span value
+;;
+
+let await_inferred_simple : 'a. ('a, VarScope.t) var -> 'a =
+  fun var -> Var.await_inferred ~error_shape:(fun _ -> failwith __LOC__) var
+;;

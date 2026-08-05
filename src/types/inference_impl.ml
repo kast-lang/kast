@@ -81,6 +81,7 @@ module VarScope = struct
 
   let rec _unused () = ()
   and of_ty : ty -> var_scope = fun { var } -> Inference.Var.scope var
+  and of_var : 'a. 'a var -> var_scope = Inference.Var.scope
 
   and of_ty_shape : ty_shape -> var_scope =
     fun shape ->
@@ -113,12 +114,10 @@ module VarScope = struct
   and of_ty_unwind_token : ty_unwind_token -> var_scope = fun { result } -> of_ty result
 
   and of_ty_fn : ty_fn -> var_scope =
-    fun { is_closure : bool = _
-        ; call_convention : string option = _
-        ; args = { ty = args }
-        ; result
-        } ->
-    deepest (of_ty args) (of_ty result)
+    fun { is_closure; call_convention; args = { ty = args }; result } ->
+    deepest
+      (deepest (of_ty args) (of_ty result))
+      (deepest (of_var is_closure) (of_var call_convention))
 
   and of_ty_generic : ty_generic -> var_scope =
     fun { args = { pattern = args }; result } ->
@@ -658,18 +657,20 @@ module Impl = struct
          | Some a, Some b -> Some (unite_ty ~span a b))
     }
 
+  and unite_var : 'a. 'a Inference.unite -> 'a var Inference.unite =
+    fun unite_shape -> Inference.Var.unite unite_shape VarScopeImpl.unite
+
   and unite_ty_fn : ty_fn Inference.unite =
     fun ~span a b ->
-    { is_closure = unite_bool ~span a.is_closure b.is_closure
+    { is_closure = unite_var unite_bool ~span a.is_closure b.is_closure
     ; call_convention =
-        unite_option unite_string ~span a.call_convention b.call_convention
+        unite_var (unite_option unite_string) ~span a.call_convention b.call_convention
     ; args = { ty = unite_ty ~span a.args.ty b.args.ty }
     ; result = unite_ty ~span a.result b.result
     }
 
   and unite_ty : ty Inference.unite =
-    fun ~span { var = a } { var = b } ->
-    { var = Inference.Var.unite unite_ty_shape VarScopeImpl.unite ~span a b }
+    fun ~span { var = a } { var = b } -> { var = unite_var unite_ty_shape ~span a b }
 
   and unite_place : place Inference.unite =
     fun ~span place_a place_b ->
