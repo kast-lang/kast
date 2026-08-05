@@ -8,32 +8,32 @@ const Into = [T] [Self] newtype {
 
 impl Int32 as Into[Int64] = {
     .into = value => (
-        value |> String.to_string[_] |> String.parse[_]
+        value |> String.to_string |> String.parse
     )
 };
 impl Int32 as Into[Float64] = {
     .into = value => (
-        value |> String.to_string[_] |> String.parse[_]
+        value |> String.to_string |> String.parse
     )
 };
 impl Int64 as Into[Int32] = {
     .into = value => (
-        value |> String.to_string[_] |> String.parse[_]
+        value |> String.to_string |> String.parse
     )
 };
 impl Int64 as Into[Float64] = {
     .into = value => (
-        value |> String.to_string[_] |> String.parse[_]
+        value |> String.to_string |> String.parse
     )
 };
 impl Float64 as Into[Int32] = {
     .into = value => (
-        value |> String.to_string[_] |> String.parse[_]
+        value |> String.to_string |> String.parse
     )
 };
 impl Float64 as Into[Int64] = {
     .into = value => (
-        value |> String.to_string[_] |> String.parse[_]
+        value |> String.to_string |> String.parse
     )
 };
 

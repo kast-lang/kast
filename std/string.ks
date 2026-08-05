@@ -250,7 +250,7 @@ impl String as module = (
     );
 
     const is_whitespace = (s :: String) -> Bool => (
-        iter(s) |> std.iter.all[_](Char.is_whitespace)
+        iter(s) |> std.iter.all(Char.is_whitespace)
     );
     
     const FromString = [Self] newtype {

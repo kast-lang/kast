@@ -15,5 +15,5 @@ const default_panic_handler :: PanicHandlerT = {
 };
 
 const panic = [T] (s :: String) -> T => (
-    (@current PanicHandler).handle(s) |> from_never[_]
+    (@current PanicHandler).handle(s) |> from_never
 );

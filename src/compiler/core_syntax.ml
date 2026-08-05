@@ -2514,6 +2514,31 @@ let typeof : core_syntax =
   }
 ;;
 
+let auto_instantiate : core_syntax =
+  { name = "auto_instantiate"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let expr () =
+          let expr = C.compile Expr expr in
+          auto_instantiate_generics span C.state expr
+        in
+        match kind with
+        | Expr -> expr ()
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | TyExpr -> (fun () -> TE_Expr (expr ())) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
+          error span "auto_instantiate can't be pattern | assignee";
+          init_error span C.state kind)
+  }
+;;
+
 let include_ast : core_syntax =
   { name = "include_ast"
   ; handle =
@@ -2628,6 +2653,7 @@ let core =
   ; no_hygiene
   ; record
   ; empty_variant
+  ; auto_instantiate
   ]
 ;;
 

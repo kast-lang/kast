@@ -1,4 +1,5 @@
 @syntax from_scratch;
+
 @syntax "core:module" 0 @wrap always = "module" ":" "\n" _ ->;
 @syntax "core:then" 0 @wrap always = _ ";" "\n" _ ->;
 @syntax "core:stmt" 0 @wrap always = _ ";";
@@ -112,6 +113,7 @@
 @syntax "core:by_ref_mut" 500 @wrap never = "ref" " " "mut" " " _;
 @syntax "opaque_type" 500 @wrap never = "@opaque_type";
 @syntax "opaque_type_with_arg" 500 @wrap never = "@opaque_type" " " native_name;
+@syntax "core:auto_instantiate" 500 @wrap never = "@auto_instantiate" " " _;
 @syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" _:any " "/"\\\n" "}";

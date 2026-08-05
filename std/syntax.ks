@@ -1,33 +1,33 @@
 impl syntax (arg |> f) = `(
     let _arg = $arg;
-    let _f = $f;
+    let _f = @auto_instantiate $f;
     _f(_arg)
 );
 impl syntax (first |> f(args)) = `(
     let first = $first;
-    let f = $f;
+    let f = @auto_instantiate $f;
     f(first, $args)
 );
 impl syntax (f <| arg) = `(
     $f($arg)
 );
 impl syntax (a < b) = `(
-    std.cmp.less[_]($a, $b)
+    std.cmp.less($a, $b)
 );
 impl syntax (a <= b) = `(
-    std.cmp.less_or_equal[_]($a, $b)
+    std.cmp.less_or_equal($a, $b)
 );
 impl syntax (a == b) = `(
-    std.cmp.equal[_]($a, $b)
+    std.cmp.equal($a, $b)
 );
 impl syntax (a != b) = `(
-    std.cmp.not_equal[_]($a, $b)
+    std.cmp.not_equal($a, $b)
 );
 impl syntax (a >= b) = `(
-    std.cmp.greater_or_equal[_]($a, $b)
+    std.cmp.greater_or_equal($a, $b)
 );
 impl syntax (a > b) = `(
-    std.cmp.greater[_]($a, $b)
+    std.cmp.greater($a, $b)
 );
 impl syntax (not x) = `(
     if $x then false else true
