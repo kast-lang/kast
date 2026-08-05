@@ -47,7 +47,7 @@ const to_str = [T] (x :: &T) -> String => (
                 result += (referenced as ToString).to_string($self^);
                 result
             )
-            | :Variant => panic("TODO")
+            | :Variant _ => panic("TODO")
             | :Tuple { .unnamed, .named } => (
                 let add = `(add);
                 let mut add_fields = `();

@@ -1,10 +1,11 @@
 unwindable block (
     with std.PanicHandler = {
-        .handle = [T] s => (
+        .handle = s => (
             print(s);
             unwind block ()
         ),
     };
-    panic("i panicked");
+    panic[_]("i panicked");
+    panic("unreachable");
 );
 print("continued");

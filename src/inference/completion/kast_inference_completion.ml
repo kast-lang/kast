@@ -504,15 +504,21 @@ module Impl = struct
     fun (type a) ~name (complete_inferred : a -> unit) (var : a var) ->
     let cache = RecurseCache.get () in
     let id = var |> Inference.Var.recurse_id in
-    if cache |> RecurseCache.is_visited id
-    then ()
-    else (
+    Log.trace (fun log ->
+      log
+        "checkign for completion %a: %a"
+        Id.print
+        id
+        (List.print Span.print)
+        (Inference.Var.spans var |> SpanSet.to_list));
+    if not (cache |> RecurseCache.is_visited id)
+    then (
       cache |> RecurseCache.enter id;
       match var |> Inference.Var.inferred_opt with
       | Some inferred -> complete_inferred inferred
       | None ->
         let span = Span.fake "<completion>" in
-        error span "%s not inferred" name)
+        error span "%s not inferred during completion" name)
   ;;
 end
 

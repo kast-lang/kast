@@ -320,11 +320,15 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         }
       | E_Claim place -> place.data.signature
       | E_Then { list } ->
-        let ty =
-          match List.last_opt list with
-          | None -> Ty.inferred ~span T_Unit
-          | Some last -> last.data.signature.ty
+        let rec go (list : expr list) =
+          match list with
+          | [] -> Ty.inferred ~span T_Unit
+          | [ single ] -> single.data.signature.ty
+          | first :: rest ->
+            ignored_ty first.data.span first.data.signature.ty;
+            go rest
         in
+        let ty = go list in
         { ty }
       | E_Stmt { expr } ->
         let { ty = expr_ty } : signature = expr.data.signature in

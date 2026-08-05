@@ -273,6 +273,7 @@ module Impl = struct
   and transpile_ty (ty : ty) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    Inference.Var.setup_default_if_needed ty.var;
     let ty =
       Interpreter.Substitute_bindings.sub_ty
         ~span
