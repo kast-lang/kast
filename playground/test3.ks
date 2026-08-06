@@ -7,17 +7,17 @@ const Foo = [T] newtype {
     .value :: T,
 };
 
-const update_data = [T] (
-    root :: Foo[T],
-) -> Foo[T] => {
-    .count = 1,
-    .value = _,
+const update_data = [U] (
+    root :: Foo[U],
+) -> Foo[U] => {
+    .count = 1 :: Int32,
+    .value = _ :: U,
 };
 
 # join :: [T] Foo[T] -> ()
 # join :: [T] Foo[Int32] -> ()
 const join = [T] (foo :: Foo[T]) -> () => (
-    update_data(foo);
+    update_data[T](foo);
 );
 
 join[Int32](_);

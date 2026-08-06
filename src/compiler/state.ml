@@ -373,7 +373,10 @@ module Scopes = struct
      | Const _ -> ()
      | Binding binding ->
        (match scopes.id_scope |> IdScope.find_opt ~from binding.id with
-        | None -> fail "failed to find local in id_scope"
+        | None ->
+          (* it might be a captured binding by a macro, so it would not be in id_scope *)
+          ()
+          (* fail "failed to find local in id_scope" *)
         | Some _ -> ( (* this is just to trigger found_in_parent *) )));
     local
   ;;
@@ -480,7 +483,8 @@ let enter_scope
     ; no_std
     } ->
   { scopes = scopes |> Scopes.enter ~span ~recursive ~found_in_parent
-  ; interpreter = Interpreter.enter_scope ~new_result_scope ~span ~recursive interpreter
+  ; interpreter =
+      Interpreter.enter_scope ~new_result_scope:true ~span ~recursive interpreter
   ; currently_compiled_file
   ; cache
   ; custom_syntax_impls

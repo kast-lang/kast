@@ -175,7 +175,7 @@ module Var = struct
     let sub_history =
       Id.Map.union
         (fun _id a b ->
-           let _ : ('a, 'scope) var = unite unite_inferred unite_scope ~span a b in
+           (* let _ : ('a, 'scope) var = unite unite_inferred unite_scope ~span a b in *)
            Some a)
         sub_history_a
         sub_history_b
