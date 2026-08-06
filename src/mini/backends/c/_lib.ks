@@ -1558,7 +1558,7 @@ const C = (
             ),
             .cleanup_scope_without_unwind = () => (),
         };
-        let fn :: Ast.Fn = {
+        let f :: Ast.Fn = {
             .signature,
             .body = (
                 let mut block = new_block();
@@ -1573,7 +1573,7 @@ const C = (
                 block
             ),
         };
-        &mut ctx.result.fns |> ArrayList.push_back(fn);
+        &mut ctx.result.fns |> ArrayList.push_back(f);
     );
 
     const add_fn = (
@@ -2014,7 +2014,7 @@ const C = (
                     insert_stmt(:Assign { .assignee = :Ident ident(name), .value });
                 );
             );
-            let fn :: Ast.Fn = {
+            let f :: Ast.Fn = {
                 .signature = {
                     .name = ident("init_consts"),
                     .args,
@@ -2023,7 +2023,7 @@ const C = (
                 .body,
             };
             (@current UnwindContext).cleanup_scope_without_unwind();
-            &mut ctx.result.fns |> ArrayList.push_back(fn);
+            &mut ctx.result.fns |> ArrayList.push_back(f);
         );
         ctx.result
     );

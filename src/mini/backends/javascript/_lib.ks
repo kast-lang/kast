@@ -303,11 +303,11 @@ const JavaScript = (
         result_var
     );
 
-    const compile_fn = (fn :: Ir.FnDef) -> Ast.Expr => (
+    const compile_fn = (f :: Ir.FnDef) -> Ast.Expr => (
         let mut args = ArrayList.new();
         let ctx_var = new_var("ctx");
         &mut args |> ArrayList.push_back(ctx_var);
-        for arg in fn.args |> ArrayList.into_iter do (
+        for arg in f.args |> ArrayList.into_iter do (
             let arg = var(arg.name);
             &mut args |> ArrayList.push_back(arg);
         );
@@ -316,7 +316,7 @@ const JavaScript = (
             .block = &mut body,
             .ctx_var,
         };
-        let result_var = calculate(fn.body);
+        let result_var = calculate(f.body);
         insert_stmt(:Return :Var result_var);
         :Fn {
             .args,

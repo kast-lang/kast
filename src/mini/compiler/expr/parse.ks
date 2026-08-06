@@ -384,7 +384,7 @@ const parse_fn = (
     ast :: Ast.t,
     root :: Ast.Group,
 ) -> ParsedExpr => (
-    let fn = parse_fn_def(
+    let f = parse_fn_def(
         ast,
         .parent_scope = :Some (@current ScopeContext),
     );
@@ -393,15 +393,15 @@ const parse_fn = (
         .call_convention = :None,
         .args = (
             let mut args = ArrayList.new();
-            for arg in &fn.args |> ArrayList.iter do (
+            for arg in &f.args |> ArrayList.iter do (
                 &mut args |> ArrayList.push_back(arg^.ty);
             );
             args
         ),
-        .result = fn.result_ty,
+        .result = f.result_ty,
     };
     {
-        .shape = :Expr :Fn fn,
+        .shape = :Expr :Fn f,
         .ty = { .shape = :Fn fn_ty, .alias_name = :None },
     }
 );

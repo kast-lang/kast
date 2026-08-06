@@ -316,10 +316,10 @@ const Print = (
         write(")");
     );
 
-    const fn = (fn :: &Ast.Fn) => (
-        Print.fn_signature(&fn^.signature);
+    const f = (f :: &Ast.Fn) => (
+        Print.fn_signature(&f^.signature);
         write(" ");
-        Print.block(&fn^.body);
+        Print.block(&f^.body);
         write("\n");
     );
 
@@ -425,8 +425,8 @@ const Print = (
             write(";\n");
         );
         write("\n");
-        for fn in &program^.fns |> ArrayList.iter do (
-            Print.fn_signature(&fn^.signature);
+        for f in &program^.fns |> ArrayList.iter do (
+            Print.fn_signature(&f^.signature);
             write(";\n");
         );
         write("\n");
@@ -434,8 +434,8 @@ const Print = (
             Print.static(static);
             write(";\n");
         );
-        for fn in &program^.fns |> ArrayList.iter do (
-            Print.fn(fn);
+        for f in &program^.fns |> ArrayList.iter do (
+            Print.f(f);
         );
         write("\n");
         write(Source.read(SourcePath.parse("kast:///mini/backends/c/main.c")).contents);
