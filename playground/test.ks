@@ -1,11 +1,12 @@
-let mut a :: ArrayList.t[Int32] = ArrayList.new();
+const mod = (
+    module:
 
-for i in 0..10 do (
-    &mut a |> ArrayList.push_back(i);
+    const foo = [T] (a :: T) => ();
 );
 
-for x in a |> ArrayList.into_iter do (
-    print(to_string(x));
+const foo = [T] (a :: T) => (
+    # mod.foo[_](a);
+    mod.foo(a);
 );
 
-# print(ArrayList.to_string[Int32](&a, &x => to_string[Int32](x)));
+foo[type ()](());
