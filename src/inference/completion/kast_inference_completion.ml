@@ -309,6 +309,7 @@ module Impl = struct
       parts
       |> List.iter (function
         | Raw (_ : string) -> ()
+        | TyExpr e -> complete_ty_expr e
         | Expr e -> complete_expr e)
     | E_Module { def; bindings } ->
       complete_expr def;

@@ -1159,7 +1159,9 @@ let native : core_syntax =
                   | Ast.Content s -> Types.Raw s.contents
                   | Ast.Interpolate { open_span = _; close_span = _; ast = inner } ->
                     let inner = C.compile Expr inner in
-                    Types.Expr inner)
+                    (match inner.shape with
+                     | E_Ty e -> Types.TyExpr e
+                     | _ -> Types.Expr inner))
               | _ ->
                 error span "native expr must be (interpolated) string";
                 return <| init_error span C.state kind

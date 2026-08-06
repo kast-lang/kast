@@ -25,6 +25,7 @@ type ctx =
   ; mutable captured_types : string Types.ValueMap.t
   ; mutable contexts : Types.value_context_ty Id.Map.t
   ; runtime_defined_closure_types : string StringListMap.t
+  ; runtime_defined_list_types : string StringMap.t
   ; init_statics : block
   }
 
@@ -265,6 +266,7 @@ module Impl = struct
        | Some def ->
          (match def.shape with
           | RuntimeDefined -> ty
+          | Raw _ -> ty
           | Enum _ | Struct _ | Union _ -> ty
           | Fn _ -> ty
           | Alias ty -> resolve_ty_aliases ty)
@@ -453,7 +455,22 @@ module Impl = struct
                  }
                  : C_ast.ty_def);
         Alias (Ptr (Named struct_name))
-      | Types.T_List { element_ty } -> failwith __LOC__
+      | Types.T_List { element_ty } ->
+        let element_ty = transpile_ty element_ty in
+        let macro_arg = ty_to_string element_ty in
+        (match ctx.runtime_defined_list_types |> StringMap.find_opt macro_arg with
+         | Some name -> Alias (Named name)
+         | None ->
+           let name = "ArrayList_" ^ macro_arg in
+           ctx.types
+           <- ctx.types
+              |> StringMap.add
+                   name
+                   ({ shape = Raw { def = make_string "define_ArrayList(%s)" macro_arg }
+                    ; comment = None
+                    }
+                    : C_ast.ty_def);
+           Alias (Named name))
       | Types.T_Ty -> Alias Unit (* Alias (Ref (Named "TypeInfo")) *)
       | Types.T_Fn { is_closure; call_convention; args; result } ->
         let is_closure = is_closure |> Inference.await_inferred_simple in
@@ -1363,6 +1380,8 @@ module Impl = struct
             |> List.map (fun (part : Types.expr_native_part) : C_ast.native_expr_part ->
               match part with
               | Raw s -> Raw s
+              | TyExpr e ->
+                Raw (Interpreter.eval_ty interpreter e |> transpile_ty |> ty_to_string)
               | Expr e -> Interpolated (transpile_expr e))
           in
           Some (Native { parts }))
@@ -1586,11 +1605,13 @@ module Impl = struct
 end
 
 let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.program =
-  let runtime_defined_closure_types =
-    let source = [%include_file "runtime.c"] in
-    source
-    |> String.split_on_char '\n'
-    |> List.filter_map (fun s ->
+  let runtime_defined_closure_types = ref StringListMap.empty in
+  let runtime_defined_list_types = ref StringMap.empty in
+  let runtime_source = [%include_file "runtime.c"] in
+  runtime_source
+  |> String.split_on_char '\n'
+  |> List.iter (fun s ->
+    let check_defined_closure () =
       let* s = s |> String.strip_prefix ~prefix:"define_closure_type(" in
       let* s = s |> String.strip_suffix ~suffix:");" in
       let args = s |> String.split_on_char ',' |> List.map String.trim in
@@ -1598,10 +1619,21 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
       | name :: args ->
         Log.trace (fun log ->
           log "Found defined closure type %a = %s" (List.print String.print) args name);
-        Some (args, name)
-      | _ -> failwith __LOC__)
-    |> StringListMap.of_list
-  in
+        runtime_defined_closure_types
+        := !runtime_defined_closure_types |> StringListMap.add args name;
+        Some ()
+      | _ -> failwith __LOC__
+    in
+    let check_defined_list () =
+      let* s = s |> String.strip_prefix ~prefix:"define_ArrayList(" in
+      let* arg = s |> String.strip_suffix ~suffix:");" in
+      runtime_defined_list_types
+      := !runtime_defined_list_types |> StringMap.add arg ("ArrayList_" ^ arg);
+      Some ()
+    in
+    let _ : unit option = check_defined_closure () in
+    let _ : unit option = check_defined_list () in
+    ());
   let ctx : ctx =
     { target = { name = "c" }
     ; statics = Dynarray.create ()
@@ -1612,7 +1644,8 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; init_statics = { stmts = [] }
     ; includes = StringSet.empty
     ; contexts = Id.Map.empty
-    ; runtime_defined_closure_types
+    ; runtime_defined_closure_types = !runtime_defined_closure_types
+    ; runtime_defined_list_types = !runtime_defined_list_types
     }
   in
   let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in
@@ -1690,6 +1723,13 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
            (fun _ a _ -> Some a)
            (ctx.runtime_defined_closure_types
             |> StringListMap.to_list
+            |> List.map (fun (_, name) ->
+              name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+            |> StringMap.of_list)
+      |> StringMap.union
+           (fun _ a _ -> Some a)
+           (ctx.runtime_defined_list_types
+            |> StringMap.to_list
             |> List.map (fun (_, name) ->
               name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
             |> StringMap.of_list)

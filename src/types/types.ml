@@ -310,6 +310,7 @@ module rec TypesImpl : sig
 
   and expr_native_part =
     | Raw of string
+    | TyExpr of ty_expr
     | Expr of expr
 
   and expr_module =
@@ -1058,6 +1059,7 @@ end = struct
 
   and expr_native_part =
     | Raw of string
+    | TyExpr of ty_expr
     | Expr of expr
 
   and expr_module =

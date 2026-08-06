@@ -1,17 +1,11 @@
-module:
+let mut a :: ArrayList.t[Int32] = ArrayList.new();
 
-const std = include "../examples/stripped-std.ks";
-
-use std.*;
-with PanicHandler = default_panic_handler;
-
-let m = (
-    module:
-    
-    let x = 123;
-    let f = (arg :: Int) => (
-        () => print_Int(x)
-    );
-
-    f(0)();
+for i in 0..10 do (
+    &mut a |> ArrayList.push_back(i);
 );
+
+for x in a |> ArrayList.into_iter do (
+    print(to_string(x));
+);
+
+# print(ArrayList.to_string[Int32](&a, &x => to_string[Int32](x)));

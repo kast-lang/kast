@@ -81,6 +81,7 @@ and ty_def_shape =
       ; result_ty : ty
       }
   | Alias of ty
+  | Raw of { def : string }
   | RuntimeDefined
 
 and ty_def =
@@ -371,6 +372,7 @@ module Print = struct
         | Union _ -> Some "union"
         | Fn _ -> None
         | Alias _ -> None
+        | Raw _ -> None
         | RuntimeDefined -> None
       in
       match shape_name with
@@ -395,6 +397,10 @@ module Print = struct
         write_comment def.comment;
         (match def.shape with
          | RuntimeDefined -> ()
+         | Raw { def } ->
+           write def;
+           write ";";
+           writeln ()
          | Fn { args; result_ty } ->
            args |> List.iter ensure_type_declared;
            result_ty |> ensure_type_declared;
@@ -471,8 +477,9 @@ module Print = struct
       | Unit -> ()
       | Raw _ -> ()
       | Named name ->
-        (match (program.types |> StringMap.find name).shape with
-         | Fn _ | Alias _ -> ensure_typedef_completed name
+        (match program.types |> StringMap.find_opt name with
+         | None -> fail "type doesnt exist: %s" name
+         | Some { shape = Fn _ | Alias _; _ } -> ensure_typedef_completed name
          | _ -> ())
       | Ptr pointee -> ensure_type_declared pointee
       | Void -> ()

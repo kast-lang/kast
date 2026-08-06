@@ -313,6 +313,7 @@ and parse_simple (context : context) : Ast.t option =
                   (Lexer.init_with
                      Lexer.default_rules
                      tokens
+                     ~eof:close_span.start
                      (Lexer.source context.lexer).uri)
                   context.ruleset
               in

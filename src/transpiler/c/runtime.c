@@ -21,6 +21,7 @@
 noreturn void exit_with_error(const char* s) {
 #ifdef __FILC__
     zerror(s);
+    exit(-1);
 #else
     fprintf(stderr, "%s\n", s);
     int N = 100;
@@ -32,6 +33,7 @@ noreturn void exit_with_error(const char* s) {
     //     char* s = strings[i];
     //     fprintf(stderr, "%d. %s\n", i + 1, s);
     // }
+    exit(-1);
 #endif
 }
 
@@ -362,6 +364,40 @@ bool Kast_isatty(FILE* f) {
 }
 
 typedef struct Context Context;
+
+#define define_ArrayList(T)                                                    \
+    typedef struct {                                                           \
+        T* buf;                                                                \
+        size_t capacity;                                                       \
+        size_t length;                                                         \
+    } ArrayList_##T;                                                           \
+                                                                               \
+    ArrayList_##T ArrayList_##T##_new() {                                      \
+        return (ArrayList_##T) {                                               \
+            .buf = NULL,                                                       \
+            .capacity = 0,                                                     \
+            .length = 0,                                                       \
+        };                                                                     \
+    }                                                                          \
+                                                                               \
+    Unit ArrayList_##T##_reserve(ArrayList_##T* list, size_t len) {            \
+        if (list->capacity < len) {                                            \
+            list->capacity = (list->capacity == 0) ? 4 : (list->capacity * 2); \
+            if (len > list->capacity) {                                        \
+                list->capacity = len;                                          \
+            }                                                                  \
+            list->buf = realloc(list->buf, list->capacity * sizeof(T));        \
+        }                                                                      \
+        return (Unit) {};                                                      \
+    }                                                                          \
+                                                                               \
+    Unit ArrayList_##T##_push_back(ArrayList_##T* list, T x) {                 \
+        ArrayList_##T##_reserve(list, list->length + 1);                       \
+        list->buf[list->length++] = x;                                         \
+        return (Unit) {};                                                      \
+    }
+
+define_ArrayList(Int32);
 
 #define define_closure_type(name, Ret, ...)                                    \
     typedef struct {                                                           \

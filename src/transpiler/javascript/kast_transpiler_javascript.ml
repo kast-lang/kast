@@ -1339,6 +1339,7 @@ module Impl = struct
                 (parts
                  |> List.map (function
                    | Raw s -> ({ shape = JsAst.Raw s; span = None } : JsAst.expr)
+                   | TyExpr e -> failwith __LOC__
                    | Expr e -> transpile_expr e |> pure))
           ; span
           }

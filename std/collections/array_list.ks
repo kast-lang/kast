@@ -3,15 +3,24 @@ module:
 const t = [T] ((@native "List")(T) :: Type);
 const new = [T] () -> ArrayList.t[T] => @cfg (
     | target.name == "interpreter" => (@native "List.new")()
+    | target.name == "c" => (
+        @native "ArrayList_\(type T)_new()"
+    )
     | target.name == "javascript" => @native "[]"
 );
 const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) -> () => @cfg (
     | target.name == "interpreter" => (@native "List.push_back")(a, value)
+    | target.name == "c" => (
+        @native "ArrayList_\(type T)_push_back(\(a), \(value))"
+    )
     | target.name == "javascript" => @native "\(a^).push(\(value))"
 );
 # panics if `a` is empty
 const pop_back = [T] (a :: &mut ArrayList.t[T]) -> T => @cfg (
     | target.name == "interpreter" => (@native "List.pop_back")(a)
+    | target.name == "c" => (
+        @native "ArrayList_\(type T)_pop_back(\(a))"
+    )
     | target.name == "javascript" => @native "\(a^).pop()"
 );
 const from_iter = [T] (iter :: std.iter.Iterable[T]) -> ArrayList.t[T] => (
@@ -45,15 +54,24 @@ const iter_mut = [T] (a :: &mut ArrayList.t[T]) -> std.iter.Iterable[type (&mut 
 # panics if `idx` is out of bounds
 const at = [T] (a :: &ArrayList.t[T], idx :: Int32) -> &T => @cfg (
     | target.name == "interpreter" => (@native "List.at")(a, idx)
+    | target.name == "c" => (
+        @native "&\(a)->buf[\(idx)]"
+    )
     | target.name == "javascript" => @native "{get:()=>\(a^)[\(idx)]}"
 );
 # panics if `idx` is out of bounds
 const at_mut = [T] (a :: &mut ArrayList.t[T], idx :: Int32) -> &mut T => @cfg (
     | target.name == "interpreter" => (@native "List.at")(a, idx)
+    | target.name == "c" => (
+        @native "&\(a)->buf[\(idx)]"
+    )
     | target.name == "javascript" => @native "{get:()=>\(a^)[\(idx)],set:x=>{\(a^)[\(idx)]=x}}"
 );
 const length = [T] (a :: &ArrayList.t[T]) -> Int32 => @cfg (
     | target.name == "interpreter" => (@native "List.length")(a)
+    | target.name == "c" => (
+        @native "\(a)->length"
+    )
     | target.name == "javascript" => @native "\(a^).length"
 );
 const to_string = [T] (a :: &ArrayList.t[T], t_to_string :: &T -> String) -> String => (

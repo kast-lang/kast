@@ -3,7 +3,6 @@ open Common
 let init () =
   [ native_fn "List.new" (fun ty ~caller ~state:_ _args : value ->
       with_return (fun { return } ->
-        eprintln "%a" Print.print_ty_fn ty;
         let element_ty =
           match ty.result |> Ty.await_inferred with
           | T_List element_ty -> element_ty

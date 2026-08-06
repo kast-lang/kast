@@ -50,7 +50,8 @@ let start_rec : reader -> recording =
 
 let finish_rec : recording -> string =
   fun { reader; start_index } ->
-  String.sub reader.contents start_index (reader.position.index - start_index)
+  let len = reader.position.index - start_index in
+  if len = 0 then "" else String.sub reader.contents start_index len
 ;;
 
 let read_while : (char -> bool) -> reader -> string =

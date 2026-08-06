@@ -409,6 +409,7 @@ module Impl = struct
       parts
       |> List.iter (function
         | Raw s -> fprintf fmt " @{<green>%a@}" String.print_debug s
+        | TyExpr e -> print_ty_expr ~options fmt e
         | Expr e -> print_expr ~options fmt e)
     | E_Module { def; bindings = _ } ->
       fprintf fmt "@{<magenta>module@} %a" (print_expr ~options) def

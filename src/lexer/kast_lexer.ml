@@ -50,12 +50,14 @@ let init : rule list -> source -> lexer =
   }
 ;;
 
-let init_with : rule list -> Token.t list -> Uri.t -> lexer =
-  fun rules tokens uri ->
+let init_with : rule list -> Token.t list -> eof:position -> Uri.t -> lexer =
+  fun rules tokens ~eof uri ->
   let source : source = { contents = ""; uri } in
+  let reader = Reader.init source.contents in
+  reader.position <- eof;
   { rules
   ; peeked = Queue.of_seq (List.to_seq tokens)
-  ; reader = Reader.init source.contents
+  ; reader
   ; source
   ; recordings = RecordingTable.create 0
   }

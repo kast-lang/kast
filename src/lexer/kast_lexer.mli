@@ -13,7 +13,7 @@ type rule = t -> Token.Shape.t option
 val source : lexer -> source
 val default_rules : rule list
 val init : rule list -> source -> lexer
-val init_with : rule list -> Token.t list -> Uri.t -> lexer
+val init_with : rule list -> Token.t list -> eof:position -> Uri.t -> lexer
 val position : lexer -> position
 val peek : lexer -> Token.t
 val next : lexer -> Token.t
