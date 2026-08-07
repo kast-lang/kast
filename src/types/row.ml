@@ -13,6 +13,7 @@ type ('a, 'scope) shape =
 
 and ('a, 'scope) t = { var : (('a, 'scope) shape, 'scope) Inference.var }
 and ('a, 'scope) row = ('a, 'scope) t [@@deriving eq, ord]
+(* TODO equality and ord are incorrect because they are based on ordering here *)
 
 let rec shape_scope
   :  'a 'scope.

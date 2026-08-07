@@ -1147,6 +1147,17 @@ and cast_as_module : span:span -> state -> value -> value =
   match cast_as_module_opt ~span state value with
   | Some impl -> impl
   | None ->
+    Log.info (fun log -> log "ALL IMPLS:");
+    state.cast_impls.as_module
+    |> Types.ValueMap.iter (fun existing_value _impl ->
+      Log.info (fun log ->
+        log
+          "%a as module : eq to %a = %b"
+          Value.print
+          existing_value
+          Value.print
+          value
+          (Types.ValueImpl.equal value existing_value)));
     Error.error span "no impl of %a as module" Value.print value;
     V_Error |> Value.inferred ~span
 

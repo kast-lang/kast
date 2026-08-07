@@ -82,7 +82,7 @@ module rec TypesImpl : sig
 
   and value =
     { var : value_shape var
-    ; mutable ty : ty option
+    ; mutable ty : ty option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_opaque =
@@ -831,7 +831,7 @@ end = struct
 
   and value =
     { var : value_shape var
-    ; mutable ty : ty option
+    ; mutable ty : ty option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_opaque =

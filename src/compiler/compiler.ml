@@ -221,7 +221,8 @@ let rec import ?(prelude : bool = true) ~(span : span) (module C : S) (uri : Uri
   =
   C.state.cache |> State.Cache.add_dependency ~dependent:span.uri ~dependency:uri;
   let result : State.imported = calculate_import ~prelude ~span (module C) uri in
-  Log.trace (fun log -> log "imported (maybe cached) %a" Uri.print uri);
+  Log.trace (fun log ->
+    log "imported (maybe cached) %a at %a" Uri.print uri Span.print span);
   Hashtbl.add_seq C.state.custom_syntax_impls (Hashtbl.to_seq result.custom_syntax_impls);
   (* TODO what if its going to be evaluated in a different interpreter? *)
   C.state.interpreter.natives.by_name
@@ -242,6 +243,11 @@ let rec import ?(prelude : bool = true) ~(span : span) (module C : S) (uri : Uri
           target
           Value.print
           impl)));
+  result.cast_impls.as_module
+  |> Types.ValueMap.iter (fun value impl ->
+    Log.trace (fun log ->
+      log "Imported impl %a as module = %a" Value.print value Value.print impl);
+    Log.trace (fun log -> log "Imported impl %a as module" Value.print value));
   C.state.interpreter.cast_impls.map
   <- Types.ValueMap.union
        (fun target impls_a impls_b ->
