@@ -1180,6 +1180,7 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     let span = expr.data.span in
+    Inference.Var.setup_default_if_needed expr.data.signature.ty.var;
     try
       match expr.shape with
       | Types.E_Constant { id = _; value } -> Some (Claim (transpile_value value))
