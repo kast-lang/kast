@@ -968,8 +968,36 @@ module Impl = struct
         |> List.of_seq
       in
       compound_literal ~kast:true (transpile_ty (Value.Shape.ty_of shape)) fields
-    | V_List _ -> failwith __LOC__
-    | V_Variant _ -> failwith __LOC__
+    | V_List { ty = _; elements } -> failwith __LOC__
+    (* Block *)
+    (*   (new_block (fun () -> *)
+    (*      let var = gen_name "list" in *)
+    (*      let_var (transpile_ty (Value.Shape.ty_of shape)) var (); *)
+    (*      insert_stmt (Expr (Claim (Ident var))))) *)
+    | V_Variant { label; data; ty = _ } ->
+      Block
+        (new_block (fun () ->
+           let ty = Value.Shape.ty_of shape in
+           let var = gen_name "variant" in
+           insert_stmt (DeclareVar { name = var; ty = transpile_ty ty });
+           insert_stmt
+             (Assign
+                { assignee = Field { obj = Ident var; field = "tag" }
+                ; value = Claim (Ident (variant_tag_name ty label))
+                });
+           (match data with
+            | None -> ()
+            | Some data ->
+              insert_stmt
+                (Assign
+                   { assignee =
+                       Field
+                         { obj = Field { obj = Ident var; field = "data" }
+                         ; field = make_correct_ident (Label.get_name label)
+                         }
+                   ; value = Claim (transpile_place data)
+                   }));
+           insert_stmt (Expr (Claim (Ident var)))))
     | V_Ty ty ->
       transpile_ty ty |> ignore;
       Unit (* AddrOf (TypeInfo (transpile_ty ty)) *)
