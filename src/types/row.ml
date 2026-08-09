@@ -12,8 +12,43 @@ type ('a, 'scope) shape =
   | R_Error
 
 and ('a, 'scope) t = { var : (('a, 'scope) shape, 'scope) Inference.var }
-and ('a, 'scope) row = ('a, 'scope) t [@@deriving eq, ord]
-(* TODO equality and ord are incorrect because they are based on ordering here *)
+and ('a, 'scope) row = ('a, 'scope) t
+
+module LabelMap = Map.Make (Label)
+
+let compare compare_value _compare_scope a b =
+  with_return (fun { return } ->
+    let rec list_of_inferred row =
+      match row.var |> Inference.Var.inferred_opt with
+      | None -> []
+      | Some shape ->
+        (match shape with
+         | R_Empty -> []
+         | R_Cons { label; value; rest } -> (label, value) :: list_of_inferred rest
+         | R_Error -> return 0)
+    in
+    LabelMap.compare
+      compare_value
+      (LabelMap.of_list (list_of_inferred a))
+      (LabelMap.of_list (list_of_inferred b)))
+;;
+
+let equal equal_value _equal_scope a b =
+  with_return (fun { return } ->
+    let rec list_of_inferred row =
+      match row.var |> Inference.Var.inferred_opt with
+      | None -> return false
+      | Some shape ->
+        (match shape with
+         | R_Empty -> []
+         | R_Cons { label; value; rest } -> (label, value) :: list_of_inferred rest
+         | R_Error -> return false)
+    in
+    LabelMap.equal
+      equal_value
+      (LabelMap.of_list (list_of_inferred a))
+      (LabelMap.of_list (list_of_inferred b)))
+;;
 
 let rec shape_scope
   :  'a 'scope.
