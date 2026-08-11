@@ -157,7 +157,7 @@
             #     | tee >(sed -u 's/^/OUT /' >> kast.log)
             # '')
             (pkgs.writeShellScriptBin "kast" ''
-              systemd-run --user --scope -p MemoryMax=5G \
+              systemd-run --user --scope -p MemoryMax=20G \
                 dune exec kast -- "$@"
             '')
             # (pkgs.writeShellScriptBin "kast" ''
@@ -187,7 +187,8 @@
             echo 'Hello from Kast devshell'
             echo '  dont forget to run `just lsp-support` :)'
             export OCAML_BACKTRACE=1
-            export OCAMLRUNPARAM="b,d=10"
+            # export OCAMLRUNPARAM="b,d=10"
+            export OCAMLRUNPARAM="d=10"
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
             export KAST_STD=$(pwd)/std
           '';
