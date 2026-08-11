@@ -968,12 +968,26 @@ module Impl = struct
         |> List.of_seq
       in
       compound_literal ~kast:true (transpile_ty (Value.Shape.ty_of shape)) fields
-    | V_List { ty = _; elements } -> failwith __LOC__
-    (* Block *)
-    (*   (new_block (fun () -> *)
-    (*      let var = gen_name "list" in *)
-    (*      let_var (transpile_ty (Value.Shape.ty_of shape)) var (); *)
-    (*      insert_stmt (Expr (Claim (Ident var))))) *)
+    | V_List { ty = _; elements } ->
+      Block
+        (new_block (fun () ->
+           let var = gen_name "list" in
+           let ty = transpile_ty (Value.Shape.ty_of shape) in
+           let_var ty var (Native { parts = [ Raw (ty_to_string ty); Raw "_new()" ] });
+           elements
+           |> Dynarray.iter (fun element ->
+             insert_stmt
+               (Native
+                  { parts =
+                      [ Raw (ty_to_string ty)
+                      ; Raw "_push_back("
+                      ; Interpolated (AddrOf (Ident var))
+                      ; Raw ", "
+                      ; Interpolated (Claim (transpile_place element))
+                      ; Raw ")"
+                      ]
+                  }));
+           insert_stmt (Expr (Claim (Ident var)))))
     | V_Variant { label; data; ty = _ } ->
       Block
         (new_block (fun () ->
@@ -1205,6 +1219,8 @@ module Impl = struct
     | Some e -> insert_stmt (Expr e)
 
   and eval_expr (expr : expr) : C_ast.expr option =
+    Log.trace (fun log ->
+      log "transpiling %a at %a" Print.print_expr_short expr Span.print expr.data.span);
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     let span = expr.data.span in

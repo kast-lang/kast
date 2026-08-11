@@ -1,12 +1,3 @@
-const mod = (
-    module:
-
-    const foo = [T] (a :: T) => ();
+if std.iter.find({ .iter = (1..10).iter }, x => x % 2 == 0) is :Some x then (
+    print(to_string(x));
 );
-
-const foo = [T] (a :: T) => (
-    # mod.foo[_](a);
-    mod.foo(a);
-);
-
-foo[type ()](());

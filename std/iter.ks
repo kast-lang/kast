@@ -9,6 +9,16 @@ const ReversibleIterable = [Item] newtype {
     .rev :: () -> ReversibleIterable[Item],
 };
 
+const find = [T] (
+    iter :: std.iter.Iterable[T],
+    predicate :: T -> Bool,
+) -> Option.t[T] => with_return (
+    for value in iter do (
+        if predicate(value) then return :Some value;
+    );
+    :None
+);
+
 const any = [T] (
     iter :: Iterable[T],
     predicate :: T -> Bool,
@@ -82,4 +92,3 @@ const reduce = [T] (
     );
     result
 );
-
