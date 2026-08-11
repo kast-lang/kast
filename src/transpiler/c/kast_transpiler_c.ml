@@ -595,6 +595,7 @@ module Impl = struct
         | Unpack pattern ->
           (match pattern.shape with
            | P_Placeholder -> ()
+           | P_Binding _ -> ()
            | _ -> failwith __LOC__);
           had_unpack := true;
           Literal (Bool true))
@@ -806,7 +807,33 @@ module Impl = struct
                     | Some label -> Tuple.Member.Name (Label.get_name label)
                   in
                   pattern_match field (Ident (member_name member))
-                | Unpack _ -> failwith __LOC__);
+                | Unpack packed ->
+                  let packed_ty =
+                    packed.data.signature.ty
+                    |> Ty.await_inferred
+                    |> Ty.Shape.expect_tuple
+                    |> Option.unwrap
+                  in
+                  let var = gen_name "packed" in
+                  insert_stmt
+                    (DeclareVar { name = var; ty = transpile_ty packed.data.signature.ty });
+                  packed_ty.tuple
+                  |> Tuple.iter (fun packed_member _field ->
+                    let member =
+                      match packed_member with
+                      | Index _ ->
+                        let result = Tuple.Member.Index !unnamed_idx in
+                        unnamed_idx := !unnamed_idx + 1;
+                        result
+                      | Name name -> Name name
+                    in
+                    insert_stmt
+                      (Assign
+                         { assignee =
+                             Field { obj = Ident var; field = member_name packed_member }
+                         ; value = Claim (Ident (member_name member))
+                         }));
+                  pattern_match packed (Ident var));
               unwind_ctx.cleanup_scope_without_unwind ();
               match eval_expr def.body with
               | None -> ()
@@ -1059,7 +1086,7 @@ module Impl = struct
     let args =
       if args_is_tuple
       then (
-        let args = ref Tuple.empty in
+        let args : C_ast.expr tuple ref = ref Tuple.empty in
         (match arg.shape with
          | E_Constant { value; _ } ->
            let value_tuple =
@@ -1074,12 +1101,12 @@ module Impl = struct
                | Index _ -> None
                | Name name -> Some name
              in
-             let var = gen_name "arg" in
-             let_var
-               (transpile_ty field.ty_field.ty)
-               var
-               (Claim (transpile_value (Interpreter.read_place ~span field.place)));
-             args := !args |> Tuple.add name var)
+             args
+             := !args
+                |> Tuple.add
+                     name
+                     (C_ast.Claim
+                        (transpile_value (Interpreter.read_place ~span field.place))))
          | E_Tuple { parts; _ } ->
            parts
            |> List.iter (function
@@ -1087,8 +1114,26 @@ module Impl = struct
                let name = label |> Option.map Label.get_name in
                let var = gen_name "arg" in
                let_var (transpile_ty field.data.signature.ty) var (transpile_expr field);
-               args := !args |> Tuple.add name var
-             | Unpack _ -> failwith __LOC__)
+               args := !args |> Tuple.add name (C_ast.Claim (Ident var))
+             | Unpack packed ->
+               let packed_ty =
+                 packed.data.signature.ty
+                 |> Ty.await_inferred
+                 |> Ty.Shape.expect_tuple
+                 |> Option.unwrap
+               in
+               let var = gen_name "packed" in
+               let_var (transpile_ty packed.data.signature.ty) var (transpile_expr packed);
+               packed_ty.tuple
+               |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
+                 args
+                 := !args
+                    |> Tuple.add
+                         (match member with
+                          | Index _ -> None
+                          | Name name -> Some name)
+                         (C_ast.Claim
+                            (Field { obj = Ident var; field = member_name member }))))
          | _ -> fail "f args must be tuple");
         let args_ty =
           arg.data.signature.ty
@@ -1101,7 +1146,7 @@ module Impl = struct
         |> Seq.map
              (fun
                  ((member, _arg_ty) : Tuple.member * Types.ty_tuple_field) : C_ast.expr ->
-                Claim (Ident (!args |> Tuple.get member)))
+                !args |> Tuple.get member)
         |> List.of_seq)
       else [ transpile_expr arg ]
     in
