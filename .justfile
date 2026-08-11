@@ -40,6 +40,13 @@ minikast path no-std="" *args:
 test-aoc *args:
     KAST_STD=$(pwd)/std kast ${AOC:-~/projects/aoc2025/test.ks} {{args}}
 
+self-host:
+    kast compile \
+        --continuous \
+        --output target/selfhost.c \
+        --target c \
+        ~/projects/kast-lang/self-host/src/cli/_main.ks
+
 run-js path *args:
     kast run --format prettier --target javascript {{path}} {{args}}
 
