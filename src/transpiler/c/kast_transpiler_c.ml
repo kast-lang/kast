@@ -377,7 +377,16 @@ module Impl = struct
   and variant_needs_tag (ty : Types.ty_variant) : bool =
     ty.variants |> Row.await_inferred_to_list |> List.length > 0
 
-  and ty_repr (ty : ty) : ty_repr = ty |> Ty.await_inferred |> ty_shape_repr
+  and ty_repr (ty : ty) : ty_repr =
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    Inference.Var.setup_default_if_needed ty.var;
+    let ty =
+      Interpreter.Substitute_bindings.sub_ty
+        ~span
+        ~state:(Interpreter.sub_here interpreter)
+        ty
+    in
+    ty |> Ty.await_inferred |> ty_shape_repr
 
   and ty_shape_repr (ty : Types.ty_shape) : ty_repr =
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
