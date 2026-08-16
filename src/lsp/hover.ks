@@ -33,7 +33,7 @@ const hover = (state :: &mut State, request :: Json.t) -> Json.t => with_return 
         |> OrdMap.get(Uri.to_string(text_document.uri))
         |> Option.unwrap_or_else(() => return :Null);
     eprint(file_state^.contents);
-    let hovered_char = with_return (
+    let hovered_char :: Option.t[_] = with_return (
         if (
             position.line < 0
             or position.line >= ArrayList.length(&file_state^.lines)

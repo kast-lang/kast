@@ -161,7 +161,7 @@ const Repl = (
         let ruleset = Common.default_syntax_ruleset();
         let eval = (line :: Line) => with_return (
             with Diagnostic.UnwindableHandler = {
-                .unwind_on_error = [T] () -> T => (
+                .unwind_on_error = () -> Never => (
                     return
                 ),
             };

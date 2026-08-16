@@ -99,7 +99,7 @@ const SyntaxRuleset = (
     ) => (
         if index < ArrayList.length(list) then (
             let continuation = node => (
-                iter_cps_from(index + 1, list, .node, .consumer, .continuation);
+                iter_cps_from[T](index + 1, list, .node, .consumer, .continuation);
             );
             consumer(node, ArrayList.at(list, index), .continuation);
         ) else (

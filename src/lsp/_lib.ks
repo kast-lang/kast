@@ -103,7 +103,7 @@ const Lsp = (
             JsonRpc.stdio(),
             {
                 .on_request = request => with_return (
-                    let abort_handler = [T] (msg :: String) -> T => (
+                    let abort_handler = (msg :: String) -> Never => (
                         return :Error msg
                     );
                     with Diagnostic.AbortHandler = abort_handler;

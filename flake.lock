@@ -1,5 +1,23 @@
 {
   "nodes": {
+    "filc": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1783374577,
+        "narHash": "sha256-uxpGhhpPwusOZf7TsrnXYXeKWnRVNqwCABybqsecOkc=",
+        "owner": "mbrock",
+        "repo": "filnix",
+        "rev": "db65632766e502e2c800a37fdb618c141eff4055",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mbrock",
+        "repo": "filnix",
+        "type": "github"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -72,18 +90,19 @@
     },
     "kast": {
       "inputs": {
+        "filc": "filc",
         "flake-utils": "flake-utils_2",
         "nix-filter": "nix-filter",
-        "nixpkgs": "nixpkgs",
+        "nixpkgs": "nixpkgs_2",
         "opam-nix": "opam-nix",
         "opam-repository": "opam-repository"
       },
       "locked": {
-        "lastModified": 1782969313,
-        "narHash": "sha256-FhqEzpqrCJwBqfzChb7mEY9x253OJ+UAn5WYSYf8ihw=",
+        "lastModified": 1786725763,
+        "narHash": "sha256-L6FV27IQBzMTFGD9yJ+gpe9mnJVe2Hz+6aaVKbsGy3w=",
         "owner": "kast-lang",
         "repo": "kast",
-        "rev": "1d1eb8d6dd6cf2694e050d6bb8ce63e9608eb096",
+        "rev": "a4b7cfb2942c425be603771eda2ec8e9544a4dec",
         "type": "github"
       },
       "original": {
@@ -140,6 +159,23 @@
       }
     },
     "nixpkgs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1762633274,
+        "narHash": "sha256-Ygv7dtGtshVgYPWE9pNaCxA7s9V8OleD7UbFjuZr5ug=",
+        "owner": "lessrest",
+        "repo": "filnixpkgs",
+        "rev": "400439b089773d3fc593b512250e283a33485de4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "lessrest",
+        "repo": "filnixpkgs",
+        "rev": "400439b089773d3fc593b512250e283a33485de4",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
       "locked": {
         "lastModified": 1770015011,
         "narHash": "sha256-7vUo0qWCl/rip+fzr6lcMlz9I0tN/8m7d5Bla/rS2kk=",
@@ -155,7 +191,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_2": {
+    "nixpkgs_3": {
       "locked": {
         "lastModified": 1775036866,
         "narHash": "sha256-ZojAnPuCdy657PbTq5V0Y+AHKhZAIwSIT2cb8UgAz/U=",
@@ -261,7 +297,7 @@
         "flake-utils": "flake-utils",
         "kast": "kast",
         "nix-filter": "nix-filter_2",
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs_3"
       }
     },
     "systems": {

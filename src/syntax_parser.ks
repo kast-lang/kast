@@ -370,7 +370,7 @@ const SyntaxParser = (
             let peek = &token_stream^ |> TokenStream.peek;
             let index_before = token_stream^.index;
             with Diagnostic.UnwindableHandler = {
-                .unwind_on_error = [T] () => (
+                .unwind_on_error = () => (
                     if token_stream^.index == index_before then (
                         Log.debug_msg("skipping " + String.escape(Token.raw(peek)));
                         token_stream |> TokenStream.advance;

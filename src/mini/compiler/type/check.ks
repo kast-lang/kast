@@ -61,7 +61,7 @@ const check_variant = (
 );
 
 const TypeCheckContext = @context newtype {
-    .fail :: [T] (() -> ()) -> T,
+    .fail :: (() -> ()) -> Never,
 };
 
 const short_type_name = (ty :: &Ir.Type) -> String => (
@@ -116,7 +116,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
         | { :Ref ref a, :Ref ref b } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
-                .fail = [T] msg -> T => (
+                .fail = msg -> Never => (
                     parent_ctx.fail(
                         () => (
                             let output = @current Output;
@@ -148,7 +148,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
         | { :Array ref a, :Array ref b } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
-                .fail = [T] msg -> T => (
+                .fail = msg -> Never => (
                     parent_ctx.fail(
                         () => (
                             let output = @current Output;
@@ -166,7 +166,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
         | { :UnwindToken ref a, :UnwindToken ref b } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
-                .fail = [T] msg -> T => (
+                .fail = msg -> Never => (
                     parent_ctx.fail(
                         () => (
                             let output = @current Output;
@@ -184,7 +184,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
         | { :DelimitedContinuationToken ref a, :DelimitedContinuationToken ref b } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
-                .fail = [T] msg -> T => (
+                .fail = msg -> Never => (
                     parent_ctx.fail(
                         () => (
                             let output = @current Output;
@@ -217,7 +217,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             for i in 0..&a^.args |> ArrayList.length do (
                 let parent_ctx = @current TypeCheckContext;
                 with TypeCheckContext = {
-                    .fail = [T] msg -> T => (
+                    .fail = msg -> Never => (
                         parent_ctx.fail(
                             () => (
                                 let output = @current Output;
@@ -236,7 +236,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             );
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
-                .fail = [T] msg -> T => (
+                .fail = msg -> Never => (
                     parent_ctx.fail(
                         () => (
                             let output = @current Output;
@@ -267,7 +267,7 @@ const type_check = (
     .span :: Span,
 ) => (
     with TypeCheckContext = {
-        .fail = [T] (inner_msg) -> T => (
+        .fail = (inner_msg) -> Never => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,

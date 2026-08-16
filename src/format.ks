@@ -324,7 +324,7 @@ const Format = (
                 );
             )
             | :Syntax { .command, .value_after } => (
-                let mut prev_token_span = :None;
+                let mut prev_token_span :: Option.t[_] = :None;
                 for &token in &command.raw_tokens |> ArrayList.iter do (
                     if prev_token_span is :Some prev_token_span then (
                         if (
@@ -375,34 +375,31 @@ const Format = (
             )
         );
         let mut part_idx = 0;
-        let expect_part = [T] (
-            name :: String,
-            f :: &Ast.Part -> Option.t[T],
-        ) -> T => with_return (
+        let skip_ignored_parts = () => (
             while part_idx < &group^.parts |> ArrayList.length do (
                 let part = &group^.parts |> ArrayList.at(part_idx);
-                if f(part) is :Some result then (
-                    part_idx += 1;
-                    return result;
-                );
                 if part^ is :Ignored token then (
                     walk_ignored_token(token);
                 ) else (
-                    panic("expected " + name);
+                    break;
                 );
                 part_idx += 1;
             );
-            panic("expected more parts")
+        );
+        let peek_part = () -> Option.t[type (&Ast.Part)] => (
+            if part_idx < &group^.parts |> ArrayList.length then (
+                :Some (&group^.parts |> ArrayList.at(part_idx))
+            ) else (
+                :None
+            )
         );
         for part in rule_parts |> ArrayList.iter do (
             match part^ with (
                 | :Keyword expected_keyword => with_return (
-                    let keyword_token = expect_part(
-                        "keyword",
-                        part => match part^ with (
-                            | :Keyword token => :Some token
-                            | _ => :None
-                        )
+                    skip_ignored_parts();
+                    let keyword_token = match peek_part() with (
+                        | :Some &(:Keyword token) => token
+                        | _ => panic("expected keyword token")
                     );
                     if expected_keyword != Token.raw(keyword_token) then (
                         panic("Expected different keyword");
@@ -429,12 +426,10 @@ const Format = (
                 )
                 | :Value { .name, ... } => (
                     let member = next_member(name); # we use this to advance unnamed idx
-                    let child = expect_part(
-                        "value",
-                        part => match part^ with (
-                            | :Value ref child => :Some child
-                            | _ => :None
-                        )
+                    skip_ignored_parts();
+                    let child = match peek_part() with (
+                        | :Some &(:Value ref child) => child
+                        | _ => panic("Expected value part")
                     );
                     walk_ast(child, .parent = :Some { .wrapped, .priority });
                 )
@@ -446,7 +441,7 @@ const Format = (
                     .span = _,
                 } => (
                     let member = next_member(name);
-                    let child = match &group^.children |> Tuple.get_opt(member) with (
+                    let child :: Option.t[_] = match &group^.children |> Tuple.get_opt(member) with (
                         | :Some &(:Group ref group) => :Some group
                         | :None => :None
                         | :Some &(:Value _) => panic("Expected group, got value")
@@ -458,12 +453,10 @@ const Format = (
                         | :Optional => ()
                     );
                     if child is :Some group then (
-                        expect_part(
-                            "group",
-                            part => match part^ with (
-                                | :Group _ => :Some ()
-                                | _ => :None
-                            )
+                        skip_ignored_parts();
+                        match peek_part() with (
+                            | :Some &(:Group _) => ()
+                            | _ => panic("expected group part")
                         );
                         walk_ast_group(
                             rule_group_parts,

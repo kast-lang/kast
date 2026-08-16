@@ -96,7 +96,7 @@ const Parser = (
                     let ignored_tokens_before = claim_ignored_tokens();
                     ctx.token_stream |> TokenStream.advance;
                     with Diagnostic.UnwindableHandler = {
-                        .unwind_on_error = [T] () -> T => (
+                        .unwind_on_error = () -> Never => (
                             let raw_tokens = ctx.token_stream
                                 |> TokenStream.finish_recording(recording);
                             let mut parts = ArrayList.new();
@@ -423,7 +423,7 @@ const Parser = (
                                 .priority_filter = edge^.max_value_priority,
                             )
                         );
-                        let value = if value is :MadeProgress ast then (
+                        let value :: Option.t[_] = if value is :MadeProgress ast then (
                             :Some ast
                         ) else if edge^.max_value_priority is :Any then (
                             :Some {
@@ -464,7 +464,7 @@ const Parser = (
         );
         let shape = with_return (
             with Diagnostic.UnwindableHandler = {
-                .unwind_on_error = [T] () -> T => (
+                .unwind_on_error = () -> Never => (
                     let mut error_parts = ArrayList.new();
                     for part in parts |> ArrayList.into_iter do (
                         let part = match part with (

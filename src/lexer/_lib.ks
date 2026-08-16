@@ -50,7 +50,7 @@ impl Lexer as module = (
         let start = reader^.position;
         let shape = with_return (
             with Diagnostic.UnwindableHandler = {
-                .unwind_on_error = [T] () -> T => (
+                .unwind_on_error = () -> Never => (
                     let start = start.string_encoding_index;
                     let end = reader^.position.string_encoding_index;
                     return :Error {

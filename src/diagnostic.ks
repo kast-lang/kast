@@ -6,10 +6,10 @@ module:
 const Diagnostic = (
     module:
 
-    const AbortHandlerT = type ([T] String -> T);
+    const AbortHandlerT = type (String -> Never);
     const AbortHandler = @context AbortHandlerT;
 
-    const default_abort_handler = [T] (msg :: String) -> T => (
+    const default_abort_handler = (msg :: String) -> Never => (
         with Output = (@current Stderr);
         ansi.with_mode(
             :Red,
@@ -24,7 +24,7 @@ const Diagnostic = (
     ## Similar to panic but we don't care about stacktrace in this case
     ## Use for errors that are targeted at user
     const abort = [T] (msg :: String) -> T => (
-        (@current AbortHandler)(msg)
+        (@current AbortHandler)(msg) |> from_never
     );
 
     const t = newtype {
@@ -65,7 +65,7 @@ const Diagnostic = (
     const HandlerContext = @context Handler;
 
     const UnwindableHandler = @context newtype {
-        .unwind_on_error :: [T] () -> T,
+        .unwind_on_error :: () -> Never,
     };
 
     const print = (diagnostic :: Diagnostic.t) => (
@@ -74,7 +74,7 @@ const Diagnostic = (
         ansi.with_mode(
             :Red,
             () => (
-                let source_name = match diagnostic.source with (
+                let source_name :: Option.t[String] = match diagnostic.source with (
                     | :Internal => :Some "Internal"
                     | :Lexer => :Some "Lexer"
                     | :Parser => :Some "Parser"
@@ -127,6 +127,6 @@ const Diagnostic = (
 
     const report_and_unwind = [T] (diagnostic :: Diagnostic.t) -> T => (
         (@current HandlerContext).handle(diagnostic);
-        (@current UnwindableHandler).unwind_on_error()
+        (@current UnwindableHandler).unwind_on_error() |> from_never
     );
 );

@@ -165,7 +165,7 @@ const AstHelpers = (
     );
     # TODO not catch panics but instead use Tuple.get_*_opt or smth
     const handle_panics = (group :: &Ast.Group) -> std.PanicHandlerT => {
-        .handle = [T] (message :: String) -> T => (
+        .handle = (message :: String) -> Never => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,

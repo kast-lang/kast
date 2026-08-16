@@ -53,7 +53,7 @@ const read_string_impl = (
     .delim :: Delim,
     .multiline :: Bool,
     .strip_indentation :: Bool,
-) => with_return (
+) -> Option.t[Token.Shape.t] => with_return (
     let ctx = @current Context;
     let lexer = ctx.lexer;
     let reader = &mut lexer^.reader;

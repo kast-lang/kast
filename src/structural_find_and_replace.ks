@@ -123,7 +123,7 @@ const StructuralFindAndReplace = (
 
     const TryMatchContext = @context newtype {
         .bindings :: &mut OrdMap.t[String, type (&Ast.t)],
-        .fail :: [T] () -> T,
+        .fail :: () -> Never,
     };
 
     const try_match = (
@@ -133,7 +133,7 @@ const StructuralFindAndReplace = (
         let mut bindings = OrdMap.new();
         with TryMatchContext = {
             .bindings = &mut bindings,
-            .fail = [T] () -> T => return :None,
+            .fail = () => return :None,
         };
         walk_and_match_ast(ast, .pattern = &pattern^.ast);
         :Some { .ast, .bindings }
@@ -176,7 +176,7 @@ const StructuralFindAndReplace = (
                 );
                 walk_and_match_ast_group(ast_root, .pattern = pattern_root);
             )
-            | _ => ctx.fail()
+            | _ => ctx.fail() |> from_never
         )
     );
 
@@ -214,9 +214,9 @@ const StructuralFindAndReplace = (
                     | { :Group ref a, :Group ref b } => (
                         walk_and_match_ast_group(a, .pattern = b);
                     )
-                    | _ => ctx.fail()
+                    | _ => ctx.fail() |> from_never
                 )
-                | _ => ctx.fail()
+                | _ => ctx.fail() |> from_never
             )
         );
     );

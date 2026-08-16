@@ -142,14 +142,14 @@ const StructuralFindAndReplace = (
                         for found in &founds |> ArrayList.iter do (
                             # TODO this is hack only working currently
                             # I mean the equality - we are checking for identity equality
-                            if found^.ast^ == ast^ then (
+                            if @native "\(found^.ast^) == \(ast^)" then (
                                 with Highlight.Context = {
                                     ...(@current Highlight.Context),
                                     .replace_ast = :Some (
                                         (ast :: &Ast.t, f :: &Ast.t -> ()) => (
                                             for &{ .key = binding_name, .value = binding_ast } in &replace_pattern.bindings |> OrdMap.iter do (
                                                 # TODO identity equality
-                                                if ast^ == binding_ast^ then (
+                                                if @native "\(ast^) == \(binding_ast^)" then (
                                                     f((&found^.bindings |> OrdMap.get(binding_name) |> Option.unwrap)^);
                                                     break;
                                                 );

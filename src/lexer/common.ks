@@ -107,7 +107,6 @@ const skip_whitespace = () => (
             break;
         )
     );
-    :None
 );
 # Lexer will try multiple read fns, and the first returning :Some is the token
 const ReadFn = type (() -> Option.t[Token.Shape.t]);

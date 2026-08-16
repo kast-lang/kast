@@ -1,4 +1,5 @@
 use (import "./common.ks").*;
+use (import "../diagnostic.ks").*;
 use (import "../output.ks").*;
 use (import "../log.ks").*;
 use (import "../serialize.ks").*;
@@ -51,6 +52,8 @@ const Tokenize = (
                     );
                 )
                 | :Json => (
+                    Diagnostic.abort("json is broken :)");
+                (#
                     let mut lexer = Lexer.new(Source.read(path));
                     let mut json_tokens = ArrayList.new();
                     loop (
@@ -60,8 +63,7 @@ const Tokenize = (
                     );
                     let json = :Array json_tokens;
                     Json.print(&json);
-                    (@current Output).write("\n");
-                )
+                    (@current Output).write("\n");#) )
             );
         );
         if &args.paths |> ArrayList.length == 0 then (

@@ -123,12 +123,11 @@ const Serialize = (
         )
         | true => panic("comptime only")
     );
-    # const do_impl = () => (
-    #     include_ast derive_to_json(Token.t);
-    #     include_ast derive_to_json(Token.Shape.t);
-    # );
-
-    const as_json = [T] (value :: T) -> Json.t => (
-        (T as ToJson).to_json(value)
-    );
+# const do_impl = () => (
+#     include_ast derive_to_json(Token.t);
+#     include_ast derive_to_json(Token.Shape.t);
+# );
+# const as_json = [T] (value :: T) -> Json.t => (
+# (T as ToJson).to_json(value)
+# );
 );
