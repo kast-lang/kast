@@ -1480,6 +1480,36 @@ let comptime : core_syntax =
   }
 ;;
 
+let comptime_fork : core_syntax =
+  { name = "comptime_fork"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let span = ast.data.span in
+        match kind with
+        | Expr ->
+          let value_var = Value.inferred ~span V_Unit in
+          let comptime_expr = const_shape value_var |> init_expr span C.state in
+          State.Scope.fork (fun () ->
+            let expr = C.compile Expr expr in
+            let value = eval_const ~async:true C.state expr in
+            value_var |> Inference.Value.expect_inferred_as ~span value;
+            comptime_expr
+            |> Compiler.data_add Expr (expr, value) kind
+            |> Compiler.set_evaled value kind
+            |> ignore);
+          comptime_expr
+        | _ ->
+          error span "comptime must be expr";
+          init_error span C.state kind)
+  }
+;;
+
 let if' : core_syntax =
   { name = "if"
   ; handle =
@@ -2619,6 +2649,7 @@ let core =
   ; use
   ; use_dot_star
   ; comptime
+  ; comptime_fork
   ; true'
   ; false'
   ; if'

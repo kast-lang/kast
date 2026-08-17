@@ -7,4 +7,6 @@ const UnwindTokenImpl = [T] newtype {
     .value :: T,
 };
 
-@eval impl_native("backend.c.UnwindToken", UnwindTokenImpl);
+@exec_fork (
+    impl_native("backend.c.UnwindToken", UnwindTokenImpl);
+);
