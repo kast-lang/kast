@@ -1040,13 +1040,17 @@ and eval_expr_implcast : state -> expr -> Types.expr_impl_cast -> value =
   let span = expr.data.span in
   let value = eval state value in
   (* let target = eval state target in *)
-  let impl = eval state impl in
+  let impl_value = Value.new_not_inferred ~scope:state.result_scope ~span in
+  fork (fun () ->
+    impl_value |> Inference.Value.expect_inferred_as ~span (eval state impl));
   let current_target_impls =
     state.cast_impls.map
     |> Types.ValueMap.find_opt target
     |> Option.unwrap_or_else (fun () -> Types.ValueMap.empty)
   in
-  let updated_target_impls = current_target_impls |> Types.ValueMap.add value impl in
+  let updated_target_impls =
+    current_target_impls |> Types.ValueMap.add value impl_value
+  in
   state.cast_impls.map
   <- state.cast_impls.map |> Types.ValueMap.add target updated_target_impls;
   Log.trace (fun log ->
