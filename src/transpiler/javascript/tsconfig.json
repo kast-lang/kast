@@ -1,18 +1,18 @@
 {
-	"compilerOptions": {
-		"module": "nodenext",
-		"moduleResolution": "nodenext",
-		"types": [
-			"node"
-		],
-		"target": "ES2022",
-		"lib": [
-			"ES2022",
-			"DOM"
-		],
-		"sourceMap": false,
-		"rootDir": ".",
-		"strict": true,
-		"noFallthroughCasesInSwitch": true,
-	},
+    "compilerOptions": {
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
+        "types": [
+            "node"
+        ],
+        "target": "ES2022",
+        "lib": [
+            "ES2022",
+            "DOM"
+        ],
+        "sourceMap": false,
+        "rootDir": ".",
+        "strict": true,
+        "noFallthroughCasesInSwitch": true,
+    },
 }

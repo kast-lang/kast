@@ -2,12 +2,12 @@
  (name kast_transpiler_javascript)
  (libraries kast_types kast_interpreter)
  (preprocessor_deps
-  (file runtime.js))
+  (file runtime.mjs))
  (preprocess
   (pps ppx_include_dir)))
 
 (rule
- (targets runtime.js)
- (deps tsconfig.json runtime.ts)
+ (targets runtime.mjs)
+ (deps tsconfig.json runtime.mts)
  (action
   (system "npm exec tsc")))
