@@ -297,6 +297,10 @@ impl String as module = (
     const ToString = [Self] newtype {
         .to_string :: Self -> String
     };
+
+    impl String as ToString = {
+        .to_string = s => s,
+    };
     
     impl Char as ToString = {
         .to_string = c => @cfg (

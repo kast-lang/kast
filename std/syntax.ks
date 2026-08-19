@@ -168,3 +168,7 @@ impl syntax (macro!(ast)) = `(
 );
 
 impl syntax ((:: ty) value) = `($value :: $ty);
+
+impl syntax (obj.[index]) = `(
+    (&$obj |> std.collections.ArrayList.at($index))^
+);

@@ -12,4 +12,9 @@ impl Ast as module = (
         | target.name == "interpreter" => (@native "syntax.ident")(name)
         | true => panic("comptime only")
     );
+
+    const get_comma_separated_list = (ast :: Ast) -> std.collections.ArrayList.t[Ast] => @cfg (
+        | target.name == "interpreter" => (@native "Ast.get_comma_separated_list")(ast)
+        | true => panic("comptime only")
+    );
 );

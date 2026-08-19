@@ -99,6 +99,7 @@
 @syntax "core:ref_mut" 61 @wrap never = "&" "mut" " " _ ->;
 @syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\\\n" "]");
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
+@syntax "index" 70 @wrap never = <- obj "." "[" index:any "]";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
 @syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" arg:any ""/"\\\n" ")");
 @syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\\\n" ")");
