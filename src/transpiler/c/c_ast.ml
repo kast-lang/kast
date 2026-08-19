@@ -394,6 +394,19 @@ module Print = struct
       | None ->
         declared_types := !declared_types |> StringMap.add name BeingDeclared;
         let def = program.types |> StringMap.find name in
+        (match def.shape with
+         | RuntimeDefined -> ()
+         | Raw _ -> ()
+         | Fn { args; result_ty } ->
+           args |> List.iter ensure_type_declared;
+           result_ty |> ensure_type_declared
+         | Enum _ -> ()
+         | Struct fields ->
+           fields |> StringMap.iter (fun _ field_ty -> ensure_type_completed field_ty)
+         | Union variants ->
+           variants
+           |> StringMap.iter (fun _ variant_ty -> ensure_type_completed variant_ty)
+         | Alias _ -> ());
         write_comment def.comment;
         (match def.shape with
          | RuntimeDefined -> ()
@@ -402,8 +415,6 @@ module Print = struct
            write ";";
            writeln ()
          | Fn { args; result_ty } ->
-           args |> List.iter ensure_type_declared;
-           result_ty |> ensure_type_declared;
            write "typedef ";
            print_ty result_ty;
            write " (*";
@@ -430,7 +441,6 @@ module Print = struct
            write "};";
            writeln ()
          | Struct fields ->
-           fields |> StringMap.iter (fun _ field_ty -> ensure_type_completed field_ty);
            write "struct ";
            write name;
            write " {";
@@ -447,8 +457,6 @@ module Print = struct
            write "};";
            writeln ()
          | Union variants ->
-           variants
-           |> StringMap.iter (fun _ variant_ty -> ensure_type_completed variant_ty);
            write "union ";
            write name;
            write " {";
