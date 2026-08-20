@@ -22,6 +22,27 @@ let peek2 : reader -> char option =
   fun reader -> String.get reader.contents (reader.position.index + 1)
 ;;
 
+let peek2_as_string : reader -> string =
+  fun reader ->
+  match peek reader with
+  | None -> ""
+  | Some c1 ->
+    (match peek2 reader with
+     | None -> String.make 1 c1
+     | Some c2 -> make_string "%c%c" c1 c2)
+;;
+
+let peek_as_string : int -> reader -> string =
+  fun n reader ->
+  match n with
+  | 1 ->
+    (match peek reader with
+     | None -> ""
+     | Some c -> String.make 1 c)
+  | 2 -> peek2_as_string reader
+  | _ -> failwith __LOC__
+;;
+
 let advance : reader -> unit =
   fun reader ->
   match peek reader with

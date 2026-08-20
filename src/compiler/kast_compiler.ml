@@ -68,7 +68,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                 match parts with
                 | [ Content { contents; _ } ] ->
                   (match delimeter with
-                   | "\"" -> V_String contents
+                   | "\"" | "''" -> V_String contents
                    | "'" ->
                      (match String.into_single_utf8 contents with
                       | Some c -> V_Char c

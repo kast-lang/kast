@@ -142,10 +142,23 @@ module DefaultRules = struct
 
   let read_string_impl lexer : Token.Shape.string =
     let c = Reader.peek lexer.reader |> Option.get in
-    let delimeter = c in
-    let open_span = Span.single_char delimeter lexer.reader.position lexer.source.uri in
+    let start = lexer.reader.position in
     let raw = Reader.start_rec lexer.reader in
     Reader.advance lexer.reader;
+    let delimeter =
+      match c with
+      | '"' -> "\""
+      | '\'' ->
+        (match Reader.peek lexer.reader with
+         | Some '\'' ->
+           Reader.advance lexer.reader;
+           "''"
+         | _ -> "'")
+      | _ -> failwith __LOC__
+    in
+    let open_span : span =
+      { start; finish = lexer.reader.position; uri = lexer.source.uri }
+    in
     let contents_raw = ref (Reader.start_rec lexer.reader) in
     let contents = Buffer.create 0 in
     let contents_start = ref lexer.reader.position in
@@ -172,7 +185,8 @@ module DefaultRules = struct
     let rec loop =
       fun () ->
       let/ c = Reader.peek lexer.reader in
-      if c = delimeter || c = '\n'
+      let check_delim = Reader.peek_as_string (String.length delimeter) lexer.reader in
+      if check_delim = delimeter || (String.length delimeter = 1 && c = '\n')
       then ()
       else (
         with_return (fun { return } ->
@@ -308,27 +322,29 @@ module DefaultRules = struct
         ]
       | parts -> parts
     in
-    let close_span = Span.single_char delimeter lexer.reader.position lexer.source.uri in
-    (match Reader.peek lexer.reader with
-     | Some c when c = delimeter -> Reader.advance lexer.reader
-     | Some c ->
-       error
-         "Expected %C, got %C @{<dim>at %a@}"
-         delimeter
-         c
-         Position.print
-         lexer.reader.position
-     | None ->
-       error
-         "Expected %C, got @{<italic><eof>@} @{<dim>at %a@}"
-         delimeter
-         Position.print
-         lexer.reader.position);
+    let close_span_start = lexer.reader.position in
+    if Reader.peek_as_string (String.length delimeter) lexer.reader <> delimeter
+    then
+      error
+        "Unclosed string, expected %S at %a"
+        delimeter
+        Span.print
+        { start = open_span.start
+        ; finish = lexer.reader.position
+        ; uri = lexer.source.uri
+        };
+    for _ = 1 to String.length delimeter do
+      Reader.advance lexer.reader
+    done;
     { raw = Reader.finish_rec raw
     ; parts
-    ; delimeter = String.make 1 delimeter
+    ; delimeter
     ; open_span
-    ; close_span
+    ; close_span =
+        { start = close_span_start
+        ; finish = lexer.reader.position
+        ; uri = lexer.source.uri
+        }
     }
   ;;
 

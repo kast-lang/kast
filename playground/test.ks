@@ -1,2 +1,5 @@
-@native "\(String)";
+print(''
+    Hello,
+        World!
+'');
 
