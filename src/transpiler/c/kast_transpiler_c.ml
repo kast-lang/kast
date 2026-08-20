@@ -283,6 +283,7 @@ module Impl = struct
         ty
     in
     Inference.Var.setup_default_if_needed ty.var;
+    ty |> Ty.await_inferred |> ignore;
     match ty.var |> Inference.Var.inferred_opt with
     | Some (T_Blocked value) -> Ptr Void
     | _ ->
@@ -884,7 +885,15 @@ module Impl = struct
 
   and transpile_value (value : value) : C_ast.place_expr =
     let ctx = Effect.perform GetCtx in
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     Inference.Var.setup_default_if_needed value.var;
+    let value =
+      Interpreter.Substitute_bindings.sub_value
+        ~span
+        ~state:(Interpreter.sub_here interpreter)
+        value
+    in
+    Value.await_inferred value |> ignore;
     match value.var |> Inference.Var.inferred_opt with
     | Some (V_Blocked value) -> failwith __LOC__
     | _ ->

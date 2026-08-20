@@ -59,4 +59,4 @@ const write = (args :: Ast) -> Ast => (
 # Usage of the macro
 let mut output :: String = "";
 write!(&mut output, "Hello, {}! Here's a random number: {}", "World", 67 :: Int32);
-dbg.print(output);
+print(output);
