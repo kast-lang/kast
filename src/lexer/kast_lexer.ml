@@ -193,6 +193,9 @@ module DefaultRules = struct
           let c =
             if c = '\\'
             then (
+              let escaper_span =
+                Span.single_char c lexer.reader.position lexer.source.uri
+              in
               let c =
                 match Reader.peek2 lexer.reader with
                 | Some c -> c
@@ -202,48 +205,79 @@ module DefaultRules = struct
                     Position.print
                     (Position.advance c lexer.reader.position)
               in
-              if c = '('
+              if c = '(' || c = '['
               then (
                 finish_contents_part ();
-                let open_span_start = lexer.reader.position in
                 Reader.advance lexer.reader;
-                Reader.advance lexer.reader;
-                let open_span : Span.t =
-                  { start = open_span_start
-                  ; finish = lexer.reader.position
-                  ; uri = lexer.source.uri
-                  }
-                in
-                let tokens = ref [] in
-                let balance = ref 0 in
-                while true do
-                  ignore (read_whitespace lexer);
-                  if Reader.peek lexer.reader = Some ')' && !balance = 0
-                  then (
-                    let close_span_start = lexer.reader.position in
+                let read_inner () : char * Token.Types.interpolated_inner =
+                  with_return (fun { return } ->
+                    let open_span_start = lexer.reader.position in
+                    let open_c, close_c =
+                      match lexer.reader |> Reader.peek with
+                      | Some '(' -> '(', ')'
+                      | Some '[' -> '[', ']'
+                      | _ ->
+                        error
+                          "expected interpolated inner at %a"
+                          Position.print
+                          lexer.reader.position
+                    in
                     Reader.advance lexer.reader;
-                    let close_span : Span.t =
-                      { start = close_span_start
+                    let open_span : Span.t =
+                      { start = open_span_start
                       ; finish = lexer.reader.position
                       ; uri = lexer.source.uri
                       }
                     in
-                    parts
-                    := !parts
-                       @ [ Token.Types.Interpolate
-                             { open_span; tokens = !tokens; close_span }
-                         ];
-                    contents_raw := Reader.start_rec lexer.reader;
-                    return ())
+                    let tokens = ref [] in
+                    let balance = ref 0 in
+                    while true do
+                      ignore (read_whitespace lexer);
+                      if Reader.peek lexer.reader = Some close_c && !balance = 0
+                      then (
+                        let close_span_start = lexer.reader.position in
+                        Reader.advance lexer.reader;
+                        let close_span : Span.t =
+                          { start = close_span_start
+                          ; finish = lexer.reader.position
+                          ; uri = lexer.source.uri
+                          }
+                        in
+                        let inner : Token.Types.interpolated_inner =
+                          { open_span; tokens = !tokens; close_span }
+                        in
+                        return (open_c, inner))
+                      else (
+                        let is_open_bracket token =
+                          token |> Token.is_raw "(" || token |> Token.is_raw "["
+                        in
+                        let is_close_bracket token =
+                          token |> Token.is_raw ")" || token |> Token.is_raw "]"
+                        in
+                        let next_token = next lexer in
+                        if next_token |> is_open_bracket then balance := !balance + 1;
+                        if next_token |> is_close_bracket then balance := !balance - 1;
+                        if next_token.shape |> Token.Shape.is_eof
+                        then
+                          error
+                            "Unclosed string interpolation, got %a"
+                            Token.print
+                            next_token;
+                        tokens := !tokens @ [ next_token ])
+                    done)
+                in
+                let c1, inner1 = read_inner () in
+                let fmt, value =
+                  if c1 = '('
+                  then None, inner1
                   else (
-                    let next_token = next lexer in
-                    if next_token |> Token.is_raw "(" then balance := !balance + 1;
-                    if next_token |> Token.is_raw ")" then balance := !balance - 1;
-                    if next_token.shape |> Token.Shape.is_eof
-                    then
-                      error "Unclosed string interpolation, got %a" Token.print next_token;
-                    tokens := !tokens @ [ next_token ])
-                done);
+                    let c2, inner2 = read_inner () in
+                    if c2 <> '(' then error "interpolated value should be in round parens";
+                    Some inner1, inner2)
+                in
+                parts := !parts @ [ Token.Types.Interpolate { escaper_span; fmt; value } ];
+                contents_raw := Reader.start_rec lexer.reader;
+                return ());
               Reader.advance lexer.reader;
               let result =
                 match c with

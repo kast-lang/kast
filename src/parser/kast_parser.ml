@@ -302,22 +302,32 @@ and parse_simple (context : context) : Ast.t option =
           |> List.map (function
             | Token.Types.Content { raw; contents; span } ->
               Ast.Content { raw; contents; span }
-            | Token.Types.Interpolate { open_span; tokens; close_span } ->
-              let { ast = inner
-                  ; trailing_comments
-                  ; ruleset_with_all_new_syntax = _
-                  ; eof = _
-                  }
+            | Token.Types.Interpolate { escaper_span; fmt; value } ->
+              let parse_inner
+                    ({ open_span; tokens; close_span } : Token.Types.interpolated_inner)
+                : Ast.interpolated_inner
                 =
-                parse_with_lexer
-                  (Lexer.init_with
-                     Lexer.default_rules
-                     tokens
-                     ~eof:close_span.start
-                     (Lexer.source context.lexer).uri)
-                  context.ruleset
+                let { ast = inner
+                    ; trailing_comments
+                    ; ruleset_with_all_new_syntax = _
+                    ; eof = _
+                    }
+                  =
+                  parse_with_lexer
+                    (Lexer.init_with
+                       Lexer.default_rules
+                       tokens
+                       ~eof:close_span.start
+                       (Lexer.source context.lexer).uri)
+                    context.ruleset
+                in
+                { open_span; ast = inner; close_span }
               in
-              Ast.Interpolate { open_span; ast = inner; close_span })
+              Ast.Interpolate
+                { escaper_span
+                ; fmt = fmt |> Option.map parse_inner
+                ; value = value |> parse_inner
+                })
         in
         Ast.String { delimeter; open_span; close_span; parts }
       | Punct { raw = "@syntax"; _ } -> return <| Some (parse_syntax_extension context)
@@ -478,8 +488,12 @@ and collect_all_new_syntax ast =
       |> List.to_seq
       |> Seq.flat_map (function
         | Ast.Content _ -> Seq.empty
-        | Ast.Interpolate { ast = inner; open_span = _; close_span = _ } ->
-          collect_ast inner)
+        | Ast.Interpolate { escaper_span = _; fmt; value } ->
+          Seq.append
+            (fmt
+             |> Option.to_seq
+             |> Seq.flat_map (fun (fmt : Ast.interpolated_inner) -> collect_ast fmt.ast))
+            (collect_ast value.ast))
     | Ast.Complex { rule = _; root } -> collect_group root
     | Ast.Syntax { comments_before = _; tokens = _; mode; value_after } ->
       let after = value_after |> Option.to_seq |> Seq.flat_map collect_ast in

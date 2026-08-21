@@ -192,7 +192,22 @@ module Common (Output : Output) = struct
     printer.position <- token.span.finish
   ;;
 
-  let rec print_ast (printer : printer) (ast : Ast.t) : unit =
+  let rec print_interpolated_inner
+            (printer : printer)
+            (open_c : char)
+            (close_c : char)
+            ({ open_span; ast; close_span } : Ast.interpolated_inner)
+    : unit
+    =
+    Output.move_to printer open_span.start;
+    Output.print_with_keyword_color printer (String.make 1 open_c);
+    printer.position <- open_span.finish;
+    print_ast printer ast;
+    Output.move_to printer close_span.start;
+    Output.print_with_keyword_color printer (String.make 1 close_c);
+    printer.position <- close_span.finish
+
+  and print_ast (printer : printer) (ast : Ast.t) : unit =
     let rec print_parts (parts : Ast.part list) =
       parts
       |> List.iter (function
@@ -217,14 +232,14 @@ module Common (Output : Output) = struct
           Output.move_to printer span.start;
           Output.print_with_str_color printer raw;
           printer.position <- span.finish
-        | Ast.Interpolate { open_span; ast = inner; close_span } ->
-          Output.move_to printer open_span.start;
-          Output.print_with_keyword_color printer "\\(";
-          printer.position <- open_span.finish;
-          print_ast printer inner;
-          Output.move_to printer close_span.start;
-          Output.print_with_keyword_color printer ")";
-          printer.position <- close_span.finish);
+        | Ast.Interpolate { escaper_span; fmt; value } ->
+          Output.move_to printer escaper_span.start;
+          Output.print_with_keyword_color printer (String.make 1 '\\');
+          printer.position <- escaper_span.finish;
+          (match fmt with
+           | None -> ()
+           | Some fmt -> print_interpolated_inner printer '[' ']' fmt);
+          print_interpolated_inner printer '(' ')' value);
       Output.move_to printer close_span.start;
       Output.print_with_str_color printer delimeter;
       printer.position <- close_span.finish

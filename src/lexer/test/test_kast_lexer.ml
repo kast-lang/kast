@@ -45,7 +45,7 @@ module ExpectedToken = struct
          |> List.iter (fun (expected, part) ->
            match expected, part with
            | Content a, Token.Types.Content b when String.equal a b.raw -> ()
-           | Interpolate a, Token.Types.Interpolate { tokens = b; _ } ->
+           | Interpolate a, Token.Types.Interpolate { value = { tokens = b; _ }; _ } ->
              List.zip a b
              |> List.iter (fun (expected, token) ->
                if not (check expected token) then raise <| Invalid_argument ":)")

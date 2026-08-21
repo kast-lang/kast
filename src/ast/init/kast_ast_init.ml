@@ -46,8 +46,15 @@ module InitAst = struct
 
   and init_string_part : Kast_ast.T.str_part -> Ast.str_part = function
     | Content { raw; contents; span } -> Content { raw; contents; span }
-    | Interpolate { open_span; ast = inner; close_span } ->
-      Interpolate { open_span; ast = init_ast inner; close_span }
+    | Interpolate { escaper_span; fmt; value } ->
+      Interpolate
+        { escaper_span
+        ; fmt = fmt |> Option.map init_interpolated_inner
+        ; value = value |> init_interpolated_inner
+        }
+
+  and init_interpolated_inner : Kast_ast.T.interpolated_inner -> Ast.interpolated_inner =
+    fun { open_span; ast; close_span } -> { open_span; ast = init_ast ast; close_span }
 
   and init_ast_child : Kast_ast.T.child -> Ast.child =
     fun child ->
@@ -129,9 +136,16 @@ module InitAstDefSite = struct
       result
 
   and init_string_part : Ast.str_part -> Ast.str_part = function
-    | Content s -> Content s
-    | Interpolate { open_span; ast = inner; close_span } ->
-      Interpolate { open_span; ast = init_ast inner; close_span }
+    | Content { raw; contents; span } -> Content { raw; contents; span }
+    | Interpolate { escaper_span; fmt; value } ->
+      Interpolate
+        { escaper_span
+        ; fmt = fmt |> Option.map init_interpolated_inner
+        ; value = value |> init_interpolated_inner
+        }
+
+  and init_interpolated_inner : Ast.interpolated_inner -> Ast.interpolated_inner =
+    fun { open_span; ast; close_span } -> { open_span; ast = init_ast ast; close_span }
 
   and init_ast_child : Ast.child -> Ast.child =
     fun child ->

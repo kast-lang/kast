@@ -369,10 +369,16 @@ module rec TypesImpl : sig
         ; span : Span.t
         }
     | Interpolate of
-        { open_span : Span.t
-        ; expr : expr
-        ; close_span : Span.t
+        { escaper_span : Span.t
+        ; fmt : expr_quote_ast_interpolated_inner option
+        ; value : expr_quote_ast_interpolated_inner
         }
+
+  and expr_quote_ast_interpolated_inner =
+    { open_span : Span.t
+    ; expr : expr
+    ; close_span : Span.t
+    }
 
   and expr_quote_ast_simple =
     { ast : Ast.t
@@ -1118,10 +1124,16 @@ end = struct
         ; span : Span.t
         }
     | Interpolate of
-        { open_span : Span.t
-        ; expr : expr
-        ; close_span : Span.t
+        { escaper_span : Span.t
+        ; fmt : expr_quote_ast_interpolated_inner option
+        ; value : expr_quote_ast_interpolated_inner
         }
+
+  and expr_quote_ast_interpolated_inner =
+    { open_span : Span.t
+    ; expr : expr
+    ; close_span : Span.t
+    }
 
   and expr_quote_ast_simple =
     { ast : Ast.t

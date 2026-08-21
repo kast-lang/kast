@@ -1157,11 +1157,28 @@ let native : core_syntax =
                 parts
                 |> List.map (function
                   | Ast.Content s -> Types.Raw s.contents
-                  | Ast.Interpolate { open_span = _; close_span = _; ast = inner } ->
-                    let inner = C.compile Expr inner in
-                    (match inner.shape with
-                     | E_Ty e -> Types.TyExpr e
-                     | _ -> Types.Expr inner))
+                  | Ast.Interpolate { escaper_span; fmt; value } ->
+                    (match fmt with
+                     | Some _ ->
+                       let value_s, value_expr =
+                         Compiler.eval
+                           ~ty:(Ty.inferred ~span T_String)
+                           (module C)
+                           value.ast
+                       in
+                       let value_s =
+                         value_s
+                         |> Value.expect_string
+                         |> Option.unwrap_or_else (fun () ->
+                           error value.ast.data.span "expected a string";
+                           "")
+                       in
+                       Types.Raw value_s
+                     | None ->
+                       let inner = C.compile Expr value.ast in
+                       (match inner.shape with
+                        | E_Ty e -> Types.TyExpr e
+                        | _ -> Types.Expr inner)))
               | _ ->
                 error span "native expr must be (interpolated) string";
                 return <| init_error span C.state kind
@@ -1745,11 +1762,21 @@ let quote : core_syntax =
                          |> List.map (function
                            | Ast.Content { raw; contents; span } ->
                              Types.Content { raw; contents; span }
-                           | Ast.Interpolate { open_span; ast = inner; close_span } ->
-                             Types.Interpolate
+                           | Ast.Interpolate { escaper_span; fmt; value } ->
+                             let construct_interpolated_inner
+                                   ({ open_span; ast; close_span } :
+                                     Ast.interpolated_inner)
+                               : Types.expr_quote_ast_interpolated_inner
+                               =
                                { open_span
-                               ; expr = construct ~quote_level inner
+                               ; expr = construct ~quote_level ast
                                ; close_span
+                               }
+                             in
+                             Types.Interpolate
+                               { escaper_span
+                               ; fmt = fmt |> Option.map construct_interpolated_inner
+                               ; value = value |> construct_interpolated_inner
                                })
                      ; def_site
                      })

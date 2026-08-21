@@ -87,9 +87,16 @@ let format : formatter -> Parser.result -> unit =
              parts
              |> List.iter (function
                | Ast.Content { raw; span = _; contents = _ } -> String.print fmt raw
-               | Ast.Interpolate { open_span = _; ast = inner; close_span = _ } ->
-                 fprintf fmt "\\(";
-                 print_ast ~filter:(Filter Any) ~parent:None inner;
+               | Ast.Interpolate { escaper_span; fmt = ifmt; value } ->
+                 fprintf fmt "\\";
+                 (match ifmt with
+                  | None -> ()
+                  | Some ifmt ->
+                    fprintf fmt "[";
+                    print_ast ~filter:(Filter Any) ~parent:None ifmt.ast;
+                    fprintf fmt "]");
+                 fprintf fmt "(";
+                 print_ast ~filter:(Filter Any) ~parent:None value.ast;
                  fprintf fmt ")");
              fprintf fmt "%a" String.print delimeter)
           ()

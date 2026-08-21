@@ -1330,14 +1330,24 @@ and quote_ast : span:span -> state -> Expr.Shape.quote_ast -> Ast.t =
       parts
       |> List.map (function
         | Types.Content { raw; contents; span } -> Ast.Content { raw; contents; span }
-        | Types.Interpolate { open_span; expr; close_span } ->
-          Ast.Interpolate
+        | Types.Interpolate { escaper_span; fmt; value } ->
+          let quote_interpolated_inner
+                ({ open_span; expr; close_span } :
+                  Types.expr_quote_ast_interpolated_inner)
+            : Ast.interpolated_inner
+            =
             { open_span
             ; ast =
                 (match eval state expr |> Value.await_inferred with
                  | V_Ast ast -> ast
                  | other -> fail "interpolated as not ast but %a" Value.Shape.print other)
             ; close_span
+            }
+          in
+          Ast.Interpolate
+            { escaper_span
+            ; fmt = fmt |> Option.map quote_interpolated_inner
+            ; value = value |> quote_interpolated_inner
             })
     in
     { shape = String { delimeter; open_span; close_span; parts }

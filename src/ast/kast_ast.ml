@@ -75,16 +75,22 @@ module type S = sig
     ; close_span : span
     }
 
+  and interpolated_inner =
+    { open_span : Span.t
+    ; ast : ast
+    ; close_span : Span.t
+    }
+
   and str_part =
     | Content of
         { raw : String.t
         ; contents : String.t
-        ; span : span
+        ; span : Span.t
         }
     | Interpolate of
-        { open_span : Span.t
-        ; ast : ast
-        ; close_span : Span.t
+        { escaper_span : Span.t
+        ; fmt : interpolated_inner option
+        ; value : interpolated_inner
         }
 
   and shape =
@@ -177,6 +183,12 @@ module Make (Data : DataS) : S with module Data = Data = struct
     ; close_span : Span.t
     }
 
+  and interpolated_inner =
+    { open_span : Span.t
+    ; ast : ast
+    ; close_span : Span.t
+    }
+
   and str_part =
     | Content of
         { raw : String.t
@@ -184,9 +196,9 @@ module Make (Data : DataS) : S with module Data = Data = struct
         ; span : Span.t
         }
     | Interpolate of
-        { open_span : Span.t
-        ; ast : ast
-        ; close_span : Span.t
+        { escaper_span : Span.t
+        ; fmt : interpolated_inner option
+        ; value : interpolated_inner
         }
 
   and shape =
@@ -231,7 +243,7 @@ module Make (Data : DataS) : S with module Data = Data = struct
   and print_str_part : formatter -> str_part -> unit =
     fun fmt -> function
     | Content { raw; _ } -> fprintf fmt "@{<green>%a@}" String.print_debug raw
-    | Interpolate { ast; _ } -> print fmt ast
+    | Interpolate { value; _ } -> print fmt value.ast
 
   and print_shape : formatter -> shape -> unit =
     fun fmt -> function

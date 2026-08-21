@@ -21,8 +21,9 @@ let rec find_spans_start_biggest (ast : Ast.t) (pos : position) : span list =
        parts
        |> List.map (function
          | Ast.Content _ -> []
-         | Ast.Interpolate { open_span = _; close_span = _; ast = inner } ->
-           find_spans_start_biggest inner pos)
+         | Ast.Interpolate { escaper_span = _; fmt; value } ->
+           (* TODO fmt *)
+           find_spans_start_biggest value.ast pos)
        |> List.flatten
      | Complex { root; _ } ->
        let rec find_in_group ({ children; _ } : Ast.group) : span list option =
