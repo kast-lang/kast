@@ -178,6 +178,7 @@
             prettier
             hyperfine
             clang_22
+            boehmgc
             inputs.filc.packages.${system}.filcc
           ]);
           # Since I dont have cmake or whatever

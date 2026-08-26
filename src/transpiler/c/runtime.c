@@ -3,6 +3,7 @@
 #include <execinfo.h>
 #include <features.h>
 #include <netdb.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -16,6 +17,11 @@
 #include <unistd.h>
 #ifdef __FILC__
 #include <stdfil.h>
+#endif
+
+#define USE_GC
+#ifdef USE_GC
+#include <gc.h>
 #endif
 
 noreturn void exit_with_error(const char* s) {
@@ -42,12 +48,24 @@ void panic_errno() {
     exit_with_error("errno");
 }
 
-void* try_malloc(size_t size) {
+void* Kast_malloc(size_t size) {
+#ifdef USE_GC
+    void* result = GC_malloc(size);
+#else
     void* result = malloc(size);
+#endif
     if (!result) {
         panic_errno();
     }
     return result;
+}
+
+void Kast_free(void* memory) {
+#ifdef USE_GC
+    GC_free(memory);
+#else
+    free(memory);
+#endif
 }
 
 typedef struct {
@@ -164,7 +182,7 @@ typedef struct String {
 
 String Char_to_String(Char c) {
     size_t len = Char_utf8_len(c);
-    char* buf = try_malloc(len);
+    char* buf = Kast_malloc(len);
     char* encoder = buf;
     utf8_char_encode_step(&encoder, c);
     return (String) {.buf = buf, .length = len};
@@ -194,7 +212,7 @@ int String_cmp(String a, String b) {
 }
 
 String String_concat(String a, String b) {
-    char* buf = try_malloc(a.length + b.length);
+    char* buf = Kast_malloc(a.length + b.length);
     memcpy(buf, a.buf, a.length);
     memcpy(buf + a.length, b.buf, b.length);
     return (String) {
@@ -217,7 +235,7 @@ String String_from_C_String(const C_String s) {
 }
 
 char* String_to_C_String(const String s) {
-    char* result = try_malloc(s.length + 1);
+    char* result = Kast_malloc(s.length + 1);
     memcpy(result, s.buf, s.length);
     result[s.length] = 0;
     return result;
@@ -238,7 +256,7 @@ CliArgs CLI_ARGS;
 
 void init_cli_args(int argc, char* argv[]) {
     CLI_ARGS.argc = argc;
-    CLI_ARGS.argv = try_malloc(argc * sizeof(String));
+    CLI_ARGS.argv = Kast_malloc(argc * sizeof(String));
     for (int i = 0; i < argc; i++) {
         CLI_ARGS.argv[i] = (String) {
             .buf = argv[i],
@@ -247,28 +265,39 @@ void init_cli_args(int argc, char* argv[]) {
     }
 }
 
-String Float64_to_String(Float64 x) {
+void* Kast_ensure_correct_malloc(void* buf, size_t size) {
+#ifdef USE_GC
+    char* gc_buf = Kast_malloc(size);
+    memcpy(gc_buf, buf, size);
+    free(buf);
+    return gc_buf;
+#else
+    return buf;
+#endif
+}
+
+String Kast_asprintf(const char* fmt, ...) {
     char* buf;
-    int length = asprintf(&buf, "%f", x);
+    va_list va;
+    va_start(va, fmt);
+    int length = vasprintf(&buf, fmt, va);
+    va_end(va);
     if (length < 0) {
         panic_errno();
     }
+    buf = Kast_ensure_correct_malloc(buf, length);
     return (String) {
         .buf = buf,
         .length = length,
     };
 }
 
+String Float64_to_String(Float64 x) {
+    return Kast_asprintf("%f", x);
+}
+
 String Int32_to_String(Int32 x) {
-    char* buf;
-    int length = asprintf(&buf, "%d", x);
-    if (length < 0) {
-        panic_errno();
-    }
-    return (String) {
-        .buf = buf,
-        .length = length,
-    };
+    return Kast_asprintf("%d", x);
 }
 
 Int32 Int32_from_String(String s) {
@@ -282,7 +311,7 @@ Int32 Int32_from_String(String s) {
 Float64 Float64_from_String(String s) {
     char* cs = String_to_C_String(s);
     Float64 result = atof(cs);
-    free(cs);
+    Kast_free(cs);
     return result;
 }
 
@@ -295,7 +324,7 @@ void check_ferror(FILE* f) {
 }
 
 String Kast_read_exactly(FILE* f, size_t size) {
-    char* buf = try_malloc(size);
+    char* buf = Kast_malloc(size);
     size_t read = 0;
     while (read < size) {
         size_t new_read = fread(buf, 1, size - read, f);
@@ -330,7 +359,7 @@ String Kast_read_to_end(FILE* f) {
 String Kast_read_file(String path) {
     char* path_c = String_to_C_String(path);
     FILE* f = fopen(path_c, "r");
-    free(path_c);
+    Kast_free(path_c);
     if (!f) {
         panic_errno();
     }
@@ -344,6 +373,7 @@ String Kast_read_until(FILE* f, Char c) {
     if (length < 0) {
         panic_errno();
     }
+    buf = Kast_ensure_correct_malloc(buf, length);
     return (String) {
         .buf = buf,
         .length = length,
@@ -451,7 +481,7 @@ Unit Kast_chdir(String path) {
     if (!res) {
         panic_errno();
     }
-    free(path_c);
+    Kast_free(path_c);
     return (Unit) {};
 }
 
@@ -461,14 +491,14 @@ Int32 Kast_exec(String cmd) {
     if (res == -1) {
         panic_errno();
     }
-    free(cmd_c);
+    Kast_free(cmd_c);
     return WEXITSTATUS(res);
 }
 
 String Kast_getenv(String name) {
     char* name_c = String_to_C_String(name);
     char* buf = getenv(name_c);
-    free(name_c);
+    Kast_free(name_c);
     return (String) {
         .buf = buf,
         .length = buf ? strlen(buf) : 0,
@@ -521,8 +551,8 @@ tcp_Stream tcp_Stream_connect(String addr) {
             exit(-1);
         }
     }
-    free(host_c);
-    free(port_c);
+    Kast_free(host_c);
+    Kast_free(port_c);
     for (rp = ai; rp != NULL; rp = rp->ai_next) {
         int sock_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sock_fd == -1) {
@@ -582,8 +612,8 @@ tcp_Listener tcp_Listener_bind(String addr) {
             exit(-1);
         }
     }
-    free(host_c);
-    free(port_c);
+    Kast_free(host_c);
+    Kast_free(port_c);
     for (rp = ai; rp != NULL; rp = rp->ai_next) {
         int fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         int so_reuseaddr = true;
@@ -649,7 +679,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     }
     host_len = strlen(host);
     port_len = strlen(port);
-    char* addr_c = try_malloc(host_len + 1 + port_len);
+    char* addr_c = Kast_malloc(host_len + 1 + port_len);
     memcpy(addr_c, host, host_len);
     addr_c[host_len] = ':';
     memcpy(addr_c + host_len + 1, port, port_len);

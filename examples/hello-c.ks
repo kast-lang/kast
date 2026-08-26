@@ -53,11 +53,16 @@ const fib = (
 # print_Int(fib(1, 2, 10));
 # print_String("\n");
 
-(
-    # with PanicHandler = [T] (s => print_String);
+unwindable block (
+    with std.PanicHandler = {
+        .handle = s => (
+            print(s);
+            unwind block ()
+        ),
+    };
     panic("Not really a panic\n");
 );
 
 # panic("I PANIKED");
 
-let std = std;
+# let std = std;
