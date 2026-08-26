@@ -1,5 +1,6 @@
-const console_log = "console.log";
-let message = "Hello, World!";
-@native "\[](console_log)(\(message))";
+let foo = [X] (a :: X, b :: X) => std.cmp.less[X](a, b);
 
-# console.log(message)
+let a :: Int32 = 1;
+let b = 2;
+
+dbg.print(foo(a, b));
