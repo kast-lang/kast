@@ -1173,7 +1173,10 @@ module Impl = struct
                           | Index _ -> None
                           | Name name -> Some name)
                          (C_ast.Claim
-                            (Field { obj = Ident var; field = member_name member }))))
+                            (Field
+                               { obj = Deref (Claim (Ident var))
+                               ; field = member_name member
+                               }))))
          | _ -> fail "f args must be tuple");
         let args_ty =
           arg.data.signature.ty
