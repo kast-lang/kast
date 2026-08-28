@@ -260,18 +260,28 @@ impl String as module = (
     impl Int32 as FromString = {
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
-            | target.name == "c" => (
-                @native "Int32_from_String" :: fn @call "C" String -> Int32
-            )(s)
+            | target.name == "c" => @native "Int32_from_String(\(s))"
+            | target.name == "javascript" => (@native "Kast.parse.Int32")(s)
+        )
+    };
+    impl UInt32 as FromString = {
+        .from_string = s => @cfg (
+            | target.name == "interpreter" => (@native "parse")(s)
+            | target.name == "c" => @native "Int32_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Int32")(s)
         )
     };
     impl Int64 as FromString = {
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
-            | target.name == "c" => (
-                @native "Int64_from_String" :: fn @call "C" String -> Int64
-            )(s)
+            | target.name == "c" => @native "Int64_from_String(\(s))"
+            | target.name == "javascript" => (@native "Kast.parse.Int64")(s)
+        )
+    };
+    impl UInt64 as FromString = {
+        .from_string = s => @cfg (
+            | target.name == "interpreter" => (@native "parse")(s)
+            | target.name == "c" => @native "Int64_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Int64")(s)
         )
     };

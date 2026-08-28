@@ -94,7 +94,55 @@ impl Int32 as Ord = {
     )
 };
 
+impl UInt32 as Ord = {
+    .compare = (a, b) => @cfg (
+        | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
+        | (@native "==")(target.name, "c") => (
+            if @native "\(a) < \(b)" then (
+                :Less
+            ) else if @native "\(a) > \(b)" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+        | (@native "==")(target.name, "javascript") => (
+            if @native "\(a) < \(b)" then (
+                :Less
+            ) else if @native "\(a) > \(b)" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+    )
+};
+
 impl Int64 as Ord = {
+    .compare = (a, b) => @cfg (
+        | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
+        | (@native "==")(target.name, "c") => (
+            if @native "\(a) < \(b)" then (
+                :Less
+            ) else if @native "\(a) > \(b)" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+        | (@native "==")(target.name, "javascript") => (
+            if @native "\(a) < \(b)" then (
+                :Less
+            ) else if @native "\(a) > \(b)" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+    )
+};
+
+impl UInt32 as Ord = {
     .compare = (a, b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
