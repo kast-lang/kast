@@ -50,6 +50,7 @@ type _ Effect.t += GetUnwindCtx : unwind_ctx Effect.t
 
 type transpiled_fn =
   { captured_ty_name : string option
+  ; captured : binding Id.Map.t
   ; def : Types.compiled_fn
   ; name : string
   }
@@ -723,7 +724,7 @@ module Impl = struct
         | None -> Some binding
         | Some _ -> None)
     in
-    let captured_ty_name, captured_bindings =
+    let captured_ty_name, captured_binding_places =
       match captured_bindings with
       | [] -> None, Id.Map.empty
       | captures ->
@@ -753,7 +754,7 @@ module Impl = struct
     in
     let captured : current_captured =
       { interpreter_scope = captured_interpreter_scope
-      ; bindings = captured_bindings
+      ; bindings = captured_binding_places
       ; interpreter_state = captured_interpreter
       }
     in
@@ -798,8 +799,8 @@ module Impl = struct
         let body : C_ast.block =
           new_block (fun () ->
             try
-              !(def.captures)
-              |> Id.Map.iter (fun _id (binding : binding) ->
+              captured_bindings
+              |> List.iter (fun (binding : binding) ->
                 insert_stmt (Comment (make_string "captured %a" Binding.print binding)));
               (match captured_ty_name with
                | Some captured_ty_name ->
@@ -873,7 +874,14 @@ module Impl = struct
                  ; comment = Some (make_string "fn at %a" print_span def_span)
                  }
                  : C_ast.fn_def);
-        { captured_ty_name; name; def }
+        { captured =
+            captured_bindings
+            |> List.map (fun (binding : binding) -> binding.id, binding)
+            |> Id.Map.of_list
+        ; captured_ty_name
+        ; name
+        ; def
+        }
       with
       | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
     with
@@ -1374,7 +1382,7 @@ module Impl = struct
               in
               let gc = true in
               declare_var ~gc (Named captured_ty_name) captured_var_name;
-              !(transpiled_fn.def.captures)
+              transpiled_fn.captured
               |> Id.Map.iter (fun _id (binding : binding) ->
                 insert_stmt
                   (Assign
