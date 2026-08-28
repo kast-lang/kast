@@ -134,9 +134,15 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      | T_Int32 ->
                        let value = Int32.of_string raw in
                        V_Int32 value
+                     | T_UInt32 ->
+                       let value = Int32.of_string raw in
+                       V_UInt32 value
                      | T_Int64 ->
                        let value = Int64.of_string raw in
                        V_Int64 value
+                     | T_UInt64 ->
+                       let value = Int64.of_string raw in
+                       V_UInt64 value
                      | T_Float64 ->
                        let value = Float.of_string raw in
                        V_Float64 value

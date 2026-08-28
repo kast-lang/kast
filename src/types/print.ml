@@ -64,7 +64,9 @@ module Impl = struct
       fprintf fmt "type ";
       print_ty fmt ty
     | V_Int32 value -> fprintf fmt "@{<italic>%ld@}" value
+    | V_UInt32 value -> fprintf fmt "@{<italic>%ld@}" value
     | V_Int64 value -> fprintf fmt "@{<italic>%Ld@}" value
+    | V_UInt64 value -> fprintf fmt "@{<italic>%Ld@}" value
     | V_Float64 value -> fprintf fmt "@{<italic>%f@}" value
     | V_Char value -> fprintf fmt "@{<green>%a@}" Uchar.print_debug value
     | V_String value -> fprintf fmt "@{<green>%a@}" String.print_debug value
@@ -188,7 +190,9 @@ module Impl = struct
     | T_Unit -> fprintf fmt "()"
     | T_Bool -> fprintf fmt "Bool"
     | T_Int32 -> fprintf fmt "Int32"
+    | T_UInt32 -> fprintf fmt "UInt32"
     | T_Int64 -> fprintf fmt "Int64"
+    | T_UInt64 -> fprintf fmt "UInt64"
     | T_Float64 -> fprintf fmt "Float64"
     | T_Char -> fprintf fmt "Char"
     | T_String -> fprintf fmt "String"

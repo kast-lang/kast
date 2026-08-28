@@ -371,8 +371,8 @@ module Impl = struct
     match shape with
     | T_Unit -> primitive "Unit"
     | T_Bool -> primitive "Bool"
-    | T_Int32 -> primitive "Int32"
-    | T_Int64 -> primitive "Int64"
+    | T_Int32 | T_UInt32 -> primitive "Int32"
+    | T_Int64 | T_UInt64 -> primitive "Int64"
     | T_Float64 -> primitive "Float64"
     | T_String -> primitive "String"
     | T_Char -> primitive "Char"
@@ -473,8 +473,10 @@ module Impl = struct
       match shape with
       | V_Unit -> NoEffect { shape = JsAst.Null; span = None }
       | V_Bool x -> NoEffect { shape = JsAst.Bool x; span = None }
-      | V_Int32 x -> NoEffect { shape = JsAst.Number (Int32.to_float x); span = None }
-      | V_Int64 x -> NoEffect { shape = JsAst.Bigint (Int64.to_string x); span = None }
+      | V_Int32 x | V_UInt32 x ->
+        NoEffect { shape = JsAst.Number (Int32.to_float x); span = None }
+      | V_Int64 x | V_UInt64 x ->
+        NoEffect { shape = JsAst.Bigint (Int64.to_string x); span = None }
       | V_Float64 x -> NoEffect { shape = JsAst.Number x; span = None }
       | V_Char c ->
         NoEffect { shape = JsAst.String (String.from_single_utf8 c); span = None }

@@ -16,7 +16,9 @@ let init_natives () =
   let plain_types : (string * Ty.Shape.t) list =
     [ "Unit", T_Unit
     ; "Int32", T_Int32
+    ; "UInt32", T_UInt32
     ; "Int64", T_Int64
+    ; "UInt64", T_UInt64
     ; "Float64", T_Float64
     ; "String", T_String
     ; "Char", T_Char

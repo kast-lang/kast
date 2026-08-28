@@ -28,7 +28,9 @@ const TypeInfo = newtype (
     | :Unit
     | :Bool
     | :Int32
+    | :UInt32
     | :Int64
+    | :UInt64
     | :Float64
     | :String
     | :Char

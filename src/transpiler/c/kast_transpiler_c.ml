@@ -441,14 +441,10 @@ module Impl = struct
       match ty with
       | Types.T_Unit -> Alias Unit
       | Types.T_Bool -> Alias (Raw "Bool")
-      | Types.T_Int32 ->
-        Alias
-          (add_include "stdint.h";
-           Raw "Int32")
-      | Types.T_Int64 ->
-        Alias
-          (add_include "stdint.h";
-           Raw "Int64")
+      | Types.T_Int32 -> Alias (Raw "Int32")
+      | Types.T_UInt32 -> Alias (Raw "UInt32")
+      | Types.T_Int64 -> Alias (Raw "Int64")
+      | Types.T_UInt64 -> Alias (Raw "UInt64")
       | Types.T_Float64 -> Alias (Raw "Float64")
       | Types.T_String -> Alias (Raw "String")
       | Types.T_Char -> Alias (Raw "Char")
@@ -1016,8 +1012,8 @@ module Impl = struct
     match shape with
     | V_Unit -> Unit
     | V_Bool x -> Literal (Bool x)
-    | V_Int32 x -> Literal (Int32 x)
-    | V_Int64 x -> Literal (Int64 x)
+    | V_Int32 x | V_UInt32 x -> Literal (Int32 x)
+    | V_Int64 x | V_UInt64 x -> Literal (Int64 x)
     | V_Float64 x -> Literal (Float64 x)
     | V_Char x -> Literal (Char x)
     | V_Ref _ -> failwith __LOC__

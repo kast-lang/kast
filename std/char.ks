@@ -1,5 +1,8 @@
 impl Char as module = (
     module:
+
+    const Code = Int32;
+
     const is_whitespace = (c :: Char) -> Bool => (
         c == ' ' or c == '\n' or c == '\t'
     );
@@ -44,17 +47,17 @@ impl Char as module = (
         | target.name == "c" => @native "Char_string_encoding_len(\(c))"
         | target.name == "javascript" => (@native "Kast.Char.string_encoding_len")(c)
     );
-    const code = (c :: Char) -> UInt32 => @cfg (
+    const code = (c :: Char) -> Code => @cfg (
         | target.name == "interpreter" => (@native "char.code")(c)
         | target.name == "c" => @native "\(c)"
         | target.name == "javascript" => (@native "Kast.Char.code")(c)
     );
-    const from_code = (code :: UInt32) -> Char => @cfg (
+    const from_code = (code :: Code) -> Char => @cfg (
         | target.name == "interpreter" => (@native "char.from_code")(code)
         | target.name == "c" => @native "\(code)"
         | target.name == "javascript" => (@native "Kast.Char.from_code")(code)
     );
-    const to_digit_radix = (c :: Char, radix :: UInt32) -> UInt32 => (
+    const to_digit_radix = (c :: Char, radix :: Int32) -> Int32 => (
         let code = code(c);
         let digit = if '0' <= c and c <= '9' then (
             code - (@eval Char.code('0'))
@@ -71,7 +74,7 @@ impl Char as module = (
         digit
     );
     const to_digit = c => to_digit_radix(c, 10);
-    const from_digit_radix = (digit :: UInt32, radix :: UInt32) -> Char => (
+    const from_digit_radix = (digit :: Int32, radix :: Int32) -> Char => (
         if radix < 2 or digit >= radix then (
             panic("digit >= radix")
         );
