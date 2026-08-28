@@ -40,7 +40,7 @@ const update_data = [T] (
     .count = 1 + length(&left) + length(&right),
 };
 const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
-    match { left, right } with (
+    match ({ left, right } :: { _, _ }) with (
         | { :Empty, :Empty } => :Empty
         | { :Empty, other } => other
         | { other, :Empty } => other
