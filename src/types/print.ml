@@ -30,6 +30,7 @@ let print_var_scope fmt (scope : var_scope) =
 module RecurseCache = RecurseCache.Make (Id)
 
 module Impl = struct
+  let debug = ref false
   let is_recursive = RecurseCache.create ()
 
   let rec _unused = ()
@@ -729,7 +730,12 @@ module Impl = struct
     | Some (Some name) ->
       print_name_shape fmt name;
       if always_print_shape then fprintf fmt " = %t" f
-    | _ -> f fmt
+    | Some None ->
+      if !debug then fprintf fmt "<anonymous> = ";
+      f fmt
+    | None ->
+      if !debug then fprintf fmt "<maybe named??> = ";
+      f fmt
 
   and print_name : formatter -> name -> unit =
     fun fmt { var } -> print_var print_name_shape fmt var

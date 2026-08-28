@@ -160,8 +160,8 @@ module rec TypesImpl : sig
   (* TY *)
   and ty_tuple_field =
     { ty : ty
-    ; symbol : Symbol.t option
-    ; label : Label.t option
+    ; symbol : Symbol.t option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; label : Label.t option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and ty_tuple =
@@ -915,8 +915,8 @@ end = struct
   (* TY *)
   and ty_tuple_field =
     { ty : ty
-    ; symbol : Symbol.t option
-    ; label : Label.t option
+    ; symbol : Symbol.t option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; label : Label.t option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and ty_tuple =
@@ -1532,7 +1532,6 @@ end = struct
   type t = TypesImpl.value
 
   module CompareRecurseCache = Inference.CompareRecurseCache
-  module RecurseCache = RecurseCache.Make (Id)
 
   let is_fully_inferred : (t -> bool) option ref = ref None
 
@@ -1587,6 +1586,7 @@ end = struct
     let updated_if_existed =
       map.entries
       |> List.filter_map (fun (map_key, current_value) ->
+        (* Log.info (fun log -> log "equal check = %b" (ValueImpl.equal key map_key)); *)
         (if ValueImpl.equal key map_key
          then (
            existed := true;
@@ -1594,6 +1594,7 @@ end = struct
          else Some current_value)
         |> Option.map (fun new_value -> map_key, new_value))
     in
+    (* Log.info (fun log -> log "ValueMap.update existed=%b" !existed); *)
     if !existed
     then { entries = updated_if_existed }
     else (

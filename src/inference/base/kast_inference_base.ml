@@ -6,6 +6,9 @@ type 'a unite = span:span -> 'a -> 'a -> 'a
 
 exception ComparingNotInferred
 
+let print_ids = ref false
+let print_spans = ref false
+
 module CompareRecurseCache = RecurseCache.Make (Id.Pair)
 
 module type Scope = sig
@@ -134,10 +137,11 @@ module Var = struct
       =
       find_root var
     in
-    if false
+    if !print_ids
     then (
       fprintf fmt "%a" Id.print recurse_id;
-      (* fprintf fmt "%a" (List.print Span.print) (spans |> SpanSet.to_list); *)
+      if !print_spans
+      then fprintf fmt "%a" (List.print Span.print) (spans |> SpanSet.to_list);
       fprintf fmt "=");
     match inferred with
     | None -> fprintf fmt "_"

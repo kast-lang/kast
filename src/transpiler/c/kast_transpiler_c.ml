@@ -310,21 +310,22 @@ module Impl = struct
     | _ ->
       let ty_name = ref None in
       let do_prepend = ref false in
+      (* Log.info (fun log -> log "Checking in ValueMap: %a" Ty.print ty); *)
+      (* let old_captured_types = ctx.captured_types in *)
+      let ty_as_value = V_Ty ty |> Value.inferred ~span in
       ctx.captured_types
       <- ctx.captured_types
-         |> Types.ValueMap.update
-              (V_Ty ty |> Value.inferred ~span)
-              (fun name ->
-                 let name =
-                   match name with
-                   | Some name -> name
-                   | None ->
-                     let name = gen_name ~opt:(Ty.name ty) "type" in
-                     do_prepend := true;
-                     name
-                 in
-                 ty_name := Some name;
-                 Some name);
+         |> Types.ValueMap.update ty_as_value (fun name ->
+           let name =
+             match name with
+             | Some name -> name
+             | None ->
+               let name = gen_name ~opt:(Ty.name ty) "type" in
+               do_prepend := true;
+               name
+           in
+           ty_name := Some name;
+           Some name);
       let ty_name = !ty_name |> Option.get in
       if !do_prepend
       then (
@@ -640,7 +641,7 @@ module Impl = struct
         | Types.Claim -> Claim pure_place_expr
         | Types.ByRef { mut = _ } -> AddrOf pure_place_expr
       in
-      declare_binding (transpile_ty pattern.data.signature.ty) binding value
+      declare_binding (transpile_ty binding.ty) binding value
     | Types.P_Tuple { parts; _ } ->
       let unnamed_idx = ref 0 in
       let had_unpack = ref false in
