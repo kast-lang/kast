@@ -322,14 +322,28 @@ impl String as module = (
     impl Int32 as ToString = {
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string")(num)
-            | target.name == "c" => (@native "Int32_to_String" :: fn @call "C" Int32 -> String)(num)
+            | target.name == "c" => @native "Int32_to_String(\(num))"
+            | target.name == "javascript" => (@native "Kast.String.to_string")(num)
+        )
+    };
+    impl UInt32 as ToString = {
+        .to_string = num => @cfg (
+            | target.name == "interpreter" => (@native "to_string")(num)
+            | target.name == "c" => @native "Int32_to_String(\(num))"
             | target.name == "javascript" => (@native "Kast.String.to_string")(num)
         )
     };
     impl Int64 as ToString = {
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string")(num)
-            | target.name == "c" => (@native "Int64_to_String" :: fn @call "C" Int64 -> String)(num)
+            | target.name == "c" => @native "Int64_to_String(\(num))"
+            | target.name == "javascript" => (@native "Kast.String.to_string")(num)
+        )
+    };
+    impl UInt64 as ToString = {
+        .to_string = num => @cfg (
+            | target.name == "interpreter" => (@native "to_string")(num)
+            | target.name == "c" => @native "Int64_to_String(\(num))"
             | target.name == "javascript" => (@native "Kast.String.to_string")(num)
         )
     };

@@ -27,13 +27,17 @@ let init () =
              let result : Value.shape =
                match a |> await_fully_inferred, b |> await_fully_inferred with
                | V_Int32 a, V_Int32 b -> V_Int32 (op_int32 a b)
+               | V_UInt32 a, V_UInt32 b -> V_UInt32 (op_int32 a b)
                | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
+               | V_UInt64 a, V_UInt64 b -> V_UInt64 (op_int64 a b)
                | V_Float64 a, V_Float64 b ->
                  (match op_float with
                   | Some op_float -> V_Float64 (op_float a b)
                   | None -> V_Error)
                | V_String a, V_String b -> V_String (a ^ b) (* TODO only for + *)
-               | _ -> V_Error
+               | _ ->
+                 Error.error caller "unexpected args for bin op";
+                 V_Error
              in
              result |> Value.inferred ~span
            | _ ->
@@ -65,7 +69,9 @@ let init () =
   ; native_fn "bit_not" (fun _ty ~caller ~state:_ arg ->
       (match arg |> Value.await_inferred with
        | V_Int32 x -> V_Int32 (Int32.lognot x)
+       | V_UInt32 x -> V_UInt32 (Int32.lognot x)
        | V_Int64 x -> V_Int64 (Int64.lognot x)
+       | V_UInt64 x -> V_UInt64 (Int64.lognot x)
        | value ->
          Error.error caller "bit_not doesnt work with %a" Value.Shape.print value;
          V_Error)
@@ -74,7 +80,9 @@ let init () =
       let arg = single_arg ~span args in
       (match arg |> Value.await_inferred with
        | V_Int32 x -> V_Int32 (Int32.neg x)
+       | V_UInt32 x -> V_UInt32 (Int32.neg x)
        | V_Int64 x -> V_Int64 (Int64.neg x)
+       | V_UInt64 x -> V_UInt64 (Int64.neg x)
        | V_Float64 x -> V_Float64 (Float.neg x)
        | value ->
          Error.error caller "unary - doesnt work with %a" Value.Shape.print value;

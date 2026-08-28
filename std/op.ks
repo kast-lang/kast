@@ -21,7 +21,23 @@ impl Int32 as Add = {
     )
 };
 
+impl UInt32 as Add = {
+    .add = (a, b) => @cfg (
+        | target.name == "interpreter" => (@native "+")(a, b)
+        | target.name == "c" => @native "\(a) + \(b)"
+        | target.name == "javascript" => @native "\(a)+\(b)"
+    )
+};
+
 impl Int64 as Add = {
+    .add = (a, b) => @cfg (
+        | target.name == "interpreter" => (@native "+")(a, b)
+        | target.name == "c" => @native "\(a) + \(b)"
+        | target.name == "javascript" => @native "\(a)+\(b)"
+    )
+};
+
+impl UInt64 as Add = {
     .add = (a, b) => @cfg (
         | target.name == "interpreter" => (@native "+")(a, b)
         | target.name == "c" => @native "\(a) + \(b)"
