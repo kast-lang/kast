@@ -1811,7 +1811,21 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; statics = Dynarray.create ()
     ; captured_values = Types.ValueMap.empty
     ; captured_types = Types.ValueMap.empty
-    ; types = StringMap.empty
+    ; types =
+        StringMap.of_list
+          ([ "Unit"
+           ; "Bool"
+           ; "Int32"
+           ; "UInt32"
+           ; "Float32"
+           ; "Float64"
+           ; "String"
+           ; "Char"
+           ; "Int64"
+           ; "UInt64"
+           ]
+           |> List.map (fun name : (string * C_ast.ty_def) ->
+             name, { shape = C_ast.RuntimeDefined; comment = None }))
     ; fns = StringMap.empty
     ; init_statics = { stmts = [] }
     ; includes = StringSet.empty

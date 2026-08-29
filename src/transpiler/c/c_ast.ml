@@ -397,7 +397,11 @@ module Print = struct
       | Some Completed -> ()
       | None ->
         declared_types := !declared_types |> StringMap.add name BeingDeclared;
-        let def = program.types |> StringMap.find name in
+        let def =
+          program.types
+          |> StringMap.find_opt name
+          |> Option.unwrap_or_else (fun () -> fail "type %S is not in program" name)
+        in
         (match def.shape with
          | RuntimeDefined -> ()
          | Raw { def = _; need_declared; need_completed } ->
