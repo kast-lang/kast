@@ -383,7 +383,7 @@ String Kast_read_file(String path) {
         panic_errno();
     }
     String result = Kast_read_to_end(f);
-    if (!fclose(f)) {
+    if (fclose(f) != 0) {
         panic_errno();
     }
     return result;
@@ -667,7 +667,6 @@ Unit tcp_Listener_listen(tcp_Listener* l, int max_pending) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wanalyzer-fd-leak"
     int res = listen(l->fd, max_pending);
-    close(l->fd);
     if (res == -1) {
         panic_errno();
     }
