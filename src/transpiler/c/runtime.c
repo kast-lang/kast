@@ -60,6 +60,18 @@ void* Kast_malloc(size_t size) {
     return result;
 }
 
+void* Kast_realloc(void* memory, size_t size) {
+#ifdef USE_GC
+    void* result = GC_realloc(memory, size);
+#else
+    void* result = realloc(memory, size);
+#endif
+    if (!result) {
+        panic_errno();
+    }
+    return result;
+}
+
 void Kast_free(void* memory) {
 #ifdef USE_GC
     GC_free(memory);
@@ -419,7 +431,7 @@ typedef struct Context Context;
             if (len > list->capacity) {                                        \
                 list->capacity = len;                                          \
             }                                                                  \
-            list->buf = realloc(list->buf, list->capacity * sizeof(T));        \
+            list->buf = Kast_realloc(list->buf, list->capacity * sizeof(T));   \
         }                                                                      \
         return (Unit) {};                                                      \
     }                                                                          \
