@@ -31,7 +31,9 @@ noreturn void exit_with_error(const char* s) {
     zerror(s);
     exit(-1);
 #else
-    fprintf(stderr, "%s\n", s);
+    if (s != NULL) {
+        fprintf(stderr, "%s\n", s);
+    }
 #ifndef __EMSCRIPTEN__
     int N = 100;
     void* buf[N];
@@ -53,7 +55,7 @@ noreturn void Kast_match_non_exhaustive() {
 
 noreturn void panic_errno() {
     perror("ERRNO");
-    exit_with_error("errno");
+    exit_with_error(NULL);
 }
 
 void* Kast_malloc(size_t size) {
@@ -267,7 +269,8 @@ char* String_to_C_String(const String s) {
 noreturn void default_panic_handler(const String s) {
     fprintf(stderr, "Unhandled panic: ");
     Kast_write(stderr, s);
-    exit_with_error("panic");
+    fprintf(stderr, "\n");
+    exit_with_error(NULL);
 }
 
 typedef struct {
