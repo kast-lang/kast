@@ -1,6 +1,8 @@
 #define _GNU_SOURCE
 // #define _POSIX_C_SOURCE 200112L
+#ifndef __EMSCRIPTEN__
 #include <execinfo.h>
+#endif
 #include <features.h>
 #include <netdb.h>
 #include <stdarg.h>
@@ -30,6 +32,7 @@ noreturn void exit_with_error(const char* s) {
     exit(-1);
 #else
     fprintf(stderr, "%s\n", s);
+#ifndef __EMSCRIPTEN__
     int N = 100;
     void* buf[N];
     int n = backtrace(buf, N);
@@ -39,6 +42,7 @@ noreturn void exit_with_error(const char* s) {
     //     char* s = strings[i];
     //     fprintf(stderr, "%d. %s\n", i + 1, s);
     // }
+#endif
     exit(-1);
 #endif
 }
