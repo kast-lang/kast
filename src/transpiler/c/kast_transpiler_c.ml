@@ -453,6 +453,7 @@ module Impl = struct
       | Types.T_UInt32 -> Alias (Raw "UInt32")
       | Types.T_Int64 -> Alias (Raw "Int64")
       | Types.T_UInt64 -> Alias (Raw "UInt64")
+      | Types.T_Float32 -> Alias (Raw "Float32")
       | Types.T_Float64 -> Alias (Raw "Float64")
       | Types.T_String -> Alias (Raw "String")
       | Types.T_Char -> Alias (Raw "Char")
@@ -1018,7 +1019,7 @@ module Impl = struct
     | V_Bool x -> Literal (Bool x)
     | V_Int32 x | V_UInt32 x -> Literal (Int32 x)
     | V_Int64 x | V_UInt64 x -> Literal (Int64 x)
-    | V_Float64 x -> Literal (Float64 x)
+    | V_Float64 x | V_Float32 x -> Literal (Float64 x)
     | V_Char x -> Literal (Char x)
     | V_Ref _ -> failwith __LOC__
     | V_String s ->

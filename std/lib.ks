@@ -22,6 +22,7 @@ const Int32 :: Type = @native "Int32";
 const UInt32 :: Type = @native "UInt32";
 const Int64 :: Type = @native "Int64";
 const UInt64 :: Type = @native "UInt64";
+const Float32 :: Type = @native "Float32";
 const Float64 :: Type = @native "Float64";
 const Char :: Type = @native "Char";
 const String :: Type = @native "String";

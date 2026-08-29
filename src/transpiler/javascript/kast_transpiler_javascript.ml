@@ -373,7 +373,7 @@ module Impl = struct
     | T_Bool -> primitive "Bool"
     | T_Int32 | T_UInt32 -> primitive "Int32"
     | T_Int64 | T_UInt64 -> primitive "Int64"
-    | T_Float64 -> primitive "Float64"
+    | T_Float64 | T_Float32 -> primitive "Float64"
     | T_String -> primitive "String"
     | T_Char -> primitive "Char"
     | T_Ref _ -> todo_ty __LOC__
@@ -477,7 +477,7 @@ module Impl = struct
         NoEffect { shape = JsAst.Number (Int32.to_float x); span = None }
       | V_Int64 x | V_UInt64 x ->
         NoEffect { shape = JsAst.Bigint (Int64.to_string x); span = None }
-      | V_Float64 x -> NoEffect { shape = JsAst.Number x; span = None }
+      | V_Float64 x | V_Float32 x -> NoEffect { shape = JsAst.Number x; span = None }
       | V_Char c ->
         NoEffect { shape = JsAst.String (String.from_single_utf8 c); span = None }
       | V_String s -> calculate { shape = JsAst.String s; span = None }

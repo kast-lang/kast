@@ -31,6 +31,7 @@ const TypeInfo = newtype (
     | :UInt32
     | :Int64
     | :UInt64
+    | :Float32
     | :Float64
     | :String
     | :Char

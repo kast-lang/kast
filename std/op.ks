@@ -53,6 +53,14 @@ impl Float64 as Add = {
     )
 };
 
+impl Float32 as Add = {
+    .add = (a, b) => @cfg (
+        | target.name == "interpreter" => (@native "+")(a, b)
+        | target.name == "c" => @native "\(a) + \(b)"
+        | target.name == "javascript" => @native "\(a)+\(b)"
+    )
+};
+
 impl String as Add = {
     .add = (a, b) => @cfg (
         | target.name == "interpreter" => (@native "+")(a, b)

@@ -70,6 +70,7 @@ module Impl = struct
          | V_UInt32 (_ : int32) -> ()
          | V_Int64 (_ : int64) -> ()
          | V_UInt64 (_ : int64) -> ()
+         | V_Float32 (_ : float) -> ()
          | V_Float64 (_ : float) -> ()
          | V_Char (_ : Uchar.t) -> ()
          | V_Ref { mut : bool = _; place } -> complete_place place
@@ -173,6 +174,7 @@ module Impl = struct
          | T_UInt32 -> ()
          | T_Int64 -> ()
          | T_UInt64 -> ()
+         | T_Float32 -> ()
          | T_Float64 -> ()
          | T_String -> ()
          | T_Char -> ()

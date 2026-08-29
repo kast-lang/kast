@@ -10,14 +10,26 @@ let init () =
          let min = min.place |> claim ~span:caller in
          let max = max.place |> claim ~span:caller in
          match ty.result |> Ty.await_inferred with
+         | T_UInt32 ->
+           let min = min |> Value.expect_uint32 |> Option.get in
+           let max = max |> Value.expect_uint32 |> Option.get in
+           V_UInt32 (Stdlib.Random.int32_in_range ~min ~max)
          | T_Int32 ->
            let min = min |> Value.expect_int32 |> Option.get in
            let max = max |> Value.expect_int32 |> Option.get in
            V_Int32 (Stdlib.Random.int32_in_range ~min ~max)
+         | T_UInt64 ->
+           let min = min |> Value.expect_uint64 |> Option.get in
+           let max = max |> Value.expect_uint64 |> Option.get in
+           V_UInt64 (Stdlib.Random.int64_in_range ~min ~max)
          | T_Int64 ->
            let min = min |> Value.expect_int64 |> Option.get in
            let max = max |> Value.expect_int64 |> Option.get in
            V_Int64 (Stdlib.Random.int64_in_range ~min ~max)
+         | T_Float32 ->
+           let min = min |> Value.expect_float32 |> Option.get in
+           let max = max |> Value.expect_float32 |> Option.get in
+           V_Float32 (min +. Stdlib.Random.float (max -. min))
          | T_Float64 ->
            let min = min |> Value.expect_float64 |> Option.get in
            let max = max |> Value.expect_float64 |> Option.get in

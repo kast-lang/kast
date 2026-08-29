@@ -76,6 +76,7 @@ typedef int32_t Int32;
 typedef uint32_t UInt32;
 typedef int64_t Int64;
 typedef uint64_t UInt64;
+typedef float Float32;
 typedef double Float64;
 typedef uint32_t Char;
 

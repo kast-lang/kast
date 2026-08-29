@@ -285,12 +285,17 @@ impl String as module = (
             | target.name == "javascript" => (@native "Kast.parse.Int64")(s)
         )
     };
+    impl Float32 as FromString = {
+        .from_string = s => @cfg (
+            | target.name == "interpreter" => (@native "parse")(s)
+            | target.name == "c" => @native "Float64_from_String(\(s))"
+            | target.name == "javascript" => (@native "Kast.parse.Float64")(s)
+        )
+    };
     impl Float64 as FromString = {
         .from_string = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
-            | target.name == "c" => (
-                @native "Float64_from_String" :: fn @call "C" String -> Float64
-            )(s)
+            | target.name == "c" => @native "Float64_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Float64")(s)
         )
     };
@@ -347,10 +352,17 @@ impl String as module = (
             | target.name == "javascript" => (@native "Kast.String.to_string")(num)
         )
     };
+    impl Float32 as ToString = {
+        .to_string = num => @cfg (
+            | target.name == "interpreter" => (@native "to_string")(num)
+            | target.name == "c" => @native "Float32_to_String(\(num))"
+            | target.name == "javascript" => (@native "Kast.String.to_string")(num)
+        )
+    };
     impl Float64 as ToString = {
         .to_string = num => @cfg (
             | target.name == "interpreter" => (@native "to_string")(num)
-            | target.name == "c" => (@native "Float64_to_String" :: fn @call "C" Float64 -> String)(num)
+            | target.name == "c" => @native "Float64_to_String(\(num))"
             | target.name == "javascript" => (@native "Kast.String.to_string")(num)
         )
     };

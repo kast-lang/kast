@@ -86,8 +86,8 @@ module VarScope = struct
   and of_ty_shape : ty_shape -> var_scope =
     fun shape ->
     match shape with
-    | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float64 | T_String
-    | T_Char ->
+    | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float32 | T_Float64
+    | T_String | T_Char ->
       root ()
     | T_Ref x -> of_ty_ref x
     | T_Variant x -> of_ty_variant x
@@ -193,6 +193,7 @@ module VarScope = struct
     | V_UInt32 (_ : int32) -> root ()
     | V_Int64 (_ : int64) -> root ()
     | V_UInt64 (_ : int64) -> root ()
+    | V_Float32 (_ : float) -> root ()
     | V_Float64 (_ : float) -> root ()
     | V_Char (_ : Uchar.t) -> root ()
     | V_Ref x -> of_value_ref x
@@ -314,6 +315,8 @@ module Impl = struct
          | T_Int64, _ -> fail ()
          | T_UInt64, T_UInt64 -> T_UInt64
          | T_UInt64, _ -> fail ()
+         | T_Float32, T_Float32 -> T_Float32
+         | T_Float32, _ -> fail ()
          | T_Float64, T_Float64 -> T_Float64
          | T_Float64, _ -> fail ()
          | T_Char, T_Char -> T_Char
@@ -737,6 +740,8 @@ module Impl = struct
          | V_Int64 _, _ -> fail ()
          | V_UInt64 a, V_UInt64 b when a = b -> V_UInt64 a
          | V_UInt64 _, _ -> fail ()
+         | V_Float32 a, V_Float32 b when a = b -> V_Float32 a
+         | V_Float32 _, _ -> fail ()
          | V_Float64 a, V_Float64 b when a = b -> V_Float64 a
          | V_Float64 _, _ -> fail ()
          | V_Char a, V_Char b when a = b -> V_Char a
@@ -968,6 +973,7 @@ module Impl = struct
     | T_UInt32 -> None
     | T_Int64 -> None
     | T_UInt64 -> None
+    | T_Float32 -> None
     | T_Float64 -> None
     | T_Char -> None
     | T_String -> None
@@ -1055,6 +1061,7 @@ module Impl = struct
       | V_UInt32 _ -> inferred_ty ~span T_UInt32
       | V_Int64 _ -> inferred_ty ~span T_Int64
       | V_UInt64 _ -> inferred_ty ~span T_UInt64
+      | V_Float32 _ -> inferred_ty ~span T_Float32
       | V_Float64 _ -> inferred_ty ~span T_Float64
       | V_Char _ -> inferred_ty ~span T_Char
       | V_String _ -> inferred_ty ~span T_String

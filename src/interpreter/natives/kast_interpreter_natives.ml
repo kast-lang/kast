@@ -19,6 +19,7 @@ let init_natives () =
     ; "UInt32", T_UInt32
     ; "Int64", T_Int64
     ; "UInt64", T_UInt64
+    ; "Float32", T_Float32
     ; "Float64", T_Float64
     ; "String", T_String
     ; "Char", T_Char

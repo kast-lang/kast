@@ -30,6 +30,10 @@ let init () =
                | V_UInt32 a, V_UInt32 b -> V_UInt32 (op_int32 a b)
                | V_Int64 a, V_Int64 b -> V_Int64 (op_int64 a b)
                | V_UInt64 a, V_UInt64 b -> V_UInt64 (op_int64 a b)
+               | V_Float32 a, V_Float32 b ->
+                 (match op_float with
+                  | Some op_float -> V_Float32 (op_float a b)
+                  | None -> V_Error)
                | V_Float64 a, V_Float64 b ->
                  (match op_float with
                   | Some op_float -> V_Float64 (op_float a b)
@@ -83,6 +87,7 @@ let init () =
        | V_UInt32 x -> V_UInt32 (Int32.neg x)
        | V_Int64 x -> V_Int64 (Int64.neg x)
        | V_UInt64 x -> V_UInt64 (Int64.neg x)
+       | V_Float32 x -> V_Float32 (Float.neg x)
        | V_Float64 x -> V_Float64 (Float.neg x)
        | value ->
          Error.error caller "unary - doesnt work with %a" Value.Shape.print value;

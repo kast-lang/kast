@@ -199,7 +199,7 @@ let init () =
           | V_Char value -> String.from_single_utf8 value
           | V_Int32 value | V_UInt32 value -> Int32.to_string value
           | V_Int64 value | V_UInt64 value -> Int64.to_string value
-          | V_Float64 value -> Float.to_string value
+          | V_Float32 value | V_Float64 value -> Float.to_string value
           | shape ->
             Error.error caller "to_string doesn't work for %a" Value.Shape.print shape;
             return (V_Error : Value.Shape.t)

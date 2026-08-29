@@ -24,6 +24,14 @@ impl Int64 as GenRange = {
     ),
 };
 
+impl Float32 as GenRange = {
+    .gen = (.min, .max) => @cfg (
+        | target.name == "interpreter" => (@native "random.gen_range")(.min, .max)
+        | target.name == "c" => @native "random_Float64(\(min), \(max))"
+        | target.name == "javascript" => (@native "Math.random()") * (max - min) + min
+    ),
+};
+
 impl Float64 as GenRange = {
     .gen = (.min, .max) => @cfg (
         | target.name == "interpreter" => (@native "random.gen_range")(.min, .max)

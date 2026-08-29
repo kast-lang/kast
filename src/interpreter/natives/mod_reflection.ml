@@ -107,6 +107,7 @@ let init () =
          | T_UInt32 -> construct_variant ~span type_info_ty "UInt32" None
          | T_Int64 -> construct_variant ~span type_info_ty "Int64" None
          | T_UInt64 -> construct_variant ~span type_info_ty "UInt64" None
+         | T_Float32 -> construct_variant ~span type_info_ty "Float32" None
          | T_Float64 -> construct_variant ~span type_info_ty "Float64" None
          | T_String -> construct_variant ~span type_info_ty "String" None
          | T_Char -> construct_variant ~span type_info_ty "Char" None
