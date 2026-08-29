@@ -81,7 +81,11 @@ and ty_def_shape =
       ; result_ty : ty
       }
   | Alias of ty
-  | Raw of { def : string }
+  | Raw of
+      { def : string
+      ; need_declared : ty list
+      ; need_completed : ty list
+      }
   | RuntimeDefined
 
 and ty_def =
@@ -396,7 +400,19 @@ module Print = struct
         let def = program.types |> StringMap.find name in
         (match def.shape with
          | RuntimeDefined -> ()
-         | Raw _ -> ()
+         | Raw { def = _; need_declared; need_completed } ->
+           need_declared |> List.iter ensure_type_declared;
+           need_completed |> List.iter ensure_type_completed;
+           write "/*";
+           need_declared
+           |> List.iter (fun dep ->
+             write "\nneed_declared ";
+             print_ty dep);
+           need_completed
+           |> List.iter (fun dep ->
+             write "\nneed_completed ";
+             print_ty dep);
+           write " */\n"
          | Fn { args; result_ty } ->
            args |> List.iter ensure_type_declared;
            result_ty |> ensure_type_declared
@@ -410,7 +426,7 @@ module Print = struct
         write_comment def.comment;
         (match def.shape with
          | RuntimeDefined -> ()
-         | Raw { def } ->
+         | Raw { def; _ } ->
            write def;
            write ";";
            writeln ()
@@ -483,7 +499,7 @@ module Print = struct
     and ensure_type_declared (ty : ty) : unit =
       match ty with
       | Unit -> ()
-      | Raw _ -> ()
+      | Raw _ -> ensure_type_completed ty
       | Named name ->
         (match program.types |> StringMap.find_opt name with
          | None -> fail "type doesnt exist: %s" name

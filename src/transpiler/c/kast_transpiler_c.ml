@@ -57,15 +57,6 @@ type transpiled_fn =
 
 type ty_repr = C_ast.ty
 
-let rec ty_to_string (ty : ty_repr) : string =
-  match ty with
-  | Unit -> "Unit"
-  | Raw s -> s
-  | Named name -> name
-  | Ptr p -> ty_to_string p ^ "_Ptr"
-  | Void -> "void"
-;;
-
 let span = Span.of_ocaml __POS__
 
 let c_keywords =
@@ -154,6 +145,19 @@ module Impl = struct
   and insert_stmt (stmt : C_ast.stmt) : unit =
     let block = Effect.perform GetCurrentBlock in
     block.stmts <- block.stmts @ [ stmt ]
+
+  and ty_to_string (ty : ty_repr) : string =
+    let ctx = Effect.perform GetCtx in
+    match ty with
+    | Unit -> "Unit"
+    | Raw s -> s
+    | Named name -> name
+    | Ptr p ->
+      let name = ty_to_string p ^ "_Ptr" in
+      let ty_def : C_ast.ty_def = { shape = Alias ty; comment = None } in
+      ctx.types <- ctx.types |> StringMap.add name ty_def;
+      name
+    | Void -> "void"
 
   and declare_var ~(gc : bool) (ty : C_ast.ty) (name : string) : unit =
     if gc
@@ -504,7 +508,12 @@ module Impl = struct
            <- ctx.types
               |> StringMap.add
                    name
-                   ({ shape = Raw { def = make_string "define_ArrayList(%s)" macro_arg }
+                   ({ shape =
+                        Raw
+                          { def = make_string "define_ArrayList(%s)" macro_arg
+                          ; need_declared = []
+                          ; need_completed = [ Named macro_arg ]
+                          }
                     ; comment = None
                     }
                     : C_ast.ty_def);

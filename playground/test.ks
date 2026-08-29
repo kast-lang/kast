@@ -1,13 +1,7 @@
-const Foo = newtype ( :Foo | :Goo );
+const Pair = newtype {
+    .a :: Int32,
+    .b :: Int32,
+};
 
-let foo :: Foo = :Foo;
-
-let result :: Int32 = unwindable block (
-    let y :: Int32 = match foo with (
-        | :Goo => 67
-        | :Foo => unwind block 123
-    );
-    y
-);
-
-dbg.print(result);
+let mut list = ArrayList.new[Pair]();
+&mut list |> ArrayList.push_back({ .a = 1, .b = 2 });
