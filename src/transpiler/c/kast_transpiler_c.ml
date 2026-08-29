@@ -1870,7 +1870,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
        ; result_ty = Raw "int"
        ; body =
            Impl.new_block (fun () ->
-             Impl.insert_stmt (Native { parts = [ Raw "init_cli_args(argc, argv)" ] });
+             Impl.insert_stmt (Native { parts = [ Raw "Kast_init(argc, argv)" ] });
              Impl.insert_stmt (DeclareVar { name = ctx_var; ty = Raw "Context" });
              Impl.insert_stmt
                (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));

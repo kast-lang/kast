@@ -1,6 +1,8 @@
 #define _GNU_SOURCE
 // #define _POSIX_C_SOURCE 200112L
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#else
 #include <execinfo.h>
 #endif
 #include <features.h>
@@ -280,7 +282,26 @@ typedef struct {
 
 CliArgs CLI_ARGS;
 
-void init_cli_args(int argc, char* argv[]) {
+#ifdef USE_GC
+bool KAST_GC_ENABLED = true;
+void Kast_run_gc(void* _data) {
+    if (KAST_GC_ENABLED) {
+        GC_enable();
+        GC_gcollect();
+        GC_disable();
+    }
+#endif
+}
+
+void Kast_init(int argc, char* argv[]) {
+#ifdef __EMSCRIPTEN__
+    // Using solution 2 from boehmgc docs
+    // https://github.com/bdwgc/bdwgc/blob/master/docs/platforms/README.emscripten
+#ifdef USE_GC
+    GC_disable();
+    emscripten_set_interval(Kast_run_gc, 0, NULL);
+#endif
+#endif
     CLI_ARGS.argc = argc;
     CLI_ARGS.argv = Kast_malloc(argc * sizeof(String));
     for (int i = 0; i < argc; i++) {
@@ -324,6 +345,10 @@ String Float64_to_String(Float64 x) {
 
 String Int32_to_String(Int32 x) {
     return Kast_asprintf("%d", x);
+}
+
+String Int64_to_String(Int64 x) {
+    return Kast_asprintf("%ld", x);
 }
 
 Int32 Int32_from_String(String s) {
