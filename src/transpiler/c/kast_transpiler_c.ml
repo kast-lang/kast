@@ -401,6 +401,14 @@ module Impl = struct
   and variant_needs_tag (ty : Types.ty_variant) : bool =
     ty.variants |> Row.await_inferred_to_list |> List.length > 0
 
+  and uninitialized (ty : C_ast.ty) : C_ast.expr =
+    match ty with
+    | Unit -> Unit
+    | _ ->
+      let var = gen_name "uninitialized" in
+      insert_stmt (DeclareVar { name = var; ty });
+      Claim (Ident var)
+
   and ty_repr (ty : ty) : ty_repr =
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     Inference.Var.setup_default_if_needed ty.var;
@@ -757,11 +765,7 @@ module Impl = struct
     try
       let result_ty = transpile_ty def.body.data.signature.ty in
       let unwind_ctx : unwind_ctx =
-        { insert_unwind =
-            (fun () ->
-              let var = gen_name "unwind_return" in
-              insert_stmt (DeclareVar { name = var; ty = result_ty });
-              insert_stmt (Return (Claim (Ident var))))
+        { insert_unwind = (fun () -> insert_stmt (Return (uninitialized result_ty)))
         ; cleanup_scope_without_unwind = (fun () -> ())
         }
       in
@@ -1304,7 +1308,7 @@ module Impl = struct
   and transpile_expr (expr : expr) : C_ast.expr =
     match eval_expr expr with
     | Some e -> e
-    | None -> Unit
+    | None -> uninitialized (transpile_ty expr.data.signature.ty)
 
   and context_field_name (context_ty : Types.value_context_ty) : string =
     make_string "context_%d" context_ty.id.value
