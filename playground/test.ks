@@ -1,7 +1,15 @@
-const Pair = newtype {
-    .a :: Int32,
-    .b :: Int32,
+const Mat3 = newtype { Int32 };
+
+const S = newtype {
+    .a :: Mat3,
+    .b :: Mat3,
 };
 
-let mut list = ArrayList.new[Pair]();
-&mut list |> ArrayList.push_back({ .a = 1, .b = 2 });
+const Foo = @context S;
+
+while true do (
+    with Foo = { .a = { 6 }, .b = { 7 } };
+    let a = (@current Foo).a.0;
+    let b = (@current Foo).b.0;
+    a + b;
+);

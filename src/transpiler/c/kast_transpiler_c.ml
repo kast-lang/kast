@@ -411,6 +411,8 @@ module Impl = struct
     | _ ->
       let var = gen_name "uninitialized" in
       insert_stmt (DeclareVar { name = var; ty });
+      insert_stmt
+        (Native { parts = [ Raw ("memset(&" ^ var ^ ", 0, sizeof(" ^ var ^ "))") ] });
       Claim (Ident var)
 
   and ty_repr (ty : ty) : ty_repr =
@@ -1652,6 +1654,7 @@ module Impl = struct
                      insert_stmt (Goto { label = end_of_match_label }))
                ; else_case = None
                }));
+        insert_stmt (Native { parts = [ Raw "Kast_match_non_exhaustive()" ] });
         insert_stmt (GotoLabel end_of_match_label);
         Some (Claim (Ident result_var))
       | Types.E_QuoteAst _ -> failwith __LOC__

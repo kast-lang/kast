@@ -43,7 +43,11 @@ noreturn void exit_with_error(const char* s) {
 #endif
 }
 
-void panic_errno() {
+noreturn void Kast_match_non_exhaustive() {
+    exit_with_error("Non exhausitve match");
+}
+
+noreturn void panic_errno() {
     perror("ERRNO");
     exit_with_error("errno");
 }
@@ -378,7 +382,11 @@ String Kast_read_file(String path) {
     if (!f) {
         panic_errno();
     }
-    return Kast_read_to_end(f);
+    String result = Kast_read_to_end(f);
+    if (!fclose(f)) {
+        panic_errno();
+    }
+    return result;
 }
 
 String Kast_read_until(FILE* f, Char c) {
@@ -656,11 +664,15 @@ tcp_Listener tcp_Listener_bind(String addr) {
 }
 
 Unit tcp_Listener_listen(tcp_Listener* l, int max_pending) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wanalyzer-fd-leak"
     int res = listen(l->fd, max_pending);
+    close(l->fd);
     if (res == -1) {
         panic_errno();
     }
     return (Unit) {};
+#pragma GCC diagnostic pop
 }
 
 typedef struct {
