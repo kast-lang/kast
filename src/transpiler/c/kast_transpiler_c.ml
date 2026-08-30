@@ -880,7 +880,10 @@ module Impl = struct
                     insert_stmt
                       (Assign
                          { assignee =
-                             Field { obj = Ident var; field = member_name packed_member }
+                             Field
+                               { obj = Deref (Claim (Ident var))
+                               ; field = member_name packed_member
+                               }
                          ; value = Claim (Ident (member_name member))
                          }));
                   pattern_match packed (Ident var));

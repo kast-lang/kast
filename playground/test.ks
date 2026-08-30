@@ -1,1 +1,1 @@
-dbg.print(String.last_index_of(__FILE__, '/'));
+let f :: (Int32, Int64) -> () = (...) => ();
