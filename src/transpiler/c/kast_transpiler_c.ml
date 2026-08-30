@@ -892,7 +892,7 @@ module Impl = struct
               | None -> ()
               | Some result ->
                 (match result_ty with
-                 | Unit | Void -> ()
+                 | Unit | Void -> insert_stmt (Expr result)
                  | _ -> insert_stmt (Return result))
             with
             | effect GetScopeCtxPtr, k -> Effect.continue k (Claim (Ident ctx_var)))
