@@ -3,7 +3,7 @@
 	url = https://github.com/kast-lang/uri
 [submodule "deps/json"]
 	path = deps/json
-	url = https://github.com/bhavyakukkar/kast-json
+	url = https://github.com/kuviman/kast-json
 [submodule "deps/minicoro"]
 	path = deps/minicoro
 	url = https://github.com/edubart/minicoro
