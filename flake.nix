@@ -134,7 +134,7 @@
               name = "kast-js-runtime";
               src = filter {
                 root = ./src/transpiler/javascript;
-                include = [ "runtime.ts" "tsconfig.json" ];
+                include = [ "runtime.mts" "tsconfig.json" ];
               };
               nativeBuildInputs = [ pkgs.nodejs ];
               buildPhase = ''
