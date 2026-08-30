@@ -142,7 +142,7 @@
                 cp ${package_json}/* .
                 npm exec tsc
                 mkdir $out
-                cp runtime.js $out/runtime.js
+                cp runtime.mjs $out/runtime.mjs
               '';
             };
         };

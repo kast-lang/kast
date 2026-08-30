@@ -26,7 +26,7 @@ minikast path no-std="" *args:
     set -e
     mks=$(realpath target/compiled.mks)
     mjs=$(realpath target/compiled.mjs)
-    runtime_js=$(realpath _build/default/src/transpiler/javascript/runtime.js)
+    runtime_js=$(realpath _build/default/src/transpiler/javascript/runtime.mjs)
     kast compile {{no-std}} --target minikast-js {{path}} > "$mks"
     pushd ../self-host
     node target/kast.mjs --color false mini compile \
