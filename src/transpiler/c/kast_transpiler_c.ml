@@ -1021,6 +1021,13 @@ module Impl = struct
                }
              in
              insert_stmt (Assign { assignee = Ident value_name; value = value_expr });
+             insert_stmt
+               (Native
+                  { parts =
+                      [ Raw
+                          ("GC_add_roots(&" ^ value_name ^ ", (&" ^ value_name ^ ") + 1)")
+                      ]
+                  });
              Dynarray.add_last ctx.statics static);
          Ident value_name
        with
