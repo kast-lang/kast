@@ -465,7 +465,7 @@ typedef struct Context Context;
         };                                                                     \
     }                                                                          \
                                                                                \
-    Unit ArrayList_##T##_reserve(ArrayList_##T* list, size_t len) {            \
+    void ArrayList_##T##_reserve(ArrayList_##T* list, size_t len) {            \
         if (list->capacity < len) {                                            \
             list->capacity = (list->capacity == 0) ? 4 : (list->capacity * 2); \
             if (len > list->capacity) {                                        \
@@ -473,13 +473,11 @@ typedef struct Context Context;
             }                                                                  \
             list->buf = Kast_realloc(list->buf, list->capacity * sizeof(T));   \
         }                                                                      \
-        return (Unit) {};                                                      \
     }                                                                          \
                                                                                \
-    Unit ArrayList_##T##_push_back(ArrayList_##T* list, T x) {                 \
+    void ArrayList_##T##_push_back(ArrayList_##T* list, T x) {                 \
         ArrayList_##T##_reserve(list, list->length + 1);                       \
         list->buf[list->length++] = x;                                         \
-        return (Unit) {};                                                      \
     }
 
 define_ArrayList(Int32);
@@ -490,37 +488,34 @@ define_ArrayList(Int32);
         Ret (*f)(Context*, void*, __VA_ARGS__);                                \
     } name;
 
-define_closure_type(fn_Int32_Char_Unit, Unit, Int32, Char);
-define_closure_type(fn_Char_Unit, Unit, Char);
+define_closure_type(fn_Int32_Char_Unit, void, Int32, Char);
+define_closure_type(fn_Char_Unit, void, Char);
 
 #define call_closure(TODO_unwind, _f, ...)                                     \
     (_f).f(ctx, (_f).captured, __VA_ARGS__)
 
-Unit String_iteri(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
+void String_iteri(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf;
     while (iter - s.buf < s.length) {
         Char c = utf8_char_decode_step(&iter);
         call_closure(return, consumer, iter - s.buf, c);
     }
-    return (Unit) {};
 }
 
-Unit String_iteri_rev(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
+void String_iteri_rev(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf + s.length;
     while (iter > s.buf) {
         Char c = utf8_char_decode_step_rev(&iter);
         call_closure(return, consumer, iter - s.buf, c);
     }
-    return (Unit) {};
 }
 
-Unit String_iter(Context* ctx, String s, fn_Char_Unit consumer) {
+void String_iter(Context* ctx, String s, fn_Char_Unit consumer) {
     const char* iter = s.buf;
     while (iter - s.buf < s.length) {
         Char c = utf8_char_decode_step(&iter);
         call_closure(return, consumer, c);
     }
-    return (Unit) {};
 }
 
 String String_substring(String s, Int32 start, Int32 len) {
@@ -530,14 +525,13 @@ String String_substring(String s, Int32 start, Int32 len) {
     };
 }
 
-Unit Kast_chdir(String path) {
+void Kast_chdir(String path) {
     char* path_c = String_to_C_String(path);
     int res = chdir(path_c);
     if (!res) {
         panic_errno();
     }
     Kast_free(path_c);
-    return (Unit) {};
 }
 
 Int32 Kast_exec(String cmd) {
@@ -624,21 +618,19 @@ tcp_Stream tcp_Stream_connect(String addr) {
     default_panic_handler(String_from_C_String("Failed to connect"));
 }
 
-Unit tcp_Stream_close(tcp_Stream s) {
+void tcp_Stream_close(tcp_Stream s) {
     int res = fclose(s.stream);
     if (res != 0) {
         panic_errno();
     }
-    return (Unit) {};
 }
 
 String tcp_Stream_read_line(tcp_Stream* s) {
     return Kast_read_until(s->stream, '\n');
 }
 
-Unit tcp_Stream_write(tcp_Stream* s, String* data) {
+void tcp_Stream_write(tcp_Stream* s, String* data) {
     Kast_write(s->stream, *data);
-    return (Unit) {};
 }
 
 tcp_Listener tcp_Listener_bind(String addr) {
@@ -695,14 +687,13 @@ tcp_Listener tcp_Listener_bind(String addr) {
     default_panic_handler(String_from_C_String("Failed to bind"));
 }
 
-Unit tcp_Listener_listen(tcp_Listener* l, int max_pending) {
+void tcp_Listener_listen(tcp_Listener* l, int max_pending) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wanalyzer-fd-leak"
     int res = listen(l->fd, max_pending);
     if (res == -1) {
         panic_errno();
     }
-    return (Unit) {};
 #pragma GCC diagnostic pop
 }
 
@@ -751,12 +742,11 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     };
 }
 
-Unit tcp_Listener_close(tcp_Listener l) {
+void tcp_Listener_close(tcp_Listener l) {
     int res = close(l.fd);
     if (res == -1) {
         panic_errno();
     }
-    return (Unit) {};
 }
 
 Int32 random_Int32(Int32 min, Int32 max) {

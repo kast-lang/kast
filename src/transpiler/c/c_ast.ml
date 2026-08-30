@@ -50,6 +50,7 @@ and stmt =
   | GotoLabel of string
   | For of { body : block }
   | Return of expr
+  | ReturnVoid
 
 and field =
   { name : string
@@ -263,6 +264,7 @@ module Print = struct
     | Return value ->
       write "return ";
       print_expr value
+    | ReturnVoid -> write "return"
 
   and print_native ({ parts } : native_expr) : unit =
     parts

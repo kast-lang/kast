@@ -537,6 +537,11 @@ module Impl = struct
           |> List.of_seq
         in
         let result_ty = transpile_ty result in
+        let result_ty : C_ast.ty =
+          match result_ty with
+          | Unit -> Void
+          | other -> other
+        in
         let define_macro_args =
           ty_to_string result_ty :: (args |> List.map ty_to_string)
         in
@@ -778,8 +783,17 @@ module Impl = struct
     in
     try
       let result_ty = transpile_ty def.body.data.signature.ty in
+      let result_ty : C_ast.ty =
+        match result_ty with
+        | Unit -> Void
+        | other -> other
+      in
       let unwind_ctx : unwind_ctx =
-        { insert_unwind = (fun () -> insert_stmt (Return (uninitialized result_ty)))
+        { insert_unwind =
+            (fun () ->
+              match result_ty with
+              | Void -> insert_stmt ReturnVoid
+              | _ -> insert_stmt (Return (uninitialized result_ty)))
         ; cleanup_scope_without_unwind = (fun () -> ())
         }
       in
@@ -873,7 +887,10 @@ module Impl = struct
               unwind_ctx.cleanup_scope_without_unwind ();
               match eval_expr def.body with
               | None -> ()
-              | Some result -> insert_stmt (Return result)
+              | Some result ->
+                (match result_ty with
+                 | Unit | Void -> ()
+                 | _ -> insert_stmt (Return result))
             with
             | effect GetScopeCtxPtr, k -> Effect.continue k (Claim (Ident ctx_var)))
         in
@@ -1137,7 +1154,7 @@ module Impl = struct
     | Types.A_Let pattern -> pattern_match pattern pure_place_expr
     | Types.A_Error -> failwith __LOC__
 
-  and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr =
+  and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr option =
     let f_ty =
       match f_expr.data.signature.ty |> Ty.await_inferred with
       | T_Fn ty -> ty
@@ -1239,7 +1256,11 @@ module Impl = struct
       | Some other -> fail "unknown conv %S" other
     in
     let result_var = gen_name "apply_result" in
-    let_var ~gc:false (transpile_ty f_ty.result) result_var (Apply { f; args });
+    let result_ty = transpile_ty f_ty.result in
+    let apply_expr : C_ast.expr = Apply { f; args } in
+    (match result_ty with
+     | Unit | Void -> insert_stmt (Expr apply_expr)
+     | _ -> let_var ~gc:false result_ty result_var apply_expr);
     insert_stmt
       (If
          { cond = Native { parts = [ Raw "are_we_unwinding()" ] }
@@ -1247,7 +1268,9 @@ module Impl = struct
              new_block (fun () -> (Effect.perform GetUnwindCtx).insert_unwind ())
          ; else_case = None
          });
-    Claim (Ident result_var)
+    match result_ty with
+    | Unit | Void -> None
+    | _ -> Some (Claim (Ident result_var))
 
   and context_ty_name ({ id; ty } : Types.value_context_ty) : string = failwith __LOC__
   (* let name = gen_name "context" in *)
@@ -1528,7 +1551,7 @@ module Impl = struct
                 ; value
                 });
            Claim (Ident var))
-      | Types.E_Apply { f; arg } -> Some (call_fn ~args_is_tuple:true f arg)
+      | Types.E_Apply { f; arg } -> call_fn ~args_is_tuple:true f arg
       | Types.E_InstantiateGeneric _ ->
         let value = Interpreter.eval interpreter expr in
         Some (Claim (transpile_value value))
