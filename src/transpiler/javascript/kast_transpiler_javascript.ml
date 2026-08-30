@@ -345,8 +345,9 @@ module Impl = struct
     fun ty ->
     Inference.Var.setup_default_if_needed ty.var;
     match ty.var |> Inference.Var.inferred_opt with
-    | None -> calculate <| not_inferred ty.var
+    | Some (T_Blocked b) -> b |> transpile_blocked |> claim
     | Some shape -> shape |> transpile_ty_shape
+    | None -> calculate <| not_inferred ty.var
 
   and todo_value s : no_effect_expr =
     calculate
@@ -395,7 +396,7 @@ module Impl = struct
     | T_ContextTy -> todo_ty __LOC__
     | T_CompilerScope -> todo_ty __LOC__
     | T_Opaque { name; native_name = _ } -> type_named (name |> Name.await_inferred)
-    | T_Blocked _ -> todo_ty __LOC__
+    | T_Blocked _ -> failwith __LOC__
     | T_Error -> NoEffect { shape = JsAst.Null; span = None }
 
   and transpile_binding : span:span option -> binding -> transpiled_place =
@@ -427,6 +428,7 @@ module Impl = struct
     Inference.Var.setup_default_if_needed value.var;
     match value.var |> Inference.Var.inferred_opt with
     | Some (V_Blocked value) -> value |> transpile_blocked |> claim
+    | Some (V_Ty ty) -> ty |> transpile_ty
     | _ ->
       let value_name = ref None in
       let do_prepend = ref false in
@@ -849,6 +851,9 @@ module Impl = struct
            ];
          place)
 
+  and panic message =
+    execute { shape = Throw { shape = String message; span = None }; span = None }
+
   and transpile_place_expr : place_expr -> transpiled_place =
     fun expr ->
     let span = Some expr.data.span in
@@ -859,7 +864,15 @@ module Impl = struct
         (match ctx.captured |> Kast_interpreter.Scope.find_opt binding.name with
          | Some place -> transpile_place place
          | None -> transpile_binding ~span binding)
-      | PE_Const place -> transpile_place place
+      | PE_Const place ->
+        OCaml
+          { get =
+              (fun () ->
+                transpile_value
+                  (place |> Kast_interpreter.read_place ~span:(Span.of_ocaml __POS__)))
+          ; set = (fun _ -> panic "SET A CONST")
+          ; ref_var = None
+          }
       | PE_Field { obj; field; field_span = _ } ->
         let member =
           match field with
