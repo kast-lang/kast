@@ -277,6 +277,7 @@ noreturn void default_panic_handler(const String s) {
 
 typedef struct {
     int argc;
+    char** original_argv;
     String* argv;
 } CliArgs;
 
@@ -303,6 +304,7 @@ void Kast_init(int argc, char* argv[]) {
 #endif
 #endif
     CLI_ARGS.argc = argc;
+    CLI_ARGS.original_argv = argv;
     CLI_ARGS.argv = Kast_malloc(argc * sizeof(String));
     for (int i = 0; i < argc; i++) {
         CLI_ARGS.argv[i] = (String) {
