@@ -15,8 +15,8 @@ type async_mode =
   | Always
   | BasedOnInference
 
-let async_fns = ref Always
-let use_numbers_instead_of_symbols = ref true
+let async_fns = ref Never
+let use_numbers_instead_of_symbols = ref false
 let ref_vars_enabled = ref false
 let gen_symbol name = make_string "Kast.gen_symbol(%a)" String.print_debug name
 (* if !use_numbers_instead_of_symbols
