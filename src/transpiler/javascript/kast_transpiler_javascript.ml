@@ -1660,10 +1660,24 @@ let with_ctx ~state ~span f =
     try
       Impl.with_global_scope (fun () ->
         ctx.interpreter.cast_impls.map
-        |> ValueMap.iter (fun target impls ->
-          let target = Impl.transpile_value target in
+        |> ValueMap.iter (fun target_value impls ->
+          let target = Impl.transpile_value target_value in
           impls
           |> ValueMap.iter (fun value impl ->
+            execute
+              { shape =
+                  Comment
+                    (make_string
+                       "impl %a as %a"
+                       Value.print
+                       value
+                       Value.print
+                       target_value
+                     |> String.to_seq
+                     |> Seq.filter (fun c -> c <> '\n')
+                     |> String.of_seq)
+              ; span = None
+              };
             let value = Impl.transpile_value value in
             let impl = Impl.transpile_value impl in
             Impl.impl_cast ~value ~target ~impl));

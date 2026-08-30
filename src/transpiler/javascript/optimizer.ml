@@ -68,6 +68,7 @@ and optimize_stmts : stmt list -> stmt list =
 and optimize_stmt : stmt -> stmt list =
   fun ({ shape; span } as original) ->
   match shape with
+  | Comment s -> [ { shape = Comment s; span } ]
   | Labelled { label; stmt } ->
     let stmt =
       match optimize_stmt stmt with

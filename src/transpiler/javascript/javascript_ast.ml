@@ -87,6 +87,7 @@ and obj_part =
 and var_usage = { mutable can_be_deleted : bool }
 
 and stmt_shape =
+  | Comment of string
   | Block of stmt list
   | Labelled of
       { label : name
@@ -293,6 +294,9 @@ and print_stmt writer (stmt : stmt) =
   writer
   |> write_maybe_spanned stmt.span (fun () ->
     match stmt.shape with
+    | Comment s ->
+      writer |> write "// ";
+      writer |> write s
     | Labelled { label; stmt } ->
       print_name writer label;
       writer |> write ":";
