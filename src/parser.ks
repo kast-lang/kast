@@ -23,11 +23,6 @@ impl syntax (value is pattern) = `(
     )
 );
 
-@syntax "index_array" 70 @wrap never = <- array "." "[" index:any "]";
-impl syntax (array.[index]) = `(
-    &$array |> ArrayList.at($index)
-);
-
 const iter_find = [T] (
     iterable :: std.iter.Iterable[T],
     predicate :: T -> Bool,
@@ -453,9 +448,9 @@ const Parser = (
         );
 
         let span = (
-            let first_span = parts.[0] |> ParsedPart.span;
+            let first_span = &parts.[0] |> ParsedPart.span;
             let last_index = (&parts |> ArrayList.length) - 1;
-            let last_span = parts.[last_index] |> ParsedPart.span;
+            let last_span = &parts.[last_index] |> ParsedPart.span;
             {
                 .start = first_span.start,
                 .end = last_span.end,
@@ -595,7 +590,7 @@ const Parser = (
         let skip_rule_whitespace = () -> Bool => (
             let start_idx = rule_part_idx;
             while rule_part_idx < rule_group_parts |> ArrayList.length do (
-                match rule_group_parts^.[rule_part_idx]^ with (
+                match rule_group_parts^.[rule_part_idx] with (
                     | :Whitespace _ => ()
                     | _ => break
                 );
@@ -609,14 +604,14 @@ const Parser = (
             parsed_part_idx^ < parsed_parts |> ArrayList.length
             and rule_part_idx < rule_group_parts |> ArrayList.length
         ) do (
-            let parsed_part = parsed_parts^.[parsed_part_idx^];
+            let parsed_part = &parsed_parts^.[parsed_part_idx^];
             if parsed_part^ is :Ignored token then (
                 &mut ast_parts |> ArrayList.push_back(:Ignored token);
                 parsed_part_idx^ += 1;
                 continue;
             );
             if skip_rule_whitespace() then continue;
-            let rule_part = rule_group_parts^.[rule_part_idx];
+            let rule_part = &rule_group_parts^.[rule_part_idx];
             match { parsed_part^, rule_part^ } with (
                 | { :Value ast, :Value { .name, ... } } => (
                     Log.debug(
@@ -718,7 +713,7 @@ const Parser = (
             );
         );
         while rule_part_idx < rule_group_parts |> ArrayList.length do (
-            let rule_part = rule_group_parts^.[rule_part_idx];
+            let rule_part = &rule_group_parts^.[rule_part_idx];
             let fail = (type_name, name, span) => internal_error(
                 error_span,
                 () => (
@@ -763,8 +758,8 @@ const Parser = (
                     ),
                 );
             );
-            let first_part = ast_parts.[0];
-            let last_part = ast_parts.[parts_len - 1];
+            let first_part = &ast_parts.[0];
+            let last_part = &ast_parts.[parts_len - 1];
             {
                 .start = (first_part |> Ast.part_span).start,
                 .end = (last_part |> Ast.part_span).end,

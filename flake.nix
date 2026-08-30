@@ -88,7 +88,7 @@
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";
           KAST_JS_RUNTIME =
-            "${inputs.kast.packages.${system}.js-runtime}/runtime.js";
+            "${inputs.kast.packages.${system}.js-runtime}/runtime.mjs";
           RAYLIB = "${raylib}";
           RAYLIB_WEB = "${inputs.self.packages.${system}.raylib-web}/libraylib.web.a";
         };

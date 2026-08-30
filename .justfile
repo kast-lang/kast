@@ -20,7 +20,7 @@ post-build src out:
     #!/usr/bin/env bash
     (
         echo 'const fs = await import("node:fs");'
-        cat {{src}} | tail -n +3
+        cat {{src}}
     ) > {{out}}
 
 raylib-to-c:
