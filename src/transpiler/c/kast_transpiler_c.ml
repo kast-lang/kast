@@ -865,8 +865,14 @@ module Impl = struct
                     |> Option.unwrap
                   in
                   let var = gen_name "packed" in
+                  declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
                   insert_stmt
-                    (DeclareVar { name = var; ty = transpile_ty packed.data.signature.ty });
+                    (Assign
+                       { assignee = Ident var
+                       ; value =
+                           Native
+                             { parts = [ Raw ("Kast_malloc(sizeof(*" ^ var ^ "))") ] }
+                       });
                   packed_ty.tuple
                   |> Tuple.iter (fun packed_member _field ->
                     let member =
