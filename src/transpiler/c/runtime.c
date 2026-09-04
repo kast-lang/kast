@@ -480,6 +480,10 @@ typedef struct Context Context;
     void ArrayList_##T##_push_back(ArrayList_##T* list, T x) {                 \
         ArrayList_##T##_reserve(list, list->length + 1);                       \
         list->buf[list->length++] = x;                                         \
+    }                                                                          \
+                                                                               \
+    T ArrayList_##T##_pop_back(ArrayList_##T* list) {                          \
+        return list->buf[--list->length];                                      \
     }
 
 define_ArrayList(Int32);
