@@ -341,6 +341,10 @@ String Kast_asprintf(const char* fmt, ...) {
     };
 }
 
+String Float32_to_String(Float32 x) {
+    return Kast_asprintf("%f", x);
+}
+
 String Float64_to_String(Float64 x) {
     return Kast_asprintf("%f", x);
 }
