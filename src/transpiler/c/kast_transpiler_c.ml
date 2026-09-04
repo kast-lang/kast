@@ -647,10 +647,36 @@ module Impl = struct
           had_unpack := true;
           Literal (Bool true))
       |> List.fold_left (fun a b : C_ast.expr -> And (a, b)) (Literal (Bool true))
-    | Types.P_Variant { label; _ } ->
-      Equal
-        ( Claim (Field { obj = pure_place_expr; field = "tag" })
-        , Claim (Ident (variant_tag_name pattern.data.signature.ty label)) )
+    | Types.P_Variant { label_span = _; label; value } ->
+      let tag_matches : C_ast.expr =
+        Equal
+          ( Claim (Field { obj = pure_place_expr; field = "tag" })
+          , Claim (Ident (variant_tag_name pattern.data.signature.ty label)) )
+      in
+      (match value with
+       | Some value ->
+         let var = gen_name "matches" in
+         let_var ~gc:false (Raw "bool") var tag_matches;
+         insert_stmt
+           (If
+              { cond = Claim (Ident var)
+              ; then_case =
+                  new_block (fun () ->
+                    insert_stmt
+                      (Assign
+                         { assignee = Ident var
+                         ; value =
+                             does_match
+                               value
+                               (Field
+                                  { obj = Field { obj = pure_place_expr; field = "data" }
+                                  ; field = make_correct_ident (Label.get_name label)
+                                  })
+                         }))
+              ; else_case = None
+              });
+         Claim (Ident var)
+       | None -> tag_matches)
     | Types.P_Error -> failwith __LOC__
 
   and pattern_match (pattern : pattern) (pure_place_expr : C_ast.place_expr) : unit =

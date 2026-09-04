@@ -89,10 +89,18 @@ module Impl = struct
            (print_place_value_with (print_args ~open_:"{" ~close:"}"))
            data
        | None -> ())
-    | V_Generic g -> print_name_shape fmt g.name
-    (* fprintf fmt "%a" Id.print g.fn.id *)
-    (* fprintf fmt "@{<italic><generic %a :: %a>@}" print_name_shape g.name
-          print_ty_generic g.ty *)
+    | V_Generic g ->
+      if false
+      then (
+        fprintf fmt "%a" Id.print g.fn.id;
+        fprintf
+          fmt
+          "@{<italic><generic %a :: %a>@}"
+          print_name_shape
+          g.name
+          print_ty_generic
+          g.ty)
+      else print_name_shape fmt g.name
     | V_NativeFn f -> fprintf fmt "@{<italic><native %a>@}" String.print_debug f.name
     | V_Ast ast ->
       Ast.print fmt ast

@@ -1,4 +1,9 @@
-let { mut a, mut b } = { 1, 2 };
-{ a, ..., b } = { 6, 7, 8, 9 };
+const Foo = newtype ( :A | :B );
 
-print(to_string(a) + to_string(b));
+let foo :: Option.t[Foo] = :Some :B;
+
+match foo with (
+    | :Some :A => print("A")
+    | :Some :B => print("B")
+    | :None => print("None")
+);
