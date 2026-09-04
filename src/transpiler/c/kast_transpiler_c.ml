@@ -1156,7 +1156,59 @@ module Impl = struct
     match assignee.shape with
     | Types.A_Placeholder -> ()
     | Types.A_Unit -> ()
-    | Types.A_Tuple _ -> failwith __LOC__
+    | Types.A_Tuple { guaranteed_anonymous = _; parts } ->
+      let unnamed_idx = ref 0 in
+      parts
+      |> List.iter (fun (part : Types.assignee_expr Types.tuple_part_of) ->
+        match part with
+        | Field { label_span = _; label; field } ->
+          let member : Tuple.member =
+            match label with
+            | None ->
+              let member = Tuple.Member.Index !unnamed_idx in
+              unnamed_idx := !unnamed_idx + 1;
+              member
+            | Some label -> Tuple.Member.Name (Label.get_name label)
+          in
+          assign
+            field
+            (Field { obj = Deref (Claim pure_place_expr); field = member_name member })
+        | Unpack packed ->
+          let packed_ty =
+            packed.data.signature.ty
+            |> Ty.await_inferred
+            |> Ty.Shape.expect_tuple
+            |> Option.unwrap
+          in
+          let var = gen_name "packed" in
+          declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
+          insert_stmt
+            (Assign
+               { assignee = Ident var
+               ; value = Native { parts = [ Raw ("Kast_malloc(sizeof(*" ^ var ^ "))") ] }
+               });
+          packed_ty.tuple
+          |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
+            let original_member : Tuple.member =
+              match member with
+              | Index _ ->
+                let member = Tuple.Member.Index !unnamed_idx in
+                unnamed_idx := !unnamed_idx + 1;
+                member
+              | Name name -> Name name
+            in
+            insert_stmt
+              (Assign
+                 { assignee =
+                     Field { obj = Deref (Claim (Ident var)); field = member_name member }
+                 ; value =
+                     Claim
+                       (Field
+                          { obj = Deref (Claim pure_place_expr)
+                          ; field = member_name original_member
+                          })
+                 }));
+          assign packed (Ident var))
     | Types.A_Place place ->
       insert_stmt
         (Assign { assignee = transpile_place_expr place; value = Claim pure_place_expr })
