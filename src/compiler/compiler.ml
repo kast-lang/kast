@@ -118,7 +118,9 @@ let rec handle_parser_imports : 'a. (unit -> 'a) -> (module S) -> 'a =
   fun f (module C : S) ->
   try f () with
   | effect Kast_parser.Import (span, uri), k ->
-    let imported = calculate_import ~span (module C : S) uri in
+    let imported =
+      calculate_import ~prelude:(not C.state.no_std) ~span (module C : S) uri
+    in
     Log.trace (fun log ->
       log "Imported ruleset: %a" Kast_parser.Ruleset.print imported.parser_ruleset);
     Std.Effect.continue k imported.parser_ruleset
@@ -219,6 +221,7 @@ and calculate_import ?(prelude : bool = true) ~(span : span) (module C : S) (uri
 let rec import ?(prelude : bool = true) ~(span : span) (module C : S) (uri : Uri.t)
   : State.imported
   =
+  let prelude = prelude && not C.state.no_std in
   C.state.cache |> State.Cache.add_dependency ~dependent:span.uri ~dependency:uri;
   let result : State.imported = calculate_import ~prelude ~span (module C) uri in
   Log.trace (fun log ->
