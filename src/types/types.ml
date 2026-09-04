@@ -132,8 +132,8 @@ module rec TypesImpl : sig
 
   and value_tuple_field =
     { place : place
-    ; span : Span.t
-    ; ty_field : ty_tuple_field
+    ; span : Span.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; ty_field : ty_tuple_field [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_tuple =

@@ -150,12 +150,18 @@ module Impl = struct
           log "Subbed fn into %a :: %a" Value.print result Ty.print (Value.ty_of result));
         result
       | V_Generic { name; fn; ty } ->
-        V_Generic
-          { name = sub_name_shape ~state name
-          ; fn = sub_untyped_fn ~state fn
-          ; ty = sub_ty_generic ~state ty
-          }
-        |> shaped
+        if
+          false
+          (* TODO in selfhost make this properly maybe,
+             this essentially only allows global generics, not nested ones *)
+        then original_value
+        else
+          V_Generic
+            { name = sub_name_shape ~state name
+            ; fn = sub_untyped_fn ~state fn
+            ; ty = sub_ty_generic ~state ty
+            }
+          |> shaped
       | V_NativeFn { id; name; ty; impl } ->
         V_NativeFn { id; name; ty = sub_ty_fn ~state ty; impl } |> shaped
       | V_UnwindToken { id; result_ty } ->

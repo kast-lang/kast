@@ -137,6 +137,7 @@ module Impl = struct
   (* TY *)
   and print_ty_tuple : always_print_shape:bool -> formatter -> ty_tuple -> unit =
     fun ~always_print_shape fmt { name; tuple } ->
+    (* let always_print_shape = true in *)
     print_optionally_named ~always_print_shape fmt name (fun fmt ->
       fprintf
         fmt

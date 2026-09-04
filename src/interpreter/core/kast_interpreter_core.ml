@@ -1067,6 +1067,7 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
   let span = expr.data.span in
   let value = eval state value in
   let _ : Value.shape = value |> await_fully_inferred in
+  Log.trace (fun log -> log "evaling cast %a as %a" Value.print value Value.print target);
   let target_impls = state.cast_impls.map |> Types.ValueMap.find_opt target in
   let impl =
     target_impls
@@ -1099,6 +1100,15 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
       state.cast_impls.map
       |> Types.ValueMap.iter (fun existing_target impls ->
         Log.info (fun log -> log "FOR TARGET = %a" Value.print existing_target);
+        (* Inference.print_ids := true; *)
+        Log.trace (fun log ->
+          log
+            "%a == %a = %b"
+            Value.print
+            target
+            Value.print
+            existing_target
+            (Types.ValueImpl.equal target existing_target));
         impls
         |> Types.ValueMap.iter (fun existing_value _impl ->
           if
