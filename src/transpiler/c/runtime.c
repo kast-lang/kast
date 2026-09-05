@@ -506,7 +506,7 @@ define_closure_type(fn_Char_Unit, void, Char);
 
 void String_iteri(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf;
-    while (iter - s.buf < s.length) {
+    while (iter < s.buf + s.length) {
         Char c = utf8_char_decode_step(&iter);
         call_closure(return, consumer, iter - s.buf, c);
     }
@@ -522,7 +522,7 @@ void String_iteri_rev(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
 
 void String_iter(Context* ctx, String s, fn_Char_Unit consumer) {
     const char* iter = s.buf;
-    while (iter - s.buf < s.length) {
+    while (iter < s.buf + s.length) {
         Char c = utf8_char_decode_step(&iter);
         call_closure(return, consumer, c);
     }
