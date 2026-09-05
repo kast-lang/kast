@@ -1988,7 +1988,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
        ; body =
            Impl.new_block (fun () ->
              Impl.insert_stmt (Native { parts = [ Raw "Kast_init(argc, argv)" ] });
-             Impl.insert_stmt (DeclareVar { name = ctx_var; ty = Raw "Context" });
+             Impl.declare_var ~gc:true (Raw "Context") ctx_var;
              Impl.insert_stmt
                (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));
              Impl.execute_expr expr;
@@ -2020,7 +2020,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
            : C_ast.ty_def)
    with
    | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
-   | effect GetScopeCtxPtr, k -> Effect.continue k (AddrOf (Ident ctx_var))
+   | effect GetScopeCtxPtr, k -> Effect.continue k (Claim (Ident ctx_var))
    | effect CurrentFnCaptured, k -> Effect.continue k captured
    | effect GetCtx, k -> Effect.continue k ctx
    | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty);
