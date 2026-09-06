@@ -55,8 +55,8 @@ noreturn void Kast_match_non_exhaustive() {
     exit_with_error("Non exhausitve match");
 }
 
-noreturn void panic_errno() {
-    perror("ERRNO");
+noreturn void panic_errno(const char* s) {
+    perror(s);
     exit_with_error(NULL);
 }
 
@@ -67,7 +67,7 @@ void* Kast_malloc(size_t size) {
     void* result = malloc(size);
 #endif
     if (!result) {
-        panic_errno();
+        panic_errno("Kast_malloc");
     }
     return result;
 }
@@ -79,7 +79,7 @@ void* Kast_realloc(void* memory, size_t size) {
     void* result = realloc(memory, size);
 #endif
     if (!result) {
-        panic_errno();
+        panic_errno("Kast_realloc");
     }
     return result;
 }
@@ -332,7 +332,7 @@ String Kast_asprintf(const char* fmt, ...) {
     int length = vasprintf(&buf, fmt, va);
     va_end(va);
     if (length < 0) {
-        panic_errno();
+        panic_errno("Kast_asprintf");
     }
     buf = Kast_ensure_correct_malloc(buf, length);
     return (String) {
@@ -400,15 +400,15 @@ String Kast_read_exactly(FILE* f, size_t size) {
 String Kast_read_to_end(FILE* f) {
     int res = fseek(f, 0, SEEK_END);
     if (res < 0) {
-        panic_errno();
+        panic_errno("Kast_read_to_end.fseek(1)");
     }
     long size = ftell(f);
     if (size < 0) {
-        panic_errno();
+        panic_errno("Kast_read_to_end.ftell");
     }
     res = fseek(f, 0, SEEK_SET);
     if (res < 0) {
-        panic_errno();
+        panic_errno("Kast_read_to_end.fseek(2)");
     }
     return Kast_read_exactly(f, size);
 }
@@ -418,11 +418,11 @@ String Kast_read_file(String path) {
     FILE* f = fopen(path_c, "r");
     Kast_free(path_c);
     if (!f) {
-        panic_errno();
+        panic_errno("Kast_read_file.fopen");
     }
     String result = Kast_read_to_end(f);
     if (fclose(f) != 0) {
-        panic_errno();
+        panic_errno("Kast_read_file.fclose");
     }
     return result;
 }
@@ -432,7 +432,7 @@ String Kast_read_until(FILE* f, Char c) {
     size_t buf_size = 0;
     ssize_t length = getdelim(&buf, &buf_size, c, f);
     if (length < 0) {
-        panic_errno();
+        panic_errno("Kast_read_until.getdelim");
     }
     buf = Kast_ensure_correct_malloc(buf, length);
     return (String) {
@@ -449,7 +449,7 @@ String Kast_input(String prompt) {
 bool Kast_isatty(FILE* f) {
     int desc = fileno(f);
     if (desc < 0) {
-        panic_errno();
+        panic_errno("Kast_isatty");
     }
     return isatty(desc);
 }
@@ -538,8 +538,8 @@ String String_substring(String s, Int32 start, Int32 len) {
 void Kast_chdir(String path) {
     char* path_c = String_to_C_String(path);
     int res = chdir(path_c);
-    if (!res) {
-        panic_errno();
+    if (res == -1) {
+        panic_errno("Kast_chdir");
     }
     Kast_free(path_c);
 }
@@ -548,7 +548,7 @@ Int32 Kast_exec(String cmd) {
     char* cmd_c = String_to_C_String(cmd);
     int res = system(cmd_c);
     if (res == -1) {
-        panic_errno();
+        panic_errno("Kast_exec");
     }
     Kast_free(cmd_c);
     return WEXITSTATUS(res);
@@ -576,7 +576,7 @@ typedef struct {
 tcp_Stream tcp_Stream_from_fd(int fd) {
     FILE* stream = fdopen(fd, "r+");
     if (!stream) {
-        panic_errno();
+        panic_errno("tcp_Stream_from_fd");
     }
     return (tcp_Stream) {
         .sock_fd = fd,
@@ -604,7 +604,7 @@ tcp_Stream tcp_Stream_connect(String addr) {
     int res = getaddrinfo(host_c, port_c, NULL, &ai);
     if (res) {
         if (res == EAI_SYSTEM) {
-            panic_errno();
+            panic_errno("tcp_Stream_connect.getaddrinfo");
         } else {
             fprintf(stderr, "getaddrinfo failed with %d", res);
             exit(-1);
@@ -615,7 +615,7 @@ tcp_Stream tcp_Stream_connect(String addr) {
     for (rp = ai; rp != NULL; rp = rp->ai_next) {
         int sock_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sock_fd == -1) {
-            panic_errno();
+            panic_errno("tcp_Stream_connect.socket");
         }
         int res = connect(sock_fd, rp->ai_addr, rp->ai_addrlen);
         if (res == 0) {
@@ -631,7 +631,7 @@ tcp_Stream tcp_Stream_connect(String addr) {
 void tcp_Stream_close(tcp_Stream s) {
     int res = fclose(s.stream);
     if (res != 0) {
-        panic_errno();
+        panic_errno("tcp_Stream_close");
     }
 }
 
@@ -663,7 +663,7 @@ tcp_Listener tcp_Listener_bind(String addr) {
     int res = getaddrinfo(host_c, port_c, NULL, &ai);
     if (res) {
         if (res == EAI_SYSTEM) {
-            panic_errno();
+            panic_errno("tcp_Listener_bind.getaddrinfo");
         } else {
             fprintf(stderr, "getaddrinfo failed with %d", res);
             exit(-1);
@@ -673,6 +673,9 @@ tcp_Listener tcp_Listener_bind(String addr) {
     Kast_free(port_c);
     for (rp = ai; rp != NULL; rp = rp->ai_next) {
         int fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (fd == -1) {
+            panic_errno("tcp_Listener_bind.socket");
+        }
         int so_reuseaddr = true;
         setsockopt(
             fd,
@@ -681,9 +684,6 @@ tcp_Listener tcp_Listener_bind(String addr) {
             &so_reuseaddr,
             sizeof(so_reuseaddr)
         );
-        if (fd == -1) {
-            panic_errno();
-        }
         int res = bind(fd, rp->ai_addr, rp->ai_addrlen);
         if (res == 0) {
             freeaddrinfo(ai);
@@ -702,7 +702,7 @@ void tcp_Listener_listen(tcp_Listener* l, int max_pending) {
 #pragma GCC diagnostic ignored "-Wanalyzer-fd-leak"
     int res = listen(l->fd, max_pending);
     if (res == -1) {
-        panic_errno();
+        panic_errno("tcp_Listener_listen");
     }
 #pragma GCC diagnostic pop
 }
@@ -721,7 +721,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     socklen_t addr_len = sizeof(addr);
     int fd = accept4(l->fd, &addr, &addr_len, flags);
     if (fd == -1) {
-        panic_errno();
+        panic_errno("tcp_Listener_accept.accept4");
     }
     size_t host_len = 100;
     char host[host_len];
@@ -730,7 +730,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     int res = getnameinfo(&addr, addr_len, host, host_len, port, port_len, 0);
     if (res) {
         if (res == EAI_SYSTEM) {
-            panic_errno();
+            panic_errno("tcp_Listener_accept.getnameinfo");
         } else {
             fprintf(stderr, "getnameinfo errored with %d\n", res);
             exit(-1);
@@ -755,7 +755,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
 void tcp_Listener_close(tcp_Listener l) {
     int res = close(l.fd);
     if (res == -1) {
-        panic_errno();
+        panic_errno("tcp_Listener_close");
     }
 }
 
