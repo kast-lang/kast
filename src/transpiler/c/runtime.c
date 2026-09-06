@@ -3,7 +3,11 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten/html5.h>
 #else
+#define USE_BACKTRACE
 #include <execinfo.h>
+#endif
+#ifdef USE_BACKTRACE
+#include <backtrace.h>
 #endif
 #include <features.h>
 #include <netdb.h>
@@ -28,6 +32,34 @@
 #include <gc.h>
 #endif
 
+#ifdef USE_BACKTRACE
+struct backtrace_state* BACKTRACE_STATE;
+
+void Kast_backtrace_error_callback(void* data, const char* msg, int errnum) {
+    fprintf(stderr, "libbacktrace error: %s (errnum: %d)\n", msg, errnum);
+    exit(-1);
+}
+
+int Kast_backtrace_callback(
+    void* data,
+    uintptr_t pc,
+    const char* filename,
+    int lineno,
+    const char* function
+) {
+    static int frame_num = 0;
+    fprintf(
+        stderr,
+        "%d. %s() at %s:%d\n",
+        frame_num++,
+        function ? function : "??",
+        filename ? filename : "??",
+        lineno
+    );
+    return 0;
+}
+#endif
+
 noreturn void exit_with_error(const char* s) {
 #ifdef __FILC__
     zerror(s);
@@ -37,6 +69,15 @@ noreturn void exit_with_error(const char* s) {
         fprintf(stderr, "%s\n", s);
     }
 #ifndef __EMSCRIPTEN__
+#ifdef USE_BACKTRACE
+    backtrace_full(
+        BACKTRACE_STATE,
+        1,
+        Kast_backtrace_callback,
+        Kast_backtrace_error_callback,
+        NULL
+    );
+#else
     int N = 100;
     void* buf[N];
     int n = backtrace(buf, N);
@@ -46,6 +87,7 @@ noreturn void exit_with_error(const char* s) {
     //     char* s = strings[i];
     //     fprintf(stderr, "%d. %s\n", i + 1, s);
     // }
+#endif
 #endif
     exit(-1);
 #endif
@@ -303,6 +345,10 @@ void Kast_init(int argc, char* argv[]) {
     emscripten_set_interval(Kast_run_gc, 0, NULL);
 #endif
 #endif
+#ifdef USE_BACKTRACE
+    BACKTRACE_STATE =
+        backtrace_create_state(NULL, 1, Kast_backtrace_error_callback, NULL);
+#endif
     CLI_ARGS.argc = argc;
     CLI_ARGS.original_argv = argv;
     CLI_ARGS.argv = Kast_malloc(argc * sizeof(String));
@@ -507,8 +553,9 @@ define_closure_type(fn_Char_Unit, void, Char);
 void String_iteri(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf;
     while (iter < s.buf + s.length) {
+        Int32 i = iter - s.buf;
         Char c = utf8_char_decode_step(&iter);
-        call_closure(return, consumer, iter - s.buf, c);
+        call_closure(return, consumer, i, c);
     }
 }
 
@@ -516,7 +563,8 @@ void String_iteri_rev(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf + s.length;
     while (iter > s.buf) {
         Char c = utf8_char_decode_step_rev(&iter);
-        call_closure(return, consumer, iter - s.buf, c);
+        Int32 i = iter - s.buf;
+        call_closure(return, consumer, i, c);
     }
 }
 

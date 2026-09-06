@@ -179,6 +179,7 @@
             hyperfine
             clang_22
             boehmgc
+            libbacktrace
             inputs.filc.packages.${system}.filcc
           ]);
           # Since I dont have cmake or whatever
