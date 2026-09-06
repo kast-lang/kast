@@ -34,9 +34,11 @@ const zip_TODO = [A, B] (
     b :: Iterable[B],
 ) -> Iterable[type { A, B }] => {
     .iter = consume => (
+        panic("TODO std.iter.zip");
+        (#
         let element_of_a = _;
         let element_of_b = _;
-        consume({ element_of_a, element_of_b });
+        consume({ element_of_a, element_of_b });#)
     )
 };
 

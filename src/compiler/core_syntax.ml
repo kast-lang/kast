@@ -160,6 +160,7 @@ let tuple_field
 ;;
 
 let tuple_impl
+      ~guaranteed_anonymous
       ~allow_toplevel_parens
       (type a)
       (module C : Compiler.S)
@@ -167,7 +168,6 @@ let tuple_impl
       (ast : Ast.t)
   : a
   =
-  let guaranteed_anonymous = allow_toplevel_parens in
   let ast =
     if allow_toplevel_parens
     then (
@@ -264,7 +264,14 @@ let apply : core_syntax =
         match kind with
         | Expr ->
           let f = C.compile Expr f in
-          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Expr arg in
+          let arg =
+            tuple_impl
+              ~guaranteed_anonymous:true
+              ~allow_toplevel_parens:false
+              (module C)
+              Expr
+              arg
+          in
           E_Apply { f; arg } |> init_expr span C.state
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | TyExpr -> (fun () -> TE_Expr (C.compile Expr ast)) |> init_ty_expr span C.state
@@ -292,7 +299,14 @@ let instantiate_generic : core_syntax =
         match kind with
         | Expr ->
           let generic = C.compile Expr generic in
-          let arg = tuple_impl ~allow_toplevel_parens:false (module C) Expr arg in
+          let arg =
+            tuple_impl
+              ~guaranteed_anonymous:true
+              ~allow_toplevel_parens:false
+              (module C)
+              Expr
+              arg
+          in
           E_InstantiateGeneric { generic; arg } |> init_expr span C.state
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | TyExpr -> (fun () -> TE_Expr (C.compile Expr ast)) |> init_ty_expr span C.state
@@ -486,6 +500,7 @@ let fn_type : core_syntax =
             let state = C.state |> State.enter_scope ~span ~recursive:false in
             let arg =
               tuple_impl
+                ~guaranteed_anonymous:true
                 ~allow_toplevel_parens:true
                 (Compiler.update_module (module C) state)
                 TyExpr
@@ -590,6 +605,7 @@ let fn : core_syntax =
             Log.trace (fun log -> log "starting to compile fn at %a" Span.print span);
             let args =
               tuple_impl
+                ~guaranteed_anonymous:true
                 ~allow_toplevel_parens:true
                 (Compiler.update_module (module C) state)
                 Pattern
@@ -688,7 +704,14 @@ let generic : core_syntax =
               (module C)
               (C.state |> State.enter_scope ~new_result_scope:true ~span ~recursive:false)
           in
-          let args = tuple_impl ~allow_toplevel_parens:false (module C) Pattern args in
+          let args =
+            tuple_impl
+              ~guaranteed_anonymous:true
+              ~allow_toplevel_parens:false
+              (module C)
+              Pattern
+              args
+          in
           C.state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
           let result_ty, result_expr = Compiler.eval_ty (module C) body in
           let generic_ty =
@@ -712,7 +735,14 @@ let generic : core_syntax =
               (module C)
               (C.state |> State.enter_scope ~new_result_scope:true ~span ~recursive:false)
           in
-          let args = tuple_impl ~allow_toplevel_parens:false (module C) Pattern args in
+          let args =
+            tuple_impl
+              ~guaranteed_anonymous:true
+              ~allow_toplevel_parens:false
+              (module C)
+              Pattern
+              args
+          in
           C.state |> Compiler.inject_pattern_bindings ~only_compiler:false args;
           let ty =
             Interpreter.generic_ty
@@ -2435,7 +2465,13 @@ let impl_cast : core_syntax =
               target
           in
           E_ImplCast
-            { value = tuple_impl ~allow_toplevel_parens:true (module C) Expr value
+            { value =
+                tuple_impl
+                  ~guaranteed_anonymous:true
+                  ~allow_toplevel_parens:true
+                  (module C)
+                  Expr
+                  value
             ; target
             ; impl = C.compile Expr impl
             }
@@ -2514,7 +2550,13 @@ let cast : core_syntax =
               target
           in
           E_Cast
-            { value = tuple_impl ~allow_toplevel_parens:true (module C) Expr value
+            { value =
+                tuple_impl
+                  ~guaranteed_anonymous:true
+                  ~allow_toplevel_parens:true
+                  (module C)
+                  Expr
+                  value
             ; target
             }
           |> init_expr span C.state
@@ -2644,7 +2686,12 @@ let record : core_syntax =
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | TyExpr | Expr | Pattern | Assignee ->
           let inner = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
-          tuple_impl ~allow_toplevel_parens:false (module C) kind inner)
+          tuple_impl
+            ~guaranteed_anonymous:false
+            ~allow_toplevel_parens:false
+            (module C)
+            kind
+            inner)
   }
 ;;
 

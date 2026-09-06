@@ -21,6 +21,15 @@ let not_inferred_simple : 'a. span:span -> ('a, VarScope.t) var =
   fun ~span -> Var.new_not_inferred ~span ~scope:(VarScope.root ())
 ;;
 
+let unite_simple : 'a. 'a unite =
+  fun ~span a b -> if a = b then a else fail "simple unite failed at %a" Span.print span
+;;
+
+let infer_simple_as : 'a. span:span -> 'a -> ('a, VarScope.t) var -> unit =
+  fun ~span value var ->
+  var |> Var.infer_as (fun _ -> VarScope.root ()) unite_simple VarScope.unite ~span value
+;;
+
 let simple : 'a. span:span -> 'a -> ('a, VarScope.t) var =
   fun ~span value -> Var.new_inferred (fun _ -> VarScope.root ()) ~span value
 ;;

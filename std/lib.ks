@@ -5,7 +5,7 @@ include "./syntax.ks";
 
 const Type = @native "Type";
 
-const impl_native = [T] (name :: String, value :: T) => (
+const impl_native = [T] (name :: String, value :: T) -> () => (
     (@native "impl_native")(name, value)
 );
 

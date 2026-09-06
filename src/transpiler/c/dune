@@ -1,6 +1,6 @@
 (library
  (name kast_transpiler_c)
- (libraries kast_types kast_interpreter)
+ (libraries kast_types kast_interpreter kast_inference_completion)
  (preprocessor_deps
   (file runtime.c))
  (preprocess

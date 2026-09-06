@@ -420,8 +420,18 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
           Ty.inferred
             ~span:f.data.span
             (T_Fn
-               { is_closure = Inference.not_inferred_simple ~span
-               ; call_convention = Inference.not_inferred_simple ~span
+               { is_closure =
+                   (let var = Inference.not_inferred_simple ~span in
+                    var
+                    |> Inference.Var.setup_default (-10) (fun () ->
+                      var |> Inference.infer_simple_as ~span true);
+                    var)
+               ; call_convention =
+                   (let var = Inference.not_inferred_simple ~span in
+                    var
+                    |> Inference.Var.setup_default (-10) (fun () ->
+                      var |> Inference.infer_simple_as ~span None);
+                    var)
                ; args = { ty = arg.data.signature.ty }
                ; result = result_ty
                })

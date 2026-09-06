@@ -1899,6 +1899,8 @@ module Impl = struct
 end
 
 let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.program =
+  Kast_inference_completion.enable := true;
+  Kast_inference_completion.complete_compiled Expr expr;
   let runtime_defined_closure_types = ref StringListMap.empty in
   let runtime_defined_list_types = ref StringMap.empty in
   let runtime_source = [%include_file "runtime.c"] in

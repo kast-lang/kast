@@ -524,6 +524,7 @@ module Impl = struct
     if not (cache |> RecurseCache.is_visited id)
     then (
       cache |> RecurseCache.enter id;
+      var |> Inference.Var.setup_default_if_needed;
       match var |> Inference.Var.inferred_opt with
       | Some inferred -> complete_inferred inferred
       | None ->
