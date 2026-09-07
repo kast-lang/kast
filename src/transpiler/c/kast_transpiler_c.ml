@@ -515,6 +515,20 @@ module Impl = struct
                    ({ shape =
                         Raw
                           { def = make_string "define_ArrayList(%s)" macro_arg
+                          ; need_declared = [ Named macro_arg ]
+                          ; need_completed = []
+                          }
+                    ; comment = None
+                    }
+                    : C_ast.ty_def);
+           let impl_name = name ^ "_impl" in
+           ctx.types
+           <- ctx.types
+              |> StringMap.add
+                   impl_name
+                   ({ shape =
+                        Raw
+                          { def = make_string "impl_ArrayList(%s)" macro_arg
                           ; need_declared = []
                           ; need_completed = [ Named macro_arg ]
                           }

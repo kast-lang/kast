@@ -1,9 +1,10 @@
-const Foo = newtype ( :A | :B );
+module:
 
-let foo :: Option.t[Foo] = :Some :B;
-
-match foo with (
-    | :Some :A => print("A")
-    | :Some :B => print("B")
-    | :None => print("None")
+const Foo = newtype (
+    | :Unit
+    | :Pair { Foo, Foo }
+    | :List ArrayList.t[Foo]
 );
+
+let foo :: Foo = :Pair { :Unit, :Pair { :Unit, :Unit } };
+

@@ -515,8 +515,9 @@ typedef struct Context Context;
         T* buf;                                                                \
         size_t capacity;                                                       \
         size_t length;                                                         \
-    } ArrayList_##T;                                                           \
-                                                                               \
+    } ArrayList_##T;
+
+#define impl_ArrayList(T)                                                      \
     ArrayList_##T ArrayList_##T##_new() {                                      \
         return (ArrayList_##T) {                                               \
             .buf = NULL,                                                       \
@@ -543,8 +544,6 @@ typedef struct Context Context;
     T ArrayList_##T##_pop_back(ArrayList_##T* list) {                          \
         return list->buf[--list->length];                                      \
     }
-
-define_ArrayList(Int32);
 
 #define define_closure_type(name, Ret, ...)                                    \
     typedef struct {                                                           \
