@@ -111,7 +111,7 @@ noreturn void panic_errno(const char* s) {
 
 void* Kast_malloc(size_t size) {
 #ifdef USE_GC
-    void* result = GC_MALLOC_ATOMIC(size);
+    void* result = GC_MALLOC(size);
 #else
     void* result = malloc(size);
 #endif
