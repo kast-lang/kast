@@ -2,10 +2,13 @@
 // #define _POSIX_C_SOURCE 200112L
 #ifdef __EMSCRIPTEN__
 #include <emscripten/html5.h>
+#define thread_local
 #else
 #define USE_BACKTRACE
 #include <execinfo.h>
-#include <threads.h>
+#include <pthread.h>
+#define thread_local __thread
+// NOTE: never use <threads.h> its borked (with beohmgc specifically)
 #define GC_THREADS
 #endif
 #ifdef USE_BACKTRACE
