@@ -172,3 +172,5 @@ impl syntax ((:: ty) value) = `($value :: $ty);
 impl syntax (obj.[index]) = `(
     (&$obj |> std.collections.ArrayList.at($index))^
 );
+
+impl syntax (@comment_out ( _ ) ) = `();
