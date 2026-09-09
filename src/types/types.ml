@@ -73,6 +73,7 @@ module rec TypesImpl : sig
     | V_UnwindToken of value_unwind_token
     | V_Target of value_target
     | V_ContextTy of value_context_ty
+    | V_ImplicitContext of implicit_context
     | V_CompilerScope of compiler_scope
     | V_Opaque of value_opaque
     | V_Blocked of blocked_value
@@ -87,6 +88,8 @@ module rec TypesImpl : sig
     { var : value_shape var
     ; mutable ty : ty option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
+
+  and implicit_context = { mutable contexts : value Id.Map.t }
 
   and value_opaque =
     { ty : ty_opaque
@@ -232,6 +235,7 @@ module rec TypesImpl : sig
     | T_UnwindToken of ty_unwind_token
     | T_Target
     | T_ContextTy
+    | T_ImplicitContext
     | T_CompilerScope
     | T_Opaque of ty_opaque
     | T_Blocked of blocked_value
@@ -487,6 +491,7 @@ module rec TypesImpl : sig
     | E_Unwind of expr_unwind
     | E_InjectContext of expr_inject_context
     | E_CurrentContext of expr_current_context
+    | E_LetRefContext of expr
     | E_ImplCast of expr_impl_cast
     | E_Cast of expr_cast
     | E_TargetDependent of expr_target_dependent
@@ -514,6 +519,7 @@ module rec TypesImpl : sig
     | PE_Field of place_expr_field
     | PE_Const of place
     | PE_Deref of expr
+    | PE_Context
     | PE_Temp of expr
     | PE_Error
 
@@ -676,7 +682,7 @@ module rec TypesImpl : sig
     ; scope : interpreter_scope
     ; result_scope : var_scope
     ; monomorphization_state : monomorphization_state
-    ; mutable contexts : value Id.Map.t
+    ; mutable implicit_context : implicit_context
     ; instantiated_generics : instantiated_generics
     ; cast_impls : cast_impls
     ; current_name : name_shape
@@ -834,6 +840,7 @@ end = struct
     | V_UnwindToken of value_unwind_token
     | V_Target of value_target
     | V_ContextTy of value_context_ty
+    | V_ImplicitContext of implicit_context
     | V_CompilerScope of compiler_scope
     | V_Opaque of value_opaque
     | V_Blocked of blocked_value
@@ -848,6 +855,8 @@ end = struct
     { var : value_shape var
     ; mutable ty : ty option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
+
+  and implicit_context = { mutable contexts : value Id.Map.t }
 
   and value_opaque =
     { ty : ty_opaque
@@ -993,6 +1002,7 @@ end = struct
     | T_UnwindToken of ty_unwind_token
     | T_Target
     | T_ContextTy
+    | T_ImplicitContext
     | T_CompilerScope
     | T_Opaque of ty_opaque
     | T_Blocked of blocked_value
@@ -1248,6 +1258,7 @@ end = struct
     | E_Unwind of expr_unwind
     | E_InjectContext of expr_inject_context
     | E_CurrentContext of expr_current_context
+    | E_LetRefContext of expr
     | E_ImplCast of expr_impl_cast
     | E_Cast of expr_cast
     | E_TargetDependent of expr_target_dependent
@@ -1275,6 +1286,7 @@ end = struct
     | PE_Field of place_expr_field
     | PE_Const of place
     | PE_Deref of expr
+    | PE_Context
     | PE_Temp of expr
     | PE_Error
 
@@ -1443,7 +1455,7 @@ end = struct
     ; result_scope : var_scope
     ; monomorphization_state : monomorphization_state
           [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
-    ; mutable contexts : value Id.Map.t
+    ; mutable implicit_context : implicit_context
     ; instantiated_generics : instantiated_generics
     ; cast_impls : cast_impls
     ; current_name : name_shape

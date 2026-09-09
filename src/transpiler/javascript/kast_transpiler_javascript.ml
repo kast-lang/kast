@@ -394,6 +394,7 @@ module Impl = struct
     | T_UnwindToken _ -> todo_ty __LOC__
     | T_Target -> todo_ty __LOC__
     | T_ContextTy -> todo_ty __LOC__
+    | T_ImplicitContext -> todo_ty __LOC__
     | T_CompilerScope -> todo_ty __LOC__
     | T_Opaque { name; native_name = _ } -> type_named (name |> Name.await_inferred)
     | T_Blocked _ -> failwith __LOC__
@@ -525,6 +526,7 @@ module Impl = struct
       | V_UnwindToken _ -> failwith __LOC__
       | V_Target _ -> failwith __LOC__
       | V_ContextTy _ -> NoEffect { shape = JsAst.Null; span = None }
+      | V_ImplicitContext _ -> NoEffect { shape = JsAst.Null; span = None }
       | V_CompilerScope _ -> NoEffect { shape = JsAst.Undefined; span = None }
       | V_Opaque _ -> failwith __LOC__
       | V_Blocked _ -> failwith __LOC__
@@ -864,6 +866,7 @@ module Impl = struct
         (match ctx.captured |> Kast_interpreter.Scope.find_opt binding.name with
          | Some place -> transpile_place place
          | None -> transpile_binding ~span binding)
+      | PE_Context -> failwith __LOC__
       | PE_Const place ->
         OCaml
           { get =
@@ -1580,6 +1583,7 @@ module Impl = struct
              });
         scope.ctx_var <- new_ctx_var;
         undefined ()
+      | E_LetRefContext _ -> failwith __LOC__
       | E_CurrentContext { context_ty } ->
         calculate
           { shape =

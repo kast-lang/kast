@@ -98,6 +98,7 @@ module Impl = struct
          | V_UnwindToken { id : id = _; result_ty } -> complete_ty result_ty
          | V_Target { name : string = _ } -> ()
          | V_ContextTy ty -> complete_context_ty ty
+         | V_ImplicitContext _ -> ( (* hmmm *) )
          | V_CompilerScope _ -> ()
          | V_Opaque { ty; value : Obj.t = _ } -> complete_ty_opaque ty
          | V_Blocked blocked -> complete_blocked_value blocked
@@ -191,6 +192,7 @@ module Impl = struct
          | T_UnwindToken ty -> complete_ty_unwind_token ty
          | T_Target -> ()
          | T_ContextTy -> ()
+         | T_ImplicitContext -> ()
          | T_CompilerScope -> ()
          | T_Opaque ty -> complete_ty_opaque ty
          | T_Blocked blocked -> complete_blocked_value blocked
@@ -350,6 +352,7 @@ module Impl = struct
     | E_InjectContext { context_ty; value } ->
       complete_context_ty context_ty;
       complete_expr value
+    | E_LetRefContext new_ref -> complete_expr new_ref
     | E_CurrentContext { context_ty } -> complete_context_ty context_ty
     | E_ImplCast { value; target; impl } ->
       complete_expr value;
@@ -400,6 +403,7 @@ module Impl = struct
     match shape with
     | PE_Binding binding -> complete_binding binding
     | PE_Const place -> complete_place place
+    | PE_Context -> ()
     | PE_Field { obj; field; field_span = _ } ->
       complete_place_expr obj;
       (match field with

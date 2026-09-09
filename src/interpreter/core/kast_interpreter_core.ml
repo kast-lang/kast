@@ -573,6 +573,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
             log "evaled binding %a = %a" Binding.print binding Id.print result.id);
           Place (~mut:true, result)
         | PE_Const place -> Place (~mut:true, place)
+        | PE_Context -> failwith __LOC__
         | PE_Temp expr ->
           let value = eval state expr in
           Place (~mut:true, Place.init ~mut:Mutable value)
@@ -1023,13 +1024,14 @@ and eval_expr_injectcontext : state -> expr -> Types.expr_inject_context -> valu
   fun state expr { context_ty; value } ->
   let span = expr.data.span in
   let value = eval state value in
-  state.contexts <- state.contexts |> Id.Map.add context_ty.id value;
+  state.implicit_context
+  <- { contexts = state.implicit_context.contexts |> Id.Map.add context_ty.id value };
   V_Unit |> Value.inferred ~span
 
 and eval_expr_currentcontext : state -> expr -> Types.expr_current_context -> value =
   fun state expr { context_ty } ->
   let span = expr.data.span in
-  match state.contexts |> Id.Map.find_opt context_ty.id with
+  match state.implicit_context.contexts |> Id.Map.find_opt context_ty.id with
   | Some value -> value
   | None ->
     Error.error expr.data.span "Context unavailable";
@@ -1263,6 +1265,7 @@ and eval : state -> expr -> value =
            | E_Unwind e -> eval_expr_unwind state expr e
            | E_InjectContext e -> eval_expr_injectcontext state expr e
            | E_CurrentContext e -> eval_expr_currentcontext state expr e
+           | E_LetRefContext _ -> failwith __LOC__
            | E_ImplCast e -> eval_expr_implcast state expr e
            | E_Cast e -> eval_expr_cast state expr e
            | E_TargetDependent e -> eval_expr_targetdependent state expr e

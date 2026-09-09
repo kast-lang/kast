@@ -107,6 +107,7 @@ module Impl = struct
       (* TODO fprintf fmt "@{<magenta>ast@}<%a>" Kast_highlight.print_ast ast *)
     | V_UnwindToken { id; result_ty = _ } -> fprintf fmt "<unwind %a>" Id.print id
     | V_ContextTy ty -> print_context_type fmt ty
+    | V_ImplicitContext _ -> fprintf fmt "<context>"
     | V_Error -> fprintf fmt "@{<red><error>@}"
     | V_CompilerScope _ -> fprintf fmt "@{<italic><compiler scope>@}"
     | V_Opaque { ty = _; value = _ } -> fprintf fmt "@{<italic><opaque>@}"
@@ -219,6 +220,7 @@ module Impl = struct
     | T_UnwindToken { result } -> fprintf fmt "<unwind %a>" print_ty result
     | T_Target -> fprintf fmt "Target"
     | T_ContextTy -> fprintf fmt "ContextType"
+    | T_ImplicitContext -> fprintf fmt "@context"
     | T_CompilerScope -> fprintf fmt "<compiler scope>"
     | T_Opaque { name; native_name = _ } -> print_name fmt name
     | T_Blocked blocked -> print_blocked_value fmt blocked
@@ -321,6 +323,7 @@ module Impl = struct
       | E_Unwind _ -> "Unwind"
       | E_InjectContext _ -> "InjectContext"
       | E_CurrentContext _ -> "CurrentContext"
+      | E_LetRefContext _ -> "LetRefContext"
       | E_ImplCast _ -> "ImplCast"
       | E_Cast _ -> "Cast"
       | E_TargetDependent _ -> "TargetDependent"
@@ -503,6 +506,8 @@ module Impl = struct
         "@{<magenta>current_context@} (@;<0 2>@[<v>context_type = %a,@]@ )"
         print_context_type
         context_ty
+    | E_LetRefContext new_ref ->
+      fprintf fmt "@{<magenta>let_ref_context@} %a" (print_expr ~options) new_ref
     | E_ImplCast { value; target; impl } ->
       fprintf
         fmt
@@ -591,6 +596,7 @@ module Impl = struct
     | PE_Binding binding -> fprintf fmt "@{<magenta>binding@} %a" print_binding binding
     | PE_Const place ->
       fprintf fmt "@{<magenta>const@} %a" (print_place_value_with print_value) place
+    | PE_Context -> fprintf fmt "@{<magenta>@context@}"
     | PE_Field { obj; field; field_span = _ } ->
       fprintf
         fmt

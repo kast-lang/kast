@@ -16,6 +16,7 @@
 @syntax "div_assign" 2 @wrap never = _ " " "/=" " " _;
 @syntax "rem_assign" 2 @wrap never = _ " " "%=" " " _;
 @syntax "core:let" 3 @wrap never = "let" " " pattern;
+@syntax "core:let &context" 3 @wrap never = "let" " " "&" "@context" " " "=" " " _;
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 # @syntax "let else" 3 @wrap never = "let" " " pattern " " "=" " " value " " "else" " " else_case;
 
@@ -62,6 +63,7 @@
 @syntax "core:include" 9 @wrap never = "include" " " path;
 @syntax "core:include_ast" 9 @wrap never = "include_ast" " " _;
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;
+@syntax "core:context" 9 @wrap never = "@context";
 @syntax "core:comptime" 9 @wrap never = "@eval" " " _;
 @syntax "core:comptime_fork" 9 @wrap never = "@exec_fork" " " _;
 @syntax "core:no_hygiene" 9 @wrap never = "@no_hygiene" " " _;

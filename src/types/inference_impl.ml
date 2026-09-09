@@ -100,6 +100,7 @@ module VarScope = struct
     | T_UnwindToken x -> of_ty_unwind_token x
     | T_Target -> root ()
     | T_ContextTy -> root ()
+    | T_ImplicitContext -> root ()
     | T_CompilerScope -> root ()
     | T_Opaque x -> of_ty_opaque x
     | T_Blocked x -> of_blocked_value x
@@ -209,6 +210,9 @@ module VarScope = struct
     | V_UnwindToken x -> of_value_unwind_token x
     | V_Target x -> of_value_target x
     | V_ContextTy x -> of_value_context_ty x
+    | V_ImplicitContext _ ->
+      (* hmmmm *)
+      root ()
     | V_CompilerScope (_ : compiler_scope) -> root ()
     | V_Opaque x -> of_value_opaque x
     | V_Blocked blocked -> of_blocked_value blocked
@@ -346,6 +350,8 @@ module Impl = struct
          | T_Target, _ -> fail ()
          | T_ContextTy, T_ContextTy -> T_ContextTy
          | T_ContextTy, _ -> fail ()
+         | T_ImplicitContext, T_ImplicitContext -> T_ImplicitContext
+         | T_ImplicitContext, _ -> fail ()
          | T_CompilerScope, T_CompilerScope -> T_CompilerScope
          | T_CompilerScope, _ -> fail ()
          | ( T_Opaque { name = name_a; native_name = native_name_a }
@@ -454,7 +460,7 @@ module Impl = struct
           ; (* TODO only scope is needed, change Substitute_bindings *)
             natives = { by_name = StringMap.empty }
           ; monomorphization_state = init_monomorphization_state ()
-          ; contexts = Id.Map.empty
+          ; implicit_context = { contexts = Id.Map.empty }
           ; instantiated_generics = { map = Id.Map.empty }
           ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
           ; current_name = Simple (Str "<unused>")
@@ -780,6 +786,9 @@ module Impl = struct
          | V_Target _, _ -> fail ()
          | V_ContextTy a, V_ContextTy b when Id.equal a.id b.id -> V_ContextTy a
          | V_ContextTy _, _ -> fail ()
+         | V_ImplicitContext a, V_ImplicitContext b when Repr.phys_equal a b ->
+           V_ImplicitContext a
+         | V_ImplicitContext _, _ -> fail ()
          | V_Opaque _, _ -> fail ()
          | V_Blocked a, V_Blocked b -> V_Blocked (unite_blocked_value ~span a b)
          | V_Blocked _, _ -> fail ()
@@ -1002,6 +1011,7 @@ module Impl = struct
     | T_UnwindToken _ -> None
     | T_Target -> None
     | T_ContextTy -> None
+    | T_ImplicitContext -> None
     | T_CompilerScope -> None
     | T_Blocked _ -> None
     | T_Error -> None
@@ -1085,6 +1095,7 @@ module Impl = struct
         inferred_ty ~span <| T_UnwindToken { result = result_ty }
       | V_Target _ -> inferred_ty ~span T_Target
       | V_ContextTy _ -> inferred_ty ~span T_ContextTy
+      | V_ImplicitContext _ -> inferred_ty ~span T_ImplicitContext
       | V_CompilerScope _ -> inferred_ty ~span T_CompilerScope
       | V_Blocked b -> ty_of_blocked b
       | V_Error -> inferred_ty ~span T_Error

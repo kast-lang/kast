@@ -40,12 +40,13 @@ type unwind_ctx =
   ; mutable cleanup_scope_without_unwind : unit -> unit
   }
 
+type scope = { mutable ctx_ptr : C_ast.expr }
 type _ Effect.t += GetInterpreter : Interpreter.state Effect.t
 type _ Effect.t += CurrentFnCaptured : current_captured Effect.t
 type _ Effect.t += GetCtx : ctx Effect.t
 type _ Effect.t += GetBindingModuleMap : string Id.Map.t Effect.t
 type _ Effect.t += GetCurrentBlock : block Effect.t
-type _ Effect.t += GetScopeCtxPtr : C_ast.expr Effect.t
+type _ Effect.t += GetScope : scope Effect.t
 type _ Effect.t += GetUnwindCtx : unwind_ctx Effect.t
 
 type transpiled_fn =
@@ -244,6 +245,7 @@ module Impl = struct
       (match expr.shape with
        | Types.PE_Binding binding -> lookup_binding binding
        | Types.PE_Const place -> transpile_place place
+       | Types.PE_Context -> failwith __LOC__
        | Types.PE_Field { obj; field; field_span = _ } ->
          let field =
            match field with
@@ -613,6 +615,7 @@ module Impl = struct
       | Types.T_ContextTy ->
         (* TODO maybe? *)
         Alias Unit
+      | Types.T_ImplicitContext -> Alias (Raw "Context")
       | Types.T_CompilerScope -> Alias Unit
       | Types.T_Opaque { name = _; native_name } ->
         (match native_name with
@@ -866,6 +869,7 @@ module Impl = struct
         in
         let body : C_ast.block =
           new_block (fun () ->
+            let scope : scope = { ctx_ptr = Claim (Ident ctx_var) } in
             try
               captured_bindings
               |> List.iter (fun (binding : binding) ->
@@ -941,7 +945,7 @@ module Impl = struct
                  | Unit | Void -> insert_stmt (Expr result)
                  | _ -> insert_stmt (Return result))
             with
-            | effect GetScopeCtxPtr, k -> Effect.continue k (Claim (Ident ctx_var)))
+            | effect GetScope, k -> Effect.continue k scope)
         in
         let name = gen_name "fn" in
         ctx.fns
@@ -1187,6 +1191,7 @@ module Impl = struct
     | V_ContextTy _ ->
       (* TODO maybe? *)
       Unit
+    | V_ImplicitContext _ -> failwith __LOC__
     | V_CompilerScope _ -> Unit
     | V_Opaque _ -> failwith __LOC__
     | V_Blocked _ -> failwith __LOC__
@@ -1352,7 +1357,7 @@ module Impl = struct
     in
     let args =
       match f_ty.call_convention |> Inference.await_inferred_simple with
-      | None -> [ Effect.perform GetScopeCtxPtr ] @ args
+      | None -> [ (Effect.perform GetScope).ctx_ptr ] @ args
       | Some "C" -> args
       | Some other -> fail "unknown conv %S" other
     in
@@ -1461,8 +1466,8 @@ module Impl = struct
   and current_context (context_ty : Types.value_context_ty) : C_ast.place_expr =
     let ctx = Effect.perform GetCtx in
     ctx.contexts <- ctx.contexts |> Id.Map.add context_ty.id context_ty;
-    let ctx_ptr = Effect.perform GetScopeCtxPtr in
-    Field { obj = Deref ctx_ptr; field = context_field_name context_ty }
+    let scope = Effect.perform GetScope in
+    Field { obj = Deref scope.ctx_ptr; field = context_field_name context_ty }
 
   and execute_expr (expr : expr) : unit =
     match eval_expr expr with
@@ -1500,11 +1505,14 @@ module Impl = struct
           ; cleanup_scope_without_unwind = (fun () -> ())
           }
         in
+        let parent_scope = Effect.perform GetScope in
+        let scope : scope = { ctx_ptr = parent_scope.ctx_ptr } in
         (try
            let result = eval_expr expr in
            unwind_ctx.cleanup_scope_without_unwind ();
            result
          with
+         | effect GetScope, k -> Effect.continue k scope
          | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx)
       | Types.E_Fn { ty = f_ty; def; _ } ->
         let is_closure = f_ty.is_closure |> Inference.await_inferred_simple in
@@ -1868,15 +1876,17 @@ module Impl = struct
              });
         (* currently_unwinding = token->raw *)
         insert_stmt
-          (Assign
-             { assignee = Native { parts = [ Raw "currently_unwinding" ] }
-             ; value =
-                 Claim
-                   (Field
-                      { obj = Deref (Claim (Deref (Claim (Ident token_var))))
-                      ; field = "raw"
-                      })
-             });
+          (Expr
+             (Apply
+                { f = Native { parts = [ Raw "start_unwinding" ] }
+                ; args =
+                    [ Claim
+                        (Field
+                           { obj = Deref (Claim (Deref (Claim (Ident token_var))))
+                           ; field = "raw"
+                           })
+                    ]
+                }));
         (Effect.perform GetUnwindCtx).insert_unwind ();
         None
       | Types.E_InjectContext { context_ty; value } ->
@@ -1887,6 +1897,11 @@ module Impl = struct
         insert_stmt (Assign { assignee = ctx_place; value });
         defer (fun () ->
           insert_stmt (Assign { assignee = ctx_place; value = Claim (Ident old_var) }));
+        None
+      | Types.E_LetRefContext new_ref ->
+        let new_ctx_var = gen_name "ctx" in
+        let_var ~gc:false (Raw "Context*") new_ctx_var (transpile_expr new_ref);
+        (Effect.perform GetScope).ctx_ptr <- Claim (Ident new_ctx_var);
         None
       | Types.E_CurrentContext { context_ty } -> Some (Claim (current_context context_ty))
       | Types.E_ImplCast _ -> None
@@ -1996,6 +2011,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; cleanup_scope_without_unwind = (fun () -> ())
     }
   in
+  let scope : scope = { ctx_ptr = Claim (Ident ctx_var) } in
   (try
      let main : C_ast.fn_def =
        { args =
@@ -2036,7 +2052,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
            : C_ast.ty_def)
    with
    | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
-   | effect GetScopeCtxPtr, k -> Effect.continue k (Claim (Ident ctx_var))
+   | effect GetScope, k -> Effect.continue k scope
    | effect CurrentFnCaptured, k -> Effect.continue k captured
    | effect GetCtx, k -> Effect.continue k ctx
    | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty);

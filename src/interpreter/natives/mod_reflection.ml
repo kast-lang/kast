@@ -243,6 +243,7 @@ let init () =
          | T_UnwindToken _ -> failwith __LOC__
          | T_Target -> failwith __LOC__
          | T_ContextTy -> failwith __LOC__
+         | T_ImplicitContext -> failwith __LOC__
          | T_CompilerScope -> failwith __LOC__
          | T_Opaque _ -> failwith __LOC__
          | T_Blocked _ -> failwith __LOC__

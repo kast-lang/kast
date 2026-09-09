@@ -33,6 +33,7 @@ let rec complete_from_compiler_scope (scope : Types.compiler_scope)
            | Types.T_CompilerScope -> Folder
            | Types.T_Ty -> TypeParameter
            | Types.T_ContextTy -> TypeParameter
+           | Types.T_ImplicitContext -> TypeParameter
            | Types.T_Fn _ -> Function
            | Types.T_Generic _ -> Function)
       in

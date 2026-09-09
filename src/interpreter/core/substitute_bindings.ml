@@ -168,6 +168,7 @@ module Impl = struct
         V_UnwindToken { id; result_ty = sub_ty ~state result_ty } |> shaped
       | V_Target _ -> original_value
       | V_ContextTy { id; ty } -> V_ContextTy { id; ty = sub_ty ~state ty } |> shaped
+      | V_ImplicitContext _ -> (* hmmmmmmmm *) original_value
       | V_Opaque { ty; value } ->
         V_Opaque { ty = sub_ty_opaque ~state ty; value } |> shaped
       | V_Blocked blocked -> sub_blocked ~original_value ~state blocked
@@ -432,8 +433,8 @@ module Impl = struct
     let result =
       match shape with
       | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float32 | T_Float64
-      | T_String | T_Char | T_Target | T_ContextTy | T_CompilerScope | T_Error | T_Ast
-      | T_Ty ->
+      | T_String | T_Char | T_Target | T_ContextTy | T_ImplicitContext | T_CompilerScope
+      | T_Error | T_Ast | T_Ty ->
         original_ty
       | T_Opaque ty -> T_Opaque (sub_ty_opaque ~state ty) |> shaped
       | T_Ref { mut; referenced } ->

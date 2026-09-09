@@ -232,6 +232,7 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
              ~span
              (Ty.inferred ~span (T_Ref { mut; referenced = value_ty }));
         mut, { ty = value_ty }
+      | PE_Context -> inferred_mut true, { ty = Ty.inferred ~span T_ImplicitContext }
       | PE_Const place ->
         ( inferred_mut
             (match place.mut with
@@ -539,6 +540,16 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         { ty = result_ty }
       | E_InjectContext { context_ty; value } ->
         value.data.signature.ty |> Inference.Ty.expect_inferred_as ~span context_ty.ty;
+        { ty = Ty.inferred ~span T_Unit }
+      | E_LetRefContext new_ref ->
+        new_ref.data.signature.ty
+        |> Inference.Ty.expect_inferred_as
+             ~span
+             (T_Ref
+                { mut = IsMutable.new_inferred ~span true
+                ; referenced = T_ImplicitContext |> Ty.inferred ~span
+                }
+              |> Ty.inferred ~span);
         { ty = Ty.inferred ~span T_Unit }
       | E_CurrentContext { context_ty } -> { ty = context_ty.ty }
       | E_ImplCast { value; target; impl } ->

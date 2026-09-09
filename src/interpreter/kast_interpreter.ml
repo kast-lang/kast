@@ -11,7 +11,7 @@ let init : Types.name_part -> Scope.locals -> state =
   ; result_scope = None
   ; monomorphization_state = Types.init_monomorphization_state ()
   ; natives = Natives.init_natives ()
-  ; contexts = Id.Map.empty
+  ; implicit_context = { contexts = Id.Map.empty }
   ; instantiated_generics = { map = Id.Map.empty }
   ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
   ; current_name = Simple name_part

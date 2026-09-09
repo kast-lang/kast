@@ -2640,6 +2640,58 @@ let auto_instantiate : core_syntax =
   }
 ;;
 
+let context : core_syntax =
+  { name = "context"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        let place () = PE_Context |> init_place_expr span C.state in
+        match kind with
+        | Expr -> E_Claim (place ()) |> init_expr span C.state
+        | PlaceExpr -> place ()
+        | TyExpr ->
+          let const =
+            const_shape
+              (V_Ty (Ty.inferred ~span T_ImplicitContext) |> Value.inferred ~span)
+            |> init_expr span C.state
+          in
+          (fun () -> TE_Expr const) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
+          error span "auto_instantiate can't be pattern | assignee";
+          init_error span C.state kind)
+  }
+;;
+
+let let_context : core_syntax =
+  { name = "let &context"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        let new_ref = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let expr () =
+          let new_ref = C.compile Expr new_ref in
+          E_LetRefContext new_ref |> init_expr span C.state
+        in
+        match kind with
+        | Expr -> expr ()
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | TyExpr -> (fun () -> TE_Expr (expr ())) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
+          error span "auto_instantiate can't be pattern | assignee";
+          init_error span C.state kind)
+  }
+;;
+
 let include_ast : core_syntax =
   { name = "include_ast"
   ; handle =
@@ -2761,6 +2813,8 @@ let core =
   ; record
   ; empty_variant
   ; auto_instantiate
+  ; context
+  ; let_context
   ]
 ;;
 
