@@ -1,3 +1,11 @@
+let mutex = std.sync.Mutex.new(());
+
+let print = (s :: String) => (
+    let mutex = std.sync.Mutex.lock(&mutex);
+    std.io.print(s);
+    std.sync.Mutex.unlock(mutex);
+);
+
 for (i :: Int32) in 0..10 do (
     std.thread.spawn(() => with_return (
         print("Started thread #" + to_string(i));
@@ -10,5 +18,5 @@ for (i :: Int32) in 0..10 do (
 );
 
 print("All threads started");
-std.thread.sleep_ns(1000000000);
+std.thread.sleep_ns(5000000000);
 print("The End");

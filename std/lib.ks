@@ -59,5 +59,6 @@ include "./panic.ks";
 const type_of_value = [T] (x :: T) -> Type => T;
 
 const thread = include "./thread.ks";
+const sync = include "./sync.ks";
 
 const prelude = include "./prelude.ks";

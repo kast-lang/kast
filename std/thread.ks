@@ -3,14 +3,7 @@ module:
 const Id = @opaque_type "pthread_t";
 
 const sleep_ns = (ns :: Int64) => (
-    let s = ns / 1000000000;
-    let ns = ns % 1000000000;
-    let result :: Int32 = @native ''
-        nanosleep(&(struct timespec){.tv_sec=\(s),.tv_nsec=\(ns)}, NULL)
-    '';
-    if result != 0 then (
-        panic("Failed to sleep");
-    );
+    @native "Kast_sleep_ns(\(ns))";
 );
 
 const spawn = (f :: () -> ()) -> Id => (

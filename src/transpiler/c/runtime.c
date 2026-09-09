@@ -14,6 +14,7 @@
 #ifdef USE_BACKTRACE
 #include <backtrace.h>
 #endif
+#include <errno.h>
 #include <features.h>
 #include <netdb.h>
 #include <stdarg.h>
@@ -27,6 +28,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #ifdef __FILC__
 #include <stdfil.h>
@@ -150,6 +152,21 @@ typedef uint64_t UInt64;
 typedef float Float32;
 typedef double Float64;
 typedef uint32_t Char;
+
+void Kast_sleep_ns(int64_t ns) {
+    time_t s = ns / 1000000000;
+    ns %= 1000000000;
+    struct timespec remaining = {.tv_sec = s, .tv_nsec = ns};
+    while (true) {
+        int res = nanosleep(&remaining, &remaining);
+        if (res == 0) {
+            break;
+        }
+        if (errno != EINTR) {
+            panic_errno("Failed to sleep");
+        }
+    }
+}
 
 typedef struct {
     uint64_t id;
