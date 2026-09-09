@@ -1095,7 +1095,13 @@ module Impl = struct
                (Native
                   { parts =
                       [ Raw
-                          ("GC_add_roots(&" ^ value_name ^ ", (&" ^ value_name ^ ") + 1)")
+                          ("#ifdef USE_GC\n"
+                           ^ "GC_add_roots(&"
+                           ^ value_name
+                           ^ ", (&"
+                           ^ value_name
+                           ^ ") + 1);\n"
+                           ^ "#endif\n")
                       ]
                   });
              Dynarray.add_last ctx.statics static);

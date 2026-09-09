@@ -5,6 +5,8 @@
 #else
 #define USE_BACKTRACE
 #include <execinfo.h>
+#include <threads.h>
+#define GC_THREADS
 #endif
 #ifdef USE_BACKTRACE
 #include <backtrace.h>
@@ -104,7 +106,7 @@ noreturn void panic_errno(const char* s) {
 
 void* Kast_malloc(size_t size) {
 #ifdef USE_GC
-    void* result = GC_malloc(size);
+    void* result = GC_MALLOC_ATOMIC(size);
 #else
     void* result = malloc(size);
 #endif
@@ -116,7 +118,7 @@ void* Kast_malloc(size_t size) {
 
 void* Kast_realloc(void* memory, size_t size) {
 #ifdef USE_GC
-    void* result = GC_realloc(memory, size);
+    void* result = GC_REALLOC(memory, size);
 #else
     void* result = realloc(memory, size);
 #endif
@@ -128,7 +130,7 @@ void* Kast_realloc(void* memory, size_t size) {
 
 void Kast_free(void* memory) {
 #ifdef USE_GC
-    GC_free(memory);
+    GC_FREE(memory);
 #else
     free(memory);
 #endif
@@ -150,7 +152,7 @@ typedef struct {
     uint64_t id;
 } RawUnwindToken;
 
-RawUnwindToken currently_unwinding = {.id = 0};
+thread_local RawUnwindToken currently_unwinding = {.id = 0};
 
 bool are_we_unwinding() {
     return currently_unwinding.id != 0;
@@ -160,11 +162,15 @@ bool are_we_unwinding_with(RawUnwindToken token) {
     return currently_unwinding.id == token.id;
 }
 
+void start_unwinding(RawUnwindToken target) {
+    currently_unwinding = target;
+}
+
 void stop_unwinding() {
     currently_unwinding = (RawUnwindToken) {.id = 0};
 }
 
-uint64_t next_unwind_token_id = 1;
+thread_local uint64_t next_unwind_token_id = 1;
 
 RawUnwindToken RawUnwindToken_new() {
     return (RawUnwindToken) {
@@ -327,16 +333,20 @@ CliArgs CLI_ARGS;
 
 #ifdef USE_GC
 bool KAST_GC_ENABLED = true;
+
 void Kast_run_gc(void* _data) {
     if (KAST_GC_ENABLED) {
         GC_enable();
         GC_gcollect();
         GC_disable();
     }
-#endif
 }
+#endif
 
 void Kast_init(int argc, char* argv[]) {
+#ifdef USE_GC
+    GC_INIT();
+#endif
 #ifdef __EMSCRIPTEN__
     // Using solution 2 from boehmgc docs
     // https://github.com/bdwgc/bdwgc/blob/master/docs/platforms/README.emscripten
