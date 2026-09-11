@@ -738,7 +738,9 @@ String tcp_Stream_read_line(tcp_Stream* s) {
 
 void tcp_Stream_write(tcp_Stream* s, String* data) {
     Kast_write(s->writer, *data);
-    fflush(s->writer);
+    if (fflush(s->writer) != 0) {
+        panic_errno("tcp_Stream_write.fflush");
+    }
 }
 
 tcp_Listener tcp_Listener_bind(String addr) {
