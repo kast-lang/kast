@@ -707,6 +707,9 @@ tcp_Stream tcp_Stream_connect(String addr) {
     Kast_free(host_c);
     Kast_free(port_c);
     for (rp = ai; rp != NULL; rp = rp->ai_next) {
+        if (rp->ai_socktype != SOCK_STREAM) {
+            continue;
+        }
         int sock_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sock_fd == -1) {
             panic_errno("tcp_Stream_connect.socket");
