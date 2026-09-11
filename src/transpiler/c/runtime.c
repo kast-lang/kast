@@ -5,7 +5,6 @@
 #define thread_local
 #else
 #define USE_BACKTRACE
-#include <execinfo.h>
 #include <pthread.h>
 #define thread_local __thread
 // NOTE: never use <threads.h> its borked (with beohmgc specifically)
@@ -13,6 +12,8 @@
 #endif
 #ifdef USE_BACKTRACE
 #include <backtrace.h>
+#else
+#include <execinfo.h>
 #endif
 #include <errno.h>
 #include <features.h>
@@ -651,7 +652,8 @@ String Kast_getenv(String name) {
 
 typedef struct {
     int sock_fd;
-    FILE* stream;
+    FILE* reader;
+    FILE* writer;
 } tcp_Stream;
 
 typedef struct {
@@ -659,13 +661,18 @@ typedef struct {
 } tcp_Listener;
 
 tcp_Stream tcp_Stream_from_fd(int fd) {
-    FILE* stream = fdopen(fd, "r+");
-    if (!stream) {
+    FILE* reader = fdopen(fd, "r");
+    if (!reader) {
+        panic_errno("tcp_Stream_from_fd");
+    }
+    FILE* writer = fdopen(fd, "w");
+    if (!writer) {
         panic_errno("tcp_Stream_from_fd");
     }
     return (tcp_Stream) {
         .sock_fd = fd,
-        .stream = stream,
+        .reader = reader,
+        .writer = writer,
     };
 }
 
@@ -714,18 +721,24 @@ tcp_Stream tcp_Stream_connect(String addr) {
 }
 
 void tcp_Stream_close(tcp_Stream s) {
-    int res = fclose(s.stream);
+    int res = fclose(s.reader);
     if (res != 0) {
-        panic_errno("tcp_Stream_close");
+        panic_errno("tcp_Stream_close.reader");
     }
+    // Dont need to close writer since reader closes underlying fd
+    // res = fclose(s.writer);
+    // if (res != 0) {
+    //     panic_errno("tcp_Stream_close.writer");
+    // }
 }
 
 String tcp_Stream_read_line(tcp_Stream* s) {
-    return Kast_read_until(s->stream, '\n');
+    return Kast_read_until(s->reader, '\n');
 }
 
 void tcp_Stream_write(tcp_Stream* s, String* data) {
-    Kast_write(s->stream, *data);
+    Kast_write(s->writer, *data);
+    fflush(s->writer);
 }
 
 tcp_Listener tcp_Listener_bind(String addr) {
