@@ -13,7 +13,9 @@
 #ifdef USE_BACKTRACE
 #include <backtrace.h>
 #else
+#ifndef __EMSCRIPTEN__
 #include <execinfo.h>
+#endif
 #endif
 #include <errno.h>
 #include <features.h>
