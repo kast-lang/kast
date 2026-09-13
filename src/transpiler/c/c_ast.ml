@@ -6,7 +6,7 @@ type literal =
   | Int32 of int32
   | Int64 of int64
   | Float64 of float
-  | Char of Uchar.t
+  | Char of char
   | String of string
 
 and expr =
@@ -287,7 +287,7 @@ module Print = struct
            | Int32 x -> Int32.to_string x
            | Int64 x -> Int64.to_string x
            | Float64 x -> Float.to_string x
-           | Char x -> make_string "%a" Uchar.print_debug x
+           | Char x -> make_string "%C" x
            | String s -> make_string "%a" String.print_debug s)
       | And (a, b) ->
         print_expr a;

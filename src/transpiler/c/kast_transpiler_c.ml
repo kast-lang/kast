@@ -1116,7 +1116,7 @@ module Impl = struct
     | V_Int32 x | V_UInt32 x -> Literal (Int32 x)
     | V_Int64 x | V_UInt64 x -> Literal (Int64 x)
     | V_Float64 x | V_Float32 x -> Literal (Float64 x)
-    | V_Char x -> Literal (Char x)
+    | V_Char c -> Literal (Int32 (Int32.of_int (Uchar.to_int c)))
     | V_Ref _ -> failwith __LOC__
     | V_String s ->
       Apply
