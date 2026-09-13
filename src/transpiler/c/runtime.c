@@ -875,3 +875,9 @@ Int64 random_Int64(Int64 min, Int64 max) {
 Float64 random_Float64(Float64 min, Float64 max) {
     return min + (max - min) * ((Float64)rand() / (Float64)RAND_MAX);
 }
+
+UInt64 Float64_to_bits(Float64 self) {
+    UInt64 uint;
+    memcpy(&uint, &self, sizeof(uint));
+    return uint;
+}

@@ -156,6 +156,7 @@ let init_natives () =
     @ Mod_random.init ()
     @ Mod_char.init ()
     @ Mod_string.init ()
+    @ Mod_float64.init ()
     @ Mod_dbg.init ()
     @ Mod_net.init ()
     @ Mod_io.init ()
@@ -175,6 +176,7 @@ module Sys = Mod_sys
 module Random = Mod_random
 module Char = Mod_char
 module String = Mod_string
+module Float64 = Mod_float64
 module Dbg = Mod_dbg
 module Net = Mod_net
 module Io = Mod_io

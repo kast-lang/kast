@@ -142,6 +142,9 @@ interface Kast<isNode> extends Backend<isNode> {
     utf8_length: Fn<[string], number>;
     to_string: Fn<[Value], string>;
   };
+  Float64: {
+    to_bits: Fn<[number], bigint>;
+  };
   parse: {
     Int32: Fn<[string], number>;
     Int64: Fn<[string], bigint>;
@@ -607,6 +610,13 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       string_encoding_len(ctx, c: string): number {
         return c.length;
       },
+    },
+    Float64: {
+      to_bits(ctx, self: number): bigint {
+        const buffer = new ArrayBuffer(8);
+        new Float64Array(buffer)[0] = self;
+        return new BigUint64Array(buffer)[0];
+      }
     },
     String: {
       substring: (ctx, s, start, len) => {
