@@ -35,6 +35,7 @@ const op = include "./op.ks";
 
 include "./char.ks";
 include "./string.ks";
+include "./float64.ks";
 
 const reflection = include "./reflection.ks";
 const range = include "./range.ks";
