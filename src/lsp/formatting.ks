@@ -8,11 +8,11 @@ const formatting = (
 
     const format = (state :: &mut State, request :: Json.t) -> Json.t => with_return (
         let :Object fields = request;
-        let &(:Object params) = &fields |> OrdMap.get("params") |> Option.unwrap;
+        let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
         let text_document = (
-            let &value = &params |> OrdMap.get("textDocument") |> Option.unwrap;
+            let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
             let :Object fields = value;
-            let &(:String uri) = &fields |> OrdMap.get("uri") |> Option.unwrap;
+            let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
             { .uri = parse(uri) }
         );
 

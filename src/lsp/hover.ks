@@ -5,18 +5,18 @@ module:
 
 const hover = (state :: &mut State, request :: Json.t) -> Json.t => with_return (
     let :Object fields = request;
-    let &(:Object params) = &fields |> OrdMap.get("params") |> Option.unwrap;
+    let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
     let text_document = (
-        let &value = &params |> OrdMap.get("textDocument") |> Option.unwrap;
+        let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
         let :Object fields = value;
-        let &(:String uri) = &fields |> OrdMap.get("uri") |> Option.unwrap;
+        let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
         { .uri = parse(uri) }
     );
     let position :: Position = (
-        let &value = &params |> OrdMap.get("position") |> Option.unwrap;
+        let (&value) = &params |> OrdMap.get("position") |> Option.unwrap;
         let :Object fields = value;
-        let &(:Number line) = &fields |> OrdMap.get("line") |> Option.unwrap;
-        let &(:Number column) = &fields |> OrdMap.get("character") |> Option.unwrap;
+        let (&(:Number line)) = &fields |> OrdMap.get("line") |> Option.unwrap;
+        let (&(:Number column)) = &fields |> OrdMap.get("character") |> Option.unwrap;
         let line = std.convert.float64_to_int32(line);
         let column = std.convert.float64_to_int32(column);
         {

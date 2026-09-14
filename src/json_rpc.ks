@@ -94,7 +94,7 @@ const JsonRpc = (
                 |> std.Result.unwrap
                 |> Json.from_dep;
             let :Object message = json;
-            let &(:String jsonrpc) = &message |> OrdMap.get("jsonrpc") |> Option.unwrap;
+            let (&(:String jsonrpc)) = &message |> OrdMap.get("jsonrpc") |> Option.unwrap;
             if jsonrpc != "2.0" then (
                 panic("jsonrpc is not 2.0 but " + String.escape(jsonrpc));
             );
