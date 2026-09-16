@@ -33,7 +33,7 @@ const Lsp = (
         request :: Json.t,
     ) -> Json.t => with_return (
         let :Object request_fields = request;
-        let &(:String method) = &request_fields |> OrdMap.get("method") |> Option.unwrap;
+        let (&(:String method)) = &request_fields |> OrdMap.get("method") |> Option.unwrap;
         Log.info(
             () => (
                 let output = @current Output;
@@ -66,7 +66,7 @@ const Lsp = (
     );
     const on_notification = (state :: &mut State, notification :: Json.t) -> () => with_return (
         let :Object fields = notification;
-        let &(:String method) = &fields |> OrdMap.get("method") |> Option.unwrap;
+        let (&(:String method)) = &fields |> OrdMap.get("method") |> Option.unwrap;
         Log.info(
             () => (
                 let output = @current Output;

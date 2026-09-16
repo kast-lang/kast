@@ -81,12 +81,12 @@ const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: String)
 
 const did_open = (state :: &mut State, n :: Json.t) -> () => (
     let :Object fields = n;
-    let &(:Object params) = &fields |> OrdMap.get("params") |> Option.unwrap;
+    let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
     let text_document = (
-        let &value = &params |> OrdMap.get("textDocument") |> Option.unwrap;
+        let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
         let :Object fields = value;
-        let &(:String uri) = &fields |> OrdMap.get("uri") |> Option.unwrap;
-        let &(:String text) = &fields |> OrdMap.get("text") |> Option.unwrap;
+        let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
+        let (&(:String text)) = &fields |> OrdMap.get("text") |> Option.unwrap;
         { .uri = parse(uri), .text }
     );
     state |> open_or_change_doc(text_document.uri, text_document.text)
@@ -94,15 +94,15 @@ const did_open = (state :: &mut State, n :: Json.t) -> () => (
 
 const did_change = (state :: &mut State, n :: Json.t) -> () => (
     let :Object fields = n;
-    let &(:Object params) = &fields |> OrdMap.get("params") |> Option.unwrap;
+    let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
     let text_document = (
-        let &value = &params |> OrdMap.get("textDocument") |> Option.unwrap;
+        let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
         let :Object fields = value;
-        let &(:String uri) = &fields |> OrdMap.get("uri") |> Option.unwrap;
+        let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
         { .uri = parse(uri) }
     );
-    let &(:Array changes) = &params |> OrdMap.get("contentChanges") |> Option.unwrap;
-    let &(:Object change) = &changes |> ArrayList.at(0);
-    let &(:String text) = &change |> OrdMap.get("text") |> Option.unwrap;
+    let (&(:Array changes)) = &params |> OrdMap.get("contentChanges") |> Option.unwrap;
+    let (&(:Object change)) = &changes |> ArrayList.at(0);
+    let (&(:String text)) = &change |> OrdMap.get("text") |> Option.unwrap;
     state |> open_or_change_doc(text_document.uri, text)
 );
