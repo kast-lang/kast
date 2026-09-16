@@ -12,7 +12,6 @@
     };
     nix-filter.url = "github:numtide/nix-filter";
     flake-utils.url = "github:numtide/flake-utils";
-    filc.url = "github:mbrock/filnix";
   };
   outputs = inputs:
     let
@@ -180,7 +179,6 @@
             clang_22
             boehmgc
             libbacktrace
-            inputs.filc.packages.${system}.filcc
           ]);
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang_22}/bin/clang*";
