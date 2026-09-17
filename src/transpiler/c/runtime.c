@@ -173,11 +173,6 @@ typedef float Float32;
 typedef double Float64;
 typedef uint32_t Char;
 
-typedef struct {
-    FILE* stream;
-    char buf[1024];
-} Kast_BufReader;
-
 void Kast_sleep_ns(int64_t ns) {
     time_t s = ns / 1000000000;
     ns %= 1000000000;
