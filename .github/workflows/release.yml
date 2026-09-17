@@ -1,0 +1,86 @@
+name: Release
+on:
+  push:
+    tags:
+    - v*
+
+env:
+  # Preview mode: Publishes the build output as a CI artifact instead of creating
+  # a release, allowing for manual inspection of the output. This mode is
+  # activated if the CI run was triggered on a fork of the repository
+  preview: ${{ github.repository != 'kast-lang/kast' }}
+
+permissions: read-all
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout tree
+        uses: actions/checkout@v6
+
+      - name: Set-up OCaml/OPAM
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.4.0"
+
+      - name: Install dune
+        # NOTE: change this if the development dune version set in flake.nix (createScope) changes
+        run: opam install dune.3.21.1
+
+      - name: Generate opam-file
+        run: opam exec -- dune build kast.opam
+
+      - name: Install OCaml Dependencies
+        run: opam install . --deps-only
+
+      # Needed to compile runtime.mts to javascript (src/transpiler/javascript/dune)
+      - name: Install Node Dependencies
+        run: npm install
+
+      - name: Build Kast
+        run: opam exec -- dune build
+
+      - name: Build Archive
+        shell: bash
+        run: |
+          mkdir -p dist
+          # copy binary
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp _build/default/src/kast/bin/main.exe "dist/kast.exe"
+          else
+            cp _build/default/src/kast/bin/main.exe "dist/kast"
+          fi
+          # copy standard-library
+          cp -r std dist/std
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v4
+        if: env.preview == 'false'
+        with:
+          subject-path: 'dist/*'
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@29e53e917877a24fad85510ded594ab3c9ca12de # 2.11.5
+        if: env.preview == 'false'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/*
+          file_glob: true
+          tag: ${{ github.ref_name }}
+          overwrite: true
+
+      - name: Upload binary as artifact
+        uses: actions/upload-artifact@v7
+        if: env.preview == 'true'
+        with:
+          name: release
+          path: dist/*
