@@ -1,3 +1,16 @@
+/* idk where this is documented,
+ * but we want old winsock.h instead of winsock2.h */
+#ifdef _WIN32
+#define _WINSOCKAPI_
+#include <windows.h>
+#undef near
+#undef far
+#endif
+
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#define __POSIX__
+#endif
+
 // #define _GNU_SOURCE
 // #define _POSIX_C_SOURCE 200112L
 #ifdef __EMSCRIPTEN__
@@ -462,15 +475,20 @@ void* Kast_ensure_correct_malloc(void* buf, size_t size) {
 }
 
 String Kast_asprintf(const char* fmt, ...) {
-    char* buf;
     va_list va;
     va_start(va, fmt);
-    int length = vasprintf(&buf, fmt, va);
+    int buf_size = vsnprintf(NULL, 0, fmt, va);
+    va_end(va);
+    if (buf_size < 0) {
+        exit_with_error("determining asprintf length failed");
+    }
+    char* buf = Kast_malloc(buf_size + 1);
+    va_start(va, fmt);
+    int length = vsnprintf(buf, buf_size, fmt, va);
     va_end(va);
     if (length < 0) {
         panic_errno("Kast_asprintf");
     }
-    buf = Kast_ensure_correct_malloc(buf, length);
     return (String) {
         .buf = buf,
         .length = length,
@@ -705,11 +723,20 @@ void Kast_chdir(String path) {
 Int32 Kast_exec(String cmd) {
     char* cmd_c = String_to_C_String(cmd);
     int res = system(cmd_c);
+    Kast_free(cmd_c);
+#ifdef __POSIX__
     if (res == -1) {
         panic_errno("Kast_exec");
     }
-    Kast_free(cmd_c);
     return WEXITSTATUS(res);
+#elif defined(_WIN32)
+    if (res == -1) {
+        panic_errno("Kast_exec");
+    }
+    return res;
+#else
+    UNKOWN_SYSTEM
+#endif
 }
 
 String Kast_getenv(String name) {
@@ -881,6 +908,9 @@ tcp_Listener tcp_Listener_bind(String addr) {
 }
 
 void tcp_Listener_listen(tcp_Listener* l, int max_pending) {
+#ifdef _WIN32
+    exit_with_error("TODO tcp_Listener_listen windows");
+#else
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wanalyzer-fd-leak"
     int res = listen(l->fd, max_pending);
@@ -888,6 +918,7 @@ void tcp_Listener_listen(tcp_Listener* l, int max_pending) {
         panic_errno("tcp_Listener_listen");
     }
 #pragma GCC diagnostic pop
+#endif
 }
 
 typedef struct {
