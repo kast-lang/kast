@@ -58,15 +58,33 @@ jobs:
       - name: Build Archive
         shell: bash
         run: |
-          mkdir -p dist
-          # copy binary
+          set -ex
+
+          source="$(pwd)"
+          tag=${GITHUB_REF_NAME//\//}
+          platform="${{ runner.os }}"
+          exe=""
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp _build/default/src/kast/bin/main.exe "dist/kast.exe"
-          else
-            cp _build/default/src/kast/bin/main.exe "dist/kast"
+              exe=".exe"
           fi
-          # copy standard-library
-          cp -r std dist/std
+          pkgname=kast-$tag-$platform
+
+          cd "$(mktemp -d)" # go to temp dir
+
+          # copy to pkgname
+          mkdir -p $pkgname
+          cp $source/LICENSE $source/README.md $pkgname
+          cp $source/_build/default/src/kast/bin/main.exe $pkgname/kast$exe
+          cp -r $source/std $pkgname/std
+
+          # archive pkgname into $source/dist
+          mkdir dist
+          if [ "$exe" = "" ]; then
+              tar cJf dist/$pkgname.tar.xz $pkgname
+          else
+              7z a -r dist/$pkgname.zip $pkgname
+          fi
+          mv dist $source/
 
       - name: Attest release artifacts
         uses: actions/attest-build-provenance@v4
