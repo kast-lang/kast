@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+// #define _GNU_SOURCE
 // #define _POSIX_C_SOURCE 200112L
 #ifdef __EMSCRIPTEN__
 #include <emscripten/html5.h>
@@ -17,9 +17,15 @@
 #include <execinfo.h>
 #endif
 #endif
-#include <errno.h>
-#include <features.h>
+
+#ifdef _WIN32
+// TODO windows networking
+#else
 #include <netdb.h>
+#include <sys/socket.h>
+#endif
+
+#include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -28,9 +34,7 @@
 #include <stdlib.h>
 #include <stdnoreturn.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #ifdef __FILC__
@@ -156,6 +160,11 @@ typedef float Float32;
 typedef double Float64;
 typedef uint32_t Char;
 
+typedef struct {
+    FILE* stream;
+    char buf[1024];
+} Kast_BufReader;
+
 void Kast_sleep_ns(int64_t ns) {
     time_t s = ns / 1000000000;
     ns %= 1000000000;
@@ -244,20 +253,66 @@ void utf8_char_encode_step(char** s, Char c) {
     *s += bytes;
 }
 
+size_t Char_utf8_length_based_on_first_byte(char byte) {
+    size_t length = 0;
+    while (byte & (1 << (7 - length))) {
+        length++;
+    }
+    if (length == 0) {
+        length = 1;
+    }
+    return length;
+}
+
+int Kast_fgetc(FILE* f) {
+    int res = fgetc(f);
+    if (res == EOF) {
+        if (feof(f)) {
+            return EOF;
+        }
+        int err = ferror(f);
+        if (err == 0) {
+            exit_with_error("fgetc returned EOF, but not eof or error???");
+        } else {
+            exit_with_error(strerror(err));
+        }
+    }
+    return res;
+}
+
 Char utf8_char_decode_step(const char** s) {
-    size_t bytes = 0;
-    while ((**s) & (1 << (7 - bytes))) {
-        bytes++;
-    }
-    if (bytes == 0) {
-        bytes = 1;
-    }
+    size_t bytes = Char_utf8_length_based_on_first_byte(**s);
     Char result = 0;
     for (size_t i = 0; i < bytes; i++) {
         char c = *((*s)++);
         int bits = i == 0 ? 7 : 6;
         c &= (1 << bits) - 1;
         result = (result << bits) | c;
+    }
+    return result;
+}
+
+Char Kast_fgetChar(FILE* f) {
+    int c = Kast_fgetc(f);
+    if (c == EOF) {
+        return EOF;
+    }
+    size_t bytes = Char_utf8_length_based_on_first_byte(c);
+    char buf[4];
+    buf[0] = c;
+    size_t i = 1;
+    while (i < bytes) {
+        c = Kast_fgetc(f);
+        if (c == EOF) {
+            exit_with_error("EOF in the middle of utf-8");
+        }
+        buf[i++] = c;
+    }
+    const char* decoder = buf;
+    Char result = utf8_char_decode_step(&decoder);
+    size_t actually_decoded_bytes = decoder - buf;
+    if (actually_decoded_bytes != bytes) {
+        exit_with_error("utf8 decoder is wrong???");
     }
     return result;
 }
@@ -322,7 +377,9 @@ String String_concat(String a, String b) {
 typedef const char* C_String;
 
 void Kast_write(FILE* f, String s) {
-    fwrite(s.buf, sizeof(char), s.length, f);
+    if (s.buf != NULL) {
+        fwrite(s.buf, sizeof(char), s.length, f);
+    }
 }
 
 String String_from_C_String(const C_String s) {
@@ -514,18 +571,29 @@ String Kast_read_file(String path) {
     return result;
 }
 
-String Kast_read_until(FILE* f, Char c) {
+String Kast_read_until(FILE* f, Char delimiter) {
     char* buf = NULL;
-    size_t buf_size = 0;
-    ssize_t length = getdelim(&buf, &buf_size, c, f);
-    if (length < 0) {
-        panic_errno("Kast_read_until.getdelim");
+    size_t capacity = 0;
+    size_t length = 0;
+    for (;;) {
+        Char c = Kast_fgetChar(f);
+        if (c == EOF || c == delimiter) {
+            break;
+        }
+        size_t encode_pos = length;
+        length += Char_utf8_len(c);
+        if (length > capacity) {
+            size_t new_capacity = (capacity == 0) ? length : (capacity * 2);
+            buf = Kast_realloc(buf, new_capacity);
+        }
+        char* encoder = buf + encode_pos;
+        utf8_char_encode_step(&encoder, c);
     }
-    buf = Kast_ensure_correct_malloc(buf, length);
-    return (String) {
+    String result = {
         .buf = buf,
         .length = length,
     };
+    return result;
 }
 
 String Kast_input(String prompt) {
@@ -565,6 +633,8 @@ typedef struct Context Context;
             if (len > list->capacity) {                                        \
                 list->capacity = len;                                          \
             }                                                                  \
+            /* TODO this potentially can lead to UB                            \
+             * because of dangling pointers, even with GC */                   \
             list->buf = Kast_realloc(list->buf, list->capacity * sizeof(T));   \
         }                                                                      \
     }                                                                          \
@@ -679,6 +749,9 @@ tcp_Stream tcp_Stream_from_fd(int fd) {
 }
 
 tcp_Stream tcp_Stream_connect(String addr) {
+#ifdef _WIN32
+    exit_with_error("TODO tcp_Stream_connect windows");
+#else
     char* colon_pos = memchr(addr.buf, ':', addr.length);
     if (!colon_pos) {
         default_panic_handler(String_from_C_String("Expected host:port"));
@@ -723,6 +796,7 @@ tcp_Stream tcp_Stream_connect(String addr) {
     }
     freeaddrinfo(ai);
     default_panic_handler(String_from_C_String("Failed to connect"));
+#endif
 }
 
 void tcp_Stream_close(tcp_Stream s) {
@@ -749,6 +823,9 @@ void tcp_Stream_write(tcp_Stream* s, String* data) {
 }
 
 tcp_Listener tcp_Listener_bind(String addr) {
+#ifdef _WIN32
+    exit_with_error("TODO tcp_Listener_bind windows");
+#else
     char* colon_pos = memchr(addr.buf, ':', addr.length);
     if (!colon_pos) {
         default_panic_handler(String_from_C_String("Expected host:port"));
@@ -800,6 +877,7 @@ tcp_Listener tcp_Listener_bind(String addr) {
     }
     freeaddrinfo(ai);
     default_panic_handler(String_from_C_String("Failed to bind"));
+#endif
 }
 
 void tcp_Listener_listen(tcp_Listener* l, int max_pending) {
@@ -818,13 +896,17 @@ typedef struct {
 } tcp_Listener_accepted;
 
 tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
+#ifdef _WIN32
+    exit_with_error("TODO tcp_Listener_accept windows");
+#else
     int flags = 0;
     if (close_on_exec) {
         flags |= SOCK_CLOEXEC;
     }
     struct sockaddr addr;
     socklen_t addr_len = sizeof(addr);
-    int fd = accept4(l->fd, &addr, &addr_len, flags);
+    // int fd = accept4(l->fd, &addr, &addr_len, flags);
+    int fd = accept(l->fd, &addr, &addr_len);
     if (fd == -1) {
         panic_errno("tcp_Listener_accept.accept4");
     }
@@ -855,6 +937,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
         .stream = tcp_Stream_from_fd(fd),
         .addr = addr_s,
     };
+#endif
 }
 
 void tcp_Listener_close(tcp_Listener l) {
