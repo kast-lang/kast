@@ -470,17 +470,17 @@ void* Kast_ensure_correct_malloc(void* buf, size_t size) {
 }
 
 String Kast_asprintf(const char* fmt, ...) {
-    va_list va;
-    va_start(va, fmt);
-    int buf_size = vsnprintf(NULL, 0, fmt, va);
-    va_end(va);
+    va_list va1, va2;
+    va_start(va1, fmt);
+    va_copy(va2, va1);
+    int buf_size = vsnprintf(NULL, 0, fmt, va1);
+    va_end(va1);
     if (buf_size < 0) {
         exit_with_error("determining asprintf length failed");
     }
     char* buf = Kast_malloc(buf_size + 1);
-    va_start(va, fmt);
-    int length = vsnprintf(buf, buf_size, fmt, va);
-    va_end(va);
+    int length = vsnprintf(buf, buf_size, fmt, va2);
+    va_end(va2);
     if (length < 0) {
         panic_errno("Kast_asprintf");
     }
