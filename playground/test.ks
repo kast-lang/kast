@@ -1,10 +1,11 @@
-use std.collections.OrdMap;
+for c in String.iter("Hello, world") do (
+    print(to_string(c));
+);
 
-let mut map = OrdMap.new[Int32, Int32]();
-&mut map |> OrdMap.add(1, 2);
+for (i :: Int32) in 0..10 do (
+    print(to_string(i));
+);
 
-let at_1 = OrdMap.get_mut(&mut map, 1) |> Option.unwrap;
-at_1^ = 3;
+const foo = ArrayList.new[Int32]();
 
-let at_1 = OrdMap.get(&map, 1) |> Option.unwrap;
-print(to_string(at_1^));
+dbg.print(&foo);

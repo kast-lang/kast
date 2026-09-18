@@ -6,6 +6,21 @@ module Interpreter = Kast_interpreter
 module C_ast = C_ast
 
 let print_span = Span.print
+
+type gc_mode =
+  | Full
+  | EscapeAnalyze
+  | RuntimeBorrowChecker
+  | Disabled
+
+let gc_mode = ref EscapeAnalyze
+
+let is_full_gc () =
+  match !gc_mode with
+  | Full -> true
+  | _ -> false
+;;
+
 let boxed_structs = ref true
 
 let tuple_place var : C_ast.place_expr =
@@ -45,7 +60,7 @@ type unwind_ctx =
   ; mutable cleanup_scope_without_unwind : unit -> unit
   }
 
-type scope = { mutable ctx_ptr : C_ast.expr }
+type scope = { mutable ctx_place : C_ast.place_expr }
 type _ Effect.t += GetInterpreter : Interpreter.state Effect.t
 type _ Effect.t += CurrentFnCaptured : current_captured Effect.t
 type _ Effect.t += GetCtx : ctx Effect.t
@@ -227,7 +242,14 @@ module Impl = struct
     | Some _ -> insert_stmt (Assign { assignee = lookup_binding binding; value })
     | None ->
       let ident = binding_name binding in
-      let_var ~gc:true ty ident value
+      let_var ~gc:(is_full_gc ()) ty ident value
+
+  and ident_place (name : string) : C_ast.place_expr = get_actual_place (Ident name)
+
+  and get_actual_place (place : C_ast.place_expr) : C_ast.place_expr =
+    match !gc_mode with
+    | Full -> Deref (Claim place)
+    | _ -> place
 
   and lookup_binding (binding : binding) : C_ast.place_expr =
     let captured = Effect.perform CurrentFnCaptured in
@@ -241,8 +263,10 @@ module Impl = struct
          (match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
           | Some module_name ->
             Field
-              { obj = Deref (Claim (tuple_place module_name)); field = binding.name.name }
-          | None -> Deref (Claim (Ident (binding_name binding)))))
+              { obj = get_actual_place (tuple_place module_name)
+              ; field = binding.name.name
+              }
+          | None -> ident_place (binding_name binding)))
 
   and transpile_place_expr (expr : Expr.Place.t) : C_ast.place_expr =
     match place_expr_const_propagate expr with
@@ -899,7 +923,7 @@ module Impl = struct
         in
         let body : C_ast.block =
           new_block (fun () ->
-            let scope : scope = { ctx_ptr = Claim (Ident ctx_var) } in
+            let scope : scope = { ctx_place = Deref (Claim (Ident ctx_var)) } in
             try
               captured_bindings
               |> List.iter (fun (binding : binding) ->
@@ -1379,7 +1403,7 @@ module Impl = struct
     in
     let args =
       match f_ty.call_convention |> Inference.await_inferred_simple with
-      | None -> [ (Effect.perform GetScope).ctx_ptr ] @ args
+      | None -> [ C_ast.AddrOf (Effect.perform GetScope).ctx_place ] @ args
       | Some "C" -> args
       | Some other -> fail "unknown conv %S" other
     in
@@ -1489,7 +1513,7 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     ctx.contexts <- ctx.contexts |> Id.Map.add context_ty.id context_ty;
     let scope = Effect.perform GetScope in
-    Field { obj = Deref scope.ctx_ptr; field = context_field_name context_ty }
+    Field { obj = scope.ctx_place; field = context_field_name context_ty }
 
   and execute_expr (expr : expr) : unit =
     match eval_expr expr with
@@ -1528,7 +1552,7 @@ module Impl = struct
           }
         in
         let parent_scope = Effect.perform GetScope in
-        let scope : scope = { ctx_ptr = parent_scope.ctx_ptr } in
+        let scope : scope = { ctx_place = parent_scope.ctx_place } in
         (try
            let result = eval_expr expr in
            unwind_ctx.cleanup_scope_without_unwind ();
@@ -1716,10 +1740,11 @@ module Impl = struct
           binding_module_map := !binding_module_map |> Id.Map.add binding.id var);
         let binding_module_map = !binding_module_map in
         (try
-           declare_var ~gc:true (transpile_ty expr.data.signature.ty) var;
-           if !boxed_structs then malloc_typed_ptr (Deref (Claim (Ident var)));
+           declare_var ~gc:(is_full_gc ()) (transpile_ty expr.data.signature.ty) var;
+           let module_place : C_ast.place_expr = ident_place var in
+           if !boxed_structs then malloc_typed_ptr module_place;
            execute_expr def;
-           Some (Claim (Deref (Claim (Ident var))))
+           Some (Claim module_place)
          with
          | effect GetBindingModuleMap, k -> Effect.continue k binding_module_map)
       | Types.E_UseDotStar { bindings; used } ->
@@ -1902,7 +1927,7 @@ module Impl = struct
       | Types.E_LetRefContext new_ref ->
         let new_ctx_var = gen_name "ctx" in
         let_var ~gc:false (Raw "Context*") new_ctx_var (transpile_expr new_ref);
-        (Effect.perform GetScope).ctx_ptr <- Claim (Ident new_ctx_var);
+        (Effect.perform GetScope).ctx_place <- Deref (Claim (Ident new_ctx_var));
         None
       | Types.E_CurrentContext { context_ty } -> Some (Claim (current_context context_ty))
       | Types.E_ImplCast _ -> None
@@ -1925,6 +1950,111 @@ module Impl = struct
     | e ->
       Log.error (fun log -> log "while transpiling expr at %a" print_span span);
       raise e
+  ;;
+
+  let postprocess (program : C_ast.program) : C_ast.program =
+    let statics =
+      program.statics
+      |> List.map (fun (static : C_ast.static) -> static.name)
+      |> StringSet.of_list
+    in
+    let postprocess_fn (name : string) (fn : C_ast.fn_def) : C_ast.fn_def =
+      let new_body =
+        match !gc_mode with
+        | EscapeAnalyze ->
+          let escaping_idents = ref StringSet.empty in
+          let analyzed = ref false in
+          let rec walk_block (block : C_ast.block) : C_ast.block =
+            new_block (fun () ->
+              block |> List.iter (fun stmt -> insert_stmt (walk_stmt stmt)))
+          and walk_native_expr ({ parts } : C_ast.native_expr) : C_ast.native_expr =
+            { parts =
+                parts
+                |> List.map
+                     (fun (part : C_ast.native_expr_part) : C_ast.native_expr_part ->
+                        match part with
+                        | Interpolated e -> Interpolated (walk_expr e)
+                        | Raw s -> Raw s)
+            }
+          and walk_place_expr ~(escaping : bool) (place : C_ast.place_expr)
+            : C_ast.place_expr
+            =
+            match place with
+            | C_ast.Ident ident ->
+              if !analyzed
+              then (
+                let ident_does_escape = !escaping_idents |> StringSet.contains ident in
+                if ident_does_escape then Deref (Claim (Ident ident)) else Ident ident)
+              else (
+                if escaping && not (statics |> StringSet.contains ident)
+                then escaping_idents := !escaping_idents |> StringSet.add ident;
+                Ident ident)
+            | C_ast.Native e -> Native (walk_native_expr e)
+            | C_ast.Field { obj; field : string } ->
+              Field { obj = walk_place_expr ~escaping obj; field }
+            | C_ast.Deref ptr -> Deref (walk_expr ptr)
+            | C_ast.Temp e -> Temp (walk_expr e)
+          and walk_expr (expr : C_ast.expr) : C_ast.expr =
+            match expr with
+            | Unit -> Unit
+            | Literal literal -> Literal literal
+            | Native e -> Native (walk_native_expr e)
+            | Claim place -> Claim (walk_place_expr ~escaping:false place)
+            | Cast { value; target : C_ast.ty } ->
+              Cast { value = walk_expr value; target }
+            | AddrOf place -> AddrOf (walk_place_expr ~escaping:true place)
+            | Not e -> Not (walk_expr e)
+            | And (a, b) -> And (walk_expr a, walk_expr b)
+            | C_ast.Or (a, b) -> Or (walk_expr a, walk_expr b)
+            | C_ast.Equal (a, b) -> Equal (walk_expr a, walk_expr b)
+            | C_ast.Apply { f; args } ->
+              Apply { f = walk_expr f; args = args |> List.map walk_expr }
+            | C_ast.Block b -> Block (walk_block b)
+          and walk_stmt (stmt : C_ast.stmt) : C_ast.stmt =
+            match stmt with
+            | Native e -> Native (walk_native_expr e)
+            | Comment c -> Comment c
+            | DeclareVar { name; ty } ->
+              if !analyzed
+              then
+                if !escaping_idents |> StringSet.contains name
+                then (
+                  insert_stmt (DeclareVar { name; ty = Ptr ty });
+                  malloc_typed_ptr (Ident name);
+                  Comment (make_string "%s is potentially escaping, so its gc'd" name))
+                else DeclareVar { name; ty }
+              else DeclareVar { name; ty }
+            | Expr e -> Expr (walk_expr e)
+            | If { cond; then_case; else_case } ->
+              let cond = walk_expr cond in
+              let then_case = walk_block then_case in
+              let else_case = else_case |> Option.map walk_block in
+              If { cond; then_case; else_case }
+            | Assign { assignee; value } ->
+              Assign
+                { assignee = walk_place_expr ~escaping:false assignee
+                ; value = walk_expr value
+                }
+            | Goto { label } -> Goto { label }
+            | GotoLabel label -> GotoLabel label
+            | For { body } -> For { body = walk_block body }
+            | Return e -> Return (walk_expr e)
+            | ReturnVoid -> ReturnVoid
+          in
+          let _ = walk_block fn.body in
+          Log.trace (fun log ->
+            log
+              "escaped from %S: %a"
+              name
+              (List.print String.print)
+              (StringSet.to_list !escaping_idents));
+          analyzed := true;
+          walk_block fn.body
+        | _ -> fn.body
+      in
+      { fn with body = new_body }
+    in
+    { program with fns = program.fns |> StringMap.mapi postprocess_fn }
   ;;
 end
 
@@ -2012,7 +2142,13 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; cleanup_scope_without_unwind = (fun () -> ())
     }
   in
-  let scope : scope = { ctx_ptr = Claim (Ident ctx_var) } in
+  let scope : scope =
+    { ctx_place =
+        (match !gc_mode with
+         | Full -> Deref (Claim (Ident ctx_var))
+         | _ -> Ident ctx_var)
+    }
+  in
   (try
      let main : C_ast.fn_def =
        { args =
@@ -2021,7 +2157,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
        ; body =
            Impl.new_block (fun () ->
              Impl.insert_stmt (Native { parts = [ Raw "Kast_init(argc, argv)" ] });
-             Impl.declare_var ~gc:true (Raw "Context") ctx_var;
+             Impl.declare_var ~gc:(is_full_gc ()) (Raw "Context") ctx_var;
              Impl.insert_stmt
                (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));
              Impl.execute_expr expr;
@@ -2057,25 +2193,26 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
    | effect CurrentFnCaptured, k -> Effect.continue k captured
    | effect GetCtx, k -> Effect.continue k ctx
    | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty);
-  { types =
-      ctx.types
-      |> StringMap.add "Context" (!context_ty_def |> Option.unwrap)
-      |> StringMap.union
-           (fun _ a _ -> Some a)
-           (ctx.runtime_defined_closure_types
-            |> StringListMap.to_list
-            |> List.map (fun (_, name) ->
-              name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
-            |> StringMap.of_list)
-      |> StringMap.union
-           (fun _ a _ -> Some a)
-           (ctx.runtime_defined_list_types
-            |> StringMap.to_list
-            |> List.map (fun (_, name) ->
-              name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
-            |> StringMap.of_list)
-  ; includes = ctx.includes
-  ; fns = ctx.fns
-  ; statics = ctx.statics |> Dynarray.to_list
-  }
+  Impl.postprocess
+    { types =
+        ctx.types
+        |> StringMap.add "Context" (!context_ty_def |> Option.unwrap)
+        |> StringMap.union
+             (fun _ a _ -> Some a)
+             (ctx.runtime_defined_closure_types
+              |> StringListMap.to_list
+              |> List.map (fun (_, name) ->
+                name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+              |> StringMap.of_list)
+        |> StringMap.union
+             (fun _ a _ -> Some a)
+             (ctx.runtime_defined_list_types
+              |> StringMap.to_list
+              |> List.map (fun (_, name) ->
+                name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+              |> StringMap.of_list)
+    ; includes = ctx.includes
+    ; fns = ctx.fns
+    ; statics = ctx.statics |> Dynarray.to_list
+    }
 ;;

@@ -66,6 +66,15 @@ module Args = struct
     | "--c-boxed-structs" :: value :: rest ->
       Kast_transpiler_c.boxed_structs := bool_of_string value;
       parse rest
+    | "--gc-mode" :: value :: rest ->
+      (Kast_transpiler_c.gc_mode
+       := match value with
+          | "full" -> Full
+          | "escape-analyze" -> EscapeAnalyze
+          | "runtime-borrow-checker" -> RuntimeBorrowChecker
+          | "disabled" -> Disabled
+          | other -> fail "unrecognized gc mode: %S" other);
+      parse rest
     | "--async" :: value :: rest ->
       (Kast_transpiler_javascript.async_fns
        := match value with
