@@ -129,3 +129,4 @@
 @syntax "core:current_compiler_scope" 1000 @wrap never = "@current_scope";
 
 @syntax "comment_out" 1000 @wrap if_any = "@comment_out" " " "(" ""/"\n\t" _:any ""/"\\\n" ")";
+@syntax "Box" 1000 @wrap never = "Box" "[" T:any "]";

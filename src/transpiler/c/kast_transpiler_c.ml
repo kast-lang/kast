@@ -6,6 +6,11 @@ module Interpreter = Kast_interpreter
 module C_ast = C_ast
 
 let print_span = Span.print
+let reffed_structs = ref true
+
+let tuple_place var : C_ast.place_expr =
+  if !reffed_structs then Deref (Claim (Ident var)) else Ident var
+;;
 
 type block = { mutable stmts : C_ast.stmt list }
 
@@ -162,15 +167,22 @@ module Impl = struct
       name
     | Void -> "void"
 
+  and malloc_typed_ptr (ptr : C_ast.place_expr) : unit =
+    insert_stmt
+      (Assign
+         { assignee = ptr
+         ; value =
+             Native
+               { parts =
+                   [ Raw "Kast_malloc(sizeof(*"; Interpolated (Claim ptr); Raw "))" ]
+               }
+         })
+
   and declare_var ~(gc : bool) (ty : C_ast.ty) (name : string) : unit =
     if gc
     then (
       insert_stmt (DeclareVar { name; ty = Ptr ty });
-      insert_stmt
-        (Assign
-           { assignee = Ident name
-           ; value = Native { parts = [ Raw "Kast_malloc(sizeof(*"; Raw name; Raw "))" ] }
-           }))
+      malloc_typed_ptr (Ident name))
     else insert_stmt (DeclareVar { name; ty })
 
   and let_var ~(gc : bool) (ty : C_ast.ty) (name : string) (value : C_ast.expr) : unit =
@@ -184,15 +196,8 @@ module Impl = struct
     =
     let result_name = gen_name "compound" in
     insert_stmt (DeclareVar { name = result_name; ty });
-    if kast
-    then
-      insert_stmt
-        (Assign
-           { assignee = Ident result_name
-           ; value =
-               Native
-                 { parts = [ Raw "Kast_malloc(sizeof(*"; Raw result_name; Raw "))" ] }
-           });
+    let reffed = kast && !reffed_structs in
+    if reffed then malloc_typed_ptr (Ident result_name);
     fields
     |> List.iter (fun (name, value) ->
       insert_stmt
@@ -200,7 +205,7 @@ module Impl = struct
            { assignee =
                Field
                  { obj =
-                     (if kast
+                     (if reffed
                       then Deref (Claim (Ident result_name))
                       else Ident result_name)
                  ; field = name
@@ -235,7 +240,8 @@ module Impl = struct
        | None ->
          (match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
           | Some module_name ->
-            Field { obj = Deref (Claim (Ident module_name)); field = binding.name.name }
+            Field
+              { obj = Deref (Claim (tuple_place module_name)); field = binding.name.name }
           | None -> Deref (Claim (Ident (binding_name binding)))))
 
   and transpile_place_expr (expr : Expr.Place.t) : C_ast.place_expr =
@@ -253,7 +259,13 @@ module Impl = struct
            | Types.Name label -> member_name (Name (Label.get_name label))
            | Types.Expr _ -> failwith __LOC__
          in
-         Field { obj = Deref (Claim (transpile_place_expr obj)); field }
+         Field
+           { obj =
+               (if !reffed_structs
+                then Deref (Claim (transpile_place_expr obj))
+                else transpile_place_expr obj)
+           ; field
+           }
        | Types.PE_Deref expr -> Deref (transpile_expr expr)
        | Types.PE_Temp expr -> Temp (transpile_expr expr)
        | Types.PE_Error -> fail "transpiling error place expr")
@@ -488,21 +500,27 @@ module Impl = struct
                   -> member_name member, transpile_ty field.ty)
           |> StringMap.of_seq
         in
-        let struct_name =
-          gen_name
-            (make_string "%t_DEF" (fun fmt ->
-               Print.print_optionally_named ~always_print_shape:false fmt name (fun fmt ->
-                 fprintf fmt "anonymous_tuple")))
-        in
-        ctx.types
-        <- ctx.types
-           |> StringMap.add
-                struct_name
-                ({ shape = C_ast.Struct fields
-                 ; comment = Some (make_string "%a" Print.print_ty_shape ty)
-                 }
-                 : C_ast.ty_def);
-        Alias (Ptr (Named struct_name))
+        if !reffed_structs
+        then (
+          let struct_name =
+            gen_name
+              (make_string "%t_DEF" (fun fmt ->
+                 Print.print_optionally_named
+                   ~always_print_shape:false
+                   fmt
+                   name
+                   (fun fmt -> fprintf fmt "anonymous_tuple")))
+          in
+          ctx.types
+          <- ctx.types
+             |> StringMap.add
+                  struct_name
+                  ({ shape = C_ast.Struct fields
+                   ; comment = Some (make_string "%a" Print.print_ty_shape ty)
+                   }
+                   : C_ast.ty_def);
+          Alias (Ptr (Named struct_name)))
+        else Struct fields
       | Types.T_List { element_ty } ->
         let element_ty = transpile_ty element_ty in
         let macro_arg = ty_to_string element_ty in
@@ -655,7 +673,13 @@ module Impl = struct
           in
           does_match
             field
-            (Field { obj = Deref (Claim pure_place_expr); field = member_name member })
+            (Field
+               { obj =
+                   (if !reffed_structs
+                    then Deref (Claim pure_place_expr)
+                    else pure_place_expr)
+               ; field = member_name member
+               })
         | Unpack pattern ->
           (match pattern.shape with
            | P_Placeholder -> ()
@@ -727,7 +751,13 @@ module Impl = struct
           in
           pattern_match
             field
-            (Field { obj = Deref (Claim pure_place_expr); field = member_name member })
+            (Field
+               { obj =
+                   (if !reffed_structs
+                    then Deref (Claim pure_place_expr)
+                    else pure_place_expr)
+               ; field = member_name member
+               })
         | Unpack pattern ->
           (match pattern.shape with
            | P_Placeholder -> ()
@@ -910,13 +940,7 @@ module Impl = struct
                   in
                   let var = gen_name "packed" in
                   declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
-                  insert_stmt
-                    (Assign
-                       { assignee = Ident var
-                       ; value =
-                           Native
-                             { parts = [ Raw ("Kast_malloc(sizeof(*" ^ var ^ "))") ] }
-                       });
+                  if !reffed_structs then malloc_typed_ptr (Ident var);
                   packed_ty.tuple
                   |> Tuple.iter (fun packed_member _field ->
                     let member =
@@ -931,7 +955,7 @@ module Impl = struct
                       (Assign
                          { assignee =
                              Field
-                               { obj = Deref (Claim (Ident var))
+                               { obj = tuple_place var
                                ; field = member_name packed_member
                                }
                          ; value = Claim (Ident (member_name member))
@@ -1233,11 +1257,7 @@ module Impl = struct
           in
           let var = gen_name "packed" in
           declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
-          insert_stmt
-            (Assign
-               { assignee = Ident var
-               ; value = Native { parts = [ Raw ("Kast_malloc(sizeof(*" ^ var ^ "))") ] }
-               });
+          if !reffed_structs then malloc_typed_ptr (Ident var);
           packed_ty.tuple
           |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
             let original_member : Tuple.member =
@@ -1250,8 +1270,7 @@ module Impl = struct
             in
             insert_stmt
               (Assign
-                 { assignee =
-                     Field { obj = Deref (Claim (Ident var)); field = member_name member }
+                 { assignee = Field { obj = tuple_place var; field = member_name member }
                  ; value =
                      Claim
                        (Field
@@ -1332,10 +1351,7 @@ module Impl = struct
                           | Index _ -> None
                           | Name name -> Some name)
                          (C_ast.Claim
-                            (Field
-                               { obj = Deref (Claim (Ident var))
-                               ; field = member_name member
-                               }))))
+                            (Field { obj = tuple_place var; field = member_name member }))))
          | _ -> fail "f args must be tuple");
         let args_ty =
           arg.data.signature.ty
@@ -1577,12 +1593,7 @@ module Impl = struct
         let var_name = gen_name "tuple" in
         insert_stmt
           (DeclareVar { name = var_name; ty = transpile_ty expr.data.signature.ty });
-        insert_stmt
-          (Assign
-             { assignee = Ident var_name
-             ; value =
-                 Native { parts = [ Raw "Kast_malloc(sizeof(*"; Raw var_name; Raw "))" ] }
-             });
+        if !reffed_structs then malloc_typed_ptr (Ident var_name);
         let unnamed_idx = ref 0 in
         parts
         |> List.iter (fun (part : expr Types.tuple_part_of) ->
@@ -1599,8 +1610,7 @@ module Impl = struct
             let field_name = member_name member in
             insert_stmt
               (Assign
-                 { assignee =
-                     Field { obj = Deref (Claim (Ident var_name)); field = field_name }
+                 { assignee = Field { obj = tuple_place var_name; field = field_name }
                  ; value = transpile_expr field
                  })
           | Unpack packed ->
@@ -1630,15 +1640,13 @@ module Impl = struct
                 (Assign
                    { assignee =
                        Field
-                         { obj = Deref (Claim (Ident var_name))
+                         { obj = tuple_place var_name
                          ; field = member_name assignee_member
                          }
                    ; value =
                        Claim
                          (Field
-                            { obj = Deref (Claim (Ident packed_name))
-                            ; field = member_name member
-                            })
+                            { obj = tuple_place packed_name; field = member_name member })
                    })));
         Some (Claim (Ident var_name))
       | Types.E_Variant { label; value; _ } ->
@@ -1708,16 +1716,10 @@ module Impl = struct
           binding_module_map := !binding_module_map |> Id.Map.add binding.id var);
         let binding_module_map = !binding_module_map in
         (try
-           insert_stmt
-             (DeclareVar { name = var; ty = transpile_ty expr.data.signature.ty });
-           insert_stmt
-             (Assign
-                { assignee = Ident var
-                ; value =
-                    Native { parts = [ Raw "Kast_malloc(sizeof(*"; Raw var; Raw "))" ] }
-                });
+           declare_var ~gc:true (transpile_ty expr.data.signature.ty) var;
+           if !reffed_structs then malloc_typed_ptr (Deref (Claim (Ident var)));
            execute_expr def;
-           Some (Claim (Ident var))
+           Some (Claim (Deref (Claim (Ident var))))
          with
          | effect GetBindingModuleMap, k -> Effect.continue k binding_module_map)
       | Types.E_UseDotStar { bindings; used } ->
@@ -1823,7 +1825,7 @@ module Impl = struct
              [ "raw", C_ast.Native { parts = [ Raw "RawUnwindToken_new()" ] } ]);
         pattern_match token (Temp (AddrOf (Ident token_var)));
         let result_place : C_ast.place_expr =
-          Field { obj = Deref (Claim (Ident token_var)); field = "value" }
+          Field { obj = tuple_place token_var; field = "value" }
         in
         let old_unwind_ctx = Effect.perform GetUnwindCtx in
         let unwind_ctx : unwind_ctx =
@@ -1846,9 +1848,7 @@ module Impl = struct
                  Apply
                    { f = Native { parts = [ Raw "are_we_unwinding_with" ] }
                    ; args =
-                       [ Claim
-                           (Field { obj = Deref (Claim (Ident token_var)); field = "raw" })
-                       ]
+                       [ Claim (Field { obj = tuple_place token_var; field = "raw" }) ]
                    }
              ; then_case =
                  new_block (fun () ->
@@ -1874,10 +1874,7 @@ module Impl = struct
         insert_stmt
           (Assign
              { assignee =
-                 Field
-                   { obj = Deref (Claim (Deref (Claim (Ident token_var))))
-                   ; field = "value"
-                   }
+                 Field { obj = Deref (Claim (tuple_place token_var)); field = "value" }
              ; value = transpile_expr value
              });
         (* currently_unwinding = token->raw *)
@@ -1888,9 +1885,7 @@ module Impl = struct
                 ; args =
                     [ Claim
                         (Field
-                           { obj = Deref (Claim (Deref (Claim (Ident token_var))))
-                           ; field = "raw"
-                           })
+                           { obj = Deref (Claim (tuple_place token_var)); field = "raw" })
                     ]
                 }));
         (Effect.perform GetUnwindCtx).insert_unwind ();

@@ -27,6 +27,11 @@ const Float64 :: Type = @native "Float64";
 const Char :: Type = @native "Char";
 const String :: Type = @native "String";
 
+# const Box = [T] type (&mut T);
+const Box_new = [T] (mut value :: T) -> Box[T] => (
+    &mut value
+);
+
 include "./never.ks";
 include "./ast.ks";
 

@@ -1,3 +1,5 @@
+impl syntax (Box[T]) = `(&mut $T);
+
 impl syntax (arg |> f) = `(
     let _arg = $arg;
     let _f = @auto_instantiate $f;
