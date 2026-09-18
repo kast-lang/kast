@@ -55,19 +55,27 @@ const add = [K, V] (map :: &mut OrdMap.t[K, V], key :: K, value :: V) => (
 );
 
 const get = [K, V] (map :: &OrdMap.t[K, V], key :: K) -> Option.t[type (&V)] => (
-    let { .equal, ... } = split_inner_at_key(map^, key);
-    match equal with (
-        | :Empty => :None
-        | :Node data => :Some &data.value.value
+    Treap.lookup(
+        &map^.inner,
+        data => match map^.compare(key, data^.value.key) with (
+            | :Less => :LeftSubtree
+            | :Greater => :RightSubtree
+            | :Equal => :Here
+        ),
     )
+        |> Option.map(kv => &kv^.value)
 );
 
 const get_mut = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[type (&mut V)] => (
-    let { .equal, ... } = split_inner_at_key(map^, key);
-    match equal with (
-        | :Empty => :None
-        | :Node mut data => :Some &mut data.value.value
+    Treap.lookup_mut(
+        &mut map^.inner,
+        data => match map^.compare(key, data^.value.key) with (
+            | :Less => :LeftSubtree
+            | :Greater => :RightSubtree
+            | :Equal => :Here
+        ),
     )
+        |> Option.map(kv => &mut kv^.value)
 );
 
 const remove = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[V] => (
@@ -84,13 +92,18 @@ const get_or_init = [K, V] (
     key :: K,
     init :: () -> V,
 ) -> &mut V => (
-    let { .less, .equal, .greater } = split_inner_at_key(map^, key);
-    let mut equal = match equal with (
-        | :Empty => Treap.singleton({ .key, .value = init() })
-        | :Node _ => equal
-    );
-    map^.inner = Treap.join(less, Treap.join(equal, greater));
-    &mut Treap.at_mut(&mut equal, 0)^.value
+    match get_mut(map, key) with (
+        | :Some value => value
+        | :None => (
+            let { .less, .equal, .greater } = split_inner_at_key(map^, key);
+            let mut equal = match equal with (
+                | :Empty => Treap.singleton({ .key, .value = init() })
+                | :Node _ => panic("get_mut said key no exists??")
+            );
+            map^.inner = Treap.join(less, Treap.join(equal, greater));
+            get_mut(map, key) |> Option.unwrap
+        )
+    )
 );
 
 const into_iter = [K, V] (map :: OrdMap.t[K, V]) -> std.iter.Iterable[KV[K, V]] => (

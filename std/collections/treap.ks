@@ -61,6 +61,43 @@ const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
         )
     )
 );
+
+const node_lookup_behavior = [T] newtype (
+    | :LeftSubtree
+    | :RightSubtree
+    | :Here
+);
+
+const node_lookup = [T] type (
+    &data[T] -> node_lookup_behavior[T]
+);
+
+const lookup = [T] (v :: &t[T], f :: node_lookup[T]) -> Option.t[type (&T)] => (
+    match v^ with (
+        | :Empty => :None
+        | :Node ref node => (
+            match f(node) with (
+                | :LeftSubtree => lookup[T](&node^.left^, f)
+                | :RightSubtree => lookup[T](&node^.right^, f)
+                | :Here => :Some &node^.value
+            )
+        )
+    )
+);
+
+const lookup_mut = [T] (v :: &mut t[T], f :: node_lookup[T]) -> Option.t[type (&mut T)] => (
+    match v^ with (
+        | :Empty => :None
+        | :Node ref mut node => (
+            match f(&node^) with (
+                | :LeftSubtree => lookup_mut[T](&mut node^.left^, f)
+                | :RightSubtree => lookup_mut[T](&mut node^.right^, f)
+                | :Here => :Some &mut node^.value
+            )
+        )
+    )
+);
+
 # Where does the node we are at belong?
 const node_split_behavior = [T] newtype (
     | :LeftSubtree
@@ -115,8 +152,10 @@ const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> { Treap.t[T], Treap.
             )
         )
     )
-
 );
+
+
+
 const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
     match v^ with (
         | :Empty => panic("oob")

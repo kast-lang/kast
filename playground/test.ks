@@ -1,43 +1,10 @@
-module:
+use std.collections.OrdMap;
 
-const foo = () => print("Hi");
-const foo1 = () => print("Hi");
-const foo2 = () => print("Hi");
-const foo3 = () => print("Hi");
-const foo4 = () => print("Hi");
-const foo5 = () => print("Hi");
-const foo5 = () => print("Hi");
-const foo6 = () => print("Hi");
-const foo7 = () => print("Hi");
-const foo8 = () => print("Hi");
-const foo9 = () => print("Hi");
-const foo0 = () => print("Hi");
-const goo = () => print("Hi");
-const goo1 = () => print("Hi");
-const goo2 = () => print("Hi");
-const goo3 = () => print("Hi");
-const goo4 = () => print("Hi");
-const goo5 = () => print("Hi");
-const goo5 = () => print("Hi");
-const goo6 = () => print("Hi");
-const goo7 = () => print("Hi");
-const goo8 = () => print("Hi");
-const goo9 = () => print("Hi");
-const goo0 = () => print("Hi");
-const hoo = () => print("Hi");
-const hoo1 = () => print("Hi");
-const hoo2 = () => print("Hi");
-const hoo3 = () => print("Hi");
-const hoo4 = () => print("Hi");
-const hoo5 = () => print("Hi");
-const hoo5 = () => print("Hi");
-const hoo6 = () => print("Hi");
-const hoo7 = () => print("Hi");
-const hoo8 = () => print("Hi");
-const hoo9 = () => print("Hi");
-const hoo0 = () => print("Hi");
+let mut map = OrdMap.new[Int32, Int32]();
+&mut map |> OrdMap.add(1, 2);
 
-const with_packed = (...args) => dbg.print(args);
+let at_1 = OrdMap.get_mut(&mut map, 1) |> Option.unwrap;
+at_1^ = 3;
 
-foo();
-with_packed(1, 2, 3);
+let at_1 = OrdMap.get(&map, 1) |> Option.unwrap;
+print(to_string(at_1^));
