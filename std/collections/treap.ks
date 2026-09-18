@@ -72,27 +72,51 @@ const node_lookup = [T] type (
     &data[T] -> node_lookup_behavior[T]
 );
 
-const lookup = [T] (v :: &t[T], f :: node_lookup[T]) -> Option.t[type (&T)] => (
-    match v^ with (
-        | :Empty => :None
-        | :Node ref node => (
-            match f(node) with (
-                | :LeftSubtree => lookup[T](&node^.left^, f)
-                | :RightSubtree => lookup[T](&node^.right^, f)
-                | :Here => :Some &node^.value
+const lookup = [T] (
+    v :: &t[T],
+    f :: node_lookup[T],
+) -> Option.t[type (&T)] => with_return (
+    let mut v = v;
+    @loop (
+        match v^ with (
+            | :Empty => return :None
+            | :Node ref node => (
+                match f(node) with (
+                    | :LeftSubtree => (
+                        v = &node^.left^;
+                    )
+                    | :RightSubtree => (
+                        v = &node^.right^;
+                    )
+                    | :Here => (
+                        return :Some &node^.value;
+                    )
+                )
             )
         )
     )
 );
 
-const lookup_mut = [T] (v :: &mut t[T], f :: node_lookup[T]) -> Option.t[type (&mut T)] => (
-    match v^ with (
-        | :Empty => :None
-        | :Node ref mut node => (
-            match f(&node^) with (
-                | :LeftSubtree => lookup_mut[T](&mut node^.left^, f)
-                | :RightSubtree => lookup_mut[T](&mut node^.right^, f)
-                | :Here => :Some &mut node^.value
+const lookup_mut = [T] (
+    v :: &mut t[T],
+    f :: node_lookup[T],
+) -> Option.t[type (&mut T)] => with_return (
+    let mut v = v;
+    @loop (
+        match v^ with (
+            | :Empty => return :None
+            | :Node ref mut node => (
+                match f(&node^) with (
+                    | :LeftSubtree => (
+                        v = &mut node^.left^;
+                    )
+                    | :RightSubtree => (
+                        v = &mut node^.right^;
+                    )
+                    | :Here => (
+                        return :Some &mut node^.value;
+                    )
+                )
             )
         )
     )
