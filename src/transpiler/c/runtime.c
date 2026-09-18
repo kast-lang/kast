@@ -364,12 +364,12 @@ size_t String_utf8_length(String s) {
 
 int String_cmp(String a, String b) {
     for (size_t i = 0; i < a.length && i < b.length; i++) {
-        int c = a.buf[i] - b.buf[i];
+        int c = (int)a.buf[i] - (int)b.buf[i];
         if (c != 0) {
             return c;
         }
     }
-    return a.length - b.length;
+    return (int)a.length - (int)b.length;
 }
 
 String String_concat(String a, String b) {
