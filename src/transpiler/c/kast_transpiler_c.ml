@@ -6,10 +6,10 @@ module Interpreter = Kast_interpreter
 module C_ast = C_ast
 
 let print_span = Span.print
-let reffed_structs = ref true
+let boxed_structs = ref true
 
 let tuple_place var : C_ast.place_expr =
-  if !reffed_structs then Deref (Claim (Ident var)) else Ident var
+  if !boxed_structs then Deref (Claim (Ident var)) else Ident var
 ;;
 
 type block = { mutable stmts : C_ast.stmt list }
@@ -196,8 +196,8 @@ module Impl = struct
     =
     let result_name = gen_name "compound" in
     insert_stmt (DeclareVar { name = result_name; ty });
-    let reffed = kast && !reffed_structs in
-    if reffed then malloc_typed_ptr (Ident result_name);
+    let boxed = kast && !boxed_structs in
+    if boxed then malloc_typed_ptr (Ident result_name);
     fields
     |> List.iter (fun (name, value) ->
       insert_stmt
@@ -205,7 +205,7 @@ module Impl = struct
            { assignee =
                Field
                  { obj =
-                     (if reffed
+                     (if boxed
                       then Deref (Claim (Ident result_name))
                       else Ident result_name)
                  ; field = name
@@ -261,7 +261,7 @@ module Impl = struct
          in
          Field
            { obj =
-               (if !reffed_structs
+               (if !boxed_structs
                 then Deref (Claim (transpile_place_expr obj))
                 else transpile_place_expr obj)
            ; field
@@ -500,7 +500,7 @@ module Impl = struct
                   -> member_name member, transpile_ty field.ty)
           |> StringMap.of_seq
         in
-        if !reffed_structs
+        if !boxed_structs
         then (
           let struct_name =
             gen_name
@@ -675,7 +675,7 @@ module Impl = struct
             field
             (Field
                { obj =
-                   (if !reffed_structs
+                   (if !boxed_structs
                     then Deref (Claim pure_place_expr)
                     else pure_place_expr)
                ; field = member_name member
@@ -753,7 +753,7 @@ module Impl = struct
             field
             (Field
                { obj =
-                   (if !reffed_structs
+                   (if !boxed_structs
                     then Deref (Claim pure_place_expr)
                     else pure_place_expr)
                ; field = member_name member
@@ -940,7 +940,7 @@ module Impl = struct
                   in
                   let var = gen_name "packed" in
                   declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
-                  if !reffed_structs then malloc_typed_ptr (Ident var);
+                  if !boxed_structs then malloc_typed_ptr (Ident var);
                   packed_ty.tuple
                   |> Tuple.iter (fun packed_member _field ->
                     let member =
@@ -1257,7 +1257,7 @@ module Impl = struct
           in
           let var = gen_name "packed" in
           declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
-          if !reffed_structs then malloc_typed_ptr (Ident var);
+          if !boxed_structs then malloc_typed_ptr (Ident var);
           packed_ty.tuple
           |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
             let original_member : Tuple.member =
@@ -1593,7 +1593,7 @@ module Impl = struct
         let var_name = gen_name "tuple" in
         insert_stmt
           (DeclareVar { name = var_name; ty = transpile_ty expr.data.signature.ty });
-        if !reffed_structs then malloc_typed_ptr (Ident var_name);
+        if !boxed_structs then malloc_typed_ptr (Ident var_name);
         let unnamed_idx = ref 0 in
         parts
         |> List.iter (fun (part : expr Types.tuple_part_of) ->
@@ -1717,7 +1717,7 @@ module Impl = struct
         let binding_module_map = !binding_module_map in
         (try
            declare_var ~gc:true (transpile_ty expr.data.signature.ty) var;
-           if !reffed_structs then malloc_typed_ptr (Deref (Claim (Ident var)));
+           if !boxed_structs then malloc_typed_ptr (Deref (Claim (Ident var)));
            execute_expr def;
            Some (Claim (Deref (Claim (Ident var))))
          with

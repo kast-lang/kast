@@ -63,8 +63,8 @@ module Args = struct
     | "--js-ref-vars" :: value :: rest ->
       Kast_transpiler_javascript.ref_vars_enabled := bool_of_string value;
       parse rest
-    | "--c-reffed-structs" :: value :: rest ->
-      Kast_transpiler_c.reffed_structs := bool_of_string value;
+    | "--c-boxed-structs" :: value :: rest ->
+      Kast_transpiler_c.boxed_structs := bool_of_string value;
       parse rest
     | "--async" :: value :: rest ->
       (Kast_transpiler_javascript.async_fns
