@@ -21,7 +21,7 @@ let is_full_gc () =
   | _ -> false
 ;;
 
-let boxed_structs = ref true
+let boxed_structs = ref false
 
 let tuple_place var : C_ast.place_expr =
   if !boxed_structs then Deref (Claim (Ident var)) else Ident var
