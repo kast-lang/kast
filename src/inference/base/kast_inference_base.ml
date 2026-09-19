@@ -325,10 +325,20 @@ module Var = struct
     if a.recurse_id = b.recurse_id
     then 0
     else (
-      match a.inferred, b.inferred with
-      | Some a, Some b -> compare_inferred a b
-      | Some _, None | None, Some _ | None, None ->
-        raise ComparingNotInferred (* Id.compare a.recurse_id b.recurse_id *))
+      let cache = CompareRecurseCache.get () in
+      let ids = a.recurse_id, b.recurse_id in
+      if cache |> CompareRecurseCache.depth ids > 0
+      then 0
+      else (
+        cache |> CompareRecurseCache.enter ids;
+        let result =
+          match a.inferred, b.inferred with
+          | Some a, Some b -> compare_inferred a b
+          | Some _, None | None, Some _ | None, None -> raise ComparingNotInferred
+          (* Id.compare a.recurse_id b.recurse_id *)
+        in
+        cache |> CompareRecurseCache.exit ids;
+        result))
   ;;
 
   let equal

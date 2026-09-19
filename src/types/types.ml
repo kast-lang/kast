@@ -1574,6 +1574,8 @@ and ValueMap : sig
   type 'a t
   type key = ValueImpl.t
 
+  module CompareMap : Map.S with type key = ValueImpl.t
+
   val empty : 'a t
   val add : key -> 'a -> 'a t -> 'a t
   val find_opt : key -> 'a t -> 'a option

@@ -4,6 +4,7 @@ open Kast_util
 module Inference = Kast_inference
 module Interpreter = Kast_interpreter
 module C_ast = C_ast
+module ValueMap = Types.ValueMap.CompareMap
 
 let print_span = Span.print
 
@@ -41,8 +42,8 @@ type ctx =
   ; mutable types : C_ast.ty_def StringMap.t
   ; mutable fns : C_ast.fn_def StringMap.t
   ; mutable statics : C_ast.static Dynarray.t
-  ; mutable captured_values : string Types.ValueMap.t
-  ; mutable captured_types : string Types.ValueMap.t
+  ; mutable captured_values : string ValueMap.t
+  ; mutable captured_types : string ValueMap.t
   ; mutable contexts : Types.value_context_ty Id.Map.t
   ; runtime_defined_closure_types : string StringListMap.t
   ; runtime_defined_list_types : string StringMap.t
@@ -360,7 +361,7 @@ module Impl = struct
       let ty_as_value = V_Ty ty |> Value.inferred ~span in
       ctx.captured_types
       <- ctx.captured_types
-         |> Types.ValueMap.update ty_as_value (fun name ->
+         |> ValueMap.update ty_as_value (fun name ->
            let name =
              match name with
              | Some name -> name
@@ -1062,7 +1063,7 @@ module Impl = struct
          let do_prepend = ref false in
          ctx.captured_values
          <- ctx.captured_values
-            |> Types.ValueMap.update value (fun name ->
+            |> ValueMap.update value (fun name ->
               let name =
                 match name with
                 | Some name -> name
@@ -2093,8 +2094,8 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   let ctx : ctx =
     { target = { name = "c" }
     ; statics = Dynarray.create ()
-    ; captured_values = Types.ValueMap.empty
-    ; captured_types = Types.ValueMap.empty
+    ; captured_values = ValueMap.empty
+    ; captured_types = ValueMap.empty
     ; types =
         StringMap.of_list
           ([ "Unit"
