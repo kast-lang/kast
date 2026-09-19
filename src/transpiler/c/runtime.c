@@ -1,3 +1,6 @@
+#define USE_GC
+// #define GC_ON_INTERVAL_EMSCRIPTEN
+
 /* idk where this is documented,
  * but we want old winsock.h instead of winsock2.h */
 #ifdef _WIN32
@@ -54,7 +57,6 @@
 #include <stdfil.h>
 #endif
 
-#define USE_GC
 #ifdef USE_GC
 #include <gc.h>
 #endif
@@ -436,9 +438,9 @@ void Kast_init(int argc, char* argv[]) {
     GC_INIT();
 #endif
 #ifdef __EMSCRIPTEN__
+#if defined(USE_GC) && defined(GC_ON_INTERVAL_EMSCRIPTEN)
     // Using solution 2 from boehmgc docs
     // https://github.com/bdwgc/bdwgc/blob/master/docs/platforms/README.emscripten
-#ifdef USE_GC
     GC_disable();
     emscripten_set_interval(Kast_run_gc, 0, NULL);
 #endif
