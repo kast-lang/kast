@@ -275,7 +275,7 @@ module Impl = struct
       (match expr.shape with
        | Types.PE_Binding binding -> lookup_binding binding
        | Types.PE_Const place -> transpile_place place
-       | Types.PE_Context -> failwith __LOC__
+       | Types.PE_Context -> (Effect.perform GetScope).ctx_place
        | Types.PE_Field { obj; field; field_span = _ } ->
          let field =
            match field with
