@@ -1,6 +1,1 @@
-const Foo = newtype {
-    .a :: Int32,
-    .b :: Float32,
-};
-
-let mut a = ArrayList.new[Foo]();
+let mut a = ArrayList.new[ArrayList.t[Int32]]();

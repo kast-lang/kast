@@ -513,7 +513,7 @@ module Print = struct
       | Named name ->
         (match program.types |> StringMap.find_opt name with
          | None -> fail "type doesnt exist: %s" name
-         | Some { shape = Fn _ | Alias _; _ } -> ensure_typedef_completed name
+         | Some { shape = Fn _ | Alias _ | DEF_Raw _; _ } -> ensure_typedef_completed name
          | _ -> ())
       | Ptr pointee -> ensure_type_declared pointee
       | Void -> ()

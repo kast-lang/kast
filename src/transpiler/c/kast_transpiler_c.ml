@@ -30,9 +30,11 @@ let is_full_gc () =
 
 let boxed_structs = ref false
 
-let tuple_place var : C_ast.place_expr =
-  if !boxed_structs then Deref (Claim (Ident var)) else Ident var
+let tuple_place_to_data_place place : C_ast.place_expr =
+  if !boxed_structs then Deref (Claim place) else place
 ;;
+
+let tuple_place var : C_ast.place_expr = tuple_place_to_data_place (Ident var)
 
 type block = { mutable stmts : C_ast.stmt list }
 
@@ -1300,7 +1302,10 @@ module Impl = struct
           in
           assign
             field
-            (Field { obj = Deref (Claim pure_place_expr); field = member_name member })
+            (Field
+               { obj = tuple_place_to_data_place pure_place_expr
+               ; field = member_name member
+               })
         | Unpack packed ->
           let packed_ty =
             packed.data.signature.ty
