@@ -12,7 +12,7 @@ type literal =
 and expr =
   | Unit
   | Literal of literal
-  | Native of native_expr
+  | E_Native of native_expr
   | Claim of place_expr
   | Cast of
       { value : expr
@@ -30,7 +30,7 @@ and expr =
   | Block of block
 
 and stmt =
-  | Native of native_expr
+  | S_Native of native_expr
   | Comment of string
   | DeclareVar of
       { name : string
@@ -59,7 +59,7 @@ and field =
 
 and place_expr =
   | Ident of string
-  | Native of native_expr
+  | P_Native of native_expr
   | Field of
       { obj : place_expr
       ; field : string
@@ -82,7 +82,7 @@ and ty_def_shape =
       ; result_ty : ty
       }
   | Alias of ty
-  | Raw of
+  | DEF_Raw of
       { def : string
       ; need_declared : ty list
       ; need_completed : ty list
@@ -95,8 +95,11 @@ and ty_def =
   }
 
 and ty =
-  | Unit
-  | Raw of string
+  | T_Unit
+  | T_Raw of
+      { c : string
+      ; is_primitive : bool
+      }
   | Named of string
   | Ptr of ty
   | Void
@@ -132,6 +135,7 @@ and program =
   ; fns : fn_def StringMap.t
   ; statics : static list
   }
+[@@deriving ord]
 
 and declared_state =
   | BeingDeclared
@@ -143,11 +147,11 @@ module Print = struct
   let inc_indentation () = indentation := !indentation + 1
   let dec_indentation () = indentation := !indentation - 1
 
-  type _ Effect.t += GetOutput : out_channel Effect.t
+  type _ Effect.t += GetOutput : (string -> unit) Effect.t
 
   let print_string s =
     let out = Effect.perform GetOutput in
-    output_string out s
+    out s
   ;;
 
   let print_newline () = print_string "\n"
@@ -198,8 +202,8 @@ module Print = struct
 
   and print_ty (ty : ty) =
     match ty with
-    | Unit -> write "Unit"
-    | Raw s -> write s
+    | T_Unit -> write "Unit"
+    | T_Raw { c; is_primitive = _ } -> write c
     | Named name -> write name
     | Ptr referenced ->
       print_ty referenced;
@@ -216,7 +220,7 @@ module Print = struct
     maybe_surround surround (fun () ->
       match expr with
       | Ident name -> write name
-      | Native native -> print_native native
+      | P_Native native -> print_native native
       | Field { obj; field } ->
         print_place_expr obj;
         write ".";
@@ -228,7 +232,7 @@ module Print = struct
 
   and print_stmt (stmt : stmt) : unit =
     match stmt with
-    | Native native -> print_native native
+    | S_Native native -> print_native native
     | Comment s ->
       write "/* ";
       write s;
@@ -305,7 +309,7 @@ module Print = struct
       | AddrOf place ->
         write "&";
         print_place_expr place
-      | Native native -> print_native native
+      | E_Native native -> print_native native
       | Cast { value; target } ->
         write "(";
         print_ty target;
@@ -378,7 +382,7 @@ module Print = struct
         | Union _ -> Some "union"
         | Fn _ -> None
         | Alias _ -> None
-        | Raw _ -> None
+        | DEF_Raw _ -> None
         | RuntimeDefined -> None
       in
       match shape_name with
@@ -406,7 +410,7 @@ module Print = struct
         in
         (match def.shape with
          | RuntimeDefined -> ()
-         | Raw { def = _; need_declared; need_completed } ->
+         | DEF_Raw { def = _; need_declared; need_completed } ->
            need_declared |> List.iter ensure_type_declared;
            need_completed |> List.iter ensure_type_completed;
            write "/*";
@@ -432,7 +436,7 @@ module Print = struct
         write_comment def.comment;
         (match def.shape with
          | RuntimeDefined -> ()
-         | Raw { def; _ } ->
+         | DEF_Raw { def; _ } ->
            write def;
            write ";";
            writeln ()
@@ -504,8 +508,8 @@ module Print = struct
         declared_types := !declared_types |> StringMap.add name Completed
     and ensure_type_declared (ty : ty) : unit =
       match ty with
-      | Unit -> ()
-      | Raw _ -> ensure_type_completed ty
+      | T_Unit -> ()
+      | T_Raw _ -> ensure_type_completed ty
       | Named name ->
         (match program.types |> StringMap.find_opt name with
          | None -> fail "type doesnt exist: %s" name
@@ -515,8 +519,8 @@ module Print = struct
       | Void -> ()
     and ensure_type_completed (ty : ty) : unit =
       match ty with
-      | Unit -> ()
-      | Raw _ -> ()
+      | T_Unit -> ()
+      | T_Raw _ -> ()
       | Named name -> ensure_typedef_completed name
       | Ptr pointee -> ensure_type_declared pointee
       | Void -> ()

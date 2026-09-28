@@ -42,6 +42,7 @@
 #endif
 
 #include <errno.h>
+#include <stdalign.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -59,10 +60,40 @@
 
 #ifdef USE_GC
 #include <gc.h>
+#include <gc/gc_typed.h>
 #endif
 
 #ifdef USE_BACKTRACE
 struct backtrace_state* BACKTRACE_STATE;
+
+typedef struct TypeInfo TypeInfo;
+
+typedef enum {
+    TypeInfoKind_primitive,
+    TypeInfoKind_raw,
+    TypeInfoKind_object,
+} TypeInfoKind;
+
+struct TypeInfo {
+    size_t alignment;
+    size_t size;
+    size_t stride;
+#ifdef USE_GC
+    TypeInfoKind kind;
+    GC_descr gc_descr;
+#endif
+};
+
+#define TypeInfo_raw(T)                                                        \
+    (TypeInfo) {                                                               \
+        .alignment = alignof(T), .size = sizeof(T), .stride = sizeof(T),       \
+        .kind = TypeInfoKind_raw,                                              \
+    }
+#define TypeInfo_primitive(T)                                                  \
+    (TypeInfo) {                                                               \
+        .alignment = alignof(T), .size = sizeof(T), .stride = sizeof(T),       \
+        .kind = TypeInfoKind_primitive,                                        \
+    }
 
 void Kast_backtrace_error_callback(void* data, const char* msg, int errnum) {
     fprintf(stderr, "libbacktrace error: %s (errnum: %d)\n", msg, errnum);
@@ -131,26 +162,68 @@ noreturn void panic_errno(const char* s) {
     exit_with_error(NULL);
 }
 
-void* Kast_malloc(size_t size) {
+void* Kast_allocate(TypeInfo* T) {
 #ifdef USE_GC
-    void* result = GC_MALLOC(size);
+    void* result;
+    switch (T->kind) {
+        case TypeInfoKind_primitive:
+            result = GC_MALLOC_ATOMIC(T->size);
+            break;
+        case TypeInfoKind_raw:
+            result = GC_MALLOC(T->size);
+            break;
+        case TypeInfoKind_object:
+            result = GC_MALLOC_EXPLICITLY_TYPED(T->size, T->gc_descr);
+            break;
+    }
 #else
-    void* result = malloc(size);
+    void* result = malloc(T->size);
 #endif
     if (!result) {
-        panic_errno("Kast_malloc");
+        panic_errno("Kast_allocate");
     }
     return result;
 }
 
-void* Kast_realloc(void* memory, size_t size) {
+void* Kast_allocate_array(TypeInfo* T, size_t length) {
 #ifdef USE_GC
-    void* result = GC_REALLOC(memory, size);
+    void* result;
+    switch (T->kind) {
+        case TypeInfoKind_primitive:
+            result = GC_MALLOC_ATOMIC(T->stride * length);
+            break;
+        case TypeInfoKind_raw:
+            result = GC_MALLOC(T->stride * length);
+            break;
+        case TypeInfoKind_object:
+            result = GC_CALLOC_EXPLICITLY_TYPED(length, T->stride, T->gc_descr);
+            break;
+    }
 #else
-    void* result = realloc(memory, size);
+    void* result = malloc(T->stride * length);
 #endif
     if (!result) {
-        panic_errno("Kast_realloc");
+        panic_errno("Kast_allocate_array");
+    }
+    return result;
+}
+
+void* Kast_reallocate_array(
+    TypeInfo* T,
+    void* a,
+    size_t old_length,
+    size_t new_length
+) {
+#ifdef USE_GC
+    void* result = Kast_allocate_array(T, new_length);
+    if (a != NULL) {
+        memcpy(result, a, T->stride * old_length);
+    }
+#else
+    void* result = realloc(a, T->stride * new_length);
+#endif
+    if (!result) {
+        panic_errno("Kast_reallocate_array");
     }
     return result;
 }
@@ -167,6 +240,7 @@ typedef struct {
 } Unit;
 
 typedef bool Bool;
+typedef char Byte;
 typedef int32_t Int32;
 typedef uint32_t UInt32;
 typedef int64_t Int64;
@@ -174,6 +248,9 @@ typedef uint64_t UInt64;
 typedef float Float32;
 typedef double Float64;
 typedef uint32_t Char;
+
+TypeInfo Byte_TypeInfo = TypeInfo_primitive(Byte);
+TypeInfo String_TypeInfo;
 
 void Kast_sleep_ns(int64_t ns) {
     time_t s = ns / 1000000000;
@@ -345,7 +422,7 @@ typedef struct String {
 
 String Char_to_String(Char c) {
     size_t len = Char_utf8_len(c);
-    char* buf = Kast_malloc(len);
+    char* buf = Kast_allocate_array(&Byte_TypeInfo, len);
     char* encoder = buf;
     utf8_char_encode_step(&encoder, c);
     return (String) {.buf = buf, .length = len};
@@ -375,7 +452,7 @@ int String_cmp(String a, String b) {
 }
 
 String String_concat(String a, String b) {
-    char* buf = Kast_malloc(a.length + b.length);
+    char* buf = Kast_allocate_array(&Byte_TypeInfo, a.length + b.length);
     memcpy(buf, a.buf, a.length);
     memcpy(buf + a.length, b.buf, b.length);
     return (String) {
@@ -400,7 +477,7 @@ String String_from_C_String(const C_String s) {
 }
 
 char* String_to_C_String(const String s) {
-    char* result = Kast_malloc(s.length + 1);
+    char* result = Kast_allocate_array(&Byte_TypeInfo, s.length + 1);
     memcpy(result, s.buf, s.length);
     result[s.length] = 0;
     return result;
@@ -433,7 +510,28 @@ void Kast_run_gc(void* _data) {
 }
 #endif
 
+void Kast_init_user_type_infos();
+
+void Kast_init_type_infos() {
+    String_TypeInfo = (TypeInfo) {
+        .alignment = alignof(String),
+        .stride = sizeof(String),
+        .size = sizeof(String),
+#ifdef USE_GC
+        .kind = TypeInfoKind_object,
+        .gc_descr = ({
+            GC_word T_bitmap[GC_BITMAP_SIZE(String)] = {0};
+            GC_set_bit(T_bitmap, GC_WORD_OFFSET(String, buf));
+            GC_descr descriptor =
+                GC_make_descriptor(T_bitmap, GC_WORD_LEN(String));
+            descriptor;
+        }),
+#endif
+    };
+}
+
 void Kast_init(int argc, char* argv[]) {
+    Kast_init_type_infos();
 #ifdef USE_GC
     GC_INIT();
 #endif
@@ -451,18 +549,19 @@ void Kast_init(int argc, char* argv[]) {
 #endif
     CLI_ARGS.argc = argc;
     CLI_ARGS.original_argv = argv;
-    CLI_ARGS.argv = Kast_malloc(argc * sizeof(String));
+    CLI_ARGS.argv = Kast_allocate_array(&String_TypeInfo, argc);
     for (int i = 0; i < argc; i++) {
         CLI_ARGS.argv[i] = (String) {
             .buf = argv[i],
             .length = strlen(argv[i]),
         };
     }
+    Kast_init_user_type_infos();
 }
 
 void* Kast_ensure_correct_malloc(void* buf, size_t size) {
 #ifdef USE_GC
-    char* gc_buf = Kast_malloc(size);
+    char* gc_buf = Kast_allocate_array(&Byte_TypeInfo, size);
     memcpy(gc_buf, buf, size);
     free(buf);
     return gc_buf;
@@ -481,7 +580,7 @@ String Kast_asprintf(const char* fmt, ...) {
         exit_with_error("determining asprintf length failed");
     }
     size_t buf_size = length + 1;
-    char* buf = Kast_malloc(buf_size);
+    char* buf = Kast_allocate_array(&Byte_TypeInfo, buf_size);
     length = vsnprintf(buf, buf_size, fmt, va2);
     va_end(va2);
     if (length < 0) {
@@ -541,7 +640,7 @@ void check_ferror(FILE* f) {
 }
 
 String Kast_read_exactly(FILE* f, size_t size) {
-    char* buf = Kast_malloc(size);
+    char* buf = Kast_allocate_array(&Byte_TypeInfo, size);
     size_t read = 0;
     while (read < size) {
         size_t new_read = fread(buf, 1, size - read, f);
@@ -600,7 +699,13 @@ String Kast_read_until(FILE* f, Char delimiter) {
         length += Char_utf8_len(c);
         if (length > capacity) {
             size_t new_capacity = (capacity == 0) ? length : (capacity * 2);
-            buf = Kast_realloc(buf, new_capacity);
+            buf = Kast_reallocate_array(
+                &Byte_TypeInfo,
+                buf,
+                capacity,
+                new_capacity
+            );
+            capacity = new_capacity;
         }
         char* encoder = buf + encode_pos;
         utf8_char_encode_step(&encoder, c);
@@ -629,14 +734,16 @@ typedef struct Context Context;
 
 #define define_ArrayList(T)                                                    \
     typedef struct {                                                           \
+        TypeInfo* T_TypeInfo;                                                  \
         T* buf;                                                                \
         size_t capacity;                                                       \
         size_t length;                                                         \
     } ArrayList_##T;
 
 #define impl_ArrayList(T)                                                      \
-    ArrayList_##T ArrayList_##T##_new() {                                      \
+    ArrayList_##T ArrayList_##T##_new(TypeInfo* T_TypeInfo) {                  \
         return (ArrayList_##T) {                                               \
+            .T_TypeInfo = T_TypeInfo,                                          \
             .buf = NULL,                                                       \
             .capacity = 0,                                                     \
             .length = 0,                                                       \
@@ -645,13 +752,17 @@ typedef struct Context Context;
                                                                                \
     void ArrayList_##T##_reserve(ArrayList_##T* list, size_t len) {            \
         if (list->capacity < len) {                                            \
+            size_t old_capacity = list->capacity;                              \
             list->capacity = (list->capacity == 0) ? 4 : (list->capacity * 2); \
             if (len > list->capacity) {                                        \
                 list->capacity = len;                                          \
             }                                                                  \
-            /* TODO this potentially can lead to UB                            \
-             * because of dangling pointers, even with GC */                   \
-            list->buf = Kast_realloc(list->buf, list->capacity * sizeof(T));   \
+            list->buf = Kast_reallocate_array(                                 \
+                list->T_TypeInfo,                                              \
+                list->buf,                                                     \
+                old_capacity,                                                  \
+                list->capacity                                                 \
+            );                                                                 \
         }                                                                      \
     }                                                                          \
                                                                                \
@@ -954,7 +1065,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     }
     host_len = strlen(host);
     port_len = strlen(port);
-    char* addr_c = Kast_malloc(host_len + 1 + port_len);
+    char* addr_c = Kast_allocate_array(&Byte_TypeInfo, host_len + 1 + port_len);
     memcpy(addr_c, host, host_len);
     addr_c[host_len] = ':';
     memcpy(addr_c + host_len + 1, port, port_len);

@@ -146,6 +146,7 @@ let run : Args.t -> unit =
        | Ir -> fprintf fmt "%a" Expr.print_with_types expr
        | C ->
          let transpiled = Kast_transpiler_c.transpile_expr compiler.interpreter expr in
+         let out = fun s -> output_string out s in
          (try Kast_transpiler_c.C_ast.Print.print_program transpiled with
           | effect Kast_transpiler_c.C_ast.Print.GetOutput, k -> Effect.continue k out)
        | JavaScript ->

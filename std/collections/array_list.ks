@@ -4,7 +4,7 @@ const t = [T] ((@native "List")(T) :: Type);
 const new = [T] () -> ArrayList.t[T] => @cfg (
     | target.name == "interpreter" => (@native "List.new")()
     | target.name == "c" => (
-        @native "ArrayList_\(type T)_new()"
+        @native "ArrayList_\(type T)_new(\(T))"
     )
     | target.name == "javascript" => @native "[]"
 );

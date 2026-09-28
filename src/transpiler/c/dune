@@ -4,4 +4,4 @@
  (preprocessor_deps
   (file runtime.c))
  (preprocess
-  (pps ppx_include_dir)))
+  (pps ppx_include_dir ppx_deriving.eq ppx_deriving.ord)))

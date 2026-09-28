@@ -6,6 +6,18 @@ open Char
 module String = struct
   include Stdlib.String
 
+  let split_on (f : char -> bool) (s : string) : string list =
+    let r = ref [] in
+    let j = ref (length s) in
+    for i = length s - 1 downto 0 do
+      if f (unsafe_get s i)
+      then (
+        r := sub s (i + 1) (!j - i - 1) :: !r;
+        j := i)
+    done;
+    sub s 0 !j :: !r
+  ;;
+
   let get : string -> int -> char option =
     fun s i -> if 0 <= i && i < length s then Some (Stdlib.String.get s i) else None
   ;;

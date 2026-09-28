@@ -6,7 +6,7 @@ const RawMutex = (
     const t = @opaque_type "pthread_mutex_t*";
 
     const new = () -> RawMutex.t => (
-        let mut mutex = @native "Kast_malloc(sizeof(pthread_mutex_t))";
+        let mut mutex = @native "Kast_allocate(TypeInfo_primitive(pthread_mutex_t))";
         let err :: Int32 = @native "pthread_mutex_init(\(mutex), NULL)";
         if err != 0 then (
             panic("Failed to init mutex");

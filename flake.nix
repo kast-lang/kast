@@ -192,7 +192,14 @@
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
             export KAST_STD=$(pwd)/std
           '';
-          CFLAGS = "-O0 -lbacktrace -lgc -g -rdynamic -fsanitize=address,undefined,leak -pthread -Wfatal-errors";
+          CFLAGS = ''
+            -Wfatal-errors
+            -Wmissing-field-initializers
+            -O0
+            -lbacktrace -lgc -g -rdynamic
+            -fsanitize=address,undefined,leak
+            -pthread
+          '';
         };
         formatter = pkgs.nixfmt-classic;
       });

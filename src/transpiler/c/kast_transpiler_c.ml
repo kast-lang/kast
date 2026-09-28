@@ -6,6 +6,12 @@ module Interpreter = Kast_interpreter
 module C_ast = C_ast
 module ValueMap = Types.ValueMap.CompareMap
 
+module CTyMap = Map.Make (struct
+    type t = C_ast.ty
+
+    let compare = C_ast.compare_ty
+  end)
+
 let print_span = Span.print
 
 type gc_mode =
@@ -40,6 +46,7 @@ type ctx =
   { target : Types.value_target
   ; mutable includes : StringSet.t
   ; mutable types : C_ast.ty_def StringMap.t
+  ; mutable type_infos : string CTyMap.t
   ; mutable fns : C_ast.fn_def StringMap.t
   ; mutable statics : C_ast.static Dynarray.t
   ; mutable captured_values : string ValueMap.t
@@ -173,8 +180,8 @@ module Impl = struct
   and ty_to_string (ty : ty_repr) : string =
     let ctx = Effect.perform GetCtx in
     match ty with
-    | Unit -> "Unit"
-    | Raw s -> s
+    | T_Unit -> "Unit"
+    | T_Raw { c; is_primitive = _ } -> c
     | Named name -> name
     | Ptr p ->
       let name = ty_to_string p ^ "_Ptr" in
@@ -183,22 +190,36 @@ module Impl = struct
       name
     | Void -> "void"
 
-  and malloc_typed_ptr (ptr : C_ast.place_expr) : unit =
+  and type_info_name_for (ty : C_ast.ty) : string =
+    let ctx = Effect.perform GetCtx in
+    match ctx.type_infos |> CTyMap.find_opt ty with
+    | Some name -> name
+    | None ->
+      let name = gen_name (make_string "%s_TypeInfo" (ty_to_string ty)) in
+      ctx.type_infos <- ctx.type_infos |> CTyMap.add ty name;
+      name
+
+  and malloc_typed_ptr ~(boxed : bool) (ty : C_ast.ty) (ptr : C_ast.place_expr) : unit =
+    let ty =
+      if boxed
+      then (
+        match ty with
+        | Ptr ty -> ty
+        | _ -> failwith __LOC__)
+      else ty
+    in
+    let ty_info_name = type_info_name_for ty in
     insert_stmt
       (Assign
          { assignee = ptr
-         ; value =
-             Native
-               { parts =
-                   [ Raw "Kast_malloc(sizeof(*"; Interpolated (Claim ptr); Raw "))" ]
-               }
+         ; value = E_Native { parts = [ Raw ("Kast_allocate(&" ^ ty_info_name ^ ")") ] }
          })
 
   and declare_var ~(gc : bool) (ty : C_ast.ty) (name : string) : unit =
     if gc
     then (
       insert_stmt (DeclareVar { name; ty = Ptr ty });
-      malloc_typed_ptr (Ident name))
+      malloc_typed_ptr ~boxed:false ty (Ident name))
     else insert_stmt (DeclareVar { name; ty })
 
   and let_var ~(gc : bool) (ty : C_ast.ty) (name : string) (value : C_ast.expr) : unit =
@@ -213,7 +234,7 @@ module Impl = struct
     let result_name = gen_name "compound" in
     insert_stmt (DeclareVar { name = result_name; ty });
     let boxed = kast && !boxed_structs in
-    if boxed then malloc_typed_ptr (Ident result_name);
+    if boxed then malloc_typed_ptr ~boxed ty (Ident result_name);
     fields
     |> List.iter (fun (name, value) ->
       insert_stmt
@@ -324,8 +345,8 @@ module Impl = struct
   and resolve_ty_aliases (ty : C_ast.ty) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
     match ty with
-    | Unit -> Unit
-    | Raw s -> Raw s
+    | T_Unit -> T_Unit
+    | T_Raw s -> T_Raw s
     | Ptr pointee -> Ptr (resolve_ty_aliases pointee)
     | Void -> Void
     | Named name ->
@@ -333,7 +354,7 @@ module Impl = struct
        | Some def ->
          (match def.shape with
           | RuntimeDefined -> ty
-          | Raw _ -> ty
+          | DEF_Raw _ -> ty
           | Enum _ | Struct _ | Union _ -> ty
           | Fn _ -> ty
           | Alias ty -> resolve_ty_aliases ty)
@@ -427,7 +448,7 @@ module Impl = struct
         let ty =
           match data with
           | Some ty -> transpile_ty ty
-          | None -> Unit
+          | None -> T_Unit
         in
         name, ty)
     in
@@ -448,12 +469,12 @@ module Impl = struct
 
   and uninitialized (ty : C_ast.ty) : C_ast.expr =
     match ty with
-    | Unit -> Unit
+    | T_Unit -> Unit
     | _ ->
       let var = gen_name "uninitialized" in
       insert_stmt (DeclareVar { name = var; ty });
       insert_stmt
-        (Native { parts = [ Raw ("memset(&" ^ var ^ ", 0, sizeof(" ^ var ^ "))") ] });
+        (S_Native { parts = [ Raw ("memset(&" ^ var ^ ", 0, sizeof(" ^ var ^ "))") ] });
       Claim (Ident var)
 
   and ty_repr (ty : ty) : ty_repr =
@@ -494,16 +515,16 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     let shape : C_ast.ty_def_shape =
       match ty with
-      | Types.T_Unit -> Alias Unit
-      | Types.T_Bool -> Alias (Raw "Bool")
-      | Types.T_Int32 -> Alias (Raw "Int32")
-      | Types.T_UInt32 -> Alias (Raw "UInt32")
-      | Types.T_Int64 -> Alias (Raw "Int64")
-      | Types.T_UInt64 -> Alias (Raw "UInt64")
-      | Types.T_Float32 -> Alias (Raw "Float32")
-      | Types.T_Float64 -> Alias (Raw "Float64")
-      | Types.T_String -> Alias (Raw "String")
-      | Types.T_Char -> Alias (Raw "Char")
+      | Types.T_Unit -> Alias T_Unit
+      | Types.T_Bool -> Alias (T_Raw { c = "Bool"; is_primitive = true })
+      | Types.T_Int32 -> Alias (T_Raw { c = "Int32"; is_primitive = true })
+      | Types.T_UInt32 -> Alias (T_Raw { c = "UInt32"; is_primitive = true })
+      | Types.T_Int64 -> Alias (T_Raw { c = "Int64"; is_primitive = true })
+      | Types.T_UInt64 -> Alias (T_Raw { c = "UInt64"; is_primitive = true })
+      | Types.T_Float32 -> Alias (T_Raw { c = "Float32"; is_primitive = true })
+      | Types.T_Float64 -> Alias (T_Raw { c = "Float64"; is_primitive = true })
+      | Types.T_String -> Alias (T_Raw { c = "String"; is_primitive = true })
+      | Types.T_Char -> Alias (T_Raw { c = "Char"; is_primitive = true })
       | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
       | Types.T_Variant ty ->
         if variant_needs_tag ty
@@ -558,7 +579,7 @@ module Impl = struct
               |> StringMap.add
                    name
                    ({ shape =
-                        Raw
+                        DEF_Raw
                           { def = make_string "define_ArrayList(%s)" macro_arg
                           ; need_declared = [ Named macro_arg ]
                           ; need_completed = []
@@ -572,7 +593,7 @@ module Impl = struct
               |> StringMap.add
                    impl_name
                    ({ shape =
-                        Raw
+                        DEF_Raw
                           { def = make_string "impl_ArrayList(%s)" macro_arg
                           ; need_declared = []
                           ; need_completed = [ Named macro_arg ]
@@ -581,7 +602,7 @@ module Impl = struct
                     }
                     : C_ast.ty_def);
            Alias (Named name))
-      | Types.T_Ty -> Alias Unit (* Alias (Ref (Named "TypeInfo")) *)
+      | Types.T_Ty -> Alias (Ptr (Named "TypeInfo"))
       | Types.T_Fn { is_closure; call_convention; args; result } ->
         let is_closure = is_closure |> Inference.await_inferred_simple in
         let call_convention = call_convention |> Inference.await_inferred_simple in
@@ -598,7 +619,7 @@ module Impl = struct
         let result_ty = transpile_ty result in
         let result_ty : C_ast.ty =
           match result_ty with
-          | Unit -> Void
+          | T_Unit -> Void
           | other -> other
         in
         let define_macro_args =
@@ -607,7 +628,7 @@ module Impl = struct
         let args = if is_closure then [ C_ast.Ptr Void ] @ args else args in
         let args =
           match call_convention with
-          | None -> [ C_ast.Ptr (Raw "Context") ] @ args
+          | None -> [ C_ast.Ptr (T_Raw { c = "Context"; is_primitive = false }) ] @ args
           | Some "C" -> args
           | _ -> fail "unknown call convention"
         in
@@ -635,7 +656,7 @@ module Impl = struct
               Struct
                 (StringMap.of_list [ "captured", C_ast.Ptr Void; "f", Named raw_fn_ty ]))
          | false -> Fn { args; result_ty })
-      | Types.T_Generic _ when true -> Alias Unit
+      | Types.T_Generic _ when true -> Alias T_Unit
       | Types.T_Generic { args; result } ->
         let args =
           args.pattern.data.signature.ty
@@ -652,17 +673,17 @@ module Impl = struct
         in
         let result_ty = transpile_ty result in
         Fn { args; result_ty }
-      | Types.T_Ast -> Alias Unit
+      | Types.T_Ast -> Alias T_Unit
       | Types.T_UnwindToken _ -> Alias (Ptr (ty_shape_repr ty))
       | Types.T_Target -> failwith __LOC__
       | Types.T_ContextTy ->
         (* TODO maybe? *)
-        Alias Unit
-      | Types.T_ImplicitContext -> Alias (Raw "Context")
-      | Types.T_CompilerScope -> Alias Unit
+        Alias T_Unit
+      | Types.T_ImplicitContext -> Alias (Named "Context")
+      | Types.T_CompilerScope -> Alias T_Unit
       | Types.T_Opaque { name = _; native_name } ->
         (match native_name with
-         | Some native_name -> Alias (Raw native_name)
+         | Some native_name -> Alias (T_Raw { c = native_name; is_primitive = false })
          | None ->
            fail
              "native name must be set for opaque types when transpiling to C: %a"
@@ -722,7 +743,7 @@ module Impl = struct
       (match value with
        | Some value ->
          let var = gen_name "matches" in
-         let_var ~gc:false (Raw "bool") var tag_matches;
+         let_var ~gc:false (T_Raw { c = "bool"; is_primitive = true }) var tag_matches;
          insert_stmt
            (If
               { cond = Claim (Ident var)
@@ -883,7 +904,7 @@ module Impl = struct
       let result_ty = transpile_ty def.body.data.signature.ty in
       let result_ty : C_ast.ty =
         match result_ty with
-        | Unit -> Void
+        | T_Unit -> Void
         | other -> other
       in
       let unwind_ctx : unwind_ctx =
@@ -918,7 +939,7 @@ module Impl = struct
         let args =
           match call_convention with
           | None ->
-            [ ({ name = ctx_var; ty = Ptr (Raw "Context") } : C_ast.fn_arg) ] @ args
+            [ ({ name = ctx_var; ty = Ptr (Named "Context") } : C_ast.fn_arg) ] @ args
           | Some "C" -> args
           | Some other -> fail "unknown call convension %S" other
         in
@@ -964,8 +985,9 @@ module Impl = struct
                     |> Option.unwrap
                   in
                   let var = gen_name "packed" in
-                  declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
-                  if !boxed_structs then malloc_typed_ptr (Ident var);
+                  let var_ty = transpile_ty packed.data.signature.ty in
+                  declare_var ~gc:false var_ty var;
+                  if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty (Ident var);
                   packed_ty.tuple
                   |> Tuple.iter (fun packed_member _field ->
                     let member =
@@ -991,7 +1013,7 @@ module Impl = struct
               | None -> ()
               | Some result ->
                 (match result_ty with
-                 | Unit | Void -> insert_stmt (Expr result)
+                 | T_Unit | Void -> insert_stmt (Expr result)
                  | _ -> insert_stmt (Return result))
             with
             | effect GetScope, k -> Effect.continue k scope)
@@ -1037,7 +1059,7 @@ module Impl = struct
       | None -> name
     in
     let name = make_correct_ident name in
-    make_string "%s%d" name (Id.gen ()).value
+    make_string "%s_%d" name (Id.gen ()).value
 
   and not_inferred (var : _ Inference.var) : C_ast.expr = failwith __LOC__
 
@@ -1108,7 +1130,7 @@ module Impl = struct
                               (Assign
                                  { assignee =
                                      Field { obj = Ident var; field = "captured" }
-                                 ; value = Native { parts = [ Raw "NULL" ] }
+                                 ; value = E_Native { parts = [ Raw "NULL" ] }
                                  });
                             insert_stmt
                               (Assign
@@ -1141,7 +1163,7 @@ module Impl = struct
              in
              insert_stmt (Assign { assignee = Ident value_name; value = value_expr });
              insert_stmt
-               (Native
+               (S_Native
                   { parts =
                       [ Raw
                           ("#ifdef USE_GC\n"
@@ -1169,7 +1191,7 @@ module Impl = struct
     | V_Ref _ -> failwith __LOC__
     | V_String s ->
       Apply
-        { f = Native { parts = [ Raw "String_from_C_String" ] }
+        { f = E_Native { parts = [ Raw "String_from_C_String" ] }
         ; args = [ Literal (String s) ]
         }
     | V_Tuple { ty = _; tuple } ->
@@ -1187,7 +1209,7 @@ module Impl = struct
         |> List.of_seq
       in
       compound_literal ~kast:true (transpile_ty (Value.Shape.ty_of shape)) fields
-    | V_List { ty = _; elements } ->
+    | V_List { ty = { element_ty }; elements } ->
       Block
         (new_block (fun () ->
            let var = gen_name "list" in
@@ -1196,11 +1218,18 @@ module Impl = struct
              ~gc:false
              ty
              var
-             (Native { parts = [ Raw (ty_to_string ty); Raw "_new()" ] });
+             (E_Native
+                { parts =
+                    [ Raw (ty_to_string ty)
+                    ; Raw "_new(&"
+                    ; Raw (type_info_name_for (transpile_ty element_ty))
+                    ; Raw ")"
+                    ]
+                });
            elements
            |> Dynarray.iter (fun element ->
              insert_stmt
-               (Native
+               (S_Native
                   { parts =
                       [ Raw (ty_to_string ty)
                       ; Raw "_push_back("
@@ -1236,8 +1265,7 @@ module Impl = struct
                    }));
            insert_stmt (Expr (Claim (Ident var)))))
     | V_Ty ty ->
-      transpile_ty ty |> ignore;
-      Unit (* AddrOf (TypeInfo (transpile_ty ty)) *)
+      E_Native { parts = [ Raw "&"; Raw (type_info_name_for (transpile_ty ty)) ] }
     | V_Fn _ | V_Generic _ -> fail "unreachable, we should never compile fns as consts"
     | V_NativeFn f -> fail "transpiling native fn %S at %s" f.name __LOC__
     | V_Ast _ -> failwith __LOC__
@@ -1281,8 +1309,9 @@ module Impl = struct
             |> Option.unwrap
           in
           let var = gen_name "packed" in
-          declare_var ~gc:false (transpile_ty packed.data.signature.ty) var;
-          if !boxed_structs then malloc_typed_ptr (Ident var);
+          let var_ty = transpile_ty packed.data.signature.ty in
+          declare_var ~gc:false var_ty var;
+          if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty (Ident var);
           packed_ty.tuple
           |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
             let original_member : Tuple.member =
@@ -1412,17 +1441,17 @@ module Impl = struct
     let result_ty = transpile_ty f_ty.result in
     let apply_expr : C_ast.expr = Apply { f; args } in
     (match result_ty with
-     | Unit | Void -> insert_stmt (Expr apply_expr)
+     | T_Unit | Void -> insert_stmt (Expr apply_expr)
      | _ -> let_var ~gc:false result_ty result_var apply_expr);
     insert_stmt
       (If
-         { cond = Native { parts = [ Raw "are_we_unwinding()" ] }
+         { cond = E_Native { parts = [ Raw "are_we_unwinding()" ] }
          ; then_case =
              new_block (fun () -> (Effect.perform GetUnwindCtx).insert_unwind ())
          ; else_case = None
          });
     match result_ty with
-    | Unit | Void -> None
+    | T_Unit | Void -> None
     | _ -> Some (Claim (Ident result_var))
 
   and context_ty_name ({ id; ty } : Types.value_context_ty) : string = failwith __LOC__
@@ -1574,7 +1603,7 @@ module Impl = struct
             (DeclareVar { name = result_var; ty = transpile_ty expr.data.signature.ty });
           let captured_arg : C_ast.expr =
             match transpiled_fn.captured_ty_name with
-            | None -> Native { parts = [ Raw "NULL" ] }
+            | None -> E_Native { parts = [ Raw "NULL" ] }
             | Some captured_ty_name ->
               let captured_var_name = gen_name "captured" in
               let captured_place : C_ast.place_expr =
@@ -1616,9 +1645,9 @@ module Impl = struct
         (* Fn (transpile_fn ~captured:None def) *)
       | Types.E_Tuple { guaranteed_anonymous = _; parts } ->
         let var_name = gen_name "tuple" in
-        insert_stmt
-          (DeclareVar { name = var_name; ty = transpile_ty expr.data.signature.ty });
-        if !boxed_structs then malloc_typed_ptr (Ident var_name);
+        let var_ty = transpile_ty expr.data.signature.ty in
+        insert_stmt (DeclareVar { name = var_name; ty = var_ty });
+        if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty (Ident var_name);
         let unnamed_idx = ref 0 in
         parts
         |> List.iter (fun (part : expr Types.tuple_part_of) ->
@@ -1732,7 +1761,7 @@ module Impl = struct
                 Raw (Interpreter.eval_ty interpreter e |> transpile_ty |> ty_to_string)
               | Expr e -> Interpolated (transpile_expr e))
           in
-          Some (Native { parts }))
+          Some (E_Native { parts }))
       | Types.E_Module { def; bindings } ->
         let var = gen_name "module" in
         let binding_module_map = ref (Effect.perform GetBindingModuleMap) in
@@ -1741,9 +1770,10 @@ module Impl = struct
           binding_module_map := !binding_module_map |> Id.Map.add binding.id var);
         let binding_module_map = !binding_module_map in
         (try
-           declare_var ~gc:(is_full_gc ()) (transpile_ty expr.data.signature.ty) var;
+           let var_ty = transpile_ty expr.data.signature.ty in
+           declare_var ~gc:(is_full_gc ()) var_ty var;
            let module_place : C_ast.place_expr = ident_place var in
-           if !boxed_structs then malloc_typed_ptr module_place;
+           if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty module_place;
            execute_expr def;
            Some (Claim module_place)
          with
@@ -1779,7 +1809,11 @@ module Impl = struct
         Some (Claim (Ident var))
       | Types.E_And { lhs; rhs } ->
         let result = gen_name "and_result" in
-        let_var ~gc:false (Raw "Bool") result (transpile_expr lhs);
+        let_var
+          ~gc:false
+          (T_Raw { c = "Bool"; is_primitive = true })
+          result
+          (transpile_expr lhs);
         insert_stmt
           (If
              { cond = Claim (Ident result)
@@ -1792,7 +1826,11 @@ module Impl = struct
         Some (Claim (Ident result))
       | Types.E_Or { lhs; rhs } ->
         let result = gen_name "and_result" in
-        let_var ~gc:false (Raw "Bool") result (transpile_expr lhs);
+        let_var
+          ~gc:false
+          (T_Raw { c = "Bool"; is_primitive = true })
+          result
+          (transpile_expr lhs);
         insert_stmt
           (If
              { cond = Not (Claim (Ident result))
@@ -1829,7 +1867,7 @@ module Impl = struct
                      insert_stmt (Goto { label = end_of_match_label }))
                ; else_case = None
                }));
-        insert_stmt (Native { parts = [ Raw "Kast_match_non_exhaustive()" ] });
+        insert_stmt (S_Native { parts = [ Raw "Kast_match_non_exhaustive()" ] });
         insert_stmt (GotoLabel end_of_match_label);
         Some (Claim (Ident result_var))
       | Types.E_QuoteAst _ -> failwith __LOC__
@@ -1848,7 +1886,7 @@ module Impl = struct
           (compound_literal
              ~kast:true
              token_ty
-             [ "raw", C_ast.Native { parts = [ Raw "RawUnwindToken_new()" ] } ]);
+             [ "raw", C_ast.E_Native { parts = [ Raw "RawUnwindToken_new()" ] } ]);
         pattern_match token (Temp (AddrOf (Ident token_var)));
         let result_place : C_ast.place_expr =
           Field { obj = tuple_place token_var; field = "value" }
@@ -1872,13 +1910,13 @@ module Impl = struct
           (If
              { cond =
                  Apply
-                   { f = Native { parts = [ Raw "are_we_unwinding_with" ] }
+                   { f = E_Native { parts = [ Raw "are_we_unwinding_with" ] }
                    ; args =
                        [ Claim (Field { obj = tuple_place token_var; field = "raw" }) ]
                    }
              ; then_case =
                  new_block (fun () ->
-                   insert_stmt (Native { parts = [ Raw "stop_unwinding()" ] });
+                   insert_stmt (S_Native { parts = [ Raw "stop_unwinding()" ] });
                    insert_stmt (Goto { label = label_result }))
              ; else_case = Some (new_block (fun () -> old_unwind_ctx.insert_unwind ()))
              });
@@ -1907,7 +1945,7 @@ module Impl = struct
         insert_stmt
           (Expr
              (Apply
-                { f = Native { parts = [ Raw "start_unwinding" ] }
+                { f = E_Native { parts = [ Raw "start_unwinding" ] }
                 ; args =
                     [ Claim
                         (Field
@@ -1927,7 +1965,11 @@ module Impl = struct
         None
       | Types.E_LetRefContext new_ref ->
         let new_ctx_var = gen_name "ctx" in
-        let_var ~gc:false (Raw "Context*") new_ctx_var (transpile_expr new_ref);
+        let_var
+          ~gc:false
+          (T_Raw { c = "Context*"; is_primitive = false })
+          new_ctx_var
+          (transpile_expr new_ref);
         (Effect.perform GetScope).ctx_place <- Deref (Claim (Ident new_ctx_var));
         None
       | Types.E_CurrentContext { context_ty } -> Some (Claim (current_context context_ty))
@@ -1990,7 +2032,7 @@ module Impl = struct
                 if escaping && not (statics |> StringSet.contains ident)
                 then escaping_idents := !escaping_idents |> StringSet.add ident;
                 Ident ident)
-            | C_ast.Native e -> Native (walk_native_expr e)
+            | C_ast.P_Native e -> P_Native (walk_native_expr e)
             | C_ast.Field { obj; field : string } ->
               Field { obj = walk_place_expr ~escaping obj; field }
             | C_ast.Deref ptr -> Deref (walk_expr ptr)
@@ -1999,7 +2041,7 @@ module Impl = struct
             match expr with
             | Unit -> Unit
             | Literal literal -> Literal literal
-            | Native e -> Native (walk_native_expr e)
+            | E_Native e -> E_Native (walk_native_expr e)
             | Claim place -> Claim (walk_place_expr ~escaping:false place)
             | Cast { value; target : C_ast.ty } ->
               Cast { value = walk_expr value; target }
@@ -2013,7 +2055,7 @@ module Impl = struct
             | C_ast.Block b -> Block (walk_block b)
           and walk_stmt (stmt : C_ast.stmt) : C_ast.stmt =
             match stmt with
-            | Native e -> Native (walk_native_expr e)
+            | S_Native e -> S_Native (walk_native_expr e)
             | Comment c -> Comment c
             | DeclareVar { name; ty } ->
               if !analyzed
@@ -2021,7 +2063,7 @@ module Impl = struct
                 if !escaping_idents |> StringSet.contains name
                 then (
                   insert_stmt (DeclareVar { name; ty = Ptr ty });
-                  malloc_typed_ptr (Ident name);
+                  malloc_typed_ptr ~boxed:false ty (Ident name);
                   Comment (make_string "%s is potentially escaping, so its gc'd" name))
                 else DeclareVar { name; ty }
               else DeclareVar { name; ty }
@@ -2055,7 +2097,167 @@ module Impl = struct
       in
       { fn with body = new_body }
     in
-    { program with fns = program.fns |> StringMap.mapi postprocess_fn }
+    let fns = program.fns |> StringMap.mapi postprocess_fn in
+    let ctx = Effect.perform GetCtx in
+    let type_info_statics =
+      ctx.type_infos
+      |> CTyMap.to_list
+      |> List.map (fun ((ty, name) : C_ast.ty * string) : C_ast.static ->
+        { ty = T_Raw { c = "TypeInfo"; is_primitive = false }; name; comment = None })
+    in
+    let rec construct_ty_def_type_info (name : string) (def : C_ast.ty_def) : C_ast.expr =
+      match def.shape with
+      | C_ast.Alias ty -> construct_ty_type_info ty
+      | _ ->
+        let kind, gc_descr =
+          match def.shape with
+          | C_ast.Struct fields | C_ast.Union fields ->
+            let bitmap_var = gen_name "gc_bitmap" in
+            insert_stmt
+              (S_Native
+                 { parts =
+                     [ Raw "GC_word "
+                     ; Raw bitmap_var
+                     ; Raw "[GC_BITMAP_SIZE("
+                     ; Raw name
+                     ; Raw ")] = {0}"
+                     ]
+                 });
+            let is_primitive = ref true in
+            let mark_field_as_ptr (full_name : string) =
+              is_primitive := false;
+              (* GC_set_bit(T_bitmap, GC_WORD_OFFSET(T,field)); *)
+              insert_stmt
+                (S_Native
+                   { parts =
+                       [ Raw "GC_set_bit("
+                       ; Raw bitmap_var
+                       ; Raw ", GC_WORD_OFFSET("
+                       ; Raw name
+                       ; Raw ", "
+                       ; Raw full_name
+                       ; Raw "))"
+                       ]
+                   })
+            in
+            let mark_field_as_raw (full_name : string) (ty : C_ast.ty) =
+              is_primitive := false;
+              let ty_as_string =
+                let result = ref "" in
+                try
+                  C_ast.Print.print_ty ty;
+                  !result
+                with
+                | effect C_ast.Print.GetOutput, k ->
+                  Effect.continue k (fun s -> result := !result ^ s)
+              in
+              insert_stmt
+                (S_Native
+                   { parts =
+                       [ Raw "for (size_t i = 0; i < GC_WORD_LEN("
+                       ; Raw ty_as_string
+                       ; Raw "); i++) GC_set_bit("
+                       ; Raw bitmap_var
+                       ; Raw ", GC_WORD_OFFSET("
+                       ; Raw name
+                       ; Raw ", "
+                       ; Raw full_name
+                       ; Raw ") + i)"
+                       ]
+                   })
+            in
+            let rec walk_field (full_name : string) (ty : C_ast.ty) =
+              match ty with
+              | T_Unit -> ()
+              | T_Raw { c = _; is_primitive } ->
+                if not is_primitive then mark_field_as_raw full_name ty
+              | Named name ->
+                walk_field_def full_name name (ctx.types |> StringMap.find name)
+              | Ptr _ -> mark_field_as_ptr full_name
+              | Void -> fail "void field is impossible"
+            and walk_field_def
+                  (full_name : string)
+                  (ty_name : string)
+                  (def : C_ast.ty_def)
+              =
+              match def.shape with
+              | C_ast.Enum _ -> ()
+              | C_ast.Struct inner_fields | C_ast.Union inner_fields ->
+                inner_fields
+                |> StringMap.iter (fun inner_field inner_ty ->
+                  walk_field (full_name ^ "." ^ inner_field) inner_ty)
+              | C_ast.Fn _ -> mark_field_as_ptr full_name
+              | C_ast.Alias ty -> walk_field full_name ty
+              | DEF_Raw _ -> mark_field_as_raw full_name (Named ty_name)
+              | RuntimeDefined _ ->
+                fail "TODO plain C data inside Kast??? ty name=%S" ty_name
+            in
+            fields |> StringMap.iter walk_field;
+            if false && !is_primitive
+            then "primitive", None
+            else
+              ( "object"
+              , Some
+                  ( "gc_descr"
+                  , C_ast.E_Native
+                      { parts =
+                          [ Raw "GC_make_descriptor("
+                          ; Raw bitmap_var
+                          ; Raw ", GC_WORD_LEN("
+                          ; Raw name
+                          ; Raw "))"
+                          ]
+                      } ) )
+          | Enum _ -> "primitive", None
+          | RuntimeDefined -> "raw", None
+          | Fn _ -> "raw", None
+          | DEF_Raw _ -> "raw", None
+          | Alias _ -> failwith __LOC__
+        in
+        compound_literal
+          ~kast:false
+          (T_Raw { c = "TypeInfo"; is_primitive = false })
+          ([ "alignment", C_ast.E_Native { parts = [ Raw "alignof("; Raw name; Raw ")" ] }
+           ; "size", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
+           ; "stride", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
+           ; "kind", E_Native { parts = [ Raw ("TypeInfoKind_" ^ kind) ] }
+           ]
+           @ (gc_descr |> Option.to_list))
+    and construct_ty_type_info (ty : C_ast.ty) =
+      let primitive s : C_ast.expr =
+        E_Native { parts = [ Raw "TypeInfo_primitive("; Raw s; Raw ")" ] }
+      in
+      match ty with
+      | T_Unit -> primitive "Unit"
+      | T_Raw { c = raw_ty; is_primitive } ->
+        if is_primitive
+        then E_Native { parts = [ Raw "TypeInfo_primitive("; Raw raw_ty; Raw ")" ] }
+        else E_Native { parts = [ Raw "TypeInfo_raw("; Raw raw_ty; Raw ")" ] }
+      | Named name ->
+        let def =
+          ctx.types
+          |> StringMap.find_opt name
+          |> Option.unwrap_or_else (fun () -> failwith __LOC__)
+        in
+        construct_ty_def_type_info name def
+      | Ptr _ -> primitive "void*"
+      | Void -> fail "tried to create type info for void?"
+    in
+    let init_type_infos_fn : C_ast.fn_def =
+      { args = []
+      ; result_ty = Void
+      ; comment = None
+      ; body =
+          new_block (fun () ->
+            ctx.type_infos
+            |> CTyMap.iter (fun ty name ->
+              insert_stmt
+                (Assign { assignee = Ident name; value = construct_ty_type_info ty })))
+      }
+    in
+    let fns = fns |> StringMap.add "Kast_init_user_type_infos" init_type_infos_fn in
+    let statics = program.statics @ type_info_statics in
+    { program with fns; statics }
   ;;
 end
 
@@ -2099,6 +2301,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; types =
         StringMap.of_list
           ([ "Unit"
+           ; "Byte"
            ; "Bool"
            ; "Int32"
            ; "UInt32"
@@ -2108,6 +2311,8 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
            ; "Char"
            ; "Int64"
            ; "UInt64"
+           ; "TypeInfo"
+           ; "Context"
            ]
            |> List.map (fun name : (string * C_ast.ty_def) ->
              name, { shape = C_ast.RuntimeDefined; comment = None }))
@@ -2115,6 +2320,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; init_statics = { stmts = [] }
     ; includes = StringSet.empty
     ; contexts = Id.Map.empty
+    ; type_infos = CTyMap.empty
     ; runtime_defined_closure_types = !runtime_defined_closure_types
     ; runtime_defined_list_types = !runtime_defined_list_types
     }
@@ -2150,70 +2356,73 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
          | _ -> Ident ctx_var)
     }
   in
-  (try
-     let main : C_ast.fn_def =
-       { args =
-           [ { name = "argc"; ty = Raw "int" }; { name = "argv"; ty = Raw "char**" } ]
-       ; result_ty = Raw "int"
-       ; body =
-           Impl.new_block (fun () ->
-             Impl.insert_stmt (Native { parts = [ Raw "Kast_init(argc, argv)" ] });
-             Impl.declare_var ~gc:(is_full_gc ()) (Raw "Context") ctx_var;
-             Impl.insert_stmt
-               (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));
-             Impl.execute_expr expr;
-             unwind_ctx.cleanup_scope_without_unwind ();
-             Impl.insert_stmt (Return (Literal (Int32 (Int32.of_int 0)))))
-       ; comment = None
-       }
-     in
-     let init_statics : C_ast.fn_def =
-       { args = []
-       ; result_ty = Raw "void"
-       ; body = ctx.init_statics.stmts
-       ; comment = None
-       }
-     in
-     ctx.fns <- ctx.fns |> StringMap.add "main" main;
-     ctx.fns <- ctx.fns |> StringMap.add "KAST_init_statics" init_statics;
-     context_ty_def
-     := Some
-          ({ shape =
-               Struct
-                 (ctx.contexts
-                  |> Id.Map.to_list
-                  |> List.map (fun ((_id, context_ty) : Id.t * Types.value_context_ty) ->
-                    Impl.context_field_name context_ty, Impl.transpile_ty context_ty.ty)
-                  |> StringMap.of_list)
-           ; comment = Some "implicit context"
-           }
-           : C_ast.ty_def)
-   with
-   | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
-   | effect GetScope, k -> Effect.continue k scope
-   | effect CurrentFnCaptured, k -> Effect.continue k captured
-   | effect GetCtx, k -> Effect.continue k ctx
-   | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty);
-  Impl.postprocess
-    { types =
-        ctx.types
-        |> StringMap.add "Context" (!context_ty_def |> Option.unwrap)
-        |> StringMap.union
-             (fun _ a _ -> Some a)
-             (ctx.runtime_defined_closure_types
-              |> StringListMap.to_list
-              |> List.map (fun (_, name) ->
-                name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
-              |> StringMap.of_list)
-        |> StringMap.union
-             (fun _ a _ -> Some a)
-             (ctx.runtime_defined_list_types
-              |> StringMap.to_list
-              |> List.map (fun (_, name) ->
-                name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
-              |> StringMap.of_list)
-    ; includes = ctx.includes
-    ; fns = ctx.fns
-    ; statics = ctx.statics |> Dynarray.to_list
-    }
+  try
+    let main : C_ast.fn_def =
+      { args =
+          [ { name = "argc"; ty = T_Raw { c = "int"; is_primitive = true } }
+          ; { name = "argv"; ty = T_Raw { c = "char**"; is_primitive = false } }
+          ]
+      ; result_ty = T_Raw { c = "int"; is_primitive = true }
+      ; body =
+          Impl.new_block (fun () ->
+            Impl.insert_stmt (S_Native { parts = [ Raw "Kast_init(argc, argv)" ] });
+            Impl.declare_var ~gc:(is_full_gc ()) (Named "Context") ctx_var;
+            Impl.insert_stmt
+              (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));
+            Impl.execute_expr expr;
+            unwind_ctx.cleanup_scope_without_unwind ();
+            Impl.insert_stmt (Return (Literal (Int32 (Int32.of_int 0)))))
+      ; comment = None
+      }
+    in
+    let init_statics : C_ast.fn_def =
+      { args = []
+      ; result_ty = T_Raw { c = "void"; is_primitive = true }
+      ; body = ctx.init_statics.stmts
+      ; comment = None
+      }
+    in
+    ctx.fns <- ctx.fns |> StringMap.add "main" main;
+    ctx.fns <- ctx.fns |> StringMap.add "KAST_init_statics" init_statics;
+    context_ty_def
+    := Some
+         ({ shape =
+              Struct
+                (ctx.contexts
+                 |> Id.Map.to_list
+                 |> List.map (fun ((_id, context_ty) : Id.t * Types.value_context_ty) ->
+                   Impl.context_field_name context_ty, Impl.transpile_ty context_ty.ty)
+                 |> StringMap.of_list)
+          ; comment = Some "implicit context"
+          }
+          : C_ast.ty_def);
+    ctx.types
+    <- ctx.types
+       |> StringMap.add "Context" (!context_ty_def |> Option.unwrap)
+       |> StringMap.union
+            (fun _ a _ -> Some a)
+            (ctx.runtime_defined_closure_types
+             |> StringListMap.to_list
+             |> List.map (fun (_, name) ->
+               name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+             |> StringMap.of_list)
+       |> StringMap.union
+            (fun _ a _ -> Some a)
+            (ctx.runtime_defined_list_types
+             |> StringMap.to_list
+             |> List.map (fun (_, name) ->
+               name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+             |> StringMap.of_list);
+    Impl.postprocess
+      { types = ctx.types
+      ; includes = ctx.includes
+      ; fns = ctx.fns
+      ; statics = ctx.statics |> Dynarray.to_list
+      }
+  with
+  | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
+  | effect GetScope, k -> Effect.continue k scope
+  | effect CurrentFnCaptured, k -> Effect.continue k captured
+  | effect GetCtx, k -> Effect.continue k ctx
+  | effect GetBindingModuleMap, k -> Effect.continue k Id.Map.empty
 ;;

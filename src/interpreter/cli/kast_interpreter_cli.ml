@@ -103,7 +103,10 @@ let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t)
     let cc_args =
       match Sys.getenv_opt "CFLAGS" with
       | Some flags ->
-        (flags |> String.split_on_char ' ' |> List.filter (fun s -> s <> "")) @ cc_args
+        (flags
+         |> String.split_on (fun c -> c = ' ' || c = '\n')
+         |> List.filter (fun s -> s <> ""))
+        @ cc_args
       | None -> cc_args
     in
     if not !quiet
