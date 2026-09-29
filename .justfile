@@ -51,8 +51,8 @@ run-js path *args:
     kast run --format prettier --target javascript {{path}} {{args}}
 
 test-c:
-    ${CC:-gcc} -o target/test tests/test-c-runtime.c -g
-    ./target/test
+    ${CC:-gcc} ${CFLAGS} -o target/compiled.exe target/compiled.c
+    ./target/compiled.exe
 
 compile-tcp-client-server-c:
     #!/usr/bin/env bash

@@ -1,4 +1,5 @@
-#define USE_GC
+// #define KAST_ALLOCATION_STATS
+// #define USE_GC
 // #define GC_ON_INTERVAL_EMSCRIPTEN
 
 /* idk where this is documented,
@@ -59,7 +60,7 @@
 #endif
 
 #ifdef USE_GC
-#include <gc.h>
+#include <gc/gc.h>
 #include <gc/gc_typed.h>
 #endif
 
@@ -68,32 +69,95 @@ struct backtrace_state* BACKTRACE_STATE;
 
 typedef struct TypeInfo TypeInfo;
 
+typedef struct {
+    size_t allocations;
+    size_t total_memory;
+    size_t scannable_ptrs;
+    bool tracked;
+    TypeInfo* next_tracked;
+} Kast_type_allocation_stats;
+
+#define Kast_type_allocation_stats_new()                                       \
+    ((Kast_type_allocation_stats) {                                            \
+        .allocations = 0,                                                      \
+        .total_memory = 0,                                                     \
+        .scannable_ptrs = 0,                                                   \
+        .tracked = false,                                                      \
+    })
+
+void Kast_type_allocation_stats_dump(Kast_type_allocation_stats* stats) {
+    fprintf(
+        stderr,
+        "allocations=%zu total_memory=%zu scannable_ptrs=%zu",
+        stats->allocations,
+        stats->total_memory,
+        stats->scannable_ptrs
+    );
+}
+
 typedef enum {
     TypeInfoKind_primitive,
     TypeInfoKind_raw,
     TypeInfoKind_object,
+    TypeInfoKind_N,
 } TypeInfoKind;
 
 struct TypeInfo {
+    const char* name;
     size_t alignment;
     size_t size;
     size_t stride;
+#ifdef KAST_ALLOCATION_STATS
+    Kast_type_allocation_stats allocation_stats;
+#endif
 #ifdef USE_GC
     TypeInfoKind kind;
+    size_t inner_ptrs;
     GC_descr gc_descr;
 #endif
 };
 
+#ifdef KAST_ALLOCATION_STATS
 #define TypeInfo_raw(T)                                                        \
     (TypeInfo) {                                                               \
-        .alignment = alignof(T), .size = sizeof(T), .stride = sizeof(T),       \
-        .kind = TypeInfoKind_raw,                                              \
+        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
+        .allocation_stats = Kast_type_allocation_stats_new(),                  \
+        .stride = sizeof(T), .kind = TypeInfoKind_raw, .inner_ptrs = 0,        \
     }
 #define TypeInfo_primitive(T)                                                  \
     (TypeInfo) {                                                               \
-        .alignment = alignof(T), .size = sizeof(T), .stride = sizeof(T),       \
-        .kind = TypeInfoKind_primitive,                                        \
+        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
+        .allocation_stats = Kast_type_allocation_stats_new(),                  \
+        .stride = sizeof(T), .kind = TypeInfoKind_primitive, .inner_ptrs = 0,  \
     }
+#else
+#define TypeInfo_raw(T)                                                        \
+    (TypeInfo) {                                                               \
+        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
+        .stride = sizeof(T), .kind = TypeInfoKind_raw, .inner_ptrs = 0,        \
+    }
+#define TypeInfo_primitive(T)                                                  \
+    (TypeInfo) {                                                               \
+        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
+        .stride = sizeof(T), .kind = TypeInfoKind_primitive, .inner_ptrs = 0,  \
+    }
+#endif
+
+typedef struct {
+} Unit;
+
+typedef bool Bool;
+typedef char Byte;
+typedef int32_t Int32;
+typedef uint32_t UInt32;
+typedef int64_t Int64;
+typedef uint64_t UInt64;
+typedef float Float32;
+typedef double Float64;
+typedef uint32_t Char;
+
+TypeInfo Byte_TypeInfo = TypeInfo_primitive(Byte);
+TypeInfo String_TypeInfo;
 
 void Kast_backtrace_error_callback(void* data, const char* msg, int errnum) {
     fprintf(stderr, "libbacktrace error: %s (errnum: %d)\n", msg, errnum);
@@ -162,32 +226,96 @@ noreturn void panic_errno(const char* s) {
     exit_with_error(NULL);
 }
 
-void* Kast_allocate(TypeInfo* T) {
-#ifdef USE_GC
-    void* result;
-    switch (T->kind) {
-        case TypeInfoKind_primitive:
-            result = GC_MALLOC_ATOMIC(T->size);
-            break;
-        case TypeInfoKind_raw:
-            result = GC_MALLOC(T->size);
-            break;
-        case TypeInfoKind_object:
-            result = GC_MALLOC_EXPLICITLY_TYPED(T->size, T->gc_descr);
-            break;
+#ifdef KAST_ALLOCATION_STATS
+struct {
+    Kast_type_allocation_stats by_kind[TypeInfoKind_N];
+    Kast_type_allocation_stats raw;
+} Kast_allocation_stats;
+
+TypeInfo* TRACKED_TYPES_HEAD = NULL;
+
+void Kast_ensure_type_is_tracked(TypeInfo* T) {
+    if (T->allocation_stats.tracked) {
+        return;
     }
-#else
-    void* result = malloc(T->size);
-#endif
-    if (!result) {
-        panic_errno("Kast_allocate");
-    }
-    return result;
+    T->allocation_stats.tracked = true;
+    T->allocation_stats.next_tracked = TRACKED_TYPES_HEAD;
+    TRACKED_TYPES_HEAD = T;
 }
+
+int TypeInfo_compare(const void* void_a, const void* void_b) {
+    TypeInfo* const* a = void_a;
+    TypeInfo* const* b = void_b;
+    return (int)(*a)->allocation_stats.allocations
+        - (int)(*b)->allocation_stats.allocations;
+}
+
+void Kast_dump_allocation_stats() {
+    GC_gcollect();
+    fprintf(stderr, "RAW: ");
+    Kast_type_allocation_stats_dump(&Kast_allocation_stats.raw);
+    fprintf(stderr, "\n");
+    for (size_t kind = 0; kind < TypeInfoKind_N; kind++) {
+        fprintf(stderr, "kind=%zu: ", kind);
+        Kast_type_allocation_stats_dump(&Kast_allocation_stats.by_kind[kind]);
+        fprintf(stderr, "\n");
+    }
+    size_t types_len = 0;
+    for (TypeInfo* T = TRACKED_TYPES_HEAD; T != NULL;
+         T = T->allocation_stats.next_tracked) {
+        types_len++;
+    }
+    TypeInfo** types = malloc(sizeof(TypeInfo*) * types_len);
+    size_t i = 0;
+    for (TypeInfo* T = TRACKED_TYPES_HEAD; T != NULL;
+         T = T->allocation_stats.next_tracked) {
+        types[i++] = T;
+    }
+    if (i != types_len) {
+        exit_with_error("???");
+    }
+    qsort(types, types_len, sizeof(TypeInfo*), TypeInfo_compare);
+    for (i = 0; i < types_len; i++) {
+        TypeInfo* T = types[i];
+        fprintf(stderr, "%s: ", T->name);
+        Kast_type_allocation_stats_dump(&T->allocation_stats);
+        fprintf(stderr, "\n");
+    }
+    free(types);
+}
+
+typedef struct {
+    TypeInfo* T;
+    size_t array_length;
+} Kast_finalize_data;
+
+void Kast_finalize(void* obj, void* void_data) {
+    Kast_finalize_data* data = void_data;
+    TypeInfo* T = data->T;
+    if (T == &Byte_TypeInfo) {
+        Kast_allocation_stats.raw.allocations--;
+        Kast_allocation_stats.raw.total_memory -= data->array_length;
+    }
+    T->allocation_stats.allocations--;
+    T->allocation_stats.total_memory -= T->stride * data->array_length;
+    Kast_type_allocation_stats* kind_data =
+        &Kast_allocation_stats.by_kind[T->kind];
+    kind_data->allocations--;
+    kind_data->total_memory -= T->stride * data->array_length;
+    kind_data->scannable_ptrs -= T->inner_ptrs;
+    GC_FREE(data);
+}
+
+#else
+void Kast_dump_allocation_stats() {
+    fprintf(stderr, "KAST_ALLOCATION_STATS was not defined\n");
+}
+#endif
 
 void* Kast_allocate_array(TypeInfo* T, size_t length) {
 #ifdef USE_GC
     void* result;
+    // result = GC_MALLOC(T->stride * length);
     switch (T->kind) {
         case TypeInfoKind_primitive:
             result = GC_MALLOC_ATOMIC(T->stride * length);
@@ -196,16 +324,56 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
             result = GC_MALLOC(T->stride * length);
             break;
         case TypeInfoKind_object:
+#ifdef KAST_ALLOCATION_STATS
+            // TODO explicitly typed breaks with finalizers????
+            result = GC_MALLOC(T->stride * length);
+#else
             result = GC_CALLOC_EXPLICITLY_TYPED(length, T->stride, T->gc_descr);
+#endif
             break;
+        case TypeInfoKind_N:
+            exit_with_error("wrong type info kind");
     }
+    if (!result) {
+        panic_errno("Kast_allocate_array");
+    }
+#ifdef KAST_ALLOCATION_STATS
+    Kast_ensure_type_is_tracked(T);
+    Kast_finalize_data* finalize_data =
+        GC_MALLOC_ATOMIC(sizeof(Kast_finalize_data));
+    finalize_data->T = T;
+    finalize_data->array_length = length;
+    T->allocation_stats.allocations++;
+    T->allocation_stats.total_memory += T->stride * length;
+    if (T == &Byte_TypeInfo) {
+        Kast_allocation_stats.raw.allocations++;
+        Kast_allocation_stats.raw.total_memory += length;
+    }
+    Kast_type_allocation_stats* kind_data =
+        &Kast_allocation_stats.by_kind[T->kind];
+    kind_data->allocations++;
+    kind_data->total_memory += T->stride * length;
+    kind_data->scannable_ptrs += T->inner_ptrs;
+    GC_register_finalizer_no_order(
+        result,
+        Kast_finalize,
+        finalize_data,
+        NULL,
+        NULL
+    );
+#endif
+    return result;
 #else
     void* result = malloc(T->stride * length);
-#endif
     if (!result) {
         panic_errno("Kast_allocate_array");
     }
     return result;
+#endif
+}
+
+void* Kast_allocate(TypeInfo* T) {
+    return Kast_allocate_array(T, 1);
 }
 
 void* Kast_reallocate_array(
@@ -236,21 +404,9 @@ void Kast_free(void* memory) {
 #endif
 }
 
-typedef struct {
-} Unit;
-
-typedef bool Bool;
-typedef char Byte;
-typedef int32_t Int32;
-typedef uint32_t UInt32;
-typedef int64_t Int64;
-typedef uint64_t UInt64;
-typedef float Float32;
-typedef double Float64;
-typedef uint32_t Char;
-
-TypeInfo Byte_TypeInfo = TypeInfo_primitive(Byte);
-TypeInfo String_TypeInfo;
+char* Kast_allocate_raw(size_t length) {
+    return Kast_allocate_array(&Byte_TypeInfo, length);
+}
 
 void Kast_sleep_ns(int64_t ns) {
     time_t s = ns / 1000000000;
@@ -422,7 +578,7 @@ typedef struct String {
 
 String Char_to_String(Char c) {
     size_t len = Char_utf8_len(c);
-    char* buf = Kast_allocate_array(&Byte_TypeInfo, len);
+    char* buf = Kast_allocate_raw(len);
     char* encoder = buf;
     utf8_char_encode_step(&encoder, c);
     return (String) {.buf = buf, .length = len};
@@ -452,7 +608,7 @@ int String_cmp(String a, String b) {
 }
 
 String String_concat(String a, String b) {
-    char* buf = Kast_allocate_array(&Byte_TypeInfo, a.length + b.length);
+    char* buf = Kast_allocate_raw(a.length + b.length);
     memcpy(buf, a.buf, a.length);
     memcpy(buf + a.length, b.buf, b.length);
     return (String) {
@@ -477,7 +633,7 @@ String String_from_C_String(const C_String s) {
 }
 
 char* String_to_C_String(const String s) {
-    char* result = Kast_allocate_array(&Byte_TypeInfo, s.length + 1);
+    char* result = Kast_allocate_raw(s.length + 1);
     memcpy(result, s.buf, s.length);
     result[s.length] = 0;
     return result;
@@ -514,11 +670,16 @@ void Kast_init_user_type_infos();
 
 void Kast_init_type_infos() {
     String_TypeInfo = (TypeInfo) {
+        .name = "String",
         .alignment = alignof(String),
         .stride = sizeof(String),
         .size = sizeof(String),
 #ifdef USE_GC
+#ifdef KAST_ALLOCATION_STATS
+        .allocation_stats = Kast_type_allocation_stats_new(),
+#endif
         .kind = TypeInfoKind_object,
+        .inner_ptrs = 1,
         .gc_descr = ({
             GC_word T_bitmap[GC_BITMAP_SIZE(String)] = {0};
             GC_set_bit(T_bitmap, GC_WORD_OFFSET(String, buf));
@@ -559,17 +720,6 @@ void Kast_init(int argc, char* argv[]) {
     Kast_init_user_type_infos();
 }
 
-void* Kast_ensure_correct_malloc(void* buf, size_t size) {
-#ifdef USE_GC
-    char* gc_buf = Kast_allocate_array(&Byte_TypeInfo, size);
-    memcpy(gc_buf, buf, size);
-    free(buf);
-    return gc_buf;
-#else
-    return buf;
-#endif
-}
-
 String Kast_asprintf(const char* fmt, ...) {
     va_list va1, va2;
     va_start(va1, fmt);
@@ -580,7 +730,7 @@ String Kast_asprintf(const char* fmt, ...) {
         exit_with_error("determining asprintf length failed");
     }
     size_t buf_size = length + 1;
-    char* buf = Kast_allocate_array(&Byte_TypeInfo, buf_size);
+    char* buf = Kast_allocate_raw(buf_size);
     length = vsnprintf(buf, buf_size, fmt, va2);
     va_end(va2);
     if (length < 0) {
@@ -640,7 +790,7 @@ void check_ferror(FILE* f) {
 }
 
 String Kast_read_exactly(FILE* f, size_t size) {
-    char* buf = Kast_allocate_array(&Byte_TypeInfo, size);
+    char* buf = Kast_allocate_raw(size);
     size_t read = 0;
     while (read < size) {
         size_t new_read = fread(buf, 1, size - read, f);
@@ -750,6 +900,18 @@ typedef struct Context Context;
         };                                                                     \
     }                                                                          \
                                                                                \
+    ArrayList_##T ArrayList_##T##_with_capacity(                               \
+        TypeInfo* T_TypeInfo,                                                  \
+        size_t capacity                                                        \
+    ) {                                                                        \
+        return (ArrayList_##T) {                                               \
+            .T_TypeInfo = T_TypeInfo,                                          \
+            .buf = Kast_allocate_array(T_TypeInfo, capacity),                  \
+            .capacity = capacity,                                              \
+            .length = 0,                                                       \
+        };                                                                     \
+    }                                                                          \
+                                                                               \
     void ArrayList_##T##_reserve(ArrayList_##T* list, size_t len) {            \
         if (list->capacity < len) {                                            \
             size_t old_capacity = list->capacity;                              \
@@ -814,8 +976,10 @@ void String_iter(Context* ctx, String s, fn_Char_Unit consumer) {
 }
 
 String String_substring(String s, Int32 start, Int32 len) {
+    char* buf = Kast_allocate_raw(len);
+    strncpy(buf, s.buf + start, len);
     return (String) {
-        .buf = s.buf + start,
+        .buf = buf,
         .length = len,
     };
 }
@@ -1065,7 +1229,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     }
     host_len = strlen(host);
     port_len = strlen(port);
-    char* addr_c = Kast_allocate_array(&Byte_TypeInfo, host_len + 1 + port_len);
+    char* addr_c = Kast_allocate_raw(host_len + 1 + port_len);
     memcpy(addr_c, host, host_len);
     addr_c[host_len] = ':';
     memcpy(addr_c + host_len + 1, port, port_len);

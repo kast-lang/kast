@@ -8,6 +8,14 @@ const new = [T] () -> ArrayList.t[T] => @cfg (
     )
     | target.name == "javascript" => @native "[]"
 );
+const with_capacity = [T] (capacity :: UInt32) -> ArrayList.t[T] => @cfg (
+    | target.name == "interpreter" => (@native "List.new")()
+    | target.name == "c" => (
+        @native "ArrayList_\(type T)_with_capacity(\(T), \(capacity))"
+    )
+    | target.name == "javascript" => @native "[]"
+);
+
 const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) -> () => @cfg (
     | target.name == "interpreter" => (@native "List.push_back")(a, value)
     | target.name == "c" => (

@@ -66,6 +66,9 @@ module Args = struct
     | "--c-boxed-structs" :: value :: rest ->
       Kast_transpiler_c.boxed_structs := bool_of_string value;
       parse rest
+    | "--allocation-stats" :: value :: rest ->
+      Kast_transpiler_c.allocation_stats := bool_of_string value;
+      parse rest
     | "--gc-mode" :: value :: rest ->
       (Kast_transpiler_c.gc_mode
        := match value with
@@ -147,7 +150,16 @@ let run : Args.t -> unit =
        | C ->
          let transpiled = Kast_transpiler_c.transpile_expr compiler.interpreter expr in
          let out = fun s -> output_string out s in
-         (try Kast_transpiler_c.C_ast.Print.print_program transpiled with
+         (try
+            if !Kast_transpiler_c.allocation_stats
+            then out "#define KAST_ALLOCATION_STATS\n";
+            if
+              match !Kast_transpiler_c.gc_mode with
+              | Full | EscapeAnalyze -> true
+              | RuntimeBorrowChecker | Disabled -> false
+            then out "#define USE_GC\n";
+            Kast_transpiler_c.C_ast.Print.print_program transpiled
+          with
           | effect Kast_transpiler_c.C_ast.Print.GetOutput, k -> Effect.continue k out)
        | JavaScript ->
          let transpiled : Kast_transpiler_javascript.result =

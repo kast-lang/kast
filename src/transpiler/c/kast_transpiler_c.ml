@@ -21,6 +21,7 @@ type gc_mode =
   | Disabled
 
 let gc_mode = ref EscapeAnalyze
+let allocation_stats = ref false
 
 let is_full_gc () =
   match !gc_mode with
@@ -2114,7 +2115,7 @@ module Impl = struct
       match def.shape with
       | C_ast.Alias ty -> construct_ty_type_info ty
       | _ ->
-        let kind, gc_descr =
+        let kind, inner_ptrs, gc_descr =
           match def.shape with
           | C_ast.Struct fields | C_ast.Union fields ->
             let bitmap_var = gen_name "gc_bitmap" in
@@ -2125,12 +2126,24 @@ module Impl = struct
                      ; Raw bitmap_var
                      ; Raw "[GC_BITMAP_SIZE("
                      ; Raw name
-                     ; Raw ")] = {0}"
+                     ; Raw ")]"
+                     ]
+                 });
+            insert_stmt
+              (S_Native
+                 { parts =
+                     [ Raw "memset(&"
+                     ; Raw bitmap_var
+                     ; Raw ", 0, sizeof("
+                     ; Raw bitmap_var
+                     ; Raw "))"
                      ]
                  });
             let is_primitive = ref true in
+            let inner_ptrs = ref 0 in
             let mark_field_as_ptr (full_name : string) =
               is_primitive := false;
+              inner_ptrs := !inner_ptrs + 1;
               (* GC_set_bit(T_bitmap, GC_WORD_OFFSET(T,field)); *)
               insert_stmt
                 (S_Native
@@ -2147,6 +2160,8 @@ module Impl = struct
             in
             let mark_field_as_raw (full_name : string) (ty : C_ast.ty) =
               is_primitive := false;
+              (* TODO actually more ptrs than 1 here *)
+              inner_ptrs := !inner_ptrs + 1;
               let ty_as_string =
                 let result = ref "" in
                 try
@@ -2199,9 +2214,10 @@ module Impl = struct
             in
             fields |> StringMap.iter walk_field;
             if false && !is_primitive
-            then "primitive", None
+            then "primitive", 0, None
             else
               ( "object"
+              , !inner_ptrs
               , Some
                   ( "gc_descr"
                   , C_ast.E_Native
@@ -2213,20 +2229,29 @@ module Impl = struct
                           ; Raw "))"
                           ]
                       } ) )
-          | Enum _ -> "primitive", None
-          | RuntimeDefined -> "raw", None
-          | Fn _ -> "raw", None
-          | DEF_Raw _ -> "raw", None
+          | Enum _ -> "primitive", 0, None
+          | RuntimeDefined -> "raw", 0, None
+          | Fn _ -> "raw", 0, None
+          | DEF_Raw _ -> "raw", 0, None
           | Alias _ -> failwith __LOC__
         in
         compound_literal
           ~kast:false
           (T_Raw { c = "TypeInfo"; is_primitive = false })
-          ([ "alignment", C_ast.E_Native { parts = [ Raw "alignof("; Raw name; Raw ")" ] }
+          ([ "name", C_ast.Literal (String name)
+           ; "alignment", C_ast.E_Native { parts = [ Raw "alignof("; Raw name; Raw ")" ] }
            ; "size", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
            ; "stride", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
            ; "kind", E_Native { parts = [ Raw ("TypeInfoKind_" ^ kind) ] }
+           ; "inner_ptrs", Literal (Int32 (Int32.of_int inner_ptrs))
            ]
+           @ (if !allocation_stats
+              then
+                [ ( "allocation_stats"
+                  , C_ast.E_Native { parts = [ Raw "Kast_type_allocation_stats_new()" ] }
+                  )
+                ]
+              else [])
            @ (gc_descr |> Option.to_list))
     and construct_ty_type_info (ty : C_ast.ty) =
       let primitive s : C_ast.expr =
