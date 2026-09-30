@@ -59,9 +59,9 @@ impl String as module = (
             .iter = f => (@native "string.iteri")(s, (i, c) => f({ i, c }))
         }
         | target.name == "c" => {
-            .iter = f => (
+            .iter = @move f => (
                 let @"impl" :: fn (String, (Int32, Char) -> ()) -> () = @native "String_iteri";
-                @"impl"(s, (i, c) => f({ i, c }));
+                @"impl"(s, @move (i, c) => f({ i, c }));
             ),
         }
         | target.name == "javascript" => {
@@ -73,9 +73,9 @@ impl String as module = (
             .iter = f => (@native "string.iteri_rev")(s, (i, c) => f({ i, c }))
         }
         | target.name == "c" => {
-            .iter = f => (
+            .iter = @move f => (
                 let @"impl" :: fn (String, (Int32, Char) -> ()) -> () = @native "String_iteri_rev";
-                @"impl"(s, (i, c) => f({ i, c }));
+                @"impl"(s, @move (i, c) => f({ i, c }));
             ),
         }
         | target.name == "javascript" => {
@@ -107,7 +107,7 @@ impl String as module = (
         result
     );
     const split = (s :: String, sep :: Char) -> std.iter.Iterable[String] => {
-        .iter = f => (
+        .iter = @move f => (
             let mut start = 0;
             let perform_split = i => (
                 let part = substring(s, start, i - start);

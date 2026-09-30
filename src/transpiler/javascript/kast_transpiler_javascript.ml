@@ -377,6 +377,7 @@ module Impl = struct
     | T_Float64 | T_Float32 -> primitive "Float64"
     | T_String -> primitive "String"
     | T_Char -> primitive "Char"
+    | T_Box _ -> todo_ty __LOC__
     | T_Ref _ -> todo_ty __LOC__
     | T_Variant { name; variants = _ } ->
       (match name |> OptionalName.await_inferred with
@@ -484,6 +485,7 @@ module Impl = struct
       | V_Char c ->
         NoEffect { shape = JsAst.String (String.from_single_utf8 c); span = None }
       | V_String s -> calculate { shape = JsAst.String s; span = None }
+      | V_Box _ -> failwith __LOC__
       | V_Ref _ -> failwith __LOC__
       | V_Tuple { tuple; ty = _ } ->
         calculate
@@ -887,7 +889,7 @@ module Impl = struct
         field_place obj member
       | PE_Deref expr ->
         let var = JsAst.gen_name ~original:None "ref" in
-        let_var var (transpile_expr expr);
+        let_var var (claim (transpile_place_expr expr));
         place_from_js_var var
       | PE_Temp expr ->
         let var = JsAst.gen_name ~original:None "temp" in

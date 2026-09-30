@@ -227,10 +227,21 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
         let mut = IsMutable.new_not_inferred ~scope ~span in
         let value_ty = Ty.new_not_inferred ~scope ~span in
         let { ty = ref_ty } : signature = ref.data.signature in
-        ref_ty
-        |> Inference.Ty.expect_inferred_as
-             ~span
-             (Ty.inferred ~span (T_Ref { mut; referenced = value_ty }));
+        ref_ty.var
+        |> Inference.Var.once_inferred (fun (ref_ty : Ty.Shape.t) ->
+          match ref_ty with
+          | T_Ref { mut = actual_mut; referenced } ->
+            let _ : IsMutable.t = Inference_impl.unite_is_mutable ~span mut actual_mut in
+            value_ty |> Inference.Ty.expect_inferred_as ~span referenced
+          | T_Box boxed ->
+            let _ : IsMutable.t =
+              Inference_impl.unite_is_mutable
+                ~span
+                mut
+                (IsMutable.new_inferred ~span true)
+            in
+            value_ty |> Inference.Ty.expect_inferred_as ~span boxed
+          | _ -> error span "Can only deref ref or box");
         mut, { ty = value_ty }
       | PE_Context -> inferred_mut true, { ty = Ty.inferred ~span T_ImplicitContext }
       | PE_Const place ->

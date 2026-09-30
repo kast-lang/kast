@@ -55,6 +55,8 @@ type ctx =
   ; mutable statics : C_ast.static Dynarray.t
   ; mutable captured_values : string ValueMap.t
   ; mutable captured_types : string ValueMap.t
+  ; mutable drop_fns : string ValueMap.t
+  ; mutable claim_fns : string ValueMap.t
   ; mutable contexts : Types.value_context_ty Id.Map.t
   ; runtime_defined_closure_types : string StringListMap.t
   ; runtime_defined_list_types : string StringMap.t
@@ -225,15 +227,41 @@ module Impl = struct
          ; value = E_Native { parts = [ Raw ("Kast_allocate(&" ^ ty_info_name ^ ")") ] }
          })
 
-  and declare_var ~(gc : bool) (ty : C_ast.ty) (name : string) : unit =
+  and declare_var ~(gc : bool) (ty : C_ast.ty) (name : string) ~(drop : string option)
+    : unit
+    =
     if gc
     then (
       insert_stmt (DeclareVar { name; ty = Ptr ty });
       malloc_typed_ptr ~boxed:false ty (Ident name))
-    else insert_stmt (DeclareVar { name; ty })
+    else insert_stmt (DeclareVar { name; ty });
+    match drop with
+    | None -> ()
+    | Some drop ->
+      defer (fun () ->
+        insert_stmt
+          (Expr (Apply { f = Claim (Ident drop); args = [ AddrOf (Ident name) ] })))
 
-  and let_var ~(gc : bool) (ty : C_ast.ty) (name : string) (value : C_ast.expr) : unit =
-    declare_var ~gc ty name;
+  and insert_drop (thing : C_ast.expr) (ty : ty) =
+    let name = gen_name "to_drop" in
+    let c_ty = transpile_ty ty in
+    match c_ty with
+    | T_Unit -> insert_stmt (Expr thing)
+    | _ ->
+      let_var ~gc:false c_ty name thing ~drop:None;
+      insert_stmt
+        (Expr
+           (Apply { f = Claim (Ident (generate_drop ty)); args = [ AddrOf (Ident name) ] }))
+
+  and let_var
+        ~(gc : bool)
+        (ty : C_ast.ty)
+        (name : string)
+        (value : C_ast.expr)
+        ~(drop : string option)
+    : unit
+    =
+    declare_var ~gc ty name ~drop;
     insert_stmt
       (Assign
          { assignee = (if gc then Deref (Claim (Ident name)) else Ident name); value })
@@ -261,20 +289,40 @@ module Impl = struct
            }));
     Claim (Ident result_name)
 
+  and with_new_scope : 'a. (unit -> 'a) -> 'a =
+    fun f ->
+    let parent_unwind_ctx = Effect.perform GetUnwindCtx in
+    let unwind_ctx : unwind_ctx =
+      { insert_unwind = parent_unwind_ctx.insert_unwind
+      ; cleanup_scope_without_unwind = (fun () -> ())
+      }
+    in
+    let parent_scope = Effect.perform GetScope in
+    let scope : scope = { ctx_place = parent_scope.ctx_place } in
+    try
+      let result = f () in
+      unwind_ctx.cleanup_scope_without_unwind ();
+      result
+    with
+    | effect GetScope, k -> Effect.continue k scope
+    | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
+
   and new_block (f : unit -> unit) : C_ast.block =
     let block = { stmts = [] } in
     try
-      f ();
+      with_new_scope f;
       block.stmts
     with
     | effect GetCurrentBlock, k -> Effect.continue k block
 
-  and declare_binding (ty : C_ast.ty) (binding : binding) (value : C_ast.expr) : unit =
+  and declare_binding (binding : binding) (value : C_ast.expr) : unit =
     match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
     | Some _ -> insert_stmt (Assign { assignee = lookup_binding binding; value })
     | None ->
       let ident = binding_name binding in
-      let_var ~gc:(is_full_gc ()) ty ident value
+      let ty = transpile_ty binding.ty in
+      let drop = generate_drop binding.ty in
+      let_var ~gc:(is_full_gc ()) ty ident value ~drop:(Some drop)
 
   and ident_place (name : string) : C_ast.place_expr = get_actual_place (Ident name)
 
@@ -315,15 +363,18 @@ module Impl = struct
            | Types.Name label -> member_name (Name (Label.get_name label))
            | Types.Expr _ -> failwith __LOC__
          in
-         Field
-           { obj =
-               (if !boxed_structs
-                then Deref (Claim (transpile_place_expr obj))
-                else transpile_place_expr obj)
-           ; field
-           }
-       | Types.PE_Deref expr -> Deref (transpile_expr expr)
-       | Types.PE_Temp expr -> Temp (transpile_expr expr)
+         let obj = transpile_place_expr obj in
+         Field { obj = (if !boxed_structs then Deref (Claim obj) else obj); field }
+       | Types.PE_Deref expr -> Deref (Claim (transpile_place_expr expr))
+       | Types.PE_Temp expr ->
+         let var = gen_name "temp" in
+         let_var
+           ~gc:false
+           (transpile_ty expr.data.signature.ty)
+           var
+           (transpile_expr expr)
+           ~drop:(Some (generate_drop expr.data.signature.ty));
+         Ident var
        | Types.PE_Error -> fail "transpiling error place expr")
 
   and place_expr_const_propagate (expr : Expr.Place.t) : place option =
@@ -369,6 +420,214 @@ module Impl = struct
           | Fn _ -> ty
           | Alias ty -> resolve_ty_aliases ty)
        | None -> ty (* fail "named type %S is not found in ctx.types???" name *))
+
+  and generate_claim (ty : ty) : string =
+    let ctx = Effect.perform GetCtx in
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    Inference.Var.setup_default_if_needed ty.var;
+    let ty =
+      Interpreter.Substitute_bindings.sub_ty
+        ~span
+        ~state:(Interpreter.sub_here interpreter)
+        ty
+    in
+    Inference.Var.setup_default_if_needed ty.var;
+    ty |> Ty.await_inferred |> ignore;
+    match ty.var |> Inference.Var.inferred_opt with
+    | Some (T_Blocked _value) -> failwith __LOC__
+    | _ ->
+      let claim_name = ref None in
+      let do_prepend = ref false in
+      (* Log.info (fun log -> log "Checking in ValueMap: %a" Ty.print ty); *)
+      (* let old_captured_types = ctx.captured_types in *)
+      let ty_as_value = V_Ty ty |> Value.inferred ~span in
+      ctx.claim_fns
+      <- ctx.claim_fns
+         |> ValueMap.update ty_as_value (fun name ->
+           let name =
+             match name with
+             | Some name -> name
+             | None ->
+               let name = gen_name (make_string "claim_%a" Ty.print ty) in
+               do_prepend := true;
+               name
+           in
+           claim_name := Some name;
+           Some name);
+      let claim_name = !claim_name |> Option.get in
+      if !do_prepend
+      then (
+        let claim_impl = generate_claim_impl ty in
+        ctx.fns <- ctx.fns |> StringMap.add claim_name claim_impl);
+      claim_name
+
+  and generate_claim_impl (ty : ty) : C_ast.fn_def =
+    let var_void = "value_void" in
+    { comment = Some (make_string "claim for %a" Ty.print ty)
+    ; args = [ { name = var_void; ty = Ptr Void } ]
+    ; result_ty = Void
+    ; body =
+        new_block (fun () ->
+          let var = "value" in
+          let_var
+            ~gc:false
+            (Ptr (transpile_ty ty))
+            var
+            (Claim (Ident var_void))
+            ~drop:None;
+          let ty =
+            match ty.var |> Inference.Var.inferred_opt with
+            | None -> fail "can't generate_claim_impl for not inferred"
+            | Some ty -> ty
+          in
+          match ty with
+          | Types.T_Unit -> ()
+          | Types.T_Bool -> ()
+          | Types.T_Int32 -> ()
+          | Types.T_UInt32 -> ()
+          | Types.T_Int64 -> ()
+          | Types.T_UInt64 -> ()
+          | Types.T_Float32 -> ()
+          | Types.T_Float64 -> ()
+          | Types.T_String ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = E_Native { parts = [ Raw "String_claim" ] }
+                    ; args = [ Claim (Ident var) ]
+                    }))
+          | Types.T_Char -> ()
+          | Types.T_Box boxed ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = E_Native { parts = [ Raw "Kast_Box_claim" ] }
+                    ; args =
+                        [ Cast { value = Claim (Ident var); target = Ptr (Ptr Void) }
+                        ; AddrOf (Ident (type_info_name_for (transpile_ty boxed)))
+                        ]
+                    }))
+          | Types.T_Ref _ -> ()
+          | Types.T_Variant _ -> ()
+          | Types.T_Tuple _ -> ()
+          | Types.T_List _ -> ()
+          | Types.T_Ty -> ()
+          | Types.T_Fn _ -> ()
+          | Types.T_Generic _ -> ()
+          | Types.T_Ast -> ()
+          | Types.T_UnwindToken _ -> ()
+          | Types.T_Target -> ()
+          | Types.T_ContextTy -> ()
+          | Types.T_ImplicitContext -> ()
+          | Types.T_CompilerScope -> ()
+          | Types.T_Opaque _ -> ()
+          | Types.T_Blocked _ -> ()
+          | Types.T_Error -> ())
+    }
+
+  and generate_drop (ty : ty) : string =
+    let ctx = Effect.perform GetCtx in
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    Inference.Var.setup_default_if_needed ty.var;
+    let ty =
+      Interpreter.Substitute_bindings.sub_ty
+        ~span
+        ~state:(Interpreter.sub_here interpreter)
+        ty
+    in
+    Inference.Var.setup_default_if_needed ty.var;
+    ty |> Ty.await_inferred |> ignore;
+    match ty.var |> Inference.Var.inferred_opt with
+    | Some (T_Blocked _value) -> failwith __LOC__
+    | _ ->
+      let drop_name = ref None in
+      let do_prepend = ref false in
+      (* Log.info (fun log -> log "Checking in ValueMap: %a" Ty.print ty); *)
+      (* let old_captured_types = ctx.captured_types in *)
+      let ty_as_value = V_Ty ty |> Value.inferred ~span in
+      ctx.drop_fns
+      <- ctx.drop_fns
+         |> ValueMap.update ty_as_value (fun name ->
+           let name =
+             match name with
+             | Some name -> name
+             | None ->
+               let name = gen_name (make_string "drop_%a" Ty.print ty) in
+               do_prepend := true;
+               name
+           in
+           drop_name := Some name;
+           Some name);
+      let drop_name = !drop_name |> Option.get in
+      if !do_prepend
+      then (
+        let drop_impl = generate_drop_impl ty in
+        ctx.fns <- ctx.fns |> StringMap.add drop_name drop_impl);
+      drop_name
+
+  and generate_drop_impl (ty : ty) : C_ast.fn_def =
+    let var_void = "value_void" in
+    { comment = Some (make_string "Drop for %a" Ty.print ty)
+    ; args = [ { name = var_void; ty = Ptr Void } ]
+    ; result_ty = Void
+    ; body =
+        new_block (fun () ->
+          let var = "value" in
+          let_var
+            ~gc:false
+            (Ptr (transpile_ty ty))
+            var
+            (Claim (Ident var_void))
+            ~drop:None;
+          let ty =
+            match ty.var |> Inference.Var.inferred_opt with
+            | None -> fail "can't generate_drop_impl for not inferred"
+            | Some ty -> ty
+          in
+          match ty with
+          | Types.T_Unit -> ()
+          | Types.T_Bool -> ()
+          | Types.T_Int32 -> ()
+          | Types.T_UInt32 -> ()
+          | Types.T_Int64 -> ()
+          | Types.T_UInt64 -> ()
+          | Types.T_Float32 -> ()
+          | Types.T_Float64 -> ()
+          | Types.T_String ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = E_Native { parts = [ Raw "String_drop" ] }
+                    ; args = [ Claim (Deref (Claim (Ident var))) ]
+                    }))
+          | Types.T_Char -> ()
+          | Types.T_Box boxed ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = E_Native { parts = [ Raw "Kast_Box_drop" ] }
+                    ; args =
+                        [ Claim (Deref (Claim (Ident var)))
+                        ; AddrOf (Ident (type_info_name_for (transpile_ty boxed)))
+                        ]
+                    }))
+          | Types.T_Ref _ -> ()
+          | Types.T_Variant _ -> ()
+          | Types.T_Tuple _ -> ()
+          | Types.T_List _ -> ()
+          | Types.T_Ty -> ()
+          | Types.T_Fn _ -> ()
+          | Types.T_Generic _ -> ()
+          | Types.T_Ast -> ()
+          | Types.T_UnwindToken _ -> ()
+          | Types.T_Target -> ()
+          | Types.T_ContextTy -> ()
+          | Types.T_ImplicitContext -> ()
+          | Types.T_CompilerScope -> ()
+          | Types.T_Opaque _ -> ()
+          | Types.T_Blocked _ -> ()
+          | Types.T_Error -> ())
+    }
 
   and transpile_ty (ty : ty) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
@@ -535,6 +794,7 @@ module Impl = struct
       | Types.T_Float64 -> Alias (T_Raw { c = "Float64"; is_primitive = true })
       | Types.T_String -> Alias (T_Raw { c = "String"; is_primitive = true })
       | Types.T_Char -> Alias (T_Raw { c = "Char"; is_primitive = true })
+      | Types.T_Box boxed -> Alias (Ptr (transpile_ty boxed))
       | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
       | Types.T_Variant ty ->
         if variant_needs_tag ty
@@ -753,7 +1013,12 @@ module Impl = struct
       (match value with
        | Some value ->
          let var = gen_name "matches" in
-         let_var ~gc:false (T_Raw { c = "bool"; is_primitive = true }) var tag_matches;
+         let_var
+           ~gc:false
+           (T_Raw { c = "bool"; is_primitive = true })
+           var
+           tag_matches
+           ~drop:None;
          insert_stmt
            (If
               { cond = Claim (Ident var)
@@ -785,10 +1050,10 @@ module Impl = struct
     | Types.P_Binding { bind_mode; binding } ->
       let value : C_ast.expr =
         match bind_mode with
-        | Types.Claim -> Claim pure_place_expr
+        | Types.Claim -> claim_c pure_place_expr binding.ty
         | Types.ByRef { mut = _ } -> AddrOf pure_place_expr
       in
-      declare_binding (transpile_ty binding.ty) binding value
+      declare_binding binding value
     | Types.P_Tuple { parts; _ } ->
       let unnamed_idx = ref 0 in
       let had_unpack = ref false in
@@ -957,79 +1222,89 @@ module Impl = struct
           | Some other -> fail "unknown call convension %S" other
         in
         let body : C_ast.block =
-          new_block (fun () ->
-            let scope : scope = { ctx_place = Deref (Claim (Ident ctx_var)) } in
-            try
-              captured_bindings
-              |> List.iter (fun (binding : binding) ->
-                insert_stmt (Comment (make_string "captured %a" Binding.print binding)));
-              (match captured_ty_name with
-               | Some captured_ty_name ->
-                 let_var
-                   ~gc:false
-                   (Ptr (Named captured_ty_name))
-                   typed_captured_arg_name
-                   (Claim (Ident captured_arg_name))
-               | None -> ());
-              let arg_parts =
-                match def.args.pattern.shape with
-                | P_Tuple { parts; _ } -> parts
-                | _ -> fail "fn args must be tuple"
-              in
-              let unnamed_idx = ref 0 in
-              arg_parts
-              |> List.iter (fun (part : pattern Types.tuple_part_of) ->
-                match part with
-                | Field { label; field; _ } ->
-                  let member =
-                    match label with
-                    | None ->
-                      let result = Tuple.Member.Index !unnamed_idx in
-                      unnamed_idx := !unnamed_idx + 1;
-                      result
-                    | Some label -> Tuple.Member.Name (Label.get_name label)
-                  in
-                  pattern_match field (Ident (member_name member))
-                | Unpack packed ->
-                  let packed_ty =
-                    packed.data.signature.ty
-                    |> Ty.await_inferred
-                    |> Ty.Shape.expect_tuple
-                    |> Option.unwrap
-                  in
-                  let var = gen_name "packed" in
-                  let var_ty = transpile_ty packed.data.signature.ty in
-                  declare_var ~gc:false var_ty var;
-                  if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty (Ident var);
-                  packed_ty.tuple
-                  |> Tuple.iter (fun packed_member _field ->
+          let result_expr = ref None in
+          let block =
+            new_block (fun () ->
+              let scope : scope = { ctx_place = Deref (Claim (Ident ctx_var)) } in
+              try
+                captured_bindings
+                |> List.iter (fun (binding : binding) ->
+                  insert_stmt (Comment (make_string "captured %a" Binding.print binding)));
+                (match captured_ty_name with
+                 | Some captured_ty_name ->
+                   let_var
+                     ~gc:false
+                     (Ptr (Named captured_ty_name))
+                     typed_captured_arg_name
+                     (Claim (Ident captured_arg_name))
+                     ~drop:(* TODO *) None
+                 | None -> ());
+                let arg_parts =
+                  match def.args.pattern.shape with
+                  | P_Tuple { parts; _ } -> parts
+                  | _ -> fail "fn args must be tuple"
+                in
+                let unnamed_idx = ref 0 in
+                arg_parts
+                |> List.iter (fun (part : pattern Types.tuple_part_of) ->
+                  match part with
+                  | Field { label; field; _ } ->
                     let member =
-                      match packed_member with
-                      | Index _ ->
+                      match label with
+                      | None ->
                         let result = Tuple.Member.Index !unnamed_idx in
                         unnamed_idx := !unnamed_idx + 1;
                         result
-                      | Name name -> Name name
+                      | Some label -> Tuple.Member.Name (Label.get_name label)
                     in
-                    insert_stmt
-                      (Assign
-                         { assignee =
-                             Field
-                               { obj = tuple_place var
-                               ; field = member_name packed_member
-                               }
-                         ; value = Claim (Ident (member_name member))
-                         }));
-                  pattern_match packed (Ident var));
-              unwind_ctx.cleanup_scope_without_unwind ();
-              match eval_expr def.body with
-              | None -> ()
-              | Some result ->
-                (match result_ty with
-                 | T_Unit | Void -> insert_stmt (Expr result)
-                 | _ -> insert_stmt (Return result))
-            with
-            | effect GetScope, k -> Effect.continue k scope)
+                    pattern_match field (Ident (member_name member))
+                  | Unpack packed ->
+                    let packed_ty =
+                      packed.data.signature.ty
+                      |> Ty.await_inferred
+                      |> Ty.Shape.expect_tuple
+                      |> Option.unwrap
+                    in
+                    let var = gen_name "packed" in
+                    let var_ty = transpile_ty packed.data.signature.ty in
+                    declare_var
+                      ~gc:false
+                      var_ty
+                      var
+                      ~drop:(Some (generate_drop packed.data.signature.ty));
+                    if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty (Ident var);
+                    packed_ty.tuple
+                    |> Tuple.iter (fun packed_member _field ->
+                      let member =
+                        match packed_member with
+                        | Index _ ->
+                          let result = Tuple.Member.Index !unnamed_idx in
+                          unnamed_idx := !unnamed_idx + 1;
+                          result
+                        | Name name -> Name name
+                      in
+                      insert_stmt
+                        (Assign
+                           { assignee =
+                               Field
+                                 { obj = tuple_place var
+                                 ; field = member_name packed_member
+                                 }
+                           ; value = Claim (Ident (member_name member))
+                           }));
+                    pattern_match packed (Ident var));
+                unwind_ctx.cleanup_scope_without_unwind ();
+                match eval_expr def.body with
+                | None -> ()
+                | Some result ->
+                  (match result_ty with
+                   | T_Unit | Void -> insert_stmt (Expr result)
+                   | _ -> result_expr := Some result)
+              with
+              | effect GetScope, k -> Effect.continue k scope)
+          in
+          block
+          @ (!result_expr |> Option.map (fun expr -> C_ast.Return expr) |> Option.to_list)
         in
         let name = gen_name "fn" in
         ctx.fns
@@ -1202,6 +1477,7 @@ module Impl = struct
     | V_Int64 x | V_UInt64 x -> Literal (Int64 x)
     | V_Float64 x | V_Float32 x -> Literal (Float64 x)
     | V_Char c -> Literal (Int32 (Int32.of_int (Uchar.to_int c)))
+    | V_Box _ -> failwith __LOC__
     | V_Ref _ -> failwith __LOC__
     | V_String s ->
       Apply
@@ -1227,7 +1503,8 @@ module Impl = struct
       Block
         (new_block (fun () ->
            let var = gen_name "list" in
-           let ty = transpile_ty (Value.Shape.ty_of shape) in
+           let kast_ty = Value.Shape.ty_of shape in
+           let ty = transpile_ty kast_ty in
            let_var
              ~gc:false
              ty
@@ -1239,7 +1516,8 @@ module Impl = struct
                     ; Raw (type_info_name_for (transpile_ty element_ty))
                     ; Raw ")"
                     ]
-                });
+                })
+             ~drop:None;
            elements
            |> Dynarray.iter (fun element ->
              insert_stmt
@@ -1327,7 +1605,11 @@ module Impl = struct
           in
           let var = gen_name "packed" in
           let var_ty = transpile_ty packed.data.signature.ty in
-          declare_var ~gc:false var_ty var;
+          declare_var
+            ~gc:false
+            var_ty
+            var
+            ~drop:(Some (generate_drop packed.data.signature.ty));
           if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty (Ident var);
           packed_ty.tuple
           |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
@@ -1398,7 +1680,8 @@ module Impl = struct
                  ~gc:false
                  (transpile_ty field.data.signature.ty)
                  var
-                 (transpile_expr field);
+                 (transpile_expr field)
+                 ~drop:(Some (generate_drop field.data.signature.ty));
                args := !args |> Tuple.add name (C_ast.Claim (Ident var))
              | Unpack packed ->
                let packed_ty =
@@ -1412,7 +1695,8 @@ module Impl = struct
                  ~gc:false
                  (transpile_ty packed.data.signature.ty)
                  var
-                 (transpile_expr packed);
+                 (transpile_expr packed)
+                 ~drop:(Some (generate_drop packed.data.signature.ty));
                packed_ty.tuple
                |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
                  args
@@ -1443,7 +1727,7 @@ module Impl = struct
       if f_ty.is_closure |> Inference.await_inferred_simple
       then (
         let f_name = gen_name "f" in
-        let_var ~gc:false (transpile_ty f_expr.data.signature.ty) f_name f;
+        let_var ~gc:false (transpile_ty f_expr.data.signature.ty) f_name f ~drop:None;
         ( C_ast.Claim (Field { obj = Ident f_name; field = "f" })
         , [ C_ast.Claim (Field { obj = Ident f_name; field = "captured" }) ] @ args ))
       else f, args
@@ -1459,7 +1743,13 @@ module Impl = struct
     let apply_expr : C_ast.expr = Apply { f; args } in
     (match result_ty with
      | T_Unit | Void -> insert_stmt (Expr apply_expr)
-     | _ -> let_var ~gc:false result_ty result_var apply_expr);
+     | _ ->
+       let_var
+         ~gc:false
+         result_ty
+         result_var
+         apply_expr
+         ~drop:(Some (generate_drop f_ty.result)));
     insert_stmt
       (If
          { cond = E_Native { parts = [ Raw "are_we_unwinding()" ] }
@@ -1469,7 +1759,7 @@ module Impl = struct
          });
     match result_ty with
     | T_Unit | Void -> None
-    | _ -> Some (Claim (Ident result_var))
+    | _ -> Some (claim_c (Ident result_var) f_ty.result)
 
   and context_ty_name ({ id; ty } : Types.value_context_ty) : string = failwith __LOC__
   (* let name = gen_name "context" in *)
@@ -1562,10 +1852,21 @@ module Impl = struct
     let scope = Effect.perform GetScope in
     Field { obj = scope.ctx_place; field = context_field_name context_ty }
 
+  and claim (place : Types.place_expr) : C_ast.expr =
+    let c_place = transpile_place_expr place in
+    claim_c c_place place.data.signature.ty
+
+  and claim_c (c_place : C_ast.place_expr) (ty : ty) : C_ast.expr =
+    let var = gen_name "claimed" in
+    let_var ~gc:false (transpile_ty ty) var (Claim c_place) ~drop:None;
+    insert_stmt
+      (Expr (Apply { f = Claim (Ident (generate_claim ty)); args = [ AddrOf c_place ] }));
+    Claim (Ident var)
+
   and execute_expr (expr : expr) : unit =
     match eval_expr expr with
     | None -> ()
-    | Some e -> insert_stmt (Expr e)
+    | Some e -> insert_drop e expr.data.signature.ty
 
   and eval_expr (expr : expr) : C_ast.expr option =
     Log.trace (fun log ->
@@ -1578,7 +1879,7 @@ module Impl = struct
       match expr.shape with
       | Types.E_Constant { id = _; value } -> Some (Claim (transpile_value value))
       | Types.E_Ref { mut = _; place } -> Some (AddrOf (transpile_place_expr place))
-      | Types.E_Claim place -> Some (Claim (transpile_place_expr place))
+      | Types.E_Claim place -> Some (claim place)
       | Types.E_Then { list } ->
         List.fold_left
           (fun acc e ->
@@ -1591,22 +1892,7 @@ module Impl = struct
       | Types.E_Stmt { expr } ->
         execute_expr expr;
         None
-      | Types.E_Scope { expr } ->
-        let parent_unwind_ctx = Effect.perform GetUnwindCtx in
-        let unwind_ctx : unwind_ctx =
-          { insert_unwind = parent_unwind_ctx.insert_unwind
-          ; cleanup_scope_without_unwind = (fun () -> ())
-          }
-        in
-        let parent_scope = Effect.perform GetScope in
-        let scope : scope = { ctx_place = parent_scope.ctx_place } in
-        (try
-           let result = eval_expr expr in
-           unwind_ctx.cleanup_scope_without_unwind ();
-           result
-         with
-         | effect GetScope, k -> Effect.continue k scope
-         | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx)
+      | Types.E_Scope { expr } -> with_new_scope (fun () -> eval_expr expr)
       | Types.E_Fn { ty = f_ty; def; _ } ->
         let is_closure = f_ty.is_closure |> Inference.await_inferred_simple in
         let call_convention = f_ty.call_convention |> Inference.await_inferred_simple in
@@ -1627,7 +1913,7 @@ module Impl = struct
                 Deref (Claim (Ident captured_var_name))
               in
               let gc = true in
-              declare_var ~gc (Named captured_ty_name) captured_var_name;
+              declare_var ~gc (Named captured_ty_name) captured_var_name ~drop:None;
               transpiled_fn.captured
               |> Id.Map.iter (fun _id (binding : binding) ->
                 insert_stmt
@@ -1699,7 +1985,8 @@ module Impl = struct
               ~gc:false
               (transpile_ty packed.data.signature.ty)
               packed_name
-              (transpile_expr packed);
+              (transpile_expr packed)
+              ~drop:None;
             packed_ty.tuple
             |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
               let assignee_member =
@@ -1753,7 +2040,6 @@ module Impl = struct
         let value = Interpreter.eval interpreter expr in
         Some (Claim (transpile_value value))
       | Types.E_Assign { assignee; value } ->
-        let value_var = gen_name "value" in
         assign assignee (transpile_place_expr value);
         None
       | Types.E_Ty _ -> failwith __LOC__
@@ -1791,7 +2077,7 @@ module Impl = struct
         let binding_module_map = !binding_module_map in
         (try
            let var_ty = transpile_ty expr.data.signature.ty in
-           declare_var ~gc:(is_full_gc ()) var_ty var;
+           declare_var ~gc:(is_full_gc ()) var_ty var ~drop:None;
            let module_place : C_ast.place_expr = ident_place var in
            if !boxed_structs then malloc_typed_ptr ~boxed:true var_ty module_place;
            execute_expr def;
@@ -1833,7 +2119,8 @@ module Impl = struct
           ~gc:false
           (T_Raw { c = "Bool"; is_primitive = true })
           result
-          (transpile_expr lhs);
+          (transpile_expr lhs)
+          ~drop:None;
         insert_stmt
           (If
              { cond = Claim (Ident result)
@@ -1845,12 +2132,13 @@ module Impl = struct
              });
         Some (Claim (Ident result))
       | Types.E_Or { lhs; rhs } ->
-        let result = gen_name "and_result" in
+        let result = gen_name "or_result" in
         let_var
           ~gc:false
           (T_Raw { c = "Bool"; is_primitive = true })
           result
-          (transpile_expr lhs);
+          (transpile_expr lhs)
+          ~drop:None;
         insert_stmt
           (If
              { cond = Not (Claim (Ident result))
@@ -1868,7 +2156,8 @@ module Impl = struct
           ~gc:false
           (Ptr (transpile_ty value.data.signature.ty))
           value_var
-          (AddrOf (transpile_place_expr value));
+          (AddrOf (transpile_place_expr value))
+          ~drop:None;
         let result_var = gen_name "match_result" in
         let end_of_match_label = gen_name "end_of_match" in
         insert_stmt
@@ -1906,8 +2195,16 @@ module Impl = struct
           (compound_literal
              ~kast:true
              token_ty
-             [ "raw", C_ast.E_Native { parts = [ Raw "RawUnwindToken_new()" ] } ]);
-        pattern_match token (Temp (AddrOf (Ident token_var)));
+             [ "raw", C_ast.E_Native { parts = [ Raw "RawUnwindToken_new()" ] } ])
+          ~drop:None;
+        let token_ref_var = gen_name "unwindable_token_ref" in
+        let_var
+          ~gc:false
+          (Ptr token_ty)
+          token_ref_var
+          (AddrOf (Ident token_var))
+          ~drop:None;
+        pattern_match token (Ident token_ref_var);
         let result_place : C_ast.place_expr =
           Field { obj = tuple_place token_var; field = "value" }
         in
@@ -1953,7 +2250,8 @@ module Impl = struct
           ~gc:false
           (transpile_ty token.data.signature.ty)
           token_var
-          (transpile_expr token);
+          (transpile_expr token)
+          ~drop:None;
         (* token->value = value *)
         insert_stmt
           (Assign
@@ -1978,7 +2276,12 @@ module Impl = struct
         let value = transpile_expr value in
         let old_var = gen_name "old_ctx" in
         let ctx_place = current_context context_ty in
-        let_var ~gc:false (transpile_ty context_ty.ty) old_var (Claim ctx_place);
+        let_var
+          ~gc:false
+          (transpile_ty context_ty.ty)
+          old_var
+          (Claim ctx_place)
+          ~drop:None;
         insert_stmt (Assign { assignee = ctx_place; value });
         defer (fun () ->
           insert_stmt (Assign { assignee = ctx_place; value = Claim (Ident old_var) }));
@@ -1989,7 +2292,8 @@ module Impl = struct
           ~gc:false
           (T_Raw { c = "Context*"; is_primitive = false })
           new_ctx_var
-          (transpile_expr new_ref);
+          (transpile_expr new_ref)
+          ~drop:None;
         (Effect.perform GetScope).ctx_place <- Deref (Claim (Ident new_ctx_var));
         None
       | Types.E_CurrentContext { context_ty } -> Some (Claim (current_context context_ty))
@@ -2356,6 +2660,8 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; statics = Dynarray.create ()
     ; captured_values = ValueMap.empty
     ; captured_types = ValueMap.empty
+    ; drop_fns = ValueMap.empty
+    ; claim_fns = ValueMap.empty
     ; types =
         StringMap.of_list
           ([ "Unit"
@@ -2424,12 +2730,12 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
       ; body =
           Impl.new_block (fun () ->
             Impl.insert_stmt (S_Native { parts = [ Raw "Kast_init(argc, argv)" ] });
-            Impl.declare_var ~gc:(is_full_gc ()) (Named "Context") ctx_var;
+            Impl.declare_var ~gc:(is_full_gc ()) (Named "Context") ctx_var ~drop:None;
             Impl.insert_stmt
               (Expr (Apply { f = Claim (Ident "KAST_init_statics"); args = [] }));
             Impl.execute_expr expr;
-            unwind_ctx.cleanup_scope_without_unwind ();
-            Impl.insert_stmt (Return (Literal (Int32 (Int32.of_int 0)))))
+            unwind_ctx.cleanup_scope_without_unwind ())
+          @ [ Return (Literal (Int32 (Int32.of_int 0))) ]
       ; comment = None
       }
     in

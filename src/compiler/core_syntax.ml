@@ -2438,7 +2438,7 @@ let deref : core_syntax =
         let span = ast.data.span in
         let ref = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         match kind with
-        | PlaceExpr -> PE_Deref (C.compile Expr ref) |> init_place_expr span C.state
+        | PlaceExpr -> PE_Deref (C.compile PlaceExpr ref) |> init_place_expr span C.state
         | Expr -> E_Claim (C.compile PlaceExpr ast) |> init_expr span C.state
         | Assignee -> A_Place (C.compile PlaceExpr ast) |> init_assignee span C.state
         | _ ->

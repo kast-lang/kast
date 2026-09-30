@@ -61,6 +61,7 @@ module rec TypesImpl : sig
     | V_Float64 of float
     | V_Char of Uchar.t
     | V_Ref of value_ref
+    | V_Box of place
     | V_String of string
     | V_Tuple of value_tuple
     | V_List of value_list
@@ -225,6 +226,7 @@ module rec TypesImpl : sig
     | T_String
     | T_Char
     | T_Ref of ty_ref
+    | T_Box of ty
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
     | T_List of ty_list
@@ -519,7 +521,7 @@ module rec TypesImpl : sig
     | PE_Binding of binding
     | PE_Field of place_expr_field
     | PE_Const of place
-    | PE_Deref of expr
+    | PE_Deref of place_expr
     | PE_Context
     | PE_Temp of expr
     | PE_Error
@@ -829,6 +831,7 @@ end = struct
     | V_Float64 of float
     | V_Char of Uchar.t
     | V_Ref of value_ref
+    | V_Box of place
     | V_String of string
     | V_Tuple of value_tuple
     | V_List of value_list
@@ -993,6 +996,7 @@ end = struct
     | T_String
     | T_Char
     | T_Ref of ty_ref
+    | T_Box of ty
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
     | T_List of ty_list
@@ -1287,7 +1291,7 @@ end = struct
     | PE_Binding of binding
     | PE_Field of place_expr_field
     | PE_Const of place
-    | PE_Deref of expr
+    | PE_Deref of place_expr
     | PE_Context
     | PE_Temp of expr
     | PE_Error

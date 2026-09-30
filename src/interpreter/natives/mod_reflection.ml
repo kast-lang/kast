@@ -111,6 +111,12 @@ let init () =
          | T_Float64 -> construct_variant ~span type_info_ty "Float64" None
          | T_String -> construct_variant ~span type_info_ty "String" None
          | T_Char -> construct_variant ~span type_info_ty "Char" None
+         | T_Box boxed ->
+           construct_variant
+             ~span
+             type_info_ty
+             "Box"
+             (Some (fun _ -> V_Ty boxed |> Value.inferred ~span))
          | T_Ref { mut; referenced } ->
            construct_variant
              ~span

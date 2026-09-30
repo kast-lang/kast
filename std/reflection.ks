@@ -35,6 +35,7 @@ const TypeInfo = newtype (
     | :Float64
     | :String
     | :Char
+    | :Box Type
     | :Ref TypeInfo_Ref
     | :Variant TypeInfo_Variant
     | :Tuple TypeInfo_Tuple

@@ -73,6 +73,7 @@ module Impl = struct
          | V_Float32 (_ : float) -> ()
          | V_Float64 (_ : float) -> ()
          | V_Char (_ : Uchar.t) -> ()
+         | V_Box boxed -> complete_place boxed
          | V_Ref { mut : bool = _; place } -> complete_place place
          | V_String (_ : string) -> ()
          | V_Tuple { ty; tuple } ->
@@ -179,6 +180,7 @@ module Impl = struct
          | T_Float64 -> ()
          | T_String -> ()
          | T_Char -> ()
+         | T_Box boxed -> complete_ty boxed
          | T_Ref { mut; referenced } ->
            complete_is_mutable mut;
            complete_ty referenced
@@ -410,7 +412,7 @@ module Impl = struct
        | Index (_ : int) -> ()
        | Name (_ : Label.t) -> ()
        | Expr e -> complete_expr e)
-    | PE_Deref expr -> complete_expr expr
+    | PE_Deref expr -> complete_place_expr expr
     | PE_Temp expr -> complete_expr expr
     | PE_Error -> ()
 

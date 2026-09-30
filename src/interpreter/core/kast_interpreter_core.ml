@@ -578,12 +578,16 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
           let value = eval state expr in
           Place (~mut:true, Place.init ~mut:Mutable value)
         | PE_Deref ref_expr ->
-          (match eval state ref_expr |> Value.expect_ref with
-           | None ->
-             Error.error ref_expr.data.span "Expected a reference";
-             Place (~mut:true, error_place result_ty)
-           | Some { mut; place } ->
-             Place (~mut:(Place.is_mutable ~parent_mut:mut place), place))
+          (match eval_place state ref_expr with
+           | RefBlocked _ -> failwith __LOC__
+           | Place (~mut:_, place) ->
+             let ref = place |> read_place ~span in
+             (match ref |> Value.expect_ref with
+              | None ->
+                Error.error ref_expr.data.span "Expected a reference";
+                Place (~mut:true, error_place result_ty)
+              | Some { mut; place } ->
+                Place (~mut:(Place.is_mutable ~parent_mut:mut place), place)))
         | PE_Field { obj; field; field_span = _ } ->
           let member : Tuple.member =
             match eval_field_expr state field with

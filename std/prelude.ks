@@ -26,4 +26,5 @@ use Result;
 use Never;
 use from_never;
 
+use Box;
 use Box_new;

@@ -71,6 +71,7 @@ module Impl = struct
     | V_Float64 value -> fprintf fmt "@{<italic>%f@}" value
     | V_Char value -> fprintf fmt "@{<green>%a@}" Uchar.print_debug value
     | V_String value -> fprintf fmt "@{<green>%a@}" String.print_debug value
+    | V_Box boxed -> fprintf fmt "boxed %a" (print_place_value_with print_value) boxed
     | V_Ref { mut; place } ->
       fprintf fmt "&";
       if mut then fprintf fmt "mut ";
@@ -208,6 +209,7 @@ module Impl = struct
     | T_Float64 -> fprintf fmt "Float64"
     | T_Char -> fprintf fmt "Char"
     | T_String -> fprintf fmt "String"
+    | T_Box boxed -> fprintf fmt "Box[%a]" print_ty boxed
     | T_Ref { mut; referenced } ->
       fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
     | T_Variant v -> print_ty_variant ~always_print_shape:always_print_named_shape fmt v
@@ -297,7 +299,7 @@ module Impl = struct
       | E_Constant _ -> "Constant"
       | E_Then _ -> "Then"
       | E_Ref _ -> "Ref"
-      | E_Claim _ -> "ReadPlace"
+      | E_Claim _ -> "Claim"
       | E_Stmt _ -> "Stmt"
       | E_Scope _ -> "Scope"
       | E_Fn _ -> "Fn"
@@ -342,7 +344,7 @@ module Impl = struct
     | E_Claim place ->
       fprintf
         fmt
-        "@{<magenta>read_place@} (@;<0 2>@[<v>place = %a,@]@ )"
+        "@{<magenta>claim@} (@;<0 2>@[<v>place = %a,@]@ )"
         (print_place_expr ~options)
         place
     | E_Constant { id = _; value } ->
@@ -585,7 +587,7 @@ module Impl = struct
       fprintf
         fmt
         "@{<magenta>deref@} (@;<0 2>@[<v>ref = %a,@]@ )"
-        (print_expr ~options)
+        (print_place_expr ~options)
         ref
     | PE_Temp expr ->
       fprintf

@@ -1,6 +1,9 @@
 module:
 
 const t = [T] ((@native "List")(T) :: Type);
+
+# impl[T] ArrayList.t[T] as Drop = { ... };
+
 const new = [T] () -> ArrayList.t[T] => @cfg (
     | target.name == "interpreter" => (@native "List.new")()
     | target.name == "c" => (
@@ -39,21 +42,21 @@ const from_iter = [T] (iter :: std.iter.Iterable[T]) -> ArrayList.t[T] => (
     result
 );
 const into_iter = [T] (a :: ArrayList.t[T]) -> std.iter.Iterable[T] => {
-    .iter = consumer => (
+    .iter = @move consumer => (
         for i in 0..length(&a) do (
             consumer((&a |> at(i))^)
         );
     ),
 };
 const iter = [T] (a :: &ArrayList.t[T]) -> std.iter.Iterable[type (&T)] => {
-    .iter = consumer => (
+    .iter = @move consumer => (
         for i in 0..length(a) do (
             consumer(a |> at(i))
         );
     ),
 };
 const iter_mut = [T] (a :: &mut ArrayList.t[T]) -> std.iter.Iterable[type (&mut T)] => {
-    .iter = consumer => (
+    .iter = @move consumer => (
         for i in 0..length(&a^) do (
             consumer(a |> at_mut(i))
         );

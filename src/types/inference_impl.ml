@@ -89,6 +89,7 @@ module VarScope = struct
     | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float32 | T_Float64
     | T_String | T_Char ->
       root ()
+    | T_Box x -> of_ty x
     | T_Ref x -> of_ty_ref x
     | T_Variant x -> of_ty_variant x
     | T_Tuple x -> of_ty_tuple x
@@ -197,6 +198,7 @@ module VarScope = struct
     | V_Float32 (_ : float) -> root ()
     | V_Float64 (_ : float) -> root ()
     | V_Char (_ : Uchar.t) -> root ()
+    | V_Box boxed -> of_place boxed
     | V_Ref x -> of_value_ref x
     | V_String (_ : string) -> root ()
     | V_Tuple x -> of_value_tuple x
@@ -327,6 +329,8 @@ module Impl = struct
          | T_Char, _ -> fail ()
          | T_String, T_String -> T_String
          | T_String, _ -> fail ()
+         | T_Box a, T_Box b -> T_Box (unite_ty ~span a b)
+         | T_Box _, _ -> fail ()
          | T_Ref a, T_Ref b -> T_Ref (unite_ty_ref ~span a b)
          | T_Ref _, _ -> fail ()
          | T_Tuple a, T_Tuple b -> T_Tuple (unite_ty_tuple ~span a b)
@@ -754,6 +758,8 @@ module Impl = struct
          | V_Char _, _ -> fail ()
          | V_String a, V_String b when a = b -> V_String a
          | V_String _, _ -> fail ()
+         | V_Box a, V_Box b -> V_Box (unite_place ~span a b)
+         | V_Box _, _ -> fail ()
          | V_Ref a, V_Ref b when Repr.equal a b -> V_Ref a
          | V_Ref _, _ -> fail ()
          | V_Tuple a, V_Tuple b -> V_Tuple (unite_value_tuple ~span a b)
@@ -987,6 +993,7 @@ module Impl = struct
     | T_Char -> None
     | T_String -> None
     | T_Variant _ -> None
+    | T_Box _ -> None
     | T_Ref _ -> None
     | T_Opaque _ -> None
     | T_Tuple ({ name = _; tuple } as ty) ->
@@ -1076,6 +1083,7 @@ module Impl = struct
       | V_Char _ -> inferred_ty ~span T_Char
       | V_String _ -> inferred_ty ~span T_String
       | V_Opaque { ty; value = _ } -> inferred_ty ~span (T_Opaque ty)
+      | V_Box boxed -> inferred_ty ~span (T_Box boxed.ty)
       | V_Ref { mut; place } ->
         inferred_ty
           ~span

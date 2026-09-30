@@ -94,7 +94,7 @@ module Ty = struct
       let span = Span.fake "<Ty.Shape.name>" in
       function
       | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float32 | T_Float64
-      | T_String | T_Char | T_Ref _ | T_Ty | T_Fn _ | T_Generic _ | T_Ast
+      | T_String | T_Char | T_Box _ | T_Ref _ | T_Ty | T_Fn _ | T_Generic _ | T_Ast
       | T_UnwindToken _ | T_Target | T_ContextTy | T_ImplicitContext | T_List _
       | T_CompilerScope | T_Opaque _ | T_Blocked _ | T_Error ->
         None |> OptionalName.new_inferred ~span
@@ -120,9 +120,9 @@ module Value = struct
       let span = Span.fake "<Value.Shape.name>" in
       function
       | V_Unit | V_Bool _ | V_Int32 _ | V_UInt32 _ | V_Int64 _ | V_UInt64 _ | V_Float32 _
-      | V_Float64 _ | V_Char _ | V_Ref _ | V_String _ | V_Tuple _ | V_List _ | V_Variant _
-      | V_Ast _ | V_UnwindToken _ | V_Target _ | V_ContextTy _ | V_ImplicitContext _
-      | V_CompilerScope _ | V_Opaque _ | V_Blocked _ | V_Error ->
+      | V_Float64 _ | V_Char _ | V_Box _ | V_Ref _ | V_String _ | V_Tuple _ | V_List _
+      | V_Variant _ | V_Ast _ | V_UnwindToken _ | V_Target _ | V_ContextTy _
+      | V_ImplicitContext _ | V_CompilerScope _ | V_Opaque _ | V_Blocked _ | V_Error ->
         None |> OptionalName.new_inferred ~span
       | V_Fn _ | V_NativeFn _ ->
         (* TODO *)

@@ -59,7 +59,7 @@ let inner_compiled_with_handler
       | PE_Binding _ -> ()
       | PE_Context -> ()
       | PE_Const _ -> ()
-      | PE_Deref ref -> handler.handle Expr ref
+      | PE_Deref ref -> handler.handle PlaceExpr ref
       | PE_Temp expr -> handler.handle Expr expr
       | PE_Field { obj; field; field_span = _ } ->
         handler.handle PlaceExpr obj;

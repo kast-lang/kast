@@ -108,6 +108,7 @@ struct TypeInfo {
     size_t alignment;
     size_t size;
     size_t stride;
+    void (*drop)(void*);
     TypeInfoKind kind;
 #ifdef KAST_ALLOCATION_STATS
     Kast_type_allocation_stats allocation_stats;
@@ -896,6 +897,15 @@ typedef struct Context Context;
         };                                                                     \
     }                                                                          \
                                                                                \
+    ArrayList_##T##_drop(ArrayList_##T list) {                                 \
+        if (list.T_TypeInfo->drop != NULL) {                                   \
+            for (size_t i = 0; i < list.length; i++) {                         \
+                list.T_TypeInfo->drop(&list.buf[i]);                           \
+            }                                                                  \
+        }                                                                      \
+        Kast_free(list.buf);                                                   \
+    }                                                                          \
+                                                                               \
     ArrayList_##T ArrayList_##T##_with_capacity(                               \
         TypeInfo* T_TypeInfo,                                                  \
         size_t capacity                                                        \
@@ -944,6 +954,33 @@ define_closure_type(fn_Char_Unit, void, Char);
 
 #define call_closure(TODO_unwind, _f, ...)                                     \
     (_f).f(ctx, (_f).captured, __VA_ARGS__)
+
+void TypeInfo_drop(TypeInfo* T, void* value) {
+    if (T->drop != NULL) {
+        T->drop(value);
+    }
+}
+
+void Kast_Box_claim(void** box, TypeInfo* T) {
+    *box = NULL;
+}
+
+void Kast_Box_drop(void* box, TypeInfo* T) {
+    if (box == NULL) {
+        return;
+    }
+    TypeInfo_drop(T, box);
+    Kast_free(box);
+}
+
+void String_claim(String* s) {
+    s->buf = NULL;
+    s->length = 0;
+}
+
+void String_drop(String s) {
+    Kast_free((void*)s.buf);
+}
 
 void String_iteri(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf;

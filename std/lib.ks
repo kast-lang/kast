@@ -27,10 +27,17 @@ const Float64 :: Type = @native "Float64";
 const Char :: Type = @native "Char";
 const String :: Type = @native "String";
 
-# const Box = [T] type (&mut T);
-const Box_new = [T] (mut value :: T) -> Box[T] => (
-    &mut value
+const Box = [T :: Type] ((@native "Box")(T) :: Type);
+const Box_new = [T] (mut value :: T) -> Box[T] => @cfg (
+    | target.name == "c" => (
+        let result = @native "Kast_allocate(\(T))";
+        result^ = value;
+        ((result))
+    )
+    | true => panic("TODO box")
 );
+
+const mem = include "./mem.ks";
 
 include "./never.ks";
 include "./ast.ks";

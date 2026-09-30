@@ -31,6 +31,7 @@ let init_natives () =
   let generic_types : (string * (ty -> Ty.Shape.t)) list =
     [ ("UnwindToken", fun arg -> T_UnwindToken { result = arg })
     ; ("List", fun arg -> T_List { element_ty = arg })
+    ; ("Box", fun arg -> T_Box arg)
     ]
   in
   let types =
