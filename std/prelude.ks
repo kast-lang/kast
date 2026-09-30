@@ -25,3 +25,5 @@ use Option;
 use Result;
 use Never;
 use from_never;
+
+use Box_new;

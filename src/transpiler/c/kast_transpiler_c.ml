@@ -84,6 +84,7 @@ type _ Effect.t += GetUnwindCtx : unwind_ctx Effect.t
 type transpiled_fn =
   { captured_ty_name : string option
   ; captured : binding Id.Map.t
+  ; is_move : bool
   ; def : Types.compiled_fn
   ; name : string
   }
@@ -186,7 +187,12 @@ module Impl = struct
     match ty with
     | T_Unit -> "Unit"
     | T_Raw { c; is_primitive = _ } -> c
-    | Named name -> name
+    | Named name ->
+      name
+      (* (match ctx.types |> StringMap.find_opt name with *)
+      (*  | Some { shape = Alias ty; _ } -> ty_to_string ty *)
+      (*  | Some _ -> name *)
+      (*  | None -> fail "type %S is named but not in ctx.types" name) *)
     | Ptr p ->
       let name = ty_to_string p ^ "_Ptr" in
       let ty_def : C_ast.ty_def = { shape = Alias ty; comment = None } in
@@ -362,7 +368,7 @@ module Impl = struct
           | Enum _ | Struct _ | Union _ -> ty
           | Fn _ -> ty
           | Alias ty -> resolve_ty_aliases ty)
-       | None -> ty)
+       | None -> ty (* fail "named type %S is not found in ctx.types???" name *))
 
   and transpile_ty (ty : ty) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
@@ -875,27 +881,30 @@ module Impl = struct
       | [] -> None, Id.Map.empty
       | captures ->
         let name = gen_name "captured" in
-        let def : C_ast.ty_def =
+        let captured_ty_def : C_ast.ty_def =
           { shape =
               Struct
                 (captures
                  |> List.map (fun (binding : binding) ->
-                   binding_name binding, C_ast.Ptr (transpile_ty binding.ty))
+                   ( binding_name binding
+                   , let ty = transpile_ty binding.ty in
+                     if def.is_move then ty else C_ast.Ptr ty ))
                  |> StringMap.of_list)
           ; comment = Some (make_string "captured of closure at %a" print_span def_span)
           }
         in
-        ctx.types <- ctx.types |> StringMap.add name def;
+        ctx.types <- ctx.types |> StringMap.add name captured_ty_def;
         ( Some name
         , captures
           |> List.map (fun (binding : binding) : (Id.t * C_ast.place_expr) ->
             ( binding.id
-            , Deref
-                (Claim
-                   (Field
-                      { obj = Deref (Claim (Ident typed_captured_arg_name))
-                      ; field = binding_name binding
-                      })) ))
+            , let field : C_ast.place_expr =
+                Field
+                  { obj = Deref (Claim (Ident typed_captured_arg_name))
+                  ; field = binding_name binding
+                  }
+              in
+              if def.is_move then field else Deref (Claim field) ))
           |> Id.Map.of_list )
     in
     let captured : current_captured =
@@ -1037,6 +1046,7 @@ module Impl = struct
             captured_bindings
             |> List.map (fun (binding : binding) -> binding.id, binding)
             |> Id.Map.of_list
+        ; is_move = def.is_move
         ; captured_ty_name
         ; name
         ; def
@@ -1624,7 +1634,10 @@ module Impl = struct
                   (Assign
                      { assignee =
                          Field { obj = captured_place; field = binding_name binding }
-                     ; value = AddrOf (lookup_binding binding)
+                     ; value =
+                         (if transpiled_fn.is_move
+                          then Claim (lookup_binding binding)
+                          else AddrOf (lookup_binding binding))
                      }));
               if gc
               then Claim (Ident captured_var_name)

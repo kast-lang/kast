@@ -367,7 +367,7 @@ module Impl = struct
         (Tuple.make [ expr ] [])
     | E_Fn { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
-       | Some { captures = _; args; body } ->
+       | Some { captures = _; is_move = _; args; body } ->
          fprintf
            fmt
            "@{<magenta>fn@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"
@@ -378,7 +378,7 @@ module Impl = struct
        | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
     | E_Generic { def = { span = _; compiled; on_compiled = _ }; _ } ->
       (match compiled with
-       | Some { captures = _; args; body } ->
+       | Some { captures = _; is_move = _; args; body } ->
          fprintf
            fmt
            "@{<magenta>generic@} (@;<0 2>@[<v>arg = %a,@]@;<0 2>@[<v>body = %a@]@ )"

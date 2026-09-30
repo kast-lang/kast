@@ -20,14 +20,14 @@ const range = [T] (
     end :: T,
 ) -> std.iter.ReversibleIterable[T] => (
     let ONE = (T as Number).ONE;
-    let forward = consumer => (
+    let forward = @move consumer => (
         let mut i = start;
         while i < end do (
             consumer(i);
             i += ONE;
         );
     );
-    let backward = consumer => (
+    let backward = @move consumer => (
         let mut i = end;
         while i > start do (
             i -= ONE;

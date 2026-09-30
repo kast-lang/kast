@@ -78,7 +78,7 @@ let inner_compiled_with_handler
       | E_Fn { def; ty = _ } | E_Generic { def; ty = _ } ->
         (match def.compiled with
          | None -> ()
-         | Some { captures = _; args = { pattern = args }; body } ->
+         | Some { captures = _; is_move = _; args = { pattern = args }; body } ->
            handler.handle Pattern args;
            handler.handle Expr body)
       | E_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler

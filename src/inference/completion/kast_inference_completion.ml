@@ -145,7 +145,7 @@ module Impl = struct
     =
     match compiled with
     | None -> error span "Function could not be compiled"
-    | Some { captures = _; args; body } ->
+    | Some { captures = _; is_move : bool = _; args; body } ->
       complete_pattern_args args;
       complete_expr body
 

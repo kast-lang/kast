@@ -212,6 +212,7 @@ module Impl = struct
     in
     let state = inner_state in
     { captures = f.captures
+    ; is_move = f.is_move
     ; args = { pattern = sub_pattern_and_inject_replacements ~state f.args.pattern }
     ; body = sub_expr ~state f.body
     }

@@ -1,4 +1,4 @@
-impl syntax (Box[T]) = `(&mut $T);
+impl syntax (Box[T]) = `(type (&mut $T));
 
 impl syntax (arg |> f) = `(
     let _arg = $arg;

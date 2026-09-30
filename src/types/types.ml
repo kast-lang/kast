@@ -246,6 +246,7 @@ module rec TypesImpl : sig
   (* EXPR *)
   and compiled_fn =
     { captures : captures
+    ; is_move : bool
     ; args : pattern_args
     ; body : expr
     }
@@ -1013,6 +1014,7 @@ end = struct
   (* EXPR *)
   and compiled_fn =
     { captures : captures
+    ; is_move : bool
     ; args : pattern_args
     ; body : expr
     }
