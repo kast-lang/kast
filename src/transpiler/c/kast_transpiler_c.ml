@@ -21,6 +21,7 @@ type gc_mode =
   | Disabled
 
 let gc_mode = ref EscapeAnalyze
+let typed_gc = ref true
 let allocation_stats = ref false
 
 let is_full_gc () =

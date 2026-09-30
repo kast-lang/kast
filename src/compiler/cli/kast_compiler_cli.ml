@@ -69,6 +69,9 @@ module Args = struct
     | "--allocation-stats" :: value :: rest ->
       Kast_transpiler_c.allocation_stats := bool_of_string value;
       parse rest
+    | "--typed-gc" :: value :: rest ->
+      Kast_transpiler_c.typed_gc := bool_of_string value;
+      parse rest
     | "--gc-mode" :: value :: rest ->
       (Kast_transpiler_c.gc_mode
        := match value with
@@ -151,6 +154,7 @@ let run : Args.t -> unit =
          let transpiled = Kast_transpiler_c.transpile_expr compiler.interpreter expr in
          let out = fun s -> output_string out s in
          (try
+            if !Kast_transpiler_c.typed_gc then out "#define KAST_TYPED_GC\n";
             if !Kast_transpiler_c.allocation_stats
             then out "#define KAST_ALLOCATION_STATS\n";
             if

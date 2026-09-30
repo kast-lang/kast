@@ -1,5 +1,6 @@
 // #define KAST_ALLOCATION_STATS
 // #define USE_GC
+// #define KAST_TYPED_GC
 // #define GC_ON_INTERVAL_EMSCRIPTEN
 
 /* idk where this is documented,
@@ -324,11 +325,11 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
             result = GC_MALLOC(T->stride * length);
             break;
         case TypeInfoKind_object:
-#ifdef KAST_ALLOCATION_STATS
+#ifdef KAST_TYPED_GC
+            result = GC_CALLOC_EXPLICITLY_TYPED(length, T->stride, T->gc_descr);
+#else
             // TODO explicitly typed breaks with finalizers????
             result = GC_MALLOC(T->stride * length);
-#else
-            result = GC_CALLOC_EXPLICITLY_TYPED(length, T->stride, T->gc_descr);
 #endif
             break;
         case TypeInfoKind_N:
