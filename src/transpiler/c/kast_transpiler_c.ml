@@ -2120,44 +2120,50 @@ module Impl = struct
           match def.shape with
           | C_ast.Struct fields | C_ast.Union fields ->
             let bitmap_var = gen_name "gc_bitmap" in
-            insert_stmt
-              (S_Native
-                 { parts =
-                     [ Raw "GC_word "
-                     ; Raw bitmap_var
-                     ; Raw "[GC_BITMAP_SIZE("
-                     ; Raw name
-                     ; Raw ")]"
-                     ]
-                 });
-            insert_stmt
-              (S_Native
-                 { parts =
-                     [ Raw "memset(&"
-                     ; Raw bitmap_var
-                     ; Raw ", 0, sizeof("
-                     ; Raw bitmap_var
-                     ; Raw "))"
-                     ]
-                 });
+            (match !gc_mode with
+             | Disabled -> ()
+             | _ ->
+               insert_stmt
+                 (S_Native
+                    { parts =
+                        [ Raw "GC_word "
+                        ; Raw bitmap_var
+                        ; Raw "[GC_BITMAP_SIZE("
+                        ; Raw name
+                        ; Raw ")]"
+                        ]
+                    });
+               insert_stmt
+                 (S_Native
+                    { parts =
+                        [ Raw "memset(&"
+                        ; Raw bitmap_var
+                        ; Raw ", 0, sizeof("
+                        ; Raw bitmap_var
+                        ; Raw "))"
+                        ]
+                    }));
             let is_primitive = ref true in
             let inner_ptrs = ref 0 in
             let mark_field_as_ptr (full_name : string) =
               is_primitive := false;
               inner_ptrs := !inner_ptrs + 1;
               (* GC_set_bit(T_bitmap, GC_WORD_OFFSET(T,field)); *)
-              insert_stmt
-                (S_Native
-                   { parts =
-                       [ Raw "GC_set_bit("
-                       ; Raw bitmap_var
-                       ; Raw ", GC_WORD_OFFSET("
-                       ; Raw name
-                       ; Raw ", "
-                       ; Raw full_name
-                       ; Raw "))"
-                       ]
-                   })
+              match !gc_mode with
+              | Disabled -> ()
+              | _ ->
+                insert_stmt
+                  (S_Native
+                     { parts =
+                         [ Raw "GC_set_bit("
+                         ; Raw bitmap_var
+                         ; Raw ", GC_WORD_OFFSET("
+                         ; Raw name
+                         ; Raw ", "
+                         ; Raw full_name
+                         ; Raw "))"
+                         ]
+                     })
             in
             let mark_field_as_raw (full_name : string) (ty : C_ast.ty) =
               is_primitive := false;
@@ -2172,20 +2178,23 @@ module Impl = struct
                 | effect C_ast.Print.GetOutput, k ->
                   Effect.continue k (fun s -> result := !result ^ s)
               in
-              insert_stmt
-                (S_Native
-                   { parts =
-                       [ Raw "for (size_t i = 0; i < GC_WORD_LEN("
-                       ; Raw ty_as_string
-                       ; Raw "); i++) GC_set_bit("
-                       ; Raw bitmap_var
-                       ; Raw ", GC_WORD_OFFSET("
-                       ; Raw name
-                       ; Raw ", "
-                       ; Raw full_name
-                       ; Raw ") + i)"
-                       ]
-                   })
+              match !gc_mode with
+              | Disabled -> ()
+              | _ ->
+                insert_stmt
+                  (S_Native
+                     { parts =
+                         [ Raw "for (size_t i = 0; i < GC_WORD_LEN("
+                         ; Raw ty_as_string
+                         ; Raw "); i++) GC_set_bit("
+                         ; Raw bitmap_var
+                         ; Raw ", GC_WORD_OFFSET("
+                         ; Raw name
+                         ; Raw ", "
+                         ; Raw full_name
+                         ; Raw ") + i)"
+                         ]
+                     })
             in
             let rec walk_field (full_name : string) (ty : C_ast.ty) =
               match ty with
@@ -2244,7 +2253,6 @@ module Impl = struct
            ; "size", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
            ; "stride", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
            ; "kind", E_Native { parts = [ Raw ("TypeInfoKind_" ^ kind) ] }
-           ; "inner_ptrs", Literal (Int32 (Int32.of_int inner_ptrs))
            ]
            @ (if !allocation_stats
               then
@@ -2253,17 +2261,23 @@ module Impl = struct
                   )
                 ]
               else [])
-           @ (gc_descr |> Option.to_list))
+           @
+           match !gc_mode with
+           | Disabled -> []
+           | _ ->
+             [ "gc_inner_ptrs", C_ast.Literal (Int32 (Int32.of_int inner_ptrs)) ]
+             @ (gc_descr |> Option.to_list))
     and construct_ty_type_info (ty : C_ast.ty) =
       let primitive s : C_ast.expr =
-        E_Native { parts = [ Raw "TypeInfo_primitive("; Raw s; Raw ")" ] }
+        E_Native { parts = [ Raw "TypeInfo_simple(primitive, "; Raw s; Raw ")" ] }
       in
       match ty with
       | T_Unit -> primitive "Unit"
       | T_Raw { c = raw_ty; is_primitive } ->
         if is_primitive
-        then E_Native { parts = [ Raw "TypeInfo_primitive("; Raw raw_ty; Raw ")" ] }
-        else E_Native { parts = [ Raw "TypeInfo_raw("; Raw raw_ty; Raw ")" ] }
+        then
+          E_Native { parts = [ Raw "TypeInfo_simple(primitive, "; Raw raw_ty; Raw ")" ] }
+        else E_Native { parts = [ Raw "TypeInfo_simple(raw, "; Raw raw_ty; Raw ")" ] }
       | Named name ->
         let def =
           ctx.types

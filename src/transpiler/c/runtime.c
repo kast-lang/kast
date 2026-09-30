@@ -108,41 +108,36 @@ struct TypeInfo {
     size_t alignment;
     size_t size;
     size_t stride;
+    TypeInfoKind kind;
 #ifdef KAST_ALLOCATION_STATS
     Kast_type_allocation_stats allocation_stats;
 #endif
 #ifdef USE_GC
-    TypeInfoKind kind;
-    size_t inner_ptrs;
+    size_t gc_inner_ptrs;
     GC_descr gc_descr;
 #endif
 };
 
 #ifdef KAST_ALLOCATION_STATS
-#define TypeInfo_raw(T)                                                        \
-    (TypeInfo) {                                                               \
-        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
-        .allocation_stats = Kast_type_allocation_stats_new(),                  \
-        .stride = sizeof(T), .kind = TypeInfoKind_raw, .inner_ptrs = 0,        \
-    }
-#define TypeInfo_primitive(T)                                                  \
-    (TypeInfo) {                                                               \
-        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
-        .allocation_stats = Kast_type_allocation_stats_new(),                  \
-        .stride = sizeof(T), .kind = TypeInfoKind_primitive, .inner_ptrs = 0,  \
-    }
+#define KAST_ALLOCATION_STATS_NEW_FIELD                                        \
+    .allocation_stats = Kast_type_allocation_stats_new(),
 #else
-#define TypeInfo_raw(T)                                                        \
-    (TypeInfo) {                                                               \
-        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
-        .stride = sizeof(T), .kind = TypeInfoKind_raw, .inner_ptrs = 0,        \
-    }
-#define TypeInfo_primitive(T)                                                  \
-    (TypeInfo) {                                                               \
-        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
-        .stride = sizeof(T), .kind = TypeInfoKind_primitive, .inner_ptrs = 0,  \
-    }
+#define KAST_ALLOCATION_STATS_NEW_FIELD
 #endif
+
+#ifdef USE_GC
+#define KAST_GC_SIMPLE_TYPE_INFO_FIELDS(kind_value)                            \
+    .kind = TypeInfoKind_##kind_value, .gc_inner_ptrs = 0,
+#else
+#define KAST_GC_SIMPLE_TYPE_INFO_FIELDS(kind)
+#endif
+
+#define TypeInfo_simple(kind, T)                                               \
+    (TypeInfo) {                                                               \
+        .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
+        .stride = sizeof(T),                                                   \
+        KAST_ALLOCATION_STATS_NEW_FIELD KAST_GC_SIMPLE_TYPE_INFO_FIELDS(kind)  \
+    }
 
 typedef struct {
 } Unit;
@@ -157,7 +152,7 @@ typedef float Float32;
 typedef double Float64;
 typedef uint32_t Char;
 
-TypeInfo Byte_TypeInfo = TypeInfo_primitive(Byte);
+TypeInfo Byte_TypeInfo = TypeInfo_simple(primitive, Byte);
 TypeInfo String_TypeInfo;
 
 void Kast_backtrace_error_callback(void* data, const char* msg, int errnum) {
@@ -303,7 +298,7 @@ void Kast_finalize(void* obj, void* void_data) {
         &Kast_allocation_stats.by_kind[T->kind];
     kind_data->allocations--;
     kind_data->total_memory -= T->stride * data->array_length;
-    kind_data->scannable_ptrs -= T->inner_ptrs;
+    kind_data->scannable_ptrs -= T->gc_inner_ptrs;
     GC_FREE(data);
 }
 
@@ -354,7 +349,7 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
         &Kast_allocation_stats.by_kind[T->kind];
     kind_data->allocations++;
     kind_data->total_memory += T->stride * length;
-    kind_data->scannable_ptrs += T->inner_ptrs;
+    kind_data->scannable_ptrs += T->gc_inner_ptrs;
     GC_register_finalizer_no_order(
         result,
         Kast_finalize,
@@ -680,7 +675,7 @@ void Kast_init_type_infos() {
         .allocation_stats = Kast_type_allocation_stats_new(),
 #endif
         .kind = TypeInfoKind_object,
-        .inner_ptrs = 1,
+        .gc_inner_ptrs = 1,
         .gc_descr = ({
             GC_word T_bitmap[GC_BITMAP_SIZE(String)] = {0};
             GC_set_bit(T_bitmap, GC_WORD_OFFSET(String, buf));
