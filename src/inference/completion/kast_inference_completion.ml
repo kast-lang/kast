@@ -76,6 +76,7 @@ module Impl = struct
          | V_Box boxed -> complete_place boxed
          | V_Ref { mut : bool = _; place } -> complete_place place
          | V_String (_ : string) -> ()
+         | V_StringView (_ : string) -> ()
          | V_Tuple { ty; tuple } ->
            complete_ty_tuple ty;
            complete_tuple complete_value_tuple_field tuple
@@ -179,6 +180,7 @@ module Impl = struct
          | T_Float32 -> ()
          | T_Float64 -> ()
          | T_String -> ()
+         | T_StringView -> ()
          | T_Char -> ()
          | T_Box boxed -> complete_ty boxed
          | T_Ref { mut; referenced } ->
@@ -355,7 +357,6 @@ module Impl = struct
       complete_context_ty context_ty;
       complete_expr value
     | E_LetRefContext new_ref -> complete_expr new_ref
-    | E_CurrentContext { context_ty } -> complete_context_ty context_ty
     | E_ImplCast { value; target; impl } ->
       complete_expr value;
       complete_value target;
@@ -404,6 +405,7 @@ module Impl = struct
   and complete_place_expr_shape (shape : place_expr_shape) =
     match shape with
     | PE_Binding binding -> complete_binding binding
+    | PE_CurrentContext { context_ty } -> complete_context_ty context_ty
     | PE_Const place -> complete_place place
     | PE_Context -> ()
     | PE_Field { obj; field; field_span = _ } ->

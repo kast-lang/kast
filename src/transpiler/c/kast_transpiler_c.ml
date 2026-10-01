@@ -60,6 +60,7 @@ type ctx =
   ; mutable contexts : Types.value_context_ty Id.Map.t
   ; runtime_defined_closure_types : string StringListMap.t
   ; runtime_defined_list_types : string StringMap.t
+  ; runtime_defined_box_types : string StringMap.t
   ; init_statics : block
   }
 
@@ -240,7 +241,7 @@ module Impl = struct
     | Some drop ->
       defer (fun () ->
         insert_stmt
-          (Expr (Apply { f = Claim (Ident drop); args = [ AddrOf (Ident name) ] })))
+          (Expr (Apply { f = Claim (Ident drop); args = [ Claim (Ident name) ] })))
 
   and insert_drop (thing : C_ast.expr) (ty : ty) =
     let name = gen_name "to_drop" in
@@ -356,6 +357,7 @@ module Impl = struct
        | Types.PE_Binding binding -> lookup_binding binding
        | Types.PE_Const place -> transpile_place place
        | Types.PE_Context -> (Effect.perform GetScope).ctx_place
+       | Types.PE_CurrentContext { context_ty } -> current_context context_ty
        | Types.PE_Field { obj; field; field_span = _ } ->
          let field =
            match field with
@@ -365,7 +367,11 @@ module Impl = struct
          in
          let obj = transpile_place_expr obj in
          Field { obj = (if !boxed_structs then Deref (Claim obj) else obj); field }
-       | Types.PE_Deref expr -> Deref (Claim (transpile_place_expr expr))
+       | Types.PE_Deref expr ->
+         (match expr.data.signature.ty |> Ty.await_inferred with
+          | T_Box _ ->
+            Deref (Claim (Field { obj = transpile_place_expr expr; field = "value" }))
+          | _ -> Deref (Claim (transpile_place_expr expr)))
        | Types.PE_Temp expr ->
          let var = gen_name "temp" in
          let_var
@@ -462,67 +468,154 @@ module Impl = struct
       claim_name
 
   and generate_claim_impl (ty : ty) : C_ast.fn_def =
-    let var_void = "value_void" in
+    let ty_ty = ty in
+    let arg_name = "place" in
     { comment = Some (make_string "claim for %a" Ty.print ty)
-    ; args = [ { name = var_void; ty = Ptr Void } ]
-    ; result_ty = Void
+    ; args = [ { name = arg_name; ty = Ptr (transpile_ty ty) } ]
+    ; result_ty = transpile_ty ty
     ; body =
         new_block (fun () ->
-          let var = "value" in
-          let_var
-            ~gc:false
-            (Ptr (transpile_ty ty))
-            var
-            (Claim (Ident var_void))
-            ~drop:None;
           let ty =
             match ty.var |> Inference.Var.inferred_opt with
             | None -> fail "can't generate_claim_impl for not inferred"
             | Some ty -> ty
           in
-          match ty with
-          | Types.T_Unit -> ()
-          | Types.T_Bool -> ()
-          | Types.T_Int32 -> ()
-          | Types.T_UInt32 -> ()
-          | Types.T_Int64 -> ()
-          | Types.T_UInt64 -> ()
-          | Types.T_Float32 -> ()
-          | Types.T_Float64 -> ()
-          | Types.T_String ->
-            insert_stmt
-              (Expr
-                 (Apply
-                    { f = E_Native { parts = [ Raw "String_claim" ] }
-                    ; args = [ Claim (Ident var) ]
-                    }))
-          | Types.T_Char -> ()
-          | Types.T_Box boxed ->
-            insert_stmt
-              (Expr
-                 (Apply
-                    { f = E_Native { parts = [ Raw "Kast_Box_claim" ] }
-                    ; args =
-                        [ Cast { value = Claim (Ident var); target = Ptr (Ptr Void) }
-                        ; AddrOf (Ident (type_info_name_for (transpile_ty boxed)))
-                        ]
-                    }))
-          | Types.T_Ref _ -> ()
-          | Types.T_Variant _ -> ()
-          | Types.T_Tuple _ -> ()
-          | Types.T_List _ -> ()
-          | Types.T_Ty -> ()
-          | Types.T_Fn _ -> ()
-          | Types.T_Generic _ -> ()
-          | Types.T_Ast -> ()
-          | Types.T_UnwindToken _ -> ()
-          | Types.T_Target -> ()
-          | Types.T_ContextTy -> ()
-          | Types.T_ImplicitContext -> ()
-          | Types.T_CompilerScope -> ()
-          | Types.T_Opaque _ -> ()
-          | Types.T_Blocked _ -> ()
-          | Types.T_Error -> ())
+          let copy : C_ast.expr = Claim (Deref (Claim (Ident arg_name))) in
+          let result =
+            match ty with
+            | Types.T_Unit -> copy
+            | Types.T_Bool -> copy
+            | Types.T_Int32 -> copy
+            | Types.T_UInt32 -> copy
+            | Types.T_Int64 -> copy
+            | Types.T_UInt64 -> copy
+            | Types.T_Float32 -> copy
+            | Types.T_Float64 -> copy
+            | Types.T_StringView -> copy
+            | Types.T_String ->
+              Apply
+                { f = E_Native { parts = [ Raw "String_claim" ] }
+                ; args = [ Claim (Ident arg_name) ]
+                }
+            | Types.T_Char -> copy
+            | Types.T_Box boxed ->
+              Apply
+                { f =
+                    E_Native
+                      { parts =
+                          [ Raw "Box_"
+                          ; Raw (ty_to_string (transpile_ty boxed))
+                          ; Raw "_claim"
+                          ]
+                      }
+                ; args = [ Claim (Ident arg_name) ]
+                }
+            | Types.T_Ref _ -> copy
+            | Types.T_Variant variant ->
+              (match variant.variants |> Row.await_inferred_to_list with
+               | [] -> copy
+               | variants ->
+                 let var = gen_name "claimed" in
+                 declare_var ~gc:false (transpile_ty ty_ty) var ~drop:None;
+                 insert_stmt
+                   (Switch
+                      { value =
+                          Claim
+                            (Field { obj = Deref (Claim (Ident arg_name)); field = "tag" })
+                      ; cases =
+                          variants
+                          |> List.map
+                               (fun
+                                   ((label, data) : Label.t * Types.ty_variant_data)
+                                    : C_ast.switch_case
+                                  ->
+                                  let tag =
+                                    C_ast.Claim (Ident (variant_tag_name ty_ty label))
+                                  in
+                                  { value = tag
+                                  ; body =
+                                      new_block (fun () ->
+                                        insert_stmt
+                                          (Assign
+                                             { assignee =
+                                                 Field { obj = Ident var; field = "tag" }
+                                             ; value = tag
+                                             });
+                                        match data.data with
+                                        | None -> ()
+                                        | Some data ->
+                                          insert_stmt
+                                            (Assign
+                                               { assignee =
+                                                   Field
+                                                     { obj =
+                                                         Field
+                                                           { obj = Ident var
+                                                           ; field = "data"
+                                                           }
+                                                     ; field =
+                                                         make_correct_ident
+                                                           (Label.get_name label)
+                                                     }
+                                               ; value =
+                                                   claim_c
+                                                     (Field
+                                                        { obj =
+                                                            Field
+                                                              { obj =
+                                                                  Deref
+                                                                    (Claim
+                                                                       (Ident arg_name))
+                                                              ; field = "data"
+                                                              }
+                                                        ; field =
+                                                            make_correct_ident
+                                                              (Label.get_name label)
+                                                        })
+                                                     data
+                                               }))
+                                  })
+                      ; default = None
+                      });
+                 Claim (Ident var))
+            | Types.T_Tuple tuple ->
+              compound_literal
+                ~kast:true
+                (transpile_ty ty_ty)
+                (tuple.tuple
+                 |> Tuple.to_seq
+                 |> List.of_seq
+                 |> List.map
+                      (fun
+                          ((member, field) : Tuple.member * Types.ty_tuple_field)
+                           : (string * C_ast.expr)
+                         ->
+                         ( member_name member
+                         , Apply
+                             { f = Claim (Ident (generate_claim field.ty))
+                             ; args =
+                                 [ AddrOf
+                                     (Field
+                                        { obj = Deref (Claim (Ident arg_name))
+                                        ; field = member_name member
+                                        })
+                                 ]
+                             } )))
+            | Types.T_List _ -> copy
+            | Types.T_Ty -> copy
+            | Types.T_Fn _ -> copy
+            | Types.T_Generic _ -> copy
+            | Types.T_Ast -> copy
+            | Types.T_UnwindToken _ -> copy
+            | Types.T_Target -> copy
+            | Types.T_ContextTy -> copy
+            | Types.T_ImplicitContext -> copy
+            | Types.T_CompilerScope -> copy
+            | Types.T_Opaque _ -> copy
+            | Types.T_Blocked _ -> copy
+            | Types.T_Error -> copy
+          in
+          insert_stmt (Return result))
     }
 
   and generate_drop (ty : ty) : string =
@@ -566,19 +659,14 @@ module Impl = struct
       drop_name
 
   and generate_drop_impl (ty : ty) : C_ast.fn_def =
-    let var_void = "value_void" in
+    let ty_ty = ty in
+    let var = "value" in
     { comment = Some (make_string "Drop for %a" Ty.print ty)
-    ; args = [ { name = var_void; ty = Ptr Void } ]
+    ; args = [ { name = var; ty = transpile_ty ty } ]
     ; result_ty = Void
     ; body =
         new_block (fun () ->
-          let var = "value" in
-          let_var
-            ~gc:false
-            (Ptr (transpile_ty ty))
-            var
-            (Claim (Ident var_void))
-            ~drop:None;
+          let todo = () in
           let ty =
             match ty.var |> Inference.Var.inferred_opt with
             | None -> fail "can't generate_drop_impl for not inferred"
@@ -593,28 +681,83 @@ module Impl = struct
           | Types.T_UInt64 -> ()
           | Types.T_Float32 -> ()
           | Types.T_Float64 -> ()
+          | Types.T_StringView -> ()
           | Types.T_String ->
             insert_stmt
               (Expr
                  (Apply
                     { f = E_Native { parts = [ Raw "String_drop" ] }
-                    ; args = [ Claim (Deref (Claim (Ident var))) ]
+                    ; args = [ Claim (Ident var) ]
                     }))
           | Types.T_Char -> ()
           | Types.T_Box boxed ->
             insert_stmt
               (Expr
                  (Apply
-                    { f = E_Native { parts = [ Raw "Kast_Box_drop" ] }
-                    ; args =
-                        [ Claim (Deref (Claim (Ident var)))
-                        ; AddrOf (Ident (type_info_name_for (transpile_ty boxed)))
-                        ]
+                    { f =
+                        E_Native
+                          { parts =
+                              [ Raw "Box_"
+                              ; Raw (ty_to_string (transpile_ty boxed))
+                              ; Raw "_drop"
+                              ]
+                          }
+                    ; args = [ Claim (Ident var) ]
                     }))
           | Types.T_Ref _ -> ()
-          | Types.T_Variant _ -> ()
-          | Types.T_Tuple _ -> ()
-          | Types.T_List _ -> ()
+          | Types.T_Variant variant ->
+            (match variant.variants |> Row.await_inferred_to_list with
+             | [] -> ()
+             | variants ->
+               insert_stmt
+                 (Switch
+                    { value = Claim (Field { obj = Ident var; field = "tag" })
+                    ; cases =
+                        variants
+                        |> List.map
+                             (fun
+                                 ((label, data) : Label.t * Types.ty_variant_data)
+                                  : C_ast.switch_case
+                                ->
+                                { value = Claim (Ident (variant_tag_name ty_ty label))
+                                ; body =
+                                    new_block (fun () ->
+                                      match data.data with
+                                      | None -> ()
+                                      | Some data ->
+                                        insert_stmt
+                                          (Expr
+                                             (Apply
+                                                { f = Claim (Ident (generate_drop data))
+                                                ; args =
+                                                    [ Claim
+                                                        (Field
+                                                           { obj =
+                                                               Field
+                                                                 { obj = Ident var
+                                                                 ; field = "data"
+                                                                 }
+                                                           ; field =
+                                                               make_correct_ident
+                                                                 (Label.get_name label)
+                                                           })
+                                                    ]
+                                                })))
+                                })
+                    ; default = None
+                    }))
+          | Types.T_Tuple tuple ->
+            tuple.tuple
+            |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
+              insert_stmt
+                (Expr
+                   (Apply
+                      { f = Claim (Ident (generate_drop field.ty))
+                      ; args =
+                          [ Claim (Field { obj = Ident var; field = member_name member })
+                          ]
+                      })))
+          | Types.T_List _ -> todo
           | Types.T_Ty -> ()
           | Types.T_Fn _ -> ()
           | Types.T_Generic _ -> ()
@@ -622,7 +765,7 @@ module Impl = struct
           | Types.T_UnwindToken _ -> ()
           | Types.T_Target -> ()
           | Types.T_ContextTy -> ()
-          | Types.T_ImplicitContext -> ()
+          | Types.T_ImplicitContext -> todo
           | Types.T_CompilerScope -> ()
           | Types.T_Opaque _ -> ()
           | Types.T_Blocked _ -> ()
@@ -792,9 +935,44 @@ module Impl = struct
       | Types.T_UInt64 -> Alias (T_Raw { c = "UInt64"; is_primitive = true })
       | Types.T_Float32 -> Alias (T_Raw { c = "Float32"; is_primitive = true })
       | Types.T_Float64 -> Alias (T_Raw { c = "Float64"; is_primitive = true })
-      | Types.T_String -> Alias (T_Raw { c = "String"; is_primitive = true })
+      | Types.T_String -> Alias (T_Raw { c = "String"; is_primitive = false })
+      | Types.T_StringView -> Alias (T_Raw { c = "StringView"; is_primitive = false })
       | Types.T_Char -> Alias (T_Raw { c = "Char"; is_primitive = true })
-      | Types.T_Box boxed -> Alias (Ptr (transpile_ty boxed))
+      | Types.T_Box boxed ->
+        let boxed = transpile_ty boxed in
+        let macro_arg = ty_to_string boxed in
+        (match ctx.runtime_defined_list_types |> StringMap.find_opt macro_arg with
+         | Some name -> Alias (Named name)
+         | None ->
+           let name = "Box_" ^ macro_arg in
+           ctx.types
+           <- ctx.types
+              |> StringMap.add
+                   name
+                   ({ shape =
+                        DEF_Raw
+                          { def = make_string "define_Box(%s)" macro_arg
+                          ; need_declared = [ Named macro_arg ]
+                          ; need_completed = []
+                          }
+                    ; comment = None
+                    }
+                    : C_ast.ty_def);
+           let impl_name = name ^ "_impl" in
+           ctx.types
+           <- ctx.types
+              |> StringMap.add
+                   impl_name
+                   ({ shape =
+                        DEF_Raw
+                          { def = make_string "impl_Box(%s)" macro_arg
+                          ; need_declared = []
+                          ; need_completed = [ Named macro_arg ]
+                          }
+                    ; comment = None
+                    }
+                    : C_ast.ty_def);
+           Alias (Named name))
       | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
       | Types.T_Variant ty ->
         if variant_needs_tag ty
@@ -1098,6 +1276,11 @@ module Impl = struct
 
   and defer (f : unit -> unit) =
     let unwind_ctx = Effect.perform GetUnwindCtx in
+    let old_insert_unwind = unwind_ctx.insert_unwind in
+    unwind_ctx.insert_unwind
+    <- (fun () ->
+         f ();
+         old_insert_unwind ());
     let old_cleanup_scope_without_unwind = unwind_ctx.cleanup_scope_without_unwind in
     unwind_ctx.cleanup_scope_without_unwind
     <- (fun () ->
@@ -1222,7 +1405,7 @@ module Impl = struct
           | Some other -> fail "unknown call convension %S" other
         in
         let body : C_ast.block =
-          let result_expr = ref None in
+          let result_var = ref None in
           let block =
             new_block (fun () ->
               let scope : scope = { ctx_place = Deref (Claim (Ident ctx_var)) } in
@@ -1299,12 +1482,17 @@ module Impl = struct
                 | Some result ->
                   (match result_ty with
                    | T_Unit | Void -> insert_stmt (Expr result)
-                   | _ -> result_expr := Some result)
+                   | _ ->
+                     let var = gen_name "fn_result" in
+                     result_var := Some var;
+                     let_var ~gc:false result_ty var result ~drop:None)
               with
               | effect GetScope, k -> Effect.continue k scope)
           in
           block
-          @ (!result_expr |> Option.map (fun expr -> C_ast.Return expr) |> Option.to_list)
+          @ (!result_var
+             |> Option.map (fun result_var -> C_ast.Return (Claim (Ident result_var)))
+             |> Option.to_list)
         in
         let name = gen_name "fn" in
         ctx.fns
@@ -1481,7 +1669,12 @@ module Impl = struct
     | V_Ref _ -> failwith __LOC__
     | V_String s ->
       Apply
-        { f = E_Native { parts = [ Raw "String_from_C_String" ] }
+        { f = E_Native { parts = [ Raw "String_from_C_StringView" ] }
+        ; args = [ Literal (String s) ]
+        }
+    | V_StringView s ->
+      Apply
+        { f = E_Native { parts = [ Raw "StringView_from_C_StringView" ] }
         ; args = [ Literal (String s) ]
         }
     | V_Tuple { ty = _; tuple } ->
@@ -1632,11 +1825,16 @@ module Impl = struct
                           })
                  }));
           assign packed (Ident var))
-    | Types.A_Place place ->
-      insert_stmt
-        (Assign { assignee = transpile_place_expr place; value = Claim pure_place_expr })
+    | Types.A_Place place -> assign_to_place place pure_place_expr
     | Types.A_Let pattern -> pattern_match pattern pure_place_expr
     | Types.A_Error -> failwith __LOC__
+
+  and assign_to_place (place : Expr.Place.t) (value : C_ast.place_expr) =
+    let ty = place.data.signature.ty in
+    let place = transpile_place_expr place in
+    insert_stmt
+      (Expr (Apply { f = Claim (Ident (generate_drop ty)); args = [ Claim place ] }));
+    insert_stmt (Assign { assignee = place; value = claim_c value ty })
 
   and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr option =
     let f_ty =
@@ -1682,7 +1880,8 @@ module Impl = struct
                  var
                  (transpile_expr field)
                  ~drop:(Some (generate_drop field.data.signature.ty));
-               args := !args |> Tuple.add name (C_ast.Claim (Ident var))
+               args
+               := !args |> Tuple.add name (claim_c (Ident var) field.data.signature.ty)
              | Unpack packed ->
                let packed_ty =
                  packed.data.signature.ty
@@ -1698,15 +1897,16 @@ module Impl = struct
                  (transpile_expr packed)
                  ~drop:(Some (generate_drop packed.data.signature.ty));
                packed_ty.tuple
-               |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
+               |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
                  args
                  := !args
                     |> Tuple.add
                          (match member with
                           | Index _ -> None
                           | Name name -> Some name)
-                         (C_ast.Claim
-                            (Field { obj = tuple_place var; field = member_name member }))))
+                         (claim_c
+                            (Field { obj = tuple_place var; field = member_name member })
+                            field.ty)))
          | _ -> fail "f args must be tuple");
         let args_ty =
           arg.data.signature.ty
@@ -1857,11 +2057,7 @@ module Impl = struct
     claim_c c_place place.data.signature.ty
 
   and claim_c (c_place : C_ast.place_expr) (ty : ty) : C_ast.expr =
-    let var = gen_name "claimed" in
-    let_var ~gc:false (transpile_ty ty) var (Claim c_place) ~drop:None;
-    insert_stmt
-      (Expr (Apply { f = Claim (Ident (generate_claim ty)); args = [ AddrOf c_place ] }));
-    Claim (Ident var)
+    Apply { f = Claim (Ident (generate_claim ty)); args = [ AddrOf c_place ] }
 
   and execute_expr (expr : expr) : unit =
     match eval_expr expr with
@@ -1892,7 +2088,14 @@ module Impl = struct
       | Types.E_Stmt { expr } ->
         execute_expr expr;
         None
-      | Types.E_Scope { expr } -> with_new_scope (fun () -> eval_expr expr)
+      | Types.E_Scope { expr } ->
+        with_new_scope (fun () ->
+          match eval_expr expr with
+          | Some result ->
+            let var = gen_name "scope_result" in
+            let_var ~gc:false (transpile_ty expr.data.signature.ty) var result ~drop:None;
+            Some (C_ast.Claim (Ident var))
+          | None -> None)
       | Types.E_Fn { ty = f_ty; def; _ } ->
         let is_closure = f_ty.is_closure |> Inference.await_inferred_simple in
         let call_convention = f_ty.call_convention |> Inference.await_inferred_simple in
@@ -1922,7 +2125,7 @@ module Impl = struct
                          Field { obj = captured_place; field = binding_name binding }
                      ; value =
                          (if transpiled_fn.is_move
-                          then Claim (lookup_binding binding)
+                          then claim_c (lookup_binding binding) binding.ty
                           else AddrOf (lookup_binding binding))
                      }));
               if gc
@@ -2296,7 +2499,6 @@ module Impl = struct
           ~drop:None;
         (Effect.perform GetScope).ctx_place <- Deref (Claim (Ident new_ctx_var));
         None
-      | Types.E_CurrentContext { context_ty } -> Some (Claim (current_context context_ty))
       | Types.E_ImplCast _ -> None
       | Types.E_Cast _ ->
         let value = Interpreter.eval interpreter expr in
@@ -2397,6 +2599,18 @@ module Impl = struct
               let then_case = walk_block then_case in
               let else_case = else_case |> Option.map walk_block in
               If { cond; then_case; else_case }
+            | Switch { value; cases; default } ->
+              let value = walk_expr value in
+              let cases =
+                cases
+                |> List.map
+                     (fun ({ value; body } : C_ast.switch_case) : C_ast.switch_case ->
+                        let value = walk_expr value in
+                        let body = walk_block body in
+                        { value; body })
+              in
+              let default = default |> Option.map walk_block in
+              Switch { value; cases; default }
             | Assign { assignee; value } ->
               Assign
                 { assignee = walk_place_expr ~escaping:false assignee
@@ -2591,7 +2805,9 @@ module Impl = struct
       match ty with
       | T_Unit -> primitive "Unit"
       | T_Raw { c = raw_ty; is_primitive } ->
-        if is_primitive
+        if raw_ty = "String"
+        then E_Native { parts = [ Raw "String_TypeInfo" ] }
+        else if is_primitive
         then
           E_Native { parts = [ Raw "TypeInfo_simple(primitive, "; Raw raw_ty; Raw ")" ] }
         else E_Native { parts = [ Raw "TypeInfo_simple(raw, "; Raw raw_ty; Raw ")" ] }
@@ -2628,6 +2844,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   Kast_inference_completion.complete_compiled Expr expr;
   let runtime_defined_closure_types = ref StringListMap.empty in
   let runtime_defined_list_types = ref StringMap.empty in
+  let runtime_defined_box_types = ref StringMap.empty in
   let runtime_source = [%include_file "runtime.c"] in
   runtime_source
   |> String.split_on_char '\n'
@@ -2652,8 +2869,16 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
       := !runtime_defined_list_types |> StringMap.add arg ("ArrayList_" ^ arg);
       Some ()
     in
+    let check_defined_box () =
+      let* s = s |> String.strip_prefix ~prefix:"define_Box(" in
+      let* arg = s |> String.strip_suffix ~suffix:");" in
+      runtime_defined_list_types
+      := !runtime_defined_list_types |> StringMap.add arg ("Box_" ^ arg);
+      Some ()
+    in
     let _ : unit option = check_defined_closure () in
     let _ : unit option = check_defined_list () in
+    let _ : unit option = check_defined_box () in
     ());
   let ctx : ctx =
     { target = { name = "c" }
@@ -2687,6 +2912,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; type_infos = CTyMap.empty
     ; runtime_defined_closure_types = !runtime_defined_closure_types
     ; runtime_defined_list_types = !runtime_defined_list_types
+    ; runtime_defined_box_types = !runtime_defined_box_types
     }
   in
   let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in

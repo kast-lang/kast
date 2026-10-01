@@ -12,22 +12,22 @@ impl syntax (f <| arg) = `(
     $f($arg)
 );
 impl syntax (a < b) = `(
-    std.cmp.less($a, $b)
+    std.cmp.less(&$a, &$b)
 );
 impl syntax (a <= b) = `(
-    std.cmp.less_or_equal($a, $b)
+    std.cmp.less_or_equal(&$a, &$b)
 );
 impl syntax (a == b) = `(
-    std.cmp.equal($a, $b)
+    std.cmp.equal(&$a, &$b)
 );
 impl syntax (a != b) = `(
-    std.cmp.not_equal($a, $b)
+    std.cmp.not_equal(&$a, &$b)
 );
 impl syntax (a >= b) = `(
-    std.cmp.greater_or_equal($a, $b)
+    std.cmp.greater_or_equal(&$a, &$b)
 );
 impl syntax (a > b) = `(
-    std.cmp.greater($a, $b)
+    std.cmp.greater(&$a, &$b)
 );
 impl syntax (not x) = `(
     if $x then false else true
@@ -174,3 +174,6 @@ impl syntax (obj.[index]) = `(
 );
 
 impl syntax (@comment_out ( _ ) ) = `();
+
+impl syntax (&str) = `(StringView);
+

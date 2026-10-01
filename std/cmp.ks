@@ -1,6 +1,6 @@
 module:
 
-const Compare = [T] type ((T, T) -> Ordering);
+const Compare = [T] type ((&T, &T) -> Ordering);
 
 const Ordering = newtype (
     | :Less
@@ -43,11 +43,11 @@ impl Ordering as module = (
 );
 
 const Ord = [Self] newtype {
-    .compare :: (Self, Self) -> Ordering,
+    .compare :: (&Self, &Self) -> Ordering,
 };
 
 impl Bool as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -71,7 +71,7 @@ impl Bool as Ord = {
 };
 
 impl Int32 as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -95,7 +95,7 @@ impl Int32 as Ord = {
 };
 
 impl UInt32 as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -119,7 +119,7 @@ impl UInt32 as Ord = {
 };
 
 impl Int64 as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -143,7 +143,7 @@ impl Int64 as Ord = {
 };
 
 impl UInt32 as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -167,7 +167,7 @@ impl UInt32 as Ord = {
 };
 
 impl Float32 as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -191,7 +191,7 @@ impl Float32 as Ord = {
 };
 
 impl Float64 as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -215,7 +215,7 @@ impl Float64 as Ord = {
 };
 
 impl Char as Ord = {
-    .compare = (a, b) => @cfg (
+    .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
         | (@native "==")(target.name, "c") => (
             if @native "\(a) < \(b)" then (
@@ -252,6 +252,31 @@ impl String as Ord = {
             )
         )
         | (@native "==")(target.name, "javascript") => (
+            if @native "\(a^) < \(b^)" then (
+                :Less
+            ) else if @native "\(a^) > \(b^)" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+    )
+};
+
+impl &str as Ord = {
+    .compare = (&a, &b) => @cfg (
+        | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
+        | (@native "==")(target.name, "c") => (
+            let cmp :: Int32 = @native "StringView_cmp(\(a), \(b))";
+            if @native "\(cmp) < 0" then (
+                :Less
+            ) else if @native "\(cmp) > 0" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+        | (@native "==")(target.name, "javascript") => (
             if @native "\(a) < \(b)" then (
                 :Less
             ) else if @native "\(a) > \(b)" then (
@@ -263,26 +288,26 @@ impl String as Ord = {
     )
 };
 
-const less = [T] (a :: T, b :: T) -> Bool => (
+const less = [T] (a :: &T, b :: &T) -> Bool => (
     (T as Ord).compare(a, b) |> Ordering.is_less
 );
-const less_or_equal = [T] (a :: T, b :: T) -> Bool => (
+const less_or_equal = [T] (a :: &T, b :: &T) -> Bool => (
     (T as Ord).compare(a, b) |> Ordering.is_less_or_equal
 );
-const equal = [T] (a :: T, b :: T) -> Bool => (
+const equal = [T] (a :: &T, b :: &T) -> Bool => (
     (T as Ord).compare(a, b) |> Ordering.is_equal
 );
-const not_equal = [T] (a :: T, b :: T) -> Bool => (
+const not_equal = [T] (a :: &T, b :: &T) -> Bool => (
     (T as Ord).compare(a, b) |> Ordering.is_not_equal
 );
-const greater_or_equal = [T] (a :: T, b :: T) -> Bool => (
+const greater_or_equal = [T] (a :: &T, b :: &T) -> Bool => (
     (T as Ord).compare(a, b) |> Ordering.is_greater_or_equal
 );
-const greater = [T] (a :: T, b :: T) -> Bool => (
+const greater = [T] (a :: &T, b :: &T) -> Bool => (
     (T as Ord).compare(a, b) |> Ordering.is_greater
 );
 
-const default_compare = [T] (a :: T, b :: T) -> Ordering => (
+const default_compare = [T] (a :: &T, b :: &T) -> Ordering => (
     if a < b then (
         :Less
     ) else if a == b then (

@@ -197,7 +197,7 @@ and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span (obj_ty :
              Ty.new_not_inferred ~scope ~span:field_span)
         | T_Target ->
           (match member with
-           | Name "name" -> Ty.inferred ~span:field_span T_String
+           | Name "name" -> Ty.inferred ~span:field_span T_StringView
            | _ ->
              error span "field %a is not in target" Tuple.Member.print member;
              Ty.new_not_inferred ~scope ~span:field_span)
@@ -223,6 +223,7 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
       | PE_Error -> inferred_mut true, pure (Ty.new_not_inferred ~scope ~span)
       | PE_Binding binding -> inferred_mut binding.mut, pure binding.ty
       | PE_Temp expr -> inferred_mut true, expr.data.signature
+      | PE_CurrentContext { context_ty } -> inferred_mut true, { ty = context_ty.ty }
       | PE_Deref ref ->
         let mut = IsMutable.new_not_inferred ~scope ~span in
         let value_ty = Ty.new_not_inferred ~scope ~span in
@@ -562,7 +563,6 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
                 }
               |> Ty.inferred ~span);
         { ty = Ty.inferred ~span T_Unit }
-      | E_CurrentContext { context_ty } -> { ty = context_ty.ty }
       | E_ImplCast { value; target; impl } ->
         let { ty = impl_ty } : signature = impl.data.signature in
         impl_ty

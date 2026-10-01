@@ -71,6 +71,7 @@ module Impl = struct
     | V_Float64 value -> fprintf fmt "@{<italic>%f@}" value
     | V_Char value -> fprintf fmt "@{<green>%a@}" Uchar.print_debug value
     | V_String value -> fprintf fmt "@{<green>%a@}" String.print_debug value
+    | V_StringView value -> fprintf fmt "@{<green>%a@}" String.print_debug value
     | V_Box boxed -> fprintf fmt "boxed %a" (print_place_value_with print_value) boxed
     | V_Ref { mut; place } ->
       fprintf fmt "&";
@@ -209,6 +210,7 @@ module Impl = struct
     | T_Float64 -> fprintf fmt "Float64"
     | T_Char -> fprintf fmt "Char"
     | T_String -> fprintf fmt "String"
+    | T_StringView -> fprintf fmt "&str"
     | T_Box boxed -> fprintf fmt "Box[%a]" print_ty boxed
     | T_Ref { mut; referenced } ->
       fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
@@ -324,7 +326,6 @@ module Impl = struct
       | E_Unwindable _ -> "Unwindable"
       | E_Unwind _ -> "Unwind"
       | E_InjectContext _ -> "InjectContext"
-      | E_CurrentContext _ -> "CurrentContext"
       | E_LetRefContext _ -> "LetRefContext"
       | E_ImplCast _ -> "ImplCast"
       | E_Cast _ -> "Cast"
@@ -502,12 +503,6 @@ module Impl = struct
         context_ty
         (print_expr ~options)
         value
-    | E_CurrentContext { context_ty } ->
-      fprintf
-        fmt
-        "@{<magenta>current_context@} (@;<0 2>@[<v>context_type = %a,@]@ )"
-        print_context_type
-        context_ty
     | E_LetRefContext new_ref ->
       fprintf fmt "@{<magenta>let_ref_context@} %a" (print_expr ~options) new_ref
     | E_ImplCast { value; target; impl } ->
@@ -583,6 +578,12 @@ module Impl = struct
   (* PLACE EXPR *)
   and print_place_expr_shape : options:options -> formatter -> place_expr_shape -> unit =
     fun ~options fmt -> function
+    | PE_CurrentContext { context_ty } ->
+      fprintf
+        fmt
+        "@{<magenta>current_context@} (@;<0 2>@[<v>context_type = %a,@]@ )"
+        print_context_type
+        context_ty
     | PE_Deref ref ->
       fprintf
         fmt

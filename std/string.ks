@@ -1,29 +1,42 @@
 impl String as module = (
     module:
-    const length = (s :: String) -> Int32 => @cfg (
+
+    const from_str = (s :: &str) -> String => @cfg (
+        | target.name == "interpreter" => (@native "String.from_str")(s)
+        | target.name == "c" => @native "String_from_StringView(\(s))"
+        | target.name == "javascript" => @native "\(s)"
+    );
+
+    const as_str = (s :: &String) -> &str => @cfg (
+        | target.name == "interpreter" => (@native "String.as_str")(s)
+        | target.name == "c" => @native "String_as_StringView(\(s))"
+        | target.name == "javascript" => @native "\(s)"
+    );
+
+    const length = (s :: &str) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "string.length")(s)
         | target.name == "c" => @native "String_length(\(s))"
         | target.name == "javascript" => (@native "Kast.String.length")(s)
     );
-    const utf8_length = (s :: String) -> Int32 => @cfg (
+    const utf8_length = (s :: &str) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "string.length")(s)
         | target.name == "c" => @native "String_utf8_length(\(s))"
         | target.name == "javascript" => (@native "Kast.String.utf8_length")(s)
     );
-    const at = (s :: String, idx :: Int32) -> Char => @cfg (
+    const at = (s :: &str, idx :: Int32) -> Char => @cfg (
         | target.name == "interpreter" => (@native "string.at")(s, idx)
         | target.name == "c" => @native "String_at(\(s), \(idx))"
         | target.name == "javascript" => (@native "Kast.String.at")(s, idx)
     );
-    const substring = (s :: String, start :: Int32, len :: Int32) -> String => @cfg (
+    const substring = (s :: &str, start :: Int32, len :: Int32) -> &str => @cfg (
         | target.name == "interpreter" => (@native "string.substring")(s, start, len)
         | target.name == "c" => @native "String_substring(\(s), \(start), \(len))"
         | target.name == "javascript" => (@native "Kast.String.substring")(s, start, len)
     );
-    const substring_from = (s :: String, start :: Int32) -> String => (
+    const substring_from = (s :: &str, start :: Int32) -> &str => (
         substring(s, start, length(s) - start)
     );
-    const strip_prefix = (s :: String, .prefix :: String) -> Option.t[String] => (
+    const strip_prefix = (s :: &str, .prefix :: &str) -> Option.t[&str] => (
         let prefix_len = String.length(prefix);
         if (
             String.length(s) >= prefix_len
@@ -34,19 +47,19 @@ impl String as module = (
             :None
         )
     );
-    const starts_with = (s :: String, .prefix :: String) -> Bool => (
+    const starts_with = (s :: &str, .prefix :: &str) -> Bool => (
         match strip_prefix(s, .prefix) with (
             | :Some _ => true
             | :None => false
         )
     );
-    const iter = (s :: String) -> std.iter.Iterable[Char] => @cfg (
+    const iter = (s :: &str) -> std.iter.Iterable[Char] => @cfg (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iter")(s, f)
         }
         | target.name == "c" => {
             .iter = f => (
-                let @"impl" :: fn (String, Char -> ()) -> () = @native "String_iter";
+                let @"impl" :: fn (&str, Char -> ()) -> () = @native "String_iter";
                 @"impl"(s, f);
             ),
         }
@@ -54,13 +67,13 @@ impl String as module = (
             .iter = f => (@native "Kast.String.iter")(s, f)
         }
     );
-    const iteri = (s :: String) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
+    const iteri = (s :: &str) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iteri")(s, (i, c) => f({ i, c }))
         }
         | target.name == "c" => {
             .iter = @move f => (
-                let @"impl" :: fn (String, (Int32, Char) -> ()) -> () = @native "String_iteri";
+                let @"impl" :: fn (&str, (Int32, Char) -> ()) -> () = @native "String_iteri";
                 @"impl"(s, @move (i, c) => f({ i, c }));
             ),
         }
@@ -68,13 +81,13 @@ impl String as module = (
             .iter = f => (@native "Kast.String.iteri")(s, f)
         }
     );
-    const iteri_rev = (s :: String) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
+    const iteri_rev = (s :: &str) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
         | target.name == "interpreter" => {
             .iter = f => (@native "string.iteri_rev")(s, (i, c) => f({ i, c }))
         }
         | target.name == "c" => {
             .iter = @move f => (
-                let @"impl" :: fn (String, (Int32, Char) -> ()) -> () = @native "String_iteri_rev";
+                let @"impl" :: fn (&str, (Int32, Char) -> ()) -> () = @native "String_iteri_rev";
                 @"impl"(s, @move (i, c) => f({ i, c }));
             ),
         }
@@ -82,14 +95,8 @@ impl String as module = (
             .iter = f => (@native "Kast.String.iteri_rev")(s, f)
         }
     );
-    const pop_back = (s :: &mut String) -> Char => with_return (
-        for { i, c } in iteri_rev(s^) do (
-            s^ = substring(s^, 0, i);
-            return c;
-        );
-        panic("empty string")
-    );
-    const index_of = (s :: String, c :: Char) -> Int32 => with_return (
+
+    const index_of = (s :: &str, c :: Char) -> Int32 => with_return (
         for { i, c_at_i } in iteri(s) do (
             if c == c_at_i then (
                 return i;
@@ -97,7 +104,7 @@ impl String as module = (
         );
         -1
     );
-    const last_index_of = (s :: String, c :: Char) -> Int32 => (
+    const last_index_of = (s :: &str, c :: Char) -> Int32 => (
         let mut result = -1;
         for { i, c_at_i } in iteri(s) do (
             if c == c_at_i then (
@@ -106,7 +113,7 @@ impl String as module = (
         );
         result
     );
-    const split = (s :: String, sep :: Char) -> std.iter.Iterable[String] => {
+    const split = (s :: &str, sep :: Char) -> std.iter.Iterable[&str] => {
         .iter = @move f => (
             let mut start = 0;
             let perform_split = i => (
@@ -123,7 +130,7 @@ impl String as module = (
         )
     };
     const lines = s => split(s, '\n');
-    const split_once = (s :: String, sep :: Char) -> { String, String } => with_return (
+    const split_once = (s :: &str, sep :: Char) -> { &str, &str } => with_return (
         for { i, c } in iteri(s) do (
             if c == sep then (
                 return {
@@ -134,7 +141,7 @@ impl String as module = (
         );
         panic("split_once separator not found")
     );
-    const trim_matches = (s :: String, f :: Char -> Bool) -> String => (
+    const trim_matches = (s :: &str, f :: Char -> Bool) -> &str => (
         let len = length(s);
         let mut start = 0;
         while start < len and at(s, start) |> f do (
@@ -149,14 +156,14 @@ impl String as module = (
     const trim = s => trim_matches(s, Char.is_whitespace);
     
     # replace all occurences of a string by a new string
-    const replace_all_owned = (s :: String, .old :: String, .new :: String) => with_return (
+    const replace_all_owned = (s :: &str, .old :: &str, .new :: &str) -> String => with_return (
         # an empty `old` means we cannot replace
-        if length(old) == 0 then return s;
+        if length(old) == 0 then return from_str(s);
         # an empty `s` means we cannot replace
-        if length(s) == 0 then return s;
+        if length(s) == 0 then return from_str(s);
         # `s` smaller than `old` means we cannot replace
-        if length(s) < length(old) then return s;
-        if length(s) == length(old) then return (
+        if length(s) < length(old) then return from_str(s);
+        if length(s) == length(old) then return from_str(
             if s == old then (
                 # `s` == `old` means replaced is just `new`
                 new
@@ -174,7 +181,7 @@ impl String as module = (
         
         if start == end then (
             # `old` not found in `s`
-            s
+            from_str(s)
         ) else (
             # `old` found in `s`, replace with `new` and continue searching in remaining portion of `s`
             let rest = substring(
@@ -184,14 +191,16 @@ impl String as module = (
             );
             let replaced_rest = replace_all_owned(rest, .old, .new);
             
-            substring(s, 0, start)
-            + new
-            + replaced_rest
+            StringBuilder.build(() => (
+                StringBuilder.add_str(substring(s, 0, start));
+                StringBuilder.add_str(new);
+                StringBuilder.add_String(replaced_rest);
+            ))
         )
     );
     
     # find if string contains another string
-    const contains = (s :: String, search :: String) -> Bool => with_return (
+    const contains = (s :: &str, search :: &str) -> Bool => with_return (
         # an empty `search` is not contained
         if length(search) == 0 then return false;
         # an empty `s` contains nothing
@@ -219,88 +228,88 @@ impl String as module = (
     );
     
     const find_match = (
-        s :: String, f :: Char -> Bool
+        s :: &str, f :: Char -> Bool
     ) -> std.Option.t[type { Int32, Char }] => with_return (
         iteri(s).iter({ idx, c } => if f(c) then return :Some { idx, c });
         :None
     );
     
-    const to_ascii_lowercase = (s :: String) -> String => (
+    const to_ascii_lowercase = (s :: &str) -> String => (
         let next_alphabet = find_match(s, Char.is_ascii_uppercase);
         match next_alphabet with (
-            | :Some { i, c } => (
-                substring(s, 0, i)
-                + to_string(Char.to_ascii_lowercase(c))
-                + to_ascii_lowercase(substring(s, i + 1, length(s) - i - 1))
-            )
-            | :None => s
+            | :Some { i, c } => StringBuilder.build(() => (
+                StringBuilder.add_str(substring(s, 0, i));
+                StringBuilder.add_String(to_string(Char.to_ascii_lowercase(c)));
+                StringBuilder.add_String(to_ascii_lowercase(substring(s, i + 1, length(s) - i - 1)));
+            ))
+            | :None => from_str(s)
         )
     );
     
-    const to_ascii_uppercase = (s :: String) -> String => (
+    const to_ascii_uppercase = (s :: &str) -> String => (
         let next_alphabet = find_match(s, Char.is_ascii_lowercase);
         match next_alphabet with (
-            | :Some { i, c } => (
-                substring(s, 0, i)
-                + to_string(Char.to_ascii_uppercase(c))
-                + to_ascii_uppercase(substring(s, i + 1, length(s) - i - 1))
-            )
-            | :None => s
+            | :Some { i, c } => StringBuilder.build(() => (
+                StringBuilder.add_str(substring(s, 0, i));
+                StringBuilder.add_String(to_string(Char.to_ascii_uppercase(c)));
+                StringBuilder.add_String(to_ascii_uppercase(substring(s, i + 1, length(s) - i - 1)));
+            ))
+            | :None => from_str(s)
         )
     );
 
-    const is_whitespace = (s :: String) -> Bool => (
+    const is_whitespace = (s :: &str) -> Bool => (
         iter(s) |> std.iter.all(Char.is_whitespace)
     );
     
-    const FromString = [Self] newtype {
-        .from_string :: String -> Self
+    const Parse = [Self] newtype {
+        .parse :: &str -> Self
     };
     
-    impl Int32 as FromString = {
-        .from_string = s => @cfg (
+    impl Int32 as Parse = {
+        .parse = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "c" => @native "Int32_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Int32")(s)
         )
     };
-    impl UInt32 as FromString = {
-        .from_string = s => @cfg (
+    impl UInt32 as Parse = {
+        .parse = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "c" => @native "Int32_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Int32")(s)
         )
     };
-    impl Int64 as FromString = {
-        .from_string = s => @cfg (
+    impl Int64 as Parse = {
+        .parse = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "c" => @native "Int64_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Int64")(s)
         )
     };
-    impl UInt64 as FromString = {
-        .from_string = s => @cfg (
+    impl UInt64 as Parse = {
+        .parse = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "c" => @native "Int64_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Int64")(s)
         )
     };
-    impl Float32 as FromString = {
-        .from_string = s => @cfg (
+    impl Float32 as Parse = {
+        .parse = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "c" => @native "Float64_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Float64")(s)
         )
     };
-    impl Float64 as FromString = {
-        .from_string = s => @cfg (
+    impl Float64 as Parse = {
+        .parse = s => @cfg (
             | target.name == "interpreter" => (@native "parse")(s)
             | target.name == "c" => @native "Float64_from_String(\(s))"
             | target.name == "javascript" => (@native "Kast.parse.Float64")(s)
         )
     };
-    impl Bool as FromString = {
-        .from_string = s => if s == "true" then (
+    impl Bool as Parse = {
+        .parse = s => if s == "true" then (
             true
         ) else if s == "false" then (
             false
@@ -315,6 +324,10 @@ impl String as module = (
 
     impl String as ToString = {
         .to_string = s => s,
+    };
+
+    impl &str as ToString = {
+        .to_string = String.from_str,
     };
     
     impl Char as ToString = {
@@ -367,80 +380,126 @@ impl String as module = (
         )
     };
     impl Bool as ToString = {
-        .to_string = b => if b then "true" else "false"
+        .to_string = b => String.from_str(if b then "true" else "false")
     };
     
-    const parse = [T] (s :: String) -> T => (
-        (T as FromString).from_string(s)
+    const parse = [T] (s :: &str) -> T => (
+        (T as Parse).parse(s)
     );
     const to_string = [T] (value :: T) -> String => (
         (T as ToString).to_string(value)
     );
 
-    const escape_contents = (s :: String, .delimiter :: String) -> String => (
-        let mut result = "";
-        for c in String.iter(s) do (
-            if c == '\\' then (
-                result += "\\\\";
-                continue;
-            );
-            if c == '\n' then (
-                result += "\\n";
-                continue;
-            );
-            if c == '\r' then (
-                result += "\\r";
-                continue;
-            );
-            if c == '\b' then (
-                result += "\\b";
-                continue;
-            );
-            if c == '\f' then (
-                result += "\\f";
-                continue;
-            );
-            if c == '\t' then (
-                result += "\\t";
-                continue;
-            );
-            if Char.is_ascii_control(c) then (
-                let code = Char.code(c);
-                if code <= 0x7f then (
-                    let c1 = code / 16;
-                    let c2 = code % 16;
-                    result += "\\x";
-                    result += to_string(Char.from_digit_radix(c1, 16));
-                    result += to_string(Char.from_digit_radix(c2, 16));
-                ) else (
-                    result += "\\u{";
-                    let mut p = 1;
-                    while p * 16 <= code do (
-                        p *= 16;
-                    );
-                    let mut code = code;
-                    while p > 0 do (
-                        let digit = code / p;
-                        result += to_string(Char.from_digit_radix(digit, 16));
-                        code = code - digit * p;
-                        p /= 16;
-                    );
-                    result += "}";
+    const escape_contents = (s :: &str, .delimiter :: &str) -> String => (
+        StringBuilder.build(() => (
+            let mut result = String.from_str("");
+            for c in String.iter(s) do (
+                if c == '\\' then (
+                    StringBuilder.add_str("\\\\");
+                    continue;
                 );
-                continue;
+                if c == '\n' then (
+                    StringBuilder.add_str("\\n");
+                    continue;
+                );
+                if c == '\r' then (
+                    StringBuilder.add_str("\\r");
+                    continue;
+                );
+                if c == '\b' then (
+                    StringBuilder.add_str("\\b");
+                    continue;
+                );
+                if c == '\f' then (
+                    StringBuilder.add_str("\\f");
+                    continue;
+                );
+                if c == '\t' then (
+                    StringBuilder.add_str("\\t");
+                    continue;
+                );
+                if Char.is_ascii_control(c) then (
+                    let code = Char.code(c);
+                    if code <= 0x7f then (
+                        let c1 = code / 16;
+                        let c2 = code % 16;
+                        StringBuilder.add_str("\\x");
+                        StringBuilder.add_String(to_string(Char.from_digit_radix(c1, 16)));
+                        StringBuilder.add_String(to_string(Char.from_digit_radix(c2, 16)));
+                    ) else (
+                        StringBuilder.add_str("\\u{");
+                        let mut p = 1;
+                        while p * 16 <= code do (
+                            p *= 16;
+                        );
+                        let mut code = code;
+                        while p > 0 do (
+                            let digit = code / p;
+                            StringBuilder.add_String(
+                                to_string(Char.from_digit_radix(digit, 16))
+                            );
+                            code = code - digit * p;
+                            p /= 16;
+                        );
+                        StringBuilder.add_str("}");
+                    );
+                    continue;
+                );
+                let cs = to_string(c);
+                if &cs |> as_str == delimiter then (
+                    StringBuilder.add_str("\\");
+                );
+                StringBuilder.add_String(cs);
             );
-            let cs = to_string(c);
-            if cs == delimiter then (
-                result += "\\";
-            );
-            result += cs;
-        );
-        result
+        ))
     );
 
-    const escape_with = (s :: String, .delimiter :: String) -> String => (
-        delimiter + escape_contents(s, .delimiter) + delimiter
+    const escape_with = (s :: &str, .delimiter :: &str) -> String => (
+        StringBuilder.build(() => (
+            StringBuilder.add_str(delimiter);
+            StringBuilder.add_String(escape_contents(s, .delimiter));
+            StringBuilder.add_str(delimiter);
+        ))
     );
 
     const escape = s => escape_with(s, .delimiter = "\"");
+);
+
+const StringBuilder = (
+    module:
+
+    const CtxT = newtype {
+        .result :: String,
+    };
+
+    const Ctx = @context CtxT;
+
+    const init = () -> CtxT => {
+        .result = String.from_str(""),
+    };
+
+    const build = (f :: () -> ()) => (
+        with Ctx = init();
+        f();
+        (@current Ctx).result
+    );
+
+    const add_str = (s :: &str) => (
+        add_String(String.from_str(s));
+    );
+
+    const add_String = (s :: String) => (
+        let result = &mut (@current Ctx).result;
+        @cfg (
+            | target.name == "interpreter" => (
+                result^ = (@native "+")(result^, s);
+            )
+            | target.name == "javascript" => (
+                result^ = @native "\(result^) + \(s)";
+            )
+            | target.name == "c" => (
+                result^ = @native "String_concat(\(result^), \(s))";
+            )
+        );
+    );
 );

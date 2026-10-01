@@ -963,13 +963,13 @@ let import : core_syntax =
           | Expr ->
             let path_value, path_expr =
               Compiler.eval
-                ~ty:(Ty.inferred ~span:path.data.span T_String)
+                ~ty:(Ty.inferred ~span:path.data.span T_StringView)
                 (module C)
                 path
             in
             let path =
               path_value
-              |> Value.expect_string
+              |> Value.expect_string_view
               |> Option.unwrap_or_else (fun () -> return <| init_error span C.state kind)
             in
             let uri = resolve_uri ~from:span.uri (Uri.of_string path) in
@@ -1008,11 +1008,14 @@ let include' : core_syntax =
             children |> Tuple.unwrap_single_named "path" |> Ast.Child.expect_ast
           in
           let path_value, path_expr =
-            Compiler.eval ~ty:(Ty.inferred ~span:path.data.span T_String) (module C) path
+            Compiler.eval
+              ~ty:(Ty.inferred ~span:path.data.span T_StringView)
+              (module C)
+              path
           in
           let path =
             path_value
-            |> Value.expect_string
+            |> Value.expect_string_view
             |> Option.unwrap_or_else (fun () -> return <| init_error span C.state kind)
           in
           let uri = resolve_uri ~from:span.uri (Uri.of_string path) in
@@ -1197,13 +1200,13 @@ let native : core_syntax =
                      | Some _ ->
                        let value_s, value_expr =
                          Compiler.eval
-                           ~ty:(Ty.inferred ~span T_String)
+                           ~ty:(Ty.inferred ~span T_StringView)
                            (module C)
                            value.ast
                        in
                        let value_s =
                          value_s
-                         |> Value.expect_string
+                         |> Value.expect_string_view
                          |> Option.unwrap_or_else (fun () ->
                            error value.ast.data.span "expected a string";
                            "")
@@ -1694,11 +1697,11 @@ let impl_syntax : core_syntax =
            | _ ->
              let name_value, name_expr =
                Compiler.eval
-                 ~ty:(Ty.inferred ~span:name.data.span T_String)
+                 ~ty:(Ty.inferred ~span:name.data.span T_StringView)
                  (module C)
                  name
              in
-             let name = name_value |> Value.expect_string in
+             let name = name_value |> Value.expect_string_view in
              let impl, impl_expr =
                Compiler.eval
                  ~ty:
@@ -2095,9 +2098,7 @@ let current_context : core_syntax =
         ({ children; _ } : Ast.group)
         : a ->
         let span = ast.data.span in
-        match kind with
-        | PlaceExpr -> Compiler.temp_expr (module C) ast
-        | Expr ->
+        let place () : Expr.Place.t =
           let context_type =
             children |> Ast.flatten_children |> Tuple.unwrap_single_named "context_type"
           in
@@ -2107,12 +2108,16 @@ let current_context : core_syntax =
                  ~ty:(Ty.inferred ~span:context_type.data.span T_ContextTy)
                  (module C)
           in
-          (match context_ty_value |> Value.await_inferred with
-           | V_ContextTy context_ty ->
-             E_CurrentContext { context_ty }
-             |> init_expr span C.state
-             |> Compiler.data_add Expr (context_ty_expr, context_ty_value) kind
-           | _ -> init_error span C.state kind)
+          match context_ty_value |> Value.await_inferred with
+          | V_ContextTy context_ty ->
+            PE_CurrentContext { context_ty }
+            |> init_place_expr span C.state
+            |> Compiler.data_add Expr (context_ty_expr, context_ty_value) PlaceExpr
+          | _ -> init_error span C.state PlaceExpr
+        in
+        match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | Expr -> E_Claim (place ()) |> init_expr span C.state
         | _ ->
           error span "current_context must be expr";
           init_error span C.state kind)

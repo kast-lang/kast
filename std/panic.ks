@@ -1,10 +1,10 @@
 const PanicHandlerT = newtype {
-    .handle :: String -> Never,
+    .handle :: &str -> Never,
 };
 const PanicHandler = @context PanicHandlerT;
 
 const default_panic_handler :: PanicHandlerT = {
-    .handle = (s :: String) -> Never => @cfg (
+    .handle = (s :: &str) -> Never => @cfg (
         | target.name == "interpreter" => (@native "panic")(s)
         | target.name == "c" => (
             @native "default_panic_handler(\(s))";
@@ -14,6 +14,6 @@ const default_panic_handler :: PanicHandlerT = {
     ),
 };
 
-const panic = [T] (s :: String) -> T => (
+const panic = [T] (s :: &str) -> T => (
     (@current PanicHandler).handle(s) |> from_never
 );

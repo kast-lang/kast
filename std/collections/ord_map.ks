@@ -31,7 +31,7 @@ const split_inner_at_key = [K, V](
 } => (
     let split_with = (treap, f) => Treap.split(
         treap,
-        data => if map.compare(data^.value.key, key) |> f then (
+        data => if map.compare(&data^.value.key, &key) |> f then (
             :LeftSubtree
         ) else (
             :RightSubtree
@@ -57,7 +57,7 @@ const add = [K, V] (map :: &mut OrdMap.t[K, V], key :: K, value :: V) => (
 const get = [K, V] (map :: &OrdMap.t[K, V], key :: K) -> Option.t[type (&V)] => (
     Treap.lookup(
         &map^.inner,
-        data => match map^.compare(key, data^.value.key) with (
+        data => match map^.compare(&key, &data^.value.key) with (
             | :Less => :LeftSubtree
             | :Greater => :RightSubtree
             | :Equal => :Here
@@ -69,7 +69,7 @@ const get = [K, V] (map :: &OrdMap.t[K, V], key :: K) -> Option.t[type (&V)] => 
 const get_mut = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[type (&mut V)] => (
     Treap.lookup_mut(
         &mut map^.inner,
-        data => match map^.compare(key, data^.value.key) with (
+        data => match map^.compare(&key, &data^.value.key) with (
             | :Less => :LeftSubtree
             | :Greater => :RightSubtree
             | :Equal => :Here

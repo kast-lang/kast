@@ -94,15 +94,15 @@ const unwrap = [T, E] (res :: Result[T, E]) -> T => match res with (
     | :Error _ => panic("unwrapped :Error")
 );
 
-const expect = [T, E] (res :: Result[T, E], msg :: &String) -> T => match res with (
+const expect = [T, E] (res :: Result[T, E], msg :: &str) -> T => match res with (
     | :Ok x => x
     # TODO: Also add error to panic message using E's ToString impl
-    | :Error _ => panic(msg^)
+    | :Error _ => panic(msg)
 );
 
-const expect_err = [T, E] (res :: Result[T, E], msg :: &String) -> E => match res with (
+const expect_err = [T, E] (res :: Result[T, E], msg :: &str) -> E => match res with (
     # TODO: Also add ok value to panic message using T's ToString impl
-    | :Ok _ => panic(msg^)
+    | :Ok _ => panic(msg)
     | :Error err => err
 );
 

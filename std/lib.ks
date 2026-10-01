@@ -5,7 +5,7 @@ include "./syntax.ks";
 
 const Type = @native "Type";
 
-const impl_native = [T] (name :: String, value :: T) -> () => (
+const impl_native = [T] (name :: &str, value :: T) -> () => (
     (@native "impl_native")(name, value)
 );
 
@@ -26,13 +26,12 @@ const Float32 :: Type = @native "Float32";
 const Float64 :: Type = @native "Float64";
 const Char :: Type = @native "Char";
 const String :: Type = @native "String";
+const StringView :: Type = @native "&str";
 
 const Box = [T :: Type] ((@native "Box")(T) :: Type);
 const Box_new = [T] (mut value :: T) -> Box[T] => @cfg (
     | target.name == "c" => (
-        let result = @native "Kast_allocate(\(T))";
-        result^ = value;
-        ((result))
+        @native "Box_\(type T)_new(\(value), \(T))"
     )
     | true => panic("TODO box")
 );
@@ -75,3 +74,5 @@ const thread = include "./thread.ks";
 const sync = include "./sync.ks";
 
 const prelude = include "./prelude.ks";
+
+include "./syntax-post.ks";

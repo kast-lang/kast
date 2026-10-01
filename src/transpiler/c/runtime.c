@@ -1,7 +1,12 @@
+// #define USE_SANITIZERS
 // #define KAST_ALLOCATION_STATS
 // #define USE_GC
 // #define KAST_TYPED_GC
 // #define GC_ON_INTERVAL_EMSCRIPTEN
+
+#ifdef USE_SANITIZERS
+#include <sanitizer/lsan_interface.h>
+#endif
 
 /* idk where this is documented,
  * but we want old winsock.h instead of winsock2.h */
@@ -155,10 +160,33 @@ typedef uint32_t Char;
 
 TypeInfo Byte_TypeInfo = TypeInfo_simple(primitive, Byte);
 TypeInfo String_TypeInfo;
+TypeInfo StringView_TypeInfo;
 
 void Kast_backtrace_error_callback(void* data, const char* msg, int errnum) {
     fprintf(stderr, "libbacktrace error: %s (errnum: %d)\n", msg, errnum);
     exit(-1);
+}
+
+typedef struct Kast_Backtrace_C_Entry {
+    uintptr_t pc;
+    const char* filename;
+    int lineno;
+    const char* function;
+    struct Kast_Backtrace_C_Entry* next;
+} Kast_Backtrace_C_Entry;
+
+typedef struct {
+    Kast_Backtrace_C_Entry* c_entries;
+} Kast_Backtrace;
+
+char* C_String_clone(const char* s) {
+    if (s == NULL) {
+        return NULL;
+    }
+    size_t length = strlen(s);
+    char* cloned = malloc(length + 1);
+    strcpy(cloned, s);
+    return cloned;
 }
 
 int Kast_backtrace_callback(
@@ -168,16 +196,61 @@ int Kast_backtrace_callback(
     int lineno,
     const char* function
 ) {
-    static int frame_num = 0;
-    fprintf(
-        stderr,
-        "%d. %s() at %s:%d\n",
-        frame_num++,
-        function ? function : "??",
-        filename ? filename : "??",
-        lineno
-    );
+    Kast_Backtrace* trace = data;
+    Kast_Backtrace_C_Entry* new_entry = malloc(sizeof(Kast_Backtrace_C_Entry));
+    if (new_entry == NULL) {
+        fprintf(stderr, "OOM when getting backtrace");
+        exit(-1);
+    }
+    *new_entry = (Kast_Backtrace_C_Entry) {
+        .pc = pc,
+        .filename = C_String_clone(filename),
+        .lineno = lineno,
+        .function = C_String_clone(function),
+        .next = trace->c_entries,
+    };
+    trace->c_entries = new_entry;
     return 0;
+}
+
+Kast_Backtrace Kast_Backtrace_get() {
+    Kast_Backtrace trace = {
+        .c_entries = NULL,
+    };
+    backtrace_full(
+        BACKTRACE_STATE,
+        1,
+        Kast_backtrace_callback,
+        Kast_backtrace_error_callback,
+        &trace
+    );
+    return trace;
+}
+
+void Kast_Backtrace_drop(Kast_Backtrace trace) {
+    Kast_Backtrace_C_Entry* entry = trace.c_entries;
+    while (entry != NULL) {
+        Kast_Backtrace_C_Entry* next = entry->next;
+        free((void*)entry->function);
+        free((void*)entry->filename);
+        free(entry);
+        entry = next;
+    }
+}
+
+void Kast_Backtrace_print(Kast_Backtrace* trace) {
+    int frame_num = 0;
+    for (Kast_Backtrace_C_Entry* entry = trace->c_entries; entry != NULL;
+         entry = entry->next) {
+        fprintf(
+            stderr,
+            "%d. %s() at %s:%d\n",
+            frame_num++,
+            entry->function ? entry->function : "??",
+            entry->filename ? entry->filename : "??",
+            entry->lineno
+        );
+    }
 }
 #endif
 
@@ -191,13 +264,9 @@ noreturn void exit_with_error(const char* s) {
     }
 #ifndef __EMSCRIPTEN__
 #ifdef USE_BACKTRACE
-    backtrace_full(
-        BACKTRACE_STATE,
-        1,
-        Kast_backtrace_callback,
-        Kast_backtrace_error_callback,
-        NULL
-    );
+    Kast_Backtrace trace = Kast_Backtrace_get();
+    Kast_Backtrace_print(&trace);
+    Kast_Backtrace_drop(trace);
 #else
     int N = 100;
     void* buf[N];
@@ -210,6 +279,7 @@ noreturn void exit_with_error(const char* s) {
     // }
 #endif
 #endif
+    _exit(-1); // _exit to prevent sanitizers output
     exit(-1);
 #endif
 }
@@ -573,6 +643,30 @@ typedef struct String {
     size_t length;
 } String;
 
+String String_claim(String* place) {
+    if (place->buf == NULL) {
+        exit_with_error("Trying to claim a moved String");
+    }
+    String moved = *place;
+    place->buf = NULL;
+    place->length = 0;
+    return moved;
+}
+
+void String_drop(String s) {
+    Kast_free((void*)s.buf);
+}
+
+void String_drop_type_erased(void* v) {
+    String* s = v;
+    String_drop(*s);
+}
+
+typedef struct {
+    const char* buf;
+    size_t length;
+} StringView;
+
 String Char_to_String(Char c) {
     size_t len = Char_utf8_len(c);
     char* buf = Kast_allocate_raw(len);
@@ -581,20 +675,20 @@ String Char_to_String(Char c) {
     return (String) {.buf = buf, .length = len};
 };
 
-Char String_at(String s, size_t idx) {
+Char String_at(StringView s, size_t idx) {
     const char* decoder = s.buf + idx;
     return utf8_char_decode_step(&decoder);
 }
 
-size_t String_length(String s) {
+size_t String_length(StringView s) {
     return s.length;
 }
 
-size_t String_utf8_length(String s) {
+size_t String_utf8_length(StringView s) {
     return s.length;
 }
 
-int String_cmp(String a, String b) {
+int StringView_cmp(StringView a, StringView b) {
     for (size_t i = 0; i < a.length && i < b.length; i++) {
         int c = (int)a.buf[i] - (int)b.buf[i];
         if (c != 0) {
@@ -604,39 +698,44 @@ int String_cmp(String a, String b) {
     return (int)a.length - (int)b.length;
 }
 
-String String_concat(String a, String b) {
-    char* buf = Kast_allocate_raw(a.length + b.length);
-    memcpy(buf, a.buf, a.length);
-    memcpy(buf + a.length, b.buf, b.length);
-    return (String) {
-        .buf = buf,
-        .length = a.length + b.length,
-    };
-}
-
 typedef const char* C_String;
+typedef const char* C_StringView;
 
-void Kast_write(FILE* f, String s) {
+void Kast_write(FILE* f, StringView s) {
     if (s.buf != NULL) {
         fwrite(s.buf, sizeof(char), s.length, f);
     }
 }
 
-String String_from_C_String(const C_String s) {
+StringView String_as_StringView(const String* s) {
+    return (StringView) {
+        .buf = s->buf,
+        .length = s->length,
+    };
+}
+
+StringView StringView_from_C_StringView(const C_StringView s) {
+    return (StringView) {
+        .buf = s,
+        .length = strlen(s),
+    };
+}
+
+String String_from_C_StringView(const C_StringView s) {
     return (String) {
         .buf = s,
         .length = strlen(s),
     };
 }
 
-char* String_to_C_String(const String s) {
+char* String_to_C_String(const StringView s) {
     char* result = Kast_allocate_raw(s.length + 1);
     memcpy(result, s.buf, s.length);
     result[s.length] = 0;
     return result;
 }
 
-noreturn void default_panic_handler(const String s) {
+noreturn void default_panic_handler(const StringView s) {
     fprintf(stderr, "Unhandled panic: ");
     Kast_write(stderr, s);
     fprintf(stderr, "\n");
@@ -671,6 +770,7 @@ void Kast_init_type_infos() {
         .alignment = alignof(String),
         .stride = sizeof(String),
         .size = sizeof(String),
+        .drop = String_drop_type_erased,
 #ifdef USE_GC
 #ifdef KAST_ALLOCATION_STATS
         .allocation_stats = Kast_type_allocation_stats_new(),
@@ -682,6 +782,26 @@ void Kast_init_type_infos() {
             GC_set_bit(T_bitmap, GC_WORD_OFFSET(String, buf));
             GC_descr descriptor =
                 GC_make_descriptor(T_bitmap, GC_WORD_LEN(String));
+            descriptor;
+        }),
+#endif
+    };
+    StringView_TypeInfo = (TypeInfo) {
+        .name = "StringView",
+        .alignment = alignof(StringView),
+        .stride = sizeof(StringView),
+        .size = sizeof(StringView),
+#ifdef USE_GC
+#ifdef KAST_ALLOCATION_STATS
+        .allocation_stats = Kast_type_allocation_stats_new(),
+#endif
+        .kind = TypeInfoKind_object,
+        .gc_inner_ptrs = 1,
+        .gc_descr = ({
+            GC_word T_bitmap[GC_BITMAP_SIZE(StringView)] = {0};
+            GC_set_bit(T_bitmap, GC_WORD_OFFSET(StringView, buf));
+            GC_descr descriptor =
+                GC_make_descriptor(T_bitmap, GC_WORD_LEN(StringView));
             descriptor;
         }),
 #endif
@@ -755,7 +875,7 @@ String Int64_to_String(Int64 x) {
     return Kast_asprintf("%ld", x);
 }
 
-Int32 Int32_from_String(String s) {
+Int32 Int32_from_String(StringView s) {
     Int32 result = 0;
     for (size_t i = 0; i < s.length; i++) {
         result = result * 10 + s.buf[i] - '0';
@@ -763,7 +883,7 @@ Int32 Int32_from_String(String s) {
     return result;
 }
 
-Int64 Int64_from_String(String s) {
+Int64 Int64_from_String(StringView s) {
     Int64 result = 0;
     for (size_t i = 0; i < s.length; i++) {
         result = result * 10 + s.buf[i] - '0';
@@ -771,7 +891,7 @@ Int64 Int64_from_String(String s) {
     return result;
 }
 
-Float64 Float64_from_String(String s) {
+Float64 Float64_from_String(StringView s) {
     char* cs = String_to_C_String(s);
     Float64 result = atof(cs);
     Kast_free(cs);
@@ -819,7 +939,7 @@ String Kast_read_to_end(FILE* f) {
     return Kast_read_exactly(f, size);
 }
 
-String Kast_read_file(String path) {
+String Kast_read_file(StringView path) {
     char* path_c = String_to_C_String(path);
     FILE* f = fopen(path_c, "r");
     Kast_free(path_c);
@@ -864,7 +984,7 @@ String Kast_read_until(FILE* f, Char delimiter) {
     return result;
 }
 
-String Kast_input(String prompt) {
+String Kast_input(StringView prompt) {
     Kast_write(stdout, prompt);
     return Kast_read_until(stdin, '\n');
 }
@@ -961,28 +1081,72 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
     }
 }
 
-void Kast_Box_claim(void** box, TypeInfo* T) {
-    *box = NULL;
-}
+#define define_Box(T)                                                          \
+    typedef struct {                                                           \
+        T* value;                                                              \
+        TypeInfo* T_TypeInfo;                                                  \
+        Kast_Backtrace claimed_trace;                                          \
+    } Box_##T;
 
-void Kast_Box_drop(void* box, TypeInfo* T) {
-    if (box == NULL) {
-        return;
+#define impl_Box(T)                                                            \
+    Box_##T Box_##T##_new(T value, TypeInfo* T_TypeInfo) {                     \
+        T* boxed_value = Kast_allocate(T_TypeInfo);                            \
+        *boxed_value = value;                                                  \
+        return (Box_##T) {                                                     \
+            .value = boxed_value,                                              \
+            .T_TypeInfo = T_TypeInfo,                                          \
+        };                                                                     \
+    }                                                                          \
+    Box_##T Box_##T##_claim(Box_##T* place) {                                  \
+        if (place->value == NULL) {                                            \
+            fprintf(stderr, "Box was claimed before here:\n");                 \
+            Kast_Backtrace_print(&place->claimed_trace);                       \
+            exit_with_error("Trying to claim a moved Box");                    \
+        }                                                                      \
+        Box_##T moved = *place;                                                \
+        place->value = NULL;                                                   \
+        place->claimed_trace = Kast_Backtrace_get();                           \
+        return moved;                                                          \
+    }                                                                          \
+    void Box_##T##_drop(Box_##T box) {                                         \
+        if (box.value == NULL) {                                               \
+            Kast_Backtrace_drop(box.claimed_trace);                            \
+            return;                                                            \
+        }                                                                      \
+        if (box.T_TypeInfo->drop != NULL) {                                    \
+            box.T_TypeInfo->drop(box.value);                                   \
+        }                                                                      \
+        Kast_free(box.value);                                                  \
     }
-    TypeInfo_drop(T, box);
-    Kast_free(box);
+
+String String_from_StringView(StringView s) {
+    char* buf = Kast_allocate_raw(s.length);
+    memcpy(buf, s.buf, s.length);
+    return (String) {
+        .buf = buf,
+        .length = s.length,
+    };
 }
 
-void String_claim(String* s) {
-    s->buf = NULL;
-    s->length = 0;
+String String_concat(String a, String b) {
+    if (a.length == 0) {
+        return b;
+    }
+    if (b.length == 0) {
+        return a;
+    }
+    char* buf = Kast_allocate_raw(a.length + b.length);
+    memcpy(buf, a.buf, a.length);
+    memcpy(buf + a.length, b.buf, b.length);
+    String_drop(a);
+    String_drop(b);
+    return (String) {
+        .buf = buf,
+        .length = a.length + b.length,
+    };
 }
 
-void String_drop(String s) {
-    Kast_free((void*)s.buf);
-}
-
-void String_iteri(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
+void String_iteri(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf;
     while (iter < s.buf + s.length) {
         Int32 i = iter - s.buf;
@@ -991,7 +1155,7 @@ void String_iteri(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     }
 }
 
-void String_iteri_rev(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
+void String_iteri_rev(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
     const char* iter = s.buf + s.length;
     while (iter > s.buf) {
         Char c = utf8_char_decode_step_rev(&iter);
@@ -1000,7 +1164,7 @@ void String_iteri_rev(Context* ctx, String s, fn_Int32_Char_Unit consumer) {
     }
 }
 
-void String_iter(Context* ctx, String s, fn_Char_Unit consumer) {
+void String_iter(Context* ctx, StringView s, fn_Char_Unit consumer) {
     const char* iter = s.buf;
     while (iter < s.buf + s.length) {
         Char c = utf8_char_decode_step(&iter);
@@ -1008,16 +1172,14 @@ void String_iter(Context* ctx, String s, fn_Char_Unit consumer) {
     }
 }
 
-String String_substring(String s, Int32 start, Int32 len) {
-    char* buf = Kast_allocate_raw(len);
-    strncpy(buf, s.buf + start, len);
-    return (String) {
-        .buf = buf,
-        .length = len,
+StringView String_substring(StringView s, Int32 start, Int32 length) {
+    return (StringView) {
+        .buf = s.buf + start,
+        .length = length,
     };
 }
 
-void Kast_chdir(String path) {
+void Kast_chdir(StringView path) {
     char* path_c = String_to_C_String(path);
     int res = chdir(path_c);
     if (res == -1) {
@@ -1026,7 +1188,7 @@ void Kast_chdir(String path) {
     Kast_free(path_c);
 }
 
-Int32 Kast_exec(String cmd) {
+Int32 Kast_exec(StringView cmd) {
     char* cmd_c = String_to_C_String(cmd);
     int res = system(cmd_c);
     Kast_free(cmd_c);
@@ -1045,7 +1207,7 @@ Int32 Kast_exec(String cmd) {
 #endif
 }
 
-String Kast_getenv(String name) {
+String Kast_getenv(StringView name) {
     char* name_c = String_to_C_String(name);
     char* buf = getenv(name_c);
     Kast_free(name_c);
@@ -1081,20 +1243,20 @@ tcp_Stream tcp_Stream_from_fd(int fd) {
     };
 }
 
-tcp_Stream tcp_Stream_connect(String addr) {
+tcp_Stream tcp_Stream_connect(StringView addr) {
 #ifdef _WIN32
     exit_with_error("TODO tcp_Stream_connect windows");
 #else
     char* colon_pos = memchr(addr.buf, ':', addr.length);
     if (!colon_pos) {
-        default_panic_handler(String_from_C_String("Expected host:port"));
+        exit_with_error("Expected host:port");
     }
-    String host = {
+    StringView host = {
         .buf = addr.buf,
         .length = colon_pos - addr.buf,
     };
     char* host_c = String_to_C_String(host);
-    String port_s = {
+    StringView port_s = {
         .buf = colon_pos + 1,
         .length = addr.buf + addr.length - colon_pos - 1,
     };
@@ -1128,7 +1290,7 @@ tcp_Stream tcp_Stream_connect(String addr) {
         // ignore errno, try next addr
     }
     freeaddrinfo(ai);
-    default_panic_handler(String_from_C_String("Failed to connect"));
+    exit_with_error("Failed to connect");
 #endif
 }
 
@@ -1148,27 +1310,27 @@ String tcp_Stream_read_line(tcp_Stream* s) {
     return Kast_read_until(s->reader, '\n');
 }
 
-void tcp_Stream_write(tcp_Stream* s, String* data) {
-    Kast_write(s->writer, *data);
+void tcp_Stream_write(tcp_Stream* s, StringView data) {
+    Kast_write(s->writer, data);
     if (fflush(s->writer) != 0) {
         panic_errno("tcp_Stream_write.fflush");
     }
 }
 
-tcp_Listener tcp_Listener_bind(String addr) {
+tcp_Listener tcp_Listener_bind(StringView addr) {
 #ifdef _WIN32
     exit_with_error("TODO tcp_Listener_bind windows");
 #else
     char* colon_pos = memchr(addr.buf, ':', addr.length);
     if (!colon_pos) {
-        default_panic_handler(String_from_C_String("Expected host:port"));
+        exit_with_error("Expected host:port");
     }
-    String host = {
+    StringView host = {
         .buf = addr.buf,
         .length = colon_pos - addr.buf,
     };
     char* host_c = String_to_C_String(host);
-    String port_s = {
+    StringView port_s = {
         .buf = colon_pos + 1,
         .length = addr.buf + addr.length - colon_pos - 1,
     };
@@ -1209,7 +1371,7 @@ tcp_Listener tcp_Listener_bind(String addr) {
         // ignore errno, try next addr
     }
     freeaddrinfo(ai);
-    default_panic_handler(String_from_C_String("Failed to bind"));
+    exit_with_error("Failed to bind");
 #endif
 }
 

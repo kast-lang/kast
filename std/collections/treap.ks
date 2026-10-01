@@ -25,38 +25,47 @@ const singleton = [T] (value :: T) -> Treap.t[T] => :Node (
 const length = [T] (v :: &Treap.t[T]) -> Int32 => (
     match v^ with (
         | :Empty => 0
-        | :Node v => v.count
+        | :Node ref v => v^.count
     )
 );
+
+const update_data = (data :: Ast, .new_left :: Ast, .new_right :: Ast) -> Ast => `(
+    let count = 1 + length(&$new_left^) + length(&$new_right^);
+    :Node {
+        .left = $new_left,
+        .right = $new_right,
+        .value = $data.value,
+        .count,
+        .priority = $data.priority,
+    }
+);
+
+(#
 const update_data = [T] (
-    root :: data[T],
-    .left :: Box[Treap.t[T]],
-    .right :: Box[Treap.t[T]],
-) -> Treap.t[T] => :Node {
-    .value = root.value,
-    .priority = root.priority,
-    .left,
-    .right,
-    .count = 1 + length(&left^) + length(&right^),
-};
+    data :: data[T],
+) -> Treap.t[T] => (
+    let count = 1 + length(&data.left^) + length(&data.right^);
+    :Node {
+        ...data,
+        .count,
+    }
+);
+#)
+
 const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
     match ({ left, right } :: { _, _ }) with (
         | { :Empty, :Empty } => :Empty
         | { :Empty, other } => other
         | { other, :Empty } => other
-        | { :Node (left_data :: data[T]), :Node (right_data :: data[T]) } => (
-            if left_data.priority > right_data.priority then (
-                update_data(
-                    left_data,
-                    .left = left_data.left,
-                    .right = Box_new(join[T](left_data.right^, right)),
-                )
+        | { :Node (left :: data[T]), :Node (right :: data[T]) } => (
+            if left.priority > right.priority then (
+                let new_left = left.left;
+                let new_right = Box_new(join[T](left.right^, :Node right));
+                include_ast update_data(`(left), .new_left = `(new_left), .new_right = `(new_right))
             ) else (
-                update_data(
-                    right_data,
-                    .left = Box_new(join[T](left, right_data.left^)),
-                    .right = right_data.right,
-                )
+                let new_left = Box_new(join[T](:Node left, right.left^));
+                let new_right = right.right;
+                include_ast update_data(`(right), .new_left = `(new_left), .new_right = `(new_right))
             )
         )
     )
@@ -138,20 +147,16 @@ const split = [T] (v :: t[T], f :: node_splitter[T]) -> { t[T], t[T] } => (
         | :Node node => match f(&node) with (
             | :RightSubtree => (
                 let { left_left, left_right } = split[T](node.left^, f);
-                let node = update_data(
-                    node,
-                    .left = Box_new(left_right),
-                    .right = node.right,
-                );
+                let new_left = Box_new(left_right);
+                let new_right = node.right;
+                let node = include_ast update_data(`(node), .new_left = `(new_left), .new_right = `(new_right));
                 { left_left, node }
             )
             | :LeftSubtree => (
                 let { right_left, right_right } = split[T](node.right^, f);
-                let node = update_data(
-                    node,
-                    .left = node.left,
-                    .right = Box_new(right_left),
-                );
+                let new_left = node.left;
+                let new_right = Box_new(right_left);
+                let node = include_ast update_data(`(node), .new_left = `(new_left), .new_right = `(new_right));
                 { node, right_right }
             )
             | :Node { left, right } => (
@@ -183,13 +188,13 @@ const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> { Treap.t[T], Treap.
 const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
     match v^ with (
         | :Empty => panic("oob")
-        | :Node v => (
-            if idx == length(&v.left^) then (
-                &v.value
-            ) else if idx < length(&v.left^) then (
-                at[T](&v.left^, idx)
+        | :Node ref v => (
+            if idx == length(&v^.left^) then (
+                &v^.value
+            ) else if idx < length(&v^.left^) then (
+                at[T](&v^.left^, idx)
             ) else (
-                at[T](&v.right^, idx - length(&v.left^) - 1)
+                at[T](&v^.right^, idx - length(&v^.left^) - 1)
             )
         )
     )
@@ -217,20 +222,21 @@ const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T
     set_at(a, idx, f(at(&a, idx)))
 );
 const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String => (
-    let mut result = "[";
-    let mut i :: Int32 = 0;
-    for x in iter(v) do (
-        if i != 0 then (
-            result += ", ";
+    StringBuilder.build(() => (
+        StringBuilder.add_str("[");
+        let mut i :: Int32 = 0;
+        for x in iter(v) do (
+            if i != 0 then (
+                StringBuilder.add_str(", ");
+            );
+            StringBuilder.add_String(t_to_string(x));
+            i += 1;
         );
-        result += t_to_string(x);
-        i += 1;
-    );
-    result += "]";
-    result
+        StringBuilder.add_str("]");
+    ))
 );
 const into_iter = [T] (v :: Treap.t[T]) -> std.iter.Iterable[T] => {
-    .iter = f => (
+    .iter = @move f => (
         match v with (
             | :Empty => ()
             | :Node data => (
@@ -242,7 +248,7 @@ const into_iter = [T] (v :: Treap.t[T]) -> std.iter.Iterable[T] => {
     )
 };
 const iter = [T] (v :: &Treap.t[T]) -> std.iter.Iterable[type (&T)] => {
-    .iter = f => (
+    .iter = @move f => (
         match v^ with (
             | :Empty => ()
             | :Node ref data => (
@@ -254,7 +260,7 @@ const iter = [T] (v :: &Treap.t[T]) -> std.iter.Iterable[type (&T)] => {
     )
 };
 const iter_mut = [T] (v :: &mut Treap.t[T]) -> std.iter.Iterable[type (&mut T)] => {
-    .iter = f => (
+    .iter = @move f => (
         match v^ with (
             | :Empty => ()
             | :Node ref mut data => (

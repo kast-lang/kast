@@ -61,14 +61,6 @@ impl Float32 as Add = {
     )
 };
 
-impl String as Add = {
-    .add = (a, b) => @cfg (
-        | target.name == "interpreter" => (@native "+")(a, b)
-        | target.name == "c" => @native "String_concat(\(a), \(b))"
-        | target.name == "javascript" => @native "\(a)+\(b)"
-    )
-};
-
 const add = [T] (a :: T, b :: T) -> T => (
     (T as Add).add(a, b)
 );

@@ -376,6 +376,7 @@ module Impl = struct
     | T_Int64 | T_UInt64 -> primitive "Int64"
     | T_Float64 | T_Float32 -> primitive "Float64"
     | T_String -> primitive "String"
+    | T_StringView -> primitive "String"
     | T_Char -> primitive "Char"
     | T_Box _ -> todo_ty __LOC__
     | T_Ref _ -> todo_ty __LOC__
@@ -485,6 +486,7 @@ module Impl = struct
       | V_Char c ->
         NoEffect { shape = JsAst.String (String.from_single_utf8 c); span = None }
       | V_String s -> calculate { shape = JsAst.String s; span = None }
+      | V_StringView s -> calculate { shape = JsAst.String s; span = None }
       | V_Box _ -> failwith __LOC__
       | V_Ref _ -> failwith __LOC__
       | V_Tuple { tuple; ty = _ } ->
@@ -878,6 +880,7 @@ module Impl = struct
           ; set = (fun _ -> panic "SET A CONST")
           ; ref_var = None
           }
+      | PE_CurrentContext { context_ty } -> failwith __LOC__
       | PE_Field { obj; field; field_span = _ } ->
         let member =
           match field with
@@ -1586,15 +1589,6 @@ module Impl = struct
         scope.ctx_var <- new_ctx_var;
         undefined ()
       | E_LetRefContext _ -> failwith __LOC__
-      | E_CurrentContext { context_ty } ->
-        calculate
-          { shape =
-              Field
-                { obj = { shape = Var (Effect.perform GetScope).ctx_var; span = None }
-                ; field = context_ty_field context_ty
-                }
-          ; span
-          }
       | E_ImplCast { value; target; impl } ->
         let value = transpile_expr value in
         let target = transpile_value target in

@@ -42,6 +42,11 @@ and stmt =
       ; then_case : block
       ; else_case : block option
       }
+  | Switch of
+      { value : expr
+      ; cases : switch_case list
+      ; default : block option
+      }
   | Assign of
       { assignee : place_expr
       ; value : expr
@@ -51,6 +56,11 @@ and stmt =
   | For of { body : block }
   | Return of expr
   | ReturnVoid
+
+and switch_case =
+  { value : expr
+  ; body : block
+  }
 
 and field =
   { name : string
@@ -242,6 +252,26 @@ module Print = struct
       write " ";
       write name
     | Expr expr -> print_expr expr
+    | Switch { value; cases; default } ->
+      write "switch (";
+      print_expr value;
+      write ") {";
+      writeln ();
+      cases
+      |> List.iter (fun case ->
+        write "case ";
+        print_expr case.value;
+        write ": ";
+        print_block case.body;
+        writeln ();
+        write "break;";
+        writeln ());
+      (match default with
+       | None -> ()
+       | Some block ->
+         write "default: ";
+         print_block block);
+      write "}"
     | If { cond; then_case; else_case } ->
       write "if (";
       print_expr cond;

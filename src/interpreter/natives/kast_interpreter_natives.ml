@@ -22,6 +22,7 @@ let init_natives () =
     ; "Float32", T_Float32
     ; "Float64", T_Float64
     ; "String", T_String
+    ; "&str", T_StringView
     ; "Char", T_Char
     ; "Type", T_Ty
     ; "Bool", T_Bool
@@ -109,7 +110,7 @@ let init_natives () =
           |> Option.map (fun (field : Types.value_tuple_field) ->
             field.place
             |> claim ~span:caller
-            |> Value.expect_string
+            |> Value.expect_string_view
             |> Option.unwrap_or_else (fun () ->
               fail "new_opaque_type must recieve string as arg, if any"))
         in
@@ -124,7 +125,7 @@ let init_natives () =
         | V_Tuple { ty = _; tuple } ->
           let name, value = tuple |> Tuple.unwrap_unnamed2 in
           let name = name.place |> claim ~span:caller in
-          (match name |> Value.expect_string with
+          (match name |> Value.expect_string_view with
            | Some name ->
              let value = value.place |> claim ~span:caller in
              impl_native state name value;

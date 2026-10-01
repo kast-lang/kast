@@ -63,6 +63,7 @@ module rec TypesImpl : sig
     | V_Ref of value_ref
     | V_Box of place
     | V_String of string
+    | V_StringView of string
     | V_Tuple of value_tuple
     | V_List of value_list
     | V_Variant of value_variant
@@ -90,7 +91,7 @@ module rec TypesImpl : sig
     ; mutable ty : ty option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
-  and implicit_context = { mutable contexts : value Id.Map.t }
+  and implicit_context = { mutable contexts : place Id.Map.t }
 
   and value_opaque =
     { ty : ty_opaque
@@ -224,6 +225,7 @@ module rec TypesImpl : sig
     | T_Float32
     | T_Float64
     | T_String
+    | T_StringView
     | T_Char
     | T_Ref of ty_ref
     | T_Box of ty
@@ -432,7 +434,7 @@ module rec TypesImpl : sig
     ; value : expr
     }
 
-  and expr_current_context = { context_ty : value_context_ty }
+  and place_expr_current_context = { context_ty : value_context_ty }
 
   and expr_and =
     { lhs : expr
@@ -493,7 +495,6 @@ module rec TypesImpl : sig
     | E_Unwindable of expr_unwindable
     | E_Unwind of expr_unwind
     | E_InjectContext of expr_inject_context
-    | E_CurrentContext of expr_current_context
     | E_LetRefContext of expr
     | E_ImplCast of expr_impl_cast
     | E_Cast of expr_cast
@@ -522,6 +523,7 @@ module rec TypesImpl : sig
     | PE_Field of place_expr_field
     | PE_Const of place
     | PE_Deref of place_expr
+    | PE_CurrentContext of place_expr_current_context
     | PE_Context
     | PE_Temp of expr
     | PE_Error
@@ -833,6 +835,7 @@ end = struct
     | V_Ref of value_ref
     | V_Box of place
     | V_String of string
+    | V_StringView of string
     | V_Tuple of value_tuple
     | V_List of value_list
     | V_Variant of value_variant
@@ -860,7 +863,7 @@ end = struct
     ; mutable ty : ty option [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
-  and implicit_context = { mutable contexts : value Id.Map.t }
+  and implicit_context = { mutable contexts : place Id.Map.t }
 
   and value_opaque =
     { ty : ty_opaque
@@ -994,6 +997,7 @@ end = struct
     | T_Float32
     | T_Float64
     | T_String
+    | T_StringView
     | T_Char
     | T_Ref of ty_ref
     | T_Box of ty
@@ -1202,7 +1206,7 @@ end = struct
     ; value : expr
     }
 
-  and expr_current_context = { context_ty : value_context_ty }
+  and place_expr_current_context = { context_ty : value_context_ty }
 
   and expr_and =
     { lhs : expr
@@ -1263,7 +1267,6 @@ end = struct
     | E_Unwindable of expr_unwindable
     | E_Unwind of expr_unwind
     | E_InjectContext of expr_inject_context
-    | E_CurrentContext of expr_current_context
     | E_LetRefContext of expr
     | E_ImplCast of expr_impl_cast
     | E_Cast of expr_cast
@@ -1292,6 +1295,7 @@ end = struct
     | PE_Field of place_expr_field
     | PE_Const of place
     | PE_Deref of place_expr
+    | PE_CurrentContext of place_expr_current_context
     | PE_Context
     | PE_Temp of expr
     | PE_Error

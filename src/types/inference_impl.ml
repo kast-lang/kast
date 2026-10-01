@@ -87,7 +87,7 @@ module VarScope = struct
     fun shape ->
     match shape with
     | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float32 | T_Float64
-    | T_String | T_Char ->
+    | T_String | T_StringView | T_Char ->
       root ()
     | T_Box x -> of_ty x
     | T_Ref x -> of_ty_ref x
@@ -201,6 +201,7 @@ module VarScope = struct
     | V_Box boxed -> of_place boxed
     | V_Ref x -> of_value_ref x
     | V_String (_ : string) -> root ()
+    | V_StringView (_ : string) -> root ()
     | V_Tuple x -> of_value_tuple x
     | V_List x -> of_value_list x
     | V_Variant x -> of_value_variant x
@@ -327,6 +328,8 @@ module Impl = struct
          | T_Float64, _ -> fail ()
          | T_Char, T_Char -> T_Char
          | T_Char, _ -> fail ()
+         | T_StringView, T_StringView -> T_StringView
+         | T_StringView, _ -> fail ()
          | T_String, T_String -> T_String
          | T_String, _ -> fail ()
          | T_Box a, T_Box b -> T_Box (unite_ty ~span a b)
@@ -756,6 +759,8 @@ module Impl = struct
          | V_Float64 _, _ -> fail ()
          | V_Char a, V_Char b when a = b -> V_Char a
          | V_Char _, _ -> fail ()
+         | V_StringView a, V_StringView b when a = b -> V_StringView a
+         | V_StringView _, _ -> fail ()
          | V_String a, V_String b when a = b -> V_String a
          | V_String _, _ -> fail ()
          | V_Box a, V_Box b -> V_Box (unite_place ~span a b)
@@ -992,6 +997,7 @@ module Impl = struct
     | T_Float64 -> None
     | T_Char -> None
     | T_String -> None
+    | T_StringView -> None
     | T_Variant _ -> None
     | T_Box _ -> None
     | T_Ref _ -> None
@@ -1082,6 +1088,7 @@ module Impl = struct
       | V_Float64 _ -> inferred_ty ~span T_Float64
       | V_Char _ -> inferred_ty ~span T_Char
       | V_String _ -> inferred_ty ~span T_String
+      | V_StringView _ -> inferred_ty ~span T_StringView
       | V_Opaque { ty; value = _ } -> inferred_ty ~span (T_Opaque ty)
       | V_Box boxed -> inferred_ty ~span (T_Box boxed.ty)
       | V_Ref { mut; place } ->

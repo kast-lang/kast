@@ -86,15 +86,16 @@ const length = [T] (a :: &ArrayList.t[T]) -> Int32 => @cfg (
     | target.name == "javascript" => @native "\(a^).length"
 );
 const to_string = [T] (a :: &ArrayList.t[T], t_to_string :: &T -> String) -> String => (
-    let mut result = "[";
-    let mut i :: Int32 = 0;
-    for x in iter(a) do (
-        if i != 0 then (
-            result += ", ";
+    StringBuilder.build(() => (
+        StringBuilder.add_str("[");
+        let mut i :: Int32 = 0;
+        for x in iter(a) do (
+            if i != 0 then (
+                StringBuilder.add_str(", ");
+            );
+            StringBuilder.add_String(t_to_string(x));
+            i += 1;
         );
-        result += t_to_string(x);
-        i += 1;
-    );
-    result += "]";
-    result
+        StringBuilder.add_str("]");
+    ))
 );

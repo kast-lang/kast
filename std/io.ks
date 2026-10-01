@@ -1,5 +1,5 @@
 module:
-const print = (line :: String) -> () => (
+const print = (line :: &str) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.print")(line)
         | target.name == "c" => (
@@ -10,7 +10,7 @@ const print = (line :: String) -> () => (
     )
 );
 # similar to print, but print to stderr
-const eprint = (line :: String) -> () => (
+const eprint = (line :: &str) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.eprint")(line)
         | target.name == "c" => (
@@ -20,7 +20,7 @@ const eprint = (line :: String) -> () => (
         | target.name == "javascript" => (@native "Kast.io.eprint")(line)
     )
 );
-const input = async (prompt :: String) -> String => (
+const input = async (prompt :: &str) -> String => (
     @cfg (
         | target.name == "interpreter" => (@native "io.input")(prompt)
         | target.name == "c" => @native "Kast_input(\(prompt))"
@@ -37,7 +37,7 @@ const stdout = (
         | target.name == "javascript" => (@native "Kast.io.stdout.isatty")()
     );
 
-    const write = (line :: String) -> () => @cfg (
+    const write = (line :: &str) -> () => @cfg (
         | target.name == "interpreter" => (@native "io.stdout.write")(line)
         | target.name == "c" => (
             @native "Kast_write(stdout, \(line))";
@@ -55,7 +55,7 @@ const stderr = (
         | target.name == "javascript" => (@native "Kast.io.stderr.isatty")()
     );
 
-    const write = (line :: String) -> () => @cfg (
+    const write = (line :: &str) -> () => @cfg (
         | target.name == "interpreter" => (@native "io.stderr.write")(line)
         | target.name == "c" => (
             @native "Kast_write(stderr, \(line))";

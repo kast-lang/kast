@@ -99,6 +99,7 @@
 @syntax "core:cast" 60.5 @wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 @wrap never = "&" _ ->;
 @syntax "core:ref_mut" 61 @wrap never = "&" "mut" " " _ ->;
+@syntax "&str" 61 @wrap never = "&" "str";
 @syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\\\n" "]");
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "index" 70 @wrap never = <- obj "." "[" index:any "]";
@@ -127,5 +128,5 @@
 @syntax "core:target_dependent" 1000 @wrap always = "@cfg" " " "(" ""/"\n\t" branches:any ""/"\\\n" ")";
 @syntax "core:__FILE__" 1000 @wrap never = "__FILE__";
 @syntax "core:current_compiler_scope" 1000 @wrap never = "@current_scope";
-
 @syntax "comment_out" 1000 @wrap if_any = "@comment_out" " " "(" ""/"\n\t" _:any ""/"\\\n" ")";
+@syntax "interpolate_String" 1000 @wrap if_any = "@interpolate_String" " " "(" ""/"\n\t" _:any ""/"\\\n" ")";

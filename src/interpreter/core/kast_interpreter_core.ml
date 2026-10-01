@@ -519,7 +519,8 @@ and get_field ~span ~state ~(result_ty : ty) ~obj_mut obj member : evaled_place_
            error_place result_ty)
       | V_Target { name } ->
         (match member with
-         | Name "name" -> Place.init ~mut:Immutable (V_String name |> Value.inferred ~span)
+         | Name "name" ->
+           Place.init ~mut:Immutable (V_StringView name |> Value.inferred ~span)
          | _ ->
            Error.error span "field %a doesnt exist in target" Tuple.Member.print member;
            error_place result_ty)
@@ -561,6 +562,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
       with_return (fun { return } ->
         match expr.shape with
         | PE_Error -> Place (~mut:true, error_place result_ty)
+        | PE_CurrentContext e -> eval_expr_currentcontext state expr e
         | PE_Binding binding ->
           let result =
             Scope.find_opt binding.name state.scope
@@ -1029,17 +1031,22 @@ and eval_expr_injectcontext : state -> expr -> Types.expr_inject_context -> valu
   let span = expr.data.span in
   let value = eval state value in
   state.implicit_context
-  <- { contexts = state.implicit_context.contexts |> Id.Map.add context_ty.id value };
+  <- { contexts =
+         state.implicit_context.contexts
+         |> Id.Map.add context_ty.id (Place.init ~mut:Mutable value)
+     };
   V_Unit |> Value.inferred ~span
 
-and eval_expr_currentcontext : state -> expr -> Types.expr_current_context -> value =
+and eval_expr_currentcontext
+  : state -> Expr.Place.t -> Types.place_expr_current_context -> evaled_place_expr
+  =
   fun state expr { context_ty } ->
   let span = expr.data.span in
   match state.implicit_context.contexts |> Id.Map.find_opt context_ty.id with
-  | Some value -> value
+  | Some place -> Place (~mut:true, place)
   | None ->
     Error.error expr.data.span "Context unavailable";
-    V_Error |> Value.inferred ~span
+    Place (~mut:true, error_place expr.data.signature.ty)
 
 and eval_expr_implcast : state -> expr -> Types.expr_impl_cast -> value =
   fun state expr { value; target; impl } ->
@@ -1268,7 +1275,6 @@ and eval : state -> expr -> value =
            | E_Unwindable e -> eval_expr_unwindable state expr e
            | E_Unwind e -> eval_expr_unwind state expr e
            | E_InjectContext e -> eval_expr_injectcontext state expr e
-           | E_CurrentContext e -> eval_expr_currentcontext state expr e
            | E_LetRefContext _ -> failwith __LOC__
            | E_ImplCast e -> eval_expr_implcast state expr e
            | E_Cast e -> eval_expr_cast state expr e

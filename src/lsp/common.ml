@@ -59,6 +59,7 @@ let inner_compiled_with_handler
       | PE_Binding _ -> ()
       | PE_Context -> ()
       | PE_Const _ -> ()
+      | PE_CurrentContext { context_ty = _ } -> ()
       | PE_Deref ref -> handler.handle PlaceExpr ref
       | PE_Temp expr -> handler.handle Expr expr
       | PE_Field { obj; field; field_span = _ } ->
@@ -130,7 +131,6 @@ let inner_compiled_with_handler
                 handler.handle Expr body)
       | E_InjectContext { context_ty = _; value } -> handler.handle Expr value
       | E_LetRefContext new_ref -> handler.handle Expr new_ref
-      | E_CurrentContext { context_ty = _ } -> ()
       | E_ImplCast { value; target; impl } ->
         handler.handle Expr value;
         let _ : value = target in
