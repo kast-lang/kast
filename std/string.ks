@@ -463,6 +463,18 @@ impl String as module = (
     );
 
     const escape = s => escape_with(s, .delimiter = "\"");
+
+    const concat_owned = (a :: String, b :: String) -> String => @cfg (
+        | target.name == "interpreter" => (
+            (@native "+")(a, b)
+        )
+        | target.name == "javascript" => (
+            @native "\(a) + \(b)"
+        )
+        | target.name == "c" => (
+            @native "String_concat(\(a), \(b))"
+        )
+    );
 );
 
 const StringBuilder = (
@@ -490,16 +502,6 @@ const StringBuilder = (
 
     const add_String = (s :: String) => (
         let result = &mut (@current Ctx).result;
-        @cfg (
-            | target.name == "interpreter" => (
-                result^ = (@native "+")(result^, s);
-            )
-            | target.name == "javascript" => (
-                result^ = @native "\(result^) + \(s)";
-            )
-            | target.name == "c" => (
-                result^ = @native "String_concat(\(result^), \(s))";
-            )
-        );
+        result^ = String.concat_owned(result^, s);
     );
 );

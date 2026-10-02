@@ -16,7 +16,7 @@ let init () =
         let s =
           s.place
           |> claim ~span:caller
-          |> Value.expect_string
+          |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
         let idx =
@@ -42,7 +42,7 @@ let init () =
         in
         let s =
           arg
-          |> Value.expect_string
+          |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as arg")
         in
         V_Int32 (Int32.of_int (String.length s)) |> Value.inferred ~span))
@@ -61,7 +61,7 @@ let init () =
         let s =
           s.place
           |> claim ~span:caller
-          |> Value.expect_string
+          |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
         let start =
@@ -93,7 +93,7 @@ let init () =
         let s =
           s.place
           |> claim ~span:caller
-          |> Value.expect_string
+          |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
         let f = f.place |> claim ~span:caller in
@@ -129,7 +129,7 @@ let init () =
         let s =
           s.place
           |> claim ~span:caller
-          |> Value.expect_string
+          |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
         let f = f.place |> claim ~span:caller in
@@ -167,7 +167,7 @@ let init () =
         let s =
           s.place
           |> claim ~span:caller
-          |> Value.expect_string
+          |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
         let f = f.place |> claim ~span:caller in

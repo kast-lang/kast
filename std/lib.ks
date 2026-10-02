@@ -63,6 +63,7 @@ const sys = include "./sys.ks";
 const random = include "./random.ks";
 const repr = include "./repr.ks";
 const collections = include "./collections/_mod.ks";
+const fmt = (include "./fmt.ks");
 
 const backend = include "./backend/_mod.ks";
 

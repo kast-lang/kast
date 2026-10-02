@@ -28,3 +28,4 @@ use from_never;
 
 use Box;
 use Box_new;
+use fmt.format;

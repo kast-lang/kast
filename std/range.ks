@@ -34,11 +34,9 @@ const range = [T] (
             consumer(i);
         );
     );
-    (
-        module:
-        let construct = (.forward, .backward) => {
-            .iter = forward,
-            .rev = () => construct(.forward = backward, .backward = forward),
-        };
-    ).construct(.forward, .backward)
-)
+    {
+        .iter = forward,
+        .rev = @move () => { .iter = backward },
+    }
+);
+

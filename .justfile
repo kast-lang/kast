@@ -50,8 +50,8 @@ self-host:
 run-js path *args:
     kast run --format prettier --target javascript {{path}} {{args}}
 
-test-c:
-    ${CC:-gcc} ${CFLAGS} -o target/compiled.exe target/compiled.c
+test-c src="target/compiled.c":
+    ${CC:-gcc} ${CFLAGS} -o target/compiled.exe {{src}}
     ./target/compiled.exe
 
 compile-tcp-client-server-c:

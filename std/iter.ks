@@ -6,7 +6,7 @@ const Iterable = [Item] newtype {
 
 const ReversibleIterable = [Item] newtype {
     .iter :: (Item -> ()) -> (),
-    .rev :: () -> ReversibleIterable[Item],
+    .rev :: () -> Iterable[Item],
 };
 
 const find = [T] (

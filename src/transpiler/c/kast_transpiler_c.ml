@@ -2056,9 +2056,9 @@ module Impl = struct
   and assign_to_place (place : Expr.Place.t) (value : C_ast.place_expr) =
     let ty = place.data.signature.ty in
     let place = transpile_place_expr place in
-    insert_stmt
-      (Expr (Apply { f = Claim (Ident (generate_drop ty)); args = [ Claim place ] }));
-    insert_stmt (Assign { assignee = place; value = claim_c value ty })
+    let value = claim_c value ty in
+    insert_drop ty (Claim place);
+    insert_stmt (Assign { assignee = place; value })
 
   and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr option =
     let f_ty =
@@ -2265,7 +2265,12 @@ module Impl = struct
     claim_c c_place place.data.signature.ty
 
   and claim_c (c_place : C_ast.place_expr) (ty : ty) : C_ast.expr =
-    Apply { f = Claim (Ident (generate_claim ty)); args = [ AddrOf c_place ] }
+    let var = gen_name "claimed" in
+    let_c_var
+      (transpile_ty ty)
+      var
+      (Apply { f = Claim (Ident (generate_claim ty)); args = [ AddrOf c_place ] });
+    Claim (Ident var)
 
   and execute_expr (expr : expr) : unit =
     match eval_expr expr with

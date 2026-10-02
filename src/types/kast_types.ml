@@ -273,6 +273,13 @@ module Value = struct
     | _ -> None
   ;;
 
+  let expect_any_string : value -> string option =
+    fun value ->
+    match value |> await_inferred with
+    | V_StringView s | V_String s -> Some s
+    | _ -> None
+  ;;
+
   let expect_fn : value -> value_fn option =
     fun value ->
     match value |> await_inferred with

@@ -1,4 +1,3 @@
-std.StringBuilder.build(() => (
-    std.StringBuilder.add_str("hi");
-    std.StringBuilder.add_str("hi");
-))
+for i in (0..10).rev() do (
+    print(&to_string(i) |> String.as_str);
+);
