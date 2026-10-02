@@ -227,6 +227,12 @@ Kast_Backtrace Kast_Backtrace_get() {
     return trace;
 }
 
+Kast_Backtrace* Kast_Backtrace_get_boxed() {
+    Kast_Backtrace* trace = malloc(sizeof(Kast_Backtrace));
+    *trace = Kast_Backtrace_get();
+    return trace;
+}
+
 void Kast_Backtrace_drop(Kast_Backtrace trace) {
     Kast_Backtrace_C_Entry* entry = trace.c_entries;
     while (entry != NULL) {
@@ -236,6 +242,11 @@ void Kast_Backtrace_drop(Kast_Backtrace trace) {
         free(entry);
         entry = next;
     }
+}
+
+void Kast_Backtrace_drop_boxed(Kast_Backtrace* trace) {
+    Kast_Backtrace_drop(*trace);
+    free(trace);
 }
 
 void Kast_Backtrace_print(Kast_Backtrace* trace) {
@@ -641,19 +652,32 @@ Char utf8_char_decode_step_rev(const char** s) {
 typedef struct String {
     const char* buf;
     size_t length;
+    Kast_Backtrace* claimed_trace;
 } String;
 
+String String_from_raw_parts(const char* buf, size_t length) {
+    return (String) {
+        .buf = buf,
+        .length = length,
+        .claimed_trace = NULL,
+    };
+}
+
 String String_claim(String* place) {
-    if (place->buf == NULL) {
+    if (place->claimed_trace != NULL) {
         exit_with_error("Trying to claim a moved String");
     }
     String moved = *place;
     place->buf = NULL;
     place->length = 0;
+    place->claimed_trace = Kast_Backtrace_get_boxed();
     return moved;
 }
 
 void String_drop(String s) {
+    if (s.claimed_trace != NULL) {
+        Kast_Backtrace_drop_boxed(s.claimed_trace);
+    }
     Kast_free((void*)s.buf);
 }
 
@@ -672,7 +696,7 @@ String Char_to_String(Char c) {
     char* buf = Kast_allocate_raw(len);
     char* encoder = buf;
     utf8_char_encode_step(&encoder, c);
-    return (String) {.buf = buf, .length = len};
+    return String_from_raw_parts(buf, len);
 };
 
 Char String_at(StringView s, size_t idx) {
@@ -722,13 +746,13 @@ StringView StringView_from_C_StringView(const C_StringView s) {
 }
 
 String String_from_C_StringView(const C_StringView s) {
-    return (String) {
-        .buf = s,
-        .length = strlen(s),
-    };
+    size_t length = strlen(s);
+    char* buf = Kast_allocate_raw(length);
+    strcpy(buf, s);
+    return String_from_raw_parts(buf, length);
 }
 
-char* String_to_C_String(const StringView s) {
+char* StringView_to_C_String(const StringView s) {
     char* result = Kast_allocate_raw(s.length + 1);
     memcpy(result, s.buf, s.length);
     result[s.length] = 0;
@@ -745,7 +769,7 @@ noreturn void default_panic_handler(const StringView s) {
 typedef struct {
     int argc;
     char** original_argv;
-    String* argv;
+    StringView* argv;
 } CliArgs;
 
 CliArgs CLI_ARGS;
@@ -829,7 +853,7 @@ void Kast_init(int argc, char* argv[]) {
     CLI_ARGS.original_argv = argv;
     CLI_ARGS.argv = Kast_allocate_array(&String_TypeInfo, argc);
     for (int i = 0; i < argc; i++) {
-        CLI_ARGS.argv[i] = (String) {
+        CLI_ARGS.argv[i] = (StringView) {
             .buf = argv[i],
             .length = strlen(argv[i]),
         };
@@ -853,10 +877,7 @@ String Kast_asprintf(const char* fmt, ...) {
     if (length < 0) {
         panic_errno("Kast_asprintf");
     }
-    return (String) {
-        .buf = buf,
-        .length = length,
-    };
+    return String_from_raw_parts(buf, length);
 }
 
 String Float32_to_String(Float32 x) {
@@ -876,6 +897,7 @@ String Int64_to_String(Int64 x) {
 }
 
 Int32 Int32_from_String(StringView s) {
+    // TODO negative, failures
     Int32 result = 0;
     for (size_t i = 0; i < s.length; i++) {
         result = result * 10 + s.buf[i] - '0';
@@ -884,6 +906,7 @@ Int32 Int32_from_String(StringView s) {
 }
 
 Int64 Int64_from_String(StringView s) {
+    // TODO negative, failures
     Int64 result = 0;
     for (size_t i = 0; i < s.length; i++) {
         result = result * 10 + s.buf[i] - '0';
@@ -892,7 +915,7 @@ Int64 Int64_from_String(StringView s) {
 }
 
 Float64 Float64_from_String(StringView s) {
-    char* cs = String_to_C_String(s);
+    char* cs = StringView_to_C_String(s);
     Float64 result = atof(cs);
     Kast_free(cs);
     return result;
@@ -917,10 +940,7 @@ String Kast_read_exactly(FILE* f, size_t size) {
         read += new_read;
     }
     check_ferror(f);
-    return (String) {
-        .buf = buf,
-        .length = size,
-    };
+    return String_from_raw_parts(buf, size);
 }
 
 String Kast_read_to_end(FILE* f) {
@@ -940,7 +960,7 @@ String Kast_read_to_end(FILE* f) {
 }
 
 String Kast_read_file(StringView path) {
-    char* path_c = String_to_C_String(path);
+    char* path_c = StringView_to_C_String(path);
     FILE* f = fopen(path_c, "r");
     Kast_free(path_c);
     if (!f) {
@@ -1122,10 +1142,7 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
 String String_from_StringView(StringView s) {
     char* buf = Kast_allocate_raw(s.length);
     memcpy(buf, s.buf, s.length);
-    return (String) {
-        .buf = buf,
-        .length = s.length,
-    };
+    return String_from_raw_parts(buf, s.length);
 }
 
 String String_concat(String a, String b) {
@@ -1138,12 +1155,10 @@ String String_concat(String a, String b) {
     char* buf = Kast_allocate_raw(a.length + b.length);
     memcpy(buf, a.buf, a.length);
     memcpy(buf + a.length, b.buf, b.length);
+    size_t length = a.length + b.length;
     String_drop(a);
     String_drop(b);
-    return (String) {
-        .buf = buf,
-        .length = a.length + b.length,
-    };
+    return String_from_raw_parts(buf, length);
 }
 
 void String_iteri(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
@@ -1180,7 +1195,7 @@ StringView String_substring(StringView s, Int32 start, Int32 length) {
 }
 
 void Kast_chdir(StringView path) {
-    char* path_c = String_to_C_String(path);
+    char* path_c = StringView_to_C_String(path);
     int res = chdir(path_c);
     if (res == -1) {
         panic_errno("Kast_chdir");
@@ -1189,7 +1204,7 @@ void Kast_chdir(StringView path) {
 }
 
 Int32 Kast_exec(StringView cmd) {
-    char* cmd_c = String_to_C_String(cmd);
+    char* cmd_c = StringView_to_C_String(cmd);
     int res = system(cmd_c);
     Kast_free(cmd_c);
 #ifdef __POSIX__
@@ -1208,13 +1223,10 @@ Int32 Kast_exec(StringView cmd) {
 }
 
 String Kast_getenv(StringView name) {
-    char* name_c = String_to_C_String(name);
+    char* name_c = StringView_to_C_String(name);
     char* buf = getenv(name_c);
     Kast_free(name_c);
-    return (String) {
-        .buf = buf,
-        .length = buf ? strlen(buf) : 0,
-    };
+    return String_from_C_StringView(buf);
 }
 
 typedef struct {
@@ -1255,13 +1267,13 @@ tcp_Stream tcp_Stream_connect(StringView addr) {
         .buf = addr.buf,
         .length = colon_pos - addr.buf,
     };
-    char* host_c = String_to_C_String(host);
+    char* host_c = StringView_to_C_String(host);
     StringView port_s = {
         .buf = colon_pos + 1,
         .length = addr.buf + addr.length - colon_pos - 1,
     };
     // Int32 port = Int32_from_String(port_s);
-    char* port_c = String_to_C_String(port_s);
+    char* port_c = StringView_to_C_String(port_s);
     struct addrinfo *ai, *rp;
     int res = getaddrinfo(host_c, port_c, NULL, &ai);
     if (res) {
@@ -1329,13 +1341,13 @@ tcp_Listener tcp_Listener_bind(StringView addr) {
         .buf = addr.buf,
         .length = colon_pos - addr.buf,
     };
-    char* host_c = String_to_C_String(host);
+    char* host_c = StringView_to_C_String(host);
     StringView port_s = {
         .buf = colon_pos + 1,
         .length = addr.buf + addr.length - colon_pos - 1,
     };
     // Int32 port = Int32_from_String(port_s);
-    char* port_c = String_to_C_String(port_s);
+    char* port_c = StringView_to_C_String(port_s);
     struct addrinfo *ai, *rp;
     int res = getaddrinfo(host_c, port_c, NULL, &ai);
     if (res) {
