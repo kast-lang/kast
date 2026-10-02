@@ -265,13 +265,17 @@ void Kast_Backtrace_print(Kast_Backtrace* trace) {
 }
 #endif
 
-noreturn void exit_with_error(const char* s) {
+noreturn void exit_with_error(const char* fmt, ...) {
 #ifdef __FILC__
     zerror(s);
     exit(-1);
 #else
-    if (s != NULL) {
-        fprintf(stderr, "%s\n", s);
+    if (fmt != NULL) {
+        va_list va;
+        va_start(va, fmt);
+        vfprintf(stderr, fmt, va);
+        fprintf(stderr, "\n");
+        va_end(va);
     }
 #ifndef __EMSCRIPTEN__
 #ifdef USE_BACKTRACE
@@ -293,6 +297,38 @@ noreturn void exit_with_error(const char* s) {
     _exit(-1); // _exit to prevent sanitizers output
     exit(-1);
 #endif
+}
+
+typedef struct {
+    Kast_Backtrace* trace;
+    const char* name;
+} Kast_Claimed;
+
+Kast_Claimed Kast_Claimed_init(const char* name) {
+    return (Kast_Claimed) {
+        .trace = NULL,
+        .name = name,
+    };
+}
+
+void Kast_mark_as_claimed(Kast_Claimed* claimed) {
+    if (claimed->trace != NULL) {
+        fprintf(stderr, "%s was previously claimed here:\n", claimed->name);
+        Kast_Backtrace_print(claimed->trace);
+        exit_with_error("Trying to claim a moved %s", claimed->name);
+    }
+    claimed->trace = Kast_Backtrace_get_boxed();
+}
+
+typedef enum { Kast_Claimed_Moved, Kast_Claimed_Owned } Kast_Claimed_State;
+
+Kast_Claimed_State Kast_Claimed_drop(Kast_Claimed claimed) {
+    if (claimed.trace != NULL) {
+        Kast_Backtrace_drop_boxed(claimed.trace);
+        return Kast_Claimed_Moved;
+    } else {
+        return Kast_Claimed_Owned;
+    }
 }
 
 noreturn void Kast_match_non_exhaustive() {
@@ -652,33 +688,29 @@ Char utf8_char_decode_step_rev(const char** s) {
 typedef struct String {
     const char* buf;
     size_t length;
-    Kast_Backtrace* claimed_trace;
+    Kast_Claimed claimed;
 } String;
 
 String String_from_raw_parts(const char* buf, size_t length) {
     return (String) {
         .buf = buf,
         .length = length,
-        .claimed_trace = NULL,
+        .claimed = Kast_Claimed_init("String"),
     };
 }
 
 String String_claim(String* place) {
-    if (place->claimed_trace != NULL) {
-        exit_with_error("Trying to claim a moved String");
-    }
     String moved = *place;
+    Kast_mark_as_claimed(&place->claimed);
     place->buf = NULL;
     place->length = 0;
-    place->claimed_trace = Kast_Backtrace_get_boxed();
     return moved;
 }
 
 void String_drop(String s) {
-    if (s.claimed_trace != NULL) {
-        Kast_Backtrace_drop_boxed(s.claimed_trace);
+    if (Kast_Claimed_drop(s.claimed) == Kast_Claimed_Owned) {
+        Kast_free((void*)s.buf);
     }
-    Kast_free((void*)s.buf);
 }
 
 void String_drop_type_erased(void* v) {
@@ -1105,7 +1137,7 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
     typedef struct {                                                           \
         T* value;                                                              \
         TypeInfo* T_TypeInfo;                                                  \
-        Kast_Backtrace claimed_trace;                                          \
+        Kast_Claimed claimed;                                                  \
     } Box_##T;
 
 #define impl_Box(T)                                                            \
@@ -1115,28 +1147,22 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
         return (Box_##T) {                                                     \
             .value = boxed_value,                                              \
             .T_TypeInfo = T_TypeInfo,                                          \
+            .claimed = Kast_Claimed_init("Box"),                               \
         };                                                                     \
     }                                                                          \
     Box_##T Box_##T##_claim(Box_##T* place) {                                  \
-        if (place->value == NULL) {                                            \
-            fprintf(stderr, "Box was claimed before here:\n");                 \
-            Kast_Backtrace_print(&place->claimed_trace);                       \
-            exit_with_error("Trying to claim a moved Box");                    \
-        }                                                                      \
         Box_##T moved = *place;                                                \
+        Kast_mark_as_claimed(&place->claimed);                                 \
         place->value = NULL;                                                   \
-        place->claimed_trace = Kast_Backtrace_get();                           \
         return moved;                                                          \
     }                                                                          \
     void Box_##T##_drop(Box_##T box) {                                         \
-        if (box.value == NULL) {                                               \
-            Kast_Backtrace_drop(box.claimed_trace);                            \
-            return;                                                            \
+        if (Kast_Claimed_drop(box.claimed) == Kast_Claimed_Owned) {            \
+            if (box.T_TypeInfo->drop != NULL) {                                \
+                box.T_TypeInfo->drop(box.value);                               \
+            }                                                                  \
+            Kast_free(box.value);                                              \
         }                                                                      \
-        if (box.T_TypeInfo->drop != NULL) {                                    \
-            box.T_TypeInfo->drop(box.value);                                   \
-        }                                                                      \
-        Kast_free(box.value);                                                  \
     }
 
 String String_from_StringView(StringView s) {
