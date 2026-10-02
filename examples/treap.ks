@@ -1,5 +1,5 @@
 use std.collections.Treap;
-let mut v = Treap.new();
+let mut v :: Treap.t[Int32] = Treap.new();
 for i in 0..10 do (
     v = Treap.join(v, Treap.singleton(i + 10));
 );
@@ -24,3 +24,5 @@ print(&@interpolate_String(
     "v = ",
     Treap_to_string(&v),
 ) |> String.as_str);
+@comment_out(
+);

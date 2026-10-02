@@ -114,6 +114,7 @@ struct TypeInfo {
     size_t size;
     size_t stride;
     void (*drop)(void*);
+    void (*claim)(void* place, void* result);
     TypeInfoKind kind;
 #ifdef KAST_ALLOCATION_STATS
     Kast_type_allocation_stats allocation_stats;
@@ -320,14 +321,17 @@ void Kast_mark_as_claimed(Kast_Claimed* claimed) {
     claimed->trace = Kast_Backtrace_get_boxed();
 }
 
-typedef enum { Kast_Claimed_Moved, Kast_Claimed_Owned } Kast_Claimed_State;
+typedef enum {
+    Kast_Claimed_State_Moved,
+    Kast_Claimed_State_Owned
+} Kast_Claimed_State;
 
 Kast_Claimed_State Kast_Claimed_drop(Kast_Claimed claimed) {
     if (claimed.trace != NULL) {
         Kast_Backtrace_drop_boxed(claimed.trace);
-        return Kast_Claimed_Moved;
+        return Kast_Claimed_State_Moved;
     } else {
-        return Kast_Claimed_Owned;
+        return Kast_Claimed_State_Owned;
     }
 }
 
@@ -707,8 +711,14 @@ String String_claim(String* place) {
     return moved;
 }
 
+void String_claim_type_erased(void* place_void, void* result_void) {
+    String* place = place_void;
+    String* result = result_void;
+    *result = String_claim(place);
+}
+
 void String_drop(String s) {
-    if (Kast_Claimed_drop(s.claimed) == Kast_Claimed_Owned) {
+    if (Kast_Claimed_drop(s.claimed) == Kast_Claimed_State_Owned) {
         Kast_free((void*)s.buf);
     }
 }
@@ -827,6 +837,7 @@ void Kast_init_type_infos() {
         .stride = sizeof(String),
         .size = sizeof(String),
         .drop = String_drop_type_erased,
+        .claim = String_claim_type_erased,
 #ifdef USE_GC
 #ifdef KAST_ALLOCATION_STATS
         .allocation_stats = Kast_type_allocation_stats_new(),
@@ -1118,8 +1129,32 @@ typedef struct Context Context;
 #define define_closure_type(name, Ret, ...)                                    \
     typedef struct {                                                           \
         void* captured;                                                        \
-        Ret (*f)(Context*, void*, __VA_ARGS__);                                \
-    } name;
+        TypeInfo* captured_TypeInfo;                                           \
+        Ret (*f)(Context*, void* __VA_OPT__(, ) __VA_ARGS__);                  \
+    } name;                                                                    \
+                                                                               \
+    name name##_claim(name* place) {                                           \
+        if (place->captured == NULL) {                                         \
+            return *place;                                                     \
+        }                                                                      \
+        void* claimed_captured = Kast_allocate(place->captured_TypeInfo);      \
+        place->captured_TypeInfo->claim(place->captured, claimed_captured);    \
+        return (name) {                                                        \
+            .captured = claimed_captured,                                      \
+            .captured_TypeInfo = place->captured_TypeInfo,                     \
+            .f = place->f,                                                     \
+        };                                                                     \
+    }                                                                          \
+                                                                               \
+    void name##_drop(name closure) {                                           \
+        if (closure.captured == NULL) {                                        \
+            return;                                                            \
+        }                                                                      \
+        if (closure.captured_TypeInfo->drop != NULL) {                         \
+            closure.captured_TypeInfo->drop(closure.captured);                 \
+        }                                                                      \
+        Kast_free(closure.captured);                                           \
+    }
 
 define_closure_type(fn_Int32_Char_Unit, void, Int32, Char);
 define_closure_type(fn_Char_Unit, void, Char);
@@ -1157,7 +1192,7 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
         return moved;                                                          \
     }                                                                          \
     void Box_##T##_drop(Box_##T box) {                                         \
-        if (Kast_Claimed_drop(box.claimed) == Kast_Claimed_Owned) {            \
+        if (Kast_Claimed_drop(box.claimed) == Kast_Claimed_State_Owned) {      \
             if (box.T_TypeInfo->drop != NULL) {                                \
                 box.T_TypeInfo->drop(box.value);                               \
             }                                                                  \
@@ -1173,9 +1208,11 @@ String String_from_StringView(StringView s) {
 
 String String_concat(String a, String b) {
     if (a.length == 0) {
+        String_drop(a);
         return b;
     }
     if (b.length == 0) {
+        String_drop(b);
         return a;
     }
     char* buf = Kast_allocate_raw(a.length + b.length);
@@ -1194,6 +1231,7 @@ void String_iteri(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
         Char c = utf8_char_decode_step(&iter);
         call_closure(return, consumer, i, c);
     }
+    fn_Int32_Char_Unit_drop(consumer);
 }
 
 void String_iteri_rev(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
@@ -1203,6 +1241,7 @@ void String_iteri_rev(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
         Int32 i = iter - s.buf;
         call_closure(return, consumer, i, c);
     }
+    fn_Int32_Char_Unit_drop(consumer);
 }
 
 void String_iter(Context* ctx, StringView s, fn_Char_Unit consumer) {
@@ -1211,6 +1250,7 @@ void String_iter(Context* ctx, StringView s, fn_Char_Unit consumer) {
         Char c = utf8_char_decode_step(&iter);
         call_closure(return, consumer, c);
     }
+    fn_Char_Unit_drop(consumer);
 }
 
 StringView String_substring(StringView s, Int32 start, Int32 length) {

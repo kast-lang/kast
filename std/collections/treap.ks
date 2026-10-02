@@ -40,7 +40,7 @@ const update_data = (data :: Ast, .new_left :: Ast, .new_right :: Ast) -> Ast =>
     }
 );
 
-(#
+@comment_out (
 const update_data = [T] (
     data :: data[T],
 ) -> Treap.t[T] => (
@@ -50,7 +50,7 @@ const update_data = [T] (
         .count,
     }
 );
-#)
+);
 
 const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
     match ({ left, right } :: { _, _ }) with (
