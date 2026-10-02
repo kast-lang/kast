@@ -590,6 +590,12 @@ module Impl = struct
         "@{<magenta>deref@} (@;<0 2>@[<v>ref = %a,@]@ )"
         (print_place_expr ~options)
         ref
+    | PE_Scope expr ->
+      fprintf
+        fmt
+        "@{<magenta>place_scope@} (@;<0 2>@[<v>expr = %a,@]@ )"
+        (print_place_expr ~options)
+        expr
     | PE_Temp expr ->
       fprintf
         fmt

@@ -870,6 +870,10 @@ module Impl = struct
         (match ctx.captured |> Kast_interpreter.Scope.find_opt binding.name with
          | Some place -> transpile_place place
          | None -> transpile_binding ~span binding)
+      | PE_Scope expr ->
+        let result = ref None in
+        execute_all <| scope (fun () -> result := Some (transpile_place_expr expr));
+        !result |> Option.unwrap
       | PE_Context -> failwith __LOC__
       | PE_Const place ->
         OCaml

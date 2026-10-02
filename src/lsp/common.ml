@@ -59,6 +59,7 @@ let inner_compiled_with_handler
       | PE_Binding _ -> ()
       | PE_Context -> ()
       | PE_Const _ -> ()
+      | PE_Scope expr -> handler.handle PlaceExpr expr
       | PE_CurrentContext { context_ty = _ } -> ()
       | PE_Deref ref -> handler.handle PlaceExpr ref
       | PE_Temp expr -> handler.handle Expr expr

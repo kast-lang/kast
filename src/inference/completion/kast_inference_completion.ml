@@ -408,6 +408,7 @@ module Impl = struct
     | PE_CurrentContext { context_ty } -> complete_context_ty context_ty
     | PE_Const place -> complete_place place
     | PE_Context -> ()
+    | PE_Scope expr -> complete_place_expr expr
     | PE_Field { obj; field; field_span = _ } ->
       complete_place_expr obj;
       (match field with

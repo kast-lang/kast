@@ -388,7 +388,9 @@ let scope : core_syntax =
         | Expr ->
           let expr = C.compile ~state Expr expr in
           E_Scope { expr } |> init_expr span C.state
-        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | PlaceExpr ->
+          let expr = C.compile ~state PlaceExpr expr in
+          PE_Scope expr |> init_place_expr span C.state
         | Assignee -> C.compile ~state Assignee expr
         | Pattern -> C.compile ~state Pattern expr
         | TyExpr -> C.compile ~state TyExpr expr)
@@ -1256,9 +1258,7 @@ let module' : core_syntax =
           (fun () -> state.interpreter.scope |> Interpreter.Scope.close);
         match kind with
         | Expr -> E_Module { def; bindings } |> init_expr span state
-        | PlaceExpr ->
-          error span "module must be expr, not place expr";
-          init_error span state kind
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Assignee ->
           error span "module must be expr, not assignee expr";
           init_error span state kind
@@ -1522,6 +1522,7 @@ let comptime : core_syntax =
         let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
         let span = ast.data.span in
         match kind with
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Expr ->
           let expr = C.compile Expr expr in
           let value = eval_const ~async:true C.state expr in
@@ -2116,10 +2117,11 @@ let current_context : core_syntax =
           | _ -> init_error span C.state PlaceExpr
         in
         match kind with
-        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | PlaceExpr -> place ()
         | Expr -> E_Claim (place ()) |> init_expr span C.state
+        | Assignee -> A_Place (place ()) |> init_assignee span C.state
         | _ ->
-          error span "current_context must be expr";
+          error span "current_context must be place expr";
           init_error span C.state kind)
   }
 ;;

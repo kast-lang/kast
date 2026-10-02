@@ -524,6 +524,7 @@ module rec TypesImpl : sig
     | PE_Const of place
     | PE_Deref of place_expr
     | PE_CurrentContext of place_expr_current_context
+    | PE_Scope of place_expr
     | PE_Context
     | PE_Temp of expr
     | PE_Error
@@ -1296,6 +1297,7 @@ end = struct
     | PE_Const of place
     | PE_Deref of place_expr
     | PE_CurrentContext of place_expr_current_context
+    | PE_Scope of place_expr
     | PE_Context
     | PE_Temp of expr
     | PE_Error

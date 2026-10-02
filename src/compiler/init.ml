@@ -223,6 +223,7 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
       | PE_Error -> inferred_mut true, pure (Ty.new_not_inferred ~scope ~span)
       | PE_Binding binding -> inferred_mut binding.mut, pure binding.ty
       | PE_Temp expr -> inferred_mut true, expr.data.signature
+      | PE_Scope expr -> expr.mut, expr.data.signature
       | PE_CurrentContext { context_ty } -> inferred_mut true, { ty = context_ty.ty }
       | PE_Deref ref ->
         let mut = IsMutable.new_not_inferred ~scope ~span in

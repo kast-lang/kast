@@ -358,6 +358,7 @@ module Impl = struct
        | Types.PE_Const place -> transpile_place place
        | Types.PE_Context -> (Effect.perform GetScope).ctx_place
        | Types.PE_CurrentContext { context_ty } -> current_context context_ty
+       | Types.PE_Scope expr -> with_new_scope (fun () -> transpile_place_expr expr)
        | Types.PE_Field { obj; field; field_span = _ } ->
          let field =
            match field with

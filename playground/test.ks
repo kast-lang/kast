@@ -1,6 +1,17 @@
+const Int32 = @native "Int32";
+
+impl syntax (@context ty) = `(
+    (@native "create_context_type")($ty)
+);
+
 const Foo = newtype {
-    .a :: Box[Int32],
-    .b :: Box[String],
+    .x :: Int32,
 };
 
-let { ... } :: Foo = { .a = Box_new(123), .b = Box_new(String.from_str("hi")) };
+const Ctx = @context Foo;
+
+with Ctx = { .x = 0 };
+
+(@current Ctx).x = 69;
+
+&(@current Ctx);

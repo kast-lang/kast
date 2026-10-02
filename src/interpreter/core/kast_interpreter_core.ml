@@ -563,6 +563,9 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
         match expr.shape with
         | PE_Error -> Place (~mut:true, error_place result_ty)
         | PE_CurrentContext e -> eval_expr_currentcontext state expr e
+        | PE_Scope expr ->
+          let state = state |> enter_scope ~span ~recursive:false in
+          eval_place state expr
         | PE_Binding binding ->
           let result =
             Scope.find_opt binding.name state.scope
