@@ -427,7 +427,7 @@ module Impl = struct
     | _ -> None
 
   and generate_claim (ty : ty) : string =
-    transpile_ty ty |> ignore;
+    let c_ty = transpile_ty ty in
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     Inference.Var.setup_default_if_needed ty.var;
@@ -454,7 +454,7 @@ module Impl = struct
              match name with
              | Some name -> name
              | None ->
-               let name = gen_name (make_string "claim_%a" Ty.print ty) in
+               let name = gen_name (ty_to_string c_ty ^ "_claim") in
                do_prepend := true;
                name
            in
@@ -656,7 +656,7 @@ module Impl = struct
   and generate_drop (ty : ty) : string =
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
-    transpile_ty ty |> ignore;
+    let c_ty = transpile_ty ty in
     Inference.Var.setup_default_if_needed ty.var;
     let ty =
       Interpreter.Substitute_bindings.sub_ty
@@ -681,7 +681,7 @@ module Impl = struct
              match name with
              | Some name -> name
              | None ->
-               let name = gen_name (make_string "drop_%a" Ty.print ty) in
+               let name = gen_name (ty_to_string c_ty ^ "_drop") in
                do_prepend := true;
                name
            in
@@ -2184,12 +2184,17 @@ module Impl = struct
 
   and eval_scoped_expr (expr : expr) : C_ast.expr option =
     with_new_scope (fun () ->
-      match eval_expr expr with
-      | Some result ->
-        let var = gen_name "scope_result" in
-        let_var expr.data.signature.ty var result ~drop:false;
-        Some (C_ast.Claim (Ident var))
-      | None -> None)
+      match transpile_ty expr.data.signature.ty with
+      | T_Unit ->
+        execute_expr expr;
+        None
+      | _ ->
+        (match eval_expr expr with
+         | Some result ->
+           let var = gen_name "scope_result" in
+           let_var expr.data.signature.ty var result ~drop:false;
+           Some (C_ast.Claim (Ident var))
+         | None -> None))
 
   and eval_expr (expr : expr) : C_ast.expr option =
     Log.trace (fun log ->
@@ -2620,9 +2625,11 @@ module Impl = struct
       raise e
   ;;
 
-  let postprocess (program : C_ast.program) : C_ast.program =
-    let statics =
-      program.statics
+  let postprocess () =
+    let ctx = Effect.perform GetCtx in
+    let statics_set =
+      ctx.statics
+      |> Dynarray.to_list
       |> List.map (fun (static : C_ast.static) -> static.name)
       |> StringSet.of_list
     in
@@ -2654,7 +2661,7 @@ module Impl = struct
                 let ident_does_escape = !escaping_idents |> StringSet.contains ident in
                 if ident_does_escape then Deref (Claim (Ident ident)) else Ident ident)
               else (
-                if escaping && not (statics |> StringSet.contains ident)
+                if escaping && not (statics_set |> StringSet.contains ident)
                 then escaping_idents := !escaping_idents |> StringSet.add ident;
                 Ident ident)
             | C_ast.P_Native e -> P_Native (walk_native_expr e)
@@ -2744,17 +2751,16 @@ module Impl = struct
       in
       { fn with body = new_body }
     in
-    let fns = program.fns |> StringMap.mapi postprocess_fn in
     let ctx = Effect.perform GetCtx in
-    let type_info_statics =
-      ctx.type_infos
-      |> CTyMap.to_list
-      |> List.map (fun ((ty, type_info) : C_ast.ty * type_info) : C_ast.static ->
+    (* let fns = program.fns |> StringMap.mapi postprocess_fn in *)
+    ctx.type_infos
+    |> CTyMap.iter (fun (ty : C_ast.ty) (type_info : type_info) ->
+      Dynarray.add_last
+        ctx.statics
         { ty = T_Raw { c = "TypeInfo"; is_primitive = false }
         ; name = type_info.type_info_name
         ; comment = None
-        })
-    in
+        });
     let rec construct_ty_def_type_info (kast_ty : ty) (name : string) (def : C_ast.ty_def)
       : C_ast.expr
       =
@@ -2778,6 +2784,7 @@ module Impl = struct
              ]
            else [])
     and construct_ty_type_info (kast_ty : ty) (ty : C_ast.ty) =
+      let ctx = Effect.perform GetCtx in
       let primitive s : C_ast.expr =
         E_Native { parts = [ Raw "TypeInfo_simple(primitive, "; Raw s; Raw ")" ] }
       in
@@ -2816,9 +2823,7 @@ module Impl = struct
                    })))
       }
     in
-    let fns = fns |> StringMap.add "Kast_init_user_type_infos" init_type_infos_fn in
-    let statics = program.statics @ type_info_statics in
-    { program with fns; statics }
+    ctx.fns <- ctx.fns |> StringMap.add "Kast_init_user_type_infos" init_type_infos_fn
   ;;
 end
 
@@ -2993,12 +2998,12 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
                , ({ shape = RuntimeDefined { is_primitive = false }; comment = None }
                   : C_ast.ty_def) ))
              |> StringMap.of_list);
-    Impl.postprocess
-      { types = ctx.types
-      ; includes = ctx.includes
-      ; fns = ctx.fns
-      ; statics = ctx.statics |> Dynarray.to_list
-      }
+    Impl.postprocess ();
+    { fns = ctx.fns
+    ; statics = ctx.statics |> Dynarray.to_list
+    ; includes = ctx.includes
+    ; types = ctx.types
+    }
   with
   | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
   | effect GetScope, k -> Effect.continue k scope
