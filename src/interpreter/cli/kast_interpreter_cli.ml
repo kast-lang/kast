@@ -87,7 +87,11 @@ let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t)
   match compiler.target with
   | Ir -> eval_and ignore args
   | C ->
-    let c_path = "target/compiled.c" in
+    let c_path =
+      match Sys.getenv_opt "COMPILED_C" with
+      | Some path -> path
+      | None -> "target/compiled.c"
+    in
     Kast_compiler_cli.run { args.compiler with output = Some c_path };
     let exe_path =
       match compiler.output with

@@ -65,7 +65,7 @@ let unreachable format =
 ;;
 
 let rec create_dir_all path =
-  if path = "" || path = "."
+  if path = "" || path = "." || path = "/"
   then ()
   else (
     create_dir_all (Filename.dirname path);

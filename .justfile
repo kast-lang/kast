@@ -38,7 +38,9 @@ minikast path no-std="" *args:
     node "$mjs" {{args}}
 
 test-aoc *args:
-    KAST_STD=$(pwd)/std kast ${AOC:-~/projects/aoc2025/test.ks} {{args}}
+    COMPILED_C=$(pwd)/target/compiled.c \
+        KAST_STD=$(pwd)/std \
+        kast ${AOC:-~/projects/aoc2025/test.ks} {{args}}
 
 self-host:
     kast compile \
