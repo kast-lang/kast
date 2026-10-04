@@ -15,21 +15,12 @@ module CTyMap = Map.Make (struct
 let print_span = Span.print
 
 type gc_mode =
-  | Full
   | EscapeAnalyze
   | RuntimeBorrowChecker
   | Disabled
 
 let gc_mode = ref Disabled
-let typed_gc = ref true
 let allocation_stats = ref false
-
-let is_full_gc () =
-  match !gc_mode with
-  | Full -> true
-  | _ -> false
-;;
-
 let boxed_structs = ref false
 
 let tuple_place_to_data_place place : C_ast.place_expr =
@@ -46,10 +37,21 @@ module StringListMap = Map.Make (struct
     let compare = List.compare String.compare
   end)
 
+type transpiled_ty_shape =
+  | Alias of C_ast.ty
+  | Named of
+      { name : string
+      ; def : unit -> C_ast.ty_def
+      }
+
 type type_info =
   { type_info_name : string
   ; kast_ty : ty
   }
+
+type 'a progress =
+  | Inprogress
+  | Completed of 'a
 
 type ctx =
   { target : Types.value_target
@@ -60,7 +62,7 @@ type ctx =
   ; mutable fns : C_ast.fn_def StringMap.t
   ; mutable statics : C_ast.static Dynarray.t
   ; mutable captured_values : string ValueMap.t
-  ; mutable captured_types : string ValueMap.t
+  ; mutable captured_types : C_ast.ty progress ValueMap.t
   ; mutable drop_fns : string ValueMap.t
   ; mutable claim_fns : string ValueMap.t
   ; mutable contexts : Types.value_context_ty Id.Map.t
@@ -239,15 +241,9 @@ module Impl = struct
     insert_stmt
       (Expr (Apply { f = Claim (Ident (generate_drop kast_ty)); args = [ value ] }))
 
-  and declare_var ~(gc : bool) ?(drop : bool = false) (kast_ty : ty) (name : string)
-    : unit
-    =
+  and declare_var ?(drop : bool = false) (kast_ty : ty) (name : string) : unit =
     let ty = transpile_ty kast_ty in
-    if gc
-    then (
-      insert_stmt (DeclareVar { name; ty = Ptr ty });
-      malloc_typed_ptr ~boxed:false kast_ty (Ident name))
-    else insert_stmt (DeclareVar { name; ty });
+    insert_stmt (DeclareVar { name; ty });
     if drop then defer (fun () -> insert_drop kast_ty (Claim (Ident name)))
 
   and declare_c_var (ty : C_ast.ty) (name : string) : unit =
@@ -257,18 +253,11 @@ module Impl = struct
     declare_c_var ty name;
     insert_stmt (Assign { assignee = Ident name; value })
 
-  and let_var
-        ~(gc : bool)
-        ?(drop : bool = true)
-        (kast_ty : ty)
-        (name : string)
-        (value : C_ast.expr)
+  and let_var ?(drop : bool = true) (kast_ty : ty) (name : string) (value : C_ast.expr)
     : unit
     =
-    declare_var ~gc ~drop kast_ty name;
-    insert_stmt
-      (Assign
-         { assignee = (if gc then Deref (Claim (Ident name)) else Ident name); value })
+    declare_var ~drop kast_ty name;
+    insert_stmt (Assign { assignee = Ident name; value })
 
   and c_compound_literal (ty : C_ast.ty) (fields : (string * C_ast.expr) list)
     : C_ast.expr
@@ -293,7 +282,7 @@ module Impl = struct
 
   and compound_literal (kast_ty : ty) (fields : (string * C_ast.expr) list) : C_ast.expr =
     let result_name = gen_name "compound" in
-    declare_var ~gc:false kast_ty result_name ~drop:false;
+    declare_var kast_ty result_name ~drop:false;
     if !boxed_structs
     then malloc_typed_ptr ~boxed:!boxed_structs kast_ty (Ident result_name);
     fields
@@ -346,13 +335,12 @@ module Impl = struct
     | Some _ -> insert_stmt (Assign { assignee = lookup_binding binding; value })
     | None ->
       let ident = binding_name binding in
-      let_var ~gc:(is_full_gc ()) binding.ty ident value
+      let_var binding.ty ident value
 
   and ident_place (name : string) : C_ast.place_expr = get_actual_place (Ident name)
 
   and get_actual_place (place : C_ast.place_expr) : C_ast.place_expr =
     match !gc_mode with
-    | Full -> Deref (Claim place)
     | _ -> place
 
   and lookup_binding (binding : binding) : C_ast.place_expr =
@@ -387,7 +375,6 @@ module Impl = struct
             let var = gen_name "temp" in
             let value = eval_scoped_expr expr in
             let_var
-              ~gc:false
               expr.data.signature.ty
               var
               (value |> Option.unwrap_or_else (fun () -> C_ast.Unit));
@@ -409,7 +396,7 @@ module Impl = struct
           | _ -> Deref (Claim (transpile_place_expr expr)))
        | Types.PE_Temp expr ->
          let var = gen_name "temp" in
-         let_var ~gc:false expr.data.signature.ty var (transpile_expr expr);
+         let_var expr.data.signature.ty var (transpile_expr expr);
          Ident var
        | Types.PE_Error -> fail "transpiling error place expr")
 
@@ -438,24 +425,6 @@ module Impl = struct
        | Place (~mut:_, field_place) -> Some field_place
        | RefBlocked _ -> failwith __LOC__)
     | _ -> None
-
-  and resolve_ty_aliases (ty : C_ast.ty) : C_ast.ty =
-    let ctx = Effect.perform GetCtx in
-    match ty with
-    | T_Unit -> T_Unit
-    | T_Raw s -> T_Raw s
-    | Ptr pointee -> Ptr (resolve_ty_aliases pointee)
-    | Void -> Void
-    | Named name ->
-      (match ctx.types |> StringMap.find_opt name with
-       | Some def ->
-         (match def.shape with
-          | RuntimeDefined -> ty
-          | DEF_Raw _ -> ty
-          | Enum _ | Struct _ | Union _ -> ty
-          | Fn _ -> ty
-          | Alias ty -> resolve_ty_aliases ty)
-       | None -> ty (* fail "named type %S is not found in ctx.types???" name *))
 
   and generate_claim (ty : ty) : string =
     transpile_ty ty |> ignore;
@@ -576,7 +545,7 @@ module Impl = struct
                | [] -> copy
                | variants ->
                  let var = gen_name "claimed" in
-                 declare_var ~gc:false ty_ty var ~drop:false;
+                 declare_var ty_ty var ~drop:false;
                  insert_stmt
                    (Switch
                       { value =
@@ -666,11 +635,7 @@ module Impl = struct
               if is_closure |> Inference.await_inferred_simple
               then
                 Apply
-                  { f =
-                      Claim
-                        (Ident
-                           (ty_to_string (resolve_ty_aliases (transpile_ty ty_ty))
-                            ^ "_claim"))
+                  { f = Claim (Ident (ty_to_string (transpile_ty ty_ty) ^ "_claim"))
                   ; args = [ Claim (Ident arg_name) ]
                   }
               else copy
@@ -864,11 +829,7 @@ module Impl = struct
               insert_stmt
                 (Expr
                    (Apply
-                      { f =
-                          Claim
-                            (Ident
-                               (ty_to_string (resolve_ty_aliases (transpile_ty ty_ty))
-                                ^ "_drop"))
+                      { f = Claim (Ident (ty_to_string (transpile_ty ty_ty) ^ "_drop"))
                       ; args = [ Claim (Ident var) ]
                       }))
           | Types.T_Generic _ -> ()
@@ -896,55 +857,36 @@ module Impl = struct
     Inference.Var.setup_default_if_needed ty.var;
     ty |> Ty.await_inferred |> ignore;
     match ty.var |> Inference.Var.inferred_opt with
+    | None -> fail "transpiling not inferred type %a" Ty.print ty
     | Some (T_Blocked value) -> Ptr Void
-    | _ ->
-      let ty_name = ref None in
-      let do_prepend = ref false in
-      (* Log.info (fun log -> log "Checking in ValueMap: %a" Ty.print ty); *)
-      (* let old_captured_types = ctx.captured_types in *)
+    | Some ty_shape ->
       let ty_as_value = V_Ty ty |> Value.inferred ~span in
-      ctx.captured_types
-      <- ctx.captured_types
-         |> ValueMap.update ty_as_value (fun name ->
-           let name =
-             match name with
-             | Some name -> name
-             | None ->
-               let name = gen_name ~opt:(Ty.name ty) "type" in
-               do_prepend := true;
-               name
-           in
-           ty_name := Some name;
-           Some name);
-      let ty_name = !ty_name |> Option.get in
-      if !do_prepend
-      then (
-        let _ : string = generate_claim ty in
-        let _ : string = generate_drop ty in
-        (match
-           Interpreter.cast_as_module_opt
-             ~span
-             interpreter
-             (Value.inferred ~span (V_Ty ty))
-         with
-         | None -> ()
-         | Some ty_as_module -> transpile_value ty_as_module |> ignore);
-        Log.trace (fun log -> log "prepend %a" Ty.print ty);
-        let ty_def =
-          match ty.var |> Inference.Var.inferred_opt with
-          | None ->
-            if not !Kast_util.quiet
-            then
-              Log.error (fun log ->
-                log
-                  "transpiling not inferred ty at %a"
-                  (List.print print_span)
-                  (Inference.Var.spans ty.var |> SpanSet.to_list));
-            failwith __LOC__
-          | Some shape -> transpile_ty_shape ty_name shape
-        in
-        ctx.types <- ctx.types |> StringMap.add ty_name ty_def);
-      resolve_ty_aliases (Named ty_name)
+      let prepend = ref None in
+      let ty_name : C_ast.ty =
+        match ctx.captured_types |> ValueMap.find_opt ty_as_value with
+        | Some Inprogress -> fail "recursive type %a" Ty.print ty
+        | Some (Completed ty) -> ty
+        | None ->
+          ctx.captured_types <- ctx.captured_types |> ValueMap.add ty_as_value Inprogress;
+          let ty =
+            match transpile_ty_shape ty_shape with
+            | Alias t -> t
+            | Named { name; def } ->
+              prepend
+              := Some
+                   (fun () ->
+                     let def = def () in
+                     ctx.types <- ctx.types |> StringMap.add name def);
+              Named name
+          in
+          ctx.captured_types
+          <- ctx.captured_types |> ValueMap.add ty_as_value (Completed ty);
+          ty
+      in
+      (match !prepend with
+       | None -> ()
+       | Some f -> f ());
+      ty_name
 
   and variant_tag_ty (ty_name : string) (ty : Types.ty_variant) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
@@ -1036,248 +978,203 @@ module Impl = struct
       impl
     | _ -> fail "no repr for %a" Ty.Shape.print ty
 
-  and transpile_ty_shape (ty_name : string) (ty : Types.ty_shape) : C_ast.ty_def =
+  and transpile_ty_shape (ty : Types.ty_shape) : transpiled_ty_shape =
     let ctx = Effect.perform GetCtx in
-    let shape : C_ast.ty_def_shape =
-      match ty with
-      | Types.T_Unit -> Alias T_Unit
-      | Types.T_Bool -> Alias (T_Raw { c = "Bool"; is_primitive = true })
-      | Types.T_Int32 -> Alias (T_Raw { c = "Int32"; is_primitive = true })
-      | Types.T_UInt32 -> Alias (T_Raw { c = "UInt32"; is_primitive = true })
-      | Types.T_Int64 -> Alias (T_Raw { c = "Int64"; is_primitive = true })
-      | Types.T_UInt64 -> Alias (T_Raw { c = "UInt64"; is_primitive = true })
-      | Types.T_Float32 -> Alias (T_Raw { c = "Float32"; is_primitive = true })
-      | Types.T_Float64 -> Alias (T_Raw { c = "Float64"; is_primitive = true })
-      | Types.T_String -> Alias (T_Raw { c = "String"; is_primitive = false })
-      | Types.T_StringView -> Alias (T_Raw { c = "StringView"; is_primitive = false })
-      | Types.T_Char -> Alias (T_Raw { c = "Char"; is_primitive = true })
-      | Types.T_Box boxed ->
-        let boxed = transpile_ty boxed in
-        let macro_arg = ty_to_string boxed in
-        (match ctx.runtime_defined_list_types |> StringMap.find_opt macro_arg with
-         | Some name -> Alias (Named name)
-         | None ->
-           let name = "Box_" ^ macro_arg in
-           ctx.types
-           <- ctx.types
-              |> StringMap.add
-                   name
-                   ({ shape =
-                        DEF_Raw
-                          { def = make_string "define_Box(%s)" macro_arg
-                          ; need_declared = [ Named macro_arg ]
-                          ; need_completed = []
-                          }
-                    ; comment = None
-                    }
-                    : C_ast.ty_def);
-           let impl_name = name ^ "_impl" in
-           ctx.types
-           <- ctx.types
-              |> StringMap.add
-                   impl_name
-                   ({ shape =
-                        DEF_Raw
-                          { def = make_string "impl_Box(%s)" macro_arg
-                          ; need_declared = []
-                          ; need_completed = [ Named macro_arg ]
-                          }
-                    ; comment = None
-                    }
-                    : C_ast.ty_def);
-           Alias (Named name))
-      | Types.T_Ref { mut = _; referenced } -> Alias (Ptr (transpile_ty referenced))
-      | Types.T_Variant ty ->
-        if variant_needs_tag ty
-        then
-          Struct
-            (StringMap.of_list
-               [ "tag", variant_tag_ty ty_name ty
-               ; "data", variant_data_ty_impl ty_name ty
-               ])
-        else Struct (StringMap.singleton "data" (variant_data_ty_impl ty_name ty))
-      | Types.T_Tuple { name; tuple } ->
-        let fields =
-          tuple
-          |> Tuple.to_seq
-          |> Seq.map
-               (fun
-                   ((member, field) : Tuple.member * Types.ty_tuple_field)
-                    : (string * C_ast.ty)
-                  -> member_name member, transpile_ty field.ty)
-          |> StringMap.of_seq
-        in
-        if !boxed_structs
-        then (
-          let struct_name =
-            gen_name
-              (make_string "%t_DEF" (fun fmt ->
-                 Print.print_optionally_named
-                   ~always_print_shape:false
-                   fmt
-                   name
-                   (fun fmt -> fprintf fmt "anonymous_tuple")))
-          in
-          ctx.types
-          <- ctx.types
-             |> StringMap.add
-                  struct_name
-                  ({ shape = C_ast.Struct fields
-                   ; comment = Some (make_string "%a" Print.print_ty_shape ty)
-                   }
-                   : C_ast.ty_def);
-          Alias (Ptr (Named struct_name)))
-        else Struct fields
-      | Types.T_List { element_ty } ->
-        let element_ty = transpile_ty element_ty in
-        let macro_arg = ty_to_string element_ty in
-        (match ctx.runtime_defined_list_types |> StringMap.find_opt macro_arg with
-         | Some name -> Alias (Named name)
-         | None ->
-           let name = "ArrayList_" ^ macro_arg in
-           ctx.types
-           <- ctx.types
-              |> StringMap.add
-                   name
-                   ({ shape =
-                        DEF_Raw
-                          { def = make_string "define_ArrayList(%s)" macro_arg
-                          ; need_declared = [ Named macro_arg ]
-                          ; need_completed = []
-                          }
-                    ; comment = None
-                    }
-                    : C_ast.ty_def);
-           let impl_name = name ^ "_impl" in
-           ctx.types
-           <- ctx.types
-              |> StringMap.add
-                   impl_name
-                   ({ shape =
-                        DEF_Raw
-                          { def = make_string "impl_ArrayList(%s)" macro_arg
-                          ; need_declared = []
-                          ; need_completed = [ Named macro_arg ]
-                          }
-                    ; comment = None
-                    }
-                    : C_ast.ty_def);
-           Alias (Named name))
-      | Types.T_Ty -> Alias (Ptr (Named "TypeInfo"))
-      | Types.T_Fn { is_closure; call_convention; args; result } ->
-        let is_closure = is_closure |> Inference.await_inferred_simple in
-        let call_convention = call_convention |> Inference.await_inferred_simple in
-        let args =
-          args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
-        in
-        let args =
-          args.tuple
-          |> Tuple.to_seq
-          |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
-            transpile_ty field.ty)
-          |> List.of_seq
-        in
-        let result_ty = transpile_ty result in
-        let result_ty : C_ast.ty =
-          match result_ty with
-          | T_Unit -> Void
-          | other -> other
-        in
-        let define_macro_args =
-          ty_to_string result_ty :: (args |> List.map ty_to_string)
-        in
-        let args = if is_closure then [ C_ast.Ptr Void ] @ args else args in
-        let args =
-          match call_convention with
-          | None -> [ C_ast.Ptr (T_Raw { c = "Context"; is_primitive = false }) ] @ args
-          | Some "C" -> args
-          | _ -> fail "unknown call convention"
-        in
-        (match is_closure with
-         | true ->
-           Log.trace (fun log ->
-             log "Looking for %a" (List.print String.print) define_macro_args);
-           (match
-              ctx.runtime_defined_closure_types
-              |> StringListMap.find_opt define_macro_args
-            with
-            | Some ty -> Alias (Named ty)
-            | None ->
-              let name = List.fold_left (fun s n -> s ^ "_" ^ n) "Fn" define_macro_args in
-              let macro_arg =
-                List.fold_left (fun s n -> s ^ ", " ^ n) name define_macro_args
-              in
-              ctx.types
-              <- ctx.types
-                 |> StringMap.add
-                      name
-                      ({ shape =
-                           DEF_Raw
-                             { def = make_string "define_closure_type(%s)" macro_arg
-                             ; need_declared =
-                                 List.map
-                                   (fun name : C_ast.ty -> Named name)
-                                   define_macro_args
-                             ; need_completed = []
-                             }
-                       ; comment = None
-                       }
-                       : C_ast.ty_def);
-              if false
-              then (
-                let impl_name = name ^ "_impl" in
-                ctx.types
-                <- ctx.types
-                   |> StringMap.add
-                        impl_name
-                        ({ shape =
-                             DEF_Raw
-                               { def = make_string "impl_closure_type(%s)" macro_arg
-                               ; need_declared = []
-                               ; need_completed = [ Named macro_arg ]
-                               }
-                         ; comment = None
-                         }
-                         : C_ast.ty_def));
-              Alias (Named name))
-         | false -> Fn { args; result_ty })
-      | Types.T_Generic _ when true -> Alias T_Unit
-      | Types.T_Generic { args; result } ->
-        let args =
-          args.pattern.data.signature.ty
-          |> Ty.await_inferred
-          |> Ty.Shape.expect_tuple
-          |> Option.unwrap
-        in
-        let args =
-          args.tuple
-          |> Tuple.to_seq
-          |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
-            transpile_ty field.ty)
-          |> List.of_seq
-        in
-        let result_ty = transpile_ty result in
-        Fn { args; result_ty }
-      | Types.T_Ast -> Alias T_Unit
-      | Types.T_UnwindToken _ -> Alias (Ptr (transpile_ty (ty_shape_repr ty)))
-      | Types.T_Target -> failwith __LOC__
-      | Types.T_ContextTy ->
-        (* TODO maybe? *)
-        Alias T_Unit
-      | Types.T_ImplicitContext -> Alias (Named "Context")
-      | Types.T_CompilerScope -> Alias T_Unit
-      | Types.T_Opaque { name = _; native_name } ->
-        (match native_name with
-         | Some native_name -> Alias (T_Raw { c = native_name; is_primitive = false })
-         | None ->
-           fail
-             "native name must be set for opaque types when transpiling to C: %a"
-             Ty.Shape.print
-             ty)
-      | Types.T_Blocked _ -> failwith __LOC__
-      | Types.T_Error -> fail "transpiling error ty"
+    let make_with (shape : unit -> C_ast.ty_def_shape) () : C_ast.ty_def =
+      { shape = shape (); comment = Some (make_string "%a" Print.print_ty_shape ty) }
     in
-    { shape; comment = Some (make_string "%a" Print.print_ty_shape ty) }
+    let alias (c : C_ast.ty) : transpiled_ty_shape = Alias c in
+    let runtime_defined (name : string) : transpiled_ty_shape = alias (Named name) in
+    match ty with
+    | Types.T_Unit -> alias T_Unit
+    | Types.T_Bool -> runtime_defined "Bool"
+    | Types.T_Int32 -> runtime_defined "Int32"
+    | Types.T_UInt32 -> runtime_defined "UInt32"
+    | Types.T_Int64 -> runtime_defined "Int64"
+    | Types.T_UInt64 -> runtime_defined "UInt64"
+    | Types.T_Float32 -> runtime_defined "Float32"
+    | Types.T_Float64 -> runtime_defined "Float64"
+    | Types.T_String -> runtime_defined "String"
+    | Types.T_StringView -> runtime_defined "StringView"
+    | Types.T_Char -> runtime_defined "Char"
+    | Types.T_Box boxed ->
+      let boxed = transpile_ty boxed in
+      let macro_arg = ty_to_string boxed in
+      (match ctx.runtime_defined_box_types |> StringMap.find_opt macro_arg with
+       | Some name -> runtime_defined name
+       | None ->
+         Named
+           { name = "Box_" ^ macro_arg
+           ; def =
+               make_with (fun () : C_ast.ty_def_shape ->
+                 DEF_Raw
+                   { def = make_string "define_Box(%s)" macro_arg
+                   ; impl = Some (make_string "impl_Box(%s)" macro_arg)
+                   ; need_declared = [ Named macro_arg ]
+                   ; need_completed = []
+                   })
+           })
+    | Types.T_Ref { mut = _; referenced } -> alias (Ptr (transpile_ty referenced))
+    | Types.T_Variant ty ->
+      let ty_name =
+        match ty.name |> OptionalName.await_inferred with
+        | Some name -> gen_name (make_string "%a" Print.print_name_shape name)
+        | None -> gen_name "anonymous_variant"
+      in
+      Named
+        { name = ty_name
+        ; def =
+            make_with (fun () ->
+              if variant_needs_tag ty
+              then
+                Struct
+                  (StringMap.of_list
+                     [ "tag", variant_tag_ty ty_name ty
+                     ; "data", variant_data_ty_impl ty_name ty
+                     ])
+              else Struct (StringMap.singleton "data" (variant_data_ty_impl ty_name ty)))
+        }
+    | Types.T_Tuple { name = ty_name; tuple } ->
+      let ty_name =
+        match ty_name |> OptionalName.await_inferred with
+        | Some name -> gen_name (make_string "%a" Print.print_name_shape name)
+        | None -> gen_name "anonymous_tuple"
+      in
+      let fields () =
+        tuple
+        |> Tuple.to_seq
+        |> Seq.map
+             (fun
+                 ((member, field) : Tuple.member * Types.ty_tuple_field)
+                  : (string * C_ast.ty)
+                -> member_name member, transpile_ty field.ty)
+        |> StringMap.of_seq
+      in
+      if !boxed_structs
+      then (
+        let def =
+          ({ shape = C_ast.Struct (fields ())
+           ; comment = Some (make_string "%a" Print.print_ty_shape ty)
+           }
+           : C_ast.ty_def)
+        in
+        ctx.types <- ctx.types |> StringMap.add ty_name def;
+        alias (Ptr (Named ty_name)))
+      else Named { name = ty_name; def = make_with (fun () -> Struct (fields ())) }
+    | Types.T_List { element_ty } ->
+      let element_ty = transpile_ty element_ty in
+      let macro_arg = ty_to_string element_ty in
+      (match ctx.runtime_defined_list_types |> StringMap.find_opt macro_arg with
+       | Some name -> runtime_defined name
+       | None ->
+         Named
+           { name = "ArrayList_" ^ macro_arg
+           ; def =
+               make_with (fun () ->
+                 DEF_Raw
+                   { def = make_string "define_ArrayList(%s)" macro_arg
+                   ; impl = Some (make_string "impl_ArrayList(%s)" macro_arg)
+                   ; need_declared = [ Named macro_arg ]
+                   ; need_completed = []
+                   })
+           })
+    | Types.T_Ty -> alias (Ptr (Named "TypeInfo"))
+    | Types.T_Fn { is_closure; call_convention; args; result } ->
+      let is_closure = is_closure |> Inference.await_inferred_simple in
+      let call_convention = call_convention |> Inference.await_inferred_simple in
+      let args = args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap in
+      let args =
+        args.tuple
+        |> Tuple.to_seq
+        |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
+          transpile_ty field.ty)
+        |> List.of_seq
+      in
+      let result_ty = transpile_ty result in
+      let result_ty : C_ast.ty =
+        match result_ty with
+        | T_Unit -> Void
+        | other -> other
+      in
+      let define_macro_args = ty_to_string result_ty :: (args |> List.map ty_to_string) in
+      let args = if is_closure then [ C_ast.Ptr Void ] @ args else args in
+      let args =
+        match call_convention with
+        | None -> [ C_ast.Ptr (T_Raw { c = "Context"; is_primitive = false }) ] @ args
+        | Some "C" -> args
+        | _ -> fail "unknown call convention"
+      in
+      (match is_closure with
+       | true ->
+         Log.trace (fun log ->
+           log "Looking for %a" (List.print String.print) define_macro_args);
+         (match
+            ctx.runtime_defined_closure_types |> StringListMap.find_opt define_macro_args
+          with
+          | Some name -> runtime_defined name
+          | None ->
+            let name = List.fold_left (fun s n -> s ^ "_" ^ n) "Fn" define_macro_args in
+            let macro_arg =
+              List.fold_left (fun s n -> s ^ ", " ^ n) name define_macro_args
+            in
+            Named
+              { name
+              ; def =
+                  make_with (fun () ->
+                    DEF_Raw
+                      { def = make_string "define_closure_type(%s)" macro_arg
+                      ; impl = None
+                      ; need_declared =
+                          List.map (fun name : C_ast.ty -> Named name) define_macro_args
+                      ; need_completed = []
+                      })
+              })
+       | false ->
+         let name = List.fold_left (fun s n -> s ^ "_" ^ n) "RawFn" define_macro_args in
+         Named { name; def = make_with (fun () -> Fn { args; result_ty }) })
+    | Types.T_Generic _ when true -> alias T_Unit
+    | Types.T_Generic { args; result } ->
+      let args =
+        args.pattern.data.signature.ty
+        |> Ty.await_inferred
+        |> Ty.Shape.expect_tuple
+        |> Option.unwrap
+      in
+      let args =
+        args.tuple
+        |> Tuple.to_seq
+        |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
+          transpile_ty field.ty)
+        |> List.of_seq
+      in
+      let result_ty = transpile_ty result in
+      let name = gen_name "generic" in
+      Named { name; def = make_with (fun () -> Fn { args; result_ty }) }
+    | Types.T_Ast -> alias T_Unit
+    | Types.T_UnwindToken _ -> alias (Ptr (transpile_ty (ty_shape_repr ty)))
+    | Types.T_Target -> failwith __LOC__
+    | Types.T_ContextTy ->
+      (* TODO maybe? *)
+      alias T_Unit
+    | Types.T_ImplicitContext -> runtime_defined "Context"
+    | Types.T_CompilerScope -> alias T_Unit
+    | Types.T_Opaque { name; native_name } ->
+      let name = gen_name (make_string "%a" Print.print_name name) in
+      (match native_name with
+       | Some native_name ->
+         Named
+           { name
+           ; def =
+               make_with (fun () ->
+                 Alias (T_Raw { c = native_name; is_primitive = false }))
+           }
+       | None ->
+         fail
+           "native name must be set for opaque types when transpiling to C: %a"
+           Ty.Shape.print
+           ty)
+    | Types.T_Blocked _ -> failwith __LOC__
+    | Types.T_Error -> fail "transpiling error ty"
 
   and does_match (pattern : pattern) (pure_place_expr : C_ast.place_expr) : C_ast.expr =
     match pattern.shape with
@@ -1616,7 +1513,7 @@ module Impl = struct
                     in
                     let var = gen_name "packed" in
                     let var_ty = transpile_ty packed.data.signature.ty in
-                    declare_var ~gc:false packed.data.signature.ty var;
+                    declare_var packed.data.signature.ty var;
                     if !boxed_structs
                     then malloc_typed_ptr ~boxed:true packed.data.signature.ty (Ident var);
                     packed_ty.tuple
@@ -1739,7 +1636,7 @@ module Impl = struct
            , C_ast.E_Native { parts = [ Raw "alignof("; Raw struct_name; Raw ")" ] } )
          ; "size", E_Native { parts = [ Raw "sizeof("; Raw struct_name; Raw ")" ] }
          ; "stride", E_Native { parts = [ Raw "sizeof("; Raw struct_name; Raw ")" ] }
-         ; "kind", E_Native { parts = [ Raw "TypeInfoKind_raw" ] }
+           (* ; "kind", E_Native { parts = [ Raw "TypeInfoKind_raw" ] } *)
          ; "drop", Claim (Ident (drop_fn_name ^ "_type_erased"))
          ; "claim", Claim (Ident (claim_fn_name ^ "_type_erased"))
          ]
@@ -1931,7 +1828,6 @@ module Impl = struct
            let kast_ty = Value.Shape.ty_of shape in
            let ty = transpile_ty kast_ty in
            let_var
-             ~gc:false
              kast_ty
              var
              (E_Native
@@ -2029,7 +1925,7 @@ module Impl = struct
           in
           let var = gen_name "packed" in
           let var_ty = transpile_ty packed.data.signature.ty in
-          declare_var ~gc:false packed.data.signature.ty var;
+          declare_var packed.data.signature.ty var;
           if !boxed_structs
           then malloc_typed_ptr ~boxed:true packed.data.signature.ty (Ident var);
           packed_ty.tuple
@@ -2102,7 +1998,7 @@ module Impl = struct
              | (Field { label; field : expr; _ } : _ Types.tuple_part_of) ->
                let name = label |> Option.map Label.get_name in
                let var = gen_name "arg" in
-               let_var ~gc:false field.data.signature.ty var (transpile_expr field);
+               let_var field.data.signature.ty var (transpile_expr field);
                args
                := !args |> Tuple.add name (claim_c (Ident var) field.data.signature.ty)
              | Unpack packed ->
@@ -2113,7 +2009,7 @@ module Impl = struct
                  |> Option.unwrap
                in
                let var = gen_name "packed" in
-               let_var ~gc:false packed.data.signature.ty var (transpile_expr packed);
+               let_var packed.data.signature.ty var (transpile_expr packed);
                packed_ty.tuple
                |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
                  args
@@ -2145,7 +2041,7 @@ module Impl = struct
       if f_ty.is_closure |> Inference.await_inferred_simple
       then (
         let f_name = gen_name "f" in
-        let_var ~gc:false f_expr.data.signature.ty f_name f;
+        let_var f_expr.data.signature.ty f_name f;
         ( C_ast.Claim (Field { obj = Ident f_name; field = "f" })
         , [ C_ast.Claim (Field { obj = Ident f_name; field = "captured" }) ] @ args ))
       else f, args
@@ -2161,7 +2057,7 @@ module Impl = struct
     let apply_expr : C_ast.expr = Apply { f; args } in
     (match result_ty with
      | T_Unit | Void -> insert_stmt (Expr apply_expr)
-     | _ -> let_var ~gc:false f_ty.result result_var apply_expr);
+     | _ -> let_var f_ty.result result_var apply_expr);
     insert_stmt
       (If
          { cond = E_Native { parts = [ Raw "are_we_unwinding()" ] }
@@ -2282,14 +2178,16 @@ module Impl = struct
     | Some e ->
       (match transpile_ty expr.data.signature.ty with
        | T_Unit | Void -> insert_stmt (Expr e)
-       | _ -> insert_drop expr.data.signature.ty e)
+       | _ ->
+         insert_stmt (Comment (make_string "Drop %a" Ty.print expr.data.signature.ty));
+         insert_drop expr.data.signature.ty e)
 
   and eval_scoped_expr (expr : expr) : C_ast.expr option =
     with_new_scope (fun () ->
       match eval_expr expr with
       | Some result ->
         let var = gen_name "scope_result" in
-        let_var ~gc:false expr.data.signature.ty var result ~drop:false;
+        let_var expr.data.signature.ty var result ~drop:false;
         Some (C_ast.Claim (Ident var))
       | None -> None)
 
@@ -2418,7 +2316,7 @@ module Impl = struct
               |> Option.unwrap
             in
             let packed_name = gen_name "packed" in
-            let_var ~gc:false packed.data.signature.ty packed_name (transpile_expr packed);
+            let_var packed.data.signature.ty packed_name (transpile_expr packed);
             packed_ty.tuple
             |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
               let assignee_member =
@@ -2509,7 +2407,7 @@ module Impl = struct
         let binding_module_map = !binding_module_map in
         (try
            let var_ty = transpile_ty expr.data.signature.ty in
-           declare_var ~gc:(is_full_gc ()) expr.data.signature.ty var ~drop:false;
+           declare_var expr.data.signature.ty var ~drop:false;
            let module_place : C_ast.place_expr = ident_place var in
            if !boxed_structs
            then malloc_typed_ptr ~boxed:true expr.data.signature.ty module_place;
@@ -2612,7 +2510,6 @@ module Impl = struct
         let token_var = gen_name "unwindable_token" in
         let token_ty = ty_repr token.data.signature.ty in
         let_var
-          ~gc:false
           token_ty
           token_var
           (compound_literal
@@ -2662,7 +2559,7 @@ module Impl = struct
         (*   } *)
       | Types.E_Unwind { token; value } ->
         let token_var = gen_name "token" in
-        let_var ~gc:false token.data.signature.ty token_var (transpile_expr token);
+        let_var token.data.signature.ty token_var (transpile_expr token);
         (* token->value = value *)
         insert_stmt
           (Assign
@@ -2687,7 +2584,7 @@ module Impl = struct
         let value = transpile_expr value in
         let old_var = gen_name "old_ctx" in
         let ctx_place = current_context context_ty in
-        let_var ~gc:false context_ty.ty old_var (Claim ctx_place) ~drop:false;
+        let_var context_ty.ty old_var (Claim ctx_place) ~drop:false;
         insert_stmt (Assign { assignee = ctx_place; value });
         defer (fun () ->
           insert_drop context_ty.ty (Claim ctx_place);
@@ -2732,7 +2629,7 @@ module Impl = struct
     let postprocess_fn (name : string) (fn : C_ast.fn_def) : C_ast.fn_def =
       let new_body =
         match !gc_mode with
-        | EscapeAnalyze ->
+        | EscapeAnalyze when false ->
           let escaping_idents = ref StringSet.empty in
           let analyzed = ref false in
           let rec walk_block (block : C_ast.block) : C_ast.block =
@@ -2864,158 +2761,22 @@ module Impl = struct
       match def.shape with
       | C_ast.Alias ty -> construct_ty_type_info kast_ty ty
       | _ ->
-        let kind, inner_ptrs, gc_descr =
-          match def.shape with
-          | C_ast.Struct fields | C_ast.Union fields ->
-            let bitmap_var = gen_name "gc_bitmap" in
-            (match !gc_mode with
-             | Disabled -> ()
-             | _ ->
-               insert_stmt
-                 (S_Native
-                    { parts =
-                        [ Raw "GC_word "
-                        ; Raw bitmap_var
-                        ; Raw "[GC_BITMAP_SIZE("
-                        ; Raw name
-                        ; Raw ")]"
-                        ]
-                    });
-               insert_stmt
-                 (S_Native
-                    { parts =
-                        [ Raw "memset(&"
-                        ; Raw bitmap_var
-                        ; Raw ", 0, sizeof("
-                        ; Raw bitmap_var
-                        ; Raw "))"
-                        ]
-                    }));
-            let is_primitive = ref true in
-            let inner_ptrs = ref 0 in
-            let mark_field_as_ptr (full_name : string) =
-              is_primitive := false;
-              inner_ptrs := !inner_ptrs + 1;
-              (* GC_set_bit(T_bitmap, GC_WORD_OFFSET(T,field)); *)
-              match !gc_mode with
-              | Disabled -> ()
-              | _ ->
-                insert_stmt
-                  (S_Native
-                     { parts =
-                         [ Raw "GC_set_bit("
-                         ; Raw bitmap_var
-                         ; Raw ", GC_WORD_OFFSET("
-                         ; Raw name
-                         ; Raw ", "
-                         ; Raw full_name
-                         ; Raw "))"
-                         ]
-                     })
-            in
-            let mark_field_as_raw (full_name : string) (ty : C_ast.ty) =
-              is_primitive := false;
-              (* TODO actually more ptrs than 1 here *)
-              inner_ptrs := !inner_ptrs + 1;
-              let ty_as_string =
-                let result = ref "" in
-                try
-                  C_ast.Print.print_ty ty;
-                  !result
-                with
-                | effect C_ast.Print.GetOutput, k ->
-                  Effect.continue k (fun s -> result := !result ^ s)
-              in
-              match !gc_mode with
-              | Disabled -> ()
-              | _ ->
-                insert_stmt
-                  (S_Native
-                     { parts =
-                         [ Raw "for (size_t i = 0; i < GC_WORD_LEN("
-                         ; Raw ty_as_string
-                         ; Raw "); i++) GC_set_bit("
-                         ; Raw bitmap_var
-                         ; Raw ", GC_WORD_OFFSET("
-                         ; Raw name
-                         ; Raw ", "
-                         ; Raw full_name
-                         ; Raw ") + i)"
-                         ]
-                     })
-            in
-            let rec walk_field (full_name : string) (ty : C_ast.ty) =
-              match ty with
-              | T_Unit -> ()
-              | T_Raw { c = _; is_primitive } ->
-                if not is_primitive then mark_field_as_raw full_name ty
-              | Named name ->
-                walk_field_def full_name name (ctx.types |> StringMap.find name)
-              | Ptr _ -> mark_field_as_ptr full_name
-              | Void -> fail "void field is impossible"
-            and walk_field_def
-                  (full_name : string)
-                  (ty_name : string)
-                  (def : C_ast.ty_def)
-              =
-              match def.shape with
-              | C_ast.Enum _ -> ()
-              | C_ast.Struct inner_fields | C_ast.Union inner_fields ->
-                inner_fields
-                |> StringMap.iter (fun inner_field inner_ty ->
-                  walk_field (full_name ^ "." ^ inner_field) inner_ty)
-              | C_ast.Fn _ -> mark_field_as_ptr full_name
-              | C_ast.Alias ty -> walk_field full_name ty
-              | DEF_Raw _ -> mark_field_as_raw full_name (Named ty_name)
-              | RuntimeDefined _ ->
-                fail "TODO plain C data inside Kast??? ty name=%S" ty_name
-            in
-            fields |> StringMap.iter walk_field;
-            if false && !is_primitive
-            then "primitive", 0, None
-            else
-              ( "object"
-              , !inner_ptrs
-              , Some
-                  ( "gc_descr"
-                  , C_ast.E_Native
-                      { parts =
-                          [ Raw "GC_make_descriptor("
-                          ; Raw bitmap_var
-                          ; Raw ", GC_WORD_LEN("
-                          ; Raw name
-                          ; Raw "))"
-                          ]
-                      } ) )
-          | Enum _ -> "primitive", 0, None
-          | RuntimeDefined -> "raw", 0, None
-          | Fn _ -> "raw", 0, None
-          | DEF_Raw _ -> "raw", 0, None
-          | Alias _ -> failwith __LOC__
-        in
         c_compound_literal
           (T_Raw { c = "TypeInfo"; is_primitive = false })
           ([ "name", C_ast.Literal (String name)
            ; "alignment", C_ast.E_Native { parts = [ Raw "alignof("; Raw name; Raw ")" ] }
            ; "size", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
            ; "stride", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
-           ; "kind", E_Native { parts = [ Raw ("TypeInfoKind_" ^ kind) ] }
            ; "drop", Claim (Ident (generate_drop kast_ty ^ "_type_erased"))
            ; "claim", Claim (Ident (generate_claim kast_ty ^ "_type_erased"))
            ]
-           @ (if !allocation_stats
-              then
-                [ ( "allocation_stats"
-                  , C_ast.E_Native { parts = [ Raw "Kast_type_allocation_stats_new()" ] }
-                  )
-                ]
-              else [])
            @
-           match !gc_mode with
-           | Disabled -> []
-           | _ ->
-             [ "gc_inner_ptrs", C_ast.Literal (Int32 (Int32.of_int inner_ptrs)) ]
-             @ (gc_descr |> Option.to_list))
+           if !allocation_stats
+           then
+             [ ( "allocation_stats"
+               , C_ast.E_Native { parts = [ Raw "Kast_type_allocation_stats_new()" ] } )
+             ]
+           else [])
     and construct_ty_type_info (kast_ty : ty) (ty : C_ast.ty) =
       let primitive s : C_ast.expr =
         E_Native { parts = [ Raw "TypeInfo_simple(primitive, "; Raw s; Raw ")" ] }
@@ -3111,24 +2872,28 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; claim_fns = ValueMap.empty
     ; types =
         StringMap.of_list
-          ([ "Unit"
-           ; "Byte"
-           ; "Bool"
-           ; "Int32"
-           ; "UInt32"
-           ; "Float32"
-           ; "Float64"
-           ; "String"
-           ; "StringView"
-           ; "Char"
-           ; "Int64"
-           ; "UInt64"
-           ; "TypeInfo"
-           ; "Context"
-           ; "void"
-           ]
-           |> List.map (fun name : (string * C_ast.ty_def) ->
-             name, { shape = C_ast.RuntimeDefined; comment = None }))
+          (([ "Unit"
+            ; "Byte"
+            ; "Bool"
+            ; "Int32"
+            ; "UInt32"
+            ; "Float32"
+            ; "Float64"
+            ; "Char"
+            ; "Int64"
+            ; "UInt64"
+            ; "void"
+            ]
+            |> List.map (fun name : (string * C_ast.ty_def) ->
+              ( name
+              , { shape = C_ast.RuntimeDefined { is_primitive = true }; comment = None } ))
+           )
+           @ ([ "String"; "TypeInfo"; "Context"; "StringView" ]
+              |> List.map (fun name : (string * C_ast.ty_def) ->
+                ( name
+                , { shape = C_ast.RuntimeDefined { is_primitive = false }
+                  ; comment = None
+                  } ))))
     ; fns = StringMap.empty
     ; init_statics = { stmts = [] }
     ; includes = StringSet.empty
@@ -3164,13 +2929,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; cleanup_scope_without_unwind = (fun () -> ())
     }
   in
-  let scope : scope =
-    { ctx_place =
-        (match !gc_mode with
-         | Full -> Deref (Claim (Ident ctx_var))
-         | _ -> Ident ctx_var)
-    }
-  in
+  let scope : scope = { ctx_place = Ident ctx_var } in
   try
     let main : C_ast.fn_def =
       { args =
@@ -3221,14 +2980,18 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
             (ctx.runtime_defined_closure_types
              |> StringListMap.to_list
              |> List.map (fun (_, name) ->
-               name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+               ( name
+               , ({ shape = RuntimeDefined { is_primitive = false }; comment = None }
+                  : C_ast.ty_def) ))
              |> StringMap.of_list)
        |> StringMap.union
             (fun _ a _ -> Some a)
             (ctx.runtime_defined_list_types
              |> StringMap.to_list
              |> List.map (fun (_, name) ->
-               name, ({ shape = RuntimeDefined; comment = None } : C_ast.ty_def))
+               ( name
+               , ({ shape = RuntimeDefined { is_primitive = false }; comment = None }
+                  : C_ast.ty_def) ))
              |> StringMap.of_list);
     Impl.postprocess
       { types = ctx.types

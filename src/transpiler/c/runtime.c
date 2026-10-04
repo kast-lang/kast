@@ -1,7 +1,6 @@
 // #define USE_SANITIZERS
 // #define KAST_ALLOCATION_STATS
 // #define USE_GC
-// #define KAST_TYPED_GC
 // #define GC_ON_INTERVAL_EMSCRIPTEN
 
 #ifdef USE_SANITIZERS
@@ -78,7 +77,6 @@ typedef struct TypeInfo TypeInfo;
 typedef struct {
     size_t allocations;
     size_t total_memory;
-    size_t scannable_ptrs;
     bool tracked;
     TypeInfo* next_tracked;
 } Kast_type_allocation_stats;
@@ -87,26 +85,26 @@ typedef struct {
     ((Kast_type_allocation_stats) {                                            \
         .allocations = 0,                                                      \
         .total_memory = 0,                                                     \
-        .scannable_ptrs = 0,                                                   \
         .tracked = false,                                                      \
     })
 
 void Kast_type_allocation_stats_dump(Kast_type_allocation_stats* stats) {
     fprintf(
         stderr,
-        "allocations=%zu total_memory=%zu scannable_ptrs=%zu",
+        "allocations=%zu total_memory=%zu",
         stats->allocations,
-        stats->total_memory,
-        stats->scannable_ptrs
+        stats->total_memory
     );
 }
 
+#ifdef USE_GC
 typedef enum {
     TypeInfoKind_primitive,
     TypeInfoKind_raw,
     TypeInfoKind_object,
     TypeInfoKind_N,
 } TypeInfoKind;
+#endif
 
 struct TypeInfo {
     const char* name;
@@ -115,11 +113,11 @@ struct TypeInfo {
     size_t stride;
     void (*drop)(void*);
     void (*claim)(void* place, void* result);
-    TypeInfoKind kind;
 #ifdef KAST_ALLOCATION_STATS
     Kast_type_allocation_stats allocation_stats;
 #endif
 #ifdef USE_GC
+    TypeInfoKind kind;
     size_t gc_inner_ptrs;
     GC_descr gc_descr;
 #endif

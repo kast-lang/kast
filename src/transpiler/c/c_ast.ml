@@ -94,10 +94,11 @@ and ty_def_shape =
   | Alias of ty
   | DEF_Raw of
       { def : string
+      ; impl : string option
       ; need_declared : ty list
       ; need_completed : ty list
       }
-  | RuntimeDefined
+  | RuntimeDefined of { is_primitive : bool }
 
 and ty_def =
   { shape : ty_def_shape
@@ -413,7 +414,7 @@ module Print = struct
         | Fn _ -> None
         | Alias _ -> None
         | DEF_Raw _ -> None
-        | RuntimeDefined -> None
+        | RuntimeDefined _ -> None
       in
       match shape_name with
       | Some shape_name ->
@@ -439,8 +440,8 @@ module Print = struct
           |> Option.unwrap_or_else (fun () -> fail "type %S is not in program" name)
         in
         (match def.shape with
-         | RuntimeDefined -> ()
-         | DEF_Raw { def = _; need_declared; need_completed } ->
+         | RuntimeDefined _ -> ()
+         | DEF_Raw { def = _; impl = _; need_declared; need_completed } ->
            need_declared |> List.iter ensure_type_declared;
            need_completed |> List.iter ensure_type_completed;
            write "/*";
@@ -465,7 +466,7 @@ module Print = struct
          | Alias ty -> ensure_type_declared ty);
         write_comment def.comment;
         (match def.shape with
-         | RuntimeDefined -> ()
+         | RuntimeDefined _ -> ()
          | DEF_Raw { def; _ } ->
            write def;
            write ";";
@@ -556,6 +557,14 @@ module Print = struct
       | Void -> ()
     in
     program.types |> StringMap.iter (fun name _def -> ensure_typedef_completed name);
+    program.types
+    |> StringMap.iter (fun _name def ->
+      match def.shape with
+      | DEF_Raw { impl = Some impl; _ } ->
+        write impl;
+        write ";";
+        writeln ()
+      | _ -> ());
     program.statics
     |> List.iter (fun (static : static) ->
       write_comment static.comment;
